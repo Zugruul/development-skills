@@ -18,7 +18,7 @@ If the `project` scope is missing: `gh auth refresh -h github.com -s project` (i
 
 ## Phase 2 — the spec(s)
 Each spec is a design document plus a backlog of numbered tasks. One repo can have several specs (e.g. `platform` + `mobile-app`), each with its own task prefix.
-- If a spec already exists, note its path. If not, write one with the human before continuing — the workflow is spec-driven; there is nothing to build without it.
+- If a spec already exists, note its path. If not, STOP here and run the `craft-spec` skill — it interviews the user and produces the spec + backlog this workflow needs; then resume at Phase 3. The workflow is spec-driven; there is nothing to build without it.
 - For each spec, a backlog doc (e.g. `docs/BACKLOG.md`) should list every task: `<PREFIX>-<number>`, title, epic, priority, story points, acceptance criteria, Definition of Done. Number tasks in per-epic ranges (e.g. E0 = 001–009, E1 = 010–019, infra = 090–099) so ranges map cleanly to epics.
 
 ## Phase 3 — GitHub Project board

@@ -1,9 +1,13 @@
 ---
 name: seed-board
 description: Seed the GitHub Project board from a spec's backlog — create one issue + board item per task with status/priority/estimate set. Idempotent; safe to re-run. Use after setup-project, or when a new spec or new tasks are added to the backlog.
+allowed-tools: Bash
 ---
 
 # Seed the board from the backlog
+
+Pre-start check: !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh" --spec`
+If the line above says `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
 ## 1. Build the task file
 From the spec's backlog doc (`specs[].backlogPath` in `.claude/project.json`), write one line per task to a temp file (`#` comments and blank lines allowed):

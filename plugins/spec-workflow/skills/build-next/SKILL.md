@@ -1,9 +1,13 @@
 ---
 name: build-next
 description: Run ONE build iteration — checkpoint check, pick the next board task (reading human comments), implement it via TDD to a green gate, open a PR, keep the board strictly up to date. Designed to be driven by /loop to work the backlog until done.
+allowed-tools: Bash
 ---
 
 # /build-next — one build iteration
+
+Pre-start check: !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh" --spec`
+If the line above says `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
 You are an autonomous engineer building `<cfg:project.name>`. Read `.claude/project.json` once at the start — it defines the boards, specs, gate, and rules. The board is the **source of truth**, kept up to date in real time. Exactly **one task per invocation**, strict TDD. `board.sh` = `bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh"`.
 

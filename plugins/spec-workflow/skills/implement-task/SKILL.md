@@ -1,9 +1,13 @@
 ---
 name: implement-task
 description: Implement ONE board task by delegating development to a subagent with a what/how/why brief, then verifying its work, driving the board, and answering human comments. Strict TDD. Use when you have a specific issue number to build.
+allowed-tools: Bash
 ---
 
 # Implement one task — orchestrate a dev agent
+
+Pre-start check: !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh" --spec`
+If the line above says `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
 You (the orchestrator) do **not** write the implementation. You brief a subagent, verify its result, and keep the board honest. Read `.claude/project.json` first — it supplies every `<cfg:...>` value below. `board.sh` = `bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh"`.
 

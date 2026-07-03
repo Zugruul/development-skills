@@ -50,6 +50,7 @@ Spec-driven autonomous build workflow. A repo declares its boards, specs, epics,
 
 | Skill | Purpose |
 |---|---|
+| `craft-spec` | Assisted spec creation: interview → draft → review → backlog |
 | `setup-project` | Bootstrap a repo: config, GitHub Project board, validation |
 | `seed-board` | Create issues + board items from a spec's backlog (idempotent) |
 | `board` | All board reads/writes (single script, no hardcoded ids) |

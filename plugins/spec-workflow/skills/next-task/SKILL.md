@@ -1,9 +1,13 @@
 ---
 name: next-task
 description: Select the next task from the project board, honoring priority, epic sequencing, and dependency guards from .claude/project.json, and read the task's human comments before committing to it. Use at the start of each build iteration.
+allowed-tools: Bash
 ---
 
 # Pick the next task
+
+Pre-start check: !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh" --spec`
+If the line above says `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" next          # or: next <spec-id> to restrict to one spec
