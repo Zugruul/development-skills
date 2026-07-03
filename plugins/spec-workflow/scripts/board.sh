@@ -126,7 +126,12 @@ for num, title, why in held[:5]:
 PY
         ;;
     show)
-        gh issue view "$2" -R "$REPO" --comments
+        # --json avoids gh's default field set, which queries the deprecated
+        # Projects-classic `projectCards` GraphQL field and errors on repos
+        # that have classic projects disabled.
+        gh issue view "$2" -R "$REPO" \
+            --json number,title,state,body,comments \
+            -q '"#\(.number) [\(.state)] \(.title)\n\n\(.body)\n" + (if (.comments | length) > 0 then "\n--- comments ---\n" + ([.comments[] | "[\(.author.login) @ \(.createdAt)]\n\(.body)\n"] | join("\n")) else "\n(no comments)" end)'
         ;;
     move)
         id="$(item_id "$2")"; opt="$(opt_id status "$3")"
