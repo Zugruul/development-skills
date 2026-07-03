@@ -4,10 +4,8 @@
         "name": "Leonardo Marcelino Vieira",
         "email": "leonardo.marcelino@outlook.com"
     },
-    "metadata": {
-        "description": "Personal marketplace of development-workflow plugins (spec-driven, board-tracked, TDD build loops).",
-        "version": "1.0.0"
-    },
+    "description": "Personal marketplace of development-workflow plugins (spec-driven, board-tracked, TDD build loops).",
+    "version": "1.0.0",
     "plugins": [
         {
             "name": "spec-workflow",

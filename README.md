@@ -9,6 +9,10 @@ claude plugin marketplace add /Users/vieiral/Development/development-skills
 claude plugin install spec-workflow@development-skills
 ```
 
+> Plugins are cached per version on install. After editing this repo, run
+> `claude plugin marketplace update development-skills` (and bump the plugin `version`
+> for a clean cache entry) so consumers pick up the changes.
+
 Or per-repo (shared with everyone opening the repo) via `.claude/settings.json`:
 
 ```json
