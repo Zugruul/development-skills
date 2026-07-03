@@ -5,13 +5,9 @@ A [Claude Code plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 ## Install
 
 ```bash
-claude plugin marketplace add /Users/vieiral/Development/development-skills
+claude plugin marketplace add event-sorcerer/development-skills
 claude plugin install spec-workflow@development-skills
 ```
-
-> Plugins are cached per version on install. After editing this repo, run
-> `claude plugin marketplace update development-skills` (and bump the plugin `version`
-> for a clean cache entry) so consumers pick up the changes.
 
 Or per-repo (shared with everyone opening the repo) via `.claude/settings.json`:
 
@@ -19,11 +15,31 @@ Or per-repo (shared with everyone opening the repo) via `.claude/settings.json`:
 {
     "extraKnownMarketplaces": {
         "development-skills": {
-            "source": { "source": "directory", "path": "/Users/vieiral/Development/development-skills" }
+            "source": { "source": "github", "repo": "event-sorcerer/development-skills" }
         }
     },
     "enabledPlugins": { "spec-workflow@development-skills": true }
 }
+```
+
+## Update
+
+Pull the latest skills from this repo at any time:
+
+```bash
+claude plugin marketplace update development-skills
+```
+
+or open `/plugin` in Claude Code and use **Update now** on the `development-skills` marketplace.
+
+## Local development
+
+To hack on the skills, point the marketplace at your clone instead — with a
+`directory` source, skill edits reach new sessions immediately (no version bump):
+
+```bash
+claude plugin marketplace remove development-skills
+claude plugin marketplace add /path/to/development-skills
 ```
 
 ## Plugins
