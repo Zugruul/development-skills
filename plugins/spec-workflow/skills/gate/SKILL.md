@@ -5,14 +5,14 @@ description: Run the project quality gate (commands.gate in .claude/project.json
 
 # Quality gate
 
-The single command that decides whether work may advance — from `.claude/project.json`:
+Run the gate through the wrapper — it executes `commands.gate` from `.claude/project.json` AND records the pass:
 
 ```bash
-jq -r .commands.gate .claude/project.json    # then run that command, e.g.: pnpm gate
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/gate.sh"
 ```
 
 ## Rules
-- **Green is mandatory** before moving any task to *In review*. A red gate never advances; fix or report the blocker.
+- **Green is mandatory and enforced**: a plugin hook blocks `board.sh move <n> "In review"` unless a recorded pass matches the current tree (any edit after the pass invalidates it). Running the gate command directly does not record a pass — always use `gate.sh`. A red gate never advances; fix or report the blocker.
 - **TDD:** the failing test must be committed *before* the implementation.
 - If `methodology.isolationSuite` is set, changes touching protected resources must add cases there — treat missing coverage as a gate failure.
 - Fix lint properly; never disable rules to pass (exceptions only where the repo's CLAUDE.md documents them).

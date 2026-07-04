@@ -63,9 +63,9 @@ Large task? Split into sequential briefs (e.g. tests+core, then edge cases), eac
 
 ## 3. Review + board
 ```bash
-board.sh move N "In review"
+board.sh move N "In review"     # a hook blocks this unless gate.sh recorded a pass for the current tree
 ```
-Spawn a review agent (`model: <cfg:delegation.reviewModel>`) on the diff; relay findings to a dev agent; re-gate.
+Review in **two passes**, each by a review agent (`model: <cfg:delegation.reviewModel>`): (1) **spec compliance** — does the diff satisfy each acceptance criterion and cited spec §, nothing more, nothing less; (2) **code quality** — correctness, style, tests. Relay findings to a dev agent; re-gate. A single combined pass reliably misses "passes tests but isn't what the spec said."
 
 ## 4. Stop
 One task per invocation. Report: task, gate result, PR link, board status. Later statuses (QA/Ready/Deployed) only when merge/validation/publish actually happen.

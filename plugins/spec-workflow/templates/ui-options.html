@@ -169,6 +169,10 @@ document.querySelectorAll('.tgl-focus').forEach(btn => btn.addEventListener('cli
   if (!was) { s.classList.remove('collapsed'); s.classList.add('focused'); btn.textContent = 'Exit focus (Esc)'; }
 }));
 document.addEventListener('keydown', e => { if (e.key === 'Escape') unfocus(); });
+
+// shuffle option order on every load — kills position bias in the pick
+const grid = document.querySelector('.options');
+if (grid) [...grid.children].sort(() => Math.random() - 0.5).forEach(c => grid.appendChild(c));
 </script>
 </body>
 </html>

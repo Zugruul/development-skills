@@ -92,6 +92,45 @@ out="$(python3 "$HUB" answers)";                      check_absent "hub consume 
 python3 "$HUB" stop >/dev/null
 unset UI_HUB_STATE UI_HUB_PORT
 
+echo "== gate enforcement (gate.sh + guard-board-move hook) =="
+T3="$(mktemp -d)"
+( cd "$T3" && git init -q . && git commit -q --allow-empty -m init )
+mkdir -p "$T3/.claude"
+python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
+    "$FIX/valid.project.json" "$T3/.claude/project.json"
+hookjson() { printf '{"tool_input":{"command":"%s"}}' "$1"; }
+out="$(hookjson 'bash board.sh move 7 \"In review\"' | (cd "$T3" && bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
+check "move blocked without pass" "BLOCKED: no recorded gate pass" "$out"
+check "block exit code 2" "rc=2" "$out"
+out="$(cd "$T3" && bash "$PLUGIN/scripts/gate.sh" 2>&1)"
+check "gate pass recorded" "GATE PASS recorded" "$out"
+out="$(hookjson 'bash board.sh move 7 \"In review\"' | (cd "$T3" && bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
+check "move allowed with fresh pass" "rc=0" "$out"
+echo dirty > "$T3/file.txt" && (cd "$T3" && git add file.txt)
+out="$(hookjson 'bash board.sh move 7 \"In review\"' | (cd "$T3" && bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
+check "stale pass re-blocked after edit" "tree changed since the last recorded gate pass" "$out"
+out="$(hookjson 'bash board.sh move 7 QA' | (cd "$T3" && bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
+check "non-review moves unaffected" "rc=0" "$out"
+out="$(hookjson 'ls -la' | (cd "$T3" && bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
+check "unrelated commands unaffected" "rc=0" "$out"
+python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="false"; json.dump(c,open(sys.argv[1],"w"))' "$T3/.claude/project.json"
+out="$( (cd "$T3" && bash "$PLUGIN/scripts/gate.sh") 2>&1; echo "rc=$?")"
+check "red gate clears pass" "GATE RED" "$out"
+[[ ! -f "$T3/.claude/gate-pass" ]] && echo "ok   pass file removed on red" || { echo "FAIL pass file should be removed"; fails=$((fails+1)); }
+rm -rf "$T3"
+
+echo "== session-start hook =="
+T4="$(mktemp -d)"
+( cd "$T4" && git init -q . )
+out="$(cd "$T4" && bash "$PLUGIN/scripts/session-start.sh"; echo "rc=$?")"
+check "silent without config" "rc=0" "$out"
+check_absent "no output without config" "spec-workflow is active" "$out"
+mkdir -p "$T4/.claude" && cp "$FIX/valid.project.json" "$T4/.claude/project.json" && echo reason > "$T4/.claude/CHECKPOINT"
+out="$(cd "$T4" && bash "$PLUGIN/scripts/session-start.sh")"
+check "announces project" "spec-workflow is active for 'fixture-project'" "$out"
+check "announces paused loop" "CHECKPOINT flag is present" "$out"
+rm -rf "$T4"
+
 echo "== init-config (fake gh) =="
 G="$(mktemp -d)"
 cat >"$G/gh" <<'FAKE'

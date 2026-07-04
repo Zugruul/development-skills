@@ -10,9 +10,15 @@ Number every section (`§1`, `§2.3`, …) — tasks and agent briefs cite them.
 §3  Non-goals           — explicit exclusions; what a future reader must NOT build
 §4  Glossary / domain   — terms, entities, and their relationships; one meaning each
 §5  Architecture        — components, data flow, key technology choices + WHY each
-§6+ Functional areas    — one § per area. For each requirement: trigger → behavior →
-                          observable outcome. Testable phrasing ("returns 409 when …",
-                          not "handles conflicts gracefully")
+§6+ Functional areas    — one § per area. Write each requirement in EARS notation so it
+                          translates mechanically into a failing test:
+                            ubiquitous:  THE SYSTEM SHALL <behavior>
+                            event:       WHEN <trigger> THE SYSTEM SHALL <behavior>
+                            state:       WHILE <state> THE SYSTEM SHALL <behavior>
+                            unwanted:    IF <condition> THEN THE SYSTEM SHALL <behavior>
+                            optional:    WHERE <feature enabled> THE SYSTEM SHALL <behavior>
+                          ("WHEN a second claim for the same number arrives THE SYSTEM
+                          SHALL reject it with 409", not "handles conflicts gracefully")
 §N-3 Invariants         — the hard, never-violate rules (security, isolation, money,
                           data loss). Imperative and self-contained: these are copied
                           verbatim into specs[].invariants and every implementation brief
@@ -40,7 +46,7 @@ Pick per round (≤4 via AskUserQuestion), skip what the brief already answers. 
 
 All must pass before presenting to the user:
 
-1. Every functional requirement is testable as written (an engineer could write the failing test from the sentence alone).
+1. Every functional requirement is in EARS form and testable as written (an engineer could write the failing test from the sentence alone; the WHEN/IF clause is the test setup, the SHALL clause the assertion).
 2. Every requirement maps to ≥1 backlog task, and every task cites its spec §s.
 3. Non-goals section exists and is non-empty.
 4. Invariants are imperative, self-contained, and independent of this document's context.

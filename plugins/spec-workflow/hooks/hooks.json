@@ -1,0 +1,26 @@
+{
+    "description": "spec-workflow harness enforcement: session bootstrap + gate-before-review guard",
+    "hooks": {
+        "SessionStart": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.sh\""
+                    }
+                ]
+            }
+        ],
+        "PreToolUse": [
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/guard-board-move.sh\""
+                    }
+                ]
+            }
+        ]
+    }
+}

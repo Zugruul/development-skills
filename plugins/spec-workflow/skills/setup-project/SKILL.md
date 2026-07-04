@@ -42,7 +42,7 @@ Create one board per `boards[]` entry you plan (usually one). Exact commands: re
    ```
 
 ## Phase 5 — repo hygiene
-- Add the local flags + hub state to `.gitignore`: `printf '.claude/CHECKPOINT\n.claude/ITERATIVE_UI_OFF\n.claude/ui-hub/\n' >> .gitignore`
+- Add the local flags + state to `.gitignore`: `printf '.claude/CHECKPOINT\n.claude/ITERATIVE_UI_OFF\n.claude/ui-hub/\n.claude/gate-pass\n' >> .gitignore`
 - Create `paths.handoffDir` (default `docs/handoffs/`).
 - If the project has a dev stack, set `commands.devUp` and write the doc at `paths.devDoc` (ports, profiles, preconditions).
 - Commit `.claude/project.json` + docs.
