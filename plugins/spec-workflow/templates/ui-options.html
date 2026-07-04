@@ -44,6 +44,7 @@
 <div class="hint">
   <b>Iterative UI mode is ON</b> (the agent waits for your pick before committing to a UI, and keeps building everything else meanwhile).
   Turn it off with <code>touch .claude/ITERATIVE_UI_OFF</code> in the repo — or just tell the agent "turn off iterative UI" / that you'll be AFK, and it will decide UIs itself.
+  <br>Ways back to the agent: comment on <a href="__ISSUE_URL__">the issue</a> (read every iteration, works even after the session ends), or reopen the building session in a terminal: <code>claude --resume __SESSION_ID__</code>.
 </div>
 
 <!-- BEGIN OPTION (duplicate this whole section per option) -->
@@ -93,11 +94,21 @@ document.getElementById('copy').addEventListener('click', async () => {
   const text = lines.join('\n');
   const out = document.getElementById('out');
   out.textContent = text; out.style.display = 'block';
-  try {
-    await navigator.clipboard.writeText(text);
-    document.getElementById('status').textContent = 'Copied — paste it as a comment on the task issue.';
-  } catch {
-    document.getElementById('status').textContent = 'Clipboard blocked — copy the text shown above manually.';
+  const status = document.getElementById('status');
+  let copied = false;
+  try { await navigator.clipboard.writeText(text); copied = true; } catch {}
+  if (!copied) { // legacy fallback: execCommand still works where the async API is blocked
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { copied = document.execCommand('copy'); } catch {}
+    ta.remove();
+  }
+  if (copied) {
+    status.textContent = 'Copied — paste it as a comment on the task issue.';
+  } else { // last resort: pre-select the text so Ctrl/Cmd+C is one keystroke
+    window.getSelection().selectAllChildren(out);
+    status.textContent = 'Clipboard blocked — the text above is selected, press Ctrl/Cmd+C.';
   }
 });
 </script>

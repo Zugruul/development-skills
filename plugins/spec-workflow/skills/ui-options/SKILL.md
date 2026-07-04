@@ -18,7 +18,7 @@ If the human says they are going AFK, won't be watching, or sounds annoyed by UI
 
 ## 1. Build the page
 1. Design **2–4 genuinely different options** (not one option with color tweaks): different layout/navigation/density/visual language. Each option must be a self-contained inline HTML+CSS mockup of the actual screen/component the task needs.
-2. `cp "${CLAUDE_PLUGIN_ROOT}/templates/ui-options.html" docs/ui-options/<task-id>.html` (create the dir), then edit it following the comments in the template: fill `__TASK_ID__`/`__TASK_TITLE__`/`__ISSUE_URL__`, duplicate the OPTION section per option, put each mockup in `.preview`, and give each option **4–8 aspect chips** — short trait keywords a non-designer can react to (e.g. `dense layout`, `sidebar nav`, `rounded cards`, `muted palette`, `inline editing`). Keep the "Iterative UI mode is ON / how to turn it off" hint intact.
+2. `cp "${CLAUDE_PLUGIN_ROOT}/templates/ui-options.html" docs/ui-options/<task-id>.html` (create the dir), then edit it following the comments in the template: fill `__TASK_ID__`/`__TASK_TITLE__`/`__ISSUE_URL__`, and `__SESSION_ID__` with the value of `echo "$CLAUDE_CODE_SESSION_ID"` (gives the human a `claude --resume` way back into this session; if empty, replace the whole resume sentence with nothing — the issue comment channel always works). Duplicate the OPTION section per option, put each mockup in `.preview`, and give each option **4–8 aspect chips** — short trait keywords a non-designer can react to (e.g. `dense layout`, `sidebar nav`, `rounded cards`, `muted palette`, `inline editing`). Keep the "Iterative UI mode is ON / how to turn it off" hint intact.
 3. Commit the page on the task branch.
 
 ## 2. Ask the human
