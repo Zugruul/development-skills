@@ -27,6 +27,10 @@
   .option.focused .preview { min-height: 70vh; display: flex; align-items: center; justify-content: center; }
   .ghost { background: none; border: 1px solid var(--border); color: inherit; border-radius: 999px;
            padding: .28rem .8rem; font: inherit; font-size: .8rem; cursor: pointer; }
+  .option.annotating .preview { cursor: crosshair; }
+  .option.annotating .preview *:hover { outline: 2px dashed var(--accent); outline-offset: 1px; }
+  .option .tgl-annot.on { border-color: var(--accent); color: var(--accent); }
+  .preview .noted { outline: 2px solid var(--accent) !important; outline-offset: 2px; }
   .option > .head { display: flex; align-items: center; gap: .75rem; padding: .75rem 1rem; border-bottom: 1px solid var(--border); }
   .option > .head h2 { margin: 0; font-size: 1.05rem; flex: 1; }
   .option .fav { display: flex; align-items: center; gap: .4rem; font-weight: 600; cursor: pointer; }
@@ -47,7 +51,7 @@
 <body>
 <header>
   <h1>UI options — __TASK_ID__: __TASK_TITLE__</h1>
-  <div><b>Use this one</b> on an option decides it and moves on. Or compose: pick a favorite, tick the aspects you like in any option, then <b>Send selection</b> — via the decision hub it goes straight to the agent; opened as a file it copies a comment to paste on <a href="__ISSUE_URL__">the task issue</a>.</div>
+  <div><b>Use this one</b> on an option decides it and moves on. Or compose: pick a favorite, tick the aspects you like in any option, and use <b>Annotate</b> to pin a note to a specific element inside a mockup (click the element, type the note). Then <b>Send selection</b> — via the decision hub it goes straight to the agent; opened as a file it copies a comment to paste on <a href="__ISSUE_URL__">the task issue</a>.</div>
 </header>
 
 <div class="hint">
@@ -61,6 +65,7 @@
 <section class="option" data-option="__OPTION_ID__" data-name="__OPTION_NAME__">
   <div class="head">
     <h2>Option __OPTION_ID__ — __OPTION_NAME__</h2>
+    <button class="ghost tgl-annot" type="button">Annotate</button>
     <button class="ghost tgl-focus" type="button">Focus</button>
     <button class="ghost tgl-hide" type="button">Hide</button>
     <button class="use" type="button">Use this one</button>
@@ -127,8 +132,11 @@ function withNotes(lines) {
 document.querySelectorAll('.use').forEach(btn => btn.addEventListener('click', () => {
   const s = btn.closest('.option');
   s.querySelector('input[name="favorite"]').checked = true;
-  deliver(withNotes([`### UI selection — __TASK_ID__`,
-                     `- Use: Option ${s.dataset.option} — ${s.dataset.name} (as-is, final)`]));
+  const lines = [`### UI selection — __TASK_ID__`,
+                 `- Use: Option ${s.dataset.option} — ${s.dataset.name} (as-is, final)`];
+  const en = elementNotes(s, '  ');
+  if (en.length) lines.push('- Element notes (apply to the chosen option):', ...en);
+  deliver(withNotes(lines));
 }));
 function composed() {
   const fav = document.querySelector('input[name="favorite"]:checked');
@@ -145,6 +153,8 @@ function composed() {
     if (ks.length) liked.push(`  - Option ${s.dataset.option} (${s.dataset.name}): ${ks.join(', ')}`);
   });
   if (liked.length) lines.push('- Liked aspects:', ...liked);
+  const en = elementNotes(document, '  ');
+  if (en.length) lines.push('- Element notes:', ...en);
   return withNotes(lines);
 }
 document.getElementById('send').addEventListener('click', () => deliver(composed()));
@@ -169,6 +179,45 @@ document.querySelectorAll('.tgl-focus').forEach(btn => btn.addEventListener('cli
   if (!was) { s.classList.remove('collapsed'); s.classList.add('focused'); btn.textContent = 'Exit focus (Esc)'; }
 }));
 document.addEventListener('keydown', e => { if (e.key === 'Escape') unfocus(); });
+
+// element-level annotation: toggle Annotate, click an element in the mockup, type the note.
+// Notes live on the element (data-note) and are collected at send time with a selector path.
+function elPath(el, root) {
+  const parts = [];
+  while (el && el !== root && parts.length < 5) {
+    let p = el.tagName.toLowerCase();
+    if (el.classList.length) p += '.' + [...el.classList].slice(0, 2).join('.');
+    parts.unshift(p);
+    el = el.parentElement;
+  }
+  return parts.join(' > ');
+}
+function elementNotes(scope, indent) {
+  const out = [];
+  scope.querySelectorAll('.preview [data-note]').forEach(el => {
+    const s = el.closest('.option');
+    const txt = el.textContent.trim().slice(0, 40).replace(/\s+/g, ' ');
+    out.push(`${indent}- Option ${s.dataset.option} [${elPath(el, s.querySelector('.preview'))}] "${txt}": ${el.dataset.note}`);
+  });
+  return out;
+}
+document.querySelectorAll('.tgl-annot').forEach(btn => btn.addEventListener('click', () => {
+  const s = btn.closest('.option');
+  const on = s.classList.toggle('annotating');
+  btn.textContent = on ? 'Done annotating' : 'Annotate';
+  btn.classList.toggle('on', on);
+}));
+document.querySelectorAll('.option .preview').forEach(pv => pv.addEventListener('click', e => {
+  const s = pv.closest('.option');
+  if (!s.classList.contains('annotating')) return;
+  e.preventDefault(); e.stopPropagation();
+  const t = e.target;
+  if (t === pv) return;
+  const note = window.prompt(`Note for ${elPath(t, pv)} "${t.textContent.trim().slice(0, 40)}" (empty removes):`, t.dataset.note || '');
+  if (note === null) return;
+  if (note.trim()) { t.dataset.note = note.trim(); t.classList.add('noted'); }
+  else { delete t.dataset.note; t.classList.remove('noted'); }
+}, true));
 
 // shuffle option order on every load — kills position bias in the pick
 const grid = document.querySelector('.options');

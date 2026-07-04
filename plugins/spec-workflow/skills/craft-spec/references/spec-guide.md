@@ -54,5 +54,5 @@ All must pass before presenting to the user:
 6. Task numbering leaves headroom in each epic's range for discovered work.
 7. Every open question has an owner and a default; none are silently resolved.
 8. No orphan sections: nothing specified that no epic will ever build (either add a task or move to non-goals).
-9. Story points: no task > 13 points (split it); estimates reflect testing effort, not just code.
+9. Complexity: every task scored 1–10 (rubric in the seed-board skill); no task ≥8 survives unsplit, none > 13 points; estimates reflect testing effort, not just code.
 10. A newcomer reading only this spec + backlog could start task 1 without asking anything.

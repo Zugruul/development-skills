@@ -14,7 +14,8 @@ You (the orchestrator) do **not** write the implementation. You brief a subagent
 ## 0. Prep
 1. `board.sh show N` — read body **and all comments** (human steering lives there). If comments change scope: fold them into the body via `board.sh edit-body`, then acknowledge via `board.sh comment` (see `next-task`).
 2. Read the task's acceptance criteria in `<cfg:specs[].backlogPath>` and the referenced sections of `<cfg:specs[].specPath>`.
-3. Branch + board (same step, real time):
+3. **Design-doc guard**: the task's epic must have `<cfg:paths.designDir|docs/design>/<spec-id>-<epic-id>.md`. Missing → YOU write it now from the spec §s (format: `${CLAUDE_PLUGIN_ROOT}/skills/implement-task/references/design-and-deltas.md` §1) and commit it before briefing anyone. Existing → read it; it constrains the brief.
+4. Branch + board (same step, real time):
    ```bash
    git switch -c <branch from cfg:project.branchPattern, e.g. cp/012-error-model>
    board.sh move N "In progress"        # respect cfg:methodology.maxInProgress
@@ -38,6 +39,12 @@ Branch already checked out: <branch>.
 1. TDD: write FAILING tests first, commit them ("test(<id>): ... (red)"), then minimal
    implementation, then refactor. No production code without a failing test.
 2. Project invariants (hard rules): <paste cfg:specs[].invariants verbatim>.
+   Architecture: follow the epic design doc at <paths.designDir>/<spec-epic>.md —
+   <paste its Components/Interfaces/Decisions sections>. If your implementation would
+   contradict it, STOP and report; do not silently diverge.
+   Contract changes: if you change/extend/correct ANY spec contract, write the delta
+   file <paths.specDeltaDir>/<task-id>.md (format pasted below from the orchestrator's
+   reference §2) and commit it on this branch. Never edit the spec directly.
 3. Tests: unit + integration where a real boundary is crossed. Deterministic time/ids in
    tested paths. <if cfg:methodology.isolationSuite: "Changes touching protected resources
    must add cases under <isolationSuite>.">
@@ -58,7 +65,7 @@ Large task? Split into sequential briefs (e.g. tests+core, then edge cases), eac
 
 ## 2. Verify (trust but verify)
 - Re-run `<cfg:commands.gate>` yourself.
-- Check: red commit precedes implementation in `git log`; invariants respected; isolation cases present if applicable; docs updated.
+- Check: red commit precedes implementation in `git log`; invariants respected; isolation cases present if applicable; design doc followed; a spec delta exists **iff** the diff changed a contract (missing delta on a contract change = send the agent back); docs updated.
 - Red gate or blocker → keep *In progress*; re-brief the agent with the specific fix, or escalate (human blocker → `handoff` + `board.sh comment N` explaining what's needed).
 
 ## 3. Review + board

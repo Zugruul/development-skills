@@ -22,13 +22,17 @@ Rules — check each line before running:
 - Titles must not contain `|`.
 - Multiple specs may be mixed in one file.
 
-## 2. Run the seeder
+## 2. Complexity gate — score, then split before seeding
+Score every line 1–10: +2 each for touching >2 packages/components · a new external boundary (API/DB/queue/process) · security/isolation/money surface · significant unknowns (no similar code exists yet) · heavy test burden (integration/e2e infra). 1–3 trivial, 4–7 normal, **8+ = too big to enter WIP as one unit**.
+For every 8+ task: split it into 2–4 tasks inside the same epic's number range (headroom exists by design), each independently testable, ordered so earlier ones unblock later ones. Update the backlog doc to match, then re-check the new lines (a split part can still score 8+ — split again). Story points must roughly track the score; a 3-point task scoring 9 means the estimate is wrong too.
+
+## 3. Run the seeder
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/seed-board.sh" /path/to/tasks.txt
 ```
 Idempotent: existing issues (matched by exact `"<task-id>: <title>"`) are skipped; fields are (re)applied. Watch for `!!`/`!` lines — each names the task and the failing step; fix and re-run.
 
-## 3. Verify
+## 4. Verify
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" list | sort
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" next

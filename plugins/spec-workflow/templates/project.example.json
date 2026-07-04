@@ -75,6 +75,8 @@
     "paths": {
         "handoffDir": "docs/handoffs",
         "checkpointFile": ".claude/CHECKPOINT",
+        "designDir": "docs/design",
+        "specDeltaDir": "docs/spec-deltas",
         "devDoc": "docs/DEV.md"
     },
     "methodology": { "tdd": true, "isolationSuite": "", "maxInProgress": 1 }

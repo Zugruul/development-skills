@@ -142,6 +142,8 @@
             "properties": {
                 "handoffDir": { "type": "string", "default": "docs/handoffs" },
                 "checkpointFile": { "type": "string", "default": ".claude/CHECKPOINT" },
+                "designDir": { "type": "string", "default": "docs/design", "description": "Per-epic design docs (<spec-id>-<epic-id>.md) that dev briefs ground on." },
+                "specDeltaDir": { "type": "string", "default": "docs/spec-deltas", "description": "Per-task spec-delta files, folded into the canonical spec when the task's PR merges; applied/ holds history." },
                 "devDoc": { "type": "string", "description": "Repo-relative doc with project-specific dev-stack details (ports, profiles, isolation)." }
             }
         },

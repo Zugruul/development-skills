@@ -38,6 +38,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" show N   # '### UI selection' comm
 
 ## 4. Apply the selection — iterate until the human commits
 - **`Use: Option X (as-is, final)`** → decision made: implement exactly that option. No further rounds.
+- **`Element notes:` lines** are element-scoped instructions: `Option X [tag.class > tag "element text"]: <note>` — the bracket is the element's selector path inside that option's mockup, the quote its text. Apply each note to that exact element; never generalize it to the whole design.
 - **Favorite and/or liked aspects (no "Use")** → the human is still exploring: build the next round. Synthesize their favorite + liked aspects into one variant, plus 1–2 alternatives that explore what their picks left ambiguous (e.g. they liked both `monospace styling` and a polished shell — one variant leans each way). Do **not** badge any option as "Suggested" in the page — the template shuffles option order and an endorsement biases the pick; state your recommendation (and why) in the issue-comment acknowledgment instead. Include a Round-1-style recap of what they picked. Enqueue as `<task-id>-r<N+1>`; repeat until a `Use:` arrives.
 - **Conflicting aspects** → resolve visibly: show the resolution as the suggested variant, note the conflict in its subtitle.
 - Acknowledge each round on the issue (`board.sh comment N`: "Round 3 in the hub — B2 suggested").
