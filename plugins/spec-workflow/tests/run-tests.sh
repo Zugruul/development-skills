@@ -116,7 +116,7 @@ check "unrelated commands unaffected" "rc=0" "$out"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="false"; json.dump(c,open(sys.argv[1],"w"))' "$T3/.claude/project.json"
 out="$( (cd "$T3" && bash "$PLUGIN/scripts/gate.sh") 2>&1; echo "rc=$?")"
 check "red gate clears pass" "GATE RED" "$out"
-[[ ! -f "$T3/.claude/gate-pass" ]] && echo "ok   pass file removed on red" || { echo "FAIL pass file should be removed"; fails=$((fails+1)); }
+if [[ ! -f "$T3/.claude/gate-pass" ]]; then echo "ok   pass file removed on red"; else echo "FAIL pass file should be removed"; fails=$((fails+1)); fi
 rm -rf "$T3"
 
 echo "== session-start hook =="

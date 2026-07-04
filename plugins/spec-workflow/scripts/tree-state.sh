@@ -3,7 +3,7 @@
 # Shared by gate.sh (records it) and guard-board-move.sh (verifies it).
 set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 {
     git rev-parse HEAD 2>/dev/null || echo no-head
     git status --porcelain 2>/dev/null
