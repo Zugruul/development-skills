@@ -1,6 +1,6 @@
 ---
 name: ui-options
-description: Iterative UI mode — present the human 2–4 concrete UI design options for a task as a local HTML page with a favorite selector and likeable aspect keywords, then collect the choice via issue comment. Use when a task involves UI-affecting decisions and iterative UI mode is on.
+description: Iterative UI mode — presents 2-4 concrete UI design options on the local decision hub — favorite selector, likeable aspect chips, element-level annotations, and a final 'Use this one' — iterating rounds until the human commits. Use when a task involves UI-affecting decisions and iterative UI mode is on.
 ---
 
 # UI options page — delegate the UI decision to the human

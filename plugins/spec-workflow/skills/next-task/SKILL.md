@@ -1,6 +1,6 @@
 ---
 name: next-task
-description: Select the next task from the project board, honoring priority, epic sequencing, and dependency guards from .claude/project.json, and read the task's human comments before committing to it. Use at the start of each build iteration.
+description: Picks the next task from the board honoring priority order, epic sequencing, dependency guards, and the WIP limit, and reads the issue's human comments before committing to it. Use at the start of each build iteration or for 'what should I work on next'.
 allowed-tools: Bash
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: dev-up
-description: Bring up the project's local dev stack (commands.devUp in .claude/project.json) for QA/validation or debugging. Not needed for unit/integration TDD — use it when a task must be validated against the running system.
+description: Brings up the project's local dev stack (commands.devUp in .claude/project.json) for QA, validation against acceptance criteria, or debugging the running system. Use for 'run the stack', 'start the dev environment', or QA of a merged task — not needed for unit/integration TDD.
 ---
 
 # Local dev stack

@@ -1,6 +1,6 @@
 ---
 name: board
-description: Read and update the GitHub Project board configured in .claude/project.json. Use to find the next task, show a task with its human comments, move it between statuses, set priority/estimate, reply to comments, or file a bug. The board is the source of truth and must be kept up to date in real time.
+description: Reads and updates the GitHub Project board configured in .claude/project.json — pick the next task, show an issue with its human comments, move it between statuses, set priority/estimate, reply to comments, file a bug. Use when the user mentions the board, task status, moving/prioritizing an issue #N, filing a bug, or replying on an issue. The board is the source of truth — keep it current in real time.
 ---
 
 # Board interaction

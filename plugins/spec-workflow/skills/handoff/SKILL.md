@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Write a checkpoint/handoff document — board snapshot, what was done this session, running state, how to resume, and remaining gaps. Use at a loop checkpoint, end of a session, or when pausing the build loop.
+description: Writes a handoff document — board snapshot, work done this session, running state, how to resume, gaps/blockers. Use at a loop checkpoint, end of a working session, 'write a handoff', or when pausing the build loop.
 ---
 
 # Handoff

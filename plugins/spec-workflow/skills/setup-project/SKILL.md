@@ -1,6 +1,6 @@
 ---
 name: setup-project
-description: Bootstrap a repository to use the spec-workflow (spec-driven, board-tracked, TDD build loop) — write .claude/project.json, create the GitHub Project board with the right fields, validate, and prepare for seeding. Use on a new or existing repo that should adopt this workflow.
+description: Bootstraps a repository for the spec-workflow — creates the GitHub Project board, auto-fills .claude/project.json ids via init-config.sh, validates the config, and sets up local-state gitignores. Use for 'set up this repo', 'adopt the workflow', 'initialize the board', or onboarding a new/existing project.
 ---
 
 # Set up a repository for the spec-workflow

@@ -1,6 +1,6 @@
 ---
 name: gate
-description: Run the project quality gate (commands.gate in .claude/project.json). Mandatory green before a task moves to In review and before merge. Use it to decide whether work may advance.
+description: Runs the project quality gate via gate.sh, which records the pass a hook requires before any task can move to In review. Use for 'run the gate', 'is it green', and always before review or merge — green is mandatory and enforced.
 ---
 
 # Quality gate

@@ -1,6 +1,6 @@
 ---
 name: craft-spec
-description: Assisted spec creation — interview the user about their needs (plan mode + structured questions), then draft, review, and finalize a build-ready spec + task backlog following good spec-writing practices. Use when a project has no spec, or to add a new spec to an existing project.
+description: Assisted spec creation — interviews the user (plan mode + structured questions), drafts a numbered-section spec with EARS acceptance criteria, derives an epic/task backlog, review-gates it, and registers it in project.json. Use for 'write/create/draft a spec', starting a project that has no spec, or adding a new spec to an existing repo.
 ---
 
 # Craft a spec with the user

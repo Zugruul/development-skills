@@ -1,6 +1,6 @@
 ---
 name: seed-board
-description: Seed the GitHub Project board from a spec's backlog — create one issue + board item per task with status/priority/estimate set. Idempotent; safe to re-run. Use after setup-project, or when a new spec or new tasks are added to the backlog.
+description: Seeds the GitHub Project board from a spec's backlog — complexity-scores every task (splitting any 8+ before it enters the board), then idempotently creates issues + board items with status/priority/estimate. Use after setup-project, or when a new spec or new tasks are added to the backlog.
 allowed-tools: Bash
 ---
 

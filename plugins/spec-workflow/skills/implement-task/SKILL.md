@@ -1,6 +1,6 @@
 ---
 name: implement-task
-description: Implement ONE board task by delegating development to a subagent with a what/how/why brief, then verifying its work, driving the board, and answering human comments. Strict TDD. Use when you have a specific issue number to build.
+description: Implements ONE board task — design-doc guard, brief a dev subagent (what/how/why, strict TDD), verify tests-first + invariants + spec deltas, two-pass review (spec compliance then code quality), drive the board. Use when a specific issue #N is picked and ready to build.
 allowed-tools: Bash
 ---
 
