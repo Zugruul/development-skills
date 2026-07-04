@@ -16,6 +16,7 @@ Stdlib only; state is plain files so everything survives restarts.
 State dir: $UI_HUB_STATE or <git root>/.claude/ui-hub (gitignore it).
 Port: --port, else $UI_HUB_PORT, else 4747. Binds 127.0.0.1 only.
 """
+import hashlib
 import json
 import os
 import signal
@@ -66,11 +67,13 @@ details{margin-top:1.5rem}summary{cursor:pointer;color:var(--muted)}
 <div id="pending"></div>
 <details><summary>Answered</summary><div id="answered"></div></details>
 <script>
-const seen = new Set(); let notifOk = false;
+const seen = new Set(); let notifOk = false; let hubRev = null;
 document.addEventListener('click', () => { if (!notifOk && 'Notification' in window) { Notification.requestPermission(); notifOk = true; } }, {once: true});
 function age(t){const m=Math.floor((Date.now()/1000-t)/60);return m<1?'just now':m<60?m+' min':Math.floor(m/60)+' h '+(m%60)+' min';}
 async function tick(){
   let st; try { st = await (await fetch('/api/state')).json(); } catch { return; }
+  if (hubRev === null) hubRev = st.hubRev;
+  else if (st.hubRev !== hubRev) { location.reload(); return; }   // hub itself was upgraded
   const p = document.getElementById('pending');
   document.title = (st.pending.length ? '('+st.pending.length+') ' : '') + 'Decision hub';
   const have = new Set([...p.querySelectorAll('.card')].map(c => c.dataset.id));
@@ -80,11 +83,19 @@ async function tick(){
     c.className = 'card' + (d.blocking ? ' blocking' : ''); c.dataset.id = d.id;
     c.innerHTML = '<div class="h"><b></b>' + (d.blocking ? '<span class="badge">agent is waiting on this</span>' : '') +
                   '<span class="age">asked ' + age(d.created) + ' ago</span></div>' +
-                  '<iframe src="/decision/' + encodeURIComponent(d.id) + '"></iframe>';
+                  '<iframe src="/decision/' + encodeURIComponent(d.id) + '?rev=' + d.rev + '"></iframe>';
+    c.dataset.rev = d.rev;
     c.querySelector('b').textContent = d.title;
     p.prepend(c);
     if (!seen.has(d.id) && seen.size && 'Notification' in window && Notification.permission === 'granted')
       new Notification('Decision needed: ' + d.title);
+  }
+  for (const d of st.pending) {   // hot-reload a card whose page was regenerated
+    const c = p.querySelector('.card[data-id="' + CSS.escape(d.id) + '"]');
+    if (c && c.dataset.rev !== String(d.rev)) {
+      c.dataset.rev = d.rev;
+      c.querySelector('iframe').src = '/decision/' + encodeURIComponent(d.id) + '?rev=' + d.rev;
+    }
   }
   st.pending.forEach(d => seen.add(d.id));
   for (const c of [...p.querySelectorAll('.card')])
@@ -104,6 +115,7 @@ async function tick(){
 }
 tick(); setInterval(tick, 2500);
 </script></body></html>"""
+HUB_REV = hashlib.md5(HUB_PAGE.encode()).hexdigest()[:8]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -123,9 +135,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, HUB_PAGE, "text/html; charset=utf-8")
         if self.path == "/api/state":
             pending = sorted((json.loads(f.read_text()) for f in INBOX.glob("*.json")), key=lambda d: d["created"])
+            for d in pending:  # rev = html mtime, so open tabs hot-reload a card when its page is regenerated
+                f = HTML / f"{d['id']}.html"
+                d["rev"] = int(f.stat().st_mtime) if f.is_file() else 0
             answered = sorted((json.loads(f.read_text()) for f in list(OUTBOX.glob("*.json")) + list((ARCHIVE / "answers").glob("*.json"))),
                               key=lambda d: d.get("answered", 0))
-            return self._send(200, {"pending": pending, "answered": answered[-20:]})
+            return self._send(200, {"hubRev": HUB_REV, "pending": pending, "answered": answered[-20:]})
         if self.path.startswith("/decision/"):
             did = os.path.basename(self.path.split("?")[0])
             f = HTML / f"{did}.html"
