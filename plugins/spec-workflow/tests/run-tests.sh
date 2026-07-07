@@ -126,10 +126,31 @@ out="$(python3 "$HUB" answers)";                      check_absent "hub consume 
 python3 "$HUB" stop >/dev/null
 unset UI_HUB_STATE UI_HUB_PORT
 
-echo "== neural-view (lifecycle + endpoints on a scratch port) =="
+echo "== neural-view boot crash + favicon =="
+NVHTML="$PLUGIN/templates/neural-view.html"
+check_absent "resize() no longer assigns read-only canvas.clientWidth" "canvas.clientWidth =" "$(cat "$NVHTML")"
+check_absent "resize() no longer assigns read-only canvas.clientHeight" "canvas.clientHeight =" "$(cat "$NVHTML")"
+if command -v node >/dev/null 2>&1; then
+    script="$(python3 -c "
+import re
+html = open('$NVHTML').read()
+m = re.search(r'<script>(.*)</script>', html, re.S)
+print(m.group(1) if m else '')
+")"
+    if node --check <(printf '%s' "$script") 2>/tmp/nv-node-check.$$; then
+        echo "ok   neural-view.html inline script has no syntax errors (node --check)"
+    else
+        echo "FAIL neural-view.html inline script has syntax errors"; cat /tmp/nv-node-check.$$; fails=$((fails + 1))
+    fi
+    rm -f /tmp/nv-node-check.$$
+fi
+
+echo "== neural-view (lifecycle + endpoints on a scratch port, legacy single-repo mode) =="
 NV="$PLUGIN/scripts/neural-view.py"
 _nvroot="$(mktemp -d)"          # brains root (--dir)
 _nvstate="$(mktemp -d)"         # server state (pid/port)
+_nvscan_empty="$(mktemp -d)"    # empty scan base so real ~/Development repos never leak into these tests
+_nvrepo="$(basename "$_nvroot")"
 _nvbrain="$_nvroot/.claude/identities/dev/brain"
 mkdir -p "$_nvbrain/notes"
 cat >"$_nvbrain/notes/cas-retry.md" <<'EOF'
@@ -152,28 +173,34 @@ EOF
 printf '%s\n' '{"cas-retry->idempotency":{"weight":0.6,"fires":4,"last":"2026-07-06"}}' >"$_nvbrain/links.json"
 printf '%s\n' '{"ts":"2026-07-06T10:00:00Z","role":"dev","event":"seed","note":"cas-retry","activation":0.8}' >"$_nvbrain/.activation.jsonl"
 
-export NEURAL_VIEW_STATE="$_nvstate" NEURAL_VIEW_PORT=4788
+export NEURAL_VIEW_STATE="$_nvstate" NEURAL_VIEW_PORT=4788 NEURAL_VIEW_SCAN="$_nvscan_empty"
 out="$(python3 "$NV" start --dir "$_nvroot")";  check "neural-view starts" "RUNNING http://127.0.0.1:4788" "$out"
 out="$(python3 "$NV" status)";                  check "neural-view status running" "RUNNING http://127.0.0.1:4788" "$out"
-out="$(curl -sf http://127.0.0.1:4788/graph)";  check "graph has node id" '"id": "dev/cas-retry"' "$out"
+check "neural-view status reports repos=1 (legacy single-dir)" "repos=1" "$out"
+out="$(curl -sf http://127.0.0.1:4788/graph)";  check "graph has repo-qualified node id" "\"id\": \"$_nvrepo/dev/cas-retry\"" "$out"
+check "graph node carries repo field" "\"repo\": \"$_nvrepo\"" "$out"
 check "graph node carries strength" '"strength": 4' "$out"
 check "graph node graduated flag" '"graduated": true' "$out"
-check "graph has link edge" '"source": "dev/cas-retry"' "$out"
+check "graph has repo-qualified link edge" "\"source\": \"$_nvrepo/dev/cas-retry\"" "$out"
 check "graph edge weight" '"weight": 0.6' "$out"
-out="$(curl -sf http://127.0.0.1:4788/note/dev/cas-retry)"
+check "graph lists discovered repos" "\"repos\": [\"$_nvrepo\"]" "$out"
+out="$(curl -sf "http://127.0.0.1:4788/note/$_nvrepo/dev/cas-retry")"
 check "note renders fixture body" "the loser reloads" "$out"
+code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4788/favicon.ico)"
+check "favicon route no longer 404s" "200" "$code"
 # finding 2: path traversal via ../ in the slug must not escape notes/ (arbitrary file read)
 printf 'TOPSECRET-XYZZY' >"$_nvbrain/SECRET.md"       # a file OUTSIDE notes/, one level up
-body="$(curl -s --path-as-is 'http://127.0.0.1:4788/note/dev/../SECRET')"
+body="$(curl -s --path-as-is "http://127.0.0.1:4788/note/$_nvrepo/dev/../SECRET")"
 check_absent "note path traversal does not leak an out-of-tree file" "TOPSECRET-XYZZY" "$body"
-code="$(curl -s --path-as-is -o /dev/null -w '%{http_code}' 'http://127.0.0.1:4788/note/dev/../SECRET')"
+code="$(curl -s --path-as-is -o /dev/null -w '%{http_code}' "http://127.0.0.1:4788/note/$_nvrepo/dev/../SECRET")"
 check "note path traversal returns 404" "404" "$code"
-code="$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:4788/note/dev/..%2fSECRET')"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:4788/note/$_nvrepo/dev/..%2fSECRET")"
 check "note dotdot slug (encoded) returns 404" "404" "$code"
 python3 "$NV" stop >/dev/null
 
 # findings 1 + 3: offset-cursor /events — completeness from per-brain byte offsets, not sort order.
 _nvev="$(mktemp -d)"
+_nvevrepo="$(basename "$_nvev")"
 for r in dev reviewer orchestrator; do mkdir -p "$_nvev/.claude/identities/$r/brain"; done
 out="$(python3 "$NV" start --dir "$_nvev")"; check "neural-view starts (events root)" "RUNNING http://127.0.0.1:4788" "$out"
 evout="$(P=4788 R="$_nvev" python3 - <<'PY'
@@ -207,9 +234,11 @@ check "events replay-trap delivers only new (no replay)" "ROUND2 ids=[4, 5]" "$e
 check "events no loss across interleaved earlier-ts writes" "DELIVERED ids=[1, 2, 3, 4, 5]" "$evout"
 check "events no duplicate delivery" "DUPS=0" "$evout"
 check "events idle poll reads zero new bytes" "IDLE events=0 bytesRead=0" "$evout"
+out="$(curl -sf "http://127.0.0.1:4788/events")"
+check "events carry the repo tag (legacy single-dir)" "\"repo\": \"$_nvevrepo\"" "$out"
 # round-2 finding: a token decoding to a NEGATIVE byte offset must not reach an
 # un-clamped fh.seek() (OSError → dropped connection). Must return 200 + a batch.
-negtok="$(python3 -c 'import base64,json; print(base64.urlsafe_b64encode(json.dumps({"dev":-999}).encode()).rstrip(b"=").decode())')"
+negtok="$(python3 -c "import base64,json; print(base64.urlsafe_b64encode(json.dumps({'$_nvevrepo':{'dev':-999}}).encode()).rstrip(b'=').decode())")"
 code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:4788/events?since=$negtok")"
 check "events negative-offset token returns 200 (no dropped connection)" "200" "$code"
 body="$(curl -s "http://127.0.0.1:4788/events?since=$negtok")"
@@ -221,8 +250,48 @@ out="$(python3 "$NV" start --dir "$_nvempty")"; check "neural-view starts on emp
 out="$(curl -sf http://127.0.0.1:4788/graph)";  check "empty root -> empty nodes" '"nodes": []' "$out"
 out="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4788/)"; check "page still loads on empty root" "200" "$out"
 python3 "$NV" stop >/dev/null
-unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT
-rm -rf "$_nvroot" "$_nvstate" "$_nvev" "$_nvempty" "$_hubtmp"
+unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_SCAN
+rm -rf "$_nvroot" "$_nvstate" "$_nvev" "$_nvempty" "$_nvscan_empty" "$_hubtmp"
+
+echo "== neural-view (multi-repo aggregation via .claude/.neural-network marker) =="
+_scanbase="$(mktemp -d)"
+_scanstate="$(mktemp -d)"
+_repoA="$_scanbase/repo-alpha"; _repoB="$_scanbase/repo-beta"; _repoC="$_scanbase/repo-gamma"
+mkdir -p "$_repoA/.claude" "$_repoB/.claude" "$_repoC/.claude"
+: >"$_repoA/.claude/.neural-network"   # marker + brains
+: >"$_repoB/.claude/.neural-network"   # marker, no brains at all
+# repoC: NO marker — must be excluded even though it has a brain
+_alphabrain="$_repoA/.claude/identities/dev/brain"
+mkdir -p "$_alphabrain/notes"
+cat >"$_alphabrain/notes/seed-note.md" <<'EOF'
+---
+strength: 3
+---
+A note that belongs to repo-alpha only.
+EOF
+_gammabrain="$_repoC/.claude/identities/dev/brain"
+mkdir -p "$_gammabrain/notes"
+cat >"$_gammabrain/notes/should-not-appear.md" <<'EOF'
+This repo has no marker file and must be excluded from discovery.
+EOF
+
+export NEURAL_VIEW_STATE="$_scanstate" NEURAL_VIEW_PORT=4789 NEURAL_VIEW_SCAN="$_scanbase"
+out="$(python3 "$NV" start)"; check "neural-view starts (scan discovery, no --dir)" "RUNNING http://127.0.0.1:4789" "$out"
+out="$(python3 "$NV" status)"; check "status reports repos=2 (marker repos only)" "repos=2" "$out"
+out="$(curl -sf http://127.0.0.1:4789/graph)"
+check "graph includes marked repo-alpha node" '"id": "repo-alpha/dev/seed-note"' "$out"
+check "graph node tags repo-alpha" '"repo": "repo-alpha"' "$out"
+check_absent "graph excludes unmarked repo-gamma note" "should-not-appear" "$out"
+check "graph repos list includes repo-alpha" '"repo-alpha"' "$out"
+check "graph repos list includes brainless marked repo-beta" '"repo-beta"' "$out"
+check_absent "graph repos list excludes unmarked repo-gamma" '"repo-gamma"' "$out"
+out="$(curl -sf "http://127.0.0.1:4789/note/repo-alpha/dev/seed-note")"
+check "multi-repo note fetch addresses by repo/role/slug" "belongs to repo-alpha only" "$out"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:4789/note/repo-gamma/dev/should-not-appear")"
+check "unmarked repo's note is unreachable (404)" "404" "$code"
+python3 "$NV" stop >/dev/null
+unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_SCAN
+rm -rf "$_scanbase" "$_scanstate"
 
 echo "== gate enforcement (gate.sh + guard-board-move hook) =="
 T3="$(mktemp -d)"
