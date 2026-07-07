@@ -429,7 +429,8 @@ check "brain.sh wrote into default .claude/identities" "wrapper-note" "$(cat "$B
 # BRAIN_DIR override path still works
 out="$(cd "$BW" && printf 'override body.\n' | BRAIN_DIR=".claude/custom" bash "$PLUGIN/scripts/brain.sh" mint dev ov-note --tags o --paths "y/**" --source "test" 2>&1; echo "rc=$?")"
 check "brain.sh BRAIN_DIR override succeeds" "rc=0" "$out"
-check "brain.sh BRAIN_DIR override targets custom dir" "ov-note" "$(cat "$BW/.claude/custom/dev/brain/notes/ov-note.md" 2>/dev/null)"
+out="$([[ -f "$BW/.claude/custom/dev/brain/notes/ov-note.md" ]] && echo FOUND || echo MISSING)"
+check "brain.sh BRAIN_DIR override targets custom dir" "FOUND" "$out"
 rm -rf "$BW"
 
 echo

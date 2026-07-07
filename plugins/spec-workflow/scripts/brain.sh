@@ -19,4 +19,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIR_ARGS=()
 [[ -n "${BRAIN_DIR:-}" ]] && DIR_ARGS=(--dir "$BRAIN_DIR")
 
-exec python3 "$HERE/brain.py" "$ROOT" "${DIR_ARGS[@]}" "$@"
+# ${DIR_ARGS[@]+...} guard: expanding an empty array as "${DIR_ARGS[@]}" is an
+# "unbound variable" error under `set -u` on bash 3.2 (macOS default) — the guard
+# yields nothing when the array is unset/empty and the args when it is set.
+exec python3 "$HERE/brain.py" "$ROOT" ${DIR_ARGS[@]+"${DIR_ARGS[@]}"} "$@"
