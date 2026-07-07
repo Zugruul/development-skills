@@ -22,7 +22,8 @@
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
   font-family:var(--mono);overflow:hidden}
 #stage{position:fixed;inset:0}
-canvas{position:absolute;inset:0;display:block}
+canvas{position:absolute;inset:0;display:block;touch-action:none;cursor:grab}
+canvas.grabbing{cursor:grabbing}
 .hud{position:fixed;background:var(--panel);border:1px solid var(--border);
   border-radius:12px;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
   box-shadow:0 0 18px rgba(20,120,170,.15),inset 0 0 24px rgba(20,120,170,.06)}
@@ -37,9 +38,12 @@ canvas{position:absolute;inset:0;display:block}
 #brand b{color:var(--fg)}
 #totals{display:flex;gap:1.4rem;font-size:.66rem}
 #totals span b{color:var(--cyan);font-size:.9rem;font-weight:600}
-#status{font-size:.6rem;color:var(--muted)}
+#status{font-size:.6rem;color:var(--muted);display:flex;align-items:center;gap:.7rem}
 #status .dot{display:inline-block;width:.5rem;height:.5rem;border-radius:50%;
   background:var(--cyan);box-shadow:0 0 8px var(--cyan);margin-right:.4rem;vertical-align:middle}
+.iconbtn{background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;
+  font-family:var(--mono);font-size:.8rem;line-height:1;padding:.25rem .4rem;cursor:pointer}
+.iconbtn:hover{color:var(--cyan);border-color:var(--cyan-dim)}
 
 /* gauges (top-left, below topbar) */
 #gauges{top:70px;left:14px;width:214px;max-height:calc(100vh - 130px);overflow:auto;
@@ -98,7 +102,10 @@ canvas{position:absolute;inset:0;display:block}
     <span class="label">brains <b id="t-brains">0</b></span>
     <span class="label">repos <b id="t-repos">0</b></span>
   </div>
-  <div id="status"><span class="dot"></span><span id="status-txt">live · recalls light up</span></div>
+  <div id="status">
+    <button class="iconbtn" id="reset-view" title="Reset view (or double-click empty canvas)">⌂</button>
+    <span><span class="dot"></span><span id="status-txt">live · recalls light up</span></span>
+  </div>
 </div>
 
 <div class="hud" id="gauges"><h2>Brains</h2><div id="gauge-list"></div></div>
@@ -122,15 +129,14 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 let W = 0, H = 0, DPR = 1;
-function resize(){
-  // canvas is CSS-positioned inset:0 (fills #stage), so its clientWidth/clientHeight
-  // are already innerWidth/innerHeight — clientWidth/clientHeight are read-only DOM
-  // properties, and assigning them threw under "use strict", crashing boot.
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
-  W = innerWidth; H = innerHeight;
-  canvas.width = W * DPR; canvas.height = H * DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
-}
-addEventListener("resize", resize); resize();
+
+// ---- camera (pan/zoom) — layout lives in a fixed WORLD space, independent of
+// viewport size; the camera maps world coords to screen coords for drawing and
+// (inverted) screen coords to world coords for hit-testing. This is what lets
+// fitView() frame all repo constellations regardless of window size. ----
+const MIN_SCALE = 0.12, MAX_SCALE = 4;
+let cam = {x:0, y:0, scale:1};
+let userMoved = false;   // once the user pans/zooms, stop auto-fitting until reset
 
 // ---- role palette (deterministic hue per role, all in the cyan/blue family) ----
 const ROLE_HUES = {dev:188, reviewer:205, orchestrator:168};
@@ -142,27 +148,49 @@ const glow = (h,l,a)=>`hsla(${h},95%,${l}%,${a})`;
 // Multi-repo "constellations": repos sit as super-clusters around a big outer
 // circle; each repo's role-clusters sit around that repo's own center. Node ids
 // and cluster keys are "repo/role[/slug]" so they stay unique across repos.
+// Region size is proportional to note count (sqrt, so area scales with count),
+// with a floor (MIN_REGION) so an empty/brainless repo still gets a small
+// labeled placeholder instead of an equal (or zero) share of the layout.
+const MIN_REGION = 46, BASE_REGION = 110;
 let nodes = [], nodeById = new Map(), links = [], roles = [], repoList = [], clusters = new Map();
-let repoCenters = new Map();   // repo -> {x,y} (drawn even for brainless repos)
+let repoCenters = new Map(), repoRadius = new Map();   // world coords/radius, incl. brainless repos
 let anims = [];                // active visual activations
 const queue = [];              // pending events, played on a stagger
 let cursor = null, tick = 0;
 const clusterKey = (repo,role) => repo + "|" + role;
 
+function resize(){
+  // canvas is CSS-positioned inset:0 (fills #stage), so its clientWidth/clientHeight
+  // are already innerWidth/innerHeight — clientWidth/clientHeight are read-only DOM
+  // properties, and assigning them threw under "use strict", crashing boot.
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+  if(!userMoved) fitView();   // viewport changed size — keep everything framed
+}
+addEventListener("resize", resize); resize();
+
 function layoutClusters(){
-  clusters.clear(); repoCenters.clear();
-  const cx = W/2, cy = H/2;
+  clusters.clear(); repoCenters.clear(); repoRadius.clear();
+  const noteCount = new Map();
+  for(const nd of nodes) noteCount.set(nd.repo, (noteCount.get(nd.repo)||0)+1);
+  const maxCount = Math.max(1, ...repoList.map(r=>noteCount.get(r)||0));
+  for(const repo of repoList){
+    const frac = (noteCount.get(repo)||0) / maxCount;
+    repoRadius.set(repo, MIN_REGION + (BASE_REGION - MIN_REGION) * Math.sqrt(frac));
+  }
   const nRepos = repoList.length || 1;
-  const outerR = Math.min(W,H) * (nRepos>1 ? 0.34 : 0);
+  const totalR = [...repoRadius.values()].reduce((a,b)=>a+b, 0) || MIN_REGION;
+  const outerR = nRepos>1 ? Math.max(BASE_REGION*1.6, totalR*0.95) : 0;
   repoList.forEach((repo,i)=>{
     const a = -Math.PI/2 + i/nRepos*Math.PI*2;
-    repoCenters.set(repo, {x: cx + Math.cos(a)*outerR, y: cy + Math.sin(a)*outerR});
+    repoCenters.set(repo, {x: Math.cos(a)*outerR, y: Math.sin(a)*outerR});
   });
   for(const repo of repoList){
     const rc = repoCenters.get(repo);
     const rolesInRepo = [...new Set(nodes.filter(n=>n.repo===repo).map(n=>n.role))].sort();
     const n = rolesInRepo.length || 1;
-    const R = Math.min(W,H) * (n>1 ? (nRepos>1 ? 0.13 : 0.29) : 0);
+    const R = n>1 ? repoRadius.get(repo)*0.6 : 0;
     rolesInRepo.forEach((role,i)=>{
       const a = -Math.PI/2 + i/n*Math.PI*2;
       clusters.set(clusterKey(repo,role), {x: rc.x + Math.cos(a)*R, y: rc.y + Math.sin(a)*R, hue: roleHue(role), n:0, repo, role});
@@ -170,6 +198,31 @@ function layoutClusters(){
   }
   nodes.forEach(nd=>{ const c = clusters.get(clusterKey(nd.repo,nd.role)); if(c) c.n++; });
 }
+
+// Frame every repo region (+ label headroom) inside the viewport, leaving room
+// for the fixed HUD panels (gauges left, inspect right, topbar/ticker top/bottom).
+// This becomes the "home" view; resetView() (⌂ button / double-click) returns to it.
+function fitView(){
+  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+  const consider = (x,y,pad)=>{ minX=Math.min(minX,x-pad); maxX=Math.max(maxX,x+pad); minY=Math.min(minY,y-pad); maxY=Math.max(maxY,y+pad); };
+  if(repoList.length){
+    for(const repo of repoList){
+      const rc = repoCenters.get(repo); if(!rc) continue;
+      consider(rc.x, rc.y, (repoRadius.get(repo)||MIN_REGION) + 30);
+    }
+  } else {
+    consider(0, 0, 160);
+  }
+  const bw = Math.max(60, maxX-minX), bh = Math.max(60, maxY-minY);
+  const usableW = Math.max(240, W - 440);   // clear of the gauges (left) + inspect (right) panels
+  const usableH = Math.max(240, H - 220);   // clear of the topbar + ticker
+  cam.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, Math.min(usableW/bw, usableH/bh) * 0.92));
+  cam.x = (minX+maxX)/2;
+  cam.y = (minY+maxY)/2;
+}
+function resetView(){ userMoved = false; fitView(); }
+function worldToScreen(x,y){ return [(x-cam.x)*cam.scale + W/2, (y-cam.y)*cam.scale + H/2]; }
+function screenToWorld(x,y){ return [(x-W/2)/cam.scale + cam.x, (y-H/2)/cam.scale + cam.y]; }
 
 async function loadGraph(){
   let g; try { g = await (await fetch("/graph")).json(); } catch { return; }
@@ -179,8 +232,8 @@ async function loadGraph(){
   nodes = g.nodes.map(n=>{
     const old = prev.get(n.id);
     return Object.assign(n, {
-      x: old ? old.x : W/2 + (Math.random()-.5)*260,
-      y: old ? old.y : H/2 + (Math.random()-.5)*260,
+      x: old ? old.x : (Math.random()-.5)*260,   // world coords — spawn near origin, gravity pulls into place
+      y: old ? old.y : (Math.random()-.5)*260,
       vx: old?old.vx:0, vy: old?old.vy:0, hl: old?old.hl:0, phase: Math.random()*6.283,
       r: 4 + Math.min(n.strength||1, 12) * 1.7
     });
@@ -191,6 +244,7 @@ async function loadGraph(){
   })).filter(l=>l.a && l.b);
   window.__consultEdges = g.edges.filter(e=>e.type==="consult");
   layoutClusters();
+  if(!userMoved) fitView();   // new/changed graph — re-frame unless the user has taken the wheel
   document.getElementById("t-notes").textContent = nodes.length;
   document.getElementById("t-links").textContent = links.length;
   document.getElementById("t-brains").textContent = roles.length;
@@ -229,13 +283,16 @@ function step(){
 // ---- rendering ----
 function draw(){
   ctx.clearRect(0,0,W,H);
-  drawGrid();
+  drawGrid();                 // fixed screen-space background, unaffected by the camera
+  ctx.save();
+  ctx.translate(W/2, H/2); ctx.scale(cam.scale, cam.scale); ctx.translate(-cam.x, -cam.y);
   drawClusters();
   ctx.globalCompositeOperation = "lighter";
   drawSynapses();
   drawAnims();
   drawNeurons();
   ctx.globalCompositeOperation = "source-over";
+  ctx.restore();
 }
 
 function drawGrid(){
@@ -256,12 +313,13 @@ function drawClusters(){
   if(repoList.length>1){
     for(const repo of repoList){
       const rc = repoCenters.get(repo); if(!rc) continue;
+      const rad = repoRadius.get(repo) || MIN_REGION;
       ctx.save(); ctx.fillStyle="rgba(143,166,189,.75)";
       ctx.font="600 11px "+getComputedStyle(document.body).fontFamily;
       ctx.textAlign="center";
-      ctx.fillText(repo.toUpperCase(), rc.x, rc.y - 90);
+      ctx.fillText(repo.toUpperCase(), rc.x, rc.y - rad - 14);
       ctx.strokeStyle="rgba(90,190,255,.14)"; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.arc(rc.x, rc.y, 96, 0, 6.283); ctx.stroke();
+      ctx.beginPath(); ctx.arc(rc.x, rc.y, rad, 0, 6.283); ctx.stroke();
       ctx.restore();
     }
   }
@@ -431,12 +489,83 @@ function arc(frac, hue, label){
   </svg>`;
 }
 
-// ---- click to inspect ----
-canvas.addEventListener("click", ev=>{
-  const mx=ev.clientX, my=ev.clientY; let hit=null, best=1e9;
-  for(const nd of nodes){ const d=Math.hypot(nd.x-mx,nd.y-my); if(d<nd.r+8 && d<best){best=d;hit=nd;} }
+// ---- pan / zoom / click-to-inspect (Pointer Events: unifies mouse drag +
+// single-finger touch pan; two active pointers pinch-zoom about their midpoint;
+// wheel zooms about the cursor) ----
+function hitTest(wx, wy){
+  let hit=null, best=1e9;
+  for(const nd of nodes){
+    const d=Math.hypot(nd.x-wx, nd.y-wy), thresh = nd.r + 8/cam.scale;   // ~8 screen px of slop
+    if(d<thresh && d<best){ best=d; hit=nd; }
+  }
   if(hit) openNote(hit);
+}
+function zoomAt(screenX, screenY, newScale, base){
+  newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+  const baseScale = base ? base.scale : cam.scale, baseX = base ? base.camX : cam.x, baseY = base ? base.camY : cam.y;
+  const wx = (screenX - W/2)/baseScale + baseX, wy = (screenY - H/2)/baseScale + baseY;
+  cam.scale = newScale;
+  cam.x = wx - (screenX - W/2)/cam.scale;
+  cam.y = wy - (screenY - H/2)/cam.scale;
+  userMoved = true;
+}
+const pointers = new Map();   // pointerId -> {x,y} screen coords, active touches/mouse
+let dragLast = null, pinchStart = null, downPos = null, moved = false;
+canvas.addEventListener("pointerdown", ev=>{
+  canvas.setPointerCapture(ev.pointerId);
+  pointers.set(ev.pointerId, {x:ev.clientX, y:ev.clientY});
+  downPos = {x:ev.clientX, y:ev.clientY}; moved = false;
+  if(pointers.size===1){ dragLast = {x:ev.clientX, y:ev.clientY}; canvas.classList.add("grabbing"); }
+  if(pointers.size===2){
+    const pts=[...pointers.values()];
+    pinchStart = { dist: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1, scale: cam.scale, camX: cam.x, camY: cam.y };
+    dragLast = null;
+  }
 });
+canvas.addEventListener("pointermove", ev=>{
+  if(!pointers.has(ev.pointerId)) return;
+  pointers.set(ev.pointerId, {x:ev.clientX, y:ev.clientY});
+  if(downPos && Math.hypot(ev.clientX-downPos.x, ev.clientY-downPos.y) > 4) moved = true;
+  if(pointers.size===2 && pinchStart){
+    const pts=[...pointers.values()];
+    const dist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1;
+    const midX=(pts[0].x+pts[1].x)/2, midY=(pts[0].y+pts[1].y)/2;
+    zoomAt(midX, midY, pinchStart.scale * (dist/pinchStart.dist), pinchStart);
+  } else if(pointers.size===1 && dragLast){
+    const dx = ev.clientX-dragLast.x, dy = ev.clientY-dragLast.y;
+    cam.x -= dx/cam.scale; cam.y -= dy/cam.scale;
+    dragLast = {x:ev.clientX, y:ev.clientY};
+    userMoved = true;
+  }
+});
+function endPointer(ev){
+  const wasSingle = pointers.size===1;
+  pointers.delete(ev.pointerId);
+  if(pointers.size<2) pinchStart = null;
+  if(pointers.size===0){
+    canvas.classList.remove("grabbing");
+    if(wasSingle && downPos && !moved){
+      const [wx,wy] = screenToWorld(downPos.x, downPos.y);
+      hitTest(wx, wy);
+    }
+    dragLast = null; downPos = null;
+  } else if(pointers.size===1){
+    const [p] = pointers.values();
+    dragLast = {x:p.x, y:p.y};
+  }
+}
+canvas.addEventListener("pointerup", endPointer);
+canvas.addEventListener("pointercancel", endPointer);
+canvas.addEventListener("wheel", ev=>{
+  ev.preventDefault();
+  zoomAt(ev.clientX, ev.clientY, cam.scale * Math.exp(-ev.deltaY * 0.0015));
+}, {passive:false});
+canvas.addEventListener("dblclick", ev=>{
+  const [wx,wy] = screenToWorld(ev.clientX, ev.clientY);
+  for(const nd of nodes) if(Math.hypot(nd.x-wx,nd.y-wy) < nd.r+8/cam.scale) return;  // dblclick on a note: no reset
+  resetView();
+});
+document.getElementById("reset-view").onclick = resetView;
 const panel=document.getElementById("inspect");
 document.getElementById("inspect-close").onclick=()=>{ panel.classList.remove("open"); panel.setAttribute("aria-hidden","true"); panel.setAttribute("inert",""); };
 async function openNote(nd){

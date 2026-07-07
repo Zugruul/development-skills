@@ -143,6 +143,55 @@ print(m.group(1) if m else '')
         echo "FAIL neural-view.html inline script has syntax errors"; cat /tmp/nv-node-check.$$; fails=$((fails + 1))
     fi
     rm -f /tmp/nv-node-check.$$
+
+    # layout: region size ∝ note count (empty repo floors at MIN_REGION) and
+    # fitView() actually frames every repo region within the usable viewport —
+    # the user-reported "doesn't fit / half off-screen" bug. layoutClusters()
+    # and fitView() are pure functions of module state, so we eval just those
+    # two (extracted verbatim from the served template) against a fixture.
+    _nvlayout="$(mktemp).cjs"
+    cat >"$_nvlayout" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+function extract(name) {
+    const re = new RegExp("function " + name + "\\(\\)\\{[\\s\\S]*?\\n\\}\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find function " + name + "() in template");
+    return m[0];
+}
+const MIN_REGION = 46, BASE_REGION = 110, MIN_SCALE = 0.12, MAX_SCALE = 4;
+let W = 1600, H = 900;
+const cam = {x: 0, y: 0, scale: 1};
+const clusters = new Map(), repoCenters = new Map(), repoRadius = new Map();
+const clusterKey = (repo, role) => repo + "|" + role;
+function roleHue() { return 190; }
+const repoList = ["big-repo", "empty-repo"];
+const nodes = [];
+for (let i = 0; i < 20; i++) nodes.push({repo: "big-repo", role: "dev"});
+// empty-repo: zero nodes — must still get a small placeholder region, not equal share
+
+eval(extract("layoutClusters"));
+eval(extract("fitView"));
+
+layoutClusters();
+const bigR = repoRadius.get("big-repo"), emptyR = repoRadius.get("empty-repo");
+if (!(bigR > emptyR)) throw new Error("region with notes must be larger than an empty one: big=" + bigR + " empty=" + emptyR);
+if (Math.abs(emptyR - MIN_REGION) > 0.001) throw new Error("empty repo region must floor at MIN_REGION: got " + emptyR);
+
+fitView();
+const usableW = Math.max(240, W - 440), usableH = Math.max(240, H - 220);
+for (const repo of repoList) {
+    const rc = repoCenters.get(repo);
+    const rad = (repoRadius.get(repo) || MIN_REGION) + 30;
+    const sx = (rc.x - cam.x) * cam.scale, sy = (rc.y - cam.y) * cam.scale;
+    if (Math.abs(sx) + rad * cam.scale > usableW / 2 + 1) throw new Error(repo + " overflows the usable width after fitView()");
+    if (Math.abs(sy) + rad * cam.scale > usableH / 2 + 1) throw new Error(repo + " overflows the usable height after fitView()");
+}
+console.log("LAYOUT_OK bigR=" + bigR.toFixed(1) + " emptyR=" + emptyR.toFixed(1) + " scale=" + cam.scale.toFixed(3));
+NODEJS
+    layout_out="$(node "$_nvlayout" "$NVHTML" 2>&1)"
+    check "layoutClusters sizes regions by note count, empty repo floors at MIN_REGION" "LAYOUT_OK" "$layout_out"
+    rm -f "$_nvlayout"
 fi
 
 echo "== neural-view (lifecycle + endpoints on a scratch port, legacy single-repo mode) =="
