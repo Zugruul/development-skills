@@ -22,14 +22,17 @@ def run(args):
 h = hashlib.sha256()
 head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True)
 h.update(head.stdout if head.returncode == 0 else b"no-head")
-h.update(run(["git", "status", "--porcelain"]))
+# .claude/gate-pass is the fingerprint marker itself: it does not exist yet
+# when gate.sh records a pass, but does exist on every check afterward. It is
+# excluded from both the porcelain status and the untracked-file listing
+# below via an explicit pathspec, independent of .gitignore (a repo that
+# doesn't happen to ignore it — or where .claude/ contains another tracked
+# file, so it can't collapse to a single "?? .claude/" line — must not have
+# the mechanism invalidate its own recorded pass).
+h.update(run(["git", "status", "--porcelain", "--", ".", ":(exclude).claude/gate-pass"]))
 h.update(run(["git", "diff", "HEAD"]))
 
 listing = run(["git", "ls-files", "-z", "--others", "--exclude-standard"])
-# .claude/gate-pass is the fingerprint marker itself: it does not exist yet
-# when gate.sh records a pass, but does exist on every check afterward.
-# Excluding it (independent of .gitignore) avoids the mechanism invalidating
-# its own recorded pass.
 paths = sorted(p for p in listing.split(b"\0") if p and p != b".claude/gate-pass")
 for p in paths:
     h.update(b"\0PATH\0")
