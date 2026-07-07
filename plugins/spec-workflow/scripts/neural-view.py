@@ -66,6 +66,10 @@ S = state_dir()
 PIDFILE, PORTFILE, REPOSFILE = S / "pid", S / "port", S / "repos.json"
 DEFAULT_PORT = int(os.environ.get("NEURAL_VIEW_PORT", "4748"))
 TEMPLATE = Path(__file__).resolve().parent.parent / "templates" / "neural-view.html"
+VENDOR_DIR = Path(__file__).resolve().parent.parent / "templates" / "vendor"
+# Explicit allowlist of servable vendor filenames — never derive the fs path
+# from the request path directly (that's how ../ traversal happens).
+VENDOR_FILES = {"three.module.min.js": "text/javascript; charset=utf-8"}
 WIKILINK = re.compile(r"\[\[([^\]]+)\]\]")
 MARKER_NAME = ".neural-network"
 FAVICON = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
@@ -448,6 +452,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, "<h1>neural-view</h1><p>template missing</p>", "text/html; charset=utf-8")
         if path == "/favicon.ico":
             return self._send(200, FAVICON, "image/svg+xml")
+        if path.startswith("/vendor/"):
+            # Strict allowlist: the requested name must be an exact key in
+            # VENDOR_FILES (no path segments, no traversal, no arbitrary
+            # extension) — the fs path is built from the allowlist entry, not
+            # from the request, so "../" / encoded variants just miss the map.
+            name = path[len("/vendor/"):]
+            ctype = VENDOR_FILES.get(name)
+            if ctype:
+                f = VENDOR_DIR / name
+                if f.is_file():
+                    return self._send(200, f.read_bytes(), ctype)
+            return self._send(404, {"error": "not found"})
         if path == "/graph":
             return self._send(200, build_graph(REPOS))
         if path == "/events":
