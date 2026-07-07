@@ -1,10 +1,16 @@
 <!doctype html>
 <html lang="en">
 <!--
-  neural-view.html — the live JARVIS-style visualization of the identity brains.
-  Served verbatim by scripts/neural-view.py at "/". Self-contained: inline CSS+JS,
-  ZERO external requests (no CDN, no webfonts, no remote images). The force layout
-  is hand-rolled on <canvas>. Data comes from same-origin /graph, /events, /note.
+  neural-view.html — the live JARVIS-style visualization of the identity brains,
+  now in 3D via three.js (vendored, see templates/vendor/README.md — r0.185.1,
+  served same-origin at /vendor/three.module.min.js, loaded through an
+  importmap; zero external requests, no build step). Served verbatim by
+  scripts/neural-view.py at "/". Self-contained except the vendored lib.
+  Notes render as glowing billboard sprites clustered per role; roles cluster
+  within their repo's 3D region; repos are arranged as constellations on a
+  fibonacci sphere. Camera is a hand-rolled spherical orbit/pan/zoom rig (no
+  OrbitControls addon vendored — see vendor/README.md for why). Data comes
+  from same-origin /graph, /events, /note.
 -->
 <head>
 <meta charset="utf-8">
@@ -84,9 +90,9 @@ canvas.grabbing{cursor:grabbing}
 #links .ln{display:flex;justify-content:space-between;gap:.5rem;padding:.15rem 0}
 #links .ln b{color:var(--fg);font-weight:500}
 
-#empty{position:fixed;inset:0;display:none;place-items:center;text-align:center;pointer-events:none}
-#empty div{color:var(--muted);font-size:.8rem;letter-spacing:.1em;max-width:30ch}
-#empty b{color:var(--cyan);display:block;letter-spacing:.28em;text-transform:uppercase;margin-bottom:.6rem}
+#empty,#nowebgl{position:fixed;inset:0;display:none;place-items:center;text-align:center;pointer-events:none}
+#empty div,#nowebgl div{color:var(--muted);font-size:.8rem;letter-spacing:.1em;max-width:34ch}
+#empty b,#nowebgl b{color:var(--cyan);display:block;letter-spacing:.28em;text-transform:uppercase;margin-bottom:.6rem}
 
 @media (prefers-reduced-motion:reduce){#inspect{transition:none}}
 </style>
@@ -103,7 +109,7 @@ canvas.grabbing{cursor:grabbing}
     <span class="label">repos <b id="t-repos">0</b></span>
   </div>
   <div id="status">
-    <button class="iconbtn" id="reset-view" title="Reset view (or double-click empty canvas)">⌂</button>
+    <button class="iconbtn" id="reset-view" title="Reset view (or double-click empty space)">⌂</button>
     <span><span class="dot"></span><span id="status-txt">live · recalls light up</span></span>
   </div>
 </div>
@@ -122,35 +128,32 @@ canvas.grabbing{cursor:grabbing}
 </aside>
 
 <div id="empty"><div><b>No brains yet</b>Once an identity starts learning, its notes appear here as neurons and light up as they are recalled.</div></div>
+<div id="nowebgl"><div><b>WebGL unavailable</b>This browser/GPU can't render the 3D view. The brains, gauges and activation log below are still live.</div></div>
 
-<script>
-"use strict";
+<script type="importmap">
+{"imports":{"three":"/vendor/three.module.min.js"}}
+</script>
+<script type="module">
+import * as THREE from "three";
+
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const canvas = document.getElementById("c");
-const ctx = canvas.getContext("2d");
 let W = 0, H = 0, DPR = 1;
-
-// ---- camera (pan/zoom) — layout lives in a fixed WORLD space, independent of
-// viewport size; the camera maps world coords to screen coords for drawing and
-// (inverted) screen coords to world coords for hit-testing. This is what lets
-// fitView() frame all repo constellations regardless of window size. ----
-const MIN_SCALE = 0.12, MAX_SCALE = 4;
-let cam = {x:0, y:0, scale:1};
-let userMoved = false;   // once the user pans/zooms, stop auto-fitting until reset
 
 // ---- role palette (deterministic hue per role, all in the cyan/blue family) ----
 const ROLE_HUES = {dev:188, reviewer:205, orchestrator:168};
 let hueSpin = 150;
 function roleHue(role){ if(!(role in ROLE_HUES)) ROLE_HUES[role] = (hueSpin += 47) % 360; return ROLE_HUES[role]; }
-const glow = (h,l,a)=>`hsla(${h},95%,${l}%,${a})`;
+function threeColor(h,l){ const c = new THREE.Color(); c.setHSL((h%360)/360, 0.95, l/100); return c; }
+function cssColor(h,l,a){ return `hsla(${h},95%,${l}%,${a})`; }
 
 // ---- graph state ----
-// Multi-repo "constellations": repos sit as super-clusters around a big outer
-// circle; each repo's role-clusters sit around that repo's own center. Node ids
-// and cluster keys are "repo/role[/slug]" so they stay unique across repos.
-// Region size is proportional to note count (sqrt, so area scales with count),
-// with a floor (MIN_REGION) so an empty/brainless repo still gets a small
-// labeled placeholder instead of an equal (or zero) share of the layout.
+// Multi-repo "constellations": repos sit on a fibonacci sphere around the
+// world origin; each repo's role-clusters sit on their own smaller sphere
+// around that repo's center. Node ids and cluster keys are "repo/role[/slug]"
+// so they stay unique across repos. Region size is proportional to note count
+// (sqrt, so area scales with count), with a floor (MIN_REGION) so an
+// empty/brainless repo still gets a small labeled placeholder.
 const MIN_REGION = 46, BASE_REGION = 110;
 let nodes = [], nodeById = new Map(), links = [], roles = [], repoList = [], clusters = new Map();
 let repoCenters = new Map(), repoRadius = new Map();   // world coords/radius, incl. brainless repos
@@ -159,17 +162,20 @@ const queue = [];              // pending events, played on a stagger
 let cursor = null, tick = 0;
 const clusterKey = (repo,role) => repo + "|" + role;
 
-function resize(){
-  // canvas is CSS-positioned inset:0 (fills #stage), so its clientWidth/clientHeight
-  // are already innerWidth/innerHeight — clientWidth/clientHeight are read-only DOM
-  // properties, and assigning them threw under "use strict", crashing boot.
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
-  W = innerWidth; H = innerHeight;
-  canvas.width = W * DPR; canvas.height = H * DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
-  if(!userMoved) fitView();   // viewport changed size — keep everything framed
+// ---- pure layout math (framework-independent — kept dependency-free on
+// purpose so it stays unit-testable by extraction, same trick the 2D layout
+// used) ----
+function fibSphere(i, n, radius){
+  // Evenly distributes n points on a sphere of the given radius (golden-angle
+  // spiral). n<=1 collapses to the sphere's own center (a lone repo/role has
+  // nothing to spread around).
+  if(n<=1) return {x:0, y:0, z:n===1?radius:0};
+  const ga = Math.PI*(3-Math.sqrt(5));
+  const y = 1 - (i/(n-1))*2;
+  const r = Math.sqrt(Math.max(0,1-y*y));
+  const theta = ga*i;
+  return {x: Math.cos(theta)*r*radius, y: y*radius, z: Math.sin(theta)*r*radius};
 }
-addEventListener("resize", resize); resize();
-
 function layoutClusters(){
   clusters.clear(); repoCenters.clear(); repoRadius.clear();
   const noteCount = new Map();
@@ -181,10 +187,9 @@ function layoutClusters(){
   }
   const nRepos = repoList.length || 1;
   const totalR = [...repoRadius.values()].reduce((a,b)=>a+b, 0) || MIN_REGION;
-  const outerR = nRepos>1 ? Math.max(BASE_REGION*1.6, totalR*0.95) : 0;
+  const outerR = nRepos>1 ? Math.max(BASE_REGION*2.2, totalR*1.15) : 0;
   repoList.forEach((repo,i)=>{
-    const a = -Math.PI/2 + i/nRepos*Math.PI*2;
-    repoCenters.set(repo, {x: Math.cos(a)*outerR, y: Math.sin(a)*outerR});
+    repoCenters.set(repo, nRepos>1 ? fibSphere(i, nRepos, outerR) : {x:0,y:0,z:0});
   });
   for(const repo of repoList){
     const rc = repoCenters.get(repo);
@@ -192,37 +197,255 @@ function layoutClusters(){
     const n = rolesInRepo.length || 1;
     const R = n>1 ? repoRadius.get(repo)*0.6 : 0;
     rolesInRepo.forEach((role,i)=>{
-      const a = -Math.PI/2 + i/n*Math.PI*2;
-      clusters.set(clusterKey(repo,role), {x: rc.x + Math.cos(a)*R, y: rc.y + Math.sin(a)*R, hue: roleHue(role), n:0, repo, role});
+      const off = n>1 ? fibSphere(i, n, R) : {x:0,y:0,z:0};
+      clusters.set(clusterKey(repo,role), {x: rc.x+off.x, y: rc.y+off.y, z: rc.z+off.z, hue: roleHue(role), n:0, repo, role});
     });
   }
   nodes.forEach(nd=>{ const c = clusters.get(clusterKey(nd.repo,nd.role)); if(c) c.n++; });
 }
 
-// Frame every repo region (+ label headroom) inside the viewport, leaving room
-// for the fixed HUD panels (gauges left, inspect right, topbar/ticker top/bottom).
-// This becomes the "home" view; resetView() (⌂ button / double-click) returns to it.
-function fitView(){
-  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
-  const consider = (x,y,pad)=>{ minX=Math.min(minX,x-pad); maxX=Math.max(maxX,x+pad); minY=Math.min(minY,y-pad); maxY=Math.max(maxY,y+pad); };
+// ---- camera: hand-rolled spherical orbit rig (no OrbitControls addon
+// vendored — see templates/vendor/README.md). `target` is the look-at point,
+// `radius/theta/phi` are spherical coords around it. fitDistance() computes
+// the camera distance that frames every repo region's bounding sphere inside
+// the vertical/horizontal FOV (whichever is narrower), with a margin factor
+// standing in for the fixed HUD panels' screen real estate (the old 2D view
+// subtracted their pixel width directly; a fixed margin is the 3D analogue). ----
+const FOV = 50 * Math.PI/180;      // vertical fov, radians
+const MIN_DIST = 80, MAX_DIST = 6000;
+const THETA0 = -0.6, PHI0 = 1.15;  // default orbit angle: a 3/4 elevated view
+function boundingSphere(){
+  const pts = [];
   if(repoList.length){
     for(const repo of repoList){
       const rc = repoCenters.get(repo); if(!rc) continue;
-      consider(rc.x, rc.y, (repoRadius.get(repo)||MIN_REGION) + 30);
+      pts.push({x:rc.x, y:rc.y, z:rc.z, r:(repoRadius.get(repo)||MIN_REGION)+30});
     }
   } else {
-    consider(0, 0, 160);
+    pts.push({x:0,y:0,z:0,r:160});
   }
-  const bw = Math.max(60, maxX-minX), bh = Math.max(60, maxY-minY);
-  const usableW = Math.max(240, W - 440);   // clear of the gauges (left) + inspect (right) panels
-  const usableH = Math.max(240, H - 220);   // clear of the topbar + ticker
-  cam.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, Math.min(usableW/bw, usableH/bh) * 0.92));
-  cam.x = (minX+maxX)/2;
-  cam.y = (minY+maxY)/2;
+  let cx=0, cy=0, cz=0;
+  for(const p of pts){ cx+=p.x; cy+=p.y; cz+=p.z; }
+  cx/=pts.length; cy/=pts.length; cz/=pts.length;
+  let R = 60;
+  for(const p of pts) R = Math.max(R, Math.hypot(p.x-cx,p.y-cy,p.z-cz)+p.r);
+  return {x:cx, y:cy, z:cz, r:R};
 }
-function resetView(){ userMoved = false; fitView(); }
-function worldToScreen(x,y){ return [(x-cam.x)*cam.scale + W/2, (y-cam.y)*cam.scale + H/2]; }
-function screenToWorld(x,y){ return [(x-W/2)/cam.scale + cam.x, (y-H/2)/cam.scale + cam.y]; }
+function fitDistance(aspect){
+  const b = boundingSphere();
+  const hFov = 2*Math.atan(Math.tan(FOV/2)*aspect);
+  const half = Math.min(FOV, hFov)/2;
+  const dist = (b.r*1.35) / Math.sin(half);
+  return {target: {x:b.x,y:b.y,z:b.z}, distance: Math.max(MIN_DIST, Math.min(MAX_DIST, dist)), boundR: b.r};
+}
+
+// ---- WebGL bring-up (feature-detected before touching three.js's renderer,
+// so an unsupported browser/GPU degrades to the gauges/ticker instead of
+// throwing mid-boot) ----
+function webglAvailable(){
+  try{
+    const c = document.createElement("canvas");
+    return !!(window.WebGLRenderingContext && (c.getContext("webgl2") || c.getContext("webgl")));
+  }catch(e){ return false; }
+}
+const webglOK = webglAvailable();
+if(!webglOK) document.getElementById("nowebgl").style.display = "grid";
+
+let renderer=null, scene=null, camera=null;
+let target = {x:0,y:0,z:0}, radius = 900, theta = THETA0, phi = PHI0;
+let userMoved = false;   // once the user orbits/pans/zooms, stop auto-fitting until reset
+
+if(webglOK){
+  renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+  renderer.setClearColor(0x04070d, 1);
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x04070d, 0.0009);   // depth cue: distant clusters fade into the bg
+  camera = new THREE.PerspectiveCamera(FOV*180/Math.PI, 1, 1, 8000);
+}
+
+function updateCameraPosition(){
+  const sinPhi = Math.sin(phi);
+  camera.position.set(
+    target.x + radius*sinPhi*Math.sin(theta),
+    target.y + radius*Math.cos(phi),
+    target.z + radius*sinPhi*Math.cos(theta)
+  );
+  camera.lookAt(target.x, target.y, target.z);
+}
+
+function applyFit(resetAngles){
+  if(!webglOK) return;
+  const fit = fitDistance(W/Math.max(1,H));
+  target = fit.target; radius = fit.distance;
+  if(resetAngles){ theta = THETA0; phi = PHI0; }
+  updateCameraPosition();
+}
+function resetView(){ userMoved = false; applyFit(true); }
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  if(webglOK){
+    renderer.setPixelRatio(DPR);
+    renderer.setSize(W, H, false);   // false: canvas is CSS-positioned inset:0, don't fight its style
+    camera.aspect = W/Math.max(1,H);
+    camera.updateProjectionMatrix();
+    if(!userMoved) applyFit(false);  // viewport changed size — keep everything framed, keep orbit angle
+  }
+}
+addEventListener("resize", resize); resize();
+
+// ---- billboard textures (shared across all nodes/labels — only the tint/
+// scale/opacity differ per instance) ----
+function makeRadialTexture(inner, outer, coreAlpha){
+  const s = 128;
+  const cnv = document.createElement("canvas"); cnv.width = cnv.height = s;
+  const c2 = cnv.getContext("2d");
+  const grd = c2.createRadialGradient(s/2,s/2,inner*s/2,s/2,s/2,outer*s/2);
+  grd.addColorStop(0, `rgba(255,255,255,${coreAlpha})`);
+  grd.addColorStop(1, "rgba(255,255,255,0)");
+  c2.fillStyle = grd; c2.fillRect(0,0,s,s);
+  const tex = new THREE.CanvasTexture(cnv); tex.needsUpdate = true;
+  return tex;
+}
+const CORE_TEX = webglOK ? makeRadialTexture(0, 0.55, 1) : null;      // bright neuron core
+const HALO_TEX = webglOK ? makeRadialTexture(0, 1, 0.55) : null;      // soft cluster/anim glow
+function makeRingTexture(){
+  const s = 128;
+  const cnv = document.createElement("canvas"); cnv.width = cnv.height = s;
+  const c2 = cnv.getContext("2d");
+  c2.strokeStyle = "rgba(255,255,255,1)"; c2.lineWidth = 6;
+  c2.beginPath(); c2.arc(s/2,s/2,s/2-6,0,Math.PI*2); c2.stroke();
+  const tex = new THREE.CanvasTexture(cnv); tex.needsUpdate = true;
+  return tex;
+}
+const RING_TEX = webglOK ? makeRingTexture() : null;
+
+function makeLabelSprite(text, hue, fontPx){
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  const fontSize = (fontPx||20)*dpr;
+  const cnv = document.createElement("canvas");
+  const c2 = cnv.getContext("2d");
+  c2.font = `600 ${fontSize}px ${getComputedStyle(document.body).fontFamily}`;
+  const w = Math.ceil(c2.measureText(text).width) + 24*dpr;
+  cnv.width = w; cnv.height = Math.ceil(fontSize*1.7);
+  c2.font = `600 ${fontSize}px ${getComputedStyle(document.body).fontFamily}`;
+  c2.textAlign = "center"; c2.textBaseline = "middle";
+  c2.fillStyle = cssColor(hue, 78, 0.92);
+  c2.fillText(text, cnv.width/2, cnv.height/2);
+  const tex = new THREE.CanvasTexture(cnv); tex.needsUpdate = true;
+  const mat = new THREE.SpriteMaterial({map:tex, transparent:true, depthWrite:false, fog:true});
+  const sprite = new THREE.Sprite(mat);
+  const scale = 0.16;
+  sprite.scale.set(cnv.width*scale, cnv.height*scale, 1);
+  return sprite;
+}
+
+// ---- scene contents, rebuilt whenever the graph reloads (node/link identity
+// can change; positions persist across reloads via nodeById reuse below, so a
+// rebuild never causes a visual jump) ----
+let sceneGroup = null;
+// CORE_TEX/HALO_TEX/RING_TEX are shared across every sprite for the life of
+// the page — clearGroup() must never dispose them, only per-instance
+// textures (e.g. each label's own CanvasTexture).
+function isSharedTexture(tex){ return tex===CORE_TEX || tex===HALO_TEX || tex===RING_TEX; }
+function clearGroup(g){
+  if(!g) return;
+  for(const child of [...g.children]){
+    g.remove(child);
+    if(child.geometry) child.geometry.dispose();
+    if(child.material){
+      if(child.material.map && !isSharedTexture(child.material.map)) child.material.map.dispose();
+      child.material.dispose();
+    }
+  }
+}
+function rebuildScene(){
+  if(!webglOK) return;
+  if(sceneGroup){ clearGroup(sceneGroup); scene.remove(sceneGroup); }
+  sceneGroup = new THREE.Group();
+  scene.add(sceneGroup);
+
+  // repo region boundaries (wireframe spheres — a real 3D volume, unlike a
+  // billboard, so it reads as a boundary while orbiting) + label.
+  if(repoList.length>1){
+    for(const repo of repoList){
+      const rc = repoCenters.get(repo); if(!rc) continue;
+      const rad = repoRadius.get(repo) || MIN_REGION;
+      const geo = new THREE.IcosahedronGeometry(rad, 1);
+      const mat = new THREE.MeshBasicMaterial({color: 0x8fa6bd, wireframe:true, transparent:true, opacity:0.12, fog:true});
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(rc.x, rc.y, rc.z);
+      mesh.userData = {kind:"repoRegion", repo};
+      sceneGroup.add(mesh);
+      const label = makeLabelSprite(repo.toUpperCase(), 190, 22);
+      label.position.set(rc.x, rc.y+rad+26, rc.z);
+      label.userData = {kind:"repoLabel", repo};
+      sceneGroup.add(label);
+    }
+  }
+
+  // role-cluster glow (soft billboard disc, under the neurons) + label.
+  for(const [,c] of clusters){
+    if(!c.n) continue;
+    let rad = 60;
+    for(const nd of nodes) if(nd.repo===c.repo && nd.role===c.role) rad = Math.max(rad, Math.hypot(nd.x-c.x,nd.y-c.y,nd.z-c.z)+nd.r+16);
+    const mat = new THREE.SpriteMaterial({map:HALO_TEX, color:threeColor(c.hue,55), transparent:true, opacity:0.22,
+      blending:THREE.AdditiveBlending, depthWrite:false, fog:true});
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(rad*2.2, rad*2.2, 1);
+    sprite.position.set(c.x, c.y, c.z);
+    sprite.userData = {kind:"roleCluster", repo:c.repo, role:c.role};
+    sceneGroup.add(sprite);
+    const label = makeLabelSprite(c.role.toUpperCase(), c.hue, 15);
+    label.position.set(c.x, c.y+rad+14, c.z);
+    sceneGroup.add(label);
+  }
+
+  // synapses (one Line per link — counts are small enough that per-link
+  // objects are simpler than a merged BufferGeometry, and weight/graduated
+  // dimming is baked in at rebuild time since it doesn't change per frame).
+  for(const l of links){
+    const dim = (l.a.graduated||l.b.graduated) ? 0.5 : 1;
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(l.a.x,l.a.y,l.a.z), new THREE.Vector3(l.b.x,l.b.y,l.b.z)]);
+    const mat = new THREE.LineBasicMaterial({color: threeColor(190,62), transparent:true,
+      opacity:(0.1 + l.w*0.5)*dim, blending:THREE.AdditiveBlending, fog:true});
+    const line = new THREE.Line(geo, mat);
+    line.userData = {kind:"synapse", link:l};
+    sceneGroup.add(line);
+  }
+
+  // consult arcs (curved lines between two role clusters, within one repo).
+  for(const e of (window.__consultEdges||[])){
+    const [repo, consumer] = e.source.split("/");
+    const role = e.target.split("/")[1];
+    const ca = clusters.get(clusterKey(repo, consumer)), cb = clusters.get(clusterKey(repo, role));
+    if(!ca || !cb) continue;
+    const mid = new THREE.Vector3((ca.x+cb.x)/2, (ca.y+cb.y)/2 + 40, (ca.z+cb.z)/2);
+    const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(ca.x,ca.y,ca.z), mid, new THREE.Vector3(cb.x,cb.y,cb.z));
+    const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(16));
+    const mat = new THREE.LineBasicMaterial({color: threeColor(cb.hue,60), transparent:true, opacity:0.12,
+      blending:THREE.AdditiveBlending, fog:true});
+    sceneGroup.add(new THREE.Line(geo, mat));
+  }
+
+  // neurons: core (bright, sharp) + halo (soft, pulses/highlights) sprite pair.
+  for(const nd of nodes){
+    const c = clusters.get(clusterKey(nd.repo,nd.role)), hue = c?c.hue:190;
+    const coreMat = new THREE.SpriteMaterial({map:CORE_TEX, color:threeColor(hue,88), transparent:true,
+      opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false, fog:true});
+    const core = new THREE.Sprite(coreMat);
+    core.scale.set(nd.r*2, nd.r*2, 1);
+    core.userData = {kind:"note", node:nd};
+    const haloMat = new THREE.SpriteMaterial({map:HALO_TEX, color:threeColor(hue,60), transparent:true,
+      opacity:0.4, blending:THREE.AdditiveBlending, depthWrite:false, fog:true});
+    const halo = new THREE.Sprite(haloMat);
+    halo.scale.set(nd.r*6, nd.r*6, 1);
+    sceneGroup.add(core); sceneGroup.add(halo);
+    nd._core = core; nd._halo = halo;
+  }
+}
 
 async function loadGraph(){
   let g; try { g = await (await fetch("/graph")).json(); } catch { return; }
@@ -232,9 +455,9 @@ async function loadGraph(){
   nodes = g.nodes.map(n=>{
     const old = prev.get(n.id);
     return Object.assign(n, {
-      x: old ? old.x : (Math.random()-.5)*260,   // world coords — spawn near origin, gravity pulls into place
-      y: old ? old.y : (Math.random()-.5)*260,
-      vx: old?old.vx:0, vy: old?old.vy:0, hl: old?old.hl:0, phase: Math.random()*6.283,
+      // world coords — spawn near origin, gravity pulls into place
+      x: old ? old.x : (Math.random()-.5)*260, y: old ? old.y : (Math.random()-.5)*260, z: old ? old.z : (Math.random()-.5)*260,
+      vx: old?old.vx:0, vy: old?old.vy:0, vz: old?old.vz:0, hl: old?old.hl:0, phase: Math.random()*6.283,
       r: 4 + Math.min(n.strength||1, 12) * 1.7
     });
   });
@@ -244,7 +467,8 @@ async function loadGraph(){
   })).filter(l=>l.a && l.b);
   window.__consultEdges = g.edges.filter(e=>e.type==="consult");
   layoutClusters();
-  if(!userMoved) fitView();   // new/changed graph — re-frame unless the user has taken the wheel
+  rebuildScene();
+  if(!userMoved) applyFit(false);   // new/changed graph — re-frame unless the user has taken the wheel (orientation untouched)
   document.getElementById("t-notes").textContent = nodes.length;
   document.getElementById("t-links").textContent = links.length;
   document.getElementById("t-brains").textContent = roles.length;
@@ -253,147 +477,73 @@ async function loadGraph(){
   renderGauges();
 }
 
-// ---- force simulation ----
+// ---- force simulation (3D repulsion/spring/gravity — the 3D analogue of the
+// 2D layout's force-directed settle) ----
 function step(){
+  if(!webglOK) return;
   const KREP = 2600, KSPRING = 0.012, KGRAV = 0.015, DAMP = 0.86;
   for(let i=0;i<nodes.length;i++){
     const a = nodes[i];
     for(let j=i+1;j<nodes.length;j++){
       const b = nodes[j];
-      let dx=a.x-b.x, dy=a.y-b.y, d2=dx*dx+dy*dy||0.01;
-      if(d2 < 90000){ const f=KREP/d2, d=Math.sqrt(d2); const fx=f*dx/d, fy=f*dy/d;
-        a.vx+=fx; a.vy+=fy; b.vx-=fx; b.vy-=fy; }
+      let dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z, d2=dx*dx+dy*dy+dz*dz||0.01;
+      if(d2 < 90000){ const f=KREP/d2, d=Math.sqrt(d2); const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
+        a.vx+=fx; a.vy+=fy; a.vz+=fz; b.vx-=fx; b.vy-=fy; b.vz-=fz; }
     }
   }
   for(const l of links){
-    const dx=l.b.x-l.a.x, dy=l.b.y-l.a.y, d=Math.hypot(dx,dy)||.01;
-    const target = 70 + (1-l.w)*70, f = KSPRING*(d-target);
-    const fx=f*dx/d, fy=f*dy/d;
-    l.a.vx+=fx; l.a.vy+=fy; l.b.vx-=fx; l.b.vy-=fy;
+    const dx=l.b.x-l.a.x, dy=l.b.y-l.a.y, dz=l.b.z-l.a.z, d=Math.hypot(dx,dy,dz)||.01;
+    const target2 = 70 + (1-l.w)*70, f = KSPRING*(d-target2);
+    const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
+    l.a.vx+=fx; l.a.vy+=fy; l.a.vz+=fz; l.b.vx-=fx; l.b.vy-=fy; l.b.vz-=fz;
   }
   for(const nd of nodes){
     const c = clusters.get(clusterKey(nd.repo,nd.role));
-    if(c){ nd.vx += (c.x-nd.x)*KGRAV; nd.vy += (c.y-nd.y)*KGRAV; }
-    nd.vx*=DAMP; nd.vy*=DAMP;
-    nd.x+=nd.vx; nd.y+=nd.vy;
+    if(c){ nd.vx += (c.x-nd.x)*KGRAV; nd.vy += (c.y-nd.y)*KGRAV; nd.vz += (c.z-nd.z)*KGRAV; }
+    nd.vx*=DAMP; nd.vy*=DAMP; nd.vz*=DAMP;
+    nd.x+=nd.vx; nd.y+=nd.vy; nd.z+=nd.vz;
     if(nd.hl>0) nd.hl = Math.max(0, nd.hl - 0.018);
   }
 }
 
-// ---- rendering ----
-function draw(){
-  ctx.clearRect(0,0,W,H);
-  drawGrid();                 // fixed screen-space background, unaffected by the camera
-  ctx.save();
-  ctx.translate(W/2, H/2); ctx.scale(cam.scale, cam.scale); ctx.translate(-cam.x, -cam.y);
-  drawClusters();
-  ctx.globalCompositeOperation = "lighter";
-  drawSynapses();
-  drawAnims();
-  drawNeurons();
-  ctx.globalCompositeOperation = "source-over";
-  ctx.restore();
-}
-
-function drawGrid(){
-  ctx.save(); ctx.strokeStyle="rgba(70,230,255,.045)"; ctx.lineWidth=1;
-  const g=46; ctx.beginPath();
-  for(let x=(tick*0.15)%g;x<W;x+=g){ ctx.moveTo(x,0); ctx.lineTo(x,H); }
-  for(let y=0;y<H;y+=g){ ctx.moveTo(0,y); ctx.lineTo(W,y); }
-  ctx.stroke();
-  ctx.strokeStyle="rgba(70,230,255,.03)";
-  ctx.beginPath();
-  for(let y=(tick*0.4)%3;y<H;y+=3){ ctx.moveTo(0,y); ctx.lineTo(W,y); }  // scanlines
-  ctx.stroke(); ctx.restore();
-}
-
-function drawClusters(){
-  // repo region labels first (drawn even for a brainless marked repo — an empty
-  // labeled constellation), then each role-cluster glow within its repo.
-  if(repoList.length>1){
-    for(const repo of repoList){
-      const rc = repoCenters.get(repo); if(!rc) continue;
-      const rad = repoRadius.get(repo) || MIN_REGION;
-      ctx.save(); ctx.fillStyle="rgba(143,166,189,.75)";
-      ctx.font="600 11px "+getComputedStyle(document.body).fontFamily;
-      ctx.textAlign="center";
-      ctx.fillText(repo.toUpperCase(), rc.x, rc.y - rad - 14);
-      ctx.strokeStyle="rgba(90,190,255,.14)"; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.arc(rc.x, rc.y, rad, 0, 6.283); ctx.stroke();
-      ctx.restore();
-    }
-  }
-  for(const [,c] of clusters){
-    if(!c.n) continue;
-    let rad=60; for(const nd of nodes) if(nd.repo===c.repo && nd.role===c.role) rad=Math.max(rad, Math.hypot(nd.x-c.x,nd.y-c.y)+nd.r+16);
-    const grd = ctx.createRadialGradient(c.x,c.y,rad*.4,c.x,c.y,rad);
-    grd.addColorStop(0,glow(c.hue,55,0)); grd.addColorStop(1,glow(c.hue,55,.05));
-    ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(c.x,c.y,rad,0,6.283); ctx.fill();
-    ctx.strokeStyle=glow(c.hue,60,.32); ctx.lineWidth=1;
-    ctx.beginPath(); ctx.arc(c.x,c.y,rad,0,6.283); ctx.stroke();
-    ctx.save(); ctx.fillStyle=glow(c.hue,72,.85);
-    ctx.font="600 10px "+getComputedStyle(document.body).fontFamily;
-    ctx.textAlign="center";
-    ctx.fillText(c.role.toUpperCase().split("").join(" "), c.x, c.y-rad-8);
-    ctx.restore();
-  }
-}
-
-function drawSynapses(){
-  for(const l of links){
-    const dim = (l.a.graduated||l.b.graduated)?.5:1;
-    ctx.strokeStyle = glow(190, 62, (0.06 + l.w*0.34)*dim);
-    ctx.lineWidth = 0.6 + l.w*1.6;
-    ctx.beginPath(); ctx.moveTo(l.a.x,l.a.y); ctx.lineTo(l.b.x,l.b.y); ctx.stroke();
-  }
-}
-
-function drawNeurons(){
+function updateVisuals(){
+  if(!webglOK) return;
   for(const nd of nodes){
-    const c = clusters.get(clusterKey(nd.repo,nd.role)), hue = c?c.hue:190;
+    if(!nd._core) continue;
+    nd._core.position.set(nd.x, nd.y, nd.z);
+    nd._halo.position.set(nd.x, nd.y, nd.z);
     const pulse = REDUCED ? 0 : (Math.sin(tick*0.05 + nd.phase)*0.5+0.5)*0.18;
-    const base = nd.graduated ? 0.30 : 0.62;
-    const lum = nd.graduated ? 46 : 62;
+    const base = nd.graduated ? 0.55 : 0.9;
     const rr = nd.r * (1 + pulse*0.15 + nd.hl*0.5);
-    const grd = ctx.createRadialGradient(nd.x,nd.y,0,nd.x,nd.y,rr*3.2);
-    grd.addColorStop(0, glow(hue, lum+18, Math.min(1, base + pulse + nd.hl)));
-    grd.addColorStop(0.4, glow(hue, lum, (base+pulse+nd.hl)*0.5));
-    grd.addColorStop(1, glow(hue, lum, 0));
-    ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(nd.x,nd.y,rr*3.2,0,6.283); ctx.fill();
-    ctx.fillStyle=glow(hue, 88, Math.min(1,0.7+nd.hl));
-    ctx.beginPath(); ctx.arc(nd.x,nd.y,rr,0,6.283); ctx.fill();
+    nd._core.scale.set(rr*2, rr*2, 1);
+    nd._core.material.opacity = Math.min(1, base*0.55 + pulse*0.3 + nd.hl*0.5);
+    nd._halo.scale.set(rr*6*(1+nd.hl*0.6), rr*6*(1+nd.hl*0.6), 1);
+    nd._halo.material.opacity = Math.min(0.75, 0.28 + pulse*0.2 + nd.hl*0.5);
   }
+  for(const child of sceneGroup.children){
+    const l = child.userData && child.userData.kind==="synapse" ? child.userData.link : null;
+    if(!l) continue;
+    const pos = child.geometry.attributes.position;
+    pos.setXYZ(0, l.a.x, l.a.y, l.a.z);
+    pos.setXYZ(1, l.b.x, l.b.y, l.b.z);
+    pos.needsUpdate = true;
+  }
+  updateAnims();
 }
 
-function drawAnims(){
-  const now = performance.now();
-  anims = anims.filter(a=>now - a.t0 < a.dur);
-  for(const a of anims){
-    const p = (now - a.t0)/a.dur;
-    if(a.kind==="ring"){
-      const nd=a.node; ctx.strokeStyle=glow(a.hue,70,(1-p)*a.i);
-      ctx.lineWidth=2; ctx.beginPath(); ctx.arc(nd.x,nd.y,nd.r+p*46,0,6.283); ctx.stroke();
-    } else if(a.kind==="halo"){
-      const nd=a.node; const grd=ctx.createRadialGradient(nd.x,nd.y,nd.r,nd.x,nd.y,nd.r+22);
-      grd.addColorStop(0,glow(a.hue,72,(1-p)*.6)); grd.addColorStop(1,glow(a.hue,72,0));
-      ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(nd.x,nd.y,nd.r+22,0,6.283); ctx.fill();
-    } else if(a.kind==="travel"){
-      const x=a.ax+(a.bx-a.ax)*p, y=a.ay+(a.by-a.ay)*p;
-      const grd=ctx.createRadialGradient(x,y,0,x,y,10);
-      grd.addColorStop(0,glow(a.hue,85,a.i)); grd.addColorStop(1,glow(a.hue,85,0));
-      ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(x,y,10,0,6.283); ctx.fill();
-    } else if(a.kind==="arc"){
-      ctx.strokeStyle=glow(a.hue,72,(1-p)*.8); ctx.lineWidth=2;
-      const mx=(a.ax+a.bx)/2, my=(a.ay+a.by)/2 - Math.hypot(a.bx-a.ax,a.by-a.ay)*0.32;
-      ctx.beginPath(); ctx.moveTo(a.ax,a.ay); ctx.quadraticCurveTo(mx,my,a.bx,a.by); ctx.stroke();
-    }
+function frame(){
+  tick++;
+  step();
+  if(webglOK){
+    updateVisuals();
+    updateCameraPosition();   // theta/phi/target/radius may have changed since last frame (orbit/pan/zoom/fit)
+    renderer.render(scene, camera);
   }
+  requestAnimationFrame(frame);
 }
-
-function frame(){ tick++; step(); draw(); requestAnimationFrame(frame); }
 requestAnimationFrame(frame);
 
-// ---- live events ----
+// ---- live events → ephemeral 3D activation visuals ----
 function playEvent(e){
   logEvent(e);
   const repo = e.repo || "";
@@ -401,23 +551,81 @@ function playEvent(e){
   const hue = nd ? (clusters.get(clusterKey(nd.repo,nd.role))?.hue ?? 190) : 190;
   const inten = Math.max(0.4, Math.min(1, e.activation ?? 0.7));
   if(nd) nd.hl = Math.max(nd.hl, inten);
-  if(REDUCED) return;                     // reduced-motion: instant highlight only
+  if(REDUCED || !webglOK) return;   // reduced-motion / no-webgl: instant highlight only
   const now = performance.now();
   if(e.event==="seed" && nd){
-    anims.push({kind:"ring", node:nd, hue, i:inten, t0:now, dur:900});
+    anims.push(makeRingAnim(nd, hue, inten, now, 900));
   } else if(e.event==="inject" && nd){
-    anims.push({kind:"halo", node:nd, hue, i:inten, t0:now, dur:800});
+    anims.push(makeHaloAnim(nd, hue, inten, now, 800));
   } else if(e.event==="hop"){
     let a=nd, b=null;
     if(e.link && e.link.includes("->")){ const [s,d]=e.link.split("->");
       a=nodeById.get(repo+"/"+e.role+"/"+s.trim())||a; b=nodeById.get(repo+"/"+e.role+"/"+d.trim()); }
-    if(a&&b){ anims.push({kind:"travel", ax:a.x,ay:a.y,bx:b.x,by:b.y, hue, i:inten, t0:now, dur:700});
-      b.hl=Math.max(b.hl,inten*.8); }
-    else if(nd){ anims.push({kind:"ring", node:nd, hue, i:inten, t0:now, dur:700}); }
+    if(a&&b){ anims.push(makeTravelAnim(a, b, hue, inten, now, 700)); b.hl=Math.max(b.hl,inten*.8); }
+    else if(nd){ anims.push(makeRingAnim(nd, hue, inten, now, 700)); }
   } else if(e.event==="consult"){
     const ca=clusters.get(clusterKey(repo,e.consumer)), cb=clusters.get(clusterKey(repo,e.role));
-    if(ca&&cb) anims.push({kind:"arc", ax:ca.x,ay:ca.y,bx:cb.x,by:cb.y, hue:cb.hue, t0:now, dur:1100});
+    if(ca&&cb) anims.push(makeArcAnim(ca, cb, cb.hue, now, 1100));
   }
+}
+function makeRingAnim(nd, hue, inten, t0, dur){
+  const mat = new THREE.SpriteMaterial({map:RING_TEX, color:threeColor(hue,70), transparent:true,
+    opacity:inten, blending:THREE.AdditiveBlending, depthWrite:false, fog:true});
+  const sprite = new THREE.Sprite(mat); sprite.position.set(nd.x,nd.y,nd.z);
+  scene.add(sprite);
+  return {kind:"ring", node:nd, obj:sprite, baseR:nd.r, i:inten, t0, dur};
+}
+function makeHaloAnim(nd, hue, inten, t0, dur){
+  const mat = new THREE.SpriteMaterial({map:HALO_TEX, color:threeColor(hue,72), transparent:true,
+    opacity:inten*0.6, blending:THREE.AdditiveBlending, depthWrite:false, fog:true});
+  const sprite = new THREE.Sprite(mat); sprite.position.set(nd.x,nd.y,nd.z);
+  scene.add(sprite);
+  return {kind:"halo", node:nd, obj:sprite, i:inten, t0, dur};
+}
+function makeTravelAnim(a, b, hue, inten, t0, dur){
+  const mat = new THREE.SpriteMaterial({map:CORE_TEX, color:threeColor(hue,85), transparent:true,
+    opacity:inten, blending:THREE.AdditiveBlending, depthWrite:false, fog:true});
+  const sprite = new THREE.Sprite(mat); sprite.scale.set(20,20,1); sprite.position.set(a.x,a.y,a.z);
+  scene.add(sprite);
+  return {kind:"travel", a, b, obj:sprite, i:inten, t0, dur};
+}
+function makeArcAnim(ca, cb, hue, t0, dur){
+  const mid = new THREE.Vector3((ca.x+cb.x)/2, (ca.y+cb.y)/2+40, (ca.z+cb.z)/2);
+  const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(ca.x,ca.y,ca.z), mid, new THREE.Vector3(cb.x,cb.y,cb.z));
+  const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(16));
+  const mat = new THREE.LineBasicMaterial({color:threeColor(hue,72), transparent:true, opacity:0.8,
+    blending:THREE.AdditiveBlending, fog:true});
+  const line = new THREE.Line(geo, mat);
+  scene.add(line);
+  return {kind:"arc", obj:line, t0, dur};
+}
+function updateAnims(){
+  const now = performance.now();
+  anims = anims.filter(a=>{
+    const alive = now - a.t0 < a.dur;
+    if(!alive){
+      scene.remove(a.obj);
+      if(a.obj.geometry) a.obj.geometry.dispose();
+      if(a.obj.material){ if(a.obj.material.map && a.obj.material.map!==CORE_TEX && a.obj.material.map!==HALO_TEX && a.obj.material.map!==RING_TEX) a.obj.material.map.dispose(); a.obj.material.dispose(); }
+      return false;
+    }
+    const p = (now - a.t0)/a.dur;
+    if(a.kind==="ring"){
+      a.obj.position.set(a.node.x, a.node.y, a.node.z);
+      const s = (a.baseR + p*46)*2; a.obj.scale.set(s,s,1);
+      a.obj.material.opacity = (1-p)*a.i;
+    } else if(a.kind==="halo"){
+      a.obj.position.set(a.node.x, a.node.y, a.node.z);
+      const s = 44*(1+p*0.4); a.obj.scale.set(s,s,1);
+      a.obj.material.opacity = (1-p)*a.i*0.6;
+    } else if(a.kind==="travel"){
+      a.obj.position.set(a.a.x+(a.b.x-a.a.x)*p, a.a.y+(a.b.y-a.a.y)*p, a.a.z+(a.b.z-a.a.z)*p);
+      a.obj.material.opacity = a.i*(1-p*0.3);
+    } else if(a.kind==="arc"){
+      a.obj.material.opacity = (1-p)*0.8;
+    }
+    return true;
+  });
 }
 
 function pump(){                          // drain the queue on a readable stagger
@@ -455,7 +663,7 @@ function escapeHtml(s){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"
 // ---- gauges ----
 // One row per (repo,role) combo actually present in the graph — a repo with a
 // marker but no brains yet simply contributes no rows (it still gets a labeled,
-// empty region on the canvas via repoList/repoCenters).
+// empty region in the scene via repoList/repoCenters).
 function renderGauges(){
   const list=document.getElementById("gauge-list"); list.innerHTML="";
   const perCombo = new Map();
@@ -472,7 +680,7 @@ function renderGauges(){
     const row=document.createElement("div"); row.className="brainrow";
     row.innerHTML =
       arc(s.n/maxN, hue, s.n) +
-      `<div class="rname" style="color:${glow(hue,72,.95)}">${escapeHtml(label)}</div>` +
+      `<div class="rname" style="color:${cssColor(hue,72,.95)}">${escapeHtml(label)}</div>` +
       `<div class="label" title="avg strength">str <span class="val">${avg.toFixed(1)}</span></div>` +
       `<div class="label" title="synapses">syn <span class="val">${lk}</span></div>`;
     list.appendChild(row);
@@ -483,72 +691,79 @@ function arc(frac, hue, label){
   frac=Math.max(0,Math.min(1,frac)); const R=13, C=2*Math.PI*R, off=C*(1-frac);
   return `<svg class="arc" viewBox="0 0 34 34" role="img" aria-label="${label} notes">
     <circle cx="17" cy="17" r="${R}" fill="none" stroke="rgba(90,190,255,.14)" stroke-width="3"/>
-    <circle cx="17" cy="17" r="${R}" fill="none" stroke="${glow(hue,62,.95)}" stroke-width="3"
+    <circle cx="17" cy="17" r="${R}" fill="none" stroke="${cssColor(hue,62,.95)}" stroke-width="3"
       stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${off}" transform="rotate(-90 17 17)"/>
-    <text x="17" y="20.5" text-anchor="middle" font-size="10" fill="${glow(hue,78,1)}" font-family="monospace">${label}</text>
+    <text x="17" y="20.5" text-anchor="middle" font-size="10" fill="${cssColor(hue,78,1)}" font-family="monospace">${label}</text>
   </svg>`;
 }
 
-// ---- pan / zoom / click-to-inspect (Pointer Events: unifies mouse drag +
-// single-finger touch pan; two active pointers pinch-zoom about their midpoint;
-// wheel zooms about the cursor) ----
-function hitTest(wx, wy){
-  let hit=null, best=1e9;
-  for(const nd of nodes){
-    const d=Math.hypot(nd.x-wx, nd.y-wy), thresh = nd.r + 8/cam.scale;   // ~8 screen px of slop
-    if(d<thresh && d<best){ best=d; hit=nd; }
-  }
-  if(hit) openNote(hit);
-}
-function zoomAt(screenX, screenY, newScale, base){
-  newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
-  const baseScale = base ? base.scale : cam.scale, baseX = base ? base.camX : cam.x, baseY = base ? base.camY : cam.y;
-  const wx = (screenX - W/2)/baseScale + baseX, wy = (screenY - H/2)/baseScale + baseY;
-  cam.scale = newScale;
-  cam.x = wx - (screenX - W/2)/cam.scale;
-  cam.y = wy - (screenY - H/2)/cam.scale;
-  userMoved = true;
+// ---- orbit / pan / zoom / click-to-inspect (Pointer Events: unifies mouse
+// drag + single-finger touch orbit; two active pointers pinch-zoom; wheel
+// zooms toward the target; right-click-drag or shift-drag pans) ----
+const raycaster = webglOK ? new THREE.Raycaster() : null;
+function hitTest(clientX, clientY){
+  if(!webglOK) return;
+  const ndc = new THREE.Vector2((clientX/W)*2-1, -(clientY/H)*2+1);
+  raycaster.setFromCamera(ndc, camera);
+  const noteSprites = nodes.map(nd=>nd._core).filter(Boolean);
+  const hits = raycaster.intersectObjects(noteSprites, false);
+  if(hits.length) openNote(hits[0].object.userData.node);
 }
 const pointers = new Map();   // pointerId -> {x,y} screen coords, active touches/mouse
-let dragLast = null, pinchStart = null, downPos = null, moved = false;
+let dragLast = null, pinchStart = null, downPos = null, moved = false, panning = false;
+canvas.addEventListener("contextmenu", ev=>ev.preventDefault());
 canvas.addEventListener("pointerdown", ev=>{
   canvas.setPointerCapture(ev.pointerId);
   pointers.set(ev.pointerId, {x:ev.clientX, y:ev.clientY});
   downPos = {x:ev.clientX, y:ev.clientY}; moved = false;
+  panning = ev.button===2 || ev.shiftKey;
   if(pointers.size===1){ dragLast = {x:ev.clientX, y:ev.clientY}; canvas.classList.add("grabbing"); }
   if(pointers.size===2){
     const pts=[...pointers.values()];
-    pinchStart = { dist: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1, scale: cam.scale, camX: cam.x, camY: cam.y };
+    pinchStart = { dist: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1, radius };
     dragLast = null;
   }
 });
 canvas.addEventListener("pointermove", ev=>{
-  if(!pointers.has(ev.pointerId)) return;
+  if(!pointers.has(ev.pointerId) || !webglOK) return;
   pointers.set(ev.pointerId, {x:ev.clientX, y:ev.clientY});
   if(downPos && Math.hypot(ev.clientX-downPos.x, ev.clientY-downPos.y) > 4) moved = true;
   if(pointers.size===2 && pinchStart){
     const pts=[...pointers.values()];
     const dist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1;
-    const midX=(pts[0].x+pts[1].x)/2, midY=(pts[0].y+pts[1].y)/2;
-    zoomAt(midX, midY, pinchStart.scale * (dist/pinchStart.dist), pinchStart);
+    radius = Math.max(MIN_DIST, Math.min(MAX_DIST, pinchStart.radius * (pinchStart.dist/dist)));
+    userMoved = true;
   } else if(pointers.size===1 && dragLast){
     const dx = ev.clientX-dragLast.x, dy = ev.clientY-dragLast.y;
-    cam.x -= dx/cam.scale; cam.y -= dy/cam.scale;
+    if(panning) panBy(dx, dy); else orbitBy(dx, dy);
     dragLast = {x:ev.clientX, y:ev.clientY};
-    userMoved = true;
   }
 });
+function orbitBy(dxPix, dyPix){
+  theta -= dxPix*0.006;
+  phi = Math.max(0.05, Math.min(Math.PI-0.05, phi - dyPix*0.006));
+  userMoved = true;
+}
+function panBy(dxPix, dyPix){
+  updateCameraPosition();   // ensure quaternion reflects the current theta/phi before reading basis vectors
+  const right = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
+  const up = new THREE.Vector3(0,1,0).applyQuaternion(camera.quaternion);
+  const s = radius * 0.0012;
+  target = {
+    x: target.x - right.x*dxPix*s + up.x*dyPix*s,
+    y: target.y - right.y*dxPix*s + up.y*dyPix*s,
+    z: target.z - right.z*dxPix*s + up.z*dyPix*s,
+  };
+  userMoved = true;
+}
 function endPointer(ev){
   const wasSingle = pointers.size===1;
   pointers.delete(ev.pointerId);
   if(pointers.size<2) pinchStart = null;
   if(pointers.size===0){
     canvas.classList.remove("grabbing");
-    if(wasSingle && downPos && !moved){
-      const [wx,wy] = screenToWorld(downPos.x, downPos.y);
-      hitTest(wx, wy);
-    }
-    dragLast = null; downPos = null;
+    if(wasSingle && downPos && !moved && !panning) hitTest(downPos.x, downPos.y);
+    dragLast = null; downPos = null; panning = false;
   } else if(pointers.size===1){
     const [p] = pointers.values();
     dragLast = {x:p.x, y:p.y};
@@ -557,12 +772,17 @@ function endPointer(ev){
 canvas.addEventListener("pointerup", endPointer);
 canvas.addEventListener("pointercancel", endPointer);
 canvas.addEventListener("wheel", ev=>{
+  if(!webglOK) return;
   ev.preventDefault();
-  zoomAt(ev.clientX, ev.clientY, cam.scale * Math.exp(-ev.deltaY * 0.0015));
+  radius = Math.max(MIN_DIST, Math.min(MAX_DIST, radius * Math.exp(ev.deltaY * 0.0015)));
+  userMoved = true;
 }, {passive:false});
 canvas.addEventListener("dblclick", ev=>{
-  const [wx,wy] = screenToWorld(ev.clientX, ev.clientY);
-  for(const nd of nodes) if(Math.hypot(nd.x-wx,nd.y-wy) < nd.r+8/cam.scale) return;  // dblclick on a note: no reset
+  if(!webglOK) return;
+  const ndc = new THREE.Vector2((ev.clientX/W)*2-1, -(ev.clientY/H)*2+1);
+  raycaster.setFromCamera(ndc, camera);
+  const noteSprites = nodes.map(nd=>nd._core).filter(Boolean);
+  if(raycaster.intersectObjects(noteSprites, false).length) return;  // dblclick on a note: no reset
   resetView();
 });
 document.getElementById("reset-view").onclick = resetView;
@@ -592,9 +812,10 @@ async function openNote(nd){
 }
 
 // ---- boot ----
-(async function(){ await loadGraph(); poll();
+(async function(){
+  await loadGraph(); poll();
   const st=document.getElementById("status-txt");
-  st.textContent = REDUCED ? "live · reduced motion" : "live · recalls light up";
+  st.textContent = !webglOK ? "live · 3D unavailable" : (REDUCED ? "live · reduced motion" : "live · recalls light up");
   setInterval(loadGraph, 15000);   // pick up new notes/links periodically
 })();
 </script>

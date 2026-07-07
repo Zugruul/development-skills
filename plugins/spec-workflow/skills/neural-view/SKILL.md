@@ -27,5 +27,8 @@ discovery; default `~/Development`) — every immediate child of the scan base w
 "constellation", alongside `--dir` if given. With none of these set and an empty/absent
 scan base, falls back to the git root of cwd (single-repo behavior).
 
-The page needs no build step and makes zero external requests. If `status` says STOPPED,
-`start` it. Nothing here mutates a brain — it is purely a viewer.
+The page renders in 3D (three.js, vendored same-origin — no CDN, no build step, zero
+external requests): drag to orbit, wheel/pinch to zoom, right-drag or shift-drag to pan,
+click a neuron to inspect it, and the ⌂ button (or double-clicking empty space) resets
+the view. If `status` says STOPPED, `start` it. Nothing here mutates a brain — it is
+purely a viewer.
