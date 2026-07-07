@@ -1523,6 +1523,64 @@ check "move telemetry: unwritable .claude does not fail the move" "moved #1 -> I
 check "move telemetry: unwritable .claude -- still exits 0" "rc=0" "$out2"
 rm -rf "$BM" "$BM2" "$BMGH"
 
+echo "== board.sh issues verb + find-task pipeline (SW-002) =="
+FTD="$(mktemp -d)"; mkdir -p "$FTD/.claude"
+cp "$FIX/valid.project.yaml" "$FTD/.claude/project.yaml"
+FTGH="$(mktemp -d)"
+cat >"$FTGH/gh" <<'FAKE'
+#!/usr/bin/env bash
+set -uo pipefail
+case "$1 $2" in
+    "issue list")
+        if [[ "${FAKE_GH_ISSUES_FAIL:-0}" == "1" ]]; then
+            echo "fake gh: issue list boom" >&2
+            exit 1
+        fi
+        cat <<'JSON'
+[
+  {"number": 21, "title": "Add dark mode toggle to settings page", "body": "Let users switch between light and dark themes from the settings screen.", "state": "OPEN"},
+  {"number": 22, "title": "Fix login button color on mobile safari", "body": "The submit button on the login form renders with the wrong background color in mobile Safari.", "state": "OPEN"},
+  {"number": 23, "title": "Improve search relevance ranking algorithm", "body": "Search results for common queries are not well ordered; boost exact title matches.", "state": "CLOSED"}
+]
+JSON
+        ;;
+    *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
+esac
+FAKE
+chmod +x "$FTGH/gh"
+
+out="$(cd "$FTD" && PATH="$FTGH:$PATH" bash "$PLUGIN/scripts/board.sh" issues 2>&1; echo "rc=$?")"
+check "issues verb: exits 0 on success" "rc=0" "$out"
+check "issues verb: output is the issues-wrapped JSON shape" '"issues"' "$out"
+check "issues verb: OPEN issue present with title" "Add dark mode toggle to settings page" "$out"
+check "issues verb: CLOSED issue status carried through" "CLOSED" "$out"
+
+# full pipeline: feed board.sh issues output into similar.py via SIMILAR_ISSUES_FILE
+# and confirm a known query ranks the right issue first.
+FTPIPE="$(mktemp)"
+(cd "$FTD" && PATH="$FTGH:$PATH" bash "$PLUGIN/scripts/board.sh" issues) >"$FTPIPE"
+pipe_out="$(SIMILAR_ISSUES_FILE="$FTPIPE" python3 "$PLUGIN/scripts/similar.py" "$FTD" "Add dark mode toggle to settings page")"
+first_line="$(head -1 <<<"$pipe_out")"
+check "pipeline: board.sh issues -> similar.py ranks the exact-title issue first" "#21" "$first_line"
+check "pipeline: exact-title match is high tier" "high" "$first_line"
+rm -f "$FTPIPE"
+
+# gh failure: non-zero, actionable error, no partial/garbage JSON on stdout
+out="$(cd "$FTD" && PATH="$FTGH:$PATH" FAKE_GH_ISSUES_FAIL=1 bash "$PLUGIN/scripts/board.sh" issues 2>&1; echo "rc=$?")"
+check "issues verb: gh failure exits nonzero" "rc=1" "$out"
+check "issues verb: gh failure -- actionable error" "ERROR:" "$out"
+check_absent "issues verb: gh failure -- no partial issues JSON on stdout" '"issues"' "$out"
+
+rm -rf "$FTD" "$FTGH"
+
+echo "== find-task SKILL.md contract =="
+FTSKILL="$PLUGIN/skills/find-task/SKILL.md"
+if [[ -f "$FTSKILL" ]]; then echo "ok   find-task/SKILL.md exists"; else echo "FAIL find-task/SKILL.md missing"; fails=$((fails + 1)); fi
+check "find-task SKILL.md has allowed-tools frontmatter" "allowed-tools: Bash" "$(cat "$FTSKILL" 2>/dev/null)"
+check "find-task SKILL.md wires board.sh issues" "board.sh\" issues" "$(cat "$FTSKILL" 2>/dev/null)"
+check "find-task SKILL.md invokes similar.py via python3" "python3 \"\${CLAUDE_PLUGIN_ROOT}/scripts/similar.py\"" "$(cat "$FTSKILL" 2>/dev/null)"
+check_absent "find-task SKILL.md never invokes similar.py via bash" 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/similar.py"' "$(cat "$FTSKILL" 2>/dev/null)"
+
 echo
 if [[ $fails -gt 0 ]]; then echo "$fails test(s) FAILED"; exit 1; fi
 echo "all tests passed"
