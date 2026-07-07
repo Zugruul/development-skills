@@ -13,7 +13,7 @@ The human, not the agent, picks UI direction when iterative UI mode is ON. You p
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/ui-mode.sh" status    # prints ON, or OFF with the reason
 ```
-`off` / `on` toggle it for this clone (local gitignored flag); `methodology.iterativeUI=false` in project.json is the project-wide kill switch.
+`off` / `on` toggle it for this clone (local gitignored flag); `methodology.iterativeUI=false` in project.yaml is the project-wide kill switch.
 OFF → decide the UI yourself following the spec and existing conventions; skip this skill.
 If the human says they are going AFK, won't be watching, or sounds annoyed by UI questions — **offer to turn it off** (`ui-mode.sh off`).
 

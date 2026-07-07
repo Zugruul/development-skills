@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""Validate .claude/project.json (schemaVersion 1) with actionable error messages.
+"""Validate a spec-workflow project config with actionable error messages.
 
-Usage: validate-config.py <path-to-project.json>
+Usage: validate-config.py <path-to-.claude/project.yaml (or legacy .json)>
 Exit 0 = valid (prints a summary); exit 1 = invalid (prints every problem found).
-Structural validation only — no third-party deps.
+YAML (schemaVersion 2) is the current format; legacy JSON (schemaVersion 1, with
+the old delegation.devModel/reviewModel/prReviewModel keys) still validates as v1
+with a deprecation line. Structural validation — stdlib + PyYAML.
 """
 import json
+import os
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import config as C  # noqa: E402  (shared loader — reuse its shorthand-model detection)
 
 errs = []
 
@@ -22,15 +28,35 @@ def need(obj, key, typ, where):
     return obj[key]
 
 
+def _load(path):
+    text = open(path).read()
+    if path.endswith((".yaml", ".yml")):
+        try:
+            import yaml
+        except ImportError:
+            print("PREFLIGHT FAIL: PyYAML required — pip3 install pyyaml")
+            sys.exit(1)
+        return yaml.safe_load(text)
+    return json.loads(text)
+
+
 def main(path):
     try:
-        cfg = json.load(open(path))
+        cfg = _load(path)
+    except SystemExit:
+        raise
     except Exception as e:  # noqa: BLE001
         print(f"INVALID: cannot parse {path}: {e}")
         return 1
+    if not isinstance(cfg, dict):
+        print(f"INVALID: {path}: top level must be a mapping")
+        return 1
 
-    if cfg.get("schemaVersion") != 1:
-        errs.append(f"schemaVersion must be 1 (got {cfg.get('schemaVersion')!r})")
+    # YAML is schemaVersion 2 (current); legacy .json is schemaVersion 1.
+    legacy = path.endswith(".json")
+    want_version = 1 if legacy else 2
+    if cfg.get("schemaVersion") != want_version:
+        errs.append(f"schemaVersion must be {want_version} (got {cfg.get('schemaVersion')!r})")
 
     proj = need(cfg, "project", dict, "$") or {}
     for k in ("name", "mainBranch", "branchPattern"):
@@ -111,6 +137,33 @@ def main(path):
     cmds = need(cfg, "commands", dict, "$") or {}
     need(cmds, "gate", str, "commands")
 
+    # delegation.identities: each role is null | dict | list-of-dicts; models are string lists.
+    deleg = cfg.get("delegation")
+    if isinstance(deleg, dict):
+        idents = deleg.get("identities")
+        if isinstance(idents, dict):
+            for role, spec in idents.items():
+                w = f"delegation.identities.{role}"
+                variants = spec if isinstance(spec, list) else [spec]
+                for i, v in enumerate(variants):
+                    if v is None:
+                        continue
+                    if not isinstance(v, dict):
+                        errs.append(f"{w}: each identity must be a mapping (name/email/models/covers)")
+                        continue
+                    models = v.get("models")
+                    if models is not None and not (isinstance(models, list) and all(isinstance(m, str) for m in models)):
+                        errs.append(f"{w}[{i}].models must be a list of full model-id strings")
+                    elif models and not legacy:
+                        for m in models:
+                            if C._shorthand(m):
+                                errs.append(f"{w}[{i}].models: '{m}' is shorthand — v2 requires a full model-id (e.g. claude-sonnet-5, claude-sonnet-5[1m])")
+                    covers = v.get("covers")
+                    if covers is not None and not (isinstance(covers, list) and all(isinstance(c, str) for c in covers)):
+                        errs.append(f"{w}[{i}].covers must be a list of path-glob strings")
+        elif idents not in (None, False):
+            errs.append("delegation.identities must be an object of roles, or false to disable all")
+
     if errs:
         print(f"INVALID: {len(errs)} problem(s) in {path}:")
         for e in errs:
@@ -118,6 +171,9 @@ def main(path):
         return 1
 
     print(f"VALID: {path}")
+    if legacy:
+        print("  NOTE: legacy schemaVersion 1 JSON — still accepted, but migrate to "
+              ".claude/project.yaml (schemaVersion 2); the setup-project skill converts it.")
     print(f"  project: {proj.get('name')}  main={proj.get('mainBranch')}  branches={proj.get('branchPattern')}")
     for b in boards:
         print(f"  board '{b['id']}': {b['repo']} project #{b['projectNumber']}  flow: {' -> '.join(b['statusFlow'])}")
@@ -129,4 +185,5 @@ def main(path):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else ".claude/project.json"))
+    default = ".claude/project.yaml" if os.path.exists(".claude/project.yaml") else ".claude/project.json"
+    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else default))

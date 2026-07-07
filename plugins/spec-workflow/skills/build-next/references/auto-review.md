@@ -13,11 +13,14 @@ writes code or touches the board. Roles stay separated on purpose.
 ## 1. Spawn the reviewer
 
 After the task reaches *In review* (gate recorded green), spawn ONE reviewer
-agent — Agent tool, `subagent_type: general-purpose`, `model:
-<cfg:delegation.prReviewModel>` (default `claude-sonnet-5[1m]` — the large
-context is the point: it holds the full diff + spec sections + design doc at
-once), `name: pr-reviewer-<task-id>`. Keep this SAME agent for every round of
-the task (continue it via SendMessage) so it remembers what it already flagged.
+agent — Agent tool, `subagent_type: general-purpose`, `model:` a suitable id
+from the reviewer identity's allowed set (`bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh" reviewer` prints its `models:`
+line; default set `claude-sonnet-5[1m]`, `claude-sonnet-5`). For a large diff
+prefer the `[1m]` context so one agent holds the full diff + spec sections +
+design doc at once; a small focused PR can use the cheaper standard-context id.
+`name: pr-reviewer-<task-id>`. Keep this SAME agent for every round of the task
+(continue it via SendMessage) so it remembers what it already flagged.
 
 Brief (paste real content, never "see above"):
 
@@ -79,7 +82,7 @@ a loop.
   reviewer's justification>"` — a real distinct approver on the PR.
 - Not set: the same account opened the PR, and GitHub rejects self-approval —
   post it instead: `gh pr review <n> --comment --body "AUTO-REVIEW APPROVE
-  (model: <prReviewModel>): <justification>"`. If branch protection REQUIRES
+  (model: <the reviewer model you used>): <justification>"`. If branch protection REQUIRES
   an approving review, this cannot satisfy it — tell the human they need a
   reviewer token (or relaxed protection) and stop as blocked-on-human.
 
@@ -103,7 +106,7 @@ gh pr merge <n> --squash --delete-branch --body "$(cat <<'EOF'
 <one-line summary of the task>
 
 Applied-by: <identity.sh orchestrator name> (auto-merge, round <k> approval)
-Reviewed-by: <identity.sh reviewer name> (model: <prReviewModel>)
+Reviewed-by: <identity.sh reviewer name> (model: <the reviewer model you used>)
 
 Co-authored-by: <each distinct branch author, e.g. Dev Agent - ... <...+dev_agent@...>>
 EOF
@@ -136,7 +139,8 @@ email. Defaults: `Dev Agent - {name} <{local}+dev_agent@{domain}>` (reviewer/
 orchestrator equivalents). A role set to `null`, `identities: false`, or an
 UNRESOLVED report → that role commits as the human.
 
-- dev brief gets the exact `flags:` line from `identity.sh dev` pasted in.
+- dev brief gets the exact `flags:` line from `identity.sh dev <task path>`
+  (the covers-selected identity) pasted in.
 - orchestrator's own commits (design docs, spec-delta folds) use
   `identity.sh orchestrator`'s flags the same way.
 - the reviewer makes no commits (by design), but `identity.sh reviewer`'s

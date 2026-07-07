@@ -1,11 +1,11 @@
 ---
 name: board
-description: Reads and updates the GitHub Project board configured in .claude/project.json — pick the next task, show an issue with its human comments, move it between statuses, set priority/estimate, reply to comments, file a bug. Use when the user mentions the board, task status, moving/prioritizing an issue #N, filing a bug, or replying on an issue. The board is the source of truth — keep it current in real time.
+description: Reads and updates the GitHub Project board configured in .claude/project.yaml — pick the next task, show an issue with its human comments, move it between statuses, set priority/estimate, reply to comments, file a bug. Use when the user mentions the board, task status, moving/prioritizing an issue #N, filing a bug, or replying on an issue. The board is the source of truth — keep it current in real time.
 ---
 
 # Board interaction
 
-All board operations go through one script (never ad-hoc `gh project` calls — field ids live in `.claude/project.json`):
+All board operations go through one script (never ad-hoc `gh project` calls — field ids live in `.claude/project.yaml`):
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" <subcommand>
@@ -23,7 +23,7 @@ list ["<status>"]
 comment <issue#>            # body on stdin: printf '%s' "text" | board.sh comment N
 edit-body <issue#> <file>   # replace issue body (e.g. updated acceptance criteria)
 fields                      # discover field/option ids (setup only)
-config                      # validate project.json + print summary
+config                      # validate project.yaml + print summary
 ```
 Multiple boards: set `BOARD=<boards[].id>` env var; default is the first board in config.
 

@@ -1,0 +1,48 @@
+# Valid v2 config EXCEPT delegation.identities uses shorthand model ids —
+# validate-config must reject these (v2 requires full nomenclature).
+schemaVersion: 2
+project:
+    name: shorthand-fixture
+    description: shorthand model ids are invalid in v2
+    mainBranch: main
+    branchPattern: fx/<id>-<slug>
+boards:
+  - id: main
+    provider: github-project
+    owner: fixture-owner
+    repo: fixture-owner/fixture-project
+    projectNumber: 1
+    projectId: PVT_fixture0000000
+    fields:
+        status:
+            fieldId: PVTSSF_fixtureStatus0
+            options:
+                Backlog: aaaa0001
+                In progress: aaaa0002
+                In review: aaaa0003
+                Deployed: aaaa0004
+        priority:
+            fieldId: PVTSSF_fixturePrio00
+            options:
+                P0: bbbb0001
+                P1: bbbb0002
+    statusFlow: [Backlog, In progress, In review, Deployed]
+specs:
+  - id: core
+    title: Core fixture spec
+    board: main
+    specPath: SPEC.md
+    taskPrefix: FX
+    epics:
+      - id: E0
+        taskRanges: [[1, 9]]
+commands:
+    gate: "true"
+delegation:
+    identities:
+        dev:
+            models: ["sonnet"]
+        reviewer:
+            models: ["claude-sonnet-5", "opus"]
+methodology:
+    maxInProgress: 1

@@ -1,11 +1,13 @@
 ---
 name: setup-project
-description: Bootstraps a repository for the spec-workflow — creates the GitHub Project board, auto-fills .claude/project.json ids via init-config.sh, validates the config, and sets up local-state gitignores. Use for 'set up this repo', 'adopt the workflow', 'initialize the board', or onboarding a new/existing project.
+description: Bootstraps a repository for the spec-workflow — creates the GitHub Project board, auto-fills .claude/project.yaml ids via init-config.sh, validates the config, and sets up local-state gitignores. Use for 'set up this repo', 'adopt the workflow', 'initialize the board', or onboarding a new/existing project.
 ---
 
 # Set up a repository for the spec-workflow
 
-Goal: after this skill, the repo has a valid `.claude/project.json` (schemaVersion 1), a GitHub Project board wired to it, and is ready for `seed-board` → `/loop /spec-workflow:build-next`.
+Goal: after this skill, the repo has a valid `.claude/project.yaml` (schemaVersion 2), a GitHub Project board wired to it, editor schema wiring, and is ready for `seed-board` → `/loop /spec-workflow:build-next`.
+
+Config is YAML (`.claude/project.yaml`, schemaVersion 2). A legacy `.claude/project.json` (schemaVersion 1) is still read (deprecated) — `init-config.sh` converts one to `project.yaml` and tells you to delete the old file after review.
 
 Work through the phases in order. Do not skip validation.
 
@@ -24,29 +26,36 @@ Each spec is a design document plus a backlog of numbered tasks. One repo can ha
 ## Phase 3 — GitHub Project board
 Create one board per `boards[]` entry you plan (usually one). Exact commands: read `${CLAUDE_PLUGIN_ROOT}/skills/setup-project/references/github-project-setup.md` **now** and follow it. It covers: creating the Project, adding the Status options, Priority and Estimate fields.
 
-## Phase 4 — write .claude/project.json
+## Phase 4 — write .claude/project.yaml
 1. Auto-fill the board ids (creates the config from the template if none exists, else updates `boards[0]` in place):
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/init-config.sh" <owner> <owner/repo> <project-number>
    ```
    Review its output: reorder `statusFlow` / priority options if the board returned them in a different order than the intended pipeline/rank.
-2. Fill every field. The full schema with descriptions is `${CLAUDE_PLUGIN_ROOT}/schemas/project-config.schema.json`; keep the template's `$schema` line — it gives humans editor autocomplete/validation. Key decisions:
+2. Fill every field. The full schema with descriptions is `${CLAUDE_PLUGIN_ROOT}/schemas/project-config.schema.json`; keep the template's first-line `# yaml-language-server: $schema=...` modeline — the Red Hat YAML extension downloads modeline schemas without the JSON-language-server trust wall, so hover + autocomplete work. Key decisions:
    - `project.branchPattern` — e.g. `<prefix>/<id>-<slug>` → branches like `cp/012-error-model`.
    - `boards[]` — ids from Phase 3. `statusFlow` order **is** the pipeline; priority `options` order **is** the priority order (highest first).
    - `specs[]` — one entry per spec: unique `taskPrefix`, `epics` in build order with `taskRanges`, and `blockedBy` guards for hard dependencies (e.g. nothing from E1 until E0 is fully Deployed).
    - `specs[].invariants` — the project's hard rules, stated imperatively; they are pasted verbatim into every implementation brief, so make them self-contained.
    - `commands.gate` — ONE command running build+lint+format+tests. Create it (e.g. a `gate` script in package.json) if it doesn't exist; the whole workflow hinges on it.
+   - `delegation.identities` — the agent roster: who codes/reviews/orchestrates, as whom, and each role's ALLOWED `models` (full ids only; the orchestrator picks a suitable one per task). The template's defaults (per-person plus-addressed names, dev/reviewer model sets) work as-is; the `agent-identities` and `pr-review-model` skills tune them later. In a monorepo you can make `dev` an array of per-package identities with `covers` path globs (the entry with no `covers` is the fallback).
    - **Merge policy** — AskUserQuestion (header "Merging"): does a human approve/merge every PR (default, `methodology.autoMerge: false`) or does the loop review+merge autonomously (`true` — the `auto-merge` skill explains/toggles it later)? If autonomous, also ask `methodology.mergeMethod`: **squash (Recommended)** — linear history; per-role commit attribution is preserved as `Co-authored-by:` trailers in the squash body plus the PR link — vs **merge** — keeps the individual role-attributed commits on main — vs **rebase**. Also mention `docs[]`: declare where documentation lives (one set for a standalone repo, one per package for a monorepo) so the reviewer can enforce doc maintenance.
 3. Validate — must print `VALID`:
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" config
    ```
 
-## Phase 5 — repo hygiene
+## Phase 5 — repo hygiene + editor wiring
 - Add the local flags + state to `.gitignore`: `printf '.claude/CHECKPOINT\n.claude/ITERATIVE_UI_OFF\n.claude/ui-hub/\n.claude/gate-pass\n' >> .gitignore`
+- **Editor schema (VSCode)** — so `project.yaml` gets hover + autocomplete, merge these into the repo's `.vscode/` files WITHOUT clobbering existing settings (read each file first; add only the missing keys, preserve the rest). The modeline in `project.yaml` already helps; this makes it explicit and recommends the extension.
+  - `.vscode/settings.json` — add under `yaml.schemas`:
+    ```json
+    { "yaml.schemas": { "https://raw.githubusercontent.com/event-sorcerer/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json": ".claude/project.yaml" } }
+    ```
+  - `.vscode/extensions.json` — add `"redhat.vscode-yaml"` to `recommendations` (the Red Hat YAML extension that reads the modeline schema).
 - Create `paths.handoffDir` (default `docs/handoffs/`).
 - If the project has a dev stack, set `commands.devUp` and write the doc at `paths.devDoc` (ports, profiles, preconditions).
-- Commit `.claude/project.json` + docs.
+- Commit `.claude/project.yaml` + `.vscode/*` + docs.
 
 ## Phase 6 — seed and go
 1. Run the `seed-board` skill to create one issue + board item per backlog task.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# board.sh — generic GitHub Project board interface, driven by .claude/project.json (schemaVersion 1).
+# board.sh — generic GitHub Project board interface, driven by .claude/project.yaml (schemaVersion 2; legacy .json still read).
 # Part of the spec-workflow plugin. All board reads/writes go through this script so the
 # model never has to know field/option ids.
 #
@@ -13,21 +13,24 @@
 #   board.sh comment <issue#> <<'EOF' ... EOF          # reply to humans on the issue (body on stdin)
 #   board.sh edit-body <issue#> <file>                 # replace issue body (updated acceptance criteria)
 #   board.sh fields                   # discover field + option ids (used by setup-project)
-#   board.sh config                   # validate project.json and print a summary
+#   board.sh config                   # validate the config and print a summary
 #
 # Env: PROJECT_CONFIG (config path override), BOARD (boards[].id override; default = first board).
 set -uo pipefail
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"  # inline python readers import config.py
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-CONFIG="${PROJECT_CONFIG:-$ROOT/.claude/project.json}"
-[[ -f "$CONFIG" ]] || { echo "ERROR: $CONFIG not found. Run the setup-project skill first." >&2; exit 1; }
+CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
+[[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .claude/project.yaml (or legacy .json) found. Run the setup-project skill first." >&2; exit 1; }
 
 # Resolve the active board's ids into shell vars (OWNER REPO PN PID STATUS_FIELD PRIO_FIELD EST_FIELD BUG_LABEL FIRST_STATUS)
 eval "$(python3 - "$CONFIG" "${BOARD:-}" <<'PY'
 import json, sys
-cfg = json.load(open(sys.argv[1]))
+import config as C
+cfg = C.load_config(path=sys.argv[1], warn=False)
 bid = sys.argv[2]
-boards = cfg.get("boards") or sys.exit("ERROR: no boards in project.json")
+boards = cfg.get("boards") or sys.exit("ERROR: no boards in the config")
 b = next((x for x in boards if x["id"] == bid), boards[0])
 f = b["fields"]
 def sh(k, v): print(f'{k}={json.dumps(str(v))}')
@@ -41,8 +44,9 @@ PY
 
 opt_id() { # $1=status|priority  $2=option name (case-insensitive) -> option id
     python3 - "$CONFIG" "${BOARD:-}" "$1" "$2" <<'PY'
-import json, sys
-cfg = json.load(open(sys.argv[1])); bid = sys.argv[2]
+import sys
+import config as C
+cfg = C.load_config(path=sys.argv[1], warn=False); bid = sys.argv[2]
 b = next((x for x in cfg["boards"] if x["id"] == bid), cfg["boards"][0])
 opts = b["fields"][sys.argv[3]]["options"]
 q = sys.argv[4].strip().lower()
@@ -59,7 +63,7 @@ case "${1:-}" in
     next)
         _tmp="$(mktemp)"; trap 'rm -f "$_tmp"' EXIT
         gh project item-list "$PN" --owner "$OWNER" --format json --limit 400 >"$_tmp"
-        python3 "$(dirname "$0")/next.py" "$CONFIG" "${BOARD:-}" "$_tmp" "${2:-}"
+        python3 "$HERE/next.py" "$CONFIG" "${BOARD:-}" "$_tmp" "${2:-}"
         ;;
     show)
         # --json avoids gh's default field set, which queries the deprecated
@@ -89,7 +93,7 @@ case "${1:-}" in
         ;;
     bug)
         title="$2"; prio="${3:-}"; link="${4:-}"
-        [[ -z "$prio" ]] && prio="$(python3 -c 'import json,sys;c=json.load(open(sys.argv[1]));b=c["boards"][0];print(list(b["fields"]["priority"]["options"])[0])' "$CONFIG")"
+        [[ -z "$prio" ]] && prio="$(python3 -c 'import sys; import config as C; c=C.load_config(path=sys.argv[1], warn=False); b=c["boards"][0]; print(list(b["fields"]["priority"]["options"])[0])' "$CONFIG")"
         body="Bug found after a task reached a released status; filed as new work (never reopen shipped tasks)."
         [[ -n "$link" ]] && body="$body Originating task: #$link."
         url=$(gh issue create -R "$REPO" --title "BUG: $title" --body "$body" --label "$BUG_LABEL")
@@ -117,7 +121,7 @@ for f in json.load(sys.stdin)["fields"]:
     for o in f.get("options", []): print(f'"'"'    {o["id"]}  {o["name"]}'"'"')'
         ;;
     config)
-        exec python3 "$(dirname "$0")/validate-config.py" "$CONFIG"
+        exec python3 "$HERE/validate-config.py" "$CONFIG"
         ;;
     *)
         echo "usage: board.sh {next|show|move|prio|est|bug|list|comment|edit-body|fields|config} ..." >&2

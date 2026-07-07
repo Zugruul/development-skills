@@ -56,7 +56,7 @@ claude plugin marketplace add /path/to/development-skills
 
 ### spec-workflow
 
-Spec-driven autonomous build workflow. A repo declares its boards, specs, epics, guards, gate command, and conventions in a **versioned config** (`.claude/project.json`, schemaVersion 1 — schema in `plugins/spec-workflow/schemas/`); the plugin's skills and scripts read that config, so the same workflow drives any project.
+Spec-driven autonomous build workflow. A repo declares its boards, specs, epics, guards, gate command, delegation roster, and conventions in a **versioned YAML config** (`.claude/project.yaml`, schemaVersion 2 — schema in `plugins/spec-workflow/schemas/`, wired for editor hover/autocomplete via a `# yaml-language-server` modeline; needs PyYAML); the plugin's skills and scripts read that config through one shared loader, so the same workflow drives any project. A legacy `.claude/project.json` (schemaVersion 1) is still read and auto-converted (deprecated).
 
 | Skill | Purpose |
 |---|---|

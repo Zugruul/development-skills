@@ -12,9 +12,9 @@ allowed-tools: Bash, AskUserQuestion
 
 **Invoked with NO argument**: first run `merge-mode.sh status`, then use AskUserQuestion (single question, header "Auto-merge") with the current state noted in the question. Options — put the CURRENT state's opposite first:
 
-- **Turn ON** — description: "The build loop reviews, approves, and merges its own PRs (independent reviewer agent on `delegation.prReviewModel`, ≤3 fix rounds). You steer via issue comments only." Preview:
+- **Turn ON** — description: "The build loop reviews, approves, and merges its own PRs (independent reviewer agent on a suitable model from `delegation.identities.reviewer.models`, ≤3 fix rounds). You steer via issue comments only." Preview:
   ```
-  gate green ─→ In review ─→ reviewer agent (claude-sonnet-5[1m])
+  gate green ─→ In review ─→ reviewer agent (allowed models, e.g. claude-sonnet-5[1m])
                                │ REQUEST_CHANGES ⇄ dev agent (≤3 rounds)
                                ▼ APPROVE
                              gh pr merge ─→ QA  + announce to team
@@ -27,6 +27,6 @@ allowed-tools: Bash, AskUserQuestion
   ```
 - **Just show status** — description: "No change; report the current configuration."
 
-Apply the choice with `merge-mode.sh on|off` (or nothing). This edits `methodology.autoMerge` in `.claude/project.json` — a **versioned, project-wide** change (every clone obeys it); remind the user to commit it.
+Apply the choice with `merge-mode.sh on|off` (or nothing). This edits `methodology.autoMerge` in `.claude/project.yaml` — a **versioned, project-wide** change (every clone obeys it); remind the user to commit it.
 
 After turning **on**, also check the status line for `reviewerTokenEnv`: if unset, warn that approvals will be review comments only — branch protection that *requires* an approving review needs a second account's token (`delegation.reviewerTokenEnv`). Offer the `pr-review-model` skill if they also want to pick the reviewer model. Protocol details: `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/auto-review.md`.

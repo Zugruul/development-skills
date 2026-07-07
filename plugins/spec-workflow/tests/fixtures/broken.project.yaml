@@ -1,0 +1,33 @@
+schemaVersion: 1
+project:
+    name: broken
+boards:
+  - id: main
+    provider: github-project
+    owner: o
+    repo: o/r
+    projectNumber: 1
+    projectId: PVT_x
+    fields:
+        status:
+            fieldId: PVTSSF_x
+            options:
+                Backlog: a1
+        priority:
+            fieldId: PVTSSF_y
+            options: {}
+    statusFlow: [Backlog, Done]
+specs:
+  - id: core
+    board: nonexistent-board
+    specPath: SPEC.md
+    taskPrefix: 1bad
+    epics:
+      - id: E0
+        taskRanges: [[1, 9]]
+      - id: E1
+        taskRanges: [[5, 12]]
+        blockedBy:
+          - epic: EZ
+            untilStatus: Shipped
+commands: {}

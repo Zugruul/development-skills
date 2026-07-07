@@ -14,6 +14,9 @@ jobs:
       - name: shellcheck
         run: shellcheck plugins/*/scripts/*.sh plugins/*/tests/*.sh
 
+      - name: install PyYAML (config loader + eval checks need it)
+        run: pip install --quiet pyyaml
+
       - name: plugin tests (config validator + preflight fixtures)
         run: |
           git config --global user.email ci@example.com
@@ -22,7 +25,6 @@ jobs:
 
       - name: validate eval case files
         run: |
-          pip install --quiet pyyaml
           for c in plugins/*/tests/check-evals.py; do python3 "$c"; done
 
   validate-manifests:

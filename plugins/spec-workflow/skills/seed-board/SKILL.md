@@ -10,7 +10,7 @@ Pre-start check: !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh" --spec`
 If the line above says `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
 ## 1. Build the task file
-From the spec's backlog doc (`specs[].backlogPath` in `.claude/project.json`), write one line per task to a temp file (`#` comments and blank lines allowed):
+From the spec's backlog doc (`specs[].backlogPath` in `.claude/project.yaml`), write one line per task to a temp file (`#` comments and blank lines allowed):
 ```
 <task-id>|<priority>|<points>|<epic-id>|<title>
 CP-001|P0|5|E0|Repo scaffold: pnpm workspace + tsconfig

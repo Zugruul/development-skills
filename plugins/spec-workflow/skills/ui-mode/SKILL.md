@@ -13,7 +13,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/ui-mode.sh" off      # this clone stops dele
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/ui-mode.sh" on       # delegate again
 ```
 
-Report the script's output verbatim — it names the mechanism (`.claude/ITERATIVE_UI_OFF` local flag, or the project-wide `methodology.iterativeUI=false` in `.claude/project.json`). The flag is local and gitignored: toggling never affects other clones or CI.
+Report the script's output verbatim — it names the mechanism (`.claude/ITERATIVE_UI_OFF` local flag, or the project-wide `methodology.iterativeUI=false` in `.claude/project.yaml`). The flag is local and gitignored: toggling never affects other clones or CI.
 
 After turning **off**: check for decisions still pending in the hub (`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/ui-hub.py" status`); if any, tell the user those cards will now be decided by the agent unless they answer them first.
 After turning **on**: remind the user of the hub URL if the server is running.

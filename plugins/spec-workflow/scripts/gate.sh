@@ -4,12 +4,13 @@
 # the guard-board-move hook refuses 'move ... "In review"' unless a matching
 # pass exists, so a red/unrun gate cannot be bypassed by prose.
 set -uo pipefail
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-CONFIG="${PROJECT_CONFIG:-$ROOT/.claude/project.json}"
-MARKER="$ROOT/.claude/gate-pass"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
+MARKER="$ROOT/.claude/gate-pass"
 
-GATE="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["commands"]["gate"])' "$CONFIG")" ||
+GATE="$(python3 -c 'import sys; import config as C; print(C.load_config(path=sys.argv[1], warn=False)["commands"]["gate"])' "$CONFIG")" ||
     { echo "ERROR: cannot read commands.gate from $CONFIG" >&2; exit 1; }
 
 echo "gate: $GATE"

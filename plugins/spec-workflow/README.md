@@ -2,7 +2,9 @@
 
 Spec-driven autonomous build workflow for Claude Code: a GitHub Project board is the source of truth, tasks are implemented TDD-first by delegated dev agents, a single gate command decides advancement, and humans steer asynchronously through issue comments and UI-option pages.
 
-Everything project-specific lives in the consumer repo's **`.claude/project.json`** (versioned, `schemaVersion: 1` — [schema](./schemas/project-config.schema.json) with editor `$schema` support): boards + field ids, one or more specs with epics/task ranges/dependency guards, hard invariants, gate/dev commands, `docs[]` sets (where documentation lives + which code paths each covers — one set for a standalone repo, one per package for a monorepo; the reviewer blocks PRs that change covered behavior without updating them), delegation models (incl. `prReviewModel` and per-role commit `identities` — template-resolved per clone), paths, and methodology knobs (`maxInProgress`, `iterativeUI`, `isolationSuite`, and `autoMerge`/`mergeMethod` — autonomous PR review, approval, and merge in place of human approval; protocol in [`skills/build-next/references/auto-review.md`](./skills/build-next/references/auto-review.md)).
+Everything project-specific lives in the consumer repo's **`.claude/project.yaml`** (versioned, `schemaVersion: 2`, YAML — [schema](./schemas/project-config.schema.json)): boards + field ids, one or more specs with epics/task ranges/dependency guards, hard invariants, gate/dev commands, `docs[]` sets (where documentation lives + which code paths each covers — one set for a standalone repo, one per package for a monorepo; the reviewer blocks PRs that change covered behavior without updating them), the `delegation.identities` roster (each role's git author templates AND its ALLOWED `models`, resolved per-clone; a role may be an array of per-package identities routed by `covers` globs), paths, and methodology knobs (`maxInProgress`, `iterativeUI`, `isolationSuite`, and `autoMerge`/`mergeMethod` — autonomous PR review, approval, and merge in place of human approval; protocol in [`skills/build-next/references/auto-review.md`](./skills/build-next/references/auto-review.md)).
+
+**Editor support**: `project.yaml`'s first line is a `# yaml-language-server: $schema=…` modeline; the Red Hat YAML extension (`redhat.vscode-yaml`) reads it for hover + autocomplete. `setup-project` also writes a `.vscode/` `yaml.schemas` mapping and an extension recommendation. **Legacy**: a `.claude/project.json` (schemaVersion 1, old `delegation.devModel/reviewModel/prReviewModel` keys) is still read — normalized to the v2 shape with a deprecation warning; `init-config.sh` converts it to `project.yaml`. Requires **PyYAML** (`pip3 install pyyaml`).
 
 ## Skills
 
@@ -17,15 +19,15 @@ Everything project-specific lives in the consumer repo's **`.claude/project.json
 | `ui-options` | Iterative UI mode: options page with favorite + aspect selection for the human |
 | `gate` | The single green-before-advance quality command |
 | `auto-merge` | Status/on/off for autonomous PR review+merge (`methodology.autoMerge`); asks with flow previews when called bare |
-| `pr-review-model` | Show/set the autonomous PR reviewer's model (`delegation.prReviewModel`); asks with options when called bare |
-| `agent-identities` | Show/set per-role commit identities (`{name}`/`{local}+suffix@{domain}` templates, per-clone resolution) |
+| `pr-review-model` | Show/set the autonomous PR reviewer's allowed models (`delegation.identities.reviewer.models`); asks with options when called bare |
+| `agent-identities` | Show/set per-role identities — name/email templates, allowed `models`, `covers` routing (per-clone resolution) |
 | `build-next` | One loop iteration — drive with `/loop /spec-workflow:build-next` |
 | `checkpoint` / `handoff` | Pause/resume the loop via a local flag; session handoff docs |
 | `dev-up` | Bring up the project's dev stack for QA |
 
 ## Scripts (`scripts/`)
 
-`board.sh` (next/show/move/prio/est/bug/list/comment/edit-body/fields/config) · `next.py` (picker: priority → epic rank → guards → WIP resume) · `init-config.sh` (auto-fill board ids from a live project) · `seed-board.sh` · `preflight.sh` (load-time config/spec checks injected into spec-requiring skills) · `validate-config.py` · `merge-mode.sh` (auto-merge status/on/off + reviewer model/merge method) · `identity.sh` (per-role commit identity resolution: `{name}`, `{local}+suffix@{domain}`; `--check` runs in preflight).
+`config.py` (the shared loader: finds `.claude/project.yaml`, normalizes legacy json, `get`/`json`/`path` verbs for bash callers) · `board.sh` (next/show/move/prio/est/bug/list/comment/edit-body/fields/config) · `next.py` (picker: priority → epic rank → guards → WIP resume) · `init-config.sh` (auto-fill board ids from a live project; writes `project.yaml`) · `seed-board.sh` · `preflight.sh` (load-time config/spec checks injected into spec-requiring skills) · `validate-config.py` · `merge-mode.sh` (auto-merge status/on/off + reviewer models/merge method) · `identity.sh` (per-role identity + allowed-models resolution, `covers` path routing; `--check` runs in preflight).
 
 ## Human steering
 

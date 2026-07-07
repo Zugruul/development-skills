@@ -9,7 +9,7 @@ The build loop checks a flag file (config `paths.checkpointFile`, default `.clau
 
 ## Pause
 ```bash
-FLAG=$(jq -r '.paths.checkpointFile // ".claude/CHECKPOINT"' .claude/project.json)
+FLAG=$(jq -r '.paths.checkpointFile // ".claude/CHECKPOINT"' .claude/project.yaml)
 echo "optional reason, used verbatim in the handoff" > "$FLAG"   # or just: touch "$FLAG"
 ```
 At the next iteration boundary the loop must: start no new work; leave any *In progress* task on its branch with the board accurate (never faked forward); write a `handoff` (including the flag file's reason); stop and report.

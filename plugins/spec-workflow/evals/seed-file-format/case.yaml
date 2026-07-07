@@ -9,30 +9,31 @@ context:
   scaffold_script: |
     git init -q .
     mkdir -p .claude docs
-    cat > .claude/project.json <<'EOF'
-    {
-        "schemaVersion": 1,
-        "project": { "name": "fixture", "mainBranch": "main", "branchPattern": "fx/<id>-<slug>" },
-        "boards": [{
-            "id": "main", "provider": "github-project",
-            "owner": "fixture-owner", "repo": "fixture-owner/fixture",
-            "projectNumber": 1, "projectId": "PVT_fixture0000000",
-            "fields": {
-                "status": { "fieldId": "PVTSSF_fixStatus", "options": { "Backlog": "aa01", "In progress": "aa02", "In review": "aa03", "Deployed": "aa04" } },
-                "priority": { "fieldId": "PVTSSF_fixPrio", "options": { "P0": "bb01", "P1": "bb02" } },
-                "estimate": { "fieldId": "PVTF_fixEst" }
-            },
-            "statusFlow": ["Backlog", "In progress", "In review", "Deployed"]
-        }],
-        "specs": [{
-            "id": "core", "board": "main", "specPath": "SPEC.md", "backlogPath": "docs/BACKLOG.md", "taskPrefix": "FX",
-            "epics": [
-                { "id": "E0", "taskRanges": [[1, 9]] },
-                { "id": "E1", "taskRanges": [[10, 19]], "blockedBy": [{ "epic": "E0", "untilStatus": "Deployed" }] }
-            ]
-        }],
-        "commands": { "gate": "true" }
-    }
+    cat > .claude/project.yaml <<'EOF'
+    schemaVersion: 2
+    project: { name: fixture, mainBranch: main, branchPattern: "fx/<id>-<slug>" }
+    boards:
+      - id: main
+        provider: github-project
+        owner: fixture-owner
+        repo: fixture-owner/fixture
+        projectNumber: 1
+        projectId: PVT_fixture0000000
+        fields:
+            status: { fieldId: PVTSSF_fixStatus, options: { Backlog: aa01, In progress: aa02, In review: aa03, Deployed: aa04 } }
+            priority: { fieldId: PVTSSF_fixPrio, options: { P0: bb01, P1: bb02 } }
+            estimate: { fieldId: PVTF_fixEst }
+        statusFlow: [Backlog, In progress, In review, Deployed]
+    specs:
+      - id: core
+        board: main
+        specPath: SPEC.md
+        backlogPath: docs/BACKLOG.md
+        taskPrefix: FX
+        epics:
+          - { id: E0, taskRanges: [[1, 9]] }
+          - { id: E1, taskRanges: [[10, 19]], blockedBy: [{ epic: E0, untilStatus: Deployed }] }
+    commands: { gate: "true" }
     EOF
     echo "# spec" > SPEC.md
     cat > docs/BACKLOG.md <<'EOF'

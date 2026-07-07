@@ -9,7 +9,7 @@ allowed-tools: Bash
 Pre-start check: !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh" --spec`
 If the line above says `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
-You (the orchestrator) do **not** write the implementation. You brief a subagent, verify its result, and keep the board honest. Read `.claude/project.json` first — it supplies every `<cfg:...>` value below. `board.sh` = `bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh"`.
+You (the orchestrator) do **not** write the implementation. You brief a subagent, verify its result, and keep the board honest. Read `.claude/project.yaml` first — it supplies every `<cfg:...>` value below. `board.sh` = `bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh"`.
 
 ## 0. Prep
 1. `board.sh show N` — read body **and all comments** (human steering lives there). If comments change scope: fold them into the body via `board.sh edit-body`, then acknowledge via `board.sh comment` (see `next-task`).
@@ -22,7 +22,7 @@ You (the orchestrator) do **not** write the implementation. You brief a subagent
    ```
 
 ## 1. Spawn the dev agent
-Agent tool with `subagent_type: general-purpose`, `model: <cfg:delegation.devModel>`, and a descriptive `name`. One agent = one task. Fill EVERY section of the brief — specific WHAT/WHY beats generic. The subagent sees ONLY the brief: paste actual text (criteria, spec excerpts, invariants, error output), never write "as discussed" or "see above".
+Resolve the dev identity for THIS task's paths first: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh" dev <a representative changed/expected path>`. In a monorepo the `covers` globs route to the right per-package dev agent; with a single dev identity it just returns that one. The resolved `models:` line is that agent's ALLOWED set — pick the most SUITABLE one for this task (cheaper/smaller for a simple change, a larger-context `[1m]` variant for a big diff), never reflexively the most powerful. Spawn with the Agent tool, `subagent_type: general-purpose`, `model: <the id you chose from that allowed set>`, and a descriptive `name`. One agent = one task. Fill EVERY section of the brief — specific WHAT/WHY beats generic. The subagent sees ONLY the brief: paste actual text (criteria, spec excerpts, invariants, error output), never write "as discussed" or "see above".
 
 ```
 You are a senior engineer implementing ONE task of <cfg:project.name> (<cfg:project.description>).
@@ -55,7 +55,7 @@ Branch already checked out: <branch>.
    the task's expected paths — id, path, notes>. If your diff changes behavior/config/usage a
    set documents, update it in the same PR; if none needed, say why in the PR body.
 6. Author every commit with these exact flags (per-commit -c flags only — never git config writes):
-   git <paste the `flags:` line from `bash "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh" dev`> commit ...
+   git <paste the `flags:` line from `bash "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh" dev <this task's path>` — same covers-selected identity as the spawn> commit ...
    <omit this section if identity.sh reports the dev role OFF or UNRESOLVED>
 
 ## WHY
@@ -78,11 +78,11 @@ Large task? Split into sequential briefs (e.g. tests+core, then edge cases), eac
 ```bash
 board.sh move N "In review"     # a hook blocks this unless gate.sh recorded a pass for the current tree
 ```
-Review in **two passes**, each by a review agent (`model: <cfg:delegation.reviewModel>`): (1) **spec compliance** — does the diff satisfy each acceptance criterion and cited spec §, nothing more, nothing less; (2) **code quality** — correctness, style, tests. Relay findings to a dev agent; re-gate. A single combined pass reliably misses "passes tests but isn't what the spec said."
+Review in **two passes**, each by a review agent (`model:` a suitable id from the reviewer identity's allowed set — `bash "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh" reviewer` prints its `models:` line): (1) **spec compliance** — does the diff satisfy each acceptance criterion and cited spec §, nothing more, nothing less; (2) **code quality** — correctness, style, tests. Relay findings to a dev agent; re-gate. A single combined pass reliably misses "passes tests but isn't what the spec said."
 
 Orchestrator-authored commits (design docs, spec-delta folds) use the `flags:` line from `identity.sh orchestrator` the same per-commit way (skip if OFF/UNRESOLVED).
 
-**Auto-merge** (`methodology.autoMerge: true`): after both passes are clean, do NOT wait for a human — run the PR-review/approve/merge protocol in `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/auto-review.md` (independent reviewer agent on `cfg:delegation.prReviewModel`, ≤3 fix rounds, approval recorded on the PR, `gh pr merge`, merge announced on the issue + to live teammates).
+**Auto-merge** (`methodology.autoMerge: true`): after both passes are clean, do NOT wait for a human — run the PR-review/approve/merge protocol in `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/auto-review.md` (independent reviewer agent on a suitable model from the reviewer identity's allowed list, ≤3 fix rounds, approval recorded on the PR, `gh pr merge`, merge announced on the issue + to live teammates).
 
 ## 4. Stop
 One task per invocation. Report: task, gate result, PR link, board status. Later statuses (QA/Ready/Deployed) only when merge/validation/publish actually happen.

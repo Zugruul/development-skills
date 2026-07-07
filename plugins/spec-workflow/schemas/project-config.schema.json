@@ -1,11 +1,11 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "$id": "spec-workflow/project-config/v1",
-    "title": "spec-workflow project config (.claude/project.json), schemaVersion 1",
+    "$id": "spec-workflow/project-config/v2",
+    "title": "spec-workflow project config (.claude/project.yaml), schemaVersion 2",
     "type": "object",
     "required": ["schemaVersion", "project", "boards", "specs", "commands"],
     "properties": {
-        "schemaVersion": { "const": 1 },
+        "schemaVersion": { "const": 2 },
         "project": {
             "type": "object",
             "required": ["name", "mainBranch", "branchPattern"],
@@ -151,30 +151,24 @@
         },
         "delegation": {
             "type": "object",
+            "description": "Who codes/reviews/orchestrates, as whom, and on which ALLOWED models. In schemaVersion 2 models live INSIDE each identity (there is no delegation.devModel/reviewModel/prReviewModel — those legacy v1 keys are mapped into identities.<role>.models on load).",
             "properties": {
-                "devModel": { "type": "string", "default": "sonnet", "description": "Model for implementation subagents." },
-                "reviewModel": { "type": "string", "default": "sonnet" },
-                "prReviewModel": {
-                    "type": "string",
-                    "default": "claude-sonnet-5[1m]",
-                    "description": "Model for the autonomous PR-review agent used when methodology.autoMerge is true. A large-context variant is recommended so one agent can hold the full diff + spec + design doc."
-                },
                 "reviewerTokenEnv": {
                     "type": "string",
                     "description": "Name of an env var holding a GitHub token for a SECOND account (machine user / bot). When set, the auto-merge approval is submitted with that token (GH_TOKEN=$<var> gh pr review --approve), so the PR shows a real distinct approver — GitHub rejects self-approval from the account that opened the PR. When absent, the verdict is posted as a review comment instead."
                 },
                 "identities": {
-                    "description": "Per-role git author identities, ON by default. Values are templates resolved per-clone by scripts/identity.sh: {name} -> git config user.name, {local}/{domain} -> git config user.email parts — so each person's clone attributes agent commits to their own plus-addressed email (e.g. {local}+reviewer_agent@{domain} -> leonardo.marcelino+reviewer_agent@outlook.com). Placeholder-free values are literal (shared bot accounts). Built-in defaults per role: name 'Dev Agent - {name}' / 'Reviewer Agent - {name}' / 'Orchestrator Agent - {name}', email {local}+<role>_agent@{domain}. Set a role to null to make it commit as the human; set identities to false to disable all roles. Attribution only — GitHub links an avatar only if the resolved email belongs to a GitHub account.",
+                    "description": "Per-role agent identities (git author + allowed models), ON by default. A role maps to ONE identity or an ARRAY of identities (monorepo routing via `covers`). name/email are templates resolved per-clone by scripts/identity.sh: {name} -> git config user.name, {local}/{domain} -> git config user.email parts — so each person's clone attributes agent commits to their own plus-addressed email. Placeholder-free values are literal (shared bot accounts). Built-in defaults: dev/reviewer/orchestrator names 'Dev Agent - {name}' / 'Reviewer Agent - {name}' / 'Orchestrator Agent - {name}', email {local}+<role>_agent@{domain}; model defaults dev ['claude-sonnet-5'], reviewer ['claude-sonnet-5','claude-sonnet-5[1m]'], orchestrator none. Set a role to null to make it commit as the human; set identities to false to disable all roles.",
                     "oneOf": [
                         { "const": false },
                         {
                             "type": "object",
                             "properties": {
-                                "dev": { "$ref": "#/definitions/identity" },
-                                "reviewer": { "$ref": "#/definitions/identity" },
-                                "orchestrator": { "$ref": "#/definitions/identity" }
+                                "dev": { "$ref": "#/definitions/roleIdentity" },
+                                "reviewer": { "$ref": "#/definitions/roleIdentity" },
+                                "orchestrator": { "$ref": "#/definitions/roleIdentity" }
                             },
-                            "additionalProperties": { "$ref": "#/definitions/identity" }
+                            "additionalProperties": { "$ref": "#/definitions/roleIdentity" }
                         }
                     ]
                 }
@@ -204,7 +198,7 @@
                 "autoMerge": {
                     "type": "boolean",
                     "default": false,
-                    "description": "When true, build-next skips human PR approval: an autonomous reviewer agent (delegation.prReviewModel) reviews the PR, dialogues fixes with the orchestrator until it approves, then the orchestrator merges and announces the merge. Protocol: build-next skill, references/auto-review.md."
+                    "description": "When true, build-next skips human PR approval: an autonomous reviewer agent (a suitable model from delegation.identities.reviewer.models) reviews the PR, dialogues fixes with the orchestrator until it approves, then the orchestrator merges and announces the merge. Protocol: build-next skill, references/auto-review.md."
                 },
                 "mergeMethod": {
                     "type": "string",
@@ -216,17 +210,34 @@
         }
     },
     "definitions": {
-        "identity": {
+        "roleIdentity": {
             "oneOf": [
                 { "type": "null", "description": "Opt this role out — it commits as the human." },
+                { "$ref": "#/definitions/identity" },
                 {
-                    "type": "object",
-                    "properties": {
-                        "name": { "type": "string", "description": "Template or literal; {name} = git config user.name. Omit to keep the role's default." },
-                        "email": { "type": "string", "description": "Template or literal; {local}/{domain} = git config user.email parts. Omit to keep the role's default." }
-                    }
+                    "type": "array",
+                    "minItems": 1,
+                    "items": { "$ref": "#/definitions/identity" },
+                    "description": "Several identities for one role (e.g. per-package dev agents). Selection: `covers` globs are matched against the task's changed/expected paths (deterministic, resolved by identity.sh), then the orchestrator judges among ties/no-match. Fallback = the first entry without `covers`, else the first entry."
                 }
             ]
+        },
+        "identity": {
+            "type": "object",
+            "properties": {
+                "name": { "type": "string", "description": "Template or literal; {name} = git config user.name. Omit to keep the role's default." },
+                "email": { "type": "string", "description": "Template or literal; {local}/{domain} = git config user.email parts. Omit to keep the role's default." },
+                "models": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "The ONLY models this identity may run on — FULL nomenclature ids only (e.g. 'claude-sonnet-5[1m]', 'claude-sonnet-5', 'claude-haiku-4-5'), never shorthand like 'sonnet'. The orchestrator picks the most SUITABLE allowed model per task (cheaper/smaller for simple changes, larger-context [1m] for big diffs) — never 'always the most powerful'. The reviewer identity's models serve BOTH the two-pass implement-task review AND the auto-merge PR gate. Omit to use the role's default set."
+                },
+                "covers": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Optional path globs (fnmatch, ** crosses directories). When a task's changed/expected paths match, this identity is selected (monorepo per-package routing). An entry with no `covers` is the fallback."
+                }
+            }
         },
         "singleSelectField": {
             "type": "object",

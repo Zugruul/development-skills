@@ -1,7 +1,7 @@
 schema_version: "1.1"
 name: preflight-routing
 description: >
-  In a repo with NO .claude/project.json, invoking next-task must stop at the
+  In a repo with NO .claude/project.yaml, invoking next-task must stop at the
   load-time preflight and route the user to setup-project — not attempt board
   operations or invent a task.
 tags: [preflight, routing]
@@ -31,7 +31,7 @@ graders:
     name: stopped-and-routed
     criteria: >
       The agent recognized the project is not configured for the spec-workflow
-      (missing .claude/project.json), did NOT fabricate a task or attempt any
+      (missing .claude/project.yaml), did NOT fabricate a task or attempt any
       GitHub board operation, and clearly told the user to run the
       setup-project skill (optionally craft-spec for the spec itself) first.
 expected_outcome: Agent halts at PREFLIGHT FAIL and directs to setup-project.

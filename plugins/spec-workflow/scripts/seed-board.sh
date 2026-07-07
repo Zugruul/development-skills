@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # seed-board.sh — idempotently seed a GitHub Project board from a task file.
-# Part of the spec-workflow plugin; config comes from .claude/project.json.
+# Part of the spec-workflow plugin; config comes from .claude/project.yaml.
 #
 # Usage: seed-board.sh <tasks-file>
 #
 # Task file format: one task per line, pipe-separated (blank lines and #-comments ignored):
 #   <task-id>|<priority>|<points>|<epic-id>|<title>
 #   e.g.  CP-001|P0|5|E0|Repo scaffold: pnpm workspace + tsconfig
-# The task-id prefix must match a spec's taskPrefix in project.json; the issue body links to
+# The task-id prefix must match a spec's taskPrefix in project.yaml; the issue body links to
 # that spec's backlogPath for full acceptance criteria.
 #
 # Idempotent: a task whose issue title "<task-id>: <title>" already exists is skipped in
@@ -16,12 +16,16 @@
 set -uo pipefail
 
 TASKS_FILE="${1:?usage: seed-board.sh <tasks-file>}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-CONFIG="${PROJECT_CONFIG:-$ROOT/.claude/project.json}"
+CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
+[[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .claude/project.yaml (or legacy .json) — run the setup-project skill first" >&2; exit 1; }
 
 eval "$(python3 - "$CONFIG" "${BOARD:-}" <<'PY'
 import json, sys
-cfg = json.load(open(sys.argv[1])); bid = sys.argv[2]
+import config as C
+cfg = C.load_config(path=sys.argv[1], warn=False); bid = sys.argv[2]
 b = next((x for x in cfg["boards"] if x["id"] == bid), cfg["boards"][0])
 def sh(k, v): print(f'{k}={json.dumps(str(v))}')
 sh("OWNER", b["owner"]); sh("REPO", b["repo"]); sh("PN", b["projectNumber"]); sh("PID", b["projectId"])
@@ -36,8 +40,9 @@ PY
 )"
 
 prio_id() { python3 - "$CONFIG" "${BOARD:-}" "$1" <<'PY'
-import json, sys
-cfg = json.load(open(sys.argv[1])); bid = sys.argv[2]
+import sys
+import config as C
+cfg = C.load_config(path=sys.argv[1], warn=False); bid = sys.argv[2]
 b = next((x for x in cfg["boards"] if x["id"] == bid), cfg["boards"][0])
 print(b["fields"]["priority"]["options"].get(sys.argv[3], ""))
 PY
@@ -45,8 +50,9 @@ PY
 
 backlog_path() { # task-id -> that spec's backlogPath (or specPath)
     python3 - "$CONFIG" "$1" <<'PY'
-import json, sys
-cfg = json.load(open(sys.argv[1])); tid = sys.argv[2]
+import sys
+import config as C
+cfg = C.load_config(path=sys.argv[1], warn=False); tid = sys.argv[2]
 for s in cfg["specs"]:
     if tid.startswith(s["taskPrefix"] + "-"):
         print(s.get("backlogPath") or s["specPath"]); sys.exit()
@@ -69,7 +75,7 @@ while IFS='|' read -r id prio sp epic title; do
     full="${id}: ${title}"
     if grep -Fxq "$full" <<<"$EXISTING"; then continue; fi
     bp="$(backlog_path "$id")"
-    [[ -z "$bp" ]] && { echo "   !! $id: no spec in project.json matches this prefix — skipped"; continue; }
+    [[ -z "$bp" ]] && { echo "   !! $id: no spec in project.yaml matches this prefix — skipped"; continue; }
     body=$(cat <<EOF
 **Epic:** $epic  ·  **Priority:** $prio  ·  **Story points (Estimate):** $sp
 
