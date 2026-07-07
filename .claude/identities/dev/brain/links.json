@@ -19,6 +19,16 @@
     "last": null,
     "weight": 0.5
   },
+  "language-version-floor-guard->bash32-empty-array-set-u": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "language-version-floor-guard->loop-state-fingerprint-exclusion": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "loop-state-fingerprint-exclusion->lane-cwd-distrust": {
     "fires": 0,
     "last": null,

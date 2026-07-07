@@ -9,6 +9,16 @@
     "last": null,
     "weight": 0.5
   },
+  "reproduce-on-deployment-floor->named-attack-class-briefs": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "reproduce-on-deployment-floor->reproduce-findings-two-pass": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "reviewer-verify-own-plumbing->reproduce-findings-two-pass": {
     "fires": 0,
     "last": null,
