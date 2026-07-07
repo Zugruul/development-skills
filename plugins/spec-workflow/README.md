@@ -77,3 +77,13 @@ bash tests/run-tests.sh        # hermetic: validator fixtures, picker, preflight
 python3 tests/check-evals.py   # eval case structure
 claude plugin eval .           # skill evals on real models (early access)
 ```
+
+`run-tests.sh` is a thin runner: it defines the shared `check`/`check_rc`/`check_absent`/
+`lifecycle_start` helpers (in `tests/_lib.sh`) and sources every `tests/section-*.sh` file
+in a fixed order. Each section file owns one area (config, gate enforcement, neural-view,
+brain, etc.) and is sourced, not run standalone — it assumes `_lib.sh` and the runner's
+shared state (`HERE`/`PLUGIN`/`FIX`/`fails`/`flaky`) are already in scope. To add a test to
+an existing area, add a `check ...` line to that area's `section-*.sh`; to add a new area,
+create a new `section-<area>.sh` (with the standard sourced-not-standalone header comment)
+and register it in `run-tests.sh`'s `SECTIONS` array. This split keeps parallel build-loop
+lanes from all appending to one file (a guaranteed rebase conflict on every merge).
