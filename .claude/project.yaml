@@ -118,3 +118,4 @@ methodology:
     maxInProgress: 3
     autoMerge: true
     mergeMethod: squash
+    feedback: true
