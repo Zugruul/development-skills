@@ -414,6 +414,24 @@ out="$(brain prune dev)"
 check "prune flags never-fired aged link" "stale-src->stale-dst" "$out"
 rm -rf "$BT"
 
+echo "== brain.sh wrapper (flag-less default path, set -u) =="
+# Regression: brain.sh WITHOUT --dir/BRAIN_DIR must not die on empty-array expansion under set -u.
+# Runs via the wrapper (ROOT from git rev-parse), the path the brain.py tests above never exercise.
+BW="$(mktemp -d)"
+( cd "$BW" && git init -q . )
+out="$(cd "$BW" && printf 'wrapper lesson body.\n' | bash "$PLUGIN/scripts/brain.sh" mint dev wrapper-note --tags w --paths "x/**" --source "test" 2>&1; echo "rc=$?")"
+check "brain.sh mint (no --dir) succeeds" "minted dev/wrapper-note" "$out"
+check_absent "brain.sh flag-less: no unbound-variable error" "unbound variable" "$out"
+check "brain.sh mint (no --dir) exits 0" "rc=0" "$out"
+out="$(cd "$BW" && bash "$PLUGIN/scripts/brain.sh" directory 2>&1; echo "rc=$?")"
+check "brain.sh directory (no --dir) exits 0" "rc=0" "$out"
+check "brain.sh wrote into default .claude/identities" "wrapper-note" "$(cat "$BW/.claude/identities/DIRECTORY.md" 2>/dev/null)"
+# BRAIN_DIR override path still works
+out="$(cd "$BW" && printf 'override body.\n' | BRAIN_DIR=".claude/custom" bash "$PLUGIN/scripts/brain.sh" mint dev ov-note --tags o --paths "y/**" --source "test" 2>&1; echo "rc=$?")"
+check "brain.sh BRAIN_DIR override succeeds" "rc=0" "$out"
+check "brain.sh BRAIN_DIR override targets custom dir" "ov-note" "$(cat "$BW/.claude/custom/dev/brain/notes/ov-note.md" 2>/dev/null)"
+rm -rf "$BW"
+
 echo
 if [[ $fails -gt 0 ]]; then echo "$fails test(s) FAILED"; exit 1; fi
 echo "all tests passed"
