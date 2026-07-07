@@ -20,6 +20,7 @@ Python 3 standard library only (no pyyaml). Usage:
     brain.py <root> prune <role> [--apply]
     brain.py <root> retro-mark
     brain.py <root> graduate <role> <slug>
+    brain.py <root> graduate-check [role] [--threshold N]
 
 `<root>` is the consumer repo root; identities live under `--dir` (default
 `.claude/identities`).
@@ -32,12 +33,16 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import config as C  # noqa: E402
+
 WIKILINK = re.compile(r"\[\[([^\]]+)\]\]")
 DEFAULT_STRENGTH = 1
 DEFAULT_WEIGHT = 0.5
 HOP_DECAY = 0.5
 MAX_HOPS = 2
 CHARS_PER_TOKEN = 4
+DEFAULT_GRADUATION_THRESHOLD = 3  # methodology.graduationThreshold override in project.yaml
 # frontmatter keys in deterministic write order
 KEY_ORDER = ["tags", "paths", "strength", "source", "learned-from", "source-note", "graduated", "created"]
 
@@ -380,6 +385,70 @@ def cmd_graduate(identities, args):
     print("graduated %s/%s" % (args.role, args.slug))
 
 
+# --------------------------------------------------------------- graduate-check
+# PROPOSAL heuristic only — graduate-check never mutates a note (no strength/graduated
+# writes); it surfaces candidates for a human to graduate at retro time (SPEC §8.3).
+# Checked in tag-keyword order: hard-rule/contract-flavored tags win over
+# mechanically-checkable ones; anything else (orchestration/process/communication
+# lessons, or no matching tag) defaults to a ROLE.md rule — the broadest bucket for
+# a behavioral lesson.
+DESTINATION_RULES = [
+    ("specs[].invariants entry", {"contract", "enforcement", "invariant", "security", "safety", "hard-rule"}),
+    ("test-or-lint", {"testing", "test", "lint", "shellcheck", "portability", "ci"}),
+]
+DEFAULT_DESTINATION = "ROLE.md rule"
+
+
+def propose_destination(tags):
+    tagset = set(t.lower() for t in (tags or []))
+    for destination, keywords in DESTINATION_RULES:
+        if tagset & keywords:
+            return destination
+    return DEFAULT_DESTINATION
+
+
+def graduation_threshold(args):
+    if getattr(args, "threshold", None) is not None:
+        return args.threshold
+    cfg = C.load_config(root=args.root, warn=False) or {}
+    return int((cfg.get("methodology") or {}).get("graduationThreshold", DEFAULT_GRADUATION_THRESHOLD))
+
+
+def _graduate_check_role(identities, role, threshold):
+    notes = load_notes(identities, role)
+    rows = []
+    for slug in sorted(notes):
+        fm = notes[slug]["fm"]
+        if fm.get("graduated"):
+            continue
+        strength = int(fm.get("strength", DEFAULT_STRENGTH))
+        if strength < threshold:
+            continue
+        tags = fm.get("tags", []) or []
+        rows.append((slug, strength, tags, propose_destination(tags)))
+    return rows
+
+
+def cmd_graduate_check(identities, args):
+    threshold = graduation_threshold(args)
+    if args.role:
+        roles = [args.role]
+    else:
+        roles = []
+        if os.path.isdir(identities):
+            roles = sorted(r for r in os.listdir(identities) if os.path.isdir(notes_dir(identities, r)))
+
+    for role in roles:
+        rows = _graduate_check_role(identities, role, threshold)
+        if not rows:
+            print("no notes at/above threshold %d for %s" % (threshold, role))
+            continue
+        print("%s (threshold %d):" % (role, threshold))
+        print("%-30s %-8s %-30s %s" % ("slug", "strength", "tags", "proposed destination"))
+        for slug, strength, tags, dest in rows:
+            print("%-30s %-8d %-30s %s" % (slug, strength, ", ".join(tags), dest))
+
+
 # -------------------------------------------------------------------- directory
 def cmd_directory(identities, _args):
     roles = []
@@ -531,6 +600,11 @@ def main(argv):
     sp.add_argument("role")
     sp.add_argument("slug")
     sp.set_defaults(fn=cmd_graduate)
+
+    sp = sub.add_parser("graduate-check")
+    sp.add_argument("role", nargs="?", default=None)
+    sp.add_argument("--threshold", type=int, default=None)
+    sp.set_defaults(fn=cmd_graduate_check)
 
     args = p.parse_args(argv)
     identities = os.path.join(args.root, args.dir)

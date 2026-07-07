@@ -1,6 +1,6 @@
 ---
 name: brain
-description: Inspect and tend the per-identity zettel brains — status/recall/mint/prune/directory via brain.sh. Orchestrator-only memory (each role's brain is private; subagents never read one). Use to see what a role has learned, recall lessons for a task, mint a retro note, prune stale links, or regenerate the directory. Bare invocation shows the directory + per-brain note counts.
+description: Inspect and tend the per-identity zettel brains — status/recall/mint/prune/directory/graduate-check via brain.sh. Orchestrator-only memory (each role's brain is private; subagents never read one). Use to see what a role has learned, recall lessons for a task, mint a retro note, prune stale links, or regenerate the directory. Bare invocation shows the directory + per-brain note counts.
 allowed-tools: Bash
 ---
 
@@ -26,6 +26,11 @@ consult <consumer> <owner> <slug>  # print owner's note for a one-time paste; lo
 prune <role> [--apply]             # flag stale links (never-fired+aged, target graduated/missing)
 retro-mark                         # bump the retro counter that ages notes for pruning
 graduate <role> <slug>            # mark a proven lesson graduated (no longer injected; still bridges)
+graduate-check [role] [--threshold N]
+                                   # READ-ONLY: list notes at/above the graduation threshold
+                                   # (methodology.graduationThreshold, default 3) with a proposed
+                                   # destination (ROLE.md rule / specs[].invariants entry /
+                                   # test-or-lint); never mutates a note — graduate stays the call
 ```
 
 ## When to use
