@@ -90,22 +90,42 @@ FIRST: run `merge-mode.sh preauth`.
   to §4 below; a denial here still means ask the human, never retry around it
   (unchanged rule).
 - **`preauth: missing <rules>`** — do NOT run `gh pr review`/`gh pr merge` yet.
-  Ask the human via AskUserQuestion (header "Merge PR #<n>"), options:
-  - **Merge now (run it for me)** — you proceed with §4 as normal for this PR
-    only; the missing rules stay missing for next time.
+  Ask the human via AskUserQuestion (header "Merge PR #<n>"), and make the
+  STANDING-CONSENT option a first-class choice alongside the per-artifact one
+  — options:
+  - **Merge now (run it for me)** — PER-ARTIFACT CONSENT: you proceed with §4
+    as normal for THIS PR only; the missing rules stay missing, so the very
+    next PR asks again.
   - **I'll merge myself** — stop here; leave the task *In review*, tell the
     human the PR is approved and ready.
-  - **Add permission rules so future merges are autonomous** — show
-    `merge-mode.sh preauth-snippet` verbatim as the preview, get the human's
-    explicit go-ahead, then add that block to `.claude/settings.json` (merge
-    into any existing `permissions.allow`, don't clobber other rules) and
-    proceed with §4. Tell the human to commit the settings change.
+  - **STANDING CONSENT — add permission rules so ALL future approved PRs
+    merge autonomously** — the durable fix: show `merge-mode.sh
+    preauth-snippet` verbatim as the preview, get the human's explicit
+    go-ahead, then add that block to `.claude/settings.json` (merge into any
+    existing `permissions.allow`, don't clobber other rules) and proceed with
+    §4. Tell the human to commit the settings change. Prefer steering the
+    human here over repeating option 1 — a one-time yes is not a policy.
   - **Leave In review** — stop here; no merge attempt.
 
 This replaces attempt-then-denied with ask-first: the probe is advisory only
 (it can't see user/global allow-rules), so an `ok` verdict can still hit a
 denial — if it does, that denial is answered the normal way (ask the human,
 never retry around it), not treated as a probe bug.
+
+**Per-artifact consent scoping.** A permission layer that grants "yes, merge
+PR #12" typically scopes that consent to the SPECIFIC artifact named at the
+moment of asking — PR #12 — not to a standing policy of "merge whatever this
+loop approves." A human who said yes to #12 has said nothing about #13; the
+next PR re-triggers this same front-load question, with the same four
+options, from scratch. Treating a past per-artifact yes as implicit
+authorization for a new PR is the exact attempt-and-eating-a-denial failure
+mode this section exists to avoid, just moved one level up. The only durable
+fix is STANDING CONSENT via the `.claude/settings.json` allowlist (option 3
+above / `preauth-snippet`) — granted once, deliberately, it covers every
+future PR without a re-ask. Whichever mode a session is actually operating
+under (standing preauth already `ok`, vs asking per-artifact this run) should
+be visible, not implicit — state it in the iteration report (see build-next
+SKILL.md step 6).
 
 ## 4. Record the approval + merge
 
