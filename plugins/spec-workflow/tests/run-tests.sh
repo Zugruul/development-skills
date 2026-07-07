@@ -311,13 +311,17 @@ NODEJS
     cat >"$_nvxss" <<'NODEJS'
 const fs = require("fs");
 const html = fs.readFileSync(process.argv[2], "utf8");
-function extract(name) {
-    const re = new RegExp("function " + name + "\([^)]*\)\{[\s\S]*?\n\}\n");
+function extractOneLine(name) {
+    // escapeHtml() is a single-line function -- its closing brace isn't on its
+    // own line, so the multi-line extract() pattern used elsewhere in this file
+    // (which requires "\n}\n") doesn't match it. Same non-greedy idea, minus
+    // that requirement.
+    const re = new RegExp("function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\}\\n");
     const m = html.match(re);
     if (!m) throw new Error("could not find function " + name + "() in template");
     return m[0];
 }
-eval(extract("escapeHtml"));
+eval(extractOneLine("escapeHtml"));
 const payload = 'Fix bug" onmouseover="alert(document.cookie)<script>alert(1)</script>';
 const out = escapeHtml(payload);
 if (out.includes('"')) throw new Error("escapeHtml() leaves a raw double-quote in the output: " + out);

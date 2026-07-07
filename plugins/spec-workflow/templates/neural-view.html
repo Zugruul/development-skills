@@ -712,7 +712,7 @@ function logEvent(e){
   LOG.prepend(div);
   while(LOG.childNodes.length>12) LOG.lastChild.remove();
 }
-function escapeHtml(s){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
 // ---- gauges ----
 // One row per (repo,role) combo actually present in the graph — a repo with a
