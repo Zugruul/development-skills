@@ -164,6 +164,25 @@ def main(path):
         elif idents not in (None, False):
             errs.append("delegation.identities must be an object of roles, or false to disable all")
 
+    # methodology.feedback: true (shorthand) | {enabled, feed, roles, autoTriage}
+    feedback = (cfg.get("methodology") or {}).get("feedback") if isinstance(cfg.get("methodology"), dict) else None
+    if feedback not in (None, True, False):
+        if not isinstance(feedback, dict):
+            errs.append("methodology.feedback must be true, false, or a mapping {enabled, feed, roles, autoTriage}")
+        else:
+            allowed = {"enabled", "feed", "roles", "autoTriage"}
+            for k in feedback:
+                if k not in allowed:
+                    errs.append(f"methodology.feedback.{k}: unknown key (allowed: {sorted(allowed)})")
+            if "enabled" in feedback and not isinstance(feedback["enabled"], bool):
+                errs.append("methodology.feedback.enabled must be a boolean")
+            if "feed" in feedback and not isinstance(feedback["feed"], str):
+                errs.append("methodology.feedback.feed must be a string path")
+            if "roles" in feedback and not (isinstance(feedback["roles"], list) and all(isinstance(r, str) for r in feedback["roles"])):
+                errs.append("methodology.feedback.roles must be a list of strings")
+            if "autoTriage" in feedback and not isinstance(feedback["autoTriage"], bool):
+                errs.append("methodology.feedback.autoTriage must be a boolean")
+
     if errs:
         print(f"INVALID: {len(errs)} problem(s) in {path}:")
         for e in errs:

@@ -95,4 +95,5 @@ methodology:
     isolationSuite: ""
     maxInProgress: 1
     autoMerge: false
+    feedback: true
     mergeMethod: squash
