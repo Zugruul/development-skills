@@ -23,9 +23,11 @@ record_gate() { # $1=ok (true|false) — best-effort, must never affect gate.sh'
         >/dev/null 2>&1 || true
 }
 if (cd "$ROOT" && bash -c "$GATE"); then
-    # record telemetry BEFORE fingerprinting the tree: telemetry.jsonl itself is an
-    # untracked file, so writing it after the marker would make the very next
-    # tree-state check see a "changed" tree and wrongly re-block the move.
+    # Recording telemetry before fingerprinting the tree (rather than after) is
+    # redundant-but-harmless, not the defense: tree-state.sh itself excludes
+    # .claude/telemetry.jsonl from the fingerprint (see its own comment) so
+    # that a routine status transition — for any task, from any concurrent
+    # lane — can never invalidate a still-current, unrelated gate pass.
     record_gate true
     bash "$HERE/tree-state.sh" >"$MARKER"
     echo "GATE PASS recorded ($MARKER) for the current tree — 'In review' moves are unlocked until the tree changes."
