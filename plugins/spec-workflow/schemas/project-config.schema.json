@@ -196,6 +196,12 @@
                     "minimum": 1,
                     "description": "Maximum number of tasks worked CONCURRENTLY — THE concurrency knob. It is both the board WIP limit (enforced by next.py's picker) AND the number of parallel implementation lanes. 1 (default) = strictly sequential, one task at a time (the current behavior). N>1 = up to N tasks in parallel, each in its own git worktree + branch + dev agent — only safe for NON-overlapping tasks (see skills/build-next/references/concurrency.md). Set via the concurrency skill / concurrency.sh."
                 },
+                "graduationThreshold": {
+                    "type": "integer",
+                    "default": 3,
+                    "minimum": 1,
+                    "description": "Note strength (SPEC \u00a78.3) at/above which brain.py graduate-check surfaces a note as a graduation candidate (proposed destination: ROLE.md rule / specs[].invariants entry / test-or-lint). graduate-check is read-only — it proposes; graduation itself stays a human-visible retro action (brain.py graduate)."
+                },
                 "iterativeUI": {
                     "type": "boolean",
                     "default": true,

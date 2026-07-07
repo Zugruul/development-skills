@@ -10,6 +10,7 @@
 #   brain.sh prune <role> [--apply]
 #   brain.sh retro-mark
 #   brain.sh graduate <role> <slug>
+#   brain.sh graduate-check [role] [--threshold N]
 #
 # Env: BRAIN_DIR (identities dir override, relative to root; default .claude/identities).
 set -uo pipefail
