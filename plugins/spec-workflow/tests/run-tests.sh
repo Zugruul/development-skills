@@ -573,11 +573,16 @@ case "$1 $2" in
         if [[ "${FAKE_GH_HANG:-0}" == "1" ]]; then
             sleep "${FAKE_GH_HANG_SECS:-3}"
         fi
-        printf 'In progress\tP0\t#1\tAdd widget\n'
-        printf 'In review\tP1\t#2\tFix bug\n'
-        printf 'Backlog\tP2\t#3\tIdea\n'
-        [[ -n "${FAKE_GH_XSS_TITLE:-}" ]] && printf 'In progress\tP0\t#9\t%s\n' "${FAKE_GH_XSS_TITLE}"
-        true
+        items='[
+  {"id":"ITEM_1","content":{"number":1,"title":"Add widget"},"title":"Add widget","status":"In progress","priority":"P0"},
+  {"id":"ITEM_2","content":{"number":2,"title":"Fix bug"},"title":"Fix bug","status":"In review","priority":"P1"},
+  {"id":"ITEM_3","content":{"number":3,"title":"Idea"},"title":"Idea","status":"Backlog","priority":"P2"}
+]'
+        if [[ -n "${FAKE_GH_XSS_TITLE:-}" ]]; then
+            extra="$(python3 -c 'import json,sys; print(json.dumps({"id":"ITEM_9","content":{"number":9,"title":sys.argv[1]},"title":sys.argv[1],"status":"In progress","priority":"P0"}))' "${FAKE_GH_XSS_TITLE}")"
+            items="$(python3 -c 'import json,sys; a=json.loads(sys.argv[1]); a.append(json.loads(sys.argv[2])); print(json.dumps(a))' "$items" "$extra")"
+        fi
+        python3 -c 'import json,sys; print(json.dumps({"items": json.loads(sys.argv[1])}))' "$items"
         ;;
     *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
 esac
@@ -868,7 +873,7 @@ cat >"$T3NGH/gh" <<'FAKE'
 #!/usr/bin/env bash
 set -uo pipefail
 case "$1 $2" in
-    "project item-list") echo "ITEM_7" ;;
+    "project item-list") echo '{"items":[{"id":"ITEM_7","content":{"number":7}}]}' ;;
     "project item-edit") echo "edited" ;;
     *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
 esac
@@ -952,10 +957,8 @@ case "$1 $2" in
     "project item-list")
         n=$(( $(cat "$FAKE_GH_CALLCOUNT" 2>/dev/null || echo 0) + 1 ))
         echo "$n" >"$FAKE_GH_CALLCOUNT"
-        if [[ "$*" == *"select(.content.number=="* ]]; then
-            if [[ "${FAKE_GH_NEVER_VISIBLE:-0}" != "1" && "$n" -ge "${FAKE_GH_VISIBLE_AFTER:-1}" ]]; then
-                echo "ITEM_${FAKE_GH_ISSUE_NUM:-501}"
-            fi
+        if [[ "${FAKE_GH_NEVER_VISIBLE:-0}" != "1" && "$n" -ge "${FAKE_GH_VISIBLE_AFTER:-1}" ]]; then
+            echo "{\"items\":[{\"id\":\"ITEM_${FAKE_GH_ISSUE_NUM:-501}\",\"content\":{\"number\":${FAKE_GH_ISSUE_NUM:-501}}}]}"
         else
             echo '{"items":[]}'
         fi
@@ -1032,10 +1035,8 @@ case "$1 $2" in
     "project item-list")
         n=$(( $(cat "$FAKE_GH_CALLCOUNT" 2>/dev/null || echo 0) + 1 ))
         echo "$n" >"$FAKE_GH_CALLCOUNT"
-        if [[ "$*" == *"select(.content.number=="* ]]; then
-            if [[ "${FAKE_GH_NEVER_VISIBLE:-0}" != "1" && "$n" -ge "${FAKE_GH_VISIBLE_AFTER:-1}" ]]; then
-                echo "ITEM_${FAKE_GH_ISSUE_NUM:-601}"
-            fi
+        if [[ "${FAKE_GH_NEVER_VISIBLE:-0}" != "1" && "$n" -ge "${FAKE_GH_VISIBLE_AFTER:-1}" ]]; then
+            echo "{\"items\":[{\"id\":\"ITEM_${FAKE_GH_ISSUE_NUM:-601}\",\"content\":{\"number\":${FAKE_GH_ISSUE_NUM:-601}}}]}"
         else
             echo '{"items":[]}'
         fi
@@ -1613,7 +1614,7 @@ cat >"$BMGH/gh" <<'FAKE'
 #!/usr/bin/env bash
 set -uo pipefail
 case "$1 $2" in
-    "project item-list") echo "ITEM_1" ;;
+    "project item-list") echo '{"items":[{"id":"ITEM_1","content":{"number":1}}]}' ;;
     "project item-edit") echo "edited" ;;
     *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
 esac
@@ -1775,7 +1776,7 @@ check "next: picks the page-2 item that a fixed 400-limit would have hidden" "=>
 # any item beyond the --limit ceiling and move failed with a generic bad-issue# error.
 LOGP3="$(mktemp)"
 out="$(cd "$PG" && PATH="$PGH:$PATH" FAKE_GH_LOG="$LOGP3" bash "$PLUGIN/scripts/board.sh" move 420 "In progress" 2>&1; echo "rc=$?")"
-check "move: resolves + edits a page-2 item id" "move #420 -> In progress" "$out"
+check "move: resolves + edits a page-2 item id" "moved #420 -> In progress" "$out"
 check "move: rc=0 resolving a page-2 item" "rc=0" "$out"
 check "move: item-edit invoked with the page-2 item's real id" "project item-edit --id ITEM_PAGE2" "$(cat "$LOGP3")"
 

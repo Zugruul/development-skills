@@ -23,6 +23,8 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"  # inline python readers import config.py
+# shellcheck source=plugins/spec-workflow/scripts/paginate.sh
+source "$HERE/paginate.sh"  # gh_project_items_json / gh_issues_json (SPEC 7.4: no silent page-1 truncation)
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
 [[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .claude/project.yaml (or legacy .json) found. Run the setup-project skill first." >&2; exit 1; }
@@ -59,9 +61,16 @@ print(next((v for k, v in opts.items() if k.lower() == q), ""))
 PY
 }
 
-item_id() { # issue number -> project item id
-    gh project item-list "$PN" --owner "$OWNER" --format json --limit 400 \
-        -q ".items[] | select(.content.number==$1) | .id"
+item_id() { # issue number -> project item id (searches every page; SPEC 7.4)
+    gh_project_items_json "$PN" "$OWNER" | python3 -c '
+import json, sys
+n = int(sys.argv[1])
+data = json.load(sys.stdin)
+for it in data.get("items", []):
+    if (it.get("content") or {}).get("number") == n:
+        print(it["id"])
+        break
+' "$1"
 }
 
 _board_add() { # type title [prio] [origin-issue#] -> creates + boards one issue; shared by add/bug
@@ -112,7 +121,7 @@ _board_add() { # type title [prio] [origin-issue#] -> creates + boards one issue
 case "${1:-}" in
     next)
         _tmp="$(mktemp)"; trap 'rm -f "$_tmp"' EXIT
-        gh project item-list "$PN" --owner "$OWNER" --format json --limit 400 >"$_tmp"
+        gh_project_items_json "$PN" "$OWNER" >"$_tmp"
         python3 "$HERE/next.py" "$CONFIG" "${BOARD:-}" "$_tmp" "${2:-}"
         ;;
     show)
@@ -166,13 +175,25 @@ case "${1:-}" in
         _board_add bug "${2:-}" "${3:-}" "${4:-}" || exit 1
         ;;
     list)
-        gh project item-list "$PN" --owner "$OWNER" --format json --limit 400 \
-            -q ".items[] | select((\"${2:-}\"==\"\") or (.status==\"${2:-}\")) | \"\(.status // \"-\")\t\(.priority // \"-\")\t#\(.content.number)\t\(.title // .content.title)\""
+        gh_project_items_json "$PN" "$OWNER" | python3 -c '
+import json, sys
+status_filter = sys.argv[1]
+data = json.load(sys.stdin)
+for it in data.get("items", []):
+    status = it.get("status") or "-"
+    if status_filter and status != status_filter:
+        continue
+    priority = it.get("priority") or "-"
+    content = it.get("content") or {}
+    num = content.get("number", "")
+    title = it.get("title") or content.get("title", "")
+    print(f"{status}\t{priority}\t#{num}\t{title}")
+' "${2:-}"
         ;;
     issues)
         # Read-only dump for the dedup pipeline (similar.py). This is the ONLY gh call
         # for the /find-task flow — board.sh stays the sole live board/gh access point.
-        out="$(gh issue list -R "$REPO" --state all --limit 500 --json number,title,body,state)" ||
+        out="$(gh_issues_json "$REPO" --state all --json number,title,body,state)" ||
             { echo "ERROR: gh issue list failed" >&2; exit 1; }
         python3 -c '
 import json, sys

@@ -19,9 +19,9 @@ PAGINATE_HARD_CAP="${PAGINATE_HARD_CAP:-51200}"  # 400 * 2^7 — worst-case back
 
 # gh_project_items_json <project-number> <owner> -> full {"items":[...]} JSON, all pages
 gh_project_items_json() {
-    local pn="$1" owner="$2" limit="$PAGINATE_BASE_LIMIT" out count
+    local pn="$1" owner_arg="$2" limit="$PAGINATE_BASE_LIMIT" out count
     while :; do
-        out="$(gh project item-list "$pn" --owner "$owner" --format json --limit "$limit")" || return 1
+        out="$(gh project item-list "$pn" --owner "$owner_arg" --format json --limit "$limit")" || return 1
         count="$(python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("items",[])))' <<<"$out")"
         if [[ "$count" -lt "$limit" || "$limit" -ge "$PAGINATE_HARD_CAP" ]]; then
             printf '%s' "$out"
@@ -34,10 +34,10 @@ gh_project_items_json() {
 # gh_issues_json <repo> [gh issue list flags...] -> full JSON array, all pages
 # (flags go after --limit, e.g.: gh_issues_json "$REPO" --state all --json title)
 gh_issues_json() {
-    local repo="$1"; shift
+    local repo_arg="$1"; shift
     local limit="$PAGINATE_BASE_LIMIT" out count
     while :; do
-        out="$(gh issue list -R "$repo" --limit "$limit" "$@")" || return 1
+        out="$(gh issue list -R "$repo_arg" --limit "$limit" "$@")" || return 1
         count="$(python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' <<<"$out")"
         if [[ "$count" -lt "$limit" || "$limit" -ge "$PAGINATE_HARD_CAP" ]]; then
             printf '%s' "$out"

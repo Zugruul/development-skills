@@ -18,6 +18,8 @@ set -uo pipefail
 TASKS_FILE="${1:?usage: seed-board.sh <tasks-file>}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
+# shellcheck source=plugins/spec-workflow/scripts/paginate.sh
+source "$HERE/paginate.sh"  # gh_project_items_json / gh_issues_json (SPEC 7.4: no silent page-1 truncation)
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
 [[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .claude/project.yaml (or legacy .json) — run the setup-project skill first" >&2; exit 1; }
@@ -70,7 +72,11 @@ while IFS='|' read -r id prio sp epic title; do
 done < <(read_tasks)
 
 echo "==> Phase 1: ensure an issue exists for every task"
-EXISTING="$(gh issue list -R "$REPO" --state all --limit 500 --json title -q '.[].title' || true)"
+EXISTING="$(gh_issues_json "$REPO" --state all --json title | python3 -c '
+import json, sys
+for it in json.load(sys.stdin):
+    print(it.get("title") or "")
+' || true)"
 while IFS='|' read -r id prio sp epic title; do
     full="${id}: ${title}"
     if grep -Fxq "$full" <<<"$EXISTING"; then continue; fi
@@ -95,8 +101,14 @@ done < <(read_tasks)
 
 echo "==> Phase 2: set Status/Priority/Estimate on every task's project item"
 MAP="$(mktemp)"; trap 'rm -f "$MAP"' EXIT
-gh project item-list "$PN" --owner "$OWNER" --limit 500 --format json \
-    -q '.items[] | [.id, (.content.title // .title)] | @tsv' >"$MAP"
+gh_project_items_json "$PN" "$OWNER" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+for it in data.get("items", []):
+    content = it.get("content") or {}
+    title = content.get("title") or it.get("title") or ""
+    print(f"{it["id"]}\t{title}")
+' >"$MAP"
 while IFS='|' read -r id prio sp epic title; do
     full="${id}: ${title}"
     itemid="$(awk -F'\t' -v t="$full" '$2==t{print $1; exit}' "$MAP")"
