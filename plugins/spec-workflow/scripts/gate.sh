@@ -14,12 +14,27 @@ GATE="$(python3 -c 'import sys; import config as C; print(C.load_config(path=sys
     { echo "ERROR: cannot read commands.gate from $CONFIG" >&2; exit 1; }
 
 echo "gate: $GATE"
+# gate.sh has no task id in scope; the current branch name stands in for it in telemetry
+# (see telemetry.py's module docstring for the record schema).
+TASK="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+record_gate() { # $1=ok (true|false) — best-effort, must never affect gate.sh's own exit status
+    python3 "$HERE/telemetry.py" "$ROOT" record \
+        "{\"kind\":\"gate\",\"task\":\"$TASK\",\"ok\":$1,\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+        >/dev/null 2>&1 || true
+}
 if (cd "$ROOT" && bash -c "$GATE"); then
+    # Recording telemetry before fingerprinting the tree (rather than after) is
+    # redundant-but-harmless, not the defense: tree-state.sh itself excludes
+    # .claude/telemetry.jsonl from the fingerprint (see its own comment) so
+    # that a routine status transition — for any task, from any concurrent
+    # lane — can never invalidate a still-current, unrelated gate pass.
+    record_gate true
     bash "$HERE/tree-state.sh" >"$MARKER"
     echo "GATE PASS recorded ($MARKER) for the current tree — 'In review' moves are unlocked until the tree changes."
 else
     rc=$?
     rm -f "$MARKER"
+    record_gate false
     echo "GATE RED (exit $rc) — pass cleared; fix and re-run. Do NOT move the task forward." >&2
     exit "$rc"
 fi

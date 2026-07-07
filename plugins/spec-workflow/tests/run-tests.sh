@@ -39,7 +39,7 @@ echo "== syntax =="
 for f in "$PLUGIN"/scripts/*.sh "$HERE"/run-tests.sh; do
     if bash -n "$f"; then echo "ok   bash -n $(basename "$f")"; else echo "FAIL bash -n $f"; fails=$((fails + 1)); fi
 done
-for p in config.py identity_lib.py validate-config.py next.py similar.py ui-hub.py brain.py neural-view.py feedback.py; do
+for p in config.py identity_lib.py validate-config.py next.py similar.py ui-hub.py brain.py neural-view.py feedback.py telemetry.py; do
     if python3 -m py_compile "$PLUGIN/scripts/$p"; then
         echo "ok   py_compile $p"
     else
@@ -738,6 +738,8 @@ out="$(hookjsonpy "$BASHC_COMMENT" | (cd "$T3" && bash "$PLUGIN/scripts/guard-bo
 check "bash -c wrapped comment mentioning review status allowed, no FP" "rc=0" "$out"
 out="$(cd "$T3" && bash "$PLUGIN/scripts/gate.sh" 2>&1)"
 check "gate pass recorded" "GATE PASS recorded" "$out"
+check "gate telemetry: ok:true event recorded" '"kind": "gate"' "$(cat "$T3/.claude/telemetry.jsonl" 2>/dev/null)"
+check "gate telemetry: ok:true value" '"ok": true' "$(cat "$T3/.claude/telemetry.jsonl" 2>/dev/null)"
 out="$(hookjson 'bash board.sh move 7 \"In review\"' | (cd "$T3" && bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
 check "move allowed with fresh pass" "rc=0" "$out"
 out="$(hookjsonpy "$BASHC_MOVE" | (cd "$T3" && bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
@@ -752,6 +754,7 @@ check "unrelated commands unaffected" "rc=0" "$out"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="false"; json.dump(c,open(sys.argv[1],"w"))' "$T3/.claude/project.json"
 out="$( (cd "$T3" && bash "$PLUGIN/scripts/gate.sh") 2>&1; echo "rc=$?")"
 check "red gate clears pass" "GATE RED" "$out"
+check "gate telemetry: ok:false event recorded on red" '"ok": false' "$(cat "$T3/.claude/telemetry.jsonl" 2>/dev/null)"
 if [[ ! -f "$T3/.claude/gate-pass" ]]; then echo "ok   pass file removed on red"; else echo "FAIL pass file should be removed"; fails=$((fails+1)); fi
 rm -rf "$T3"
 
@@ -820,6 +823,47 @@ check "marker: gate pass recorded" "GATE PASS recorded" "$out"
 out="$(hookjson 'bash board.sh move 7 \"In review\"' | (cd "$T3M" && bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
 check "marker: move allowed immediately after pass despite tracked .claude dir" "rc=0" "$out"
 rm -rf "$T3M"
+
+echo "== gate enforcement (telemetry.jsonl excluded from fingerprint, SW-023 follow-up) =="
+T3N="$(mktemp -d)"; mkdir -p "$T3N/.claude"
+python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
+    "$FIX/valid.project.json" "$T3N/.claude/project.json"
+( cd "$T3N" && git init -q . && git add .claude/project.json && git commit -q -m init )
+before="$(cd "$T3N" && bash "$PLUGIN/scripts/tree-state.sh")"
+echo '{"kind":"gate","task":"x","ok":true,"ts":"2026-01-01T00:00:00Z"}' > "$T3N/.claude/telemetry.jsonl"
+after="$(cd "$T3N" && bash "$PLUGIN/scripts/tree-state.sh")"
+if [[ "$before" == "$after" ]]; then
+    echo "ok   telemetry: fingerprint unaffected by .claude/telemetry.jsonl appearing"
+else
+    echo "FAIL telemetry: fingerprint changed when .claude/telemetry.jsonl appeared -- before=$before after=$after"
+    fails=$((fails + 1))
+fi
+rm -f "$T3N/.claude/telemetry.jsonl"
+
+# Full integration: gate green, then a routine board.sh move (any task, any
+# status) appends a transition event to the SAME telemetry.jsonl the pass was
+# recorded against; the guard re-check for a DIFFERENT move must still see a
+# VALID, current pass. Also a concurrency-safety property: one lane's routine
+# move must not invalidate another lane's recorded pass (telemetry.jsonl is
+# shared across the whole repo).
+out="$(cd "$T3N" && bash "$PLUGIN/scripts/gate.sh" 2>&1)"
+check "telemetry: gate pass recorded" "GATE PASS recorded" "$out"
+T3NGH="$(mktemp -d)"
+cat >"$T3NGH/gh" <<'FAKE'
+#!/usr/bin/env bash
+set -uo pipefail
+case "$1 $2" in
+    "project item-list") echo "ITEM_7" ;;
+    "project item-edit") echo "edited" ;;
+    *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
+esac
+FAKE
+chmod +x "$T3NGH/gh"
+out="$(cd "$T3N" && PATH="$T3NGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 7 Backlog 2>&1)"
+check "telemetry: routine move succeeded" "moved #7 -> Backlog" "$out"
+out="$(hookjson 'bash board.sh move 7 \"In review\"' | (cd "$T3N" && bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
+check "telemetry: a routine move must not invalidate a still-current gate pass" "rc=0" "$out"
+rm -rf "$T3N" "$T3NGH"
 
 echo "== session-start hook =="
 T4="$(mktemp -d)"
@@ -1399,6 +1443,85 @@ check "feedback.py refuses to emit outside repo root" "ERROR" "$out"
 check "feedback.py refuses to emit outside repo root: nonzero exit" "rc=1" "$out"
 check "feedback.py did not write outside the root" "MISSING" "$([[ -f "$ESCTARGET/feed.yaml" ]] && echo FOUND || echo MISSING)"
 rm -rf "$ESC" "$ESCTARGET"
+
+echo "== telemetry.py record (validation + append) =="
+TT="$(mktemp -d)"; mkdir -p "$TT/.claude"
+rec() { python3 "$PLUGIN/scripts/telemetry.py" "$TT" record "$1" 2>&1; }
+check "record: unknown kind rejected" "INVALID" "$(rec '{"kind":"bogus","task":"1","ts":"2026-01-01T00:00:00Z"}')"
+check "record: malformed json rejected" "INVALID" "$(rec 'not-json')"
+check "record: missing ts rejected" "INVALID" "$(rec '{"kind":"gate","task":"1","ok":true}')"
+check "record: transition ok" "OK: recorded transition" "$(rec '{"kind":"transition","task":"1","from":"","to":"In progress","ts":"2026-01-01T00:00:00Z"}')"
+check "record: gate ok" "OK: recorded gate" "$(rec '{"kind":"gate","task":"1","ok":true,"ts":"2026-01-01T01:00:00Z"}')"
+check "record: gate.ok must be boolean" "INVALID" "$(rec '{"kind":"gate","task":"1","ok":"yes","ts":"2026-01-01T01:00:00Z"}')"
+check "record: review-round ok" "OK: recorded review-round" "$(rec '{"kind":"review-round","task":"1","round":1,"verdict":"approved","ts":"2026-01-01T02:00:00Z"}')"
+check "record: review-round.round must be an int" "INVALID" "$(rec '{"kind":"review-round","task":"1","round":"one","verdict":"approved","ts":"2026-01-01T02:00:00Z"}')"
+check "record: task-close ok" "OK: recorded task-close" "$(rec '{"kind":"task-close","task":"1","estimate":3,"ts":"2026-01-01T03:00:00Z"}')"
+check "record: task-close.estimate must be a number" "INVALID" "$(rec '{"kind":"task-close","task":"1","estimate":"big","ts":"2026-01-01T03:00:00Z"}')"
+n="$(wc -l < "$TT/.claude/telemetry.jsonl" | tr -d ' ')"
+if [[ "$n" == "4" ]]; then echo "ok   record: 4 valid records appended, invalid ones did not land"
+else echo "FAIL record: expected 4 lines in telemetry.jsonl, got $n"; fails=$((fails + 1)); fi
+rm -rf "$TT"
+
+echo "== telemetry.py metrics (missing / garbage log) =="
+TE="$(mktemp -d)"; mkdir -p "$TE/.claude"
+check "metrics: missing log" "no telemetry yet" "$(python3 "$PLUGIN/scripts/telemetry.py" "$TE" metrics)"
+printf 'not json\n{"kind":"bogus","task":"1","ts":"x"}\n' > "$TE/.claude/telemetry.jsonl"
+out="$(python3 "$PLUGIN/scripts/telemetry.py" "$TE" metrics 2>&1)"
+check "metrics: garbage-only log reports no telemetry" "no telemetry yet" "$out"
+check "metrics: garbage-only log reports skip count on stderr" "skipped 2 malformed line(s)" "$out"
+rm -rf "$TE"
+
+echo "== telemetry.py metrics (fixture log: cycle time, gate, rework, estimate) =="
+TF="$(mktemp -d)"; mkdir -p "$TF/.claude"
+cp "$FIX/telemetry.jsonl" "$TF/.claude/telemetry.jsonl"
+out="$(python3 "$PLUGIN/scripts/telemetry.py" "$TF" metrics 2>&1)"
+check "metrics: tasks/events/skipped summary" "tasks=3 events=15 skipped=2" "$out"
+check "metrics: cycle time avg for In progress" "In progress  avg=6.0h  n=2" "$out"
+check "metrics: cycle time avg for In review" "In review  avg=2.0h  n=2" "$out"
+check "metrics: gate first-try rate" "gate first-try rate: 50.0% (1/2 tasks)" "$out"
+check "metrics: rework rate" "rework rate: 50.0% (1/2 tasks with review rounds)" "$out"
+check "metrics: estimate vs actual task 10" "task=10  estimate=3  actual=6.0h" "$out"
+check "metrics: estimate vs actual task 11" "task=11  estimate=5  actual=10.0h" "$out"
+rm -rf "$TF"
+
+echo "== board.sh metrics (delegates to telemetry.py) =="
+BMT="$(mktemp -d)"; mkdir -p "$BMT/.claude"
+cp "$FIX/valid.project.yaml" "$BMT/.claude/project.yaml"
+cp "$FIX/telemetry.jsonl" "$BMT/.claude/telemetry.jsonl"
+out="$(cd "$BMT" && bash "$PLUGIN/scripts/board.sh" metrics 2>&1)"
+check "board.sh metrics delegates to telemetry.py" "gate first-try rate: 50.0% (1/2 tasks)" "$out"
+rm -rf "$BMT"
+
+echo "== board.sh move telemetry (transition events; move never fails on telemetry write failure) =="
+BM="$(mktemp -d)"; mkdir -p "$BM/.claude"
+cp "$FIX/valid.project.yaml" "$BM/.claude/project.yaml"
+BMGH="$(mktemp -d)"
+cat >"$BMGH/gh" <<'FAKE'
+#!/usr/bin/env bash
+set -uo pipefail
+case "$1 $2" in
+    "project item-list") echo "ITEM_1" ;;
+    "project item-edit") echo "edited" ;;
+    *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
+esac
+FAKE
+chmod +x "$BMGH/gh"
+
+out="$(cd "$BM" && PATH="$BMGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 1 "In progress" 2>&1; echo "rc=$?")"
+check "move telemetry: move still reports success" "moved #1 -> In progress" "$out"
+check "move telemetry: exits 0" "rc=0" "$out"
+check "move telemetry: transition event appended" '"kind": "transition"' "$(cat "$BM/.claude/telemetry.jsonl" 2>/dev/null)"
+check "move telemetry: to field set" '"to": "In progress"' "$(cat "$BM/.claude/telemetry.jsonl" 2>/dev/null)"
+check "move telemetry: task field set" '"task": "1"' "$(cat "$BM/.claude/telemetry.jsonl" 2>/dev/null)"
+
+BM2="$(mktemp -d)"; mkdir -p "$BM2/.claude"
+cp "$FIX/valid.project.yaml" "$BM2/.claude/project.yaml"
+chmod 555 "$BM2/.claude"
+out2="$(cd "$BM2" && PATH="$BMGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 1 "In progress" 2>&1; echo "rc=$?")"
+chmod 755 "$BM2/.claude"
+check "move telemetry: unwritable .claude does not fail the move" "moved #1 -> In progress" "$out2"
+check "move telemetry: unwritable .claude -- still exits 0" "rc=0" "$out2"
+rm -rf "$BM" "$BM2" "$BMGH"
 
 echo
 if [[ $fails -gt 0 ]]; then echo "$fails test(s) FAILED"; exit 1; fi
