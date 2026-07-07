@@ -7,3 +7,4 @@ evals/results/
 .claude/gate-pass
 .claude/telemetry.jsonl
 .claude/neural-view/
+.claude/feedback/
