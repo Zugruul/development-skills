@@ -7,6 +7,7 @@
 echo "== neural-view boot crash + favicon + 3D template contract =="
 NVHTML="$PLUGIN/templates/neural-view.html"
 NVVENDOR_SHA="86bcee248b64f44bcfc23c331ae74619061957d59cab040171dcb6fb5900beb6"
+NVCORE_SHA="05b2609338c76cd65daf74f3ac515bc9a5045e1b3b33edc07d8c9bd55250fa90"
 check_absent "resize() no longer assigns read-only canvas.clientWidth" "canvas.clientWidth =" "$(cat "$NVHTML")"
 check_absent "resize() no longer assigns read-only canvas.clientHeight" "canvas.clientHeight =" "$(cat "$NVHTML")"
 check_absent "template has no CDN/external script or asset references" 'src="http' "$(cat "$NVHTML")"
@@ -29,6 +30,35 @@ if [[ -f "$_nvvendorfile" ]]; then
     check "vendored three.js sha256 matches the recorded, audited version" "$NVVENDOR_SHA" "$got_sha"
 else
     echo "FAIL vendored three.module.min.js is missing at $_nvvendorfile"; fails=$((fails + 1))
+fi
+_nvcorefile="$PLUGIN/templates/vendor/three.core.min.js"
+if [[ -f "$_nvcorefile" ]]; then
+    got_core_sha="$(shasum -a 256 "$_nvcorefile" | awk '{print $1}')"
+    check "vendored three.js core-build sha256 matches the recorded, audited version" "$NVCORE_SHA" "$got_core_sha"
+else
+    echo "FAIL vendored three.core.min.js is missing at $_nvcorefile"; fails=$((fails + 1))
+fi
+# generalized split-build guard: every relative import the vendored
+# three.module.min.js makes (e.g. `from"./three.core.min.js"`) must itself be
+# vendored on disk AND allowlisted in neural-view.py's VENDOR_FILES -- this is
+# what should have caught the r0.185.1 re-vendor that silently dropped the
+# second file (module imports core, only module was vendored/allowlisted).
+if [[ -f "$_nvvendorfile" ]]; then
+    _nvpy="$PLUGIN/scripts/neural-view.py"
+    _nvimports="$(grep -oE '(from|import)"\./[^"]+"' "$_nvvendorfile" | sed -E 's/^(from|import)"\.\///; s/"$//' | sort -u)"
+    if [[ -z "$_nvimports" ]]; then
+        echo "FAIL split-build guard found no relative imports to check in three.module.min.js -- extraction regex may be stale"; fails=$((fails + 1))
+    else
+        while IFS= read -r _nvimport; do
+            [[ -z "$_nvimport" ]] && continue
+            if [[ -f "$PLUGIN/templates/vendor/$_nvimport" ]]; then
+                echo "ok   three.module.min.js's relative import ./$_nvimport is vendored on disk"
+            else
+                echo "FAIL three.module.min.js imports ./$_nvimport but it is not vendored at $PLUGIN/templates/vendor/$_nvimport"; fails=$((fails + 1))
+            fi
+            check "three.module.min.js's relative import ./$_nvimport is allowlisted in VENDOR_FILES" "\"$_nvimport\":" "$(cat "$_nvpy")"
+        done <<<"$_nvimports"
+    fi
 fi
 if command -v node >/dev/null 2>&1; then
     script="$(python3 -c "
