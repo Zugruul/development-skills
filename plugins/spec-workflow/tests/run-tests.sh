@@ -23,9 +23,12 @@ flaky=0
 # shellcheck source=plugins/spec-workflow/tests/_lib.sh
 source "$HERE/_lib.sh"
 
-# Order matters only where a section relies on state left by an earlier one;
-# none of the sections below do (each mints/tears down its own temp dirs and
-# ports), so this order is simply the original file's top-to-bottom order.
+# Sections are mostly independent (each mints/tears down its own temp dirs
+# and ports), EXCEPT one documented pair: section-ui-hub.sh creates the
+# _hubtmp temp dir and section-neural-view-lifecycle.sh tears it down (see
+# the rm -rf there), so ui-hub MUST precede neural-view-lifecycle below.
+# This array's order is otherwise just the original file's top-to-bottom
+# order, but that one pair is load-bearing -- don't reorder it blindly.
 SECTIONS=(
     section-syntax.sh
     section-config.sh
