@@ -98,6 +98,7 @@ setup (the `merge-mode.sh method` subcommand changes it later):
   history); **rebase** replays them.
 
 ```bash
+# mergeMethod = squash (default) — attribution goes in the squash body:
 gh pr merge <n> --squash --delete-branch --body "$(cat <<'EOF'
 <one-line summary of the task>
 
@@ -107,6 +108,11 @@ Reviewed-by: <identity.sh reviewer name> (model: <prReviewModel>)
 Co-authored-by: <each distinct branch author, e.g. Dev Agent - ... <...+dev_agent@...>>
 EOF
 )"
+
+# mergeMethod = merge or rebase — the branch's own per-role commits carry the
+# attribution; no extra body:
+gh pr merge <n> --<cfg:methodology.mergeMethod> --delete-branch
+
 board.sh move N "QA"        # then fold the spec delta (build-next §Advancing)
 ```
 
