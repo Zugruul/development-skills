@@ -1,21 +1,38 @@
 #!/usr/bin/env python3
-"""neural-view.py — a live, JARVIS-style visualization of the identity brains.
+"""neural-view.py — a live, JARVIS-style visualization of the identity brains,
+aggregated across every spec-workflow repo on the machine.
 
 The identities' brains are the workflow's memory: markdown notes ("neurons")
 wired by weighted links ("synapses"), with an append-only activation log of
 every recall. This is a read-only window into them — one long-lived page
 (http://127.0.0.1:<port>) that draws every brain as a neural cluster and, as
 recalls happen, lights the neurons up and pulses the synapses in real time.
+Repos are laid out as "constellations": each repo is a labeled region on the
+canvas containing its own role-clusters (dev/reviewer/orchestrator/...).
 
-  neural-view.py start [--port N] [--dir ROOT]   # start the server (idempotent)
-  neural-view.py status                           # RUNNING <url> notes=N brains=N | STOPPED
+  neural-view.py start [--port N] [--dir ROOT] [--scan BASE]   # start (idempotent)
+  neural-view.py status                                         # RUNNING <url> notes=N brains=N repos=N | STOPPED
   neural-view.py stop
-  neural-view.py serve [--port N] [--dir ROOT]    # run in the foreground (internal)
+  neural-view.py serve [--port N] [--dir ROOT] [--scan BASE]   # run in the foreground (internal)
 
-Brains root: --dir, else $NEURAL_VIEW_DIR, else the git root, else cwd. Brains
-live at <root>/.claude/identities/<role>/brain/ — notes/<slug>.md (YAML-ish
-frontmatter + body + [[slug]] wikilinks), links.json, and .activation.jsonl.
-Everything is read READ-ONLY; absent dirs/files just yield an empty graph.
+Repo discovery (both apply; results are deduped and sorted by repo name):
+  - --dir / $NEURAL_VIEW_DIR: that root is ALWAYS included, marker or not.
+  - Scan base (--scan, else $NEURAL_VIEW_SCAN, else ~/Development): every
+    immediate child directory that has a <child>/.claude/.neural-network
+    marker FILE is included. Directories without the marker are ignored,
+    even if they have brains — inclusion is explicit and cheap.
+  - If neither yields anything (no flags/env at all, empty scan base), falls
+    back to the git root of the cwd — the old single-repo default.
+  A discovered repo with no `.claude/identities/` brains yet still appears as
+  an empty, labeled region on the canvas (nodes/edges: none) rather than being
+  dropped — it shows the constellation is there, just not yet populated.
+
+Brains live at <root>/.claude/identities/<role>/brain/ — notes/<slug>.md
+(YAML-ish frontmatter + body + [[slug]] wikilinks), links.json, and
+.activation.jsonl. Everything is read READ-ONLY; absent dirs/files just yield
+an empty graph. Graph node ids are "<repo>/<role>/<slug>" (unique across repos);
+/note/<repo>/<role>/<slug> addresses one; /events cursors are opaque and carry
+a per-repo, per-role byte offset.
 
 State dir (pid/port/log): $NEURAL_VIEW_STATE, else <git root>/.claude/neural-view.
 Port: --port, else $NEURAL_VIEW_PORT, else 4748. Binds 127.0.0.1 only.
@@ -46,12 +63,16 @@ def state_dir():
 
 
 S = state_dir()
-PIDFILE, PORTFILE, DIRFILE = S / "pid", S / "port", S / "dir"
+PIDFILE, PORTFILE, REPOSFILE = S / "pid", S / "port", S / "repos.json"
 DEFAULT_PORT = int(os.environ.get("NEURAL_VIEW_PORT", "4748"))
 TEMPLATE = Path(__file__).resolve().parent.parent / "templates" / "neural-view.html"
 WIKILINK = re.compile(r"\[\[([^\]]+)\]\]")
+MARKER_NAME = ".neural-network"
+FAVICON = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+           b'<circle cx="16" cy="16" r="14" fill="#04070d"/>'
+           b'<circle cx="16" cy="16" r="6" fill="#46e6ff"/></svg>')
 
-BRAINS_ROOT = Path(git_root())  # replaced by serve()
+REPOS = [("", Path(git_root()))]  # list of (repo_name, root); replaced by serve()
 
 
 # ---------------------------------------------------------------------------
@@ -150,59 +171,68 @@ def read_note(brain, slug):
     return parse_note(f.read_text(errors="replace"))
 
 
-def build_graph(root):
-    """nodes = every note across ALL brains; edges = links.json entries plus
-    cross-brain consult edges derived from the activation logs."""
+def build_graph(repos):
+    """nodes = every note across every repo's brains; edges = each repo's
+    links.json entries plus cross-brain consult edges derived from that repo's
+    activation logs (consult never crosses a repo boundary). Node/edge ids are
+    "<repo>/<role>[/<slug>]" so they stay unique across repos. `repos` in the
+    payload lists every DISCOVERED repo (including brainless ones), so the
+    client can still draw an empty labeled constellation for them."""
     nodes, edges = [], []
-    for role, brain in iter_brains(root):
-        notes_dir = brain / "notes"
-        if notes_dir.is_dir():
-            for f in sorted(notes_dir.glob("*.md")):
-                fm, _ = parse_note(f.read_text(errors="replace"))
-                slug = f.stem
-                nodes.append({
-                    "id": f"{role}/{slug}",
-                    "role": role,
-                    "slug": slug,
-                    "strength": int(fm.get("strength", 1) or 1),
-                    "graduated": bool(fm.get("graduated", False)),
-                    "tags": [str(t) for t in _as_list(fm.get("tags"))],
-                })
-        links = brain / "links.json"
-        if links.is_file():
-            try:
-                data = json.loads(links.read_text(errors="replace"))
-            except Exception:  # noqa: BLE001
-                data = {}
-            for key, meta in (data or {}).items():
-                if "->" not in key:
-                    continue
-                src, dst = key.split("->", 1)
-                meta = meta if isinstance(meta, dict) else {}
-                edges.append({
-                    "source": f"{role}/{src.strip()}",
-                    "target": f"{role}/{dst.strip()}",
-                    "weight": meta.get("weight", 0.5),
-                    "fires": meta.get("fires", 0),
-                    "last": meta.get("last", ""),
-                })
-    # cross-brain consult edges: consumer role reaches into another role's brain
-    seen = set()
-    for ev in read_events(root):
-        if ev.get("event") != "consult":
-            continue
-        consumer, role = ev.get("consumer"), ev.get("role")
-        if not consumer or not role or consumer == role:
-            continue
-        key = (consumer, role)
-        if key in seen:
-            continue
-        seen.add(key)
-        edges.append({"source": consumer, "target": role, "type": "consult", "weight": 0.4})
-    return {"nodes": nodes, "edges": edges}
+    for name, root in repos:
+        for role, brain in iter_brains(root):
+            notes_dir = brain / "notes"
+            if notes_dir.is_dir():
+                for f in sorted(notes_dir.glob("*.md")):
+                    fm, _ = parse_note(f.read_text(errors="replace"))
+                    slug = f.stem
+                    nodes.append({
+                        "id": f"{name}/{role}/{slug}",
+                        "repo": name,
+                        "role": role,
+                        "slug": slug,
+                        "strength": int(fm.get("strength", 1) or 1),
+                        "graduated": bool(fm.get("graduated", False)),
+                        "tags": [str(t) for t in _as_list(fm.get("tags"))],
+                    })
+            links = brain / "links.json"
+            if links.is_file():
+                try:
+                    data = json.loads(links.read_text(errors="replace"))
+                except Exception:  # noqa: BLE001
+                    data = {}
+                for key, meta in (data or {}).items():
+                    if "->" not in key:
+                        continue
+                    src, dst = key.split("->", 1)
+                    meta = meta if isinstance(meta, dict) else {}
+                    edges.append({
+                        "source": f"{name}/{role}/{src.strip()}",
+                        "target": f"{name}/{role}/{dst.strip()}",
+                        "weight": meta.get("weight", 0.5),
+                        "fires": meta.get("fires", 0),
+                        "last": meta.get("last", ""),
+                        "repo": name,
+                    })
+        # cross-brain consult edges: consumer role reaches into another role's
+        # brain, WITHIN this repo only.
+        seen = set()
+        for ev in read_events(name, root):
+            if ev.get("event") != "consult":
+                continue
+            consumer, role = ev.get("consumer"), ev.get("role")
+            if not consumer or not role or consumer == role:
+                continue
+            key = (consumer, role)
+            if key in seen:
+                continue
+            seen.add(key)
+            edges.append({"source": f"{name}/{consumer}", "target": f"{name}/{role}",
+                           "type": "consult", "weight": 0.4, "repo": name})
+    return {"nodes": nodes, "edges": edges, "repos": [name for name, _ in repos]}
 
 
-def _parse_lines(role, blob, out):
+def _parse_lines(repo, role, blob, out):
     for line in blob.splitlines():
         line = line.strip()
         if not line:
@@ -213,17 +243,19 @@ def _parse_lines(role, blob, out):
             continue
         if isinstance(obj, dict):
             obj.setdefault("role", role)
+            obj.setdefault("repo", repo)
             out.append(obj)
 
 
-def read_events(root):
-    """Every .activation.jsonl line across brains, ts-ordered. Used by the graph
-    (consult-edge derivation); NOT the delivery path (see read_events_since)."""
+def read_events(repo, root):
+    """Every .activation.jsonl line across one repo's brains, ts-ordered. Used
+    by the graph (consult-edge derivation); NOT the delivery path (see
+    read_events_since)."""
     evts = []
     for role, brain in iter_brains(root):
         f = brain / ".activation.jsonl"
         if f.is_file():
-            _parse_lines(role, f.read_text(errors="replace"), evts)
+            _parse_lines(repo, role, f.read_text(errors="replace"), evts)
     evts.sort(key=lambda e: str(e.get("ts", "")))
     return evts
 
@@ -249,42 +281,48 @@ def _complete_end(f):
     return 0
 
 
-def end_offsets(root):
-    """Per-brain 'current end' — the token a fresh client starts from (skips
-    backlog: only events appended AFTER this poll are ever delivered)."""
-    return {role: _complete_end(brain / ".activation.jsonl") for role, brain in iter_brains(root)}
+def end_offsets(repos):
+    """Per-repo, per-brain 'current end' — the token a fresh client starts from
+    (skips backlog: only events appended AFTER this poll are ever delivered)."""
+    return {name: {role: _complete_end(brain / ".activation.jsonl") for role, brain in iter_brains(root)}
+            for name, root in repos}
 
 
-def read_events_since(root, offsets):
-    """The delivery path. For each brain, seek to its stored byte offset and read
-    only the NEW complete lines — completeness comes from append-only offsets, not
-    from re-sorting a full re-read (which shifted indexes and dropped/replayed).
-    Returns (events, new_offsets, bytes_read). Events are ts-sorted within this
-    batch for display only. Defends against a truncated/rotated log (offset past
-    EOF → restart that brain at 0)."""
+def read_events_since(repos, offsets):
+    """The delivery path. For each repo's each brain, seek to its stored byte
+    offset and read only the NEW complete lines — completeness comes from
+    append-only offsets, not from re-sorting a full re-read (which shifted
+    indexes and dropped/replayed). Returns (events, new_offsets, bytes_read).
+    Events are ts-sorted within this batch for display only. Defends against a
+    truncated/rotated log (offset past EOF → restart that brain at 0) and
+    against an unrecognized repo name in the token (treated as empty offsets)."""
     events = []
-    new_offsets = dict(offsets)
+    new_offsets = {}
     bytes_read = 0
-    for role, brain in iter_brains(root):
-        f = brain / ".activation.jsonl"
-        if not f.is_file():
-            new_offsets[role] = 0
-            continue
-        start = offsets.get(role, 0)
-        size = f.stat().st_size
-        if start < 0 or start > size:  # negative / rotated-shrunk offset — don't seek there, resync
-            start = 0
-        with f.open("rb") as fh:
-            fh.seek(start)
-            data = fh.read()
-        nl = data.rfind(b"\n")
-        if nl == -1:                  # no complete line beyond the offset yet
-            new_offsets[role] = start
-            continue
-        consumed = data[:nl + 1]
-        bytes_read += len(consumed)
-        new_offsets[role] = start + len(consumed)
-        _parse_lines(role, consumed.decode("utf-8", "replace"), events)
+    for name, root in repos:
+        repo_offsets = offsets.get(name) or {}
+        repo_new = {}
+        for role, brain in iter_brains(root):
+            f = brain / ".activation.jsonl"
+            if not f.is_file():
+                repo_new[role] = 0
+                continue
+            start = repo_offsets.get(role, 0)
+            size = f.stat().st_size
+            if start < 0 or start > size:  # negative / rotated-shrunk offset — don't seek there, resync
+                start = 0
+            with f.open("rb") as fh:
+                fh.seek(start)
+                data = fh.read()
+            nl = data.rfind(b"\n")
+            if nl == -1:               # no complete line beyond the offset yet
+                repo_new[role] = start
+                continue
+            consumed = data[:nl + 1]
+            bytes_read += len(consumed)
+            repo_new[role] = start + len(consumed)
+            _parse_lines(name, role, consumed.decode("utf-8", "replace"), events)
+        new_offsets[name] = repo_new
     events.sort(key=lambda e: str(e.get("ts", "")))
     return events, new_offsets, bytes_read
 
@@ -295,15 +333,21 @@ def encode_cursor(offsets):
 
 
 def decode_cursor(token):
-    """A cursor token → {role: byte_offset}, or None if absent/garbage/'0'
-    (caller treats None as 'start from current end')."""
+    """A cursor token → {repo: {role: byte_offset}}, or None if absent/garbage/'0'
+    (caller treats None as 'start from current end'). An unrecognized/malformed
+    per-repo entry is dropped rather than failing the whole cursor (a repo that
+    vanished from discovery just resyncs from 0 on its next appearance)."""
     if not token or token == "0":
         return None
     try:
         pad = "=" * (-len(token) % 4)
         d = json.loads(base64.urlsafe_b64decode(token + pad))
         if isinstance(d, dict):
-            return {str(k): max(0, int(v)) for k, v in d.items()}  # never a negative seek offset
+            out = {}
+            for repo, roles in d.items():
+                if isinstance(roles, dict):
+                    out[str(repo)] = {str(k): max(0, int(v)) for k, v in roles.items()}  # never a negative seek offset
+            return out
     except Exception:  # noqa: BLE001
         pass
     return None
@@ -344,31 +388,35 @@ def render_body(body):
     return "\n".join(out)
 
 
-def note_payload(root, role, slug):
-    for r, brain in iter_brains(root):
-        if r != role:
+def note_payload(repos, repo, role, slug):
+    for name, root in repos:
+        if name != repo:
             continue
-        parsed = read_note(brain, slug)
-        if parsed is None:
-            return None
-        fm, body = parsed
-        links = []
-        lf = brain / "links.json"
-        if lf.is_file():
-            try:
-                data = json.loads(lf.read_text(errors="replace"))
-            except Exception:  # noqa: BLE001
-                data = {}
-            for key, meta in (data or {}).items():
-                if "->" not in key:
-                    continue
-                src, dst = (p.strip() for p in key.split("->", 1))
-                meta = meta if isinstance(meta, dict) else {}
-                if src == slug:
-                    links.append({"target": dst, "weight": meta.get("weight", 0.5), "fires": meta.get("fires", 0), "dir": "out"})
-                elif dst == slug:
-                    links.append({"target": src, "weight": meta.get("weight", 0.5), "fires": meta.get("fires", 0), "dir": "in"})
-        return {"role": role, "slug": slug, "frontmatter": fm, "bodyHtml": render_body(body), "links": links}
+        for r, brain in iter_brains(root):
+            if r != role:
+                continue
+            parsed = read_note(brain, slug)
+            if parsed is None:
+                return None
+            fm, body = parsed
+            links = []
+            lf = brain / "links.json"
+            if lf.is_file():
+                try:
+                    data = json.loads(lf.read_text(errors="replace"))
+                except Exception:  # noqa: BLE001
+                    data = {}
+                for key, meta in (data or {}).items():
+                    if "->" not in key:
+                        continue
+                    src, dst = (p.strip() for p in key.split("->", 1))
+                    meta = meta if isinstance(meta, dict) else {}
+                    if src == slug:
+                        links.append({"target": dst, "weight": meta.get("weight", 0.5), "fires": meta.get("fires", 0), "dir": "out"})
+                    elif dst == slug:
+                        links.append({"target": src, "weight": meta.get("weight", 0.5), "fires": meta.get("fires", 0), "dir": "in"})
+            return {"repo": repo, "role": role, "slug": slug, "frontmatter": fm, "bodyHtml": render_body(body), "links": links}
+        return None
     return None
 
 
@@ -393,8 +441,10 @@ class Handler(BaseHTTPRequestHandler):
             if TEMPLATE.is_file():
                 return self._send(200, TEMPLATE.read_bytes(), "text/html; charset=utf-8")
             return self._send(200, "<h1>neural-view</h1><p>template missing</p>", "text/html; charset=utf-8")
+        if path == "/favicon.ico":
+            return self._send(200, FAVICON, "image/svg+xml")
         if path == "/graph":
-            return self._send(200, build_graph(BRAINS_ROOT))
+            return self._send(200, build_graph(REPOS))
         if path == "/events":
             token = ""
             q = self.path.split("?", 1)[1] if "?" in self.path else ""
@@ -403,14 +453,14 @@ class Handler(BaseHTTPRequestHandler):
                     token = kv[len("since="):]
             offsets = decode_cursor(token)
             if offsets is None:                    # first poll / bad token: start at end, skip backlog
-                offsets = end_offsets(BRAINS_ROOT)
+                offsets = end_offsets(REPOS)
                 return self._send(200, {"cursor": encode_cursor(offsets), "events": [], "bytesRead": 0})
-            events, new_offsets, nbytes = read_events_since(BRAINS_ROOT, offsets)
+            events, new_offsets, nbytes = read_events_since(REPOS, offsets)
             return self._send(200, {"cursor": encode_cursor(new_offsets), "events": events, "bytesRead": nbytes})
         if path.startswith("/note/"):
-            parts = path[len("/note/"):].split("/", 1)
-            if len(parts) == 2 and parts[0] and parts[1]:
-                payload = note_payload(BRAINS_ROOT, parts[0], parts[1])
+            parts = path[len("/note/"):].split("/", 2)
+            if len(parts) == 3 and parts[0] and parts[1] and parts[2]:
+                payload = note_payload(REPOS, parts[0], parts[1], parts[2])
                 if payload is not None:
                     return self._send(200, payload)
             return self._send(404, {"error": "unknown note"})
@@ -441,28 +491,81 @@ def arg_port(args):
     return int(arg_val(args, "--port", DEFAULT_PORT))
 
 
-def arg_dir(args):
-    return arg_val(args, "--dir", os.environ.get("NEURAL_VIEW_DIR") or git_root())
+def raw_arg_dir(args):
+    """--dir/$NEURAL_VIEW_DIR if explicitly given, else None (no default)."""
+    return arg_val(args, "--dir", None) or os.environ.get("NEURAL_VIEW_DIR")
 
 
-def counts(root):
-    brains = list(iter_brains(root))
-    notes = sum(len(list((b / "notes").glob("*.md"))) for _, b in brains if (b / "notes").is_dir())
-    return notes, len(brains)
+def raw_arg_scan(args):
+    """--scan/$NEURAL_VIEW_SCAN if explicitly given, else None (caller defaults)."""
+    return arg_val(args, "--scan", None) or os.environ.get("NEURAL_VIEW_SCAN")
+
+
+def discover_repos(args):
+    """Every repo to aggregate, as (name, root) sorted by name:
+    - the explicit --dir/$NEURAL_VIEW_DIR root, if given — ALWAYS included,
+      marker or not;
+    - every immediate child of the scan base (--scan/$NEURAL_VIEW_SCAN, else
+      ~/Development) that carries a <child>/.claude/.neural-network marker
+      FILE. Children without the marker are ignored even if they have brains.
+    Falls back to the git root of cwd if nothing was found at all (no flags,
+    no env, empty/absent scan base) — the old single-repo default. Repo name
+    is the directory basename; same-basename repos would collide, an accepted
+    edge case (not expected across a developer's project directories)."""
+    found = {}  # resolved path str -> Path, de-duplicated
+    explicit = raw_arg_dir(args)
+    if explicit:
+        p = Path(os.path.abspath(explicit))
+        found[str(p)] = p
+    scan_base = raw_arg_scan(args) or str(Path.home() / "Development")
+    sb = Path(scan_base)
+    if sb.is_dir():
+        for child in sorted(sb.iterdir()):
+            if child.is_dir() and (child / ".claude" / MARKER_NAME).is_file():
+                found.setdefault(str(child.resolve()), child)
+    if not found:
+        p = Path(git_root())
+        found[str(p)] = p
+    return sorted(((p.name, p) for p in found.values()), key=lambda t: t[0])
+
+
+def load_repos_file():
+    """The repo list a running server persisted at boot (for status/counts
+    without re-running discovery, which could drift from what's actually
+    served if env vars changed since start)."""
+    if REPOSFILE.is_file():
+        try:
+            data = json.loads(REPOSFILE.read_text())
+            repos = [(str(name), Path(root)) for name, root in data]
+            if repos:
+                return repos
+        except Exception:  # noqa: BLE001
+            pass
+    p = Path(git_root())
+    return [(p.name, p)]
+
+
+def counts(repos):
+    total_notes = total_brains = 0
+    for _, root in repos:
+        brains = list(iter_brains(root))
+        total_brains += len(brains)
+        total_notes += sum(len(list((b / "notes").glob("*.md"))) for _, b in brains if (b / "notes").is_dir())
+    return total_notes, total_brains
 
 
 def main():
-    global BRAINS_ROOT
+    global REPOS
     cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
     args = sys.argv[2:]
     ensure_dirs()
 
     if cmd == "serve":
-        port, root = arg_port(args), os.path.abspath(arg_dir(args))
-        BRAINS_ROOT = Path(root)
+        port = arg_port(args)
+        REPOS = discover_repos(args)
         httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)  # bind before pidfile
         PORTFILE.write_text(str(port))
-        DIRFILE.write_text(root)
+        REPOSFILE.write_text(json.dumps([[name, str(root)] for name, root in REPOS]))
         PIDFILE.write_text(str(os.getpid()))
         httpd.serve_forever()
 
@@ -470,10 +573,16 @@ def main():
         if pid_alive():
             print(f"RUNNING http://127.0.0.1:{PORTFILE.read_text().strip()}")
             return
-        port, root = arg_port(args), os.path.abspath(arg_dir(args))
+        port = arg_port(args)
+        child = [sys.executable, os.path.abspath(__file__), "serve", "--port", str(port)]
+        explicit_dir = raw_arg_dir(args)
+        if explicit_dir:
+            child += ["--dir", os.path.abspath(explicit_dir)]
+        explicit_scan = raw_arg_scan(args)
+        if explicit_scan:
+            child += ["--scan", os.path.abspath(explicit_scan)]
         log = open(S / "server.log", "ab")
-        subprocess.Popen([sys.executable, os.path.abspath(__file__), "serve", "--port", str(port), "--dir", root],
-                         stdout=log, stderr=log, start_new_session=True, env=os.environ)
+        subprocess.Popen(child, stdout=log, stderr=log, start_new_session=True, env=os.environ)
         for _ in range(30):
             time.sleep(0.1)
             if pid_alive():
@@ -482,9 +591,9 @@ def main():
 
     elif cmd == "status":
         if pid_alive():
-            root = DIRFILE.read_text().strip() if DIRFILE.is_file() else git_root()
-            notes, brains = counts(root)
-            print(f"RUNNING http://127.0.0.1:{PORTFILE.read_text().strip()} notes={notes} brains={brains}")
+            repos = load_repos_file()
+            notes, brains = counts(repos)
+            print(f"RUNNING http://127.0.0.1:{PORTFILE.read_text().strip()} notes={notes} brains={brains} repos={len(repos)}")
         else:
             print("STOPPED")
             sys.exit(1)

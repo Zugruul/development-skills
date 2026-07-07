@@ -227,6 +227,7 @@ print("ROUND2 ids=%s" % ids2)                    # must be exactly [4, 5] (deliv
 print("DELIVERED ids=%s" % sorted(allids))       # no loss: every appended event arrived
 print("DUPS=%d" % (len(allids) - len(set(allids))))  # no duplicate delivery
 print("IDLE events=%d bytesRead=%s" % (len(d3["events"]), d3.get("bytesRead")))  # reads ~zero new bytes
+print("REPOTAG=%s" % d1["events"][0].get("repo"))  # delivered events are tagged with their repo
 PY
 )"
 check "events first poll skips backlog" "FIRSTPOLL events=0" "$evout"
@@ -234,8 +235,7 @@ check "events replay-trap delivers only new (no replay)" "ROUND2 ids=[4, 5]" "$e
 check "events no loss across interleaved earlier-ts writes" "DELIVERED ids=[1, 2, 3, 4, 5]" "$evout"
 check "events no duplicate delivery" "DUPS=0" "$evout"
 check "events idle poll reads zero new bytes" "IDLE events=0 bytesRead=0" "$evout"
-out="$(curl -sf "http://127.0.0.1:4788/events")"
-check "events carry the repo tag (legacy single-dir)" "\"repo\": \"$_nvevrepo\"" "$out"
+check "events carry the repo tag (legacy single-dir)" "REPOTAG=$_nvevrepo" "$evout"
 # round-2 finding: a token decoding to a NEGATIVE byte offset must not reach an
 # un-clamped fh.seek() (OSError → dropped connection). Must return 200 + a batch.
 negtok="$(python3 -c "import base64,json; print(base64.urlsafe_b64encode(json.dumps({'$_nvevrepo':{'dev':-999}}).encode()).rstrip(b'=').decode())")"

@@ -96,6 +96,7 @@ canvas{position:absolute;inset:0;display:block}
     <span class="label">notes <b id="t-notes">0</b></span>
     <span class="label">synapses <b id="t-links">0</b></span>
     <span class="label">brains <b id="t-brains">0</b></span>
+    <span class="label">repos <b id="t-repos">0</b></span>
   </div>
   <div id="status"><span class="dot"></span><span id="status-txt">live · recalls light up</span></div>
 </div>
@@ -122,8 +123,11 @@ const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 let W = 0, H = 0, DPR = 1;
 function resize(){
+  // canvas is CSS-positioned inset:0 (fills #stage), so its clientWidth/clientHeight
+  // are already innerWidth/innerHeight — clientWidth/clientHeight are read-only DOM
+  // properties, and assigning them threw under "use strict", crashing boot.
   DPR = Math.min(window.devicePixelRatio || 1, 2);
-  W = canvas.clientWidth = innerWidth; H = canvas.clientHeight = innerHeight;
+  W = innerWidth; H = innerHeight;
   canvas.width = W * DPR; canvas.height = H * DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
 }
 addEventListener("resize", resize); resize();
@@ -135,26 +139,43 @@ function roleHue(role){ if(!(role in ROLE_HUES)) ROLE_HUES[role] = (hueSpin += 4
 const glow = (h,l,a)=>`hsla(${h},95%,${l}%,${a})`;
 
 // ---- graph state ----
-let nodes = [], nodeById = new Map(), links = [], roles = [], clusters = new Map();
-let anims = [];               // active visual activations
-const queue = [];             // pending events, played on a stagger
+// Multi-repo "constellations": repos sit as super-clusters around a big outer
+// circle; each repo's role-clusters sit around that repo's own center. Node ids
+// and cluster keys are "repo/role[/slug]" so they stay unique across repos.
+let nodes = [], nodeById = new Map(), links = [], roles = [], repoList = [], clusters = new Map();
+let repoCenters = new Map();   // repo -> {x,y} (drawn even for brainless repos)
+let anims = [];                // active visual activations
+const queue = [];              // pending events, played on a stagger
 let cursor = null, tick = 0;
+const clusterKey = (repo,role) => repo + "|" + role;
 
 function layoutClusters(){
-  clusters.clear();
-  const n = roles.length || 1, cx = W/2, cy = H/2;
-  const R = Math.min(W,H) * (n>1 ? 0.29 : 0);
-  roles.forEach((role,i)=>{
-    const a = -Math.PI/2 + i/n*Math.PI*2;
-    clusters.set(role, {x: cx + Math.cos(a)*R, y: cy + Math.sin(a)*R, hue: roleHue(role), n:0});
+  clusters.clear(); repoCenters.clear();
+  const cx = W/2, cy = H/2;
+  const nRepos = repoList.length || 1;
+  const outerR = Math.min(W,H) * (nRepos>1 ? 0.34 : 0);
+  repoList.forEach((repo,i)=>{
+    const a = -Math.PI/2 + i/nRepos*Math.PI*2;
+    repoCenters.set(repo, {x: cx + Math.cos(a)*outerR, y: cy + Math.sin(a)*outerR});
   });
-  nodes.forEach(nd=>{ const c = clusters.get(nd.role); if(c) c.n++; });
+  for(const repo of repoList){
+    const rc = repoCenters.get(repo);
+    const rolesInRepo = [...new Set(nodes.filter(n=>n.repo===repo).map(n=>n.role))].sort();
+    const n = rolesInRepo.length || 1;
+    const R = Math.min(W,H) * (n>1 ? (nRepos>1 ? 0.13 : 0.29) : 0);
+    rolesInRepo.forEach((role,i)=>{
+      const a = -Math.PI/2 + i/n*Math.PI*2;
+      clusters.set(clusterKey(repo,role), {x: rc.x + Math.cos(a)*R, y: rc.y + Math.sin(a)*R, hue: roleHue(role), n:0, repo, role});
+    });
+  }
+  nodes.forEach(nd=>{ const c = clusters.get(clusterKey(nd.repo,nd.role)); if(c) c.n++; });
 }
 
 async function loadGraph(){
   let g; try { g = await (await fetch("/graph")).json(); } catch { return; }
   const prev = nodeById;
   roles = [...new Set(g.nodes.map(n=>n.role))].sort();
+  repoList = (g.repos && g.repos.length) ? [...g.repos].sort() : [...new Set(g.nodes.map(n=>n.repo))].sort();
   nodes = g.nodes.map(n=>{
     const old = prev.get(n.id);
     return Object.assign(n, {
@@ -173,6 +194,7 @@ async function loadGraph(){
   document.getElementById("t-notes").textContent = nodes.length;
   document.getElementById("t-links").textContent = links.length;
   document.getElementById("t-brains").textContent = roles.length;
+  document.getElementById("t-repos").textContent = repoList.length;
   document.getElementById("empty").style.display = nodes.length ? "none" : "grid";
   renderGauges();
 }
@@ -196,7 +218,7 @@ function step(){
     l.a.vx+=fx; l.a.vy+=fy; l.b.vx-=fx; l.b.vy-=fy;
   }
   for(const nd of nodes){
-    const c = clusters.get(nd.role);
+    const c = clusters.get(clusterKey(nd.repo,nd.role));
     if(c){ nd.vx += (c.x-nd.x)*KGRAV; nd.vy += (c.y-nd.y)*KGRAV; }
     nd.vx*=DAMP; nd.vy*=DAMP;
     nd.x+=nd.vx; nd.y+=nd.vy;
@@ -229,9 +251,23 @@ function drawGrid(){
 }
 
 function drawClusters(){
-  for(const [role,c] of clusters){
+  // repo region labels first (drawn even for a brainless marked repo — an empty
+  // labeled constellation), then each role-cluster glow within its repo.
+  if(repoList.length>1){
+    for(const repo of repoList){
+      const rc = repoCenters.get(repo); if(!rc) continue;
+      ctx.save(); ctx.fillStyle="rgba(143,166,189,.75)";
+      ctx.font="600 11px "+getComputedStyle(document.body).fontFamily;
+      ctx.textAlign="center";
+      ctx.fillText(repo.toUpperCase(), rc.x, rc.y - 90);
+      ctx.strokeStyle="rgba(90,190,255,.14)"; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.arc(rc.x, rc.y, 96, 0, 6.283); ctx.stroke();
+      ctx.restore();
+    }
+  }
+  for(const [,c] of clusters){
     if(!c.n) continue;
-    let rad=60; for(const nd of nodes) if(nd.role===role) rad=Math.max(rad, Math.hypot(nd.x-c.x,nd.y-c.y)+nd.r+16);
+    let rad=60; for(const nd of nodes) if(nd.repo===c.repo && nd.role===c.role) rad=Math.max(rad, Math.hypot(nd.x-c.x,nd.y-c.y)+nd.r+16);
     const grd = ctx.createRadialGradient(c.x,c.y,rad*.4,c.x,c.y,rad);
     grd.addColorStop(0,glow(c.hue,55,0)); grd.addColorStop(1,glow(c.hue,55,.05));
     ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(c.x,c.y,rad,0,6.283); ctx.fill();
@@ -240,7 +276,7 @@ function drawClusters(){
     ctx.save(); ctx.fillStyle=glow(c.hue,72,.85);
     ctx.font="600 10px "+getComputedStyle(document.body).fontFamily;
     ctx.textAlign="center";
-    ctx.fillText(role.toUpperCase().split("").join(" "), c.x, c.y-rad-8);
+    ctx.fillText(c.role.toUpperCase().split("").join(" "), c.x, c.y-rad-8);
     ctx.restore();
   }
 }
@@ -256,7 +292,7 @@ function drawSynapses(){
 
 function drawNeurons(){
   for(const nd of nodes){
-    const c = clusters.get(nd.role), hue = c?c.hue:190;
+    const c = clusters.get(clusterKey(nd.repo,nd.role)), hue = c?c.hue:190;
     const pulse = REDUCED ? 0 : (Math.sin(tick*0.05 + nd.phase)*0.5+0.5)*0.18;
     const base = nd.graduated ? 0.30 : 0.62;
     const lum = nd.graduated ? 46 : 62;
@@ -302,8 +338,9 @@ requestAnimationFrame(frame);
 // ---- live events ----
 function playEvent(e){
   logEvent(e);
-  const nd = e.note ? nodeById.get(e.role+"/"+e.note) : null;
-  const hue = nd ? (clusters.get(nd.role)?.hue ?? 190) : 190;
+  const repo = e.repo || "";
+  const nd = e.note ? nodeById.get(repo+"/"+e.role+"/"+e.note) : null;
+  const hue = nd ? (clusters.get(clusterKey(nd.repo,nd.role))?.hue ?? 190) : 190;
   const inten = Math.max(0.4, Math.min(1, e.activation ?? 0.7));
   if(nd) nd.hl = Math.max(nd.hl, inten);
   if(REDUCED) return;                     // reduced-motion: instant highlight only
@@ -315,12 +352,12 @@ function playEvent(e){
   } else if(e.event==="hop"){
     let a=nd, b=null;
     if(e.link && e.link.includes("->")){ const [s,d]=e.link.split("->");
-      a=nodeById.get(e.role+"/"+s.trim())||a; b=nodeById.get(e.role+"/"+d.trim()); }
+      a=nodeById.get(repo+"/"+e.role+"/"+s.trim())||a; b=nodeById.get(repo+"/"+e.role+"/"+d.trim()); }
     if(a&&b){ anims.push({kind:"travel", ax:a.x,ay:a.y,bx:b.x,by:b.y, hue, i:inten, t0:now, dur:700});
       b.hl=Math.max(b.hl,inten*.8); }
     else if(nd){ anims.push({kind:"ring", node:nd, hue, i:inten, t0:now, dur:700}); }
   } else if(e.event==="consult"){
-    const ca=clusters.get(e.consumer), cb=clusters.get(e.role);
+    const ca=clusters.get(clusterKey(repo,e.consumer)), cb=clusters.get(clusterKey(repo,e.role));
     if(ca&&cb) anims.push({kind:"arc", ax:ca.x,ay:ca.y,bx:cb.x,by:cb.y, hue:cb.hue, t0:now, dur:1100});
   }
 }
@@ -350,32 +387,39 @@ function logEvent(e){
   const kind = e.event||"?";
   const cls = kind==="consult" ? "warn" : "k";
   const what = e.note ? " "+e.note : (e.link?" "+e.link:"");
-  div.innerHTML = `<span class="t">${t}</span> <span class="${cls}">${(e.role||"?").toUpperCase()} · ${kind}</span>${escapeHtml(what)}`;
+  const tag = (repoList.length>1 && e.repo) ? `<span class="t">[${escapeHtml(e.repo)}]</span> ` : "";
+  div.innerHTML = `<span class="t">${t}</span> ${tag}<span class="${cls}">${(e.role||"?").toUpperCase()} · ${kind}</span>${escapeHtml(what)}`;
   LOG.prepend(div);
   while(LOG.childNodes.length>12) LOG.lastChild.remove();
 }
 function escapeHtml(s){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
 
 // ---- gauges ----
+// One row per (repo,role) combo actually present in the graph — a repo with a
+// marker but no brains yet simply contributes no rows (it still gets a labeled,
+// empty region on the canvas via repoList/repoCenters).
 function renderGauges(){
   const list=document.getElementById("gauge-list"); list.innerHTML="";
-  const perRole = new Map();
-  for(const nd of nodes){ const s=perRole.get(nd.role)||{n:0,str:0}; s.n++; s.str+=nd.strength||1; perRole.set(nd.role,s); }
+  const perCombo = new Map();
+  for(const nd of nodes){ const k=clusterKey(nd.repo,nd.role); const s=perCombo.get(k)||{n:0,str:0,repo:nd.repo,role:nd.role}; s.n++; s.str+=nd.strength||1; perCombo.set(k,s); }
   const linkCount = new Map();
-  for(const l of links){ linkCount.set(l.a.role,(linkCount.get(l.a.role)||0)+1); }
-  const maxN = Math.max(1,...[...perRole.values()].map(s=>s.n));
-  for(const role of roles){
-    const s=perRole.get(role)||{n:0,str:0}; const avg=s.n?s.str/s.n:0; const lk=linkCount.get(role)||0;
-    const hue=roleHue(role);
+  for(const l of links){ const k=clusterKey(l.a.repo,l.a.role); linkCount.set(k,(linkCount.get(k)||0)+1); }
+  const combos = [...perCombo.keys()].sort();
+  const maxN = Math.max(1,...[...perCombo.values()].map(s=>s.n));
+  const multi = repoList.length>1;
+  for(const k of combos){
+    const s=perCombo.get(k); const avg=s.n?s.str/s.n:0; const lk=linkCount.get(k)||0;
+    const hue=roleHue(s.role);
+    const label = multi ? `${s.repo} · ${s.role}` : s.role;
     const row=document.createElement("div"); row.className="brainrow";
     row.innerHTML =
       arc(s.n/maxN, hue, s.n) +
-      `<div class="rname" style="color:${glow(hue,72,.95)}">${escapeHtml(role)}</div>` +
+      `<div class="rname" style="color:${glow(hue,72,.95)}">${escapeHtml(label)}</div>` +
       `<div class="label" title="avg strength">str <span class="val">${avg.toFixed(1)}</span></div>` +
       `<div class="label" title="synapses">syn <span class="val">${lk}</span></div>`;
     list.appendChild(row);
   }
-  if(!roles.length) list.innerHTML='<div class="label">no brains</div>';
+  if(!combos.length) list.innerHTML='<div class="label">no brains</div>';
 }
 function arc(frac, hue, label){
   frac=Math.max(0,Math.min(1,frac)); const R=13, C=2*Math.PI*R, off=C*(1-frac);
@@ -396,8 +440,8 @@ canvas.addEventListener("click", ev=>{
 const panel=document.getElementById("inspect");
 document.getElementById("inspect-close").onclick=()=>{ panel.classList.remove("open"); panel.setAttribute("aria-hidden","true"); panel.setAttribute("inert",""); };
 async function openNote(nd){
-  let d; try{ d=await (await fetch(`/note/${encodeURIComponent(nd.role)}/${encodeURIComponent(nd.slug)}`)).json(); }catch{ return; }
-  document.getElementById("i-role").textContent = nd.role;
+  let d; try{ d=await (await fetch(`/note/${encodeURIComponent(nd.repo)}/${encodeURIComponent(nd.role)}/${encodeURIComponent(nd.slug)}`)).json(); }catch{ return; }
+  document.getElementById("i-role").textContent = repoList.length>1 ? `${nd.repo} · ${nd.role}` : nd.role;
   document.getElementById("i-title").textContent = nd.slug;
   const chips=document.getElementById("i-chips"); chips.innerHTML="";
   const fm=d.frontmatter||{};
@@ -413,7 +457,7 @@ async function openNote(nd){
     : '<div class="label">no synapses</div>';
   // clicking a wikilink jumps to that note in the same brain
   document.getElementById("body").querySelectorAll("a.wl").forEach(a=>a.onclick=e=>{
-    e.preventDefault(); const tgt=nodeById.get(nd.role+"/"+a.dataset.slug); if(tgt) openNote(tgt);
+    e.preventDefault(); const tgt=nodeById.get(nd.repo+"/"+nd.role+"/"+a.dataset.slug); if(tgt) openNote(tgt);
   });
   panel.classList.add("open"); panel.setAttribute("aria-hidden","false"); panel.removeAttribute("inert");
 }
