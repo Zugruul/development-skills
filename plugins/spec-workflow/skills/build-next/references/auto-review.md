@@ -156,7 +156,23 @@ Rules:
   = the contributing roles. Get the ready recipe from
   `identity.sh on-behalf <author-role> [--committer <role>] [--co <role>]...` —
   it prints a `flags:` line (`-c user.name/-c user.email` for the committer plus
-  `--author="Name <email>"`) and a `trailers:` block; paste both.
+  `--author="Name <email>"`) and a `trailers:` block. Embed both like the
+  squash-merge `--body` below — the `flags:` line is shell context (already
+  escaped by identity.sh) and the raw `trailers:` block goes in the message via a
+  **single-quoted** heredoc delimiter (`<<'EOF'`), which is what keeps a hostile
+  identity's backticks/`$()` in the trailer text inert:
+  ```bash
+  # recipe: identity.sh on-behalf dev --co reviewer  ->  <flags line> + <trailers block>
+  git <paste flags line> commit -m "$(cat <<'EOF'
+  <subject line — the fix in one sentence>
+
+  <paste the trailers block verbatim, e.g.:>
+  Co-authored-by: Reviewer Agent - <name> <<local>+reviewer_agent@<domain>>
+  EOF
+  )"
+  ```
+  Never use an unquoted `<<EOF` or an interpolated `-m "...<trailers>..."` — either
+  would execute metacharacters embedded in a name/email.
 - **(c) Orchestrator as AUTHOR** only for its OWN artifacts (retros, design
   briefs, release notes): `identity.sh orchestrator`'s flags, no on-behalf.
 - **(d)** An identity may ONLY be used by the process actually acting in that
