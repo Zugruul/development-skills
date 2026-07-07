@@ -57,7 +57,7 @@ canvas{position:absolute;inset:0;display:block}
 #tickerlog .ev{white-space:nowrap}
 #tickerlog .k{color:var(--cyan)}
 #tickerlog .warn{color:var(--amber)}
-#tickerlog .t{color:#5c7386}
+#tickerlog .t{color:#7c92a6}
 
 /* inspect panel (right) */
 #inspect{top:70px;right:14px;width:min(340px,42vw);max-height:calc(100vh - 150px);
@@ -104,7 +104,7 @@ canvas{position:absolute;inset:0;display:block}
 
 <div class="hud" id="ticker"><h2>Activation log</h2><div id="tickerlog" aria-live="polite"></div></div>
 
-<aside class="hud" id="inspect" aria-hidden="true">
+<aside class="hud" id="inspect" aria-hidden="true" inert>
   <button class="close" id="inspect-close" aria-label="Close note">✕</button>
   <div class="role" id="i-role"></div>
   <h3 id="i-title"></h3>
@@ -393,7 +393,7 @@ canvas.addEventListener("click", ev=>{
   if(hit) openNote(hit);
 });
 const panel=document.getElementById("inspect");
-document.getElementById("inspect-close").onclick=()=>{ panel.classList.remove("open"); panel.setAttribute("aria-hidden","true"); };
+document.getElementById("inspect-close").onclick=()=>{ panel.classList.remove("open"); panel.setAttribute("aria-hidden","true"); panel.setAttribute("inert",""); };
 async function openNote(nd){
   let d; try{ d=await (await fetch(`/note/${encodeURIComponent(nd.role)}/${encodeURIComponent(nd.slug)}`)).json(); }catch{ return; }
   document.getElementById("i-role").textContent = nd.role;
@@ -414,7 +414,7 @@ async function openNote(nd){
   document.getElementById("body").querySelectorAll("a.wl").forEach(a=>a.onclick=e=>{
     e.preventDefault(); const tgt=nodeById.get(nd.role+"/"+a.dataset.slug); if(tgt) openNote(tgt);
   });
-  panel.classList.add("open"); panel.setAttribute("aria-hidden","false");
+  panel.classList.add("open"); panel.setAttribute("aria-hidden","false"); panel.removeAttribute("inert");
 }
 
 // ---- boot ----
