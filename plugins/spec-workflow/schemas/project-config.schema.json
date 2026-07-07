@@ -57,7 +57,8 @@
                         "type": "object",
                         "properties": {
                             "bug": { "type": "string", "default": "type:bug" },
-                            "feature": { "type": "string", "default": "type:feature" }
+                            "feature": { "type": "string", "default": "type:feature" },
+                            "inbound": { "type": "string", "default": "inbound" }
                         }
                     }
                 }

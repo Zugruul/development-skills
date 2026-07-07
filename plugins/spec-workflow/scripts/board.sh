@@ -8,7 +8,8 @@
 #   board.sh move <issue#> <status>   # set Status (must be a statusFlow name)
 #   board.sh prio <issue#> <P0|...>   # set Priority (must be a priority option name)
 #   board.sh est  <issue#> <points>   # set Estimate
-#   board.sh bug  "<title>" <prio> [<origin-issue#>]   # file a bug into Backlog
+#   board.sh add  [--type bug|feature|inbound] "<title>" [<prio>] [<origin-issue#>]  # file work into Backlog
+#   board.sh bug  "<title>" <prio> [<origin-issue#>]   # alias for: add --type bug
 #   board.sh list [status]            # tab-separated: status, priority, #, title
 #   board.sh issues                   # open+closed dump for similar.py: {"issues":[{number,title,body,status},...]}
 #   board.sh comment <issue#> <<'EOF' ... EOF          # reply to humans on the issue (body on stdin)
@@ -40,6 +41,8 @@ sh("OWNER", b["owner"]); sh("REPO", b["repo"]); sh("PN", b["projectNumber"]); sh
 sh("STATUS_FIELD", f["status"]["fieldId"]); sh("PRIO_FIELD", f["priority"]["fieldId"])
 sh("EST_FIELD", f.get("estimate", {}).get("fieldId", ""))
 sh("BUG_LABEL", b.get("labels", {}).get("bug", "type:bug"))
+sh("FEATURE_LABEL", b.get("labels", {}).get("feature", "type:feature"))
+sh("INBOUND_LABEL", b.get("labels", {}).get("inbound", "inbound"))
 sh("FIRST_STATUS", b["statusFlow"][0])
 PY
 )"
@@ -59,6 +62,51 @@ PY
 item_id() { # issue number -> project item id
     gh project item-list "$PN" --owner "$OWNER" --format json --limit 400 \
         -q ".items[] | select(.content.number==$1) | .id"
+}
+
+_board_add() { # type title [prio] [origin-issue#] -> creates + boards one issue; shared by add/bug
+    local type="$1" title="$2" prio="${3:-}" link="${4:-}" label issue_title body num id
+    [[ -z "$title" ]] && { echo "ERROR: add requires a title" >&2; return 1; }
+    [[ -z "$prio" ]] && prio="$(python3 -c 'import sys; import config as C; c=C.load_config(path=sys.argv[1], warn=False); b=c["boards"][0]; print(list(b["fields"]["priority"]["options"])[0])' "$CONFIG")"
+    case "$type" in
+        bug)
+            label="$BUG_LABEL"; issue_title="BUG: $title"
+            body="Bug found after a task reached a released status; filed as new work (never reopen shipped tasks)."
+            ;;
+        feature)
+            label="$FEATURE_LABEL"; issue_title="$title"
+            body="Filed via board.sh add --type feature."
+            ;;
+        inbound)
+            label="$INBOUND_LABEL"; issue_title="$title"
+            body="Captured via /create-inbound after a dedup search found no high-confidence duplicate."
+            ;;
+        *)
+            echo "ERROR: unknown add type '$type' (must be bug|feature|inbound)" >&2
+            return 1
+            ;;
+    esac
+    [[ -n "$link" ]] && body="$body Originating task: #$link."
+    url=$(gh issue create -R "$REPO" --title "$issue_title" --body "$body" --label "$label") ||
+        { echo "ERROR: gh issue create failed for '$title'" >&2; return 1; }
+    num=$(basename "$url")
+    gh project item-add "$PN" --owner "$OWNER" --url "$url" >/dev/null ||
+        { echo "ERROR: issue #$num was created but gh project item-add failed — it is not on the board" >&2; return 1; }
+    # item-add is eventually consistent: poll item-list until the new item is visible
+    # before touching it, instead of a blind sleep that flakes under load.
+    id=""
+    for ((_i = 0; _i < 10; _i++)); do
+        id="$(item_id "$num")"
+        [[ -n "$id" ]] && break
+        sleep 0.3
+    done
+    [[ -z "$id" ]] && { echo "ERROR: issue #$num was created and added, but never became visible in the board item list (gave up after 10 attempts) — check the board manually" >&2; return 1; }
+    if "$0" move "$num" "$FIRST_STATUS" && "$0" prio "$num" "$prio"; then
+        echo "filed $type #$num [$prio]"
+    else
+        echo "ERROR: issue #$num is on the board but move/prio failed" >&2
+        return 1
+    fi
 }
 
 case "${1:-}" in
@@ -102,31 +150,20 @@ case "${1:-}" in
         gh project item-edit --id "$id" --project-id "$PID" --field-id "$EST_FIELD" --number "$3" >/dev/null &&
             echo "est #$2 -> $3"
         ;;
-    bug)
-        title="$2"; prio="${3:-}"; link="${4:-}"
-        [[ -z "$prio" ]] && prio="$(python3 -c 'import sys; import config as C; c=C.load_config(path=sys.argv[1], warn=False); b=c["boards"][0]; print(list(b["fields"]["priority"]["options"])[0])' "$CONFIG")"
-        body="Bug found after a task reached a released status; filed as new work (never reopen shipped tasks)."
-        [[ -n "$link" ]] && body="$body Originating task: #$link."
-        url=$(gh issue create -R "$REPO" --title "BUG: $title" --body "$body" --label "$BUG_LABEL") ||
-            { echo "ERROR: gh issue create failed for '$title'" >&2; exit 1; }
-        num=$(basename "$url")
-        gh project item-add "$PN" --owner "$OWNER" --url "$url" >/dev/null ||
-            { echo "ERROR: issue #$num was created but gh project item-add failed — it is not on the board" >&2; exit 1; }
-        # item-add is eventually consistent: poll item-list until the new item is visible
-        # before touching it, instead of a blind sleep that flakes under load.
-        id=""
-        for ((_i = 0; _i < 10; _i++)); do
-            id="$(item_id "$num")"
-            [[ -n "$id" ]] && break
-            sleep 0.3
-        done
-        [[ -z "$id" ]] && { echo "ERROR: issue #$num was created and added, but never became visible in the board item list (gave up after 10 attempts) — check the board manually" >&2; exit 1; }
-        if "$0" move "$num" "$FIRST_STATUS" && "$0" prio "$num" "$prio"; then
-            echo "filed bug #$num [$prio]"
-        else
-            echo "ERROR: issue #$num is on the board but move/prio failed" >&2
-            exit 1
+    add)
+        shift
+        type="feature"
+        if [[ "${1:-}" == "--type" ]]; then
+            type="${2:-}"
+            case "$type" in
+                bug|feature|inbound) shift 2 ;;
+                *) echo "ERROR: --type must be bug|feature|inbound (got '$type')" >&2; exit 1 ;;
+            esac
         fi
+        _board_add "$type" "${1:-}" "${2:-}" "${3:-}" || exit 1
+        ;;
+    bug)
+        _board_add bug "${2:-}" "${3:-}" "${4:-}" || exit 1
         ;;
     list)
         gh project item-list "$PN" --owner "$OWNER" --format json --limit 400 \
@@ -166,7 +203,7 @@ for f in json.load(sys.stdin)["fields"]:
         exec python3 "$HERE/telemetry.py" "$ROOT" metrics
         ;;
     *)
-        echo "usage: board.sh {next|show|move|prio|est|bug|list|issues|comment|edit-body|fields|config|metrics} ..." >&2
+        echo "usage: board.sh {next|show|move|prio|est|add|bug|list|issues|comment|edit-body|fields|config|metrics} ..." >&2
         exit 1
         ;;
 esac
