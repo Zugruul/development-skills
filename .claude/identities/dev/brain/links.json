@@ -9,6 +9,11 @@
     "last": null,
     "weight": 0.5
   },
+  "extraction-tests-must-verify-match->lane-cwd-distrust": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "lane-cwd-distrust->bash32-empty-array-set-u": {
     "fires": 0,
     "last": null,
