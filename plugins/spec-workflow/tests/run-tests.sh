@@ -953,13 +953,15 @@ rm -rf "$DT"
 # feedback.py independently refuses to write outside the repo root, even if a bad
 # config slipped past validate-config.py (defense in depth)
 ESC="$(mktemp -d)"; mkdir -p "$ESC/.claude"
+ESCTARGET="$ESC-escape"  # unique per run (derived from $ESC), never left dangling across runs
+rm -rf "$ESCTARGET"
 cp "$FIX/valid.project.yaml" "$ESC/.claude/project.yaml"
-python3 "$PLUGIN/scripts/config.py" "$ESC" set methodology.feedback '{"enabled": true, "feed": "../escape-outside-root/feed.yaml"}' >/dev/null
+python3 "$PLUGIN/scripts/config.py" "$ESC" set methodology.feedback "{\"enabled\": true, \"feed\": \"../$(basename "$ESCTARGET")/feed.yaml\"}" >/dev/null
 out="$(cd "$ESC" && python3 "$PLUGIN/scripts/feedback.py" "$ESC" emit "$FIX/feedback-valid.yaml" 2>&1; echo "rc=$?")"
 check "feedback.py refuses to emit outside repo root" "ERROR" "$out"
 check "feedback.py refuses to emit outside repo root: nonzero exit" "rc=1" "$out"
-check "feedback.py did not write outside the root" "MISSING" "$([[ -f "$(dirname "$ESC")/escape-outside-root/feed.yaml" ]] && echo FOUND || echo MISSING)"
-rm -rf "$ESC"
+check "feedback.py did not write outside the root" "MISSING" "$([[ -f "$ESCTARGET/feed.yaml" ]] && echo FOUND || echo MISSING)"
+rm -rf "$ESC" "$ESCTARGET"
 
 echo
 if [[ $fails -gt 0 ]]; then echo "$fails test(s) FAILED"; exit 1; fi

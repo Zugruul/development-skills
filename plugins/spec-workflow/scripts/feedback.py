@@ -48,7 +48,18 @@ YAML documents, one per emitted record:
 Generalization contract (enforced at emit time; re-checked at triage): when
 `generalized` is non-empty, neither it nor `summary` may contain the
 iteration's own task id or a `#<digits>` issue/PR reference — restate
-agnostically, or clear `generalized` to mark the item local-only.
+agnostically, or clear `generalized` to mark the item local-only. This is a
+textual, not semantic, check: ordinary markdown like a `#1` heading in
+`summary`/`generalized` also trips it — a safe failure mode (an over-eager
+rejection, never a leak), but worth knowing if a clean-looking item bounces.
+
+`ts` also doubles as the record's identity for `route` — two records sharing
+a `ts` make routing ambiguous, so `emit` rejects a `ts` that already exists
+in the feed.
+
+Concurrency: the feed assumes a single writer (the orchestrator process,
+serially) — there is no file locking. Concurrent `emit`/`route` calls against
+the same feed can race.
 
 CLI:
     feedback.py <root> emit <record.yaml>                 # validate + append
@@ -103,7 +114,15 @@ def parse_feedback_cfg(cfg):
 
 
 def _feed_path(root, fcfg):
-    return os.path.join(root, fcfg["feed"])
+    """Resolve the feed path, refusing to leave the repo root (defense in depth —
+    validate-config.py already rejects absolute/../ paths, but a config that
+    bypassed validation must not make this script write outside root either)."""
+    joined = os.path.join(root, fcfg["feed"])
+    root_real = os.path.realpath(root)
+    feed_real = os.path.realpath(joined)
+    if os.path.commonpath([root_real, feed_real]) != root_real:
+        return None
+    return joined
 
 
 def _project_specific_refs(text, task_id):
@@ -189,7 +208,7 @@ def _load_feed(path):
 
 def _dump_all(docs):
     yaml = _yaml()
-    return _SEP.join(yaml.safe_dump(d, sort_keys=False, default_flow_style=False) for d in docs)
+    return _SEP.join(yaml.safe_dump(d, sort_keys=False, default_flow_style=False, allow_unicode=True) for d in docs)
 
 
 def _unrouted(rec):
@@ -216,8 +235,16 @@ def cmd_emit(root, record_path):
     cfg = C.load_config(root, warn=False)
     fcfg = parse_feedback_cfg(cfg)
     feed_path = _feed_path(root, fcfg)
+    if feed_path is None:
+        print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root — refusing to write")
+        return 1
+    existing = _load_feed(feed_path)
+    if any(r.get("ts") == rec.get("ts") for r in existing):
+        print(f"INVALID: ts {rec.get('ts')!r} already exists in the feed — routing would become ambiguous; use a distinct ts")
+        return 1
+
     os.makedirs(os.path.dirname(feed_path), exist_ok=True)
-    doc_text = yaml.safe_dump(rec, sort_keys=False, default_flow_style=False)
+    doc_text = yaml.safe_dump(rec, sort_keys=False, default_flow_style=False, allow_unicode=True)
     exists = os.path.exists(feed_path) and os.path.getsize(feed_path) > 0
     with open(feed_path, "a") as fh:
         if exists:
@@ -230,7 +257,11 @@ def cmd_emit(root, record_path):
 def cmd_pending(root):
     cfg = C.load_config(root, warn=False)
     fcfg = parse_feedback_cfg(cfg)
-    for rec in _load_feed(_feed_path(root, fcfg)):
+    feed_path = _feed_path(root, fcfg)
+    if feed_path is None:
+        print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
+        return 1
+    for rec in _load_feed(feed_path):
         ts = rec.get("ts", "")
         for i, item in _unrouted(rec):
             print(f"{ts}\t{i}\t{item.get('category', '')}\t{item.get('severity', '')}\t{item.get('summary', '')}")
@@ -250,26 +281,41 @@ def cmd_route(root, ts, idx_str, action, ref):
     cfg = C.load_config(root, warn=False)
     fcfg = parse_feedback_cfg(cfg)
     feed_path = _feed_path(root, fcfg)
+    if feed_path is None:
+        print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
+        return 1
     docs = _load_feed(feed_path)
-    for rec in docs:
-        if rec.get("ts") == ts:
-            items = rec.get("items", [])
-            if not (0 <= idx < len(items)):
-                print(f"ERROR: item index {idx} out of range for record {ts}")
-                return 1
-            items[idx]["routing"] = {"action": action, "ref": ref}
-            with open(feed_path, "w") as fh:
-                fh.write(_dump_all(docs))
-            print(f"OK: routed {ts} item {idx} -> {action} {ref}")
-            return 0
-    print(f"ERROR: no record with ts {ts!r} in {feed_path}")
-    return 1
+    matches = [i for i, rec in enumerate(docs) if rec.get("ts") == ts]
+    if len(matches) > 1:
+        print(f"ERROR: ambiguous ts {ts!r} — {len(matches)} records in the feed share it; "
+              "fix the feed (unique ts per record) before routing")
+        return 1
+    if not matches:
+        print(f"ERROR: no record with ts {ts!r} in {feed_path}")
+        return 1
+
+    rec = docs[matches[0]]
+    items = rec.get("items", [])
+    if not (0 <= idx < len(items)):
+        print(f"ERROR: item index {idx} out of range for record {ts}")
+        return 1
+    prior = (items[idx].get("routing") or {}).get("action")
+    items[idx]["routing"] = {"action": action, "ref": ref}
+    with open(feed_path, "w") as fh:
+        fh.write(_dump_all(docs))
+    suffix = f" (was: {prior})" if prior else ""
+    print(f"OK: routed {ts} item {idx} -> {action} {ref}{suffix}")
+    return 0
 
 
 def cmd_status(root):
     cfg = C.load_config(root, warn=False)
     fcfg = parse_feedback_cfg(cfg)
-    pending = sum(1 for rec in _load_feed(_feed_path(root, fcfg)) for _ in _unrouted(rec))
+    feed_path = _feed_path(root, fcfg)
+    if feed_path is None:
+        print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
+        return 1
+    pending = sum(1 for rec in _load_feed(feed_path) for _ in _unrouted(rec))
     state = "enabled" if fcfg["enabled"] else "disabled"
     print(f"feedback: {state} feed={fcfg['feed']} pending={pending}")
     return 0

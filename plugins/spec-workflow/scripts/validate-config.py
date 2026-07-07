@@ -178,6 +178,14 @@ def main(path):
                 errs.append("methodology.feedback.enabled must be a boolean")
             if "feed" in feedback and not isinstance(feedback["feed"], str):
                 errs.append("methodology.feedback.feed must be a string path")
+            elif "feed" in feedback and feedback["feed"]:
+                feed_path = feedback["feed"]
+                if os.path.isabs(feed_path):
+                    errs.append(f"methodology.feedback.feed must be repo-relative (got an absolute path: {feed_path!r})")
+                else:
+                    norm = os.path.normpath(feed_path)
+                    if norm == os.pardir or norm.startswith(os.pardir + os.sep):
+                        errs.append(f"methodology.feedback.feed must not escape the repo root (got {feed_path!r})")
             if "roles" in feedback and not (isinstance(feedback["roles"], list) and all(isinstance(r, str) for r in feedback["roles"])):
                 errs.append("methodology.feedback.roles must be a list of strings")
             if "autoTriage" in feedback and not isinstance(feedback["autoTriage"], bool):
