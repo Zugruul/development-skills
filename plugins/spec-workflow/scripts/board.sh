@@ -14,6 +14,7 @@
 #   board.sh edit-body <issue#> <file>                 # replace issue body (updated acceptance criteria)
 #   board.sh fields                   # discover field + option ids (used by setup-project)
 #   board.sh config                   # validate the config and print a summary
+#   board.sh metrics                  # telemetry.py cycle time / gate / rework / estimate report
 #
 # Env: PROJECT_CONFIG (config path override), BOARD (boards[].id override; default = first board).
 set -uo pipefail
@@ -76,8 +77,17 @@ case "${1:-}" in
     move)
         id="$(item_id "$2")"; opt="$(opt_id status "$3")"
         [[ -z "$id" || -z "$opt" ]] && { echo "ERROR: bad issue# or status '$3' (must match statusFlow)" >&2; exit 1; }
-        gh project item-edit --id "$id" --project-id "$PID" --field-id "$STATUS_FIELD" --single-select-option-id "$opt" >/dev/null &&
+        if gh project item-edit --id "$id" --project-id "$PID" --field-id "$STATUS_FIELD" --single-select-option-id "$opt" >/dev/null; then
             echo "moved #$2 -> $3"
+            # Best-effort telemetry: board.sh does not track the prior status, so `from` is
+            # left "" (metrics only uses `to` + `ts`). A write failure (e.g. read-only .claude)
+            # must never fail the move itself.
+            python3 "$HERE/telemetry.py" "$ROOT" record \
+                "{\"kind\":\"transition\",\"task\":\"$2\",\"from\":\"\",\"to\":\"$3\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+                >/dev/null 2>&1 || true
+        else
+            exit 1
+        fi
         ;;
     prio)
         id="$(item_id "$2")"; opt="$(opt_id priority "$3")"
@@ -138,8 +148,11 @@ for f in json.load(sys.stdin)["fields"]:
     config)
         exec python3 "$HERE/validate-config.py" "$CONFIG"
         ;;
+    metrics)
+        exec python3 "$HERE/telemetry.py" "$ROOT" metrics
+        ;;
     *)
-        echo "usage: board.sh {next|show|move|prio|est|bug|list|comment|edit-body|fields|config} ..." >&2
+        echo "usage: board.sh {next|show|move|prio|est|bug|list|comment|edit-body|fields|config|metrics} ..." >&2
         exit 1
         ;;
 esac
