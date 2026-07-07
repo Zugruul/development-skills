@@ -176,42 +176,54 @@ out="$(python3 "$HUB" answers)";                      check_absent "hub consume 
 python3 "$HUB" stop >/dev/null
 unset UI_HUB_STATE UI_HUB_PORT
 
-echo "== neural-view boot crash + favicon =="
+echo "== neural-view boot crash + favicon + 3D template contract =="
 NVHTML="$PLUGIN/templates/neural-view.html"
+NVVENDOR_SHA="86bcee248b64f44bcfc23c331ae74619061957d59cab040171dcb6fb5900beb6"
 check_absent "resize() no longer assigns read-only canvas.clientWidth" "canvas.clientWidth =" "$(cat "$NVHTML")"
 check_absent "resize() no longer assigns read-only canvas.clientHeight" "canvas.clientHeight =" "$(cat "$NVHTML")"
+check_absent "template has no CDN/external script or asset references" 'src="http' "$(cat "$NVHTML")"
+check "template's importmap points three at the vendored, same-origin file" '"three":"/vendor/three.module.min.js"' "$(cat "$NVHTML")"
+check "template imports three via the importmap specifier, not a URL" 'from "three"' "$(cat "$NVHTML")"
+_nvvendorfile="$PLUGIN/templates/vendor/three.module.min.js"
+if [[ -f "$_nvvendorfile" ]]; then
+    got_sha="$(shasum -a 256 "$_nvvendorfile" | awk '{print $1}')"
+    check "vendored three.js sha256 matches the recorded, audited version" "$NVVENDOR_SHA" "$got_sha"
+else
+    echo "FAIL vendored three.module.min.js is missing at $_nvvendorfile"; fails=$((fails + 1))
+fi
 if command -v node >/dev/null 2>&1; then
     script="$(python3 -c "
 import re
 html = open('$NVHTML').read()
-m = re.search(r'<script>(.*)</script>', html, re.S)
+m = re.search(r'<script type=\"module\">(.*)</script>', html, re.S)
 print(m.group(1) if m else '')
 ")"
-    if node --check <(printf '%s' "$script") 2>/tmp/nv-node-check.$$; then
-        echo "ok   neural-view.html inline script has no syntax errors (node --check)"
+    _nvmodule="$(mktemp).mjs"
+    printf '%s' "$script" >"$_nvmodule"
+    if node --check "$_nvmodule" 2>/tmp/nv-node-check.$$; then
+        echo "ok   neural-view.html inline module script has no syntax errors (node --check)"
     else
-        echo "FAIL neural-view.html inline script has syntax errors"; cat /tmp/nv-node-check.$$; fails=$((fails + 1))
+        echo "FAIL neural-view.html inline module script has syntax errors"; cat /tmp/nv-node-check.$$; fails=$((fails + 1))
     fi
-    rm -f /tmp/nv-node-check.$$
+    rm -f /tmp/nv-node-check.$$ "$_nvmodule"
 
-    # layout: region size ∝ note count (empty repo floors at MIN_REGION) and
-    # fitView() actually frames every repo region within the usable viewport —
-    # the user-reported "doesn't fit / half off-screen" bug. layoutClusters()
-    # and fitView() are pure functions of module state, so we eval just those
-    # two (extracted verbatim from the served template) against a fixture.
+    # layout: region size ∝ note count (empty repo floors at MIN_REGION), and
+    # fitDistance() actually frames every repo region's bounding sphere within
+    # the camera's FOV (the 3D analogue of the old 2D "doesn't fit / half
+    # off-screen" regression test). layoutClusters()/fibSphere()/
+    # boundingSphere()/fitDistance() are pure functions of module state, so we
+    # eval them (extracted verbatim from the served template) against a fixture.
     _nvlayout="$(mktemp).cjs"
     cat >"$_nvlayout" <<'NODEJS'
 const fs = require("fs");
 const html = fs.readFileSync(process.argv[2], "utf8");
 function extract(name) {
-    const re = new RegExp("function " + name + "\\(\\)\\{[\\s\\S]*?\\n\\}\\n");
+    const re = new RegExp("function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\n\\}\\n");
     const m = html.match(re);
     if (!m) throw new Error("could not find function " + name + "() in template");
     return m[0];
 }
-const MIN_REGION = 46, BASE_REGION = 110, MIN_SCALE = 0.12, MAX_SCALE = 4;
-let W = 1600, H = 900;
-const cam = {x: 0, y: 0, scale: 1};
+const MIN_REGION = 46, BASE_REGION = 110, MIN_DIST = 80, MAX_DIST = 6000, FOV = 50 * Math.PI / 180;
 const clusters = new Map(), repoCenters = new Map(), repoRadius = new Map();
 const clusterKey = (repo, role) => repo + "|" + role;
 function roleHue() { return 190; }
@@ -220,27 +232,27 @@ const nodes = [];
 for (let i = 0; i < 20; i++) nodes.push({repo: "big-repo", role: "dev"});
 // empty-repo: zero nodes — must still get a small placeholder region, not equal share
 
+eval(extract("fibSphere"));
 eval(extract("layoutClusters"));
-eval(extract("fitView"));
+eval(extract("boundingSphere"));
+eval(extract("fitDistance"));
 
 layoutClusters();
 const bigR = repoRadius.get("big-repo"), emptyR = repoRadius.get("empty-repo");
 if (!(bigR > emptyR)) throw new Error("region with notes must be larger than an empty one: big=" + bigR + " empty=" + emptyR);
 if (Math.abs(emptyR - MIN_REGION) > 0.001) throw new Error("empty repo region must floor at MIN_REGION: got " + emptyR);
 
-fitView();
-const usableW = Math.max(240, W - 440), usableH = Math.max(240, H - 220);
-for (const repo of repoList) {
-    const rc = repoCenters.get(repo);
-    const rad = (repoRadius.get(repo) || MIN_REGION) + 30;
-    const sx = (rc.x - cam.x) * cam.scale, sy = (rc.y - cam.y) * cam.scale;
-    if (Math.abs(sx) + rad * cam.scale > usableW / 2 + 1) throw new Error(repo + " overflows the usable width after fitView()");
-    if (Math.abs(sy) + rad * cam.scale > usableH / 2 + 1) throw new Error(repo + " overflows the usable height after fitView()");
-}
-console.log("LAYOUT_OK bigR=" + bigR.toFixed(1) + " emptyR=" + emptyR.toFixed(1) + " scale=" + cam.scale.toFixed(3));
+const aspect = 1600 / 900;
+const fit = fitDistance(aspect);
+const hFov = 2 * Math.atan(Math.tan(FOV / 2) * aspect);
+const half = Math.min(FOV, hFov) / 2;
+if (!(fit.distance * Math.sin(half) >= fit.boundR - 0.001)) throw new Error("fitDistance() does not frame the bounding sphere: dist=" + fit.distance + " boundR=" + fit.boundR);
+if (fit.distance < MIN_DIST || fit.distance > MAX_DIST) throw new Error("fitDistance() out of clamp range: " + fit.distance);
+console.log("LAYOUT3D_OK bigR=" + bigR.toFixed(1) + " emptyR=" + emptyR.toFixed(1) + " dist=" + fit.distance.toFixed(1) + " boundR=" + fit.boundR.toFixed(1));
 NODEJS
     layout_out="$(node "$_nvlayout" "$NVHTML" 2>&1)"
-    check "layoutClusters sizes regions by note count, empty repo floors at MIN_REGION" "LAYOUT_OK" "$layout_out"
+    check "layoutClusters sizes regions by note count, empty repo floors at MIN_REGION" "LAYOUT3D_OK" "$layout_out"
+    check "fitDistance frames every repo region's bounding sphere in the camera FOV" "LAYOUT3D_OK" "$layout_out"
     rm -f "$_nvlayout"
 fi
 
@@ -287,6 +299,15 @@ out="$(curl -sf "http://127.0.0.1:4788/note/$_nvrepo/dev/cas-retry")"
 check "note renders fixture body" "the loser reloads" "$out"
 code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4788/favicon.ico)"
 check "favicon route no longer 404s" "200" "$code"
+# vendored three.js: served same-origin, allowlisted (no path-derived fs access)
+code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4788/vendor/three.module.min.js)"
+check "vendor route serves three.module.min.js (200)" "200" "$code"
+ctype="$(curl -s -D - -o /dev/null http://127.0.0.1:4788/vendor/three.module.min.js | tr -d '\r' | grep -i '^content-type:')"
+check "vendor route content-type is javascript" "javascript" "$ctype"
+for trav in "/vendor/../scripts/config.py" "/vendor/..%2fscripts%2fconfig.py" "/vendor/../../etc/passwd" "/vendor/not-on-the-allowlist.js"; do
+    code="$(curl -s --path-as-is -o /dev/null -w '%{http_code}' "http://127.0.0.1:4788$trav")"
+    check "vendor route rejects $trav (404)" "404" "$code"
+done
 # finding 2: path traversal via ../ in the slug must not escape notes/ (arbitrary file read)
 printf 'TOPSECRET-XYZZY' >"$_nvbrain/SECRET.md"       # a file OUTSIDE notes/, one level up
 body="$(curl -s --path-as-is "http://127.0.0.1:4788/note/$_nvrepo/dev/../SECRET")"
