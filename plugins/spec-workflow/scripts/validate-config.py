@@ -12,6 +12,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import config as C  # noqa: E402  (shared loader — reuse its shorthand-model detection)
+
 errs = []
 
 
@@ -151,6 +154,10 @@ def main(path):
                     models = v.get("models")
                     if models is not None and not (isinstance(models, list) and all(isinstance(m, str) for m in models)):
                         errs.append(f"{w}[{i}].models must be a list of full model-id strings")
+                    elif models and not legacy:
+                        for m in models:
+                            if C._shorthand(m):
+                                errs.append(f"{w}[{i}].models: '{m}' is shorthand — v2 requires a full model-id (e.g. claude-sonnet-5, claude-sonnet-5[1m])")
                     covers = v.get("covers")
                     if covers is not None and not (isinstance(covers, list) and all(isinstance(c, str) for c in covers)):
                         errs.append(f"{w}[{i}].covers must be a list of path-glob strings")

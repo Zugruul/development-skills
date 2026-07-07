@@ -13,39 +13,114 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CONFIG="$(PYTHONPATH="$HERE" python3 "$HERE/config.py" "$ROOT" path)"
 [[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .claude/project.yaml (or legacy .json) — run the setup-project skill first" >&2; exit 1; }
 
-jset() { # jset <dot.path> <json-value>  — edits CONFIG in place, preserving its format + 4-space indent
+jset() { # jset <dot.path> <json-value>  — edits ONLY the target key in place.
+    # YAML: a surgical line-level edit (dependency-free) that leaves every other
+    # byte — comments, blank lines, flow styles — untouched. JSON (legacy): rewritten.
     PYTHONPATH="$HERE" python3 - "$CONFIG" "$1" "$2" <<'EOF'
 import json, sys
+
 cfgfile, path, val = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
 keys = path.split(".")
-is_yaml = cfgfile.endswith((".yaml", ".yml"))
-head = ""
-if is_yaml:
-    import yaml
-    text = open(cfgfile).read()
-    lead = []  # keep the leading comment block (e.g. the schema modeline)
-    for line in text.splitlines(keepends=True):
-        if line.strip().startswith("#") or not line.strip():
-            lead.append(line)
-        else:
+STEP = 4  # config indent unit
+
+
+def literal(v):
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, list):
+        return "[" + ", ".join(json.dumps(x, ensure_ascii=False) for x in v) + "]"
+    if isinstance(v, (int, float)):
+        return json.dumps(v)
+    return json.dumps(v, ensure_ascii=False)  # string -> double-quoted scalar
+
+
+def indent_of(line):
+    return len(line) - len(line.lstrip(" "))
+
+
+def is_key(line, key):
+    s = line.strip()
+    return s == key + ":" or s.startswith(key + ": ") or s.startswith(key + ":\t")
+
+
+def block_end(lines, start, parent_indent):
+    # first real (non-blank, non-comment) line at indent <= parent_indent
+    for j in range(start, len(lines)):
+        s = lines[j].strip()
+        if s and not s.startswith("#") and indent_of(lines[j]) <= parent_indent:
+            return j
+    return len(lines)
+
+
+def find_child(lines, lo, hi, key, parent_indent):
+    child_indent = None
+    for j in range(lo, hi):
+        s = lines[j].strip()
+        if not s or s.startswith("#"):
+            continue
+        ind = indent_of(lines[j])
+        if ind <= parent_indent:
             break
-    head = "".join(lead)
-    cfg = yaml.safe_load(text) or {}
+        if child_indent is None:
+            child_indent = ind
+        if ind == child_indent and is_key(lines[j], key):
+            return j
+    return None
+
+
+def replace_value(lines, idx, value):
+    ind = indent_of(lines[idx])
+    key = lines[idx].strip().split(":", 1)[0]
+    end = idx + 1  # drop any block-style continuation (deeper-indented value lines)
+    while end < len(lines):
+        s = lines[end].strip()
+        if not s or s.startswith("#") or indent_of(lines[end]) <= ind:
+            break
+        end += 1
+    return lines[:idx] + [f"{' ' * ind}{key}: {value}"] + lines[end:]
+
+
+def insert(lines, hi, remaining, parent_indent, value):
+    pos = hi  # insert before any trailing blank lines (keeps the file's final newline last)
+    while pos > 0 and lines[pos - 1].strip() == "":
+        pos -= 1
+    base = parent_indent + STEP
+    block = []
+    for depth, k in enumerate(remaining):
+        ind = base + depth * STEP
+        block.append(f"{' ' * ind}{k}: {value}" if depth == len(remaining) - 1 else f"{' ' * ind}{k}:")
+    return lines[:pos] + block + lines[pos:]
+
+
+def yaml_set(text, keys, value):
+    lines = text.split("\n")  # split/join by \n reproduces bytes exactly (incl. trailing newline)
+    lo, hi, parent_indent = 0, len(lines), -STEP
+    for depth, key in enumerate(keys):
+        idx = find_child(lines, lo, hi, key, parent_indent)
+        if idx is None:
+            return "\n".join(insert(lines, hi, keys[depth:], parent_indent, value))
+        if depth == len(keys) - 1:
+            return "\n".join(replace_value(lines, idx, value))
+        parent_indent = indent_of(lines[idx])
+        lo, hi = idx + 1, block_end(lines, idx + 1, parent_indent)
+    return text
+
+
+if cfgfile.endswith((".yaml", ".yml")):
+    new_text = yaml_set(open(cfgfile).read(), keys, literal(val))  # read BEFORE truncating
+    with open(cfgfile, "w") as fh:
+        fh.write(new_text)
 else:
     cfg = json.load(open(cfgfile))
-node = cfg
-for k in keys[:-1]:
-    nxt = node.get(k)
-    if not isinstance(nxt, dict):
-        nxt = {}
-        node[k] = nxt
-    node = nxt
-node[keys[-1]] = val
-with open(cfgfile, "w") as fh:
-    if is_yaml:
-        fh.write(head)
-        yaml.safe_dump(cfg, fh, sort_keys=False, default_flow_style=False, indent=4, allow_unicode=True)
-    else:
+    node = cfg
+    for k in keys[:-1]:
+        nxt = node.get(k)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            node[k] = nxt
+        node = nxt
+    node[keys[-1]] = val
+    with open(cfgfile, "w") as fh:
         json.dump(cfg, fh, indent=4, ensure_ascii=False)
         fh.write("\n")
 EOF
