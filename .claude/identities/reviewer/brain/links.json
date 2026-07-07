@@ -4,6 +4,11 @@
     "last": null,
     "weight": 0.5
   },
+  "ordering-words-are-contract->named-attack-class-briefs": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "paired-pr-single-reviewer->symmetric-boundary-guards": {
     "fires": 0,
     "last": null,

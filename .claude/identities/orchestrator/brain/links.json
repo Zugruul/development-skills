@@ -19,6 +19,16 @@
     "last": null,
     "weight": 0.5
   },
+  "preassign-shared-monotonic-in-lanes->decide-oqs-before-brief": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "preassign-shared-monotonic-in-lanes->frozen-contracts-parallel-prs": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "reproduce-findings-two-pass->smoke-test-is-not-review": {
     "fires": 0,
     "last": null,
