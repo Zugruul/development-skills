@@ -12,7 +12,7 @@ Grounded in: SPEC §6 (§6.1–§6.5), §2 G1
 Tiers are score-band cutoffs documented in `similar.py`'s header (not spec-governed — an implementation detail that can be re-tuned without a spec delta, as long as high/medium/low ordering holds).
 
 ## Interfaces / contracts
-`similar.py <root> "<query>"` — reads board issues (open+closed) via the same config the caller resolves (`root` = repo root passed to `config.py`/`board.sh`, matching every other script in `scripts/`), prints ranked matches one per line: `<tier>\t<score>\t#<number>\t<status>\t<title>`. Exit 0 always (no results is a valid empty answer, not an error) — matches `board.sh next`'s convention of print-then-decide rather than fail closed on "nothing found".
+`similar.py <root> "<query>"` — `root` = repo root, the same convention every other script in `scripts/` takes (e.g. `config.py`'s), used only to derive the default fixture path (`<root>/.claude/tmp/similar-issues.json`); `similar.py` never calls `config.py` or `board.sh` itself. Prints ranked matches one per line: `<tier>\t<score>\t#<number>\t<status>\t<title>`. Exit 0 always (no results is a valid empty answer, not an error) — matches `board.sh next`'s convention of print-then-decide rather than fail closed on "nothing found".
 `/find-task` and `/create-inbound` (SW-002/SW-003, not this task) consume `similar.py`'s stdout; they own the board write path, `similar.py` never writes.
 
 ## Key sequences

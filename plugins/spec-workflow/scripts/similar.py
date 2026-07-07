@@ -4,7 +4,11 @@
 Usage: similar.py <root> "<query>"
 Prints ranked matches, one per line, descending by score:
     <tier>\t<score>\t#<number>\t<status>\t<title>
-Exit 0 always, even with zero matches (an empty result is a valid answer).
+Exit 0 always when the issue source is readable, even with zero matches (an
+empty result is a valid answer, not an error). A MISSING issues file is not
+an error either — it yields empty output, exit 0. Malformed JSON in an issues
+file that DOES exist is a hard failure (uncaught exception, non-zero exit) —
+that indicates corrupt input, not "no data," and is not silently swallowed.
 
 This is a pure scoring function: it takes issue data (open+closed) as input and
 never calls gh/board.sh itself (board.sh is the only live board access; wiring
@@ -90,6 +94,11 @@ def load_issues(root):
         return json.load(fh).get("issues", [])
 
 
+def sanitize(text):
+    """Collapse tabs/newlines so a field can't break the tab-separated output contract."""
+    return re.sub(r"[\t\r\n]+", " ", str(text)).strip()
+
+
 def rank(issues, query):
     scored = [(score_issue(query, it), it) for it in issues]
     scored = [(s, it) for s, it in scored if s >= LOW]
@@ -99,7 +108,9 @@ def rank(issues, query):
 
 def main(root, query):
     for score, it in rank(load_issues(root), query):
-        print(f'{tier_of(score)}\t{score:.2f}\t#{it.get("number")}\t{it.get("status", "")}\t{it.get("title", "")}')
+        status = sanitize(it.get("status", ""))
+        title = sanitize(it.get("title", ""))
+        print(f'{tier_of(score)}\t{score:.2f}\t#{it.get("number")}\t{status}\t{title}')
 
 
 if __name__ == "__main__":
