@@ -1,0 +1,22 @@
+{
+  "issues": [
+    {
+      "number": 21,
+      "title": "Add dark mode toggle to settings page",
+      "body": "Let users switch between light and dark themes from the settings screen.",
+      "status": "OPEN"
+    },
+    {
+      "number": 22,
+      "title": "Fix login button color on mobile safari",
+      "body": "The submit button on the login form renders with the wrong background color in mobile Safari.",
+      "status": "OPEN"
+    },
+    {
+      "number": 23,
+      "title": "Improve search relevance ranking algorithm",
+      "body": "Search results for common queries are not well ordered; boost exact title matches.",
+      "status": "CLOSED"
+    }
+  ]
+}
