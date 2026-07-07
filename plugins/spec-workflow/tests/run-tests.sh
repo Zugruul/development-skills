@@ -847,6 +847,15 @@ out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.claude/project.yaml" |
 check "validator rejects unknown feedback key" "unknown key" "$out"
 python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": ".claude/feedback/feed.yaml", "roles": ["orchestrator"], "autoTriage": false}' >/dev/null
 
+# feed path containment: absolute paths and ../ escapes are rejected by the validator
+python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": "/tmp/escape-feed.yaml"}' >/dev/null
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.claude/project.yaml" || true)"
+check "validator rejects absolute feed path" "must be repo-relative" "$out"
+python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": "../../escape/feed.yaml"}' >/dev/null
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.claude/project.yaml" || true)"
+check "validator rejects ../ escaping feed path" "must not escape" "$out"
+python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": ".claude/feedback/feed.yaml", "roles": ["orchestrator"], "autoTriage": false}' >/dev/null
+
 # status: disabled by default (no methodology.feedback key)
 FD="$(mktemp -d)"; mkdir -p "$FD/.claude"; cp "$FIX/valid.project.yaml" "$FD/.claude/project.yaml"
 out="$(cd "$FD" && python3 "$PLUGIN/scripts/feedback.py" "$FD" status)"
@@ -860,6 +869,12 @@ out="$(fb emit "$FIX/feedback-valid.yaml")"
 check "emit ok" "OK" "$out"
 check "feed file created" "loop-feedback" "$(cat "$FT/.claude/feedback/feed.yaml" 2>/dev/null)"
 check "status: pending reflects 2 unrouted items" "pending=2" "$(fb status)"
+
+# emit: rejects a second record reusing an already-emitted ts (would make routing ambiguous)
+out="$(fb emit "$FIX/feedback-valid.yaml" || true)"
+check "emit rejects duplicate ts" "INVALID" "$out"
+check "emit rejects duplicate ts: names the clash" "already exists" "$out"
+check "status: pending unaffected by rejected duplicate" "pending=2" "$(fb status)"
 
 # emit: rejects generalized/summary text carrying project-specific refs (#N)
 out="$(fb emit "$FIX/feedback-bad-refs.yaml" || true)"
@@ -902,7 +917,49 @@ fb route "2026-07-01T10:00:00Z" 0 brain-note "friction-self-approval" >/dev/null
 fb route "2026-07-01T10:00:00Z" 1 backlog "#41" >/dev/null
 check "status: pending drops to zero after routing" "pending=0" "$(fb status)"
 check "routing written into feed" "brain-note" "$(cat "$FT/.claude/feedback/feed.yaml")"
+
+# route: re-routing an already-routed item is allowed but names the prior action
+out="$(fb route "2026-07-01T10:00:00Z" 0 graduate "graduated-lesson")"
+check "re-route surfaces the prior action" "(was: brain-note)" "$out"
 rm -rf "$FT"
+
+# route: a hand-crafted feed with a duplicate ts is refused as ambiguous rather than
+# silently rewriting the first match and stranding the second
+DT="$(mktemp -d)"; mkdir -p "$DT/.claude/feedback"
+cp "$FIX/valid.project.yaml" "$DT/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$DT" set methodology.feedback true >/dev/null
+cat >"$DT/.claude/feedback/feed.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-08-01T00:00:00Z"
+iteration: {task: FX-001, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "a", generalized: "a"}
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-08-01T00:00:00Z"
+iteration: {task: FX-002, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "b", generalized: "b"}
+YAML
+out="$(cd "$DT" && python3 "$PLUGIN/scripts/feedback.py" "$DT" route "2026-08-01T00:00:00Z" 0 ignore "n/a" 2>&1; echo "rc=$?")"
+check "route refuses ambiguous duplicate ts" "ambiguous" "$out"
+check "route refuses ambiguous duplicate ts: nonzero exit" "rc=1" "$out"
+rm -rf "$DT"
+
+# feedback.py independently refuses to write outside the repo root, even if a bad
+# config slipped past validate-config.py (defense in depth)
+ESC="$(mktemp -d)"; mkdir -p "$ESC/.claude"
+cp "$FIX/valid.project.yaml" "$ESC/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$ESC" set methodology.feedback '{"enabled": true, "feed": "../escape-outside-root/feed.yaml"}' >/dev/null
+out="$(cd "$ESC" && python3 "$PLUGIN/scripts/feedback.py" "$ESC" emit "$FIX/feedback-valid.yaml" 2>&1; echo "rc=$?")"
+check "feedback.py refuses to emit outside repo root" "ERROR" "$out"
+check "feedback.py refuses to emit outside repo root: nonzero exit" "rc=1" "$out"
+check "feedback.py did not write outside the root" "MISSING" "$([[ -f "$(dirname "$ESC")/escape-outside-root/feed.yaml" ]] && echo FOUND || echo MISSING)"
+rm -rf "$ESC"
 
 echo
 if [[ $fails -gt 0 ]]; then echo "$fails test(s) FAILED"; exit 1; fi
