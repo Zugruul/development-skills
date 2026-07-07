@@ -389,6 +389,11 @@ def render_body(body):
 
 
 def note_payload(repos, repo, role, slug):
+    """Looks up a note by (repo, role, slug). `repo` is matched against the
+    discovered repo NAME (directory basename, per discover_repos()) — two
+    scanned repos sharing a basename would silently shadow each other here
+    (first match in discovery order wins); an accepted edge case, not expected
+    across a developer's project directories."""
     for name, root in repos:
         if name != repo:
             continue
@@ -511,7 +516,11 @@ def discover_repos(args):
     Falls back to the git root of cwd if nothing was found at all (no flags,
     no env, empty/absent scan base) — the old single-repo default. Repo name
     is the directory basename; same-basename repos would collide, an accepted
-    edge case (not expected across a developer's project directories)."""
+    edge case (not expected across a developer's project directories).
+
+    A scan base or child directory neural-view can't read (permission denied)
+    is treated as absent/excluded rather than raising — one unreadable sibling
+    must never take down discovery of the rest."""
     found = {}  # resolved path str -> Path, de-duplicated
     explicit = raw_arg_dir(args)
     if explicit:
@@ -519,10 +528,16 @@ def discover_repos(args):
         found[str(p)] = p
     scan_base = raw_arg_scan(args) or str(Path.home() / "Development")
     sb = Path(scan_base)
-    if sb.is_dir():
-        for child in sorted(sb.iterdir()):
+    try:
+        children = sorted(sb.iterdir()) if sb.is_dir() else []
+    except OSError:
+        children = []
+    for child in children:
+        try:
             if child.is_dir() and (child / ".claude" / MARKER_NAME).is_file():
                 found.setdefault(str(child.resolve()), child)
+        except OSError:   # e.g. permission denied traversing into `child`
+            continue
     if not found:
         p = Path(git_root())
         found[str(p)] = p
@@ -583,11 +598,17 @@ def main():
             child += ["--scan", os.path.abspath(explicit_scan)]
         log = open(S / "server.log", "ab")
         subprocess.Popen(child, stdout=log, stderr=log, start_new_session=True, env=os.environ)
+        came_up = False
         for _ in range(30):
             time.sleep(0.1)
             if pid_alive():
+                came_up = True
                 break
-        print(f"RUNNING http://127.0.0.1:{port}")
+        if came_up:
+            print(f"RUNNING http://127.0.0.1:{port}")
+        else:
+            print(f"FAILED to start (never bound to port {port}) — see {S / 'server.log'}", file=sys.stderr)
+            sys.exit(1)
 
     elif cmd == "status":
         if pid_alive():
