@@ -138,7 +138,7 @@ const glow = (h,l,a)=>`hsla(${h},95%,${l}%,${a})`;
 let nodes = [], nodeById = new Map(), links = [], roles = [], clusters = new Map();
 let anims = [];               // active visual activations
 const queue = [];             // pending events, played on a stagger
-let cursor = 0, tick = 0;
+let cursor = null, tick = 0;
 
 function layoutClusters(){
   clusters.clear();
@@ -333,10 +333,11 @@ pump();
 
 async function poll(){
   try{
-    const r = await (await fetch("/events?since="+cursor)).json();
-    if(typeof r.cursor === "number"){
-      if(r.events && r.events.length && cursor>0) queue.push(...r.events);  // skip the initial backlog burst
-      cursor = r.cursor;
+    const url = cursor==null ? "/events" : "/events?since="+encodeURIComponent(cursor);  // first poll (no token) → server returns end-of-logs + []
+    const r = await (await fetch(url)).json();
+    if(r && r.cursor!=null){
+      if(r.events && r.events.length) queue.push(...r.events);   // server already skipped the backlog
+      cursor = r.cursor;                                          // opaque per-brain byte-offset token
     }
   }catch{ /* server gone; keep trying */ }
   setTimeout(poll, 1000);

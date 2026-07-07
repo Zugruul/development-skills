@@ -20,6 +20,7 @@ Everything is read READ-ONLY; absent dirs/files just yield an empty graph.
 State dir (pid/port/log): $NEURAL_VIEW_STATE, else <git root>/.claude/neural-view.
 Port: --port, else $NEURAL_VIEW_PORT, else 4748. Binds 127.0.0.1 only.
 """
+import base64
 import json
 import os
 import re
@@ -125,9 +126,26 @@ def _as_list(v):
     return v if isinstance(v, list) else [v]
 
 
+def _safe_slug(slug):
+    return bool(slug) and "/" not in slug and "\\" not in slug and ".." not in slug
+
+
+def _within(child, parent):
+    """True iff resolved `child` is `parent` or below it (defense in depth against
+    path traversal, on top of the _safe_slug reject)."""
+    try:
+        c, p = os.path.realpath(str(child)), os.path.realpath(str(parent))
+        return c == p or c.startswith(p + os.sep)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def read_note(brain, slug):
-    f = brain / "notes" / f"{slug}.md"
-    if not f.is_file():
+    if not _safe_slug(slug):
+        return None
+    notes_dir = brain / "notes"
+    f = notes_dir / f"{slug}.md"
+    if not _within(f, notes_dir) or not f.is_file():
         return None
     return parse_note(f.read_text(errors="replace"))
 
@@ -184,38 +202,130 @@ def build_graph(root):
     return {"nodes": nodes, "edges": edges}
 
 
+def _parse_lines(role, blob, out):
+    for line in blob.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except Exception:  # noqa: BLE001
+            continue
+        if isinstance(obj, dict):
+            obj.setdefault("role", role)
+            out.append(obj)
+
+
 def read_events(root):
-    """Every .activation.jsonl line across brains, ordered by timestamp so a
-    freshly appended line always lands at the end (stable monotonic cursor)."""
+    """Every .activation.jsonl line across brains, ts-ordered. Used by the graph
+    (consult-edge derivation); NOT the delivery path (see read_events_since)."""
     evts = []
     for role, brain in iter_brains(root):
         f = brain / ".activation.jsonl"
-        if not f.is_file():
-            continue
-        for line in f.read_text(errors="replace").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except Exception:  # noqa: BLE001
-                continue
-            if isinstance(obj, dict):
-                obj.setdefault("role", role)
-                evts.append(obj)
-    evts.sort(key=lambda e: str(e.get("ts", "")))  # stable: ties keep file order
+        if f.is_file():
+            _parse_lines(role, f.read_text(errors="replace"), evts)
+    evts.sort(key=lambda e: str(e.get("ts", "")))
     return evts
+
+
+def _complete_end(f):
+    """Byte offset just past the last COMPLETE line (last newline). A partial
+    trailing line (writer mid-append) is excluded so we never read half a line."""
+    if not f.is_file():
+        return 0
+    size = f.stat().st_size
+    if size == 0:
+        return 0
+    with f.open("rb") as fh:
+        pos = size
+        while pos > 0:
+            step = min(65536, pos)
+            pos -= step
+            fh.seek(pos)
+            buf = fh.read(step)
+            nl = buf.rfind(b"\n")
+            if nl != -1:
+                return pos + nl + 1
+    return 0
+
+
+def end_offsets(root):
+    """Per-brain 'current end' — the token a fresh client starts from (skips
+    backlog: only events appended AFTER this poll are ever delivered)."""
+    return {role: _complete_end(brain / ".activation.jsonl") for role, brain in iter_brains(root)}
+
+
+def read_events_since(root, offsets):
+    """The delivery path. For each brain, seek to its stored byte offset and read
+    only the NEW complete lines — completeness comes from append-only offsets, not
+    from re-sorting a full re-read (which shifted indexes and dropped/replayed).
+    Returns (events, new_offsets, bytes_read). Events are ts-sorted within this
+    batch for display only. Defends against a truncated/rotated log (offset past
+    EOF → restart that brain at 0)."""
+    events = []
+    new_offsets = dict(offsets)
+    bytes_read = 0
+    for role, brain in iter_brains(root):
+        f = brain / ".activation.jsonl"
+        if not f.is_file():
+            new_offsets[role] = 0
+            continue
+        start = offsets.get(role, 0)
+        size = f.stat().st_size
+        if start > size:              # log shrank/rotated — don't crash, resync
+            start = 0
+        with f.open("rb") as fh:
+            fh.seek(start)
+            data = fh.read()
+        nl = data.rfind(b"\n")
+        if nl == -1:                  # no complete line beyond the offset yet
+            new_offsets[role] = start
+            continue
+        consumed = data[:nl + 1]
+        bytes_read += len(consumed)
+        new_offsets[role] = start + len(consumed)
+        _parse_lines(role, consumed.decode("utf-8", "replace"), events)
+    events.sort(key=lambda e: str(e.get("ts", "")))
+    return events, new_offsets, bytes_read
+
+
+def encode_cursor(offsets):
+    raw = json.dumps(offsets, separators=(",", ":"), sort_keys=True).encode()
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()  # no '=' → query-safe, unquoted
+
+
+def decode_cursor(token):
+    """A cursor token → {role: byte_offset}, or None if absent/garbage/'0'
+    (caller treats None as 'start from current end')."""
+    if not token or token == "0":
+        return None
+    try:
+        pad = "=" * (-len(token) % 4)
+        d = json.loads(base64.urlsafe_b64decode(token + pad))
+        if isinstance(d, dict):
+            return {str(k): int(v) for k, v in d.items()}
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 
 
 def render_body(body):
     """Tiny markdown → HTML: headings, paragraphs, [[wikilinks]], **bold**.
     Deliberately minimal — stdlib only, and it preserves plain prose verbatim."""
     def inline(s):
-        s = escape(s)
-        s = WIKILINK.sub(lambda m: f'<a class="wl" data-slug="{escape(m.group(1).strip())}">{escape(m.group(1).strip())}</a>', s)
-        s = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
-        s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
-        return s
+        # escape wikilink labels exactly once (operate on raw text, escape each
+        # piece), so a label with HTML-special chars isn't double-escaped.
+        out, last = [], 0
+        for m in WIKILINK.finditer(s):
+            out.append(escape(s[last:m.start()]))
+            slug = m.group(1).strip()
+            out.append(f'<a class="wl" data-slug="{escape(slug, quote=True)}">{escape(slug)}</a>')
+            last = m.end()
+        out.append(escape(s[last:]))
+        r = "".join(out)
+        r = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", r)
+        r = re.sub(r"`([^`]+)`", r"<code>\1</code>", r)
+        return r
 
     out = []
     for block in re.split(r"\n\s*\n", body.strip()):
@@ -286,16 +396,17 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/graph":
             return self._send(200, build_graph(BRAINS_ROOT))
         if path == "/events":
-            since = 0
+            token = ""
             q = self.path.split("?", 1)[1] if "?" in self.path else ""
             for kv in q.split("&"):
                 if kv.startswith("since="):
-                    try:
-                        since = max(0, int(kv[6:]))
-                    except ValueError:
-                        since = 0
-            evts = read_events(BRAINS_ROOT)
-            return self._send(200, {"cursor": len(evts), "events": evts[since:]})
+                    token = kv[len("since="):]
+            offsets = decode_cursor(token)
+            if offsets is None:                    # first poll / bad token: start at end, skip backlog
+                offsets = end_offsets(BRAINS_ROOT)
+                return self._send(200, {"cursor": encode_cursor(offsets), "events": [], "bytesRead": 0})
+            events, new_offsets, nbytes = read_events_since(BRAINS_ROOT, offsets)
+            return self._send(200, {"cursor": encode_cursor(new_offsets), "events": events, "bytesRead": nbytes})
         if path.startswith("/note/"):
             parts = path[len("/note/"):].split("/", 1)
             if len(parts) == 2 and parts[0] and parts[1]:
