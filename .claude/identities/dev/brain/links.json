@@ -1,0 +1,17 @@
+{
+  "bash32-empty-array-set-u->budget-count-join-separators": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "budget-count-join-separators->stdout-newline-false-positive": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "surgical-yaml-edits->budget-count-join-separators": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  }
+}
