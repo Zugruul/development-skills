@@ -2247,6 +2247,19 @@ check "build-next SKILL.md report step carries a retro-status line" "retro: done
 check "build-next SKILL.md report step's skip form states a reason" "retro: SKIPPED — <reason>" "$BNBODY"
 check "build-next SKILL.md cross-references brains.md for retro mechanics" "references/brains.md" "$BNBODY"
 
+echo "== auto-review.md: standing-consent front-load + per-artifact scoping (SW-033) =="
+ARMD="$PLUGIN/skills/build-next/references/auto-review.md"
+if [[ -f "$ARMD" ]]; then echo "ok   auto-review.md exists"; else echo "FAIL auto-review.md missing"; fails=$((fails + 1)); fi
+ARBODY="$(cat "$ARMD" 2>/dev/null)"
+check "auto-review.md front-load offers a STANDING CONSENT option" "STANDING CONSENT" "$ARBODY"
+check "auto-review.md front-load labels the one-off merge as PER-ARTIFACT CONSENT" "PER-ARTIFACT CONSENT" "$ARBODY"
+check "auto-review.md documents per-artifact consent scoping" "Per-artifact consent scoping." "$ARBODY"
+check "auto-review.md states a one-time yes is not a policy" "a one-time yes is not a policy" "$ARBODY"
+check "auto-review.md points the consent-model report line at build-next SKILL.md step 6" "SKILL.md step 6" "$ARBODY"
+check "build-next SKILL.md report step states the consent model" "consent model" "$BNBODY"
+check "build-next SKILL.md report step gives the standing-consent report token" "consent: standing (preauth ok)" "$BNBODY"
+check "build-next SKILL.md report step gives the per-artifact report token" "consent: per-artifact (asked" "$BNBODY"
+
 echo
 if [[ $flaky -gt 0 ]]; then echo "$flaky lifecycle check(s) FLAKY (passed on retry)"; fi
 if [[ $fails -gt 0 ]]; then echo "$fails test(s) FAILED"; exit 1; fi
