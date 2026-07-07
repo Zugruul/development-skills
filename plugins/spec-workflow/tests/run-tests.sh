@@ -30,7 +30,7 @@ echo "== syntax =="
 for f in "$PLUGIN"/scripts/*.sh "$HERE"/run-tests.sh; do
     if bash -n "$f"; then echo "ok   bash -n $(basename "$f")"; else echo "FAIL bash -n $f"; fails=$((fails + 1)); fi
 done
-for p in config.py validate-config.py next.py ui-hub.py brain.py; do
+for p in config.py identity_lib.py validate-config.py next.py ui-hub.py brain.py; do
     if python3 -m py_compile "$PLUGIN/scripts/$p"; then
         echo "ok   py_compile $p"
     else
@@ -251,6 +251,37 @@ check "default dev models" "models: claude-sonnet-5" "$(rid2 dev)"
 check "default reviewer models" "models: claude-sonnet-5, claude-sonnet-5[1m]" "$(rid2 reviewer)"
 check_absent "orchestrator has no models default" "models:" "$(rid2 orchestrator)"
 rm -rf "$IT2"
+
+echo "== identity: on-behalf recipe =="
+OB="$(mktemp -d)"
+( cd "$OB" && git init -q . && git config user.name "Test User" && git config user.email "test.user@example.com" )
+mkdir -p "$OB/.claude"; cp "$FIX/valid.project.yaml" "$OB/.claude/project.yaml"
+rob() { (cd "$OB" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null bash "$PLUGIN/scripts/identity.sh" on-behalf "$@"); }
+out="$(rob dev --co reviewer)"
+check "on-behalf committer defaults to orchestrator" '-c user.name="Orchestrator Agent - Test User" -c user.email="test.user+orchestrator_agent@example.com"' "$out"
+check "on-behalf author flag = dev" '--author="Dev Agent - Test User <test.user+dev_agent@example.com>"' "$out"
+check "on-behalf co trailer = reviewer" "Co-authored-by: Reviewer Agent - Test User <test.user+reviewer_agent@example.com>" "$out"
+out="$(rob dev --committer reviewer --co orchestrator)"
+check "on-behalf explicit committer" '-c user.name="Reviewer Agent - Test User" -c user.email="test.user+reviewer_agent@example.com"' "$out"
+out="$(rob orchestrator --co dev --co reviewer)"
+check "on-behalf repeated --co (dev)" "Co-authored-by: Dev Agent - Test User" "$out"
+check "on-behalf repeated --co (reviewer)" "Co-authored-by: Reviewer Agent - Test User" "$out"
+out="$(rob dev --co dev)"
+check_absent "on-behalf drops co duplicate of author" "Co-authored-by: Dev Agent" "$out"
+out="$(rob dev --co orchestrator)"
+check_absent "on-behalf drops co equal to committer" "Co-authored-by: Orchestrator Agent" "$out"
+out="$(rob nope 2>&1 || true)"
+check "on-behalf unknown role errors" "unknown role 'nope'" "$out"
+out="$(rob dev --committer ghost 2>&1 || true)"
+check "on-behalf unknown committer errors" "unknown role 'ghost'" "$out"
+rm "$OB/.claude/project.yaml"
+echo '{"delegation":{"identities":{"dev":null}}}' > "$OB/.claude/project.json"
+out="$(rob dev 2>&1 || true)"
+check "on-behalf OFF role errors" "role 'dev' is OFF" "$out"
+echo '{"delegation":{"identities":false}}' > "$OB/.claude/project.json"
+out="$(rob orchestrator 2>&1 || true)"
+check "on-behalf all-OFF errors" "delegation.identities is false" "$out"
+rm -rf "$OB"
 
 echo "== merge-mode (yaml round-trip) =="
 MT="$(mktemp -d)"; ( cd "$MT" && git init -q . )

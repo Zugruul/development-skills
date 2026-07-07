@@ -139,12 +139,52 @@ email. Defaults: `Dev Agent - {name} <{local}+dev_agent@{domain}>` (reviewer/
 orchestrator equivalents). A role set to `null`, `identities: false`, or an
 UNRESOLVED report → that role commits as the human.
 
-- dev brief gets the exact `flags:` line from `identity.sh dev <task path>`
-  (the covers-selected identity) pasted in.
-- orchestrator's own commits (design docs, spec-delta folds) use
-  `identity.sh orchestrator`'s flags the same way.
-- the reviewer makes no commits (by design), but `identity.sh reviewer`'s
-  resolved name signs the approval body.
+A commit must reflect ALL participating roles — never default to the
+orchestrator alone. Git has three attribution channels; map them to roles:
+**author** = who did the work · **committer** = who mechanically recorded it ·
+**Co-authored-by trailers** = every OTHER contributing role (e.g. the reviewer
+whose findings shaped a fix, or a consulted identity).
+
+Rules:
+- **(a) Default — delegate the commit.** The acting subagent commits under its
+  OWN identity (dev brief gets the exact `flags:` line from
+  `identity.sh dev <task path>` — the covers-selected identity — pasted in). No
+  on-behalf recipe needed; author == committer == the actor.
+- **(b) On-behalf** — when the orchestrator must record work it did not itself
+  author (relaying a reviewer-driven fix, folding a spec delta shaped by
+  findings): committer = orchestrator, author = the acting role, Co-authored-by
+  = the contributing roles. Get the ready recipe from
+  `identity.sh on-behalf <author-role> [--committer <role>] [--co <role>]...` —
+  it prints a `flags:` line (`-c user.name/-c user.email` for the committer plus
+  `--author="Name <email>"`) and a `trailers:` block. Embed both like the
+  squash-merge `--body` below — the `flags:` line is shell context (already
+  escaped by identity.sh) and the raw `trailers:` block goes in the message via a
+  **single-quoted** heredoc delimiter (`<<'EOF'`), which is what keeps a hostile
+  identity's backticks/`$()` in the trailer text inert:
+  ```bash
+  # recipe: identity.sh on-behalf dev --co reviewer  ->  <flags line> + <trailers block>
+  git <paste flags line> commit -m "$(cat <<'EOF'
+  <subject line — the fix in one sentence>
+
+  <paste the trailers block verbatim, e.g.:>
+  Co-authored-by: Reviewer Agent - <name> <<local>+reviewer_agent@<domain>>
+  EOF
+  )"
+  ```
+  Never use an unquoted `<<EOF` or an interpolated `-m "...<trailers>..."` — either
+  would execute metacharacters embedded in a name/email.
+- **(c) Orchestrator as AUTHOR** only for its OWN artifacts (retros, design
+  briefs, release notes): `identity.sh orchestrator`'s flags, no on-behalf.
+- **(d)** An identity may ONLY be used by the process actually acting in that
+  role — never commit as Dev when the orchestrator wrote the code; use on-behalf
+  (author=dev, committer=orchestrator) so the record is truthful.
+- **(e)** Inside this workflow, do NOT append a generic `Co-authored-by: Claude`
+  trailer — the role identities ARE the agents; a generic trailer just adds an
+  anonymous participant to GitHub's rendering.
+
+The reviewer makes no commits (by design), but `identity.sh reviewer`'s resolved
+name signs the approval body (and rides a Co-authored-by trailer when its
+findings shaped the merged fix).
 
 Use the per-commit `-c` flags exactly as printed — never `git config` writes
 that leak an agent identity into the human's clone. Attribution note: GitHub

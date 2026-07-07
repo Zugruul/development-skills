@@ -10,6 +10,8 @@ allowed-tools: Bash, AskUserQuestion, Edit, Read
 
 **"show" or a specific ask** — run `identity.sh` (all roles) or `identity.sh <role>` and report the resolved name/email verbatim; a WARN means `git config user.name/email` is unset on this clone.
 
+**On-behalf commits** — when one process records another role's work, `identity.sh on-behalf <author-role> [--committer <role>] [--co <role>]...` prints a ready commit recipe (committer `-c` flags + `--author=` + Co-authored-by trailers) so author/committer/contributors are all credited. When to use it: `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/auto-review.md` §Commit identities.
+
 **Invoked with NO argument**: run `identity.sh`, show the current resolution, then AskUserQuestion (single question, header "Identities"):
 
 - **Keep defaults** — description: "Per-person plus-addressed attribution, zero config (what you have now unless overridden)."

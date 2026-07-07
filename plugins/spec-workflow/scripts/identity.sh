@@ -4,6 +4,10 @@
 #   identity.sh <role>           # one role (dev|reviewer|orchestrator or any configured key)
 #   identity.sh <role> <path>    # resolve the covering identity for a changed path (monorepo routing)
 #   identity.sh --check          # preflight mode: one ok/WARN line, always exit 0
+#   identity.sh on-behalf <author-role> [--committer <role=orchestrator>] [--co <role>]...
+#                                # recipe for a commit that credits ALL participating roles:
+#                                #   author = who did the work · committer = who recorded it ·
+#                                #   Co-authored-by trailers = every other contributing role
 # A role maps to ONE identity or an ARRAY of identities (delegation.identities.<role>).
 # Identity fields: name, email (templates), models (allowed model ids), covers (path globs).
 #   {name}   -> git config user.name
@@ -14,92 +18,106 @@
 # set to false — means OFF: that role commits as the human.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+GITNAME="$(git config user.name 2>/dev/null || true)"
+GITEMAIL="$(git config user.email 2>/dev/null || true)"
 
-PYTHONPATH="$HERE" python3 - "$ROOT" "${1:-}" "${2:-}" "$(git config user.name 2>/dev/null || true)" "$(git config user.email 2>/dev/null || true)" <<'PY'
-import fnmatch
+if [[ "${1:-}" == "on-behalf" ]]; then
+    shift
+    author="${1:-}"; shift || true
+    committer="orchestrator"; cos=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --committer) committer="${2:-}"; shift 2 || { echo "usage: identity.sh on-behalf <author-role> [--committer <role>] [--co <role>]..." >&2; exit 1; } ;;
+            --co)        cos+=("${2:-}");    shift 2 || { echo "usage: identity.sh on-behalf <author-role> [--committer <role>] [--co <role>]..." >&2; exit 1; } ;;
+            *) echo "ERROR: unexpected argument '$1'. usage: identity.sh on-behalf <author-role> [--committer <role>] [--co <role>]..." >&2; exit 1 ;;
+        esac
+    done
+    [[ -n "$author" ]] || { echo "usage: identity.sh on-behalf <author-role> [--committer <role>] [--co <role>]..." >&2; exit 1; }
+    python3 - "$ROOT" "$author" "$committer" "${cos[*]:-}" "$GITNAME" "$GITEMAIL" <<'PY'
+import sys
+import identity_lib as I
+
+root, author, committer, co_csv, gitname, gitemail = sys.argv[1:7]
+co_roles = [c for c in co_csv.split(" ") if c]
+
+roles = I.merged_roles(root)
+if roles is False:
+    print("ERROR: delegation.identities is false (all roles OFF) — no agent identity to commit on behalf of; commit as the human.", file=sys.stderr)
+    sys.exit(1)
+
+
+def need(role):
+    info, status, err = I.resolve_role(roles, role, gitname, gitemail)
+    if status == "ok":
+        return info
+    reason = {"unknown": err,
+              "off": f"role '{role}' is OFF (identities.{role} is null or disabled)",
+              "unresolved": f"role '{role}' UNRESOLVED ({err})"}[status]
+    print(f"ERROR: cannot commit on behalf — {reason}.", file=sys.stderr)
+    sys.exit(1)
+
+
+auth = need(author)
+comm = need(committer)
+
+# Co-authored-by trailers: every contributing role, minus anyone already credited
+# as author or committer (a duplicate trailer just adds a redundant GitHub avatar).
+credited = {auth["email"].lower(), comm["email"].lower()}
+trailers = []
+for r in co_roles:
+    info = need(r)
+    key = info["email"].lower()
+    if key in credited:
+        continue
+    credited.add(key)
+    trailers.append(f"Co-authored-by: {info['name']} <{info['email']}>")
+
+
+def sq(s):
+    return I.shellquote(s)
+
+
+print(f"on-behalf: author={author} committer={committer} co={','.join(co_roles) or '(none)'}")
+print(f"flags: -c user.name={sq(comm['name'])} -c user.email={sq(comm['email'])} "
+      f"--author={sq(auth['name'] + ' <' + auth['email'] + '>')}")
+print("trailers:")
+for t in trailers:
+    print(t)
+if not trailers:
+    print("(none)")
+PY
+    exit $?
+fi
+
+python3 - "$ROOT" "${1:-}" "${2:-}" "$GITNAME" "$GITEMAIL" <<'PY'
 import sys
 
-import config as C
+import identity_lib as I
 
 root, arg, path_arg, gitname, gitemail = sys.argv[1:6]
 check = arg == "--check"
 role_filter = "" if check else arg
 
-DEFAULTS = {
-    "dev":          {"name": "Dev Agent - {name}",          "email": "{local}+dev_agent@{domain}",          "models": ["claude-sonnet-5"]},
-    "reviewer":     {"name": "Reviewer Agent - {name}",     "email": "{local}+reviewer_agent@{domain}",     "models": ["claude-sonnet-5", "claude-sonnet-5[1m]"]},
-    "orchestrator": {"name": "Orchestrator Agent - {name}", "email": "{local}+orchestrator_agent@{domain}"},
-}
-
-try:
-    cfg = C.load_config(root, warn=False) or {}
-except C.ConfigError as e:
-    print(f"IDENTITY WARN: cannot parse config ({e}) — using built-in defaults")
-    cfg = {}
-
-configured = cfg.get("delegation", {}).get("identities", {})
-if configured is False:
+roles = I.merged_roles(root)
+if roles is False:
     print("identities: OFF for all roles (delegation.identities=false) — every role commits as the human")
     sys.exit(0)
-if not isinstance(configured, dict):
-    configured = {}
-
-roles = dict(DEFAULTS)
-for k, v in configured.items():
-    roles[k] = v  # None (opt-out), a dict, or a list of dicts
-
-local, _, domain = gitemail.rpartition("@")
-
-
-def resolve(template):
-    needed = [p for p in ("{name}", "{local}", "{domain}") if p in template]
-    for p in needed:
-        val = {"{name}": gitname, "{local}": local, "{domain}": domain}[p]
-        if not val:
-            src = "user.name" if p == "{name}" else "user.email"
-            return None, f"template needs {p} but git config {src} is empty"
-    return template.replace("{name}", gitname).replace("{local}", local).replace("{domain}", domain), None
-
-
-def shellquote(s):
-    return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("`", "\\`") + '"'
-
-
-def as_list(spec):
-    """A role spec is one identity dict or a list of them -> always a list of dicts."""
-    if isinstance(spec, list):
-        return [x for x in spec if isinstance(x, dict)]
-    return [spec] if isinstance(spec, dict) else []
-
-
-def select(idents, path):
-    """Covers globs decide when a path is given (fnmatch, ** crosses dirs);
-    fallback = first entry without covers, else the first entry."""
-    if path:
-        for it in idents:
-            if any(fnmatch.fnmatch(path, g) for g in (it.get("covers") or [])):
-                return it
-    for it in idents:
-        if not it.get("covers"):
-            return it
-    return idents[0]
 
 
 def render(role, ident):
     """Resolve one identity dict -> (lines, error, resolved_name)."""
-    dflt = DEFAULTS.get(role, {})
-    name_t = ident.get("name") or dflt.get("name") or "{name}"
-    email_t = ident.get("email") or dflt.get("email") or "{local}@{domain}"
-    name, err_n = resolve(name_t)
-    email, err_e = resolve(email_t)
+    dflt = I.DEFAULTS.get(role, {})
+    name, err_n = I.resolve_template(ident.get("name") or dflt.get("name") or "{name}", gitname, gitemail)
+    email, err_e = I.resolve_template(ident.get("email") or dflt.get("email") or "{local}@{domain}", gitname, gitemail)
     if err_n or err_e:
         return None, (err_n or err_e), None
     models = ident.get("models") or dflt.get("models") or []
     lines = [
         f"name: {name}",
         f"email: {email}",
-        f"flags: -c user.name={shellquote(name)} -c user.email={shellquote(email)}",
+        f"flags: -c user.name={I.shellquote(name)} -c user.email={I.shellquote(email)}",
     ]
     if models:
         lines.append("models: " + ", ".join(models))
@@ -113,7 +131,7 @@ if role_filter and role_filter not in roles:
 
 warns, ok = [], 0
 for r in wanted:
-    idents = as_list(roles[r])
+    idents = I.as_list(roles[r])
     if roles[r] is None:
         if not check:
             print(f"role: {r}\nOFF (identities.{r} is null — commits as the human)\n")
@@ -140,7 +158,7 @@ for r in wanted:
             ok += 1
         continue
 
-    chosen = select(idents, path_arg)
+    chosen = I.select(idents, path_arg)
     lines, err, _ = render(r, chosen)
     if err:
         warns.append(f"{r}: {err}")

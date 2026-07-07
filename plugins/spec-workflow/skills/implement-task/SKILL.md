@@ -75,6 +75,7 @@ Large task? Split into sequential briefs (e.g. tests+core, then edge cases), eac
 - Re-run `<cfg:commands.gate>` yourself.
 - Check: red commit precedes implementation in `git log`; invariants respected; isolation cases present if applicable; design doc followed; a spec delta exists **iff** the diff changed a contract (missing delta on a contract change = send the agent back); docs updated.
 - Red gate or blocker → keep *In progress*; re-brief the agent with the specific fix, or escalate (human blocker → `handoff` + `board.sh comment N` explaining what's needed).
+- Prefer letting the dev agent commit its own fix (author == committer). When YOU must record a fix the dev agent (or reviewer findings) produced, commit **on behalf**: `identity.sh on-behalf dev --co reviewer` prints the committer `-c` flags + `--author=` + Co-authored-by trailers so the record credits every participating role — never commit another role's work under a bare `identity.sh orchestrator` (auto-review.md §Commit identities, rules a–e).
 
 ## 3. Review + board
 ```bash
@@ -82,7 +83,7 @@ board.sh move N "In review"     # a hook blocks this unless gate.sh recorded a p
 ```
 Review in **two passes**, each by a review agent (`model:` a suitable id from the reviewer identity's allowed set — `bash "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh" reviewer` prints its `models:` line): (1) **spec compliance** — does the diff satisfy each acceptance criterion and cited spec §, nothing more, nothing less; (2) **code quality** — correctness, style, tests. Relay findings to a dev agent; re-gate. A single combined pass reliably misses "passes tests but isn't what the spec said."
 
-Orchestrator-authored commits (design docs, spec-delta folds) use the `flags:` line from `identity.sh orchestrator` the same per-commit way (skip if OFF/UNRESOLVED).
+The orchestrator's OWN artifacts (design docs it wrote, release notes) use the `flags:` line from `identity.sh orchestrator` the same per-commit way (skip if OFF/UNRESOLVED). Recording work another role produced (a folded spec delta the dev agent wrote, a relayed fix) uses `identity.sh on-behalf <that role>` instead so the author stays truthful — see auto-review.md §Commit identities.
 
 **Auto-merge** (`methodology.autoMerge: true`): after both passes are clean, do NOT wait for a human — run the PR-review/approve/merge protocol in `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/auto-review.md` (independent reviewer agent on a suitable model from the reviewer identity's allowed list, ≤3 fix rounds, approval recorded on the PR, `gh pr merge`, merge announced on the issue + to live teammates).
 
