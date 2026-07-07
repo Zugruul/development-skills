@@ -30,7 +30,7 @@ echo "== syntax =="
 for f in "$PLUGIN"/scripts/*.sh "$HERE"/run-tests.sh; do
     if bash -n "$f"; then echo "ok   bash -n $(basename "$f")"; else echo "FAIL bash -n $f"; fails=$((fails + 1)); fi
 done
-for p in config.py identity_lib.py validate-config.py next.py ui-hub.py brain.py; do
+for p in config.py identity_lib.py validate-config.py next.py ui-hub.py brain.py neural-view.py; do
     if python3 -m py_compile "$PLUGIN/scripts/$p"; then
         echo "ok   py_compile $p"
     else
@@ -125,6 +125,59 @@ out="$(python3 "$HUB" answers --consume)";            check "hub answer collecte
 out="$(python3 "$HUB" answers)";                      check_absent "hub consume archived it" "d1" "$out"
 python3 "$HUB" stop >/dev/null
 unset UI_HUB_STATE UI_HUB_PORT
+
+echo "== neural-view (lifecycle + endpoints on a scratch port) =="
+NV="$PLUGIN/scripts/neural-view.py"
+_nvroot="$(mktemp -d)"          # brains root (--dir)
+_nvstate="$(mktemp -d)"         # server state (pid/port)
+_nvbrain="$_nvroot/.claude/identities/dev/brain"
+mkdir -p "$_nvbrain/notes"
+cat >"$_nvbrain/notes/cas-retry.md" <<'EOF'
+---
+tags: [concurrency, cas]
+paths: [packages/core]
+strength: 4
+graduated: false
+---
+Retry on CAS conflict; the loser reloads and re-applies. See [[idempotency]].
+EOF
+cat >"$_nvbrain/notes/idempotency.md" <<'EOF'
+---
+tags: [effects]
+strength: 2
+graduated: true
+---
+Deterministic ids make repeats safe.
+EOF
+printf '%s\n' '{"cas-retry->idempotency":{"weight":0.6,"fires":4,"last":"2026-07-06"}}' >"$_nvbrain/links.json"
+printf '%s\n' '{"ts":"2026-07-06T10:00:00Z","role":"dev","event":"seed","note":"cas-retry","activation":0.8}' >"$_nvbrain/.activation.jsonl"
+
+export NEURAL_VIEW_STATE="$_nvstate" NEURAL_VIEW_PORT=4788
+out="$(python3 "$NV" start --dir "$_nvroot")";  check "neural-view starts" "RUNNING http://127.0.0.1:4788" "$out"
+out="$(python3 "$NV" status)";                  check "neural-view status running" "RUNNING http://127.0.0.1:4788" "$out"
+out="$(curl -sf http://127.0.0.1:4788/graph)";  check "graph has node id" '"id": "dev/cas-retry"' "$out"
+check "graph node carries strength" '"strength": 4' "$out"
+check "graph node graduated flag" '"graduated": true' "$out"
+check "graph has link edge" '"source": "dev/cas-retry"' "$out"
+check "graph edge weight" '"weight": 0.6' "$out"
+ev1="$(curl -sf 'http://127.0.0.1:4788/events?since=0')"
+check "events returns seed line" '"event": "seed"' "$ev1"
+cur="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["cursor"])' <<<"$ev1")"
+check "events cursor after seed is 1" "1" "$cur"
+printf '%s\n' '{"ts":"2026-07-06T10:00:01Z","role":"dev","event":"hop","note":"idempotency","activation":0.5,"link":"cas-retry->idempotency"}' >>"$_nvbrain/.activation.jsonl"
+ev2="$(curl -sf "http://127.0.0.1:4788/events?since=$cur")"
+check "events cursor monotonic returns appended hop" '"event": "hop"' "$ev2"
+check_absent "events since cursor excludes old seed" '"event": "seed"' "$ev2"
+out="$(curl -sf http://127.0.0.1:4788/note/dev/cas-retry)"
+check "note renders fixture body" "the loser reloads" "$out"
+python3 "$NV" stop >/dev/null
+_nvempty="$(mktemp -d)"          # a root with no brains at all
+out="$(python3 "$NV" start --dir "$_nvempty")"; check "neural-view starts on empty root" "RUNNING http://127.0.0.1:4788" "$out"
+out="$(curl -sf http://127.0.0.1:4788/graph)";  check "empty root -> empty nodes" '"nodes": []' "$out"
+out="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4788/)"; check "page still loads on empty root" "200" "$out"
+python3 "$NV" stop >/dev/null
+unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT
+rm -rf "$_nvroot" "$_nvstate" "$_nvempty" "$_hubtmp"
 
 echo "== gate enforcement (gate.sh + guard-board-move hook) =="
 T3="$(mktemp -d)"
