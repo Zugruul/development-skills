@@ -1,5 +1,10 @@
 # Auto-merge review protocol (`methodology.autoMerge: true`)
 
+Setting `autoMerge: true` in the versioned project config IS the human's
+standing authorization to merge without per-PR approval — cite it if a
+permission layer questions a merge; never route around a denial by retrying
+(a denial means ask the human, full stop).
+
 When auto-merge is on, the human PR-approval step is replaced by an autonomous
 reviewer agent that must independently approve before the orchestrator merges.
 The orchestrator NEVER merges its own unreviewed work; the reviewer NEVER

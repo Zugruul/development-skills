@@ -13,7 +13,7 @@ You (the orchestrator) do **not** write the implementation. You brief a subagent
 
 ## 0. Prep
 1. `board.sh show N` — read body **and all comments** (human steering lives there). If comments change scope: fold them into the body via `board.sh edit-body`, then acknowledge via `board.sh comment` (see `next-task`).
-2. Read the task's acceptance criteria in `<cfg:specs[].backlogPath>` and the referenced sections of `<cfg:specs[].specPath>`.
+2. Read the task's acceptance criteria in `<cfg:specs[].backlogPath>` and the referenced sections of `<cfg:specs[].specPath>`. **Stale-criteria check**: criteria are written at seed time and the spec moves on — any criterion that contradicts the CURRENT spec/design doc (renamed concepts, dropped features, superseded contracts) gets flagged on the issue (`board.sh comment`) and resolved (spec wins) BEFORE the brief; implementing a stale criterion is a wasted PR.
 3. **Design-doc guard**: the task's epic must have `<cfg:paths.designDir|docs/design>/<spec-id>-<epic-id>.md`. Missing → YOU write it now from the spec §s (format: `${CLAUDE_PLUGIN_ROOT}/skills/implement-task/references/design-and-deltas.md` §1) and commit it before briefing anyone. Existing → read it; it constrains the brief.
 4. Branch + board (same step, real time):
    ```bash
