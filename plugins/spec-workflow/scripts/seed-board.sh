@@ -107,7 +107,7 @@ data = json.load(sys.stdin)
 for it in data.get("items", []):
     content = it.get("content") or {}
     title = content.get("title") or it.get("title") or ""
-    print(f"{it["id"]}\t{title}")
+    print("{}\t{}".format(it["id"], title))
 ' >"$MAP"
 while IFS='|' read -r id prio sp epic title; do
     full="${id}: ${title}"

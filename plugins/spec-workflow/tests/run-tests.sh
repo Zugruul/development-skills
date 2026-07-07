@@ -57,6 +57,26 @@ else
     fails=$((fails + 1))
 fi
 
+# anti-pattern: an inline `python3 -c` embedded in a .sh script uses an f-string whose
+# quote delimiter (") is nested inside its own {} expression -- e.g. f"{it["id"]}". That is
+# only valid on Python 3.12+ (PEP 701); it raises a SyntaxError on the stock python3 shipped
+# with macOS <= 14, Ubuntu <= 22.04, Debian 11/12, RHEL 8/9. py_compile above only checks
+# standalone .py files and never sees inline `python3 -c` snippets, so this class of bug is
+# otherwise invisible until it hits an interpreter older than whatever's first on the
+# dev/CI PATH. Static, interpreter-independent: no old python3 needs to be installed.
+inline_py_fstring_bugs=""
+for f in "$PLUGIN"/scripts/*.sh; do
+    hit="$(grep -nE 'f"[^"{}]*\{[^{}]*"[^{}]*\}' "$f" || true)"
+    [[ -n "$hit" ]] && inline_py_fstring_bugs+="$f: $hit"$'\n'
+done
+if [[ -z "$inline_py_fstring_bugs" ]]; then
+    echo "ok   no inline python3 -c f-string nests its own quote char in a {} expression (3.12+-only)"
+else
+    echo "FAIL inline python3 -c f-string nests its own quote char in a {} expression -- 3.12+-only syntax, breaks on older stock python3:"
+    echo "$inline_py_fstring_bugs"
+    fails=$((fails + 1))
+fi
+
 echo "== config.py (shared loader) =="
 CT="$(mktemp -d)"; mkdir -p "$CT/.claude"
 cp "$FIX/valid.project.yaml" "$CT/.claude/project.yaml"
@@ -1792,6 +1812,15 @@ check "issues: all 900 issues present -- no silent truncation past the old 500 c
 callsp4="$(cat "$CCP4")"
 if [[ "$callsp4" -ge 2 ]]; then echo "ok   issues: gh issue list was actually re-paged (>=2 calls)"
 else echo "FAIL issues: expected >=2 gh issue list calls to exhaust 900 issues, got $callsp4"; fails=$((fails + 1)); fi
+
+# scenario 5: hard-cap safety backstop -- SPEC 7.4 forbids SILENT truncation. When the
+# escalating-limit loop hits PAGINATE_HARD_CAP without ever seeing a non-full page (still
+# can't prove exhaustion), it must warn on stderr rather than just quietly stopping. Lower
+# both knobs via env so the 450-item fixture provably can't be exhausted before the cap.
+out5="$(cd "$PG" && PATH="$PGH:$PATH" PAGINATE_BASE_LIMIT=10 PAGINATE_HARD_CAP=20 bash "$PLUGIN/scripts/board.sh" list 2>&1 1>/dev/null)"
+check "hard cap: warns on stderr when the cap is hit before exhaustion" "WARNING: hit pagination hard cap (20)" "$out5"
+out5_stdout="$(cd "$PG" && PATH="$PGH:$PATH" PAGINATE_BASE_LIMIT=10 PAGINATE_HARD_CAP=20 bash "$PLUGIN/scripts/board.sh" list 2>/dev/null)"
+check_absent "hard cap: warning stays on stderr, doesn't corrupt stdout output" "WARNING" "$out5_stdout"
 
 rm -rf "$PG" "$PGH" "$LOGP1" "$CCP1" "$LOGP3" "$LOGP4" "$CCP4"
 
