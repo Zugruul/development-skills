@@ -207,6 +207,13 @@ check "events replay-trap delivers only new (no replay)" "ROUND2 ids=[4, 5]" "$e
 check "events no loss across interleaved earlier-ts writes" "DELIVERED ids=[1, 2, 3, 4, 5]" "$evout"
 check "events no duplicate delivery" "DUPS=0" "$evout"
 check "events idle poll reads zero new bytes" "IDLE events=0 bytesRead=0" "$evout"
+# round-2 finding: a token decoding to a NEGATIVE byte offset must not reach an
+# un-clamped fh.seek() (OSError → dropped connection). Must return 200 + a batch.
+negtok="$(python3 -c 'import base64,json; print(base64.urlsafe_b64encode(json.dumps({"dev":-999}).encode()).rstrip(b"=").decode())')"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:4788/events?since=$negtok")"
+check "events negative-offset token returns 200 (no dropped connection)" "200" "$code"
+body="$(curl -s "http://127.0.0.1:4788/events?since=$negtok")"
+check "events negative-offset token yields a sane batch" '"events"' "$body"
 python3 "$NV" stop >/dev/null
 
 _nvempty="$(mktemp -d)"          # a root with no brains at all
