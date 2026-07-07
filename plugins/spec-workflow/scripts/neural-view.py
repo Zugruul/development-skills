@@ -86,7 +86,13 @@ TEMPLATE = Path(__file__).resolve().parent.parent / "templates" / "neural-view.h
 VENDOR_DIR = Path(__file__).resolve().parent.parent / "templates" / "vendor"
 # Explicit allowlist of servable vendor filenames — never derive the fs path
 # from the request path directly (that's how ../ traversal happens).
-VENDOR_FILES = {"three.module.min.js": "text/javascript; charset=utf-8"}
+VENDOR_FILES = {
+    "three.module.min.js": "text/javascript; charset=utf-8",
+    # bug #58: the ES-module build (r0.150+) imports this core file at
+    # runtime via a relative specifier -- it must be vendored and served
+    # same-origin too, or the browser 404s resolving the import graph.
+    "three.core.min.js": "text/javascript; charset=utf-8",
+}
 WIKILINK = re.compile(r"\[\[([^\]]+)\]\]")
 MARKER_NAME = ".neural-network"
 FAVICON = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
