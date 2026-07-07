@@ -73,3 +73,7 @@ if fresh:
 else:
     print("NEXT: run: board.sh config")
 PY
+
+# Show how agent identities resolve on this clone (templates come from the config/defaults).
+echo "agent identities (customize with the agent-identities skill; identity.sh <role> to inspect):"
+bash "$HERE/identity.sh" --check

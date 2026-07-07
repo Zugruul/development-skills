@@ -8,7 +8,7 @@ FIX="$HERE/fixtures"
 fails=0
 
 check() { # name  expected-substring  actual-output
-    if grep -qF "$2" <<<"$3"; then
+    if grep -qF -- "$2" <<<"$3"; then
         echo "ok   $1"
     else
         echo "FAIL $1 — expected to contain: $2"
@@ -18,7 +18,7 @@ check() { # name  expected-substring  actual-output
 }
 
 check_absent() { # name  forbidden-substring  actual-output
-    if grep -qF "$2" <<<"$3"; then
+    if grep -qF -- "$2" <<<"$3"; then
         echo "FAIL $1 — must NOT contain: $2"
         fails=$((fails + 1))
     else
@@ -170,6 +170,27 @@ check "config contents correct" "config-contents-ok" "$out"
 out="$(cd "$T2" && PATH="$G:$PATH" bash "$PLUGIN/scripts/init-config.sh" fixture-owner fixture-owner/repo 7)"
 check "existing config updated (idempotent)" "updated " "$out"
 rm -rf "$G" "$T2"
+
+echo "== identity resolution =="
+T3="$(mktemp -d)"
+( cd "$T3" && git init -q . && git config user.name "Test User" && git config user.email "test.user@example.com" )
+run_id() { (cd "$T3" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null bash "$PLUGIN/scripts/identity.sh" "$@"); }
+check "default reviewer email plus-addressed" "test.user+reviewer_agent@example.com" "$(run_id reviewer)"
+check "default reviewer name templated" "Reviewer Agent - Test User" "$(run_id reviewer)"
+check "flags line quoted" '-c user.name="Reviewer Agent - Test User"' "$(run_id reviewer)"
+check "check mode resolvable" "identities ok: 3 role(s)" "$(run_id --check)"
+mkdir -p "$T3/.claude"
+echo '{"delegation":{"identities":{"dev":null,"reviewer":{"name":"{name} - reviewer"}}}}' >"$T3/.claude/project.json"
+check "null role reports OFF" "OFF (identities.dev is null" "$(run_id dev)"
+check "name override keeps default email" "test.user+reviewer_agent@example.com" "$(run_id reviewer)"
+check "name override applied" "Test User - reviewer" "$(run_id reviewer)"
+echo '{"delegation":{"identities":false}}' >"$T3/.claude/project.json"
+check "identities=false disables all" "OFF for all roles" "$(run_id --check)"
+rm "$T3/.claude/project.json"
+( cd "$T3" && git config --unset user.name )
+check "missing git name warns" "IDENTITY WARN" "$(run_id --check)"
+check "unresolved role reported" "UNRESOLVED" "$(run_id reviewer || true)"
+rm -rf "$T3"
 
 echo
 if [[ $fails -gt 0 ]]; then echo "$fails test(s) FAILED"; exit 1; fi
