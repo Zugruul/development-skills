@@ -1,6 +1,6 @@
 ---
 name: neural-view
-description: Start/stop/status for the live JARVIS-style visualization of the identity brains — notes as neurons, links as synapses, recalls lighting up in real time. Use with 'start', 'stop', or 'status' (default); bare invocation reports status + URL.
+description: Start/stop/status for the live JARVIS-style visualization of the identity brains — notes as neurons, links as synapses, recalls lighting up in real time, plus a project-overview HUD (hover inspection, per-repo board state, best-effort live sessions). Use with 'start', 'stop', or 'status' (default); bare invocation reports status + URL.
 allowed-tools: Bash
 ---
 
@@ -32,3 +32,13 @@ external requests): drag to orbit, wheel/pinch to zoom, right-drag or shift-drag
 click a neuron to inspect it, and the ⌂ button (or double-clicking empty space) resets
 the view. If `status` says STOPPED, `start` it. Nothing here mutates a brain — it is
 purely a viewer.
+
+It's also a one-page overview of every project on the machine: hovering any note, repo
+region, or synapse (no click needed) opens a tooltip identifying it; each repo shows its
+GitHub Project board state (status counts, in-progress/in-review task titles — read via
+this plugin's own `board.sh`, cached, never blocking the page); and locally-discoverable
+Claude Code sessions (best-effort, from job metadata only — never transcript content)
+badge the repo they're running in. See the plugin README's "Neural view" section for the
+full `/projects`/`/sessions` contract and the relevant env vars
+(`NEURAL_VIEW_PROJECTS_TTL`, `NEURAL_VIEW_BOARD_TIMEOUT`, `NEURAL_VIEW_CLAUDE_DIR`,
+`NEURAL_VIEW_SESSION_RECENT_SECS`).

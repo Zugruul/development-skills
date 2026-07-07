@@ -90,6 +90,28 @@ canvas.grabbing{cursor:grabbing}
 #links .ln{display:flex;justify-content:space-between;gap:.5rem;padding:.15rem 0}
 #links .ln b{color:var(--fg);font-weight:500}
 
+/* hover-inspection tooltip: a positioned DOM element (not canvas text),
+   styled like the other HUD panels, that never intercepts pointer events so
+   hovering never fights orbit/pan/click hit-testing. */
+#tooltip{position:fixed;display:none;padding:.5rem .7rem;max-width:260px;
+  pointer-events:none;z-index:50;font-size:.66rem;line-height:1.42}
+#tooltip .tt-kind{font-size:.56rem;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+#tooltip .tt-title{color:var(--cyan);font-weight:600;margin:.15rem 0;word-break:break-word}
+#tooltip .tt-sub{color:var(--slate)}
+#tooltip .tt-dim{color:var(--amber)}
+#tooltip .tt-tags{color:var(--muted);margin:.15rem 0}
+
+/* per-repo board-state section in the Brains panel */
+#project-list{margin-top:.5rem}
+#project-list h2{margin:.3rem 0 .4rem;font-size:.6rem;letter-spacing:.26em;text-transform:uppercase;color:var(--muted);font-weight:400}
+.projrow{padding:.35rem 0;border-top:1px solid rgba(90,190,255,.12);font-size:.62rem}
+.projrow:first-of-type{border-top:0}
+.projrow .pname{color:var(--cyan);letter-spacing:.06em;text-transform:uppercase;font-size:.62rem}
+.projrow .pcounts,.projrow .pdim{color:var(--slate);margin-top:.1rem}
+.projrow .pdim{color:var(--amber)}
+.projrow .ptasks{margin-top:.15rem}
+.projrow .ptask{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+
 #empty,#nowebgl{position:fixed;inset:0;display:none;place-items:center;text-align:center;pointer-events:none}
 #empty div,#nowebgl div{color:var(--muted);font-size:.8rem;letter-spacing:.1em;max-width:34ch}
 #empty b,#nowebgl b{color:var(--cyan);display:block;letter-spacing:.28em;text-transform:uppercase;margin-bottom:.6rem}
@@ -107,6 +129,7 @@ canvas.grabbing{cursor:grabbing}
     <span class="label">synapses <b id="t-links">0</b></span>
     <span class="label">brains <b id="t-brains">0</b></span>
     <span class="label">repos <b id="t-repos">0</b></span>
+    <span class="label" title="repos with a working board / repos with a board configured">boards <b id="t-boards">–</b></span>
   </div>
   <div id="status">
     <button class="iconbtn" id="reset-view" title="Reset view (or double-click empty space)">⌂</button>
@@ -114,7 +137,7 @@ canvas.grabbing{cursor:grabbing}
   </div>
 </div>
 
-<div class="hud" id="gauges"><h2>Brains</h2><div id="gauge-list"></div></div>
+<div class="hud" id="gauges"><h2>Brains</h2><div id="gauge-list"></div><div id="project-list"></div></div>
 
 <div class="hud" id="ticker"><h2>Activation log</h2><div id="tickerlog" aria-live="polite"></div></div>
 
@@ -126,6 +149,8 @@ canvas.grabbing{cursor:grabbing}
   <div id="body"></div>
   <div id="links"></div>
 </aside>
+
+<div class="hud" id="tooltip" aria-hidden="true"></div>
 
 <div id="empty"><div><b>No brains yet</b>Once an identity starts learning, its notes appear here as neurons and light up as they are recalled.</div></div>
 <div id="nowebgl"><div><b>WebGL unavailable</b>This browser/GPU can't render the 3D view. The brains, gauges and activation log below are still live.</div></div>
@@ -378,7 +403,9 @@ function rebuildScene(){
       mesh.position.set(rc.x, rc.y, rc.z);
       mesh.userData = {kind:"repoRegion", repo};
       sceneGroup.add(mesh);
-      const label = makeLabelSprite(repo.toUpperCase(), 190, 22);
+      const sessN = sessionCountFor(repo);
+      const labelText = repo.toUpperCase() + (sessN ? ` · ${sessN} LIVE` : "");
+      const label = makeLabelSprite(labelText, sessN ? 45 : 190, 22);
       label.position.set(rc.x, rc.y+rad+26, rc.z);
       label.userData = {kind:"repoLabel", repo};
       sceneGroup.add(label);
@@ -414,8 +441,9 @@ function rebuildScene(){
     const dim = (l.a.graduated||l.b.graduated) ? 0.5 : 1;
     const geo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(l.a.x,l.a.y,l.a.z), new THREE.Vector3(l.b.x,l.b.y,l.b.z)]);
+    l.baseOpacity = (0.1 + l.w*0.5)*dim;   // updateVisuals() adds a hover boost on top of this each frame
     const mat = new THREE.LineBasicMaterial({color: threeColor(190,62), transparent:true,
-      opacity:(0.1 + l.w*0.5)*dim, blending:THREE.AdditiveBlending, fog:true});
+      opacity:l.baseOpacity, blending:THREE.AdditiveBlending, fog:true});
     const line = new THREE.Line(geo, mat);
     line.userData = {kind:"synapse", link:l};
     sceneGroup.add(line);
@@ -479,7 +507,7 @@ async function loadGraph(){
   });
   nodeById = new Map(nodes.map(n=>[n.id,n]));
   links = g.edges.filter(e=>e.type!=="consult").map(e=>({
-    a: nodeById.get(e.source), b: nodeById.get(e.target), w: e.weight ?? .5, key: e.source+"->"+e.target
+    a: nodeById.get(e.source), b: nodeById.get(e.target), w: e.weight ?? .5, fires: e.fires ?? 0, key: e.source+"->"+e.target
   })).filter(l=>l.a && l.b);
   window.__consultEdges = g.edges.filter(e=>e.type==="consult");
   layoutClusters();
@@ -530,11 +558,12 @@ function updateVisuals(){
     nd._halo.position.set(nd.x, nd.y, nd.z);
     const pulse = REDUCED ? 0 : (Math.sin(tick*0.05 + nd.phase)*0.5+0.5)*0.18;
     const base = nd.graduated ? 0.55 : 0.9;
-    const rr = nd.r * (1 + pulse*0.15 + nd.hl*0.5);
+    const hoverBoost = (nd === hoveredNode) ? 0.35 : 0;   // hover-inspection highlight, reuses the hl visual mechanism
+    const rr = nd.r * (1 + pulse*0.15 + nd.hl*0.5 + hoverBoost*0.6);
     nd._core.scale.set(rr*2, rr*2, 1);
-    nd._core.material.opacity = Math.min(1, base*0.55 + pulse*0.3 + nd.hl*0.5);
-    nd._halo.scale.set(rr*6*(1+nd.hl*0.6), rr*6*(1+nd.hl*0.6), 1);
-    nd._halo.material.opacity = Math.min(0.75, 0.28 + pulse*0.2 + nd.hl*0.5);
+    nd._core.material.opacity = Math.min(1, base*0.55 + pulse*0.3 + nd.hl*0.5 + hoverBoost);
+    nd._halo.scale.set(rr*6*(1+nd.hl*0.6+hoverBoost*0.4), rr*6*(1+nd.hl*0.6+hoverBoost*0.4), 1);
+    nd._halo.material.opacity = Math.min(0.75, 0.28 + pulse*0.2 + nd.hl*0.5 + hoverBoost*0.3);
   }
   const now = performance.now();
   for(const child of sceneGroup.children){
@@ -544,6 +573,7 @@ function updateVisuals(){
     pos.setXYZ(0, l.a.x, l.a.y, l.a.z);
     pos.setXYZ(1, l.b.x, l.b.y, l.b.z);
     pos.needsUpdate = true;
+    child.material.opacity = l.baseOpacity + (l===hoveredLink ? 0.45 : 0);   // hover-inspection highlight
     if(l.pulse){
       // ambient directional drift, source(a) → target(b), ~4.5s per lap,
       // desynced per-link via pulsePhase; deliberately dim/slow relative to
@@ -682,7 +712,7 @@ function logEvent(e){
   LOG.prepend(div);
   while(LOG.childNodes.length>12) LOG.lastChild.remove();
 }
-function escapeHtml(s){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
 // ---- gauges ----
 // One row per (repo,role) combo actually present in the graph — a repo with a
@@ -721,6 +751,117 @@ function arc(frac, hue, label){
   </svg>`;
 }
 
+// ---- per-repo board state (GET /projects) and locally-discoverable live
+// sessions (GET /sessions) — both polled independently of the graph, and
+// rendered in three places: the top-bar "boards" counter, a per-repo section
+// in the Brains panel, and the repo-region hover tooltip. window.__projects
+// / window.__sessions are read by tooltipHtml() and by the repo-label text
+// (sessionCountFor(), consumed at rebuildScene() time above).
+window.__projects = {};
+window.__sessions = [];
+function sessionCountFor(repo){ return (window.__sessions||[]).filter(s=>s.repo===repo).length; }
+async function loadProjects(){
+  let data; try{ data = await (await fetch("/projects")).json(); }catch{ return; }
+  window.__projects = data && typeof data==="object" ? data : {};
+  renderProjects();
+  renderBoardsIndicator();
+}
+async function loadSessions(){
+  let data; try{ data = await (await fetch("/sessions")).json(); }catch{ return; }
+  window.__sessions = Array.isArray(data) ? data : [];
+}
+function renderBoardsIndicator(){
+  const el = document.getElementById("t-boards");
+  if(!el) return;
+  const repos = Object.keys(window.__projects||{});
+  if(!repos.length){ el.textContent = "–"; return; }
+  const ok = repos.filter(r=>window.__projects[r] && window.__projects[r].ok).length;
+  el.textContent = `${ok}/${repos.length}`;
+}
+function renderProjects(){
+  const el = document.getElementById("project-list");
+  if(!el) return;
+  const repos = Object.keys(window.__projects||{}).sort();
+  if(!repos.length){ el.innerHTML = ""; return; }
+  el.innerHTML = '<h2>Boards</h2>' + repos.map(r=>{
+    const p = window.__projects[r];
+    if(!p || !p.ok){
+      const err = (p && p.error) ? escapeHtml(p.error) : "board unavailable";
+      return `<div class="projrow"><div class="pname">${escapeHtml(r)}</div><div class="pdim">${err}</div></div>`;
+    }
+    const counts = Object.entries(p.statusCounts||{}).map(([k,v])=>`${escapeHtml(k)} ${v}`).join(" · ");
+    const tasks = [...(p.inProgress||[]).map(t=>"▸ "+t), ...(p.inReview||[]).map(t=>"◆ "+t)].slice(0,6);
+    const taskHtml = tasks.length ? `<div class="ptasks">${tasks.map(t=>`<div class="ptask" title="${escapeHtml(t)}">${escapeHtml(t)}</div>`).join("")}</div>` : "";
+    return `<div class="projrow"><div class="pname">${escapeHtml(r)}</div><div class="pcounts">${counts||"no items"}</div>${taskHtml}</div>`;
+  }).join("");
+}
+
+// ---- hover inspection (raycast on pointermove, throttled) ----
+const tooltipEl = document.getElementById("tooltip");
+let hoveredNode = null, hoveredLink = null, hoverThrottle = 0;
+function hideTooltip(){ tooltipEl.style.display = "none"; hoveredNode = null; hoveredLink = null; }
+function showTooltip(clientX, clientY, html){
+  tooltipEl.innerHTML = html;
+  tooltipEl.style.display = "block";
+  const pad = 14;
+  let left = clientX + pad, top = clientY + pad;
+  if(left + 270 > W) left = clientX - 270 - pad;
+  if(top + 140 > H) top = clientY - 140 - pad;
+  tooltipEl.style.left = Math.max(4, left) + "px";
+  tooltipEl.style.top = Math.max(4, top) + "px";
+}
+function tooltipHtml(ud){
+  if(ud.kind==="note"){
+    const nd = ud.node;
+    const label = repoList.length>1 ? `${escapeHtml(nd.repo)} · ${escapeHtml(nd.role)}` : escapeHtml(nd.role);
+    const tags = (nd.tags||[]).map(t=>"#"+escapeHtml(t)).join(" ");
+    return `<div class="tt-kind">note</div><div class="tt-title">${escapeHtml(nd.slug)}</div>`+
+      `<div class="tt-sub">${label}</div>` + (tags ? `<div class="tt-tags">${tags}</div>` : "") +
+      `<div class="tt-sub">strength ${nd.strength ?? "?"}${nd.graduated?" · graduated":""}</div>`;
+  }
+  if(ud.kind==="repoRegion" || ud.kind==="repoLabel"){
+    const repo = ud.repo;
+    const inRepo = nodes.filter(n=>n.repo===repo);
+    const brains = new Set(inRepo.map(n=>n.role)).size;
+    const proj = (window.__projects||{})[repo];
+    let projHtml;
+    if(!proj) projHtml = '<div class="tt-sub tt-dim">no board configured</div>';
+    else if(!proj.ok) projHtml = `<div class="tt-sub tt-dim">board unavailable${proj.error?": "+escapeHtml(proj.error):""}</div>`;
+    else {
+      const counts = Object.entries(proj.statusCounts||{}).map(([k,v])=>`${escapeHtml(k)} ${v}`).join(" · ");
+      projHtml = `<div class="tt-sub">${counts||"no items"}</div>`;
+    }
+    const sess = sessionCountFor(repo);
+    return `<div class="tt-kind">repo</div><div class="tt-title">${escapeHtml(repo)}</div>`+
+      `<div class="tt-sub">${inRepo.length} note(s) · ${brains} brain(s)</div>${projHtml}`+
+      (sess ? `<div class="tt-sub">${sess} active session(s)</div>` : "");
+  }
+  if(ud.kind==="synapse" || ud.kind==="synapsePulse"){
+    const l = ud.link;
+    return `<div class="tt-kind">synapse</div><div class="tt-title">${escapeHtml(l.a.slug)} → ${escapeHtml(l.b.slug)}</div>`+
+      `<div class="tt-sub">weight ${l.w} · fires ×${l.fires ?? 0}</div>`;
+  }
+  return "";
+}
+function hoverTest(clientX, clientY){
+  if(!webglOK || !sceneGroup){ hideTooltip(); return; }
+  const ndc = new THREE.Vector2((clientX/W)*2-1, -(clientY/H)*2+1);
+  raycaster.setFromCamera(ndc, camera);
+  raycaster.params.Line = {threshold: 4};
+  const targets = [];
+  for(const nd of nodes) if(nd._core) targets.push(nd._core);
+  for(const child of sceneGroup.children){
+    const k = child.userData && child.userData.kind;
+    if(k==="repoRegion" || k==="repoLabel" || k==="synapse" || k==="synapsePulse") targets.push(child);
+  }
+  const hits = raycaster.intersectObjects(targets, false);
+  if(!hits.length){ hideTooltip(); return; }
+  const ud = hits[0].object.userData || {};
+  hoveredNode = ud.kind==="note" ? ud.node : null;
+  hoveredLink = (ud.kind==="synapse" || ud.kind==="synapsePulse") ? ud.link : null;
+  showTooltip(clientX, clientY, tooltipHtml(ud));
+}
+
 // ---- orbit / pan / zoom / click-to-inspect (Pointer Events: unifies mouse
 // drag + single-finger touch orbit; two active pointers pinch-zoom; wheel
 // zooms toward the target; right-click-drag or shift-drag pans) ----
@@ -749,6 +890,15 @@ canvas.addEventListener("pointerdown", ev=>{
   }
 });
 canvas.addEventListener("pointermove", ev=>{
+  // hover inspection: only while no pointer is actively dragging (a drag
+  // means orbit/pan/pinch, not inspection), throttled so raycasting doesn't
+  // run on every mousemove event.
+  if(pointers.size===0){
+    const now = performance.now();
+    if(now - hoverThrottle > 60){ hoverThrottle = now; hoverTest(ev.clientX, ev.clientY); }
+  } else {
+    hideTooltip();
+  }
   if(!pointers.has(ev.pointerId) || !webglOK) return;
   pointers.set(ev.pointerId, {x:ev.clientX, y:ev.clientY});
   if(downPos && Math.hypot(ev.clientX-downPos.x, ev.clientY-downPos.y) > 4) moved = true;
@@ -763,6 +913,7 @@ canvas.addEventListener("pointermove", ev=>{
     dragLast = {x:ev.clientX, y:ev.clientY};
   }
 });
+canvas.addEventListener("pointerleave", hideTooltip);
 function orbitBy(dxPix, dyPix){
   theta -= dxPix*0.006;
   phi = Math.max(0.05, Math.min(Math.PI-0.05, phi - dyPix*0.006));
@@ -838,9 +989,12 @@ async function openNote(nd){
 // ---- boot ----
 (async function(){
   await loadGraph(); poll();
+  await loadSessions(); await loadProjects();
   const st=document.getElementById("status-txt");
   st.textContent = !webglOK ? "live · 3D unavailable" : (REDUCED ? "live · reduced motion" : "live · recalls light up");
-  setInterval(loadGraph, 15000);   // pick up new notes/links periodically
+  setInterval(loadGraph, 15000);     // pick up new notes/links periodically
+  setInterval(loadSessions, 20000);  // best-effort local session discovery
+  setInterval(loadProjects, 20000);  // per-repo board state (server itself caches for PROJECTS_TTL)
 })();
 </script>
 </body>

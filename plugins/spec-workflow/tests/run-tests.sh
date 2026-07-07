@@ -187,6 +187,14 @@ check "template imports three via the importmap specifier, not a URL" 'from "thr
 check "template wires an ambient directional pulse sprite per synapse link" 'kind:"synapsePulse"' "$(cat "$NVHTML")"
 check "ambient synapse pulses are gated by the reduced-motion check" "if(!REDUCED){" "$(cat "$NVHTML")"
 check "ambient pulse position is interpolated from the link's live endpoints (l.a/l.b), not a cached copy" "l.pulse.position.set(l.a.x+(l.b.x-l.a.x)*p, l.a.y+(l.b.y-l.a.y)*p, l.a.z+(l.b.z-l.a.z)*p)" "$(cat "$NVHTML")"
+check "template has a tooltip DOM element for hover inspection" 'id="tooltip"' "$(cat "$NVHTML")"
+check "tooltip is positioned fixed and never intercepts pointer events" "pointer-events:none;z-index:50" "$(cat "$NVHTML")"
+check "pointermove wires a throttled hover raycast" "hoverTest(ev.clientX, ev.clientY)" "$(cat "$NVHTML")"
+check "hoverTest() raycasts notes, repo regions/labels, and synapses" 'if(k==="repoRegion" || k==="repoLabel" || k==="synapse" || k==="synapsePulse") targets.push(child);' "$(cat "$NVHTML")"
+check "click-to-inspect behavior (hitTest) is untouched by the hover feature" "function hitTest(clientX, clientY){" "$(cat "$NVHTML")"
+check_absent "hover/projects/sessions code introduces no external fetch" 'fetch("http' "$(cat "$NVHTML")"
+check "template polls GET /projects" 'fetch("/projects")' "$(cat "$NVHTML")"
+check "template polls GET /sessions" 'fetch("/sessions")' "$(cat "$NVHTML")"
 _nvvendorfile="$PLUGIN/templates/vendor/three.module.min.js"
 if [[ -f "$_nvvendorfile" ]]; then
     got_sha="$(shasum -a 256 "$_nvvendorfile" | awk '{print $1}')"
@@ -292,6 +300,39 @@ NODEJS
     check "layoutClusters sizes regions by note count, empty repo floors at MIN_REGION" "LAYOUT3D_OK" "$layout_out"
     check "fitDistance frames every repo region on boot, reload, landscape + portrait" "LAYOUT3D_OK" "$layout_out"
     rm -f "$_nvlayout"
+
+    # security: escapeHtml() is used to interpolate a board task TITLE (attacker-
+    # influenced -- anyone who can title a GitHub issue in a tracked repo) into an
+    # HTML ATTRIBUTE (title="${escapeHtml(t)}" in renderProjects()), not just a text
+    # node. Escaping only &<> leaves a bare double-quote free to break out of the
+    # attribute and inject a live event handler. escapeHtml() must also encode
+    # both quote characters.
+    _nvxss="$(mktemp).cjs"
+    cat >"$_nvxss" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+function extractOneLine(name) {
+    // escapeHtml() is a single-line function -- its closing brace isn't on its
+    // own line, so the multi-line extract() pattern used elsewhere in this file
+    // (which requires "\n}\n") doesn't match it. Same non-greedy idea, minus
+    // that requirement.
+    const re = new RegExp("function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\}\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find function " + name + "() in template");
+    return m[0];
+}
+eval(extractOneLine("escapeHtml"));
+const payload = 'Fix bug" onmouseover="alert(document.cookie)<script>alert(1)</script>';
+const out = escapeHtml(payload);
+if (out.includes('"')) throw new Error("escapeHtml() leaves a raw double-quote in the output: " + out);
+if (out.includes("'")) throw new Error("escapeHtml() leaves a raw single-quote in the output: " + out);
+if (out.includes("<script>")) throw new Error("escapeHtml() leaves a raw <script> tag in the output: " + out);
+if (!out.includes("&quot;")) throw new Error("escapeHtml() does not encode double quotes as &quot;: " + out);
+console.log("ESCAPEHTML_XSS_OK " + out);
+NODEJS
+    xss_out="$(node "$_nvxss" "$NVHTML" 2>&1)"
+    check "escapeHtml() neutralizes a double-quote-breakout XSS payload (attribute context)" "ESCAPEHTML_XSS_OK" "$xss_out"
+    rm -f "$_nvxss"
 fi
 
 echo "== neural-view (lifecycle + endpoints on a scratch port, legacy single-repo mode) =="
@@ -492,6 +533,174 @@ kill "$_blocker" 2>/dev/null || true
 wait "$_blocker" 2>/dev/null || true
 unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT
 rm -rf "$_bindstate"
+
+echo "== neural-view /projects (per-repo board state via THIS plugin's board.sh, cached) =="
+NVP_REPO="$(mktemp -d)"
+mkdir -p "$NVP_REPO/.claude"
+cp "$FIX/valid.project.yaml" "$NVP_REPO/.claude/project.yaml"
+NVP_NOBOARD="$(mktemp -d)"   # discovered repo, no .claude/project.yaml at all -> must be omitted
+NVP_GH="$(mktemp -d)"
+_nvpscan_empty="$(mktemp -d)"   # empty scan base -- real ~/Development repos must never leak into these tests
+cat >"$NVP_GH/gh" <<'FAKE'
+#!/usr/bin/env bash
+set -uo pipefail
+case "$1 $2" in
+    "project item-list")
+        [[ -n "${FAKE_GH_LOG:-}" ]] && echo "$*" >>"$FAKE_GH_LOG"
+        if [[ -n "${FAKE_GH_CALLCOUNT:-}" ]]; then
+            n=$(( $(cat "$FAKE_GH_CALLCOUNT" 2>/dev/null || echo 0) + 1 ))
+            echo "$n" >"$FAKE_GH_CALLCOUNT"
+        fi
+        if [[ "${FAKE_GH_FAIL:-0}" == "1" ]]; then
+            echo "fake gh: item-list boom" >&2
+            exit 1
+        fi
+        if [[ "${FAKE_GH_HANG:-0}" == "1" ]]; then
+            sleep "${FAKE_GH_HANG_SECS:-3}"
+        fi
+        printf 'In progress\tP0\t#1\tAdd widget\n'
+        printf 'In review\tP1\t#2\tFix bug\n'
+        printf 'Backlog\tP2\t#3\tIdea\n'
+        [[ -n "${FAKE_GH_XSS_TITLE:-}" ]] && printf 'In progress\tP0\t#9\t%s\n' "${FAKE_GH_XSS_TITLE}"
+        true
+        ;;
+    *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
+esac
+FAKE
+chmod +x "$NVP_GH/gh"
+NV="$PLUGIN/scripts/neural-view.py"
+_nvpstate="$(mktemp -d)"
+
+# scenario 1: happy path + within-TTL caching (call-count observed via shim log)
+LOG1="$(mktemp)"; CC1="$(mktemp)"
+export NEURAL_VIEW_STATE="$_nvpstate" NEURAL_VIEW_PORT=4792 NEURAL_VIEW_PROJECTS_TTL=100 NEURAL_VIEW_SCAN="$_nvpscan_empty"
+out="$(PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG1" FAKE_GH_CALLCOUNT="$CC1" python3 "$NV" start --dir "$NVP_REPO")"
+check "neural-view starts (projects fixture)" "RUNNING http://127.0.0.1:4792" "$out"
+body="$(curl -sf http://127.0.0.1:4792/projects)"
+_nvprepo="$(basename "$NVP_REPO")"
+check "projects: repo key present" "\"$_nvprepo\"" "$body"
+check "projects: ok true" '"ok": true' "$body"
+check "projects: status counts" '"In progress": 1' "$body"
+check "projects: in-progress titles" '"Add widget"' "$body"
+check "projects: in-review titles" '"Fix bug"' "$body"
+curl -sf http://127.0.0.1:4792/projects >/dev/null    # second call, well within TTL
+n1="$(cat "$CC1")"
+check "projects: second call within TTL does not re-invoke board.sh" "1" "$n1"
+python3 "$NV" stop >/dev/null
+unset NEURAL_VIEW_PROJECTS_TTL
+
+# scenario 2: TTL expiry -> a call after the TTL DOES re-invoke
+LOG2="$(mktemp)"; CC2="$(mktemp)"
+export NEURAL_VIEW_PORT=4792 NEURAL_VIEW_PROJECTS_TTL=1 NEURAL_VIEW_SCAN="$_nvpscan_empty"
+out="$(PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG2" FAKE_GH_CALLCOUNT="$CC2" python3 "$NV" start --dir "$NVP_REPO")"
+check "neural-view starts (TTL-expiry scenario)" "RUNNING http://127.0.0.1:4792" "$out"
+curl -sf http://127.0.0.1:4792/projects >/dev/null
+sleep 1.3
+curl -sf http://127.0.0.1:4792/projects >/dev/null
+n2="$(cat "$CC2")"
+if [[ "$n2" -ge 2 ]]; then echo "ok   projects: a call after TTL expiry re-invokes board.sh"
+else echo "FAIL projects: expected >=2 board.sh invocations after TTL expiry, got $n2"; fails=$((fails + 1)); fi
+python3 "$NV" stop >/dev/null
+unset NEURAL_VIEW_PROJECTS_TTL
+
+# scenario 3: gh/network failure degrades gracefully (ok:false, no crash)
+LOG3="$(mktemp)"; CC3="$(mktemp)"
+out="$(PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG3" FAKE_GH_CALLCOUNT="$CC3" FAKE_GH_FAIL=1 python3 "$NV" start --dir "$NVP_REPO")"
+check "neural-view starts (failure scenario)" "RUNNING http://127.0.0.1:4792" "$out"
+code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4792/projects)"
+check "projects: failure still returns 200 (degraded, not a crash)" "200" "$code"
+body="$(curl -sf http://127.0.0.1:4792/projects)"
+check "projects: gh failure reported as ok:false" '"ok": false' "$body"
+check "projects: gh failure carries an error message" '"error"' "$body"
+python3 "$NV" stop >/dev/null
+
+# scenario 4: a discovered repo with no .claude/project.yaml is omitted entirely
+out="$(python3 "$NV" start --dir "$NVP_NOBOARD")"
+check "neural-view starts (no-board repo)" "RUNNING http://127.0.0.1:4792" "$out"
+body="$(curl -sf http://127.0.0.1:4792/projects)"
+check "projects: repo without project.yaml is omitted" "{}" "$body"
+python3 "$NV" stop >/dev/null
+
+# scenario 5b: a board task title carrying an XSS payload (attacker-controlled --
+# anyone who can title a GitHub issue) is passed through /projects RAW, unescaped.
+# The server is not the defense here; this pins that fact down so the client-side
+# escapeHtml() (checked above, in the template-contract block) stays the only guard.
+LOG5B="$(mktemp)"; CC5B="$(mktemp)"
+XSS_TITLE='Fix bug" onmouseover="alert(document.cookie)<script>alert(1)</script>'
+out="$(PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG5B" FAKE_GH_CALLCOUNT="$CC5B" FAKE_GH_XSS_TITLE="$XSS_TITLE" python3 "$NV" start --dir "$NVP_REPO")"
+check "neural-view starts (XSS-title fixture)" "RUNNING http://127.0.0.1:4792" "$out"
+body="$(curl -sf http://127.0.0.1:4792/projects)"
+check "projects: server passes an attacker-controlled title through unescaped (client must escape it)" 'onmouseover=' "$body"
+check "projects: server does not strip/encode the embedded <script> tag either" '<script>alert(1)</script>' "$body"
+python3 "$NV" stop >/dev/null
+
+# scenario 5: a hanging board.sh call never blocks another route (/graph)
+LOG5="$(mktemp)"; CC5="$(mktemp)"
+out="$(PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG5" FAKE_GH_CALLCOUNT="$CC5" FAKE_GH_HANG=1 FAKE_GH_HANG_SECS=4 python3 "$NV" start --dir "$NVP_REPO")"
+check "neural-view starts (hang scenario)" "RUNNING http://127.0.0.1:4792" "$out"
+curl -sf http://127.0.0.1:4792/projects >/tmp/nv-hang-out.$$ &
+_hangpid=$!
+sleep 0.5   # let the hanging /projects request actually start (past the fake gh's sleep having begun)
+t0=$(date +%s)
+code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:4792/graph)"
+t1=$(date +%s)
+check "projects: sibling route (/graph) still responds while board.sh hangs" "200" "$code"
+elapsed=$(( t1 - t0 ))
+if [[ "$elapsed" -le 2 ]]; then echo "ok   projects: /graph was not blocked by the hanging board.sh call (${elapsed}s)"
+else echo "FAIL projects: /graph took ${elapsed}s while board.sh hung -- looks blocked"; fails=$((fails + 1)); fi
+wait "$_hangpid" 2>/dev/null || true
+rm -f /tmp/nv-hang-out.$$
+python3 "$NV" stop >/dev/null
+unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_SCAN
+rm -rf "$NVP_REPO" "$NVP_NOBOARD" "$NVP_GH" "$_nvpstate" "$_nvpscan_empty" "$LOG1" "$CC1" "$LOG2" "$CC2" "$LOG3" "$CC3" "$LOG5" "$CC5" "$LOG5B" "$CC5B"
+
+echo "== neural-view /sessions (best-effort local Claude session discovery) =="
+NVS_CLAUDE="$(mktemp -d)"
+NVS_JOBS="$NVS_CLAUDE/jobs"
+mkdir -p "$NVS_JOBS/job-working" "$NVS_JOBS/job-recent-done" "$NVS_JOBS/job-stale-done" "$NVS_JOBS/job-unmatched-repo"
+NVS_REPO="$(mktemp -d)"
+mkdir -p "$NVS_REPO/.claude"
+: >"$NVS_REPO/.claude/.neural-network"
+cat >"$NVS_JOBS/job-working/state.json" <<EOF
+{"state":"working","cwd":"$NVS_REPO","name":"messaging","createdAt":"2026-07-07T10:00:00Z","updatedAt":"2026-07-07T10:05:00Z"}
+EOF
+cat >"$NVS_JOBS/job-recent-done/state.json" <<EOF
+{"state":"done","cwd":"$NVS_REPO/subdir","name":"cleanup","createdAt":"2026-07-07T09:00:00Z","updatedAt":"2026-07-07T09:01:00Z"}
+EOF
+cat >"$NVS_JOBS/job-stale-done/state.json" <<EOF
+{"state":"done","cwd":"$NVS_REPO","name":"old-task","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:05:00Z"}
+EOF
+touch -t 202601010000 "$NVS_JOBS/job-stale-done/state.json"
+cat >"$NVS_JOBS/job-unmatched-repo/state.json" <<EOF
+{"state":"working","cwd":"/tmp/somewhere-not-discovered","name":"lonely","createdAt":"2026-07-07T10:00:00Z","updatedAt":"2026-07-07T10:00:00Z"}
+EOF
+_nvsstate="$(mktemp -d)"
+_nvsscan_empty="$(mktemp -d)"   # empty scan base -- real ~/Development repos must never leak into these tests
+export NEURAL_VIEW_STATE="$_nvsstate" NEURAL_VIEW_PORT=4793 NEURAL_VIEW_CLAUDE_DIR="$NVS_CLAUDE" NEURAL_VIEW_SCAN="$_nvsscan_empty"
+_nvsrepo="$(basename "$NVS_REPO")"
+out="$(python3 "$NV" start --dir "$NVS_REPO")"
+check "neural-view starts (sessions fixture)" "RUNNING http://127.0.0.1:4793" "$out"
+body="$(curl -sf http://127.0.0.1:4793/sessions)"
+check "sessions: working job included" '"messaging"' "$body"
+check "sessions: recently-updated done job included" '"cleanup"' "$body"
+check_absent "sessions: stale done job excluded" '"old-task"' "$body"
+check "sessions: job cwd matched to the discovered repo" "\"repo\": \"$_nvsrepo\"" "$body"
+check "sessions: job outside any discovered repo still reported (repo: null)" '"repo": null' "$body"
+check "sessions: unmatched job still carries its description" '"lonely"' "$body"
+python3 "$NV" stop >/dev/null
+unset NEURAL_VIEW_CLAUDE_DIR NEURAL_VIEW_SCAN
+
+# no jobs dir at all -> []
+_nvsempty="$(mktemp -d)"
+_nvs_noclaude="$(mktemp -d)"
+export NEURAL_VIEW_CLAUDE_DIR="$_nvs_noclaude" NEURAL_VIEW_SCAN="$_nvsscan_empty"
+out="$(python3 "$NV" start --dir "$_nvsempty")"
+check "neural-view starts (no jobs dir)" "RUNNING http://127.0.0.1:4793" "$out"
+body="$(curl -sf http://127.0.0.1:4793/sessions)"
+check "sessions: absent jobs dir yields empty array" "[]" "$body"
+python3 "$NV" stop >/dev/null
+unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_CLAUDE_DIR NEURAL_VIEW_SCAN
+rm -rf "$NVS_CLAUDE" "$NVS_REPO" "$_nvsstate" "$_nvsscan_empty" "$_nvsempty" "$_nvs_noclaude"
 
 echo "== gate enforcement (gate.sh + guard-board-move hook) =="
 T3="$(mktemp -d)"

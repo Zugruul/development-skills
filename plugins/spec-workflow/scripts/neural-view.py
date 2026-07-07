@@ -34,6 +34,22 @@ an empty graph. Graph node ids are "<repo>/<role>/<slug>" (unique across repos);
 /note/<repo>/<role>/<slug> addresses one; /events cursors are opaque and carry
 a per-repo, per-role byte offset.
 
+GET /projects: {repo: {ok, statusCounts:{status:N}, inProgress:[title], inReview:[title]}}
+or {repo: {ok:false, error}} — per-repo board state, read via THIS plugin's
+board.sh (never `gh project` directly) with cwd=<repo root>, so it resolves
+that repo's own .claude/project.yaml. Cached for $NEURAL_VIEW_PROJECTS_TTL
+seconds (default 60), subprocess bounded by $NEURAL_VIEW_BOARD_TIMEOUT seconds
+(default 12) so a hung `gh` never blocks other routes for long. A repo with
+no .claude/project.yaml or .json is omitted entirely (not an error).
+
+GET /sessions: [{repo, description, state, startedAt}] — best-effort local
+Claude Code session discovery from ~/.claude/jobs/<id>/state.json (harness job
+orchestration metadata: state/cwd/name/timestamps only — never the
+conversation transcript). See discover_sessions() docstring for the full
+investigation writeup. $NEURAL_VIEW_CLAUDE_DIR overrides ~/.claude (mainly for
+tests); $NEURAL_VIEW_SESSION_RECENT_SECS overrides the "recent" window
+(default 900s).
+
 State dir (pid/port/log): $NEURAL_VIEW_STATE, else <git root>/.claude/neural-view.
 Port: --port, else $NEURAL_VIEW_PORT, else 4748. Binds 127.0.0.1 only.
 """
@@ -44,6 +60,7 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -77,6 +94,17 @@ FAVICON = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
            b'<circle cx="16" cy="16" r="6" fill="#46e6ff"/></svg>')
 
 REPOS = [("", Path(git_root()))]  # list of (repo_name, root); replaced by serve()
+
+# GET /projects: per-repo board state, cached (see project_state()) so a slow/
+# hung `gh` call is bounded and never re-invoked more than once per TTL.
+PROJECTS_TTL = float(os.environ.get("NEURAL_VIEW_PROJECTS_TTL", "60"))
+BOARD_TIMEOUT = float(os.environ.get("NEURAL_VIEW_BOARD_TIMEOUT", "12"))
+BOARD_SH = Path(__file__).resolve().parent / "board.sh"
+PROJECTS_CACHE = {}          # repo name -> (fetched_at, result-dict-or-None)
+PROJECTS_LOCK = threading.Lock()
+
+# GET /sessions: best-effort locally-discoverable Claude Code sessions.
+SESSION_RECENT_SECS = float(os.environ.get("NEURAL_VIEW_SESSION_RECENT_SECS", "900"))
 
 
 # ---------------------------------------------------------------------------
@@ -430,6 +458,132 @@ def note_payload(repos, repo, role, slug):
 
 
 # ---------------------------------------------------------------------------
+# Per-repo project/board state (GET /projects) and locally-discoverable
+# Claude Code sessions (GET /sessions) — both best-effort, read-only, and
+# never allowed to stall other routes: subprocess calls are time-boxed
+# (BOARD_TIMEOUT) and results cached for PROJECTS_TTL. Since the server is a
+# ThreadingHTTPServer, a slow /projects request occupies only its own request
+# thread anyway — the timeout exists so that thread (and its cached slot)
+# don't hang indefinitely on a wedged `gh`.
+# ---------------------------------------------------------------------------
+def _repo_config_path(root):
+    for name in ("project.yaml", "project.json"):
+        p = Path(root) / ".claude" / name
+        if p.is_file():
+            return p
+    return None
+
+
+def _run_board_list(root):
+    """Invoke THIS plugin's board.sh (never `gh project` directly) with
+    cwd=root, so it resolves and reads THAT repo's own .claude/project.yaml —
+    the only board-access path, per the plugin's invariant."""
+    try:
+        proc = subprocess.run([str(BOARD_SH), "list"], cwd=str(root), capture_output=True,
+                               text=True, timeout=BOARD_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"board.sh list timed out after {BOARD_TIMEOUT}s"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": f"board.sh invocation failed: {e}"}
+    if proc.returncode != 0:
+        lines = (proc.stderr or proc.stdout or "board.sh list failed").strip().splitlines()
+        return {"ok": False, "error": (lines[-1] if lines else "board.sh list failed")[:300]}
+    status_counts, in_progress, in_review = {}, [], []
+    for line in proc.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 4:
+            continue
+        status, title = parts[0], parts[3]
+        status_counts[status] = status_counts.get(status, 0) + 1
+        low = status.strip().lower()
+        if low == "in progress":
+            in_progress.append(title)
+        elif low == "in review":
+            in_review.append(title)
+    return {"ok": True, "statusCounts": status_counts, "inProgress": in_progress, "inReview": in_review}
+
+
+def project_state(name, root):
+    """A repo's board state, cached for PROJECTS_TTL seconds. Returns None
+    (caller omits the repo entirely, per the /projects contract) if the repo
+    has no .claude/project.yaml or .json at all — a repo that never opted
+    into the board should not even show a "board unavailable" badge."""
+    if _repo_config_path(root) is None:
+        return None
+    now = time.time()
+    with PROJECTS_LOCK:
+        cached = PROJECTS_CACHE.get(name)
+        if cached is not None and (now - cached[0]) < PROJECTS_TTL:
+            return cached[1]
+    result = _run_board_list(root)
+    with PROJECTS_LOCK:
+        PROJECTS_CACHE[name] = (now, result)
+    return result
+
+
+def claude_dir():
+    env = os.environ.get("NEURAL_VIEW_CLAUDE_DIR")
+    return Path(env) if env else Path.home() / ".claude"
+
+
+def discover_sessions(repos):
+    """Best-effort discovery of locally-active Claude Code sessions.
+
+    Investigation finding: ~/.claude/jobs/<id>/state.json is background-job
+    orchestration metadata the harness itself writes — state, cwd, a short
+    job name/label, createdAt/updatedAt timestamps. It is NOT the conversation
+    transcript (that lives under ~/.claude/projects/<hash>/*.jsonl and is
+    never touched here). This function reads only state/cwd/name/createdAt;
+    it deliberately never reads the job's `detail`/`output` fields, which can
+    carry snippets of actual model output — metadata/mtimes only, per the
+    privacy invariant.
+
+    A job counts as an active "session" if its state is "working", or its
+    state.json was modified within SESSION_RECENT_SECS (a recent-activity
+    heuristic that also surfaces jobs that just finished). Its `cwd` is
+    matched against a discovered repo by path prefix so the UI can badge the
+    right region; a job whose cwd doesn't fall under any discovered repo
+    still surfaces with repo=None rather than being dropped. If ~/.claude (or
+    $NEURAL_VIEW_CLAUDE_DIR) has no jobs/ directory at all, returns []."""
+    jobs_dir = claude_dir() / "jobs"
+    out = []
+    try:
+        children = sorted(jobs_dir.iterdir()) if jobs_dir.is_dir() else []
+    except OSError:
+        return out
+    now = time.time()
+    repo_roots = [(name, os.path.realpath(str(root))) for name, root in repos]
+    for child in children:
+        sf = child / "state.json"
+        try:
+            if not sf.is_file():
+                continue
+            mtime = sf.stat().st_mtime
+            data = json.loads(sf.read_text(errors="replace"))
+        except Exception:  # noqa: BLE001
+            continue
+        if not isinstance(data, dict):
+            continue
+        state = data.get("state")
+        if state != "working" and (now - mtime) > SESSION_RECENT_SECS:
+            continue
+        cwd = str(data.get("cwd") or "")
+        cwd_real = os.path.realpath(cwd) if cwd else ""
+        repo = None
+        for name, rp in repo_roots:
+            if cwd_real == rp or cwd_real.startswith(rp + os.sep):
+                repo = name
+                break
+        out.append({
+            "repo": repo,
+            "description": str(data.get("name") or ""),
+            "state": state,
+            "startedAt": str(data.get("createdAt") or ""),
+        })
+    return out
+
+
+# ---------------------------------------------------------------------------
 # HTTP
 # ---------------------------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
@@ -478,6 +632,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"cursor": encode_cursor(offsets), "events": [], "bytesRead": 0})
             events, new_offsets, nbytes = read_events_since(REPOS, offsets)
             return self._send(200, {"cursor": encode_cursor(new_offsets), "events": events, "bytesRead": nbytes})
+        if path == "/projects":
+            out = {}
+            for name, root in REPOS:
+                state = project_state(name, root)
+                if state is not None:
+                    out[name] = state
+            return self._send(200, out)
+        if path == "/sessions":
+            return self._send(200, discover_sessions(REPOS))
         if path.startswith("/note/"):
             parts = path[len("/note/"):].split("/", 2)
             if len(parts) == 3 and parts[0] and parts[1] and parts[2]:
