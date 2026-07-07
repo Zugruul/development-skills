@@ -1591,6 +1591,63 @@ PY
 brain retro-mark >/dev/null; brain retro-mark >/dev/null; brain retro-mark >/dev/null
 out="$(brain prune dev)"
 check "prune flags never-fired aged link" "stale-src->stale-dst" "$out"
+
+echo "== brain graduate-check (threshold-based graduation proposals) =="
+# seed four notes at controlled strengths/tags, then hand-patch strength/graduated
+# (mint always writes strength=1 on first mint; re-mint bumps by 1 each call, so
+# patching is far more direct than looping mint calls to reach a target strength).
+printf 'Below threshold, unremarkable.\n' | brain mint dev gc-below --tags misc --paths "gc/**" --source x
+printf 'At the default threshold, mechanically checkable.\n' | brain mint dev gc-at --tags testing,ci --paths "gc/**" --source x
+printf 'Above threshold, a hard rule.\n' | brain mint dev gc-above --tags invariant,contract --paths "gc/**" --source x
+printf 'Above threshold but already graduated.\n' | brain mint dev gc-graduated --tags process --paths "gc/**" --source x
+python3 - "$BT" <<'PY2'
+import os, re, sys
+d = os.path.join(sys.argv[1], ".claude/identities/dev/brain/notes")
+patch = {"gc-below": (2, False), "gc-at": (3, False), "gc-above": (5, False), "gc-graduated": (5, True)}
+for slug, (strength, graduated) in patch.items():
+    p = os.path.join(d, slug + ".md")
+    s = open(p).read()
+    s = re.sub(r"strength: .*", "strength: %d" % strength, s)
+    s = re.sub(r"graduated: .*", "graduated: %s" % ("true" if graduated else "false"), s)
+    open(p, "w").write(s)
+PY2
+
+# default threshold (3, no project.yaml present yet): at/above-threshold, non-graduated only
+out="$(brain graduate-check dev)"
+check "graduate-check lists at-threshold note" "gc-at" "$out"
+check "graduate-check lists above-threshold note" "gc-above" "$out"
+check_absent "graduate-check excludes below-threshold note" "gc-below" "$out"
+check_absent "graduate-check excludes already-graduated note" "gc-graduated" "$out"
+check "graduate-check proposes test-or-lint for testing/ci tags" "test-or-lint" "$out"
+check "graduate-check proposes an invariant entry for contract/invariant tags" "specs[].invariants entry" "$out"
+
+# read-only: strength/graduated on disk are unchanged after graduate-check runs
+before="$(grep -E 'strength:|graduated:' "$BT/.claude/identities/dev/brain/notes/gc-at.md")"
+brain graduate-check dev >/dev/null
+after="$(grep -E 'strength:|graduated:' "$BT/.claude/identities/dev/brain/notes/gc-at.md")"
+check "graduate-check is read-only (frontmatter unchanged)" "$before" "$after"
+
+# empty case: a threshold nothing clears exits 0 with a clean message
+out="$(brain graduate-check dev --threshold 100; echo "rc=$?")"
+check "graduate-check empty case message" "no notes at/above threshold 100 for dev" "$out"
+check "graduate-check empty case exits 0" "rc=0" "$out"
+
+# threshold configurable via project.yaml (methodology.graduationThreshold): cutoff shifts
+mkdir -p "$BT/.claude"
+cat > "$BT/.claude/project.yaml" <<'YAML'
+schemaVersion: 2
+methodology:
+    graduationThreshold: 2
+YAML
+out="$(brain graduate-check dev)"
+check "custom threshold (2) picks up the below-default note" "gc-below" "$out"
+
+# --threshold CLI flag overrides the configured value
+out="$(brain graduate-check dev --threshold 4)"
+check_absent "CLI --threshold overrides config (gc-at strength 3 excluded at threshold 4)" "gc-at" "$out"
+check "CLI --threshold overrides config (gc-above strength 5 still included)" "gc-above" "$out"
+rm -f "$BT/.claude/project.yaml"
+
 rm -rf "$BT"
 
 echo "== brain.sh wrapper (flag-less default path, set -u) =="
