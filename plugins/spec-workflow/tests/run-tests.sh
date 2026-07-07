@@ -97,6 +97,30 @@ out="$(python3 "$PLUGIN/scripts/next.py" "$FIX/valid.project.json" "" "$FIX/item
 check "wip resume guard" "=> RESUME: #2  FX-002: auth model" "$out"
 check_absent "wip: no new pick" "=> PICK:" "$out"
 
+echo "== similar.py (dedup/similarity) =="
+SIM="$PLUGIN/scripts/similar.py"
+export SIMILAR_ISSUES_FILE="$FIX/issues.sample.json"
+
+out="$(python3 "$SIM" "$HERE" "Add dark mode toggle to settings page")"
+first_line="$(head -1 <<<"$out")"
+check "exact title match: #21 is top-ranked" "#21" "$first_line"
+check "exact title match: high tier" "high" "$first_line"
+
+out="$(python3 "$SIM" "$HERE" "I want to add a dark theme toggle option on the settings screen")"
+first_line="$(head -1 <<<"$out")"
+check "paraphrase match: #21 is top-ranked" "#21" "$first_line"
+check_absent "paraphrase match: not low tier" $'low\t' "$first_line"
+check_absent "paraphrase match: unrelated #22 not matched" "#22" "$out"
+check_absent "paraphrase match: unrelated #23 not matched" "#23" "$out"
+
+out="$(python3 "$SIM" "$HERE" "refactor database connection pooling for performance"; echo "rc=$?")"
+check "no-match query: exits 0" "rc=0" "$out"
+check_absent "no-match query: no high tier" $'high\t' "$out"
+check_absent "no-match query: no medium tier" $'medium\t' "$out"
+check_absent "no-match query: no issue matched" "#2" "$out"
+
+unset SIMILAR_ISSUES_FILE
+
 echo "== preflight =="
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 ( cd "$T" && git init -q . )
