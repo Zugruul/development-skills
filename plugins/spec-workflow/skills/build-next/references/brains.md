@@ -64,7 +64,9 @@ links. Every recall appends `seed`/`hop`/`inject` events to `.activation.jsonl` 
 After a PR merges (or is set aside), the orchestrator runs a retro:
 
 1. Interview the dev and reviewer agents: what surprised them, what they'd tell their future
-   self, what the review caught.
+   self, what the review caught. Also read `.claude/lessons.jsonl` (SW-020, SPEC §8.1) — gate.sh
+   appends one `{ts, exit, tail}` record per red gate before clearing the pass; any recurring
+   failure signature there is retro input alongside the interview.
 2. `brain.sh mint <role> <slug> --tags ... --paths ... --source "PR#N ..."` — mint notes in
    **your own wording** (body on stdin), one idea each, wikilinking related slugs. Re-minting
    an existing slug bumps its `strength`.

@@ -61,7 +61,7 @@ Each spec is a design document plus a backlog of numbered tasks. One repo can ha
    ```
 
 ## Phase 5 — repo hygiene + editor wiring
-- Add the local flags + state to `.gitignore`: `printf '.claude/CHECKPOINT\n.claude/ITERATIVE_UI_OFF\n.claude/ui-hub/\n.claude/gate-pass\n.claude/feedback/\n.claude/telemetry.jsonl\n' >> .gitignore`
+- Add the local flags + state to `.gitignore`: `printf '.claude/CHECKPOINT\n.claude/ITERATIVE_UI_OFF\n.claude/ui-hub/\n.claude/gate-pass\n.claude/feedback/\n.claude/telemetry.jsonl\n.claude/lessons.jsonl\n' >> .gitignore`
 - **Editor schema (VSCode)** — so `project.yaml` gets hover + autocomplete, merge these into the repo's `.vscode/` files WITHOUT clobbering existing settings (read each file first; add only the missing keys, preserve the rest). The modeline in `project.yaml` already helps; this makes it explicit and recommends the extension.
   - `.vscode/settings.json` — add under `yaml.schemas`:
     ```json

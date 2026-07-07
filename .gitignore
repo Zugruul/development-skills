@@ -6,5 +6,6 @@ evals/results/
 .claude/ui-hub/
 .claude/gate-pass
 .claude/telemetry.jsonl
+.claude/lessons.jsonl
 .claude/neural-view/
 .claude/feedback/
