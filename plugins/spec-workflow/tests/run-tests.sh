@@ -2096,6 +2096,16 @@ check "find-task SKILL.md invokes similar.py via python3" "python3 \"\${CLAUDE_P
 # shellcheck disable=SC2016  # single quotes are intentional: literal grep pattern, not shell expansion
 check_absent "find-task SKILL.md never invokes similar.py via bash" 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/similar.py"' "$(cat "$FTSKILL" 2>/dev/null)"
 
+echo "== build-next SKILL.md: mandatory retro at PR close (SW-021, SPEC 8.2) =="
+BNSKILL="$PLUGIN/skills/build-next/SKILL.md"
+if [[ -f "$BNSKILL" ]]; then echo "ok   build-next/SKILL.md exists"; else echo "FAIL build-next/SKILL.md missing"; fails=$((fails + 1)); fi
+BNBODY="$(cat "$BNSKILL" 2>/dev/null)"
+check "build-next SKILL.md has a numbered Retro step" "**Retro" "$BNBODY"
+check "build-next SKILL.md states the retro is MANDATORY at PR close" "MANDATORY at PR close" "$BNBODY"
+check "build-next SKILL.md report step carries a retro-status line" "retro: done" "$BNBODY"
+check "build-next SKILL.md report step's skip form states a reason" "retro: SKIPPED — <reason>" "$BNBODY"
+check "build-next SKILL.md cross-references brains.md for retro mechanics" "references/brains.md" "$BNBODY"
+
 echo
 if [[ $fails -gt 0 ]]; then echo "$fails test(s) FAILED"; exit 1; fi
 echo "all tests passed"
