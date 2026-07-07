@@ -71,7 +71,19 @@
         "devUp": "./dev.sh",
         "test": "pnpm test"
     },
-    "delegation": { "devModel": "sonnet", "reviewModel": "sonnet" },
+    "docs": [
+        { "id": "root", "path": "README.md", "covers": ["**"], "notes": "user-facing usage + install; update when commands or behavior change" }
+    ],
+    "delegation": {
+        "devModel": "sonnet",
+        "reviewModel": "sonnet",
+        "prReviewModel": "claude-sonnet-5[1m]",
+        "identities": {
+            "dev": { "name": "Dev Agent - {name}", "email": "{local}+dev_agent@{domain}" },
+            "reviewer": { "name": "Reviewer Agent - {name}", "email": "{local}+reviewer_agent@{domain}" },
+            "orchestrator": { "name": "Orchestrator Agent - {name}", "email": "{local}+orchestrator_agent@{domain}" }
+        }
+    },
     "paths": {
         "handoffDir": "docs/handoffs",
         "checkpointFile": ".claude/CHECKPOINT",
@@ -79,5 +91,5 @@
         "specDeltaDir": "docs/spec-deltas",
         "devDoc": "docs/DEV.md"
     },
-    "methodology": { "tdd": true, "isolationSuite": "", "maxInProgress": 1 }
+    "methodology": { "tdd": true, "isolationSuite": "", "maxInProgress": 1, "autoMerge": false, "mergeMethod": "squash" }
 }

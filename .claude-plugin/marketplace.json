@@ -11,7 +11,7 @@
             "name": "spec-workflow",
             "source": "./plugins/spec-workflow",
             "description": "Spec-driven autonomous build workflow: GitHub Project board as source of truth, TDD via delegated dev agents, quality gate, checkpoint/handoff loop. Configured per-repo via .claude/project.json (versioned schema).",
-            "version": "0.6.1",
+            "version": "0.7.0",
             "author": {
                 "name": "event-sorcerer"
             },

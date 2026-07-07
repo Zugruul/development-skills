@@ -13,7 +13,7 @@ You (the orchestrator) do **not** write the implementation. You brief a subagent
 
 ## 0. Prep
 1. `board.sh show N` — read body **and all comments** (human steering lives there). If comments change scope: fold them into the body via `board.sh edit-body`, then acknowledge via `board.sh comment` (see `next-task`).
-2. Read the task's acceptance criteria in `<cfg:specs[].backlogPath>` and the referenced sections of `<cfg:specs[].specPath>`.
+2. Read the task's acceptance criteria in `<cfg:specs[].backlogPath>` and the referenced sections of `<cfg:specs[].specPath>`. **Stale-criteria check**: criteria are written at seed time and the spec moves on — any criterion that contradicts the CURRENT spec/design doc (renamed concepts, dropped features, superseded contracts) gets flagged on the issue (`board.sh comment`) and resolved (spec wins) BEFORE the brief; implementing a stale criterion is a wasted PR.
 3. **Design-doc guard**: the task's epic must have `<cfg:paths.designDir|docs/design>/<spec-id>-<epic-id>.md`. Missing → YOU write it now from the spec §s (format: `${CLAUDE_PLUGIN_ROOT}/skills/implement-task/references/design-and-deltas.md` §1) and commit it before briefing anyone. Existing → read it; it constrains the brief.
 4. Branch + board (same step, real time):
    ```bash
@@ -51,6 +51,12 @@ Branch already checked out: <branch>.
 4. Run `<cfg:commands.gate>` until GREEN. Then push the branch and open a PR with body
    "Closes #N". Report the PR URL.
 5. Match surrounding code style; small focused commits; update spec/docs if you changed a contract.
+   Documentation you own in this change: <paste the cfg:docs[] sets whose `covers` globs match
+   the task's expected paths — id, path, notes>. If your diff changes behavior/config/usage a
+   set documents, update it in the same PR; if none needed, say why in the PR body.
+6. Author every commit with these exact flags (per-commit -c flags only — never git config writes):
+   git <paste the `flags:` line from `bash "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh" dev`> commit ...
+   <omit this section if identity.sh reports the dev role OFF or UNRESOLVED>
 
 ## WHY
 <the architectural reason this task exists + the invariant it protects — derive from the spec;
@@ -73,6 +79,10 @@ Large task? Split into sequential briefs (e.g. tests+core, then edge cases), eac
 board.sh move N "In review"     # a hook blocks this unless gate.sh recorded a pass for the current tree
 ```
 Review in **two passes**, each by a review agent (`model: <cfg:delegation.reviewModel>`): (1) **spec compliance** — does the diff satisfy each acceptance criterion and cited spec §, nothing more, nothing less; (2) **code quality** — correctness, style, tests. Relay findings to a dev agent; re-gate. A single combined pass reliably misses "passes tests but isn't what the spec said."
+
+Orchestrator-authored commits (design docs, spec-delta folds) use the `flags:` line from `identity.sh orchestrator` the same per-commit way (skip if OFF/UNRESOLVED).
+
+**Auto-merge** (`methodology.autoMerge: true`): after both passes are clean, do NOT wait for a human — run the PR-review/approve/merge protocol in `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/auto-review.md` (independent reviewer agent on `cfg:delegation.prReviewModel`, ≤3 fix rounds, approval recorded on the PR, `gh pr merge`, merge announced on the issue + to live teammates).
 
 ## 4. Stop
 One task per invocation. Report: task, gate result, PR link, board status. Later statuses (QA/Ready/Deployed) only when merge/validation/publish actually happen.

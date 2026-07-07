@@ -120,6 +120,25 @@
                 }
             }
         },
+        "docs": {
+            "type": "array",
+            "description": "Documentation sets the reviewer enforces: when a diff touches files under a set's `covers` globs and changes behavior/contracts/usage, that set's docs must be updated in the same PR (or the PR must state why not). Standalone repo: one entry covering everything. Monorepo: one entry per package/app plus an optional root entry.",
+            "items": {
+                "type": "object",
+                "required": ["path"],
+                "properties": {
+                    "id": { "type": "string", "description": "Local identifier, e.g. 'root', 'core', 'web'." },
+                    "path": { "type": "string", "description": "Repo-relative docs location — a directory (docs/) or a file (README.md)." },
+                    "covers": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "default": ["**"],
+                        "description": "Code-path globs this doc set documents. A diff touching a covered path puts this set in review scope."
+                    },
+                    "notes": { "type": "string", "description": "What belongs in this doc set (helps the reviewer judge 'needed a doc update' vs not)." }
+                }
+            }
+        },
         "commands": {
             "type": "object",
             "required": ["gate"],
@@ -134,7 +153,31 @@
             "type": "object",
             "properties": {
                 "devModel": { "type": "string", "default": "sonnet", "description": "Model for implementation subagents." },
-                "reviewModel": { "type": "string", "default": "sonnet" }
+                "reviewModel": { "type": "string", "default": "sonnet" },
+                "prReviewModel": {
+                    "type": "string",
+                    "default": "claude-sonnet-5[1m]",
+                    "description": "Model for the autonomous PR-review agent used when methodology.autoMerge is true. A large-context variant is recommended so one agent can hold the full diff + spec + design doc."
+                },
+                "reviewerTokenEnv": {
+                    "type": "string",
+                    "description": "Name of an env var holding a GitHub token for a SECOND account (machine user / bot). When set, the auto-merge approval is submitted with that token (GH_TOKEN=$<var> gh pr review --approve), so the PR shows a real distinct approver — GitHub rejects self-approval from the account that opened the PR. When absent, the verdict is posted as a review comment instead."
+                },
+                "identities": {
+                    "description": "Per-role git author identities, ON by default. Values are templates resolved per-clone by scripts/identity.sh: {name} -> git config user.name, {local}/{domain} -> git config user.email parts — so each person's clone attributes agent commits to their own plus-addressed email (e.g. {local}+reviewer_agent@{domain} -> leonardo.marcelino+reviewer_agent@outlook.com). Placeholder-free values are literal (shared bot accounts). Built-in defaults per role: name 'Dev Agent - {name}' / 'Reviewer Agent - {name}' / 'Orchestrator Agent - {name}', email {local}+<role>_agent@{domain}. Set a role to null to make it commit as the human; set identities to false to disable all roles. Attribution only — GitHub links an avatar only if the resolved email belongs to a GitHub account.",
+                    "oneOf": [
+                        { "const": false },
+                        {
+                            "type": "object",
+                            "properties": {
+                                "dev": { "$ref": "#/definitions/identity" },
+                                "reviewer": { "$ref": "#/definitions/identity" },
+                                "orchestrator": { "$ref": "#/definitions/identity" }
+                            },
+                            "additionalProperties": { "$ref": "#/definitions/identity" }
+                        }
+                    ]
+                }
             }
         },
         "paths": {
@@ -157,11 +200,34 @@
                     "type": "boolean",
                     "default": true,
                     "description": "When true (default), UI-affecting decisions are delegated to the human via the ui-options skill; a local .claude/ITERATIVE_UI_OFF flag also disables it per-clone."
+                },
+                "autoMerge": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "When true, build-next skips human PR approval: an autonomous reviewer agent (delegation.prReviewModel) reviews the PR, dialogues fixes with the orchestrator until it approves, then the orchestrator merges and announces the merge. Protocol: build-next skill, references/auto-review.md."
+                },
+                "mergeMethod": {
+                    "type": "string",
+                    "enum": ["squash", "merge", "rebase"],
+                    "default": "squash",
+                    "description": "gh pr merge strategy used by auto-merge."
                 }
             }
         }
     },
     "definitions": {
+        "identity": {
+            "oneOf": [
+                { "type": "null", "description": "Opt this role out — it commits as the human." },
+                {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string", "description": "Template or literal; {name} = git config user.name. Omit to keep the role's default." },
+                        "email": { "type": "string", "description": "Template or literal; {local}/{domain} = git config user.email parts. Omit to keep the role's default." }
+                    }
+                }
+            ]
+        },
         "singleSelectField": {
             "type": "object",
             "required": ["fieldId", "options"],

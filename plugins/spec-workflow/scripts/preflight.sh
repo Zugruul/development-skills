@@ -32,3 +32,7 @@ PY
 else
     echo "preflight ok: config present"
 fi
+
+# Agent identities: a WARN here never blocks (identity.sh --check always exits 0);
+# unresolvable roles just fall back to committing as the human.
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/identity.sh" --check
