@@ -24,6 +24,8 @@ You (the orchestrator) do **not** write the implementation. You brief a subagent
 ## 1. Spawn the dev agent
 Resolve the dev identity for THIS task's paths first: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh" dev <a representative changed/expected path>`. In a monorepo the `covers` globs route to the right per-package dev agent; with a single dev identity it just returns that one. The resolved `models:` line is that agent's ALLOWED set — pick the most SUITABLE one for this task (cheaper/smaller for a simple change, a larger-context `[1m]` variant for a big diff), never reflexively the most powerful. Spawn with the Agent tool, `subagent_type: general-purpose`, `model: <the id you chose from that allowed set>`, and a descriptive `name`. One agent = one task. Fill EVERY section of the brief — specific WHAT/WHY beats generic. The subagent sees ONLY the brief: paste actual text (criteria, spec excerpts, invariants, error output), never write "as discussed" or "see above".
 
+If per-identity brains exist (`.claude/identities/`), prepend the dev role's `ROLE.md` and a `## LESSONS (recalled)` block from `brain.sh recall dev` to the brief — protocol in `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/brains.md`.
+
 ```
 You are a senior engineer implementing ONE task of <cfg:project.name> (<cfg:project.description>).
 Work strictly TDD. Do NOT touch the project board (the orchestrator owns it).

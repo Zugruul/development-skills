@@ -22,12 +22,24 @@ Everything project-specific lives in the consumer repo's **`.claude/project.yaml
 | `pr-review-model` | Show/set the autonomous PR reviewer's allowed models (`delegation.identities.reviewer.models`); asks with options when called bare |
 | `agent-identities` | Show/set per-role identities — name/email templates, allowed `models`, `covers` routing (per-clone resolution) |
 | `build-next` | One loop iteration — drive with `/loop /spec-workflow:build-next` |
+| `brain` | Inspect/tend the per-identity zettel brains (recall/mint/prune/directory); orchestrator-only |
 | `checkpoint` / `handoff` | Pause/resume the loop via a local flag; session handoff docs |
 | `dev-up` | Bring up the project's dev stack for QA |
 
 ## Scripts (`scripts/`)
 
-`config.py` (the shared loader: finds `.claude/project.yaml`, normalizes legacy json, `get`/`json`/`path` verbs for bash callers) · `board.sh` (next/show/move/prio/est/bug/list/comment/edit-body/fields/config) · `next.py` (picker: priority → epic rank → guards → WIP resume) · `init-config.sh` (auto-fill board ids from a live project; writes `project.yaml`) · `seed-board.sh` · `preflight.sh` (load-time config/spec checks injected into spec-requiring skills) · `validate-config.py` · `merge-mode.sh` (auto-merge status/on/off + reviewer models/merge method) · `identity.sh` (per-role identity + allowed-models resolution, `covers` path routing; `--check` runs in preflight).
+`config.py` (the shared loader: finds `.claude/project.yaml`, normalizes legacy json, `get`/`json`/`path` verbs for bash callers) · `board.sh` (next/show/move/prio/est/bug/list/comment/edit-body/fields/config) · `next.py` (picker: priority → epic rank → guards → WIP resume) · `init-config.sh` (auto-fill board ids from a live project; writes `project.yaml`) · `seed-board.sh` · `preflight.sh` (load-time config/spec checks injected into spec-requiring skills) · `validate-config.py` · `merge-mode.sh` (auto-merge status/on/off + reviewer models/merge method) · `identity.sh` (per-role identity + allowed-models resolution, `covers` path routing; `--check` runs in preflight) · `brain.sh`→`brain.py` (per-identity zettel memory: mint/recall/directory/consult/prune/graduate; spreading-activation retrieval, stdlib only).
+
+## Identity brains
+
+Each agent role (dev / reviewer / orchestrator, extensible) owns a **private** brain of atomic zettel notes under `.claude/identities/<role>/brain/` in the consumer repo. Brains give each identity durable memory that evolves **separately** — a hard product requirement. `ROLE.md` (per role) is the stable, human-owned instruction; starter templates ship in [`templates/identities/`](./templates/identities/).
+
+- **Isolation** — only the orchestrator process reads or writes a brain. Subagents never see a brain path; recalled lessons reach them as pasted text in their brief. One role reads another's note only through a deliberate `consult`.
+- **Retrieval** — `brain.sh recall <role> --paths ... --keywords ...` runs **spreading activation**: notes seeded by path-glob/tag match, activation flowing along `[[wikilink]]` edges (2 hops), emitted strongest-first within a token budget. Graduated notes stop being injected but still bridge links.
+- **Evolution** — at each PR close the orchestrator runs a retro: `mint` notes in its own wording (strength bumps on re-mint), `prune` stale links, `graduate` proven lessons, regenerate `DIRECTORY.md`, commit as the orchestrator identity.
+- **Contract** — every recall/consult appends to `<role>/brain/.activation.jsonl` (a frozen JSON-lines format a live viewer consumes). Link metadata (weight/fires/last) lives in `links.json`; notes stay clean markdown.
+
+Full protocol: [`skills/build-next/references/brains.md`](./skills/build-next/references/brains.md).
 
 ## Human steering
 

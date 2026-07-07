@@ -69,6 +69,7 @@ Spec-driven autonomous build workflow. A repo declares its boards, specs, epics,
 | `ui-options` | Iterative UI mode: human picks the UI from an options page (favorite + aspects) |
 | `gate` | The project's single green-before-advance quality command |
 | `build-next` | One full loop iteration — drive with `/loop /spec-workflow:build-next` |
+| `brain` | Per-identity zettel memory: private brains, spreading-activation recall, retro mint/prune/graduate |
 | `auto-merge` | Toggle autonomous PR review + merge (reviewer agent approves instead of a human) |
 | `pr-review-model` | Show/set the model the autonomous PR reviewer runs on |
 | `agent-identities` | Per-role commit attribution — each person's clone signs agent commits with their own plus-addressed email |
