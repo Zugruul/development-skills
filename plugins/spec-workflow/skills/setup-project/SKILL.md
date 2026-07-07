@@ -43,13 +43,21 @@ Each spec is a design document plus a backlog of numbered tasks. One repo can ha
    - `commands.gate` — ONE command running build+lint+format+tests. Create it (e.g. a `gate` script in package.json) if it doesn't exist; the whole workflow hinges on it.
    - `delegation.identities` — the agent roster: who codes/reviews/orchestrates, as whom, and each role's ALLOWED `models` (full ids only; the orchestrator picks a suitable one per task). The template's defaults (per-person plus-addressed names, dev/reviewer model sets) work as-is; the `agent-identities` and `pr-review-model` skills tune them later. In a monorepo you can make `dev` an array of per-package identities with `covers` path globs (the entry with no `covers` is the fallback).
    - **Merge policy** — AskUserQuestion (header "Merging"): does a human approve/merge every PR (default, `methodology.autoMerge: false`) or does the loop review+merge autonomously (`true` — the `auto-merge` skill explains/toggles it later)? If autonomous, also ask `methodology.mergeMethod`: **squash (Recommended)** — linear history; per-role commit attribution is preserved as `Co-authored-by:` trailers in the squash body plus the PR link — vs **merge** — keeps the individual role-attributed commits on main — vs **rebase**. Also mention `docs[]`: declare where documentation lives (one set for a standalone repo, one per package for a monorepo) so the reviewer can enforce doc maintenance.
+   - **Process feedback** — AskUserQuestion (header "Feedback"):
+     - **Enable (Recommended)** — description: "The loop records structured process feedback each iteration (what worked, friction, incidents) and triages it into the backlog/brains at retro time." Preview the exact block written into `.claude/project.yaml`:
+       ```yaml
+       methodology:
+           feedback: true
+       ```
+     - **Don't enable** — no feedback feed; skip this block entirely.
+     If accepted, write `methodology.feedback: true` into the config (the `feedback` skill and its config surface are documented in the plugin README).
 3. Validate — must print `VALID`:
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" config
    ```
 
 ## Phase 5 — repo hygiene + editor wiring
-- Add the local flags + state to `.gitignore`: `printf '.claude/CHECKPOINT\n.claude/ITERATIVE_UI_OFF\n.claude/ui-hub/\n.claude/gate-pass\n' >> .gitignore`
+- Add the local flags + state to `.gitignore`: `printf '.claude/CHECKPOINT\n.claude/ITERATIVE_UI_OFF\n.claude/ui-hub/\n.claude/gate-pass\n.claude/feedback/\n' >> .gitignore`
 - **Editor schema (VSCode)** — so `project.yaml` gets hover + autocomplete, merge these into the repo's `.vscode/` files WITHOUT clobbering existing settings (read each file first; add only the missing keys, preserve the rest). The modeline in `project.yaml` already helps; this makes it explicit and recommends the extension.
   - `.vscode/settings.json` — add under `yaml.schemas`:
     ```json

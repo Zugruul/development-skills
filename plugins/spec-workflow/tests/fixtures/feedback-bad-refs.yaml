@@ -1,0 +1,18 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-07-01T11:00:00Z"
+iteration:
+  task: FX-023
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: dev
+  model: claude-sonnet-5
+items:
+  - category: friction
+    area: merge
+    component: skills/auto-merge
+    severity: medium
+    summary: "Self-approval classifier fires repeatedly, see PR #23."
+    detail: "n/a"
+    generalized: "Self-approval classifier fires repeatedly, see PR #23."

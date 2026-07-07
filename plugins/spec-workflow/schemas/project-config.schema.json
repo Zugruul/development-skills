@@ -210,6 +210,22 @@
                     "enum": ["squash", "merge", "rebase"],
                     "default": "squash",
                     "description": "gh pr merge strategy used by auto-merge — a per-repo decision made at setup. squash (default): linear history; per-role attribution carried as Co-authored-by trailers in the squash body + the PR's own commits. merge: preserves individual role-attributed commits on main. rebase: replays them."
+                },
+                "feedback": {
+                    "description": "Structured per-iteration process feedback about the WORKFLOW (not the project being built), routed at retro time into backlog/brain-note/graduate/upstream/ignore. `true` is shorthand for the defaults shown below. Absent = disabled. Protocol: feedback skill; mechanics: scripts/feedback.py.",
+                    "oneOf": [
+                        { "type": "boolean" },
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": { "type": "boolean", "default": true },
+                                "feed": { "type": "string", "default": ".claude/feedback/feed.yaml", "description": "Repo-relative path to the yaml feed file (sequence of --- separated loop-feedback records)." },
+                                "roles": { "type": "array", "items": { "type": "string" }, "default": ["orchestrator"], "description": "Which identities are expected to emit feedback." },
+                                "autoTriage": { "type": "boolean", "default": false, "description": "When true, triage routes items (e.g. backlog) without a human check-in — mirrors autoMerge's explicit-consent pattern." }
+                            }
+                        }
+                    ]
                 }
             }
         }

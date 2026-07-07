@@ -1,0 +1,26 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-07-01T10:00:00Z"
+iteration:
+  task: FX-023
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: dev
+  model: claude-sonnet-5
+items:
+  - category: friction
+    area: merge
+    component: skills/auto-merge
+    severity: medium
+    summary: "Self-approval safety classifier fires on every merge-adjacent action even with autonomous merge explicitly enabled, causing repeated denials per task."
+    detail: "Happened twice in this repo's own PR before the reviewer agent could approve."
+    evidence: ["review round 1"]
+    generalized: "The self-approval safety classifier fires on every merge-adjacent action even when autonomous merge is explicitly configured, causing repeated denials per task."
+  - category: recommendation
+    area: merge
+    component: skills/auto-merge
+    severity: medium
+    summary: "Front-load the human merge check-in via a structured question instead of trying then getting denied."
+    detail: ""
+    generalized: "Front-load the human merge check-in via a structured question instead of attempting the merge and being denied."
