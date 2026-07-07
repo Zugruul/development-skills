@@ -30,7 +30,7 @@ echo "== syntax =="
 for f in "$PLUGIN"/scripts/*.sh "$HERE"/run-tests.sh; do
     if bash -n "$f"; then echo "ok   bash -n $(basename "$f")"; else echo "FAIL bash -n $f"; fails=$((fails + 1)); fi
 done
-for p in validate-config.py next.py ui-hub.py; do
+for p in config.py validate-config.py next.py ui-hub.py; do
     if python3 -m py_compile "$PLUGIN/scripts/$p"; then
         echo "ok   py_compile $p"
     else
@@ -38,9 +38,38 @@ for p in validate-config.py next.py ui-hub.py; do
     fi
 done
 
+echo "== config.py (shared loader) =="
+CT="$(mktemp -d)"; mkdir -p "$CT/.claude"
+cp "$FIX/valid.project.yaml" "$CT/.claude/project.yaml"
+check "yaml dot-path get" "fixture-project" "$(python3 "$PLUGIN/scripts/config.py" "$CT" get project.name)"
+check "yaml nested get" "true" "$(python3 "$PLUGIN/scripts/config.py" "$CT" get commands.gate)"
+check "path verb resolves yaml" "project.yaml" "$(python3 "$PLUGIN/scripts/config.py" "$CT" path)"
+check "json verb emits normalized" '"schemaVersion"' "$(python3 "$PLUGIN/scripts/config.py" "$CT" json)"
+check "v2 dev array models get" "claude-haiku-4-5" "$(python3 "$PLUGIN/scripts/config.py" "$CT" get delegation.identities.dev.1.models.1)"
+cp "$FIX/valid.project.json" "$CT/.claude/project.json"
+check "yaml preferred over json" "project.yaml" "$(python3 "$PLUGIN/scripts/config.py" "$CT" path)"
+rm -rf "$CT"
+CJ="$(mktemp -d)"; mkdir -p "$CJ/.claude"
+cp "$FIX/valid.project.json" "$CJ/.claude/project.json"
+check "legacy json deprecation warning" "DEPRECATION" "$(python3 "$PLUGIN/scripts/config.py" "$CJ" json 2>&1 >/dev/null)"
+check "legacy path resolves json" "project.json" "$(python3 "$PLUGIN/scripts/config.py" "$CJ" path 2>/dev/null)"
+check "legacy devModel -> dev.models[0]" "sonnet" "$(python3 "$PLUGIN/scripts/config.py" "$CJ" get delegation.identities.dev.models.0 2>/dev/null)"
+check "legacy reviewModel -> reviewer.models[0]" "sonnet" "$(python3 "$PLUGIN/scripts/config.py" "$CJ" get delegation.identities.reviewer.models.0 2>/dev/null)"
+check "PROJECT_CONFIG override" "fixture-project" "$(PROJECT_CONFIG="$FIX/valid.project.yaml" python3 "$PLUGIN/scripts/config.py" "$CJ" get project.name)"
+rm -rf "$CJ"
+
 echo "== validate-config =="
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/valid.project.yaml")"
+check "valid yaml passes" "VALID: " "$out"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/broken.project.yaml" || true)"
+check "broken yaml: schemaVersion 2" "schemaVersion must be 2" "$out"
+check "broken yaml: statusFlow option" "'Done' has no matching status option id" "$out"
+check "broken yaml: empty priority options" "priority.options is empty" "$out"
+check "broken yaml: unknown board ref" "does not match any boards[].id" "$out"
+check "broken yaml: unknown blockedBy epic" "unknown epic 'EZ'" "$out"
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/valid.project.json")"
-check "valid fixture passes" "VALID: " "$out"
+check "legacy json still VALID" "VALID: " "$out"
+check "legacy json deprecation noted" "legacy" "$out"
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/broken.project.json" || true)"
 check "broken: schemaVersion" "schemaVersion must be 1" "$out"
 check "broken: statusFlow option" "'Done' has no matching status option id" "$out"
@@ -51,7 +80,7 @@ check "broken: overlapping ranges" "overlaps epic" "$out"
 check "broken: unknown blockedBy epic" "unknown epic 'EZ'" "$out"
 check "broken: bad untilStatus" "not in statusFlow" "$out"
 check "broken: missing gate" "missing required key 'gate'" "$out"
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/templates/project.example.json" || true)"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/templates/project.example.yaml" || true)"
 check "template rejected (placeholders)" "template placeholder" "$out"
 
 echo "== next.py (picker) =="
@@ -67,7 +96,7 @@ echo "== preflight =="
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 ( cd "$T" && git init -q . )
 out="$(cd "$T" && bash "$PLUGIN/scripts/preflight.sh" --spec)"
-check "no config -> setup-project" "PREFLIGHT FAIL: no .claude/project.json" "$out"
+check "no config -> setup-project" "PREFLIGHT FAIL: no .claude/project.yaml" "$out"
 mkdir -p "$T/.claude" && cp "$FIX/valid.project.json" "$T/.claude/project.json"
 out="$(cd "$T" && bash "$PLUGIN/scripts/preflight.sh" --spec)"
 check "missing spec file -> craft-spec" "spec file(s) missing: SPEC.md" "$out"
@@ -155,11 +184,13 @@ T2="$(mktemp -d)"
 ( cd "$T2" && git init -q . )
 out="$(cd "$T2" && PATH="$G:$PATH" bash "$PLUGIN/scripts/init-config.sh" fixture-owner fixture-owner/repo 7)"
 check "fresh config created" "created " "$out"
+check "fresh config is yaml" "project.yaml" "$out"
 check "projectId captured" "PVT_live1234567890" "$out"
 out="$(python3 -c "
-import json
-c = json.load(open('$T2/.claude/project.json'))
+import yaml
+c = yaml.safe_load(open('$T2/.claude/project.yaml'))
 b = c['boards'][0]
+assert c['schemaVersion'] == 2, c['schemaVersion']
 assert b['projectId'] == 'PVT_live1234567890', b['projectId']
 assert b['fields']['status']['options']['In review'] == 's3'
 assert list(b['fields']['priority']['options']) == ['P0', 'P1', 'P2']
@@ -191,6 +222,45 @@ rm "$T3/.claude/project.json"
 check "missing git name warns" "IDENTITY WARN" "$(run_id --check)"
 check "unresolved role reported" "UNRESOLVED" "$(run_id reviewer || true)"
 rm -rf "$T3"
+
+echo "== identity: covers routing + models (v2 yaml) =="
+IT="$(mktemp -d)"
+( cd "$IT" && git init -q . && git config user.name "Test User" && git config user.email "test.user@example.com" )
+mkdir -p "$IT/.claude"; cp "$FIX/valid.project.yaml" "$IT/.claude/project.yaml"
+rid() { (cd "$IT" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null bash "$PLUGIN/scripts/identity.sh" "$@"); }
+check "covers routes core path to core dev" "Core Dev - Test User" "$(rid dev packages/core/index.ts)"
+check "core dev models line" "models: claude-sonnet-5" "$(rid dev packages/core/index.ts)"
+check "core dev email suffix" "test.user+dev_core@example.com" "$(rid dev packages/core/index.ts)"
+check "non-core path falls back to dev agent" "Dev Agent - Test User" "$(rid dev packages/web/app.ts)"
+check "fallback dev models line" "models: claude-sonnet-5, claude-haiku-4-5" "$(rid dev packages/web/app.ts)"
+check "reviewer models line" "models: claude-sonnet-5, claude-sonnet-5[1m]" "$(rid reviewer)"
+check "array role no path lists identities" "id: Core Dev - Test User" "$(rid dev)"
+check "array role lists second identity" "id: Dev Agent - Test User" "$(rid dev)"
+rm -rf "$IT"
+
+echo "== identity: default models (no config) =="
+IT2="$(mktemp -d)"
+( cd "$IT2" && git init -q . && git config user.name "Test User" && git config user.email "test.user@example.com" )
+rid2() { (cd "$IT2" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null bash "$PLUGIN/scripts/identity.sh" "$@"); }
+check "default dev models" "models: claude-sonnet-5" "$(rid2 dev)"
+check "default reviewer models" "models: claude-sonnet-5, claude-sonnet-5[1m]" "$(rid2 reviewer)"
+check_absent "orchestrator has no models default" "models:" "$(rid2 orchestrator)"
+rm -rf "$IT2"
+
+echo "== merge-mode (yaml round-trip) =="
+MT="$(mktemp -d)"; ( cd "$MT" && git init -q . )
+mkdir -p "$MT/.claude"; cp "$FIX/valid.project.yaml" "$MT/.claude/project.yaml"
+mm() { (cd "$MT" && bash "$PLUGIN/scripts/merge-mode.sh" "$@"); }
+check "set single reviewer model" "claude-opus-4-8" "$(mm model claude-opus-4-8)"
+check "status shows reviewer models" "claude-opus-4-8" "$(mm status)"
+check "model round-trips in yaml" "claude-opus-4-8" "$(python3 "$PLUGIN/scripts/config.py" "$MT" get delegation.identities.reviewer.models.0)"
+mm model "claude-sonnet-5[1m],claude-opus-4-8" >/dev/null
+check "csv model -> array elem 2" "claude-opus-4-8" "$(python3 "$PLUGIN/scripts/config.py" "$MT" get delegation.identities.reviewer.models.1)"
+check "auto-merge on" "autoMerge: ON" "$(mm on)"
+check "status reflects ON" "autoMerge: ON" "$(mm status)"
+check "yaml keeps 4-space indent" "    identities:" "$(cat "$MT/.claude/project.yaml")"
+check "yaml still parses after edits" "fixture-project" "$(python3 "$PLUGIN/scripts/config.py" "$MT" get project.name)"
+rm -rf "$MT"
 
 echo
 if [[ $fails -gt 0 ]]; then echo "$fails test(s) FAILED"; exit 1; fi
