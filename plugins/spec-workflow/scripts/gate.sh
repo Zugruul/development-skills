@@ -58,9 +58,12 @@ if [[ "$rc" -eq 0 ]]; then
     bash "$HERE/tree-state.sh" >"$MARKER"
     echo "GATE PASS recorded ($MARKER) for the current tree — 'In review' moves are unlocked until the tree changes."
 else
+    # Persist the failure signal (SPEC §8.1) before clearing the marker: a
+    # process killed between the two steps should still leave the tail
+    # captured, not just the (weaker, telemetry-only) fact that it failed.
+    tail -n "$GATE_OUT_LINES" "$GATE_TMP" | record_lesson "$rc"
     rm -f "$MARKER"
     record_gate false
-    tail -n "$GATE_OUT_LINES" "$GATE_TMP" | record_lesson "$rc"
     echo "GATE RED (exit $rc) — pass cleared; fix and re-run. Do NOT move the task forward." >&2
     exit "$rc"
 fi

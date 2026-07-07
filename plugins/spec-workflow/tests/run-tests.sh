@@ -905,6 +905,25 @@ out="$(hookjson 'bash board.sh move 7 \"In review\"' | (cd "$T3N" && bash "$PLUG
 check "telemetry: a routine move must not invalidate a still-current gate pass" "rc=0" "$out"
 rm -rf "$T3N" "$T3NGH"
 
+echo "== gate.sh sequencing: lessons append happens before the pass marker is cleared =="
+# SPEC §8.1 requires capture-before-clear (a process killed between the two
+# steps must still leave the failure signal persisted). There is no reliable
+# way to observe true runtime interleaving in a best-effort bash script
+# without instrumenting a mid-execution kill, so this is a static order
+# check on the red-gate branch's source: the record_lesson call must appear
+# before the marker's rm -f.
+gate_else_branch="$(awk '/^else$/{flag=1} flag; /^fi$/{if(flag) exit}' "$PLUGIN/scripts/gate.sh")"
+# shellcheck disable=SC2016  # single quotes are intentional: literal grep patterns, not shell expansion
+lesson_line="$(grep -n 'record_lesson "\$rc"' <<<"$gate_else_branch" | head -1 | cut -d: -f1)"
+# shellcheck disable=SC2016  # single quotes are intentional: literal grep patterns, not shell expansion
+marker_line="$(grep -n 'rm -f "\$MARKER"' <<<"$gate_else_branch" | head -1 | cut -d: -f1)"
+if [[ -n "$lesson_line" && -n "$marker_line" && "$lesson_line" -lt "$marker_line" ]]; then
+    echo "ok   gate.sh: lessons append precedes marker removal in the red-gate branch"
+else
+    echo "FAIL gate.sh: lessons append must precede marker removal (lesson_line=$lesson_line marker_line=$marker_line)"
+    fails=$((fails + 1))
+fi
+
 echo "== gate enforcement (SW-020: lessons feed captures red-gate tail) =="
 T3L="$(mktemp -d)"; mkdir -p "$T3L/.claude"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
