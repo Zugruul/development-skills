@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016  # lifecycle_start command-strings are single-quoted on
+# purpose -- they're expanded when eval'd inside the function, not at call site.
 # run-tests.sh — hermetic tests for the spec-workflow plugin (no gh/network needed).
 # Used by CI and runnable locally: bash plugins/spec-workflow/tests/run-tests.sh
 set -uo pipefail
@@ -33,6 +35,66 @@ check_absent() { # name  forbidden-substring  actual-output
     else
         echo "ok   $1"
     fi
+}
+
+# --- server-lifecycle helpers (SPEC 7.5) ---------------------------------
+# Server-lifecycle sections (neural-view, ui-hub) bind a real TCP port. Under
+# concurrent build-loop lanes, two runs picking the same fixed port race and
+# whichever loses gets a spurious lifecycle failure blamed on its own diff.
+# _rand_port() gives each lifecycle section its own per-run random port;
+# lifecycle_start() retries a failed start ONCE on a fresh port and reports a
+# pass-on-retry as a distinct FLAKY state, so genuine flakes stay visible
+# instead of either failing innocent work or being silently swallowed.
+flaky=0
+_used_ports=()
+
+_rand_port() {
+    local p tries=0
+    while :; do
+        p=$((20000 + RANDOM % 20000))
+        tries=$((tries + 1))
+        case " ${_used_ports[*]-} " in
+            *" $p "*) [[ $tries -lt 50 ]] && continue ;;
+        esac
+        if ! (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null; then
+            _used_ports+=("$p")
+            printf '%s\n' "$p"
+            return
+        fi
+        [[ $tries -ge 50 ]] && { _used_ports+=("$p"); printf '%s\n' "$p"; return; }
+    done
+}
+
+# lifecycle_start <check-name> <port-env-var-name> <command-string>
+# Exports a fresh random port into <port-env-var-name>, then evals
+# <command-string> (a single shell command, possibly with its own
+# VAR=value prefixes) and expects its output to contain
+# "RUNNING http://127.0.0.1:<port>". On failure, retries ONCE with a newly
+# picked port. Leaves <port-env-var-name> exported to whichever port
+# actually worked, so follow-up curl calls / checks in the same section can
+# just keep referencing it.
+lifecycle_start() {
+    local name="$1" portvar="$2" cmdstr="$3"
+    local attempt p out expect
+    for attempt in 1 2; do
+        p="$(_rand_port)"
+        export "$portvar=$p"
+        out="$(eval "$cmdstr" 2>&1)"
+        expect="RUNNING http://127.0.0.1:$p"
+        if grep -qF -- "$expect" <<<"$out"; then
+            if [[ $attempt -eq 1 ]]; then
+                echo "ok   $name"
+            else
+                echo "FLAKY $name (passed on retry)"
+                flaky=$((flaky + 1))
+            fi
+            return 0
+        fi
+    done
+    echo "FAIL $name — expected to contain: $expect"
+    echo "     got: $(head -3 <<<"$out")"
+    fails=$((fails + 1))
+    return 1
 }
 
 echo "== syntax =="
@@ -198,13 +260,13 @@ check "config-only ok" "preflight ok: config present" "$out"
 
 echo "== ui-hub (lifecycle on a scratch port) =="
 _hubtmp="$(mktemp -d)"
-export UI_HUB_STATE="$_hubtmp/hub" UI_HUB_PORT=4799
+export UI_HUB_STATE="$_hubtmp/hub"
 HUB="$PLUGIN/scripts/ui-hub.py"
-out="$(python3 "$HUB" start)";                        check "hub starts" "RUNNING http://127.0.0.1:4799" "$out"
+lifecycle_start "hub starts" UI_HUB_PORT 'python3 "$HUB" start'
 echo '<h1>d</h1>' > "$UI_HUB_STATE/d.html"
 out="$(python3 "$HUB" ask d1 "T" "$UI_HUB_STATE/d.html" --blocking)"; check "hub ask" "asked 'd1'" "$out"
-out="$(curl -sf http://127.0.0.1:4799/api/state)";    check "hub state has pending" '"id": "d1"' "$out"
-out="$(curl -sf -X POST http://127.0.0.1:4799/api/answer -H 'Content-Type: application/json' -d '{"id":"d1","selection":"- Use: Option A"}')"
+out="$(curl -sf "http://127.0.0.1:$UI_HUB_PORT/api/state")";    check "hub state has pending" '"id": "d1"' "$out"
+out="$(curl -sf -X POST "http://127.0.0.1:$UI_HUB_PORT/api/answer" -H 'Content-Type: application/json' -d '{"id":"d1","selection":"- Use: Option A"}')"
 check "hub answer accepted" '"ok": true' "$out"
 out="$(python3 "$HUB" answers --consume)";            check "hub answer collected" "Use: Option A" "$out"
 out="$(python3 "$HUB" answers)";                      check_absent "hub consume archived it" "d1" "$out"
@@ -398,37 +460,37 @@ EOF
 printf '%s\n' '{"cas-retry->idempotency":{"weight":0.6,"fires":4,"last":"2026-07-06"}}' >"$_nvbrain/links.json"
 printf '%s\n' '{"ts":"2026-07-06T10:00:00Z","role":"dev","event":"seed","note":"cas-retry","activation":0.8}' >"$_nvbrain/.activation.jsonl"
 
-export NEURAL_VIEW_STATE="$_nvstate" NEURAL_VIEW_PORT=4788 NEURAL_VIEW_SCAN="$_nvscan_empty"
-out="$(python3 "$NV" start --dir "$_nvroot")";  check "neural-view starts" "RUNNING http://127.0.0.1:4788" "$out"
-out="$(python3 "$NV" status)";                  check "neural-view status running" "RUNNING http://127.0.0.1:4788" "$out"
+export NEURAL_VIEW_STATE="$_nvstate" NEURAL_VIEW_SCAN="$_nvscan_empty"
+lifecycle_start "neural-view starts" NEURAL_VIEW_PORT 'python3 "$NV" start --dir "$_nvroot"'
+out="$(python3 "$NV" status)";                  check "neural-view status running" "RUNNING http://127.0.0.1:$NEURAL_VIEW_PORT" "$out"
 check "neural-view status reports repos=1 (legacy single-dir)" "repos=1" "$out"
-out="$(curl -sf http://127.0.0.1:4788/graph)";  check "graph has repo-qualified node id" "\"id\": \"$_nvrepo/dev/cas-retry\"" "$out"
+out="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/graph")";  check "graph has repo-qualified node id" "\"id\": \"$_nvrepo/dev/cas-retry\"" "$out"
 check "graph node carries repo field" "\"repo\": \"$_nvrepo\"" "$out"
 check "graph node carries strength" '"strength": 4' "$out"
 check "graph node graduated flag" '"graduated": true' "$out"
 check "graph has repo-qualified link edge" "\"source\": \"$_nvrepo/dev/cas-retry\"" "$out"
 check "graph edge weight" '"weight": 0.6' "$out"
 check "graph lists discovered repos" "\"repos\": [\"$_nvrepo\"]" "$out"
-out="$(curl -sf "http://127.0.0.1:4788/note/$_nvrepo/dev/cas-retry")"
+out="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/note/$_nvrepo/dev/cas-retry")"
 check "note renders fixture body" "the loser reloads" "$out"
-code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4788/favicon.ico)"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/favicon.ico")"
 check "favicon route no longer 404s" "200" "$code"
 # vendored three.js: served same-origin, allowlisted (no path-derived fs access)
-code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4788/vendor/three.module.min.js)"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/vendor/three.module.min.js")"
 check "vendor route serves three.module.min.js (200)" "200" "$code"
-ctype="$(curl -s -D - -o /dev/null http://127.0.0.1:4788/vendor/three.module.min.js | tr -d '\r' | grep -i '^content-type:')"
+ctype="$(curl -s -D - -o /dev/null "http://127.0.0.1:$NEURAL_VIEW_PORT/vendor/three.module.min.js" | tr -d '\r' | grep -i '^content-type:')"
 check "vendor route content-type is javascript" "javascript" "$ctype"
 for trav in "/vendor/../scripts/config.py" "/vendor/..%2fscripts%2fconfig.py" "/vendor/../../etc/passwd" "/vendor/not-on-the-allowlist.js"; do
-    code="$(curl -s --path-as-is -o /dev/null -w '%{http_code}' "http://127.0.0.1:4788$trav")"
+    code="$(curl -s --path-as-is -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT$trav")"
     check "vendor route rejects $trav (404)" "404" "$code"
 done
 # finding 2: path traversal via ../ in the slug must not escape notes/ (arbitrary file read)
 printf 'TOPSECRET-XYZZY' >"$_nvbrain/SECRET.md"       # a file OUTSIDE notes/, one level up
-body="$(curl -s --path-as-is "http://127.0.0.1:4788/note/$_nvrepo/dev/../SECRET")"
+body="$(curl -s --path-as-is "http://127.0.0.1:$NEURAL_VIEW_PORT/note/$_nvrepo/dev/../SECRET")"
 check_absent "note path traversal does not leak an out-of-tree file" "TOPSECRET-XYZZY" "$body"
-code="$(curl -s --path-as-is -o /dev/null -w '%{http_code}' "http://127.0.0.1:4788/note/$_nvrepo/dev/../SECRET")"
+code="$(curl -s --path-as-is -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/note/$_nvrepo/dev/../SECRET")"
 check "note path traversal returns 404" "404" "$code"
-code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:4788/note/$_nvrepo/dev/..%2fSECRET")"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/note/$_nvrepo/dev/..%2fSECRET")"
 check "note dotdot slug (encoded) returns 404" "404" "$code"
 python3 "$NV" stop >/dev/null
 
@@ -436,8 +498,8 @@ python3 "$NV" stop >/dev/null
 _nvev="$(mktemp -d)"
 _nvevrepo="$(basename "$_nvev")"
 for r in dev reviewer orchestrator; do mkdir -p "$_nvev/.claude/identities/$r/brain"; done
-out="$(python3 "$NV" start --dir "$_nvev")"; check "neural-view starts (events root)" "RUNNING http://127.0.0.1:4788" "$out"
-evout="$(P=4788 R="$_nvev" python3 - <<'PY'
+lifecycle_start "neural-view starts (events root)" NEURAL_VIEW_PORT 'python3 "$NV" start --dir "$_nvev"'
+evout="$(P="$NEURAL_VIEW_PORT" R="$_nvev" python3 - <<'PY'
 import json, os, urllib.request
 P, R = os.environ["P"], os.environ["R"]
 log = lambda role: os.path.join(R, ".claude/identities", role, "brain", ".activation.jsonl")
@@ -473,16 +535,16 @@ check "events carry the repo tag (legacy single-dir)" "REPOTAG=$_nvevrepo" "$evo
 # round-2 finding: a token decoding to a NEGATIVE byte offset must not reach an
 # un-clamped fh.seek() (OSError → dropped connection). Must return 200 + a batch.
 negtok="$(python3 -c "import base64,json; print(base64.urlsafe_b64encode(json.dumps({'$_nvevrepo':{'dev':-999}}).encode()).rstrip(b'=').decode())")"
-code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:4788/events?since=$negtok")"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/events?since=$negtok")"
 check "events negative-offset token returns 200 (no dropped connection)" "200" "$code"
-body="$(curl -s "http://127.0.0.1:4788/events?since=$negtok")"
+body="$(curl -s "http://127.0.0.1:$NEURAL_VIEW_PORT/events?since=$negtok")"
 check "events negative-offset token yields a sane batch" '"events"' "$body"
 python3 "$NV" stop >/dev/null
 
 _nvempty="$(mktemp -d)"          # a root with no brains at all
-out="$(python3 "$NV" start --dir "$_nvempty")"; check "neural-view starts on empty root" "RUNNING http://127.0.0.1:4788" "$out"
-out="$(curl -sf http://127.0.0.1:4788/graph)";  check "empty root -> empty nodes" '"nodes": []' "$out"
-out="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4788/)"; check "page still loads on empty root" "200" "$out"
+lifecycle_start "neural-view starts on empty root" NEURAL_VIEW_PORT 'python3 "$NV" start --dir "$_nvempty"'
+out="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/graph")";  check "empty root -> empty nodes" '"nodes": []' "$out"
+out="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/")"; check "page still loads on empty root" "200" "$out"
 python3 "$NV" stop >/dev/null
 unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_SCAN
 rm -rf "$_nvroot" "$_nvstate" "$_nvev" "$_nvempty" "$_nvscan_empty" "$_hubtmp"
@@ -509,19 +571,19 @@ cat >"$_gammabrain/notes/should-not-appear.md" <<'EOF'
 This repo has no marker file and must be excluded from discovery.
 EOF
 
-export NEURAL_VIEW_STATE="$_scanstate" NEURAL_VIEW_PORT=4789 NEURAL_VIEW_SCAN="$_scanbase"
-out="$(python3 "$NV" start)"; check "neural-view starts (scan discovery, no --dir)" "RUNNING http://127.0.0.1:4789" "$out"
+export NEURAL_VIEW_STATE="$_scanstate" NEURAL_VIEW_SCAN="$_scanbase"
+lifecycle_start "neural-view starts (scan discovery, no --dir)" NEURAL_VIEW_PORT 'python3 "$NV" start'
 out="$(python3 "$NV" status)"; check "status reports repos=2 (marker repos only)" "repos=2" "$out"
-out="$(curl -sf http://127.0.0.1:4789/graph)"
+out="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/graph")"
 check "graph includes marked repo-alpha node" '"id": "repo-alpha/dev/seed-note"' "$out"
 check "graph node tags repo-alpha" '"repo": "repo-alpha"' "$out"
 check_absent "graph excludes unmarked repo-gamma note" "should-not-appear" "$out"
 check "graph repos list includes repo-alpha" '"repo-alpha"' "$out"
 check "graph repos list includes brainless marked repo-beta" '"repo-beta"' "$out"
 check_absent "graph repos list excludes unmarked repo-gamma" '"repo-gamma"' "$out"
-out="$(curl -sf "http://127.0.0.1:4789/note/repo-alpha/dev/seed-note")"
+out="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/note/repo-alpha/dev/seed-note")"
 check "multi-repo note fetch addresses by repo/role/slug" "belongs to repo-alpha only" "$out"
-code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:4789/note/repo-gamma/dev/should-not-appear")"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/note/repo-gamma/dev/should-not-appear")"
 check "unmarked repo's note is unreachable (404)" "404" "$code"
 python3 "$NV" stop >/dev/null
 unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_SCAN
@@ -535,9 +597,8 @@ if [[ "$(id -u)" != "0" ]]; then   # permission tests are meaningless as root (b
     : >"$_goodrepo/.claude/.neural-network"
     _denied="$_permbase/denied-repo"; mkdir -p "$_denied/.claude"
     chmod 000 "$_denied"   # simulates a scan-base child neural-view can't traverse into
-    export NEURAL_VIEW_STATE="$_permstate" NEURAL_VIEW_PORT=4790 NEURAL_VIEW_SCAN="$_permbase"
-    out="$(python3 "$NV" start 2>&1)"
-    check "neural-view survives an unreadable scan-base child (starts)" "RUNNING http://127.0.0.1:4790" "$out"
+    export NEURAL_VIEW_STATE="$_permstate" NEURAL_VIEW_SCAN="$_permbase"
+    lifecycle_start "neural-view survives an unreadable scan-base child (starts)" NEURAL_VIEW_PORT 'python3 "$NV" start 2>&1'
     out="$(python3 "$NV" status)"
     check "status still reports the good repo despite the denied one" "repos=1" "$out"
     python3 "$NV" stop >/dev/null 2>&1 || true
@@ -548,17 +609,18 @@ fi
 
 echo "== neural-view (start fails to bind: no false RUNNING claim) =="
 _bindstate="$(mktemp -d)"
-python3 - <<'PY' &
-import socket, time
+_bindport="$(_rand_port)"
+NVBIND_PORT="$_bindport" python3 - <<'PY' &
+import os, socket, time
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-s.bind(("127.0.0.1", 4791))
+s.bind(("127.0.0.1", int(os.environ["NVBIND_PORT"])))
 s.listen(1)
 time.sleep(6)
 PY
 _blocker=$!
 sleep 0.3   # let the scratch listener actually bind before racing neural-view for the port
-export NEURAL_VIEW_STATE="$_bindstate" NEURAL_VIEW_PORT=4791
+export NEURAL_VIEW_STATE="$_bindstate" NEURAL_VIEW_PORT="$_bindport"
 out="$(python3 "$NV" start 2>&1)"; rc=$?
 check_absent "start does not claim RUNNING when the port is already taken" "RUNNING" "$out"
 check "start's failure message points at server.log" "server.log" "$out"
@@ -613,17 +675,16 @@ _nvpstate="$(mktemp -d)"
 
 # scenario 1: happy path + within-TTL caching (call-count observed via shim log)
 LOG1="$(mktemp)"; CC1="$(mktemp)"
-export NEURAL_VIEW_STATE="$_nvpstate" NEURAL_VIEW_PORT=4792 NEURAL_VIEW_PROJECTS_TTL=100 NEURAL_VIEW_SCAN="$_nvpscan_empty"
-out="$(PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG1" FAKE_GH_CALLCOUNT="$CC1" python3 "$NV" start --dir "$NVP_REPO")"
-check "neural-view starts (projects fixture)" "RUNNING http://127.0.0.1:4792" "$out"
-body="$(curl -sf http://127.0.0.1:4792/projects)"
+export NEURAL_VIEW_STATE="$_nvpstate" NEURAL_VIEW_PROJECTS_TTL=100 NEURAL_VIEW_SCAN="$_nvpscan_empty"
+lifecycle_start "neural-view starts (projects fixture)" NEURAL_VIEW_PORT 'PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG1" FAKE_GH_CALLCOUNT="$CC1" python3 "$NV" start --dir "$NVP_REPO"'
+body="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/projects")"
 _nvprepo="$(basename "$NVP_REPO")"
 check "projects: repo key present" "\"$_nvprepo\"" "$body"
 check "projects: ok true" '"ok": true' "$body"
 check "projects: status counts" '"In progress": 1' "$body"
 check "projects: in-progress titles" '"Add widget"' "$body"
 check "projects: in-review titles" '"Fix bug"' "$body"
-curl -sf http://127.0.0.1:4792/projects >/dev/null    # second call, well within TTL
+curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/projects" >/dev/null    # second call, well within TTL
 n1="$(cat "$CC1")"
 check "projects: second call within TTL does not re-invoke board.sh" "1" "$n1"
 python3 "$NV" stop >/dev/null
@@ -631,12 +692,11 @@ unset NEURAL_VIEW_PROJECTS_TTL
 
 # scenario 2: TTL expiry -> a call after the TTL DOES re-invoke
 LOG2="$(mktemp)"; CC2="$(mktemp)"
-export NEURAL_VIEW_PORT=4792 NEURAL_VIEW_PROJECTS_TTL=1 NEURAL_VIEW_SCAN="$_nvpscan_empty"
-out="$(PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG2" FAKE_GH_CALLCOUNT="$CC2" python3 "$NV" start --dir "$NVP_REPO")"
-check "neural-view starts (TTL-expiry scenario)" "RUNNING http://127.0.0.1:4792" "$out"
-curl -sf http://127.0.0.1:4792/projects >/dev/null
+export NEURAL_VIEW_PROJECTS_TTL=1 NEURAL_VIEW_SCAN="$_nvpscan_empty"
+lifecycle_start "neural-view starts (TTL-expiry scenario)" NEURAL_VIEW_PORT 'PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG2" FAKE_GH_CALLCOUNT="$CC2" python3 "$NV" start --dir "$NVP_REPO"'
+curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/projects" >/dev/null
 sleep 1.3
-curl -sf http://127.0.0.1:4792/projects >/dev/null
+curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/projects" >/dev/null
 n2="$(cat "$CC2")"
 if [[ "$n2" -ge 2 ]]; then echo "ok   projects: a call after TTL expiry re-invokes board.sh"
 else echo "FAIL projects: expected >=2 board.sh invocations after TTL expiry, got $n2"; fails=$((fails + 1)); fi
@@ -645,19 +705,17 @@ unset NEURAL_VIEW_PROJECTS_TTL
 
 # scenario 3: gh/network failure degrades gracefully (ok:false, no crash)
 LOG3="$(mktemp)"; CC3="$(mktemp)"
-out="$(PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG3" FAKE_GH_CALLCOUNT="$CC3" FAKE_GH_FAIL=1 python3 "$NV" start --dir "$NVP_REPO")"
-check "neural-view starts (failure scenario)" "RUNNING http://127.0.0.1:4792" "$out"
-code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4792/projects)"
+lifecycle_start "neural-view starts (failure scenario)" NEURAL_VIEW_PORT 'PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG3" FAKE_GH_CALLCOUNT="$CC3" FAKE_GH_FAIL=1 python3 "$NV" start --dir "$NVP_REPO"'
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/projects")"
 check "projects: failure still returns 200 (degraded, not a crash)" "200" "$code"
-body="$(curl -sf http://127.0.0.1:4792/projects)"
+body="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/projects")"
 check "projects: gh failure reported as ok:false" '"ok": false' "$body"
 check "projects: gh failure carries an error message" '"error"' "$body"
 python3 "$NV" stop >/dev/null
 
 # scenario 4: a discovered repo with no .claude/project.yaml is omitted entirely
-out="$(python3 "$NV" start --dir "$NVP_NOBOARD")"
-check "neural-view starts (no-board repo)" "RUNNING http://127.0.0.1:4792" "$out"
-body="$(curl -sf http://127.0.0.1:4792/projects)"
+lifecycle_start "neural-view starts (no-board repo)" NEURAL_VIEW_PORT 'python3 "$NV" start --dir "$NVP_NOBOARD"'
+body="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/projects")"
 check "projects: repo without project.yaml is omitted" "{}" "$body"
 python3 "$NV" stop >/dev/null
 
@@ -666,23 +724,22 @@ python3 "$NV" stop >/dev/null
 # The server is not the defense here; this pins that fact down so the client-side
 # escapeHtml() (checked above, in the template-contract block) stays the only guard.
 LOG5B="$(mktemp)"; CC5B="$(mktemp)"
+# shellcheck disable=SC2034  # consumed via eval inside the lifecycle_start command-string below
 XSS_TITLE='Fix bug" onmouseover="alert(document.cookie)<script>alert(1)</script>'
-out="$(PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG5B" FAKE_GH_CALLCOUNT="$CC5B" FAKE_GH_XSS_TITLE="$XSS_TITLE" python3 "$NV" start --dir "$NVP_REPO")"
-check "neural-view starts (XSS-title fixture)" "RUNNING http://127.0.0.1:4792" "$out"
-body="$(curl -sf http://127.0.0.1:4792/projects)"
+lifecycle_start "neural-view starts (XSS-title fixture)" NEURAL_VIEW_PORT 'PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG5B" FAKE_GH_CALLCOUNT="$CC5B" FAKE_GH_XSS_TITLE="$XSS_TITLE" python3 "$NV" start --dir "$NVP_REPO"'
+body="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/projects")"
 check "projects: server passes an attacker-controlled title through unescaped (client must escape it)" 'onmouseover=' "$body"
 check "projects: server does not strip/encode the embedded <script> tag either" '<script>alert(1)</script>' "$body"
 python3 "$NV" stop >/dev/null
 
 # scenario 5: a hanging board.sh call never blocks another route (/graph)
 LOG5="$(mktemp)"; CC5="$(mktemp)"
-out="$(PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG5" FAKE_GH_CALLCOUNT="$CC5" FAKE_GH_HANG=1 FAKE_GH_HANG_SECS=4 python3 "$NV" start --dir "$NVP_REPO")"
-check "neural-view starts (hang scenario)" "RUNNING http://127.0.0.1:4792" "$out"
-curl -sf http://127.0.0.1:4792/projects >/tmp/nv-hang-out.$$ &
+lifecycle_start "neural-view starts (hang scenario)" NEURAL_VIEW_PORT 'PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG5" FAKE_GH_CALLCOUNT="$CC5" FAKE_GH_HANG=1 FAKE_GH_HANG_SECS=4 python3 "$NV" start --dir "$NVP_REPO"'
+curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/projects" >/tmp/nv-hang-out.$$ &
 _hangpid=$!
 sleep 0.5   # let the hanging /projects request actually start (past the fake gh's sleep having begun)
 t0=$(date +%s)
-code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:4792/graph)"
+code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://127.0.0.1:$NEURAL_VIEW_PORT/graph")"
 t1=$(date +%s)
 check "projects: sibling route (/graph) still responds while board.sh hangs" "200" "$code"
 elapsed=$(( t1 - t0 ))
@@ -716,11 +773,10 @@ cat >"$NVS_JOBS/job-unmatched-repo/state.json" <<EOF
 EOF
 _nvsstate="$(mktemp -d)"
 _nvsscan_empty="$(mktemp -d)"   # empty scan base -- real ~/Development repos must never leak into these tests
-export NEURAL_VIEW_STATE="$_nvsstate" NEURAL_VIEW_PORT=4793 NEURAL_VIEW_CLAUDE_DIR="$NVS_CLAUDE" NEURAL_VIEW_SCAN="$_nvsscan_empty"
+export NEURAL_VIEW_STATE="$_nvsstate" NEURAL_VIEW_CLAUDE_DIR="$NVS_CLAUDE" NEURAL_VIEW_SCAN="$_nvsscan_empty"
 _nvsrepo="$(basename "$NVS_REPO")"
-out="$(python3 "$NV" start --dir "$NVS_REPO")"
-check "neural-view starts (sessions fixture)" "RUNNING http://127.0.0.1:4793" "$out"
-body="$(curl -sf http://127.0.0.1:4793/sessions)"
+lifecycle_start "neural-view starts (sessions fixture)" NEURAL_VIEW_PORT 'python3 "$NV" start --dir "$NVS_REPO"'
+body="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/sessions")"
 check "sessions: working job included" '"messaging"' "$body"
 check "sessions: recently-updated done job included" '"cleanup"' "$body"
 check_absent "sessions: stale done job excluded" '"old-task"' "$body"
@@ -734,9 +790,8 @@ unset NEURAL_VIEW_CLAUDE_DIR NEURAL_VIEW_SCAN
 _nvsempty="$(mktemp -d)"
 _nvs_noclaude="$(mktemp -d)"
 export NEURAL_VIEW_CLAUDE_DIR="$_nvs_noclaude" NEURAL_VIEW_SCAN="$_nvsscan_empty"
-out="$(python3 "$NV" start --dir "$_nvsempty")"
-check "neural-view starts (no jobs dir)" "RUNNING http://127.0.0.1:4793" "$out"
-body="$(curl -sf http://127.0.0.1:4793/sessions)"
+lifecycle_start "neural-view starts (no jobs dir)" NEURAL_VIEW_PORT 'python3 "$NV" start --dir "$_nvsempty"'
+body="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/sessions")"
 check "sessions: absent jobs dir yields empty array" "[]" "$body"
 python3 "$NV" stop >/dev/null
 unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_CLAUDE_DIR NEURAL_VIEW_SCAN
@@ -769,7 +824,7 @@ rm -f "$_lcflag"
 # Anti-pattern check: the ui-hub lifecycle section must no longer hard-code
 # its port (the fixed-port + no-retry combination is exactly what produced
 # the collisions in issue #8 under concurrent lanes).
-check_absent "ui-hub lifecycle section no longer hard-codes UI_HUB_PORT=4799" "UI_HUB_PORT=4799" "$(sed -n '/== ui-hub (lifecycle/,/unset UI_HUB_STATE/p' "$HERE/run-tests.sh")"
+check_absent "ui-hub lifecycle section no longer hard-codes UI_HUB_PORT=4799" "UI_HUB_PORT=4799" "$(grep -v 'ui-hub lifecycle section no longer hard-codes' "$HERE/run-tests.sh")"
 
 echo "== gate enforcement (gate.sh + guard-board-move hook) =="
 T3="$(mktemp -d)"
@@ -2193,5 +2248,6 @@ check "build-next SKILL.md report step's skip form states a reason" "retro: SKIP
 check "build-next SKILL.md cross-references brains.md for retro mechanics" "references/brains.md" "$BNBODY"
 
 echo
+if [[ $flaky -gt 0 ]]; then echo "$flaky lifecycle check(s) FLAKY (passed on retry)"; fi
 if [[ $fails -gt 0 ]]; then echo "$fails test(s) FAILED"; exit 1; fi
 echo "all tests passed"
