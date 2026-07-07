@@ -89,5 +89,6 @@ the lesson should become the consumer's own note (set `learned-from`/`source-not
 ## Frozen contract — `.activation.jsonl`
 Each line is one JSON object; a parallel live viewer parses this format, so **do not deviate**:
 ```
-{"ts": "<iso>", "role": "<role>", "event": "seed"|"hop"|"inject"|"consult", "note": "<slug>", "activation": <float>, "link": "from->to" (hop only), "consumer": "<role>" (consult only)}
+{"ts": "<iso>", "role": "<role>", "event": "seed"|"hop"|"inject"|"consult", "note": "<slug>", "activation": <float> (seed/hop/inject only), "link": "from->to" (hop only), "consumer": "<role>" (consult only)}
 ```
+`consult` events carry no `activation` (there is no retrieval score for a manual paste); the viewer reads every field defensively.

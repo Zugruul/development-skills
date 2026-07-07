@@ -115,10 +115,7 @@ def parse_note(text):
 
 def _parse_scalar(rest):
     if rest.startswith("[") and rest.endswith("]"):
-        inner = rest[1:-1].strip()
-        if not inner:
-            return []
-        return [_unquote(x.strip()) for x in inner.split(",") if x.strip()]
+        return _split_list(rest[1:-1])
     low = rest.lower()
     if low == "true":
         return True
@@ -127,6 +124,31 @@ def _parse_scalar(rest):
     if re.fullmatch(r"-?\d+", rest):
         return int(rest)
     return _unquote(rest)
+
+
+def _split_list(inner):
+    """Split a frontmatter list body on commas, ignoring commas inside quotes —
+    so `"a,b", "c"` yields ['a,b', 'c'], not corrupted fragments."""
+    items = []
+    buf = []
+    quote = None
+    for ch in inner:
+        if quote:
+            buf.append(ch)
+            if ch == quote:
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+            buf.append(ch)
+        elif ch == ",":
+            items.append("".join(buf).strip())
+            buf = []
+        else:
+            buf.append(ch)
+    tail = "".join(buf).strip()
+    if tail:
+        items.append(tail)
+    return [_unquote(x) for x in items if x]
 
 
 def _unquote(s):
@@ -142,7 +164,7 @@ def render_note(fm, body):
             continue
         v = fm[key]
         if key == "tags":
-            lines.append("tags: [" + ", ".join(v) + "]")
+            lines.append("tags: [" + ", ".join(('"%s"' % t if "," in t else t) for t in v) + "]")
         elif key == "paths":
             lines.append("paths: [" + ", ".join('"%s"' % p for p in v) + "]")
         elif key in ("strength",):
@@ -310,11 +332,12 @@ def cmd_recall(identities, args):
         if notes[slug]["fm"].get("graduated"):
             continue
         act = activation[slug]
-        block = _render_block(slug, notes[slug], act, budget_chars - used)
+        sep = 1 if out else 0  # the "\n" that will join this block to the previous one
+        block = _render_block(slug, notes[slug], act, budget_chars - used - sep)
         if block is None:
             break
         out.append(block)
-        used += len(block)
+        used += len(block) + sep
         events.append({"event": "inject", "note": slug, "activation": round(act, 4)})
 
     for ev in events:
@@ -322,19 +345,20 @@ def cmd_recall(identities, args):
         ev["role"] = role
         log_event(identities, role, ev)
 
-    text = "\n".join(out).rstrip()
+    text = "\n".join(out)
     print(text if text else "(no lessons recalled)")
 
 
 def _render_block(slug, note, act, remaining):
     """Choose a tier by activation, downgrade until it fits; None if even a
-    title won't fit."""
+    title won't fit. Blocks carry NO trailing newline — the caller joins with
+    "\\n" and budgets that separator, so total output stays within the budget."""
     fm = note["fm"]
     strength = int(fm.get("strength", DEFAULT_STRENGTH))
-    full = "### %s  [strength %d]\n%s\n" % (slug, strength, note["body"].strip())
-    oneliner = "### %s\ntags: [%s] · paths: [%s]\n" % (
+    full = "### %s  [strength %d]\n%s" % (slug, strength, note["body"].strip())
+    oneliner = "### %s\ntags: [%s] · paths: [%s]" % (
         slug, ", ".join(fm.get("tags", []) or []), ", ".join(fm.get("paths", []) or []))
-    title = "- %s\n" % slug
+    title = "- %s" % slug
 
     if act >= 1.0 and len(full) <= remaining:
         return full
