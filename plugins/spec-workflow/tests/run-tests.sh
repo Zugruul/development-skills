@@ -607,6 +607,83 @@ out="$(cd "$T2" && PATH="$G:$PATH" bash "$PLUGIN/scripts/init-config.sh" fixture
 check "existing config updated (idempotent)" "updated " "$out"
 rm -rf "$G" "$T2"
 
+echo "== board.sh bug verb (fake gh: item-add + eventual consistency) =="
+BG="$(mktemp -d)"; mkdir -p "$BG/.claude"
+cp "$FIX/valid.project.yaml" "$BG/.claude/project.yaml"
+FGH="$(mktemp -d)"
+cat >"$FGH/gh" <<'FAKE'
+#!/usr/bin/env bash
+set -uo pipefail
+echo "$*" >>"$FAKE_GH_LOG"
+case "$1 $2" in
+    "issue create")
+        echo "https://github.com/fixture-owner/fixture-project/issues/${FAKE_GH_ISSUE_NUM:-501}"
+        ;;
+    "project item-add")
+        : # board.sh discards item-add's stdout; only the call itself (in FAKE_GH_LOG) matters
+        ;;
+    "project item-list")
+        n=$(( $(cat "$FAKE_GH_CALLCOUNT" 2>/dev/null || echo 0) + 1 ))
+        echo "$n" >"$FAKE_GH_CALLCOUNT"
+        if [[ "$*" == *"select(.content.number=="* ]]; then
+            if [[ "${FAKE_GH_NEVER_VISIBLE:-0}" != "1" && "$n" -ge "${FAKE_GH_VISIBLE_AFTER:-1}" ]]; then
+                echo "ITEM_${FAKE_GH_ISSUE_NUM:-501}"
+            fi
+        else
+            echo '{"items":[]}'
+        fi
+        ;;
+    "project item-edit")
+        if [[ "${FAKE_GH_FAIL_EDIT:-0}" == "1" ]]; then
+            echo "fake gh: item-edit boom" >&2
+            exit 1
+        fi
+        echo "edited"
+        ;;
+    *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
+esac
+FAKE
+chmod +x "$FGH/gh"
+
+# scenario 1: happy path -- issue created, item-add invoked with its URL, item visible on the first poll
+LOG1="$(mktemp)"; CC1="$(mktemp)"
+out="$(cd "$BG" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG1" FAKE_GH_CALLCOUNT="$CC1" FAKE_GH_ISSUE_NUM=501 FAKE_GH_VISIBLE_AFTER=1 \
+    bash "$PLUGIN/scripts/board.sh" bug "widget breaks on save" "" 42 2>&1; echo "rc=$?")"
+check "bug verb: filed bug line on success" "filed bug #501 [P0]" "$out"
+check "bug verb: exits 0 on success" "rc=0" "$out"
+check "bug verb: issue title prefixed BUG:" "BUG: widget breaks on save" "$(cat "$LOG1")"
+check "bug verb: default priority is first option (P0)" "filed bug #501 [P0]" "$out"
+check "bug verb: origin-issue link in body" "Originating task: #42." "$(cat "$LOG1")"
+check "bug verb: item-add invoked with the created issue's URL" "project item-add 1 --owner fixture-owner --url https://github.com/fixture-owner/fixture-project/issues/501" "$(cat "$LOG1")"
+
+# scenario 2: eventual consistency -- item-list only shows the new item from the 4th call onward
+LOG2="$(mktemp)"; CC2="$(mktemp)"
+out="$(cd "$BG" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG2" FAKE_GH_CALLCOUNT="$CC2" FAKE_GH_ISSUE_NUM=502 FAKE_GH_VISIBLE_AFTER=4 \
+    bash "$PLUGIN/scripts/board.sh" bug "flaky spinner" P1 2>&1; echo "rc=$?")"
+check "bug verb: eventual consistency -- retries until item-list shows the item, then succeeds" "filed bug #502 [P1]" "$out"
+check "bug verb: eventual consistency exits 0" "rc=0" "$out"
+n2="$(cat "$CC2")"
+if [[ "$n2" -ge 4 ]]; then echo "ok   bug verb: item-list was polled multiple times before succeeding"
+else echo "FAIL bug verb: expected >=4 item-list polls, got $n2"; fails=$((fails + 1)); fi
+
+# scenario 3: the item never becomes visible -- honest failure, not a false "filed bug"
+LOG3="$(mktemp)"; CC3="$(mktemp)"
+out="$(cd "$BG" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG3" FAKE_GH_CALLCOUNT="$CC3" FAKE_GH_ISSUE_NUM=503 FAKE_GH_NEVER_VISIBLE=1 \
+    bash "$PLUGIN/scripts/board.sh" bug "ghost item" P2 2>&1; echo "rc=$?")"
+check "bug verb: never-visible item -- actionable ERROR naming the issue" "ERROR: issue #503" "$out"
+check_absent "bug verb: never-visible item -- no false success line" "filed bug" "$out"
+check "bug verb: never-visible item exits nonzero" "rc=1" "$out"
+
+# scenario 4 (invariant #3): item-add/visibility succeed but the subsequent move/prio fails --
+# the verb must not report success
+LOG4="$(mktemp)"; CC4="$(mktemp)"
+out="$(cd "$BG" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG4" FAKE_GH_CALLCOUNT="$CC4" FAKE_GH_ISSUE_NUM=504 FAKE_GH_VISIBLE_AFTER=1 FAKE_GH_FAIL_EDIT=1 \
+    bash "$PLUGIN/scripts/board.sh" bug "move/prio fails" P0 2>&1; echo "rc=$?")"
+check_absent "bug verb: move/prio failure -- no false success line" "filed bug" "$out"
+check "bug verb: move/prio failure exits nonzero" "rc=1" "$out"
+
+rm -rf "$BG" "$FGH" "$LOG1" "$CC1" "$LOG2" "$CC2" "$LOG3" "$CC3" "$LOG4" "$CC4"
+
 echo "== identity resolution =="
 T3="$(mktemp -d)"
 ( cd "$T3" && git init -q . && git config user.name "Test User" && git config user.email "test.user@example.com" )
