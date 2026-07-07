@@ -85,8 +85,34 @@ a loop.
 
 ## 4. Merge + announce
 
+Merge with `<cfg:methodology.mergeMethod|squash>` — a per-repo decision made at
+setup (the `merge-mode.sh method` subcommand changes it later):
+
+- **squash (default)** collapses the branch into one commit, so carry the
+  attribution in the squash body: one `Co-authored-by:` trailer per distinct
+  agent author on the branch (from `git log main..<branch> --format='%an <%ae>'`,
+  deduped) plus the reviewer, and name who applied it. GitHub links the squash
+  commit to the PR, where the original role-attributed commits remain visible.
+- **merge** preserves the individual role-attributed commits on main (pick this
+  at setup if per-commit attribution in `git log` matters more than linear
+  history); **rebase** replays them.
+
 ```bash
-gh pr merge <n> --<cfg:methodology.mergeMethod|squash> --delete-branch
+# mergeMethod = squash (default) — attribution goes in the squash body:
+gh pr merge <n> --squash --delete-branch --body "$(cat <<'EOF'
+<one-line summary of the task>
+
+Applied-by: <identity.sh orchestrator name> (auto-merge, round <k> approval)
+Reviewed-by: <identity.sh reviewer name> (model: <prReviewModel>)
+
+Co-authored-by: <each distinct branch author, e.g. Dev Agent - ... <...+dev_agent@...>>
+EOF
+)"
+
+# mergeMethod = merge or rebase — the branch's own per-role commits carry the
+# attribution; no extra body:
+gh pr merge <n> --<cfg:methodology.mergeMethod> --delete-branch
+
 board.sh move N "QA"        # then fold the spec delta (build-next §Advancing)
 ```
 

@@ -36,6 +36,7 @@ Create one board per `boards[]` entry you plan (usually one). Exact commands: re
    - `specs[]` — one entry per spec: unique `taskPrefix`, `epics` in build order with `taskRanges`, and `blockedBy` guards for hard dependencies (e.g. nothing from E1 until E0 is fully Deployed).
    - `specs[].invariants` — the project's hard rules, stated imperatively; they are pasted verbatim into every implementation brief, so make them self-contained.
    - `commands.gate` — ONE command running build+lint+format+tests. Create it (e.g. a `gate` script in package.json) if it doesn't exist; the whole workflow hinges on it.
+   - **Merge policy** — AskUserQuestion (header "Merging"): does a human approve/merge every PR (default, `methodology.autoMerge: false`) or does the loop review+merge autonomously (`true` — the `auto-merge` skill explains/toggles it later)? If autonomous, also ask `methodology.mergeMethod`: **squash (Recommended)** — linear history; per-role commit attribution is preserved as `Co-authored-by:` trailers in the squash body plus the PR link — vs **merge** — keeps the individual role-attributed commits on main — vs **rebase**. Also mention `docs[]`: declare where documentation lives (one set for a standalone repo, one per package for a monorepo) so the reviewer can enforce doc maintenance.
 3. Validate — must print `VALID`:
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" config

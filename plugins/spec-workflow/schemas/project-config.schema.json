@@ -210,7 +210,7 @@
                     "type": "string",
                     "enum": ["squash", "merge", "rebase"],
                     "default": "squash",
-                    "description": "gh pr merge strategy used by auto-merge."
+                    "description": "gh pr merge strategy used by auto-merge — a per-repo decision made at setup. squash (default): linear history; per-role attribution carried as Co-authored-by trailers in the squash body + the PR's own commits. merge: preserves individual role-attributed commits on main. rebase: replays them."
                 }
             }
         }
