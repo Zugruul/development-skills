@@ -59,6 +59,7 @@ specs:
 commands:
     gate: "true"
     test: "true"
+# --- delegation: agent roster (who codes/reviews, as whom, on which models) ---
 delegation:
     identities:
         dev:
@@ -76,6 +77,7 @@ delegation:
         orchestrator:
             name: "Orchestrator Agent - {name}"
             email: "{local}+orchestrator_agent@{domain}"
+    # reviewerTokenEnv: GH_TOKEN_REVIEWER   # second account so auto-merge approvals are non-self
 paths:
     handoffDir: docs/handoffs
     checkpointFile: .claude/CHECKPOINT

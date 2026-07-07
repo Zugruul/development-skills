@@ -198,7 +198,7 @@
                 "autoMerge": {
                     "type": "boolean",
                     "default": false,
-                    "description": "When true, build-next skips human PR approval: an autonomous reviewer agent (delegation.prReviewModel) reviews the PR, dialogues fixes with the orchestrator until it approves, then the orchestrator merges and announces the merge. Protocol: build-next skill, references/auto-review.md."
+                    "description": "When true, build-next skips human PR approval: an autonomous reviewer agent (a suitable model from delegation.identities.reviewer.models) reviews the PR, dialogues fixes with the orchestrator until it approves, then the orchestrator merges and announces the merge. Protocol: build-next skill, references/auto-review.md."
                 },
                 "mergeMethod": {
                     "type": "string",
