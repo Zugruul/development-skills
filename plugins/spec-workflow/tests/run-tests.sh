@@ -116,6 +116,21 @@ out="$(python3 "$PLUGIN/scripts/next.py" "$FIX/valid.project.json" "" "$FIX/item
 check "wip resume guard" "=> RESUME: #2  FX-002: auth model" "$out"
 check_absent "wip: no new pick" "=> PICK:" "$out"
 
+# SW-012: blocking epic with zero seeded tasks gets a distinct, actionable message
+out="$(python3 "$PLUGIN/scripts/next.py" "$FIX/valid.project.json" "" "$FIX/items.unseeded.json")"
+check "unseeded epic: distinct message" "epic E9 unseeded — run seed-board" "$out"
+check_absent "unseeded epic: fail-closed (no pick)" "=> PICK:" "$out"
+check_absent "unseeded epic: not the misleading not-fully message" "not fully" "$out"
+
+# regression: blocking epic has seeded tasks but not all at required status -> existing message unchanged
+check_absent "seeded-but-unmet: no unseeded message" "unseeded — run seed-board" "$(python3 "$PLUGIN/scripts/next.py" "$FIX/valid.project.json" "" "$FIX/items.sample.json")"
+
+# regression: blocking epic satisfied -> downstream candidate is picked, no blocked message
+out="$(python3 "$PLUGIN/scripts/next.py" "$FIX/valid.project.json" "" "$FIX/items.satisfied.json")"
+check "satisfied epic: downstream candidate picked" "=> PICK: #20" "$out"
+check_absent "satisfied epic: no unseeded message" "unseeded — run seed-board" "$out"
+check_absent "satisfied epic: no blocked entry" "BLOCKED #20" "$out"
+
 echo "== similar.py (dedup/similarity) =="
 SIM="$PLUGIN/scripts/similar.py"
 export SIMILAR_ISSUES_FILE="$FIX/issues.sample.json"

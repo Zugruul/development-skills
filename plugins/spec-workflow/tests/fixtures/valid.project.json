@@ -52,6 +52,13 @@
                     "title": "Features",
                     "taskRanges": [[10, 19]],
                     "blockedBy": [{ "epic": "E0", "untilStatus": "Deployed" }]
+                },
+                { "id": "E9", "title": "Zero-seed", "taskRanges": [[80, 89]] },
+                {
+                    "id": "E2",
+                    "title": "Downstream",
+                    "taskRanges": [[20, 29]],
+                    "blockedBy": [{ "epic": "E9", "untilStatus": "Deployed" }]
                 }
             ],
             "invariants": ["Fixture invariant: never violate the fixture."]
