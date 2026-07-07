@@ -30,7 +30,7 @@ echo "== syntax =="
 for f in "$PLUGIN"/scripts/*.sh "$HERE"/run-tests.sh; do
     if bash -n "$f"; then echo "ok   bash -n $(basename "$f")"; else echo "FAIL bash -n $f"; fails=$((fails + 1)); fi
 done
-for p in config.py identity_lib.py validate-config.py next.py ui-hub.py brain.py; do
+for p in config.py identity_lib.py validate-config.py next.py ui-hub.py brain.py neural-view.py; do
     if python3 -m py_compile "$PLUGIN/scripts/$p"; then
         echo "ok   py_compile $p"
     else
@@ -125,6 +125,104 @@ out="$(python3 "$HUB" answers --consume)";            check "hub answer collecte
 out="$(python3 "$HUB" answers)";                      check_absent "hub consume archived it" "d1" "$out"
 python3 "$HUB" stop >/dev/null
 unset UI_HUB_STATE UI_HUB_PORT
+
+echo "== neural-view (lifecycle + endpoints on a scratch port) =="
+NV="$PLUGIN/scripts/neural-view.py"
+_nvroot="$(mktemp -d)"          # brains root (--dir)
+_nvstate="$(mktemp -d)"         # server state (pid/port)
+_nvbrain="$_nvroot/.claude/identities/dev/brain"
+mkdir -p "$_nvbrain/notes"
+cat >"$_nvbrain/notes/cas-retry.md" <<'EOF'
+---
+tags: [concurrency, cas]
+paths: [packages/core]
+strength: 4
+graduated: false
+---
+Retry on CAS conflict; the loser reloads and re-applies. See [[idempotency]].
+EOF
+cat >"$_nvbrain/notes/idempotency.md" <<'EOF'
+---
+tags: [effects]
+strength: 2
+graduated: true
+---
+Deterministic ids make repeats safe.
+EOF
+printf '%s\n' '{"cas-retry->idempotency":{"weight":0.6,"fires":4,"last":"2026-07-06"}}' >"$_nvbrain/links.json"
+printf '%s\n' '{"ts":"2026-07-06T10:00:00Z","role":"dev","event":"seed","note":"cas-retry","activation":0.8}' >"$_nvbrain/.activation.jsonl"
+
+export NEURAL_VIEW_STATE="$_nvstate" NEURAL_VIEW_PORT=4788
+out="$(python3 "$NV" start --dir "$_nvroot")";  check "neural-view starts" "RUNNING http://127.0.0.1:4788" "$out"
+out="$(python3 "$NV" status)";                  check "neural-view status running" "RUNNING http://127.0.0.1:4788" "$out"
+out="$(curl -sf http://127.0.0.1:4788/graph)";  check "graph has node id" '"id": "dev/cas-retry"' "$out"
+check "graph node carries strength" '"strength": 4' "$out"
+check "graph node graduated flag" '"graduated": true' "$out"
+check "graph has link edge" '"source": "dev/cas-retry"' "$out"
+check "graph edge weight" '"weight": 0.6' "$out"
+out="$(curl -sf http://127.0.0.1:4788/note/dev/cas-retry)"
+check "note renders fixture body" "the loser reloads" "$out"
+# finding 2: path traversal via ../ in the slug must not escape notes/ (arbitrary file read)
+printf 'TOPSECRET-XYZZY' >"$_nvbrain/SECRET.md"       # a file OUTSIDE notes/, one level up
+body="$(curl -s --path-as-is 'http://127.0.0.1:4788/note/dev/../SECRET')"
+check_absent "note path traversal does not leak an out-of-tree file" "TOPSECRET-XYZZY" "$body"
+code="$(curl -s --path-as-is -o /dev/null -w '%{http_code}' 'http://127.0.0.1:4788/note/dev/../SECRET')"
+check "note path traversal returns 404" "404" "$code"
+code="$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:4788/note/dev/..%2fSECRET')"
+check "note dotdot slug (encoded) returns 404" "404" "$code"
+python3 "$NV" stop >/dev/null
+
+# findings 1 + 3: offset-cursor /events — completeness from per-brain byte offsets, not sort order.
+_nvev="$(mktemp -d)"
+for r in dev reviewer orchestrator; do mkdir -p "$_nvev/.claude/identities/$r/brain"; done
+out="$(python3 "$NV" start --dir "$_nvev")"; check "neural-view starts (events root)" "RUNNING http://127.0.0.1:4788" "$out"
+evout="$(P=4788 R="$_nvev" python3 - <<'PY'
+import json, os, urllib.request
+P, R = os.environ["P"], os.environ["R"]
+log = lambda role: os.path.join(R, ".claude/identities", role, "brain", ".activation.jsonl")
+def append(role, i, ts):
+    with open(log(role), "a") as f:
+        f.write(json.dumps({"ts": ts, "role": role, "event": "seed", "note": "n%d" % i, "id": i}) + "\n")
+def poll(token):
+    url = "http://127.0.0.1:%s/events" % P + (("?since=%s" % token) if token else "")
+    return json.load(urllib.request.urlopen(url))
+d0 = poll("")                                   # first poll: end-of-logs, no backlog replay
+print("FIRSTPOLL events=%d" % len(d0["events"]))
+# round 1 — interleaved, deliberately NON-monotonic ts across brains
+append("dev", 1, "2026-07-06T10:00:05Z"); append("orchestrator", 2, "2026-07-06T10:00:01Z"); append("reviewer", 3, "2026-07-06T10:00:09Z")
+d1 = poll(d0["cursor"]); ids1 = sorted(e["id"] for e in d1["events"])
+# round 2 — the replay trap: events with ts EARLIER than ones already delivered in round 1
+append("reviewer", 4, "2026-07-06T10:00:02Z"); append("dev", 5, "2026-07-06T10:00:00Z")
+d2 = poll(d1["cursor"]); ids2 = sorted(e["id"] for e in d2["events"])
+d3 = poll(d2["cursor"])                          # idle poll: nothing appended
+allids = ids1 + ids2
+print("ROUND2 ids=%s" % ids2)                    # must be exactly [4, 5] (delivered once, no replay of round 1)
+print("DELIVERED ids=%s" % sorted(allids))       # no loss: every appended event arrived
+print("DUPS=%d" % (len(allids) - len(set(allids))))  # no duplicate delivery
+print("IDLE events=%d bytesRead=%s" % (len(d3["events"]), d3.get("bytesRead")))  # reads ~zero new bytes
+PY
+)"
+check "events first poll skips backlog" "FIRSTPOLL events=0" "$evout"
+check "events replay-trap delivers only new (no replay)" "ROUND2 ids=[4, 5]" "$evout"
+check "events no loss across interleaved earlier-ts writes" "DELIVERED ids=[1, 2, 3, 4, 5]" "$evout"
+check "events no duplicate delivery" "DUPS=0" "$evout"
+check "events idle poll reads zero new bytes" "IDLE events=0 bytesRead=0" "$evout"
+# round-2 finding: a token decoding to a NEGATIVE byte offset must not reach an
+# un-clamped fh.seek() (OSError → dropped connection). Must return 200 + a batch.
+negtok="$(python3 -c 'import base64,json; print(base64.urlsafe_b64encode(json.dumps({"dev":-999}).encode()).rstrip(b"=").decode())')"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:4788/events?since=$negtok")"
+check "events negative-offset token returns 200 (no dropped connection)" "200" "$code"
+body="$(curl -s "http://127.0.0.1:4788/events?since=$negtok")"
+check "events negative-offset token yields a sane batch" '"events"' "$body"
+python3 "$NV" stop >/dev/null
+
+_nvempty="$(mktemp -d)"          # a root with no brains at all
+out="$(python3 "$NV" start --dir "$_nvempty")"; check "neural-view starts on empty root" "RUNNING http://127.0.0.1:4788" "$out"
+out="$(curl -sf http://127.0.0.1:4788/graph)";  check "empty root -> empty nodes" '"nodes": []' "$out"
+out="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4788/)"; check "page still loads on empty root" "200" "$out"
+python3 "$NV" stop >/dev/null
+unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT
+rm -rf "$_nvroot" "$_nvstate" "$_nvev" "$_nvempty" "$_hubtmp"
 
 echo "== gate enforcement (gate.sh + guard-board-move hook) =="
 T3="$(mktemp -d)"

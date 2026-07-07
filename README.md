@@ -76,5 +76,6 @@ Spec-driven autonomous build workflow. A repo declares its boards, specs, epics,
 | `checkpoint` | Pause/resume the loop via a local flag file |
 | `handoff` | Session/pause handoff document |
 | `dev-up` | Bring up the project's dev stack for QA |
+| `neural-view` | Live JARVIS-style visualization of the identity brains — notes as neurons, recalls lighting up in real time |
 
 Humans steer the loop by commenting on task issues: `next-task`/`implement-task` read every comment before starting, fold accepted changes into the issue's acceptance criteria, and reply on the issue.

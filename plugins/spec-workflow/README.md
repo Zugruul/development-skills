@@ -25,10 +25,11 @@ Everything project-specific lives in the consumer repo's **`.claude/project.yaml
 | `brain` | Inspect/tend the per-identity zettel brains (recall/mint/prune/directory); orchestrator-only |
 | `checkpoint` / `handoff` | Pause/resume the loop via a local flag; session handoff docs |
 | `dev-up` | Bring up the project's dev stack for QA |
+| `neural-view` | Start/stop/status for the live JARVIS-style visualization of the identity brains |
 
 ## Scripts (`scripts/`)
 
-`config.py` (the shared loader: finds `.claude/project.yaml`, normalizes legacy json, `get`/`json`/`path` verbs for bash callers) · `board.sh` (next/show/move/prio/est/bug/list/comment/edit-body/fields/config) · `next.py` (picker: priority → epic rank → guards → WIP resume) · `init-config.sh` (auto-fill board ids from a live project; writes `project.yaml`) · `seed-board.sh` · `preflight.sh` (load-time config/spec checks injected into spec-requiring skills) · `validate-config.py` · `merge-mode.sh` (auto-merge status/on/off + reviewer models/merge method) · `identity.sh` (per-role identity + allowed-models resolution, `covers` path routing; `--check` runs in preflight; `on-behalf <author-role> [--committer <role>] [--co <role>]...` prints a commit recipe — committer flags + `--author=` + Co-authored-by trailers — so a commit credits every participating role) · `identity_lib.py` (shared resolution the two identity.sh modes import) · `brain.sh`→`brain.py` (per-identity zettel memory: mint/recall/directory/consult/prune/graduate; spreading-activation retrieval, stdlib only).
+`config.py` (the shared loader: finds `.claude/project.yaml`, normalizes legacy json, `get`/`json`/`path` verbs for bash callers) · `board.sh` (next/show/move/prio/est/bug/list/comment/edit-body/fields/config) · `next.py` (picker: priority → epic rank → guards → WIP resume) · `init-config.sh` (auto-fill board ids from a live project; writes `project.yaml`) · `seed-board.sh` · `preflight.sh` (load-time config/spec checks injected into spec-requiring skills) · `validate-config.py` · `merge-mode.sh` (auto-merge status/on/off + reviewer models/merge method) · `identity.sh` (per-role identity + allowed-models resolution, `covers` path routing; `--check` runs in preflight; `on-behalf <author-role> [--committer <role>] [--co <role>]...` prints a commit recipe — committer flags + `--author=` + Co-authored-by trailers — so a commit credits every participating role) · `identity_lib.py` (shared resolution the two identity.sh modes import) · `brain.sh`→`brain.py` (per-identity zettel memory: mint/recall/directory/consult/prune/graduate; spreading-activation retrieval, stdlib only) · `ui-hub.py` (Iterative UI decision hub) · `neural-view.py` (read-only brain-visualization server: `/graph`, `/events`, `/note`).
 
 ## Identity brains
 
@@ -46,6 +47,10 @@ Full protocol: [`skills/build-next/references/brains.md`](./skills/build-next/re
 - **Issue comments** — read before every task; scope changes are folded into the issue body and acknowledged.
 - **Iterative UI mode** (default ON) — UI decisions go to the human via `docs/ui-options/<task-id>.html` (favorite selector + likeable aspect keywords + notes; "Copy selection" produces the comment to paste). Disable per-clone with `touch .claude/ITERATIVE_UI_OFF` or permanently with `methodology.iterativeUI: false`.
 - **Checkpoint flag** — `touch .claude/CHECKPOINT` pauses the loop at the next safe boundary with a handoff.
+
+## Neural view
+
+The identities' **brains** (`.claude/identities/<role>/brain/`) are the workflow's memory: markdown notes wired by weighted links, plus an append-only activation log of every recall. `neural-view` is the human's window into them — a live, JARVIS-style HUD (`python3 scripts/neural-view.py start`, default `http://127.0.0.1:4748`) that draws every brain as a neural cluster: notes are neurons (size ∝ strength, graduated ones dimmed), links are synapses, and as recalls fire the page lights the neurons and pulses the synapses in real time — you watch a thought propagate. Top-left gauges summarize each brain (notes / avg strength / synapses), a bottom ticker streams the raw activation log, and clicking a neuron opens its note. The server is **read-only** and self-contained (stdlib only; the page makes zero external requests, hand-rolls its force layout on `<canvas>`, honors `prefers-reduced-motion`, and keeps WCAG AA text contrast). Tolerates absent brains (empty graph, "no brains yet" state). Drive it with the `neural-view` skill (`start` / `stop` / `status`); `--port` and `--dir` override the defaults.
 
 ## Testing
 

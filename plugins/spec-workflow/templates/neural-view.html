@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<!--
+  neural-view.html — the live JARVIS-style visualization of the identity brains.
+  Served verbatim by scripts/neural-view.py at "/". Self-contained: inline CSS+JS,
+  ZERO external requests (no CDN, no webfonts, no remote images). The force layout
+  is hand-rolled on <canvas>. Data comes from same-origin /graph, /events, /note.
+-->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neural view — identity brains</title>
+<style>
+:root{
+  --bg:#04070d; --bg2:#070d18; --panel:rgba(10,20,34,.55); --panel-solid:#0a1422;
+  --border:rgba(90,190,255,.28); --cyan:#46e6ff; --cyan-dim:#1c6f88;
+  --amber:#ffb347; --slate:#8fa6bd;
+  --fg:#dff2fb; --muted:#a9c6d8;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+  font-family:var(--mono);overflow:hidden}
+#stage{position:fixed;inset:0}
+canvas{position:absolute;inset:0;display:block}
+.hud{position:fixed;background:var(--panel);border:1px solid var(--border);
+  border-radius:12px;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+  box-shadow:0 0 18px rgba(20,120,170,.15),inset 0 0 24px rgba(20,120,170,.06)}
+.label{font-size:.62rem;letter-spacing:.28em;text-transform:uppercase;color:var(--muted)}
+.val{color:var(--cyan)}
+
+/* top bar */
+#topbar{top:14px;left:14px;right:14px;display:flex;gap:14px;align-items:center;
+  padding:.55rem .9rem;justify-content:space-between}
+#brand{letter-spacing:.34em;text-transform:uppercase;font-size:.72rem;color:var(--cyan);
+  text-shadow:0 0 12px rgba(70,230,255,.5)}
+#brand b{color:var(--fg)}
+#totals{display:flex;gap:1.4rem;font-size:.66rem}
+#totals span b{color:var(--cyan);font-size:.9rem;font-weight:600}
+#status{font-size:.6rem;color:var(--muted)}
+#status .dot{display:inline-block;width:.5rem;height:.5rem;border-radius:50%;
+  background:var(--cyan);box-shadow:0 0 8px var(--cyan);margin-right:.4rem;vertical-align:middle}
+
+/* gauges (top-left, below topbar) */
+#gauges{top:70px;left:14px;width:214px;max-height:calc(100vh - 130px);overflow:auto;
+  padding:.7rem .8rem}
+#gauges h2{margin:0 0 .5rem;font-size:.6rem;letter-spacing:.26em;text-transform:uppercase;color:var(--muted);font-weight:400}
+.brainrow{display:flex;align-items:center;gap:.55rem;padding:.35rem 0;border-top:1px solid rgba(90,190,255,.12)}
+.brainrow:first-of-type{border-top:0}
+.brainrow .rname{flex:1;font-size:.66rem;letter-spacing:.12em;text-transform:uppercase}
+.arc{width:34px;height:34px;flex:none}
+
+/* ticker (bottom) */
+#ticker{left:14px;right:14px;bottom:14px;height:64px;padding:.45rem .7rem;overflow:hidden}
+#ticker h2{margin:0 0 .25rem;font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);font-weight:400}
+#tickerlog{font-size:.66rem;line-height:1.45;color:var(--slate);height:34px;overflow:hidden}
+#tickerlog .ev{white-space:nowrap}
+#tickerlog .k{color:var(--cyan)}
+#tickerlog .warn{color:var(--amber)}
+#tickerlog .t{color:#7c92a6}
+
+/* inspect panel (right) */
+#inspect{top:70px;right:14px;width:min(340px,42vw);max-height:calc(100vh - 150px);
+  overflow:auto;padding:.9rem 1rem;transform:translateX(120%);transition:transform .25s ease;
+  opacity:0}
+#inspect.open{transform:none;opacity:1}
+#inspect .close{float:right;cursor:pointer;color:var(--muted);border:0;background:none;font-size:1rem;font-family:var(--mono)}
+#inspect h3{margin:.1rem 0 .1rem;font-size:.9rem;color:var(--cyan);letter-spacing:.04em;word-break:break-word}
+#inspect .role{font-size:.6rem;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:.3rem;margin:.6rem 0}
+.chip{font-size:.6rem;padding:.15rem .5rem;border:1px solid var(--border);border-radius:999px;color:var(--muted);letter-spacing:.06em}
+.chip.on{color:var(--amber);border-color:rgba(255,179,71,.5)}
+#body{font-size:.78rem;line-height:1.55;color:var(--fg);margin-top:.4rem;border-top:1px solid rgba(90,190,255,.14);padding-top:.6rem}
+#body h3,#body h4,#body h5{color:var(--cyan);font-size:.82rem;margin:.7rem 0 .2rem}
+#body p{margin:.4rem 0}
+#body code{background:rgba(70,230,255,.1);padding:.05rem .3rem;border-radius:4px;font-size:.74rem}
+#body a.wl{color:var(--cyan);text-decoration:none;border-bottom:1px dotted var(--cyan-dim)}
+#body ul{margin:.3rem 0;padding-left:1.1rem}
+#links{margin-top:.6rem;font-size:.66rem;color:var(--muted)}
+#links .ln{display:flex;justify-content:space-between;gap:.5rem;padding:.15rem 0}
+#links .ln b{color:var(--fg);font-weight:500}
+
+#empty{position:fixed;inset:0;display:none;place-items:center;text-align:center;pointer-events:none}
+#empty div{color:var(--muted);font-size:.8rem;letter-spacing:.1em;max-width:30ch}
+#empty b{color:var(--cyan);display:block;letter-spacing:.28em;text-transform:uppercase;margin-bottom:.6rem}
+
+@media (prefers-reduced-motion:reduce){#inspect{transition:none}}
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+
+<div class="hud" id="topbar">
+  <div id="brand">NEURAL&nbsp;VIEW · <b>identity brains</b></div>
+  <div id="totals">
+    <span class="label">notes <b id="t-notes">0</b></span>
+    <span class="label">synapses <b id="t-links">0</b></span>
+    <span class="label">brains <b id="t-brains">0</b></span>
+  </div>
+  <div id="status"><span class="dot"></span><span id="status-txt">live · recalls light up</span></div>
+</div>
+
+<div class="hud" id="gauges"><h2>Brains</h2><div id="gauge-list"></div></div>
+
+<div class="hud" id="ticker"><h2>Activation log</h2><div id="tickerlog" aria-live="polite"></div></div>
+
+<aside class="hud" id="inspect" aria-hidden="true" inert>
+  <button class="close" id="inspect-close" aria-label="Close note">✕</button>
+  <div class="role" id="i-role"></div>
+  <h3 id="i-title"></h3>
+  <div class="chips" id="i-chips"></div>
+  <div id="body"></div>
+  <div id="links"></div>
+</aside>
+
+<div id="empty"><div><b>No brains yet</b>Once an identity starts learning, its notes appear here as neurons and light up as they are recalled.</div></div>
+
+<script>
+"use strict";
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.clientWidth = innerWidth; H = canvas.clientHeight = innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+addEventListener("resize", resize); resize();
+
+// ---- role palette (deterministic hue per role, all in the cyan/blue family) ----
+const ROLE_HUES = {dev:188, reviewer:205, orchestrator:168};
+let hueSpin = 150;
+function roleHue(role){ if(!(role in ROLE_HUES)) ROLE_HUES[role] = (hueSpin += 47) % 360; return ROLE_HUES[role]; }
+const glow = (h,l,a)=>`hsla(${h},95%,${l}%,${a})`;
+
+// ---- graph state ----
+let nodes = [], nodeById = new Map(), links = [], roles = [], clusters = new Map();
+let anims = [];               // active visual activations
+const queue = [];             // pending events, played on a stagger
+let cursor = null, tick = 0;
+
+function layoutClusters(){
+  clusters.clear();
+  const n = roles.length || 1, cx = W/2, cy = H/2;
+  const R = Math.min(W,H) * (n>1 ? 0.29 : 0);
+  roles.forEach((role,i)=>{
+    const a = -Math.PI/2 + i/n*Math.PI*2;
+    clusters.set(role, {x: cx + Math.cos(a)*R, y: cy + Math.sin(a)*R, hue: roleHue(role), n:0});
+  });
+  nodes.forEach(nd=>{ const c = clusters.get(nd.role); if(c) c.n++; });
+}
+
+async function loadGraph(){
+  let g; try { g = await (await fetch("/graph")).json(); } catch { return; }
+  const prev = nodeById;
+  roles = [...new Set(g.nodes.map(n=>n.role))].sort();
+  nodes = g.nodes.map(n=>{
+    const old = prev.get(n.id);
+    return Object.assign(n, {
+      x: old ? old.x : W/2 + (Math.random()-.5)*260,
+      y: old ? old.y : H/2 + (Math.random()-.5)*260,
+      vx: old?old.vx:0, vy: old?old.vy:0, hl: old?old.hl:0, phase: Math.random()*6.283,
+      r: 4 + Math.min(n.strength||1, 12) * 1.7
+    });
+  });
+  nodeById = new Map(nodes.map(n=>[n.id,n]));
+  links = g.edges.filter(e=>e.type!=="consult").map(e=>({
+    a: nodeById.get(e.source), b: nodeById.get(e.target), w: e.weight ?? .5, key: e.source+"->"+e.target
+  })).filter(l=>l.a && l.b);
+  window.__consultEdges = g.edges.filter(e=>e.type==="consult");
+  layoutClusters();
+  document.getElementById("t-notes").textContent = nodes.length;
+  document.getElementById("t-links").textContent = links.length;
+  document.getElementById("t-brains").textContent = roles.length;
+  document.getElementById("empty").style.display = nodes.length ? "none" : "grid";
+  renderGauges();
+}
+
+// ---- force simulation ----
+function step(){
+  const KREP = 2600, KSPRING = 0.012, KGRAV = 0.015, DAMP = 0.86;
+  for(let i=0;i<nodes.length;i++){
+    const a = nodes[i];
+    for(let j=i+1;j<nodes.length;j++){
+      const b = nodes[j];
+      let dx=a.x-b.x, dy=a.y-b.y, d2=dx*dx+dy*dy||0.01;
+      if(d2 < 90000){ const f=KREP/d2, d=Math.sqrt(d2); const fx=f*dx/d, fy=f*dy/d;
+        a.vx+=fx; a.vy+=fy; b.vx-=fx; b.vy-=fy; }
+    }
+  }
+  for(const l of links){
+    const dx=l.b.x-l.a.x, dy=l.b.y-l.a.y, d=Math.hypot(dx,dy)||.01;
+    const target = 70 + (1-l.w)*70, f = KSPRING*(d-target);
+    const fx=f*dx/d, fy=f*dy/d;
+    l.a.vx+=fx; l.a.vy+=fy; l.b.vx-=fx; l.b.vy-=fy;
+  }
+  for(const nd of nodes){
+    const c = clusters.get(nd.role);
+    if(c){ nd.vx += (c.x-nd.x)*KGRAV; nd.vy += (c.y-nd.y)*KGRAV; }
+    nd.vx*=DAMP; nd.vy*=DAMP;
+    nd.x+=nd.vx; nd.y+=nd.vy;
+    if(nd.hl>0) nd.hl = Math.max(0, nd.hl - 0.018);
+  }
+}
+
+// ---- rendering ----
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  drawGrid();
+  drawClusters();
+  ctx.globalCompositeOperation = "lighter";
+  drawSynapses();
+  drawAnims();
+  drawNeurons();
+  ctx.globalCompositeOperation = "source-over";
+}
+
+function drawGrid(){
+  ctx.save(); ctx.strokeStyle="rgba(70,230,255,.045)"; ctx.lineWidth=1;
+  const g=46; ctx.beginPath();
+  for(let x=(tick*0.15)%g;x<W;x+=g){ ctx.moveTo(x,0); ctx.lineTo(x,H); }
+  for(let y=0;y<H;y+=g){ ctx.moveTo(0,y); ctx.lineTo(W,y); }
+  ctx.stroke();
+  ctx.strokeStyle="rgba(70,230,255,.03)";
+  ctx.beginPath();
+  for(let y=(tick*0.4)%3;y<H;y+=3){ ctx.moveTo(0,y); ctx.lineTo(W,y); }  // scanlines
+  ctx.stroke(); ctx.restore();
+}
+
+function drawClusters(){
+  for(const [role,c] of clusters){
+    if(!c.n) continue;
+    let rad=60; for(const nd of nodes) if(nd.role===role) rad=Math.max(rad, Math.hypot(nd.x-c.x,nd.y-c.y)+nd.r+16);
+    const grd = ctx.createRadialGradient(c.x,c.y,rad*.4,c.x,c.y,rad);
+    grd.addColorStop(0,glow(c.hue,55,0)); grd.addColorStop(1,glow(c.hue,55,.05));
+    ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(c.x,c.y,rad,0,6.283); ctx.fill();
+    ctx.strokeStyle=glow(c.hue,60,.32); ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(c.x,c.y,rad,0,6.283); ctx.stroke();
+    ctx.save(); ctx.fillStyle=glow(c.hue,72,.85);
+    ctx.font="600 10px "+getComputedStyle(document.body).fontFamily;
+    ctx.textAlign="center";
+    ctx.fillText(role.toUpperCase().split("").join(" "), c.x, c.y-rad-8);
+    ctx.restore();
+  }
+}
+
+function drawSynapses(){
+  for(const l of links){
+    const dim = (l.a.graduated||l.b.graduated)?.5:1;
+    ctx.strokeStyle = glow(190, 62, (0.06 + l.w*0.34)*dim);
+    ctx.lineWidth = 0.6 + l.w*1.6;
+    ctx.beginPath(); ctx.moveTo(l.a.x,l.a.y); ctx.lineTo(l.b.x,l.b.y); ctx.stroke();
+  }
+}
+
+function drawNeurons(){
+  for(const nd of nodes){
+    const c = clusters.get(nd.role), hue = c?c.hue:190;
+    const pulse = REDUCED ? 0 : (Math.sin(tick*0.05 + nd.phase)*0.5+0.5)*0.18;
+    const base = nd.graduated ? 0.30 : 0.62;
+    const lum = nd.graduated ? 46 : 62;
+    const rr = nd.r * (1 + pulse*0.15 + nd.hl*0.5);
+    const grd = ctx.createRadialGradient(nd.x,nd.y,0,nd.x,nd.y,rr*3.2);
+    grd.addColorStop(0, glow(hue, lum+18, Math.min(1, base + pulse + nd.hl)));
+    grd.addColorStop(0.4, glow(hue, lum, (base+pulse+nd.hl)*0.5));
+    grd.addColorStop(1, glow(hue, lum, 0));
+    ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(nd.x,nd.y,rr*3.2,0,6.283); ctx.fill();
+    ctx.fillStyle=glow(hue, 88, Math.min(1,0.7+nd.hl));
+    ctx.beginPath(); ctx.arc(nd.x,nd.y,rr,0,6.283); ctx.fill();
+  }
+}
+
+function drawAnims(){
+  const now = performance.now();
+  anims = anims.filter(a=>now - a.t0 < a.dur);
+  for(const a of anims){
+    const p = (now - a.t0)/a.dur;
+    if(a.kind==="ring"){
+      const nd=a.node; ctx.strokeStyle=glow(a.hue,70,(1-p)*a.i);
+      ctx.lineWidth=2; ctx.beginPath(); ctx.arc(nd.x,nd.y,nd.r+p*46,0,6.283); ctx.stroke();
+    } else if(a.kind==="halo"){
+      const nd=a.node; const grd=ctx.createRadialGradient(nd.x,nd.y,nd.r,nd.x,nd.y,nd.r+22);
+      grd.addColorStop(0,glow(a.hue,72,(1-p)*.6)); grd.addColorStop(1,glow(a.hue,72,0));
+      ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(nd.x,nd.y,nd.r+22,0,6.283); ctx.fill();
+    } else if(a.kind==="travel"){
+      const x=a.ax+(a.bx-a.ax)*p, y=a.ay+(a.by-a.ay)*p;
+      const grd=ctx.createRadialGradient(x,y,0,x,y,10);
+      grd.addColorStop(0,glow(a.hue,85,a.i)); grd.addColorStop(1,glow(a.hue,85,0));
+      ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(x,y,10,0,6.283); ctx.fill();
+    } else if(a.kind==="arc"){
+      ctx.strokeStyle=glow(a.hue,72,(1-p)*.8); ctx.lineWidth=2;
+      const mx=(a.ax+a.bx)/2, my=(a.ay+a.by)/2 - Math.hypot(a.bx-a.ax,a.by-a.ay)*0.32;
+      ctx.beginPath(); ctx.moveTo(a.ax,a.ay); ctx.quadraticCurveTo(mx,my,a.bx,a.by); ctx.stroke();
+    }
+  }
+}
+
+function frame(){ tick++; step(); draw(); requestAnimationFrame(frame); }
+requestAnimationFrame(frame);
+
+// ---- live events ----
+function playEvent(e){
+  logEvent(e);
+  const nd = e.note ? nodeById.get(e.role+"/"+e.note) : null;
+  const hue = nd ? (clusters.get(nd.role)?.hue ?? 190) : 190;
+  const inten = Math.max(0.4, Math.min(1, e.activation ?? 0.7));
+  if(nd) nd.hl = Math.max(nd.hl, inten);
+  if(REDUCED) return;                     // reduced-motion: instant highlight only
+  const now = performance.now();
+  if(e.event==="seed" && nd){
+    anims.push({kind:"ring", node:nd, hue, i:inten, t0:now, dur:900});
+  } else if(e.event==="inject" && nd){
+    anims.push({kind:"halo", node:nd, hue, i:inten, t0:now, dur:800});
+  } else if(e.event==="hop"){
+    let a=nd, b=null;
+    if(e.link && e.link.includes("->")){ const [s,d]=e.link.split("->");
+      a=nodeById.get(e.role+"/"+s.trim())||a; b=nodeById.get(e.role+"/"+d.trim()); }
+    if(a&&b){ anims.push({kind:"travel", ax:a.x,ay:a.y,bx:b.x,by:b.y, hue, i:inten, t0:now, dur:700});
+      b.hl=Math.max(b.hl,inten*.8); }
+    else if(nd){ anims.push({kind:"ring", node:nd, hue, i:inten, t0:now, dur:700}); }
+  } else if(e.event==="consult"){
+    const ca=clusters.get(e.consumer), cb=clusters.get(e.role);
+    if(ca&&cb) anims.push({kind:"arc", ax:ca.x,ay:ca.y,bx:cb.x,by:cb.y, hue:cb.hue, t0:now, dur:1100});
+  }
+}
+
+function pump(){                          // drain the queue on a readable stagger
+  if(queue.length) playEvent(queue.shift());
+  setTimeout(pump, queue.length ? (REDUCED?0:120) : 60);
+}
+pump();
+
+async function poll(){
+  try{
+    const url = cursor==null ? "/events" : "/events?since="+encodeURIComponent(cursor);  // first poll (no token) → server returns end-of-logs + []
+    const r = await (await fetch(url)).json();
+    if(r && r.cursor!=null){
+      if(r.events && r.events.length) queue.push(...r.events);   // server already skipped the backlog
+      cursor = r.cursor;                                          // opaque per-brain byte-offset token
+    }
+  }catch{ /* server gone; keep trying */ }
+  setTimeout(poll, 1000);
+}
+
+const LOG = document.getElementById("tickerlog");
+function logEvent(e){
+  const div=document.createElement("div"); div.className="ev";
+  const t=(e.ts||"").replace("T"," ").replace(/\..*/,"").slice(11) || "--:--:--";
+  const kind = e.event||"?";
+  const cls = kind==="consult" ? "warn" : "k";
+  const what = e.note ? " "+e.note : (e.link?" "+e.link:"");
+  div.innerHTML = `<span class="t">${t}</span> <span class="${cls}">${(e.role||"?").toUpperCase()} · ${kind}</span>${escapeHtml(what)}`;
+  LOG.prepend(div);
+  while(LOG.childNodes.length>12) LOG.lastChild.remove();
+}
+function escapeHtml(s){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+// ---- gauges ----
+function renderGauges(){
+  const list=document.getElementById("gauge-list"); list.innerHTML="";
+  const perRole = new Map();
+  for(const nd of nodes){ const s=perRole.get(nd.role)||{n:0,str:0}; s.n++; s.str+=nd.strength||1; perRole.set(nd.role,s); }
+  const linkCount = new Map();
+  for(const l of links){ linkCount.set(l.a.role,(linkCount.get(l.a.role)||0)+1); }
+  const maxN = Math.max(1,...[...perRole.values()].map(s=>s.n));
+  for(const role of roles){
+    const s=perRole.get(role)||{n:0,str:0}; const avg=s.n?s.str/s.n:0; const lk=linkCount.get(role)||0;
+    const hue=roleHue(role);
+    const row=document.createElement("div"); row.className="brainrow";
+    row.innerHTML =
+      arc(s.n/maxN, hue, s.n) +
+      `<div class="rname" style="color:${glow(hue,72,.95)}">${escapeHtml(role)}</div>` +
+      `<div class="label" title="avg strength">str <span class="val">${avg.toFixed(1)}</span></div>` +
+      `<div class="label" title="synapses">syn <span class="val">${lk}</span></div>`;
+    list.appendChild(row);
+  }
+  if(!roles.length) list.innerHTML='<div class="label">no brains</div>';
+}
+function arc(frac, hue, label){
+  frac=Math.max(0,Math.min(1,frac)); const R=13, C=2*Math.PI*R, off=C*(1-frac);
+  return `<svg class="arc" viewBox="0 0 34 34" role="img" aria-label="${label} notes">
+    <circle cx="17" cy="17" r="${R}" fill="none" stroke="rgba(90,190,255,.14)" stroke-width="3"/>
+    <circle cx="17" cy="17" r="${R}" fill="none" stroke="${glow(hue,62,.95)}" stroke-width="3"
+      stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${off}" transform="rotate(-90 17 17)"/>
+    <text x="17" y="20.5" text-anchor="middle" font-size="10" fill="${glow(hue,78,1)}" font-family="monospace">${label}</text>
+  </svg>`;
+}
+
+// ---- click to inspect ----
+canvas.addEventListener("click", ev=>{
+  const mx=ev.clientX, my=ev.clientY; let hit=null, best=1e9;
+  for(const nd of nodes){ const d=Math.hypot(nd.x-mx,nd.y-my); if(d<nd.r+8 && d<best){best=d;hit=nd;} }
+  if(hit) openNote(hit);
+});
+const panel=document.getElementById("inspect");
+document.getElementById("inspect-close").onclick=()=>{ panel.classList.remove("open"); panel.setAttribute("aria-hidden","true"); panel.setAttribute("inert",""); };
+async function openNote(nd){
+  let d; try{ d=await (await fetch(`/note/${encodeURIComponent(nd.role)}/${encodeURIComponent(nd.slug)}`)).json(); }catch{ return; }
+  document.getElementById("i-role").textContent = nd.role;
+  document.getElementById("i-title").textContent = nd.slug;
+  const chips=document.getElementById("i-chips"); chips.innerHTML="";
+  const fm=d.frontmatter||{};
+  const addChip=(txt,on)=>{ const s=document.createElement("span"); s.className="chip"+(on?" on":""); s.textContent=txt; chips.appendChild(s); };
+  addChip("strength "+(fm.strength ?? nd.strength ?? "?"));
+  if(fm.graduated) addChip("graduated", true);
+  for(const t of (Array.isArray(fm.tags)?fm.tags:[])) addChip("#"+t);
+  for(const p of (Array.isArray(fm.paths)?fm.paths:[])) addChip(p);
+  document.getElementById("body").innerHTML = d.bodyHtml||"<p class='label'>empty note</p>";
+  const lk=document.getElementById("links");
+  lk.innerHTML = (d.links&&d.links.length)
+    ? '<div class="label">Synapses</div>'+d.links.map(l=>`<div class="ln"><span>${l.dir==="out"?"→":"←"} <b>${escapeHtml(l.target)}</b></span><span>w ${l.weight} · ×${l.fires}</span></div>`).join("")
+    : '<div class="label">no synapses</div>';
+  // clicking a wikilink jumps to that note in the same brain
+  document.getElementById("body").querySelectorAll("a.wl").forEach(a=>a.onclick=e=>{
+    e.preventDefault(); const tgt=nodeById.get(nd.role+"/"+a.dataset.slug); if(tgt) openNote(tgt);
+  });
+  panel.classList.add("open"); panel.setAttribute("aria-hidden","false"); panel.removeAttribute("inert");
+}
+
+// ---- boot ----
+(async function(){ await loadGraph(); poll();
+  const st=document.getElementById("status-txt");
+  st.textContent = REDUCED ? "live · reduced motion" : "live · recalls light up";
+  setInterval(loadGraph, 15000);   // pick up new notes/links periodically
+})();
+</script>
+</body>
+</html>
