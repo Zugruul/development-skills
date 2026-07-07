@@ -46,6 +46,16 @@ for p in config.py identity_lib.py validate-config.py next.py similar.py ui-hub.
         echo "FAIL py_compile $p"; fails=$((fails + 1))
     fi
 done
+# anti-pattern: a .py script invoked via `bash` in a skill doc — dies parsing the docstring
+# shellcheck disable=SC2016  # single quotes are intentional: this is a grep pattern, not a shell expansion
+bad_invocations="$(grep -rn 'bash "\${CLAUDE_PLUGIN_ROOT}/scripts/[^"]*\.py"' "$PLUGIN"/skills/ 2>/dev/null || true)"
+if [[ -z "$bad_invocations" ]]; then
+    echo "ok   no skill invokes a .py script via bash"
+else
+    echo "FAIL skill(s) invoke a .py script via bash (must be python3):"
+    echo "$bad_invocations"
+    fails=$((fails + 1))
+fi
 
 echo "== config.py (shared loader) =="
 CT="$(mktemp -d)"; mkdir -p "$CT/.claude"

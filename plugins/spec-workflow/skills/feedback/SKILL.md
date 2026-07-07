@@ -9,7 +9,7 @@ allowed-tools: Bash
 `methodology.feedback` (`true` shorthand or `{enabled, feed, roles, autoTriage}`) gates this skill. Check first:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.py" "$(git rev-parse --show-toplevel)" status
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.py" "$(git rev-parse --show-toplevel)" status
 ```
 
 If it reports `feedback: disabled`, say so and stop — do nothing else.
@@ -20,7 +20,7 @@ If it reports `feedback: disabled`, say so and stop — do nothing else.
 2. **Write the record to a temp file** matching the schema documented in `scripts/feedback.py`'s module docstring (`schemaVersion`, `kind`, `ts`, `iteration`, `source`, `items[]`). For every item, fill `generalized` with a restatement that could apply to ANY project using this plugin — no task ids, no `#N` issue/PR references, no repo-specific names. If an item is genuinely local-only, leave `generalized: ""` (it will only ever be routable as `ignore`).
 3. **Emit it:**
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.py" "$(git rev-parse --show-toplevel)" emit /path/to/record.yaml
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.py" "$(git rev-parse --show-toplevel)" emit /path/to/record.yaml
    ```
    A rejection (`INVALID: ...`) means the generalization contract failed (a task id or `#N` ref leaked into `summary`/`generalized`) or the record is malformed — fix the file and re-emit; never weaken the item to force it through.
 4. **Report** the emit result and the current pending count (`feedback.py <root> status`).
