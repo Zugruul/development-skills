@@ -184,6 +184,9 @@ check_absent "resize() no longer assigns read-only canvas.clientHeight" "canvas.
 check_absent "template has no CDN/external script or asset references" 'src="http' "$(cat "$NVHTML")"
 check "template's importmap points three at the vendored, same-origin file" '"three":"/vendor/three.module.min.js"' "$(cat "$NVHTML")"
 check "template imports three via the importmap specifier, not a URL" 'from "three"' "$(cat "$NVHTML")"
+check "template wires an ambient directional pulse sprite per synapse link" 'kind:"synapsePulse"' "$(cat "$NVHTML")"
+check "ambient synapse pulses are gated by the reduced-motion check" "if(!REDUCED){" "$(cat "$NVHTML")"
+check "ambient pulse position is interpolated from the link's live endpoints (l.a/l.b), not a cached copy" "l.pulse.position.set(l.a.x+(l.b.x-l.a.x)*p, l.a.y+(l.b.y-l.a.y)*p, l.a.z+(l.b.z-l.a.z)*p)" "$(cat "$NVHTML")"
 _nvvendorfile="$PLUGIN/templates/vendor/three.module.min.js"
 if [[ -f "$_nvvendorfile" ]]; then
     got_sha="$(shasum -a 256 "$_nvvendorfile" | awk '{print $1}')"
