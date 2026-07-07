@@ -110,9 +110,12 @@ case "${1:-}" in
             sleep 0.3
         done
         [[ -z "$id" ]] && { echo "ERROR: issue #$num was created and added, but never became visible in the board item list (gave up after 10 attempts) — check the board manually" >&2; exit 1; }
-        "$0" move "$num" "$FIRST_STATUS" && "$0" prio "$num" "$prio" ||
-            { echo "ERROR: issue #$num is on the board but move/prio failed" >&2; exit 1; }
-        echo "filed bug #$num [$prio]"
+        if "$0" move "$num" "$FIRST_STATUS" && "$0" prio "$num" "$prio"; then
+            echo "filed bug #$num [$prio]"
+        else
+            echo "ERROR: issue #$num is on the board but move/prio failed" >&2
+            exit 1
+        fi
         ;;
     list)
         gh project item-list "$PN" --owner "$OWNER" --format json --limit 400 \
