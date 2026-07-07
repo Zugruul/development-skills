@@ -41,7 +41,7 @@ Constraint for all of §6: `board.sh` is the ONLY board access; similarity/dedup
 - **§6.1** WHEN `/find-task <query>` is invoked THE SYSTEM SHALL search existing board issues (open and closed) by title and body and print ranked matches with issue number, status, and score.
 - **§6.2** WHEN `/create-inbound <description>` is invoked THE SYSTEM SHALL run the §6.1 search first and present likely duplicates before creating anything.
 - **§6.3** IF a high-confidence duplicate exists THEN THE SYSTEM SHALL NOT create a new issue without explicit confirmation (default: comment on the existing issue instead).
-- **§6.4** WHEN an inbound task is created THE SYSTEM SHALL mark it as inbound (see Open question OQ-1), assign a priority, and add it to the board so `next.py` can pick it.
+- **§6.4** WHEN an inbound task is created THE SYSTEM SHALL mark it as inbound with the GitHub label `inbound` (Status stays `Backlog`, no dedicated inbound status column), assign a priority, and add it to the board so `next.py` can pick it.
 - **§6.5** WHERE the match confidence is medium THE SYSTEM SHALL follow the user's OQ-4 decision (default: ask the human).
 
 ## §7 Hardening (E1)
@@ -89,10 +89,10 @@ Merge gate = `tests/run-tests.sh` + `shellcheck -x` over all shell + `claude plu
 
 ## §12 Open questions
 
-| id | question | owner | default if unanswered |
-|---|---|---|---|
-| OQ-1 | Inbound tasks: dedicated Status vs a label? | user (being decided in the find-task design session) | label `inbound`, Status stays Backlog |
-| OQ-2 | New `board.sh add` verb vs generalizing `bug`? | user (same session) | generalize `bug` → `add` with a type flag |
-| OQ-3 | One capture skill or two (`/find-task` + `/create-inbound`)? | user (same session) | two skills |
-| OQ-4 | Medium-confidence duplicate behavior? | user (same session) | ask the human |
-| OQ-5 | Telemetry storage? | orchestrator | `.claude/telemetry.jsonl`, gitignored |
+| id | question | owner | default if unanswered | status |
+|---|---|---|---|---|
+| OQ-1 | Inbound tasks: dedicated Status vs a label? | user (decided in the find-task/create-inbound design session) | label `inbound`, Status stays Backlog | **decided**: label `inbound`, Status stays Backlog |
+| OQ-2 | New `board.sh add` verb vs generalizing `bug`? | user (same session) | generalize `bug` → `add` with a type flag | **decided**: `board.sh add [--type bug\|feature\|inbound]`; `bug` is a thin alias of `add --type bug` |
+| OQ-3 | One capture skill or two (`/find-task` + `/create-inbound`)? | user (same session) | two skills | **decided**: two skills — `find-task` (read side, shipped #10) and `create-inbound` (write side, #11) |
+| OQ-4 | Medium-confidence duplicate behavior? | user (same session) | ask the human | **decided**: ask the human via AskUserQuestion; if absent or no answer, do NOT create — print the ranked candidates and the pending description, and stop |
+| OQ-5 | Telemetry storage? | orchestrator | `.claude/telemetry.jsonl`, gitignored | open |
