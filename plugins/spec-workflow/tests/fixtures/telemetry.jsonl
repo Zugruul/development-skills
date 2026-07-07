@@ -1,0 +1,18 @@
+
+{"kind":"transition","task":"10","from":"","to":"In progress","ts":"2026-01-01T00:00:00Z"}
+{"kind":"transition","task":"10","from":"In progress","to":"In review","ts":"2026-01-01T04:00:00Z"}
+{"kind":"transition","task":"10","from":"In review","to":"Done","ts":"2026-01-01T06:00:00Z"}
+{"kind":"gate","task":"10","ok":true,"ts":"2026-01-01T03:30:00Z"}
+{"kind":"review-round","task":"10","round":1,"verdict":"approved","ts":"2026-01-01T05:00:00Z"}
+{"kind":"task-close","task":"10","estimate":3,"ts":"2026-01-01T06:00:00Z"}
+{"kind":"transition","task":"11","from":"","to":"In progress","ts":"2026-01-02T00:00:00Z"}
+{"kind":"transition","task":"11","from":"In progress","to":"In review","ts":"2026-01-02T08:00:00Z"}
+{"kind":"transition","task":"11","from":"In review","to":"Done","ts":"2026-01-02T10:00:00Z"}
+{"kind":"gate","task":"11","ok":false,"ts":"2026-01-02T06:00:00Z"}
+{"kind":"gate","task":"11","ok":true,"ts":"2026-01-02T07:30:00Z"}
+{"kind":"review-round","task":"11","round":1,"verdict":"changes-requested","ts":"2026-01-02T09:00:00Z"}
+{"kind":"review-round","task":"11","round":2,"verdict":"approved","ts":"2026-01-02T09:30:00Z"}
+{"kind":"task-close","task":"11","estimate":5,"ts":"2026-01-02T10:00:00Z"}
+{"kind":"transition","task":"12","from":"","to":"In progress","ts":"2026-01-03T00:00:00Z"}
+not-json-garbage-line
+{"kind":"totally-unknown","task":"99","ts":"2026-01-04T00:00:00Z"}
