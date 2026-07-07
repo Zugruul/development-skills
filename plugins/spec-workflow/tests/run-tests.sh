@@ -119,6 +119,13 @@ check "no-match query: exits 0" "rc=0" "$out"
 check_absent "no-match query: no high tier" $'high\t' "$out"
 check_absent "no-match query: no medium tier" $'medium\t' "$out"
 
+export SIMILAR_ISSUES_FILE="$FIX/issues.control-chars.json"
+out="$(python3 "$SIM" "$HERE" "weird title with control chars")"
+lines="$(wc -l <<<"$out" | tr -d ' ')"
+check "control chars in title: single-line output" "1" "$lines"
+fields="$(awk -F'\t' '{print NF; exit}' <<<"$out")"
+check "control chars in title: 5 tab-separated fields" "5" "$fields"
+
 unset SIMILAR_ISSUES_FILE
 
 echo "== preflight =="

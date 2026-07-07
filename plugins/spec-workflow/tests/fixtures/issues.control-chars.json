@@ -1,0 +1,10 @@
+{
+  "issues": [
+    {
+      "number": 55,
+      "title": "Weird\ttitle\nwith control chars",
+      "body": "Irrelevant body text unrelated to the query subject matter here.",
+      "status": "OPEN"
+    }
+  ]
+}
