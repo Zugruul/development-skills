@@ -10,6 +10,7 @@
 #   board.sh est  <issue#> <points>   # set Estimate
 #   board.sh bug  "<title>" <prio> [<origin-issue#>]   # file a bug into Backlog
 #   board.sh list [status]            # tab-separated: status, priority, #, title
+#   board.sh issues                   # open+closed dump for similar.py: {"issues":[{number,title,body,status},...]}
 #   board.sh comment <issue#> <<'EOF' ... EOF          # reply to humans on the issue (body on stdin)
 #   board.sh edit-body <issue#> <file>                 # replace issue body (updated acceptance criteria)
 #   board.sh fields                   # discover field + option ids (used by setup-project)
@@ -131,6 +132,19 @@ case "${1:-}" in
         gh project item-list "$PN" --owner "$OWNER" --format json --limit 400 \
             -q ".items[] | select((\"${2:-}\"==\"\") or (.status==\"${2:-}\")) | \"\(.status // \"-\")\t\(.priority // \"-\")\t#\(.content.number)\t\(.title // .content.title)\""
         ;;
+    issues)
+        # Read-only dump for the dedup pipeline (similar.py). This is the ONLY gh call
+        # for the /find-task flow — board.sh stays the sole live board/gh access point.
+        out="$(gh issue list -R "$REPO" --state all --limit 500 --json number,title,body,state)" ||
+            { echo "ERROR: gh issue list failed" >&2; exit 1; }
+        python3 -c '
+import json, sys
+items = json.load(sys.stdin)
+issues = [{"number": it["number"], "title": it.get("title") or "",
+           "body": it.get("body") or "", "status": it.get("state") or ""} for it in items]
+print(json.dumps({"issues": issues}))
+' <<<"$out" || { echo "ERROR: failed to transform gh issue list output" >&2; exit 1; }
+        ;;
     comment)
         gh issue comment "$2" -R "$REPO" --body-file - && echo "commented on #$2"
         ;;
@@ -152,7 +166,7 @@ for f in json.load(sys.stdin)["fields"]:
         exec python3 "$HERE/telemetry.py" "$ROOT" metrics
         ;;
     *)
-        echo "usage: board.sh {next|show|move|prio|est|bug|list|comment|edit-body|fields|config|metrics} ..." >&2
+        echo "usage: board.sh {next|show|move|prio|est|bug|list|issues|comment|edit-body|fields|config|metrics} ..." >&2
         exit 1
         ;;
 esac

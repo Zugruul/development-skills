@@ -1579,6 +1579,7 @@ if [[ -f "$FTSKILL" ]]; then echo "ok   find-task/SKILL.md exists"; else echo "F
 check "find-task SKILL.md has allowed-tools frontmatter" "allowed-tools: Bash" "$(cat "$FTSKILL" 2>/dev/null)"
 check "find-task SKILL.md wires board.sh issues" "board.sh\" issues" "$(cat "$FTSKILL" 2>/dev/null)"
 check "find-task SKILL.md invokes similar.py via python3" "python3 \"\${CLAUDE_PLUGIN_ROOT}/scripts/similar.py\"" "$(cat "$FTSKILL" 2>/dev/null)"
+# shellcheck disable=SC2016  # single quotes are intentional: literal grep pattern, not shell expansion
 check_absent "find-task SKILL.md never invokes similar.py via bash" 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/similar.py"' "$(cat "$FTSKILL" 2>/dev/null)"
 
 echo
