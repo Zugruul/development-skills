@@ -115,6 +115,6 @@ paths:
     specDeltaDir: docs/spec-deltas
 methodology:
     tdd: true
-    maxInProgress: 1
+    maxInProgress: 3
     autoMerge: true
     mergeMethod: squash
