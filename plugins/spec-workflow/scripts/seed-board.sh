@@ -36,7 +36,6 @@ sh("STATUS_FIRST_ID", list(b["fields"]["status"]["options"].values())[0])
 sh("PRIO_FIELD", b["fields"]["priority"]["fieldId"])
 sh("EST_FIELD", b["fields"].get("estimate", {}).get("fieldId", ""))
 sh("FEATURE_LABEL", b.get("labels", {}).get("feature", "type:feature"))
-sh("BUG_LABEL", b.get("labels", {}).get("bug", "type:bug"))
 sh("GATE_CMD", cfg["commands"]["gate"])
 PY
 )"
@@ -65,8 +64,7 @@ PY
 read_tasks() { grep -vE '^\s*(#|$)' "$TASKS_FILE"; }
 
 echo "==> ensuring labels"
-gh label create "$FEATURE_LABEL" -R "$REPO" -c "#1D76DB" 2>/dev/null || true
-gh label create "$BUG_LABEL" -R "$REPO" -c "#D73A4A" 2>/dev/null || true
+bash "$HERE/board.sh" ensure-labels || { echo "ERROR: ensure-labels failed" >&2; exit 1; }
 while IFS='|' read -r id prio sp epic title; do
     gh label create "epic:$epic" -R "$REPO" -c "#5319E7" 2>/dev/null || true
 done < <(read_tasks)

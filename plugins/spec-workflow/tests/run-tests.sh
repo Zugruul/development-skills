@@ -1118,6 +1118,89 @@ check "add: unknown --type exits nonzero" "rc=1" "$out"
 
 rm -rf "$AG" "$AGH" "$LOGA1" "$CCA1" "$LOGA2" "$CCA2" "$LOGA3" "$CCA3" "$LOGA4" "$CCA4" "$LOGA5" "$CCA5"
 
+echo "== board.sh ensure-labels (SW-046: a configured label must exist on the repo before a runtime path applies it) =="
+EG="$(mktemp -d)"; mkdir -p "$EG/.claude"
+cp "$FIX/valid.project.yaml" "$EG/.claude/project.yaml"
+EGH="$(mktemp -d)"
+cat >"$EGH/gh" <<'FAKE'
+#!/usr/bin/env bash
+set -uo pipefail
+echo "$*" >>"$FAKE_GH_LOG"
+case "$1 $2" in
+    "label list")
+        cat "$LABELS_FILE" 2>/dev/null || true
+        ;;
+    "label create")
+        echo "$3" >>"$LABELS_FILE"
+        ;;
+    "issue create")
+        label=""; prev=""
+        for a in "$@"; do
+            if [[ "$prev" == "--label" ]]; then label="$a"; fi
+            prev="$a"
+        done
+        if [[ -n "$label" ]] && ! grep -Fxq "$label" "$LABELS_FILE" 2>/dev/null; then
+            echo "could not add label: '$label' not found" >&2
+            exit 1
+        fi
+        echo "https://github.com/fixture-owner/fixture-project/issues/${FAKE_GH_ISSUE_NUM:-701}"
+        ;;
+    "project item-add")
+        : # unconditionally OK for this fixture
+        ;;
+    "project item-list")
+        echo "{\"items\":[{\"id\":\"ITEM_${FAKE_GH_ISSUE_NUM:-701}\",\"content\":{\"number\":${FAKE_GH_ISSUE_NUM:-701}}}]}"
+        ;;
+    "project item-edit")
+        echo "edited"
+        ;;
+    *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
+esac
+FAKE
+chmod +x "$EGH/gh"
+
+# scenario 1: type:bug and type:feature already exist (the real incident's starting state);
+# inbound does not -- ensure-labels must create only what's missing.
+LF1="$(mktemp)"; printf 'type:bug\ntype:feature\n' >"$LF1"
+LOGE1="$(mktemp)"
+out="$(cd "$EG" && PATH="$EGH:$PATH" FAKE_GH_LOG="$LOGE1" LABELS_FILE="$LF1" bash "$PLUGIN/scripts/board.sh" ensure-labels 2>&1; echo "rc=$?")"
+check "ensure-labels: exits 0" "rc=0" "$out"
+check "ensure-labels: creates the missing inbound label" "created label: inbound" "$out"
+check "ensure-labels: reports existing bug label without recreating it" "label exists: type:bug" "$out"
+check "ensure-labels: reports existing feature label without recreating it" "label exists: type:feature" "$out"
+check_absent "ensure-labels: never re-creates type:bug" "created label: type:bug" "$out"
+check_absent "ensure-labels: never re-creates type:feature" "created label: type:feature" "$out"
+check "ensure-labels: gh label create invoked for the missing label only" "label create inbound -R fixture-owner/fixture-project" "$(cat "$LOGE1")"
+check_absent "ensure-labels: no gh label create call for the already-existing bug label" "label create type:bug" "$(cat "$LOGE1")"
+
+# scenario 2: idempotent re-run -- now all three exist, nothing is (re)created
+LOGE2="$(mktemp)"
+out="$(cd "$EG" && PATH="$EGH:$PATH" FAKE_GH_LOG="$LOGE2" LABELS_FILE="$LF1" bash "$PLUGIN/scripts/board.sh" ensure-labels 2>&1; echo "rc=$?")"
+check "ensure-labels: idempotent re-run exits 0" "rc=0" "$out"
+check_absent "ensure-labels: idempotent re-run creates nothing" "created label:" "$out"
+rm -f "$LF1" "$LOGE1" "$LOGE2"
+
+# scenario 3 (the live incident, reproduced then fixed): board.sh add --type inbound fails
+# while the inbound label doesn't exist on the repo (RED), then succeeds once ensure-labels
+# has created it (GREEN) -- proves ensure-labels is what closes the gap, not a coincidence.
+LF2="$(mktemp)"; printf 'type:bug\ntype:feature\n' >"$LF2"
+LOGB1="$(mktemp)"
+out="$(cd "$EG" && PATH="$EGH:$PATH" FAKE_GH_LOG="$LOGB1" LABELS_FILE="$LF2" FAKE_GH_ISSUE_NUM=701 \
+    bash "$PLUGIN/scripts/board.sh" add --type inbound "standup idea" P2 2>&1; echo "rc=$?")"
+check "add --type inbound: RED -- fails while the configured label doesn't exist on the repo" "could not add label: 'inbound' not found" "$out"
+check "add --type inbound: RED -- exits nonzero" "rc=1" "$out"
+check_absent "add --type inbound: RED -- no false success line" "filed inbound" "$out"
+
+( cd "$EG" && PATH="$EGH:$PATH" FAKE_GH_LOG="$(mktemp)" LABELS_FILE="$LF2" bash "$PLUGIN/scripts/board.sh" ensure-labels >/dev/null 2>&1 )
+
+LOGB2="$(mktemp)"
+out="$(cd "$EG" && PATH="$EGH:$PATH" FAKE_GH_LOG="$LOGB2" LABELS_FILE="$LF2" FAKE_GH_ISSUE_NUM=702 \
+    bash "$PLUGIN/scripts/board.sh" add --type inbound "standup idea" P2 2>&1; echo "rc=$?")"
+check "add --type inbound: GREEN -- succeeds once ensure-labels has created the label" "filed inbound #702 [P2]" "$out"
+check "add --type inbound: GREEN -- exits 0" "rc=0" "$out"
+
+rm -rf "$EG" "$EGH" "$LF2" "$LOGB1" "$LOGB2"
+
 echo "== create-inbound SKILL.md contract =="
 CISKILL="$PLUGIN/skills/create-inbound/SKILL.md"
 if [[ -f "$CISKILL" ]]; then echo "ok   create-inbound/SKILL.md exists"; else echo "FAIL create-inbound/SKILL.md missing"; fails=$((fails + 1)); fi
@@ -1844,7 +1927,8 @@ _limit_of() {
     printf '400'
 }
 case "$1 $2" in
-    "label create") exit 0 ;;
+    "label list") echo "$*" >>"$FAKE_GH_LOG"; echo "" ;;
+    "label create") echo "$*" >>"$FAKE_GH_LOG"; exit 0 ;;
     "issue list")
         echo "$*" >>"$FAKE_GH_LOG"
         if [[ "$*" == *"--search"* ]]; then
@@ -1910,6 +1994,10 @@ else echo "FAIL seed-board: expected >=2 issue-list calls, got $callssb_i"; fail
 callssb_l="$(cat "$CCSB_L")"
 if [[ "$callssb_l" -ge 2 ]]; then echo "ok   seed-board: item-list MAP build was re-paged (>=2 calls) to find FX-005's item on page 2"
 else echo "FAIL seed-board: expected >=2 item-list calls, got $callssb_l"; fails=$((fails + 1)); fi
+check "seed-board: calls board.sh ensure-labels (label list issued)" "label list -R fixture-owner/fixture-project" "$(cat "$LOGSB")"
+check "seed-board: ensure-labels creates the configured bug label" "label create type:bug" "$(cat "$LOGSB")"
+check "seed-board: ensure-labels creates the configured feature label" "label create type:feature" "$(cat "$LOGSB")"
+check "seed-board: ensure-labels creates the (default) inbound label" "label create inbound" "$(cat "$LOGSB")"
 
 rm -rf "$SBG" "$SBGH" "$SBTASKS" "$LOGSB" "$CCSB_I" "$CCSB_L"
 

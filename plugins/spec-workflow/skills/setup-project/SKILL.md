@@ -55,6 +55,10 @@ Each spec is a design document plus a backlog of numbered tasks. One repo can ha
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" config
    ```
+4. Ensure every configured label (`labels.bug`/`labels.feature`/`labels.inbound`) exists on the repo — declaring a label name in config does not create it, and any runtime path that applies a missing label (e.g. `board.sh add --type inbound`) fails until it does. Idempotent, safe to re-run:
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" ensure-labels
+   ```
 
 ## Phase 5 — repo hygiene + editor wiring
 - Add the local flags + state to `.gitignore`: `printf '.claude/CHECKPOINT\n.claude/ITERATIVE_UI_OFF\n.claude/ui-hub/\n.claude/gate-pass\n.claude/feedback/\n.claude/telemetry.jsonl\n' >> .gitignore`

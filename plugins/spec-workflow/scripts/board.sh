@@ -10,6 +10,7 @@
 #   board.sh est  <issue#> <points>   # set Estimate
 #   board.sh add  [--type bug|feature|inbound] "<title>" [<prio>] [<origin-issue#>]  # file work into Backlog
 #   board.sh bug  "<title>" <prio> [<origin-issue#>]   # alias for: add --type bug
+#   board.sh ensure-labels            # idempotent: create any configured label (bug/feature/inbound) missing on the repo
 #   board.sh list [status]            # tab-separated: status, priority, #, title
 #   board.sh issues                   # open+closed dump for similar.py: {"issues":[{number,title,body,status},...]}
 #   board.sh comment <issue#> <<'EOF' ... EOF          # reply to humans on the issue (body on stdin)
@@ -71,6 +72,20 @@ for it in data.get("items", []):
         print(it["id"])
         break
 ' "$1"
+}
+
+_ensure_label() { # name color description -> create iff missing (uses $_EXISTING_LABELS, set by the ensure-labels verb)
+    local name="$1" color="$2" desc="$3"
+    if grep -Fxq "$name" <<<"$_EXISTING_LABELS"; then
+        echo "label exists: $name"
+        return 0
+    fi
+    if gh label create "$name" -R "$REPO" --color "$color" --description "$desc" >/dev/null; then
+        echo "created label: $name"
+    else
+        echo "ERROR: could not create label '$name'" >&2
+        return 1
+    fi
 }
 
 _board_add() { # type title [prio] [origin-issue#] -> creates + boards one issue; shared by add/bug
@@ -159,6 +174,14 @@ case "${1:-}" in
         gh project item-edit --id "$id" --project-id "$PID" --field-id "$EST_FIELD" --number "$3" >/dev/null &&
             echo "est #$2 -> $3"
         ;;
+    ensure-labels)
+        _EXISTING_LABELS="$(gh label list -R "$REPO" --json name -q '.[].name' 2>/dev/null || true)"
+        rc=0
+        _ensure_label "$BUG_LABEL" "D73A4A" "Bug found in previously released work" || rc=1
+        _ensure_label "$FEATURE_LABEL" "0E8A16" "New feature or enhancement" || rc=1
+        _ensure_label "$INBOUND_LABEL" "5319E7" "Captured via create-inbound, pending triage" || rc=1
+        exit "$rc"
+        ;;
     add)
         shift
         type="feature"
@@ -224,7 +247,7 @@ for f in json.load(sys.stdin)["fields"]:
         exec python3 "$HERE/telemetry.py" "$ROOT" metrics
         ;;
     *)
-        echo "usage: board.sh {next|show|move|prio|est|add|bug|list|issues|comment|edit-body|fields|config|metrics} ..." >&2
+        echo "usage: board.sh {next|show|move|prio|est|add|bug|ensure-labels|list|issues|comment|edit-body|fields|config|metrics} ..." >&2
         exit 1
         ;;
 esac
