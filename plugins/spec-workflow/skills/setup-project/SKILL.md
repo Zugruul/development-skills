@@ -24,7 +24,10 @@ Each spec is a design document plus a backlog of numbered tasks. One repo can ha
 - For each spec, a backlog doc (e.g. `docs/BACKLOG.md`) should list every task: `<PREFIX>-<number>`, title, epic, priority, story points, acceptance criteria, Definition of Done. Number tasks in per-epic ranges (e.g. E0 = 001–009, E1 = 010–019, infra = 090–099) so ranges map cleanly to epics.
 
 ## Phase 3 — GitHub Project board
-Create one board per `boards[]` entry you plan (usually one). Exact commands: read `${CLAUDE_PLUGIN_ROOT}/skills/setup-project/references/github-project-setup.md` **now** and follow it. It covers: creating the Project, adding the Status options, Priority and Estimate fields.
+1. **Choose the board source — NEVER create a Project implicitly.** Creating a new Project is allowed only when the user explicitly chose it (here or in their original request). Unless the request already named an existing Project or explicitly asked for a new one, list the candidates (`gh project list --owner <owner> --format json`) and AskUserQuestion (header "Board"):
+   - **Use an existing Project (Recommended when any exist)** — offer the discovered Projects as options (title + number). Setup then only WIRES it: adds missing fields/options per the reference, confirms before altering any existing field.
+   - **Create a new Project** — the only path that runs `gh project create`; requires this explicit selection.
+2. Exact commands: read `${CLAUDE_PLUGIN_ROOT}/skills/setup-project/references/github-project-setup.md` **now** and follow it (its §1 creation step only on the explicit create path). It covers Status options, Priority and Estimate fields.
 
 ## Phase 4 — write .claude/project.yaml
 1. Auto-fill the board ids (creates the config from the template if none exists, else updates `boards[0]` in place):

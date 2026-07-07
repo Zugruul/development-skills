@@ -3,6 +3,7 @@
 Create a Projects (v2) board and collect every id `.claude/project.yaml` needs. Replace `OWNER` (user/org) and `OWNER/REPO` throughout.
 
 ## 1. Create the project
+Only on the EXPLICIT create path (setup-project Phase 3 — the user chose "Create a new Project" or asked for one). Default is wiring an existing Project: discover with `gh project list --owner OWNER --format json` and skip to §2.
 ```bash
 gh project create --owner OWNER --title "My Platform Build"
 # note the printed number, e.g. 3  -> boards[].projectNumber
