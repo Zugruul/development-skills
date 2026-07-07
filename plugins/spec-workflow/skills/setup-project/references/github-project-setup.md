@@ -9,9 +9,26 @@ gh project create --owner OWNER --title "My Platform Build"
 ```
 
 ## 2. Fields
-Projects come with a single-select **Status** field, but its options must be edited in the web UI (the CLI cannot edit options of an existing field). Two options:
+Projects come with a single-select **Status** field. `gh project field-*` cannot edit an existing field's options, but the GraphQL API can — no web UI needed:
 
-**A (web UI, recommended for Status):** open `https://github.com/users/OWNER/projects/<number>/settings/fields` (or `/orgs/OWNER/...`) and edit **Status** so its options are exactly your intended `statusFlow`, e.g. `Backlog, In progress, In review, QA, Ready, Deployed`. Ask the human to do this if you cannot.
+**A (GraphQL, recommended for Status):** get the Status field id from `gh project field-list <number> --owner OWNER --format json`, then replace its options in one mutation (this REPLACES the whole option set — list every option, in `statusFlow` order; the response carries each option's 8-char id → `fields.status.options`):
+```bash
+gh api graphql -f query='
+mutation {
+  updateProjectV2Field(input: {
+    fieldId: "PVTSSF_..."
+    singleSelectOptions: [
+      {name: "Backlog", color: GRAY, description: ""}
+      {name: "In progress", color: YELLOW, description: ""}
+      {name: "In review", color: ORANGE, description: ""}
+      {name: "QA", color: BLUE, description: ""}
+      {name: "Ready", color: GREEN, description: ""}
+      {name: "Deployed", color: PURPLE, description: ""}
+    ]
+  }) { projectV2Field { ... on ProjectV2SingleSelectField { options { id name } } } }
+}'
+```
+Web-UI fallback: `https://github.com/users/OWNER/projects/<number>/settings/fields` (or `/orgs/OWNER/...`) — ask the human if needed.
 
 **B (CLI, for new fields):** Priority and Estimate can be created directly:
 ```bash

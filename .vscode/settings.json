@@ -1,0 +1,5 @@
+{
+    "yaml.schemas": {
+        "https://raw.githubusercontent.com/event-sorcerer/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json": ".claude/project.yaml"
+    }
+}

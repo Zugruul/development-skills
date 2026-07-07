@@ -1,0 +1,120 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/event-sorcerer/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json
+schemaVersion: 2
+project:
+    name: development-skills
+    description: Claude Code plugin marketplace; spec-workflow (the autonomous build-loop plugin) develops itself here — dogfood.
+    mainBranch: main
+    branchPattern: sw/<id>-<slug>
+boards:
+-   id: main
+    provider: github-project
+    owner: event-sorcerer
+    repo: event-sorcerer/development-skills
+    projectNumber: 1
+    projectId: PVT_kwDODPbkJc4Bcroj
+    fields:
+        status:
+            fieldId: PVTSSF_lADODPbkJc4BcrojzhXSnfk
+            options:
+                Backlog: 02f7a074
+                In progress: 025995fe
+                In review: 22fde8a1
+                QA: 5b50235c
+                Ready: 232646c9
+                Deployed: '24850724'
+        priority:
+            fieldId: PVTSSF_lADODPbkJc4BcrojzhXSnjs
+            options:
+                P0: c5791e7b
+                P1: b2083587
+                P2: fd67d765
+        estimate:
+            fieldId: PVTF_lADODPbkJc4BcrojzhXSnkE
+    statusFlow:
+    - Backlog
+    - In progress
+    - In review
+    - QA
+    - Ready
+    - Deployed
+    labels:
+        bug: type:bug
+        feature: type:feature
+specs:
+-   id: sw
+    title: spec-workflow v1 development (SPEC.md)
+    board: main
+    specPath: SPEC.md
+    backlogPath: docs/BACKLOG.md
+    taskPrefix: SW
+    epics:
+    -   id: E0
+        title: Workflow UX
+        taskRanges:
+        -   - 1
+            - 9
+    -   id: E1
+        title: Hardening
+        taskRanges:
+        -   - 10
+            - 19
+    -   id: E2
+        title: Self-improvement completion
+        taskRanges:
+        -   - 20
+            - 29
+    invariants:
+    - Scripts are bash 3.2-compatible, use `set -uo pipefail`, and pass shellcheck -x.
+    - Python is stdlib-only; PyYAML is the sole permitted dependency.
+    - Scripts decide, the model obeys — decisions live in tested scripts, never in prose instructions.
+    - board.sh is the only board access; never call `gh project` directly from skills or briefs.
+    - Brains are orchestrator-mediated only; no role ever reads another role's brain directory.
+    - Red-first TDD — a failing-test commit precedes implementation; the gate is green before In review.
+    - Documentation covered by docs[] is updated in the same PR as the behavior it describes.
+    - Model ids use full nomenclature only (e.g. claude-sonnet-5[1m]), never shorthand.
+    - Agent names are role-prefix-first with a meaningful scope suffix (dev-sw001), never bare counters.
+    - No generic Claude co-author trailers on in-workflow commits; role identities are the attribution.
+commands:
+    gate: bash plugins/spec-workflow/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/tests/*.sh && claude plugin validate plugins/spec-workflow
+docs:
+-   id: root
+    path: README.md
+    covers:
+    - '**'
+    notes: marketplace install/usage + skills table; update when skills or commands change
+-   id: plugin
+    path: plugins/spec-workflow/README.md
+    covers:
+    - plugins/spec-workflow/**
+    notes: the plugin's user-facing docs — skills table, scripts list, config surface; every behavior/config change updates it
+-   id: spec
+    path: SPEC.md
+    covers:
+    - plugins/spec-workflow/**
+    notes: contract for tracked development; changed contracts flow via docs/spec-deltas, never direct edits
+delegation:
+    identities:
+        dev:
+        -   name: Dev Agent - {name}
+            email: '{local}+dev_agent@{domain}'
+            models:
+            - claude-sonnet-5
+        reviewer:
+            name: Reviewer Agent - {name}
+            email: '{local}+reviewer_agent@{domain}'
+            models:
+            - claude-sonnet-5
+            - claude-sonnet-5[1m]
+        orchestrator:
+            name: Orchestrator Agent - {name}
+            email: '{local}+orchestrator_agent@{domain}'
+paths:
+    handoffDir: docs/handoffs
+    checkpointFile: .claude/CHECKPOINT
+    designDir: docs/design
+    specDeltaDir: docs/spec-deltas
+methodology:
+    tdd: true
+    maxInProgress: 1
+    autoMerge: true
+    mergeMethod: squash
