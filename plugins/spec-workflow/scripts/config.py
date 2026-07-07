@@ -16,9 +16,11 @@ Library:
     find_config(root=None) -> str | None    # resolved path, no parse
 
 CLI (for bash callers):
-    config.py <root> path              # print resolved config path (empty if none)
-    config.py <root> get <dot.path>    # print a value (empty if absent); list/dict -> JSON
-    config.py <root> json              # print the whole normalized config as JSON
+    config.py <root> path                        # print resolved config path (empty if none)
+    config.py <root> get <dot.path>              # print a value (empty if absent); list/dict -> JSON
+    config.py <root> set <dot.path> <json-value> # surgically set a key (YAML: only that key's
+                                                 #   line changes — comments/formatting survive)
+    config.py <root> json                        # print the whole normalized config as JSON
 Dot paths index lists by integer segment, e.g. delegation.identities.dev.0.models.1.
 """
 import json
@@ -176,15 +178,141 @@ def dig(cfg, dotpath):
     return node
 
 
+# --- surgical config writes (the ONE place that edits a config file) --------------
+# YAML: a dependency-free line-level edit that changes ONLY the target key, leaving
+# every other byte — comments, blank lines, flow styles, trailing newline — untouched.
+# JSON (legacy): rewritten with json.dump (no comments to preserve).
+_STEP = 4  # config indent unit
+
+
+def _yaml_literal(v):
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, list):
+        return "[" + ", ".join(json.dumps(x, ensure_ascii=False) for x in v) + "]"
+    if isinstance(v, (int, float)):
+        return json.dumps(v)
+    return json.dumps(v, ensure_ascii=False)  # string -> double-quoted scalar
+
+
+def _indent_of(line):
+    return len(line) - len(line.lstrip(" "))
+
+
+def _is_key(line, key):
+    s = line.strip()
+    return s == key + ":" or s.startswith(key + ": ") or s.startswith(key + ":\t")
+
+
+def _block_end(lines, start, parent_indent):
+    for j in range(start, len(lines)):
+        s = lines[j].strip()
+        if s and not s.startswith("#") and _indent_of(lines[j]) <= parent_indent:
+            return j
+    return len(lines)
+
+
+def _find_child(lines, lo, hi, key, parent_indent):
+    child_indent = None
+    for j in range(lo, hi):
+        s = lines[j].strip()
+        if not s or s.startswith("#"):
+            continue
+        ind = _indent_of(lines[j])
+        if ind <= parent_indent:
+            break
+        if child_indent is None:
+            child_indent = ind
+        if ind == child_indent and _is_key(lines[j], key):
+            return j
+    return None
+
+
+def _replace_value(lines, idx, value):
+    ind = _indent_of(lines[idx])
+    key = lines[idx].strip().split(":", 1)[0]
+    end = idx + 1  # drop any block-style continuation (deeper-indented value lines)
+    while end < len(lines):
+        s = lines[end].strip()
+        if not s or s.startswith("#") or _indent_of(lines[end]) <= ind:
+            break
+        end += 1
+    return lines[:idx] + [f"{' ' * ind}{key}: {value}"] + lines[end:]
+
+
+def _insert(lines, hi, remaining, parent_indent, value):
+    pos = hi  # insert before any trailing blank lines (keeps the file's final newline last)
+    while pos > 0 and lines[pos - 1].strip() == "":
+        pos -= 1
+    base = parent_indent + _STEP
+    block = []
+    for depth, k in enumerate(remaining):
+        ind = base + depth * _STEP
+        block.append(f"{' ' * ind}{k}: {value}" if depth == len(remaining) - 1 else f"{' ' * ind}{k}:")
+    return lines[:pos] + block + lines[pos:]
+
+
+def set_yaml_text(text, keys, value_literal):
+    """Return `text` with the dotted `keys` set to the preformatted `value_literal`."""
+    lines = text.split("\n")  # split/join by \n reproduces bytes exactly (incl. trailing newline)
+    lo, hi, parent_indent = 0, len(lines), -_STEP
+    for depth, key in enumerate(keys):
+        idx = _find_child(lines, lo, hi, key, parent_indent)
+        if idx is None:
+            return "\n".join(_insert(lines, hi, keys[depth:], parent_indent, value_literal))
+        if depth == len(keys) - 1:
+            return "\n".join(_replace_value(lines, idx, value_literal))
+        parent_indent = _indent_of(lines[idx])
+        lo, hi = idx + 1, _block_end(lines, idx + 1, parent_indent)
+    return text
+
+
+def set_config(path, dotpath, value):
+    """Set dotpath=value in the config file at `path`, preserving its format."""
+    keys = dotpath.split(".")
+    if path.endswith((".yaml", ".yml")):
+        new_text = set_yaml_text(open(path).read(), keys, _yaml_literal(value))  # read BEFORE truncating
+        with open(path, "w") as fh:
+            fh.write(new_text)
+    else:
+        cfg = json.load(open(path))
+        node = cfg
+        for k in keys[:-1]:
+            nxt = node.get(k)
+            if not isinstance(nxt, dict):
+                nxt = {}
+                node[k] = nxt
+            node = nxt
+        node[keys[-1]] = value
+        with open(path, "w") as fh:
+            json.dump(cfg, fh, indent=4, ensure_ascii=False)
+            fh.write("\n")
+
+
 def _cli(argv):
     if len(argv) < 2:
-        sys.stderr.write("usage: config.py <root> {path|get <dot.path>|json}\n")
+        sys.stderr.write("usage: config.py <root> {path|get <dot.path>|set <dot.path> <json-value>|json}\n")
         return 2
     root, verb = argv[0], argv[1]
     if verb == "path":
         p = find_config(root)
         if p:
             print(p)
+        return 0
+    if verb == "set":
+        if len(argv) < 4:
+            sys.stderr.write("usage: config.py <root> set <dot.path> <json-value>\n")
+            return 2
+        p = find_config(root)
+        if not p or not os.path.exists(p):
+            sys.stderr.write("config.py set: no config file found\n")
+            return 3
+        try:
+            value = json.loads(argv[3])
+        except ValueError as e:
+            sys.stderr.write(f"config.py set: value must be JSON ({e})\n")
+            return 2
+        set_config(p, argv[2], value)
         return 0
     try:
         cfg = load_config(root)

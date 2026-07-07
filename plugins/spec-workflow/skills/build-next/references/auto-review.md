@@ -19,8 +19,10 @@ from the reviewer identity's allowed set (`bash
 line; default set `claude-sonnet-5[1m]`, `claude-sonnet-5`). For a large diff
 prefer the `[1m]` context so one agent holds the full diff + spec sections +
 design doc at once; a small focused PR can use the cheaper standard-context id.
-`name: pr-reviewer-<task-id>`. Keep this SAME agent for every round of the task
-(continue it via SendMessage) so it remembers what it already flagged.
+`name: pr-reviewer-<pr-number>` (role-prefix FIRST — e.g. `pr-reviewer-pr5`;
+never a bare counter — see §Naming in `concurrency.md`). Keep this SAME agent for
+every round of the task (continue it via SendMessage) so it remembers what it
+already flagged.
 
 Brief (paste real content, never "see above"):
 

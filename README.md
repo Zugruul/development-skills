@@ -73,6 +73,7 @@ Spec-driven autonomous build workflow. A repo declares its boards, specs, epics,
 | `auto-merge` | Toggle autonomous PR review + merge (reviewer agent approves instead of a human) |
 | `pr-review-model` | Show/set the model the autonomous PR reviewer runs on |
 | `agent-identities` | Per-role commit attribution — each person's clone signs agent commits with their own plus-addressed email |
+| `concurrency` | Show/set `methodology.maxInProgress` — sequential (default) vs N parallel implementation lanes |
 | `checkpoint` | Pause/resume the loop via a local flag file |
 | `handoff` | Session/pause handoff document |
 | `dev-up` | Bring up the project's dev stack for QA |

@@ -1,0 +1,21 @@
+---
+name: concurrency
+description: Shows or sets how many tasks the build loop works concurrently (methodology.maxInProgress — the board WIP limit AND the number of parallel implementation lanes). Use when the user asks how many tasks run at once, wants parallel lanes, or wants strictly-sequential building back. With no argument, show the current value and ask.
+allowed-tools: Bash, AskUserQuestion
+---
+
+# Concurrency — show / set
+
+`concurrency.sh` = `bash "${CLAUDE_PLUGIN_ROOT}/scripts/concurrency.sh"`.
+
+`methodology.maxInProgress` is THE concurrency knob: the board WIP limit AND the number of parallel implementation **lanes** (each lane = its own git worktree + branch + dev agent). `1` (default) = strictly sequential. Lane rules: `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/concurrency.md`.
+
+**Invoked with an argument** (`status` / `set <n>`): run `concurrency.sh <args>` and report the output verbatim.
+
+**Invoked with NO argument**: run `concurrency.sh status` for the current value, then AskUserQuestion (single question, header "Concurrency", current value noted in the question). Options:
+
+- **1 — sequential (Recommended)** — description: "One task at a time. Simplest and safest; no lane coordination. The default."
+- **2** — description: "Up to 2 tasks in parallel lanes — only worthwhile when ready tasks don't overlap (different epics/packages)."
+- **3** — description: "Up to 3 parallel lanes. More throughput, more rebase churn — every merge forces the other lanes to rebase."
+
+The user can type any other positive integer via Other. Apply with `concurrency.sh set <choice>` — this surgically edits `methodology.maxInProgress` in `.claude/project.yaml`, a versioned project-wide change; remind the user to commit it. If they pick N>1, note the trade-off: parallel lanes need NON-overlapping tasks (overlap → conflicts), and any merge makes the other lanes rebase — see the concurrency reference.

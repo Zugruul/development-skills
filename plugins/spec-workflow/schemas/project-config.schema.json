@@ -189,7 +189,12 @@
             "properties": {
                 "tdd": { "type": "boolean", "default": true },
                 "isolationSuite": { "type": "string", "description": "Test path glob for the merge-gating isolation suite, if any (e.g. tests/isolation/**)." },
-                "maxInProgress": { "type": "integer", "default": 1 },
+                "maxInProgress": {
+                    "type": "integer",
+                    "default": 1,
+                    "minimum": 1,
+                    "description": "Maximum number of tasks worked CONCURRENTLY — THE concurrency knob. It is both the board WIP limit (enforced by next.py's picker) AND the number of parallel implementation lanes. 1 (default) = strictly sequential, one task at a time (the current behavior). N>1 = up to N tasks in parallel, each in its own git worktree + branch + dev agent — only safe for NON-overlapping tasks (see skills/build-next/references/concurrency.md). Set via the concurrency skill / concurrency.sh."
+                },
                 "iterativeUI": {
                     "type": "boolean",
                     "default": true,
