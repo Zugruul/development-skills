@@ -1,4 +1,19 @@
 {
+  "diff-invariant-artifact-on-refactor->prove-flakiness-fix-on-baseline": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "diff-invariant-artifact-on-refactor->reproduce-findings-two-pass": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "diff-invariant-artifact-on-refactor->reproduce-on-deployment-floor": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "named-attack-class-briefs->reproduce-findings-two-pass": {
     "fires": 0,
     "last": null,
