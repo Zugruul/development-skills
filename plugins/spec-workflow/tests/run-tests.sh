@@ -274,6 +274,101 @@ check "mergeMethod set surgically" "rebase" "$(python3 "$PLUGIN/scripts/config.p
 check "comment still there after method edit" "# reviewerTokenEnv: GH_TOKEN_REVIEWER" "$(cat "$MT/.claude/project.yaml")"
 rm -rf "$MT"
 
+echo "== brain (per-identity zettel memory) =="
+BT="$(mktemp -d)"
+BRAIN="$PLUGIN/scripts/brain.py"
+brain() { python3 "$BRAIN" "$BT" "$@"; }
+
+# mint two dev notes; A wikilinks to B
+printf 'YAML dumps sort keys unless sort_keys=False.\n\nRelated: [[merge-yaml]]\n' \
+    | brain mint dev yaml-key-order --tags yaml,config --paths "scripts/**,**/*.yaml" --source "PR#3 review"
+printf 'Merging YAML needs a deep merge, not dict.update.\n' \
+    | brain mint dev merge-yaml --tags merge --paths "scripts/merge.sh" --source "PR#4"
+
+# direct hit by path glob → full body injected
+out="$(brain recall dev --paths "scripts/foo.sh" --keywords "")"
+check "recall direct hit body" "sort_keys=False" "$out"
+check "recall direct hit title" "yaml-key-order" "$out"
+
+# spreading activation: only A matches by glob, B surfaces via the A->B link
+out="$(brain recall dev --paths "docs/only.yaml" --keywords "")"
+check "recall seeds A via glob" "yaml-key-order" "$out"
+check "recall propagates to linked B" "merge-yaml" "$out"
+
+# keyword seed (tag intersection)
+out="$(brain recall dev --paths "" --keywords "merge")"
+check "recall keyword seed" "merge-yaml" "$out"
+
+# budget truncation → titles only, no bodies
+out="$(brain recall dev --paths "scripts/foo.sh" --keywords "" --budget 8)"
+check "budget truncation keeps a title" "yaml-key-order" "$out"
+check_absent "budget truncation drops bodies" "sort_keys=False" "$out"
+
+# graduated note is excluded from injection but still bridges links
+brain graduate dev yaml-key-order >/dev/null
+out="$(brain recall dev --paths "scripts/foo.sh" --keywords "")"
+check_absent "graduated note not injected" "sort_keys=False" "$out"
+check "graduated note still bridges to B" "merge-yaml" "$out"
+
+# activation log: every line valid JSON with the frozen contract fields
+LOG="$BT/.claude/identities/dev/brain/.activation.jsonl"
+out="$(python3 - "$LOG" <<'PY'
+import json, sys
+seen = set()
+for line in open(sys.argv[1]):
+    line = line.strip()
+    if not line:
+        continue
+    o = json.loads(line)
+    for k in ("ts", "role", "event", "note", "activation"):
+        assert k in o, (k, o)
+    if o["event"] == "hop":
+        assert "link" in o and "->" in o["link"], o
+    seen.add(o["event"])
+print("events:" + ",".join(sorted(seen)))
+PY
+)"
+check "activation log valid json + fields" "events:" "$out"
+check "activation log has seed event" "seed" "$out"
+check "activation log has hop event" "hop" "$out"
+check "activation log has inject event" "inject" "$out"
+
+# directory lists titles + tags, never bodies
+brain directory >/dev/null
+out="$(cat "$BT/.claude/identities/DIRECTORY.md")"
+check "directory lists a slug" "yaml-key-order" "$out"
+check "directory lists tags" "merge" "$out"
+check_absent "directory omits bodies" "sort_keys=False" "$out"
+
+# consult: prints the owner's body, logs to the OWNER, recurs on 2nd
+printf 'Reviewer rule: verify tests exist before approving.\n' \
+    | brain mint reviewer verify-tests --tags review --paths "**/*.test.*" --source "PR#5"
+out="$(brain consult dev reviewer verify-tests)"
+check "consult prints owner body" "verify tests exist" "$out"
+check_absent "consult no recurrence first time" "RECURRENCE" "$out"
+out="$(brain consult dev reviewer verify-tests)"
+check "consult recurrence on 2nd" "RECURRENCE" "$out"
+check "consult recurrence names consumer" "dev's brain" "$out"
+out="$(cat "$BT/.claude/identities/reviewer/brain/.activation.jsonl")"
+check "consult logged to owner brain" '"event": "consult"' "$out"
+check "consult log names consumer" '"consumer": "dev"' "$out"
+
+# prune: a never-fired link off an aged note is flagged (isolated pair, never recalled)
+printf 'Old stale idea.\n\nRelated: [[stale-dst]]\n' \
+    | brain mint dev stale-src --tags stale --paths "nope/**" --source "old"
+printf 'Target of the stale link.\n' \
+    | brain mint dev stale-dst --tags stale --paths "nope2/**" --source "old"
+python3 - "$BT" <<'PY'
+import os, re, sys
+p = os.path.join(sys.argv[1], ".claude/identities/dev/brain/notes/stale-src.md")
+s = open(p).read()
+open(p, "w").write(re.sub(r"created: .*", "created: 2020-01-01", s))
+PY
+brain retro-mark >/dev/null; brain retro-mark >/dev/null; brain retro-mark >/dev/null
+out="$(brain prune dev)"
+check "prune flags never-fired aged link" "stale-src->stale-dst" "$out"
+rm -rf "$BT"
+
 echo
 if [[ $fails -gt 0 ]]; then echo "$fails test(s) FAILED"; exit 1; fi
 echo "all tests passed"
