@@ -996,6 +996,103 @@ check "bug verb: move/prio failure exits nonzero" "rc=1" "$out"
 
 rm -rf "$BG" "$FGH" "$LOG1" "$CC1" "$LOG2" "$CC2" "$LOG3" "$CC3" "$LOG4" "$CC4"
 
+echo "== board.sh add verb (SW-003: generalized bug -> add --type, fake gh) =="
+AG="$(mktemp -d)"; mkdir -p "$AG/.claude"
+cp "$FIX/valid.project.yaml" "$AG/.claude/project.yaml"
+AGH="$(mktemp -d)"
+cat >"$AGH/gh" <<'FAKE'
+#!/usr/bin/env bash
+set -uo pipefail
+echo "$*" >>"$FAKE_GH_LOG"
+case "$1 $2" in
+    "issue create")
+        echo "https://github.com/fixture-owner/fixture-project/issues/${FAKE_GH_ISSUE_NUM:-601}"
+        ;;
+    "project item-add")
+        if [[ "${FAKE_GH_FAIL_ITEM_ADD:-0}" == "1" ]]; then
+            echo "fake gh: item-add boom" >&2
+            exit 1
+        fi
+        ;;
+    "project item-list")
+        n=$(( $(cat "$FAKE_GH_CALLCOUNT" 2>/dev/null || echo 0) + 1 ))
+        echo "$n" >"$FAKE_GH_CALLCOUNT"
+        if [[ "$*" == *"select(.content.number=="* ]]; then
+            if [[ "${FAKE_GH_NEVER_VISIBLE:-0}" != "1" && "$n" -ge "${FAKE_GH_VISIBLE_AFTER:-1}" ]]; then
+                echo "ITEM_${FAKE_GH_ISSUE_NUM:-601}"
+            fi
+        else
+            echo '{"items":[]}'
+        fi
+        ;;
+    "project item-edit")
+        echo "edited"
+        ;;
+    *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
+esac
+FAKE
+chmod +x "$AGH/gh"
+
+# scenario 1: add --type inbound -- inbound label, no BUG: prefix, filed line names the type
+LOGA1="$(mktemp)"; CCA1="$(mktemp)"
+out="$(cd "$AG" && PATH="$AGH:$PATH" FAKE_GH_LOG="$LOGA1" FAKE_GH_CALLCOUNT="$CCA1" FAKE_GH_ISSUE_NUM=601 FAKE_GH_VISIBLE_AFTER=1 \
+    bash "$PLUGIN/scripts/board.sh" add --type inbound "widget idea from standup" P2 2>&1; echo "rc=$?")"
+check "add --type inbound: filed line names the type" "filed inbound #601 [P2]" "$out"
+check "add --type inbound: exits 0 on success" "rc=0" "$out"
+check "add --type inbound: issue title has no BUG: prefix" 'issue create --title "widget idea from standup"' "$(cat "$LOGA1")"
+check "add --type inbound: labeled inbound" "--label inbound" "$(cat "$LOGA1")"
+check_absent "add --type inbound: never labeled type:bug" "--label type:bug" "$(cat "$LOGA1")"
+check "add --type inbound: item-add invoked with the created issue's URL" "project item-add 1 --owner fixture-owner --url https://github.com/fixture-owner/fixture-project/issues/601" "$(cat "$LOGA1")"
+
+# scenario 2: add --type feature -- type:feature label, default priority is first option (P0)
+LOGA2="$(mktemp)"; CCA2="$(mktemp)"
+out="$(cd "$AG" && PATH="$AGH:$PATH" FAKE_GH_LOG="$LOGA2" FAKE_GH_CALLCOUNT="$CCA2" FAKE_GH_ISSUE_NUM=602 FAKE_GH_VISIBLE_AFTER=1 \
+    bash "$PLUGIN/scripts/board.sh" add --type feature "quick filters on the list view" 2>&1; echo "rc=$?")"
+check "add --type feature: filed line, default priority" "filed feature #602 [P0]" "$out"
+check "add --type feature: labeled type:feature" "--label type:feature" "$(cat "$LOGA2")"
+
+# scenario 3: bug alias === add --type bug -- identical label/prefix/behavior (spot assertion)
+LOGA3="$(mktemp)"; CCA3="$(mktemp)"
+out="$(cd "$AG" && PATH="$AGH:$PATH" FAKE_GH_LOG="$LOGA3" FAKE_GH_CALLCOUNT="$CCA3" FAKE_GH_ISSUE_NUM=603 FAKE_GH_VISIBLE_AFTER=1 \
+    bash "$PLUGIN/scripts/board.sh" bug "widget breaks on save" P1 2>&1; echo "rc=$?")"
+check "bug alias: filed line matches add --type bug shape" "filed bug #603 [P1]" "$out"
+check "bug alias: still prefixes BUG: and uses type:bug label" 'issue create --title "BUG: widget breaks on save" --body "Bug found after a task reached a released status; filed as new work (never reopen shipped tasks)." --label type:bug' "$(cat "$LOGA3")"
+
+# scenario 4: visibility timeout -- honest non-zero failure, no false success line
+LOGA4="$(mktemp)"; CCA4="$(mktemp)"
+out="$(cd "$AG" && PATH="$AGH:$PATH" FAKE_GH_LOG="$LOGA4" FAKE_GH_CALLCOUNT="$CCA4" FAKE_GH_ISSUE_NUM=604 FAKE_GH_NEVER_VISIBLE=1 \
+    bash "$PLUGIN/scripts/board.sh" add --type inbound "ghost inbound item" P2 2>&1; echo "rc=$?")"
+check "add: never-visible item -- actionable ERROR naming the issue" "ERROR: issue #604" "$out"
+check_absent "add: never-visible item -- no false success line" "filed inbound" "$out"
+check "add: never-visible item exits nonzero" "rc=1" "$out"
+
+# scenario 5: item-add failure -- honest non-zero failure, no false success line
+LOGA5="$(mktemp)"; CCA5="$(mktemp)"
+out="$(cd "$AG" && PATH="$AGH:$PATH" FAKE_GH_LOG="$LOGA5" FAKE_GH_CALLCOUNT="$CCA5" FAKE_GH_ISSUE_NUM=605 FAKE_GH_FAIL_ITEM_ADD=1 \
+    bash "$PLUGIN/scripts/board.sh" add --type inbound "item-add will fail" P2 2>&1; echo "rc=$?")"
+check "add: item-add failure -- actionable ERROR naming the issue" "ERROR: issue #605 was created but gh project item-add failed" "$out"
+check_absent "add: item-add failure -- no false success line" "filed inbound" "$out"
+check "add: item-add failure exits nonzero" "rc=1" "$out"
+
+# scenario 6: unknown --type -- rejected, no gh calls made
+out="$(cd "$AG" && PATH="$AGH:$PATH" FAKE_GH_LOG="$(mktemp)" bash "$PLUGIN/scripts/board.sh" add --type nonsense "whatever" 2>&1; echo "rc=$?")"
+check "add: unknown --type rejected" "ERROR:" "$out"
+check "add: unknown --type exits nonzero" "rc=1" "$out"
+
+rm -rf "$AG" "$AGH" "$LOGA1" "$CCA1" "$LOGA2" "$CCA2" "$LOGA3" "$CCA3" "$LOGA4" "$CCA4" "$LOGA5" "$CCA5"
+
+echo "== create-inbound SKILL.md contract =="
+CISKILL="$PLUGIN/skills/create-inbound/SKILL.md"
+if [[ -f "$CISKILL" ]]; then echo "ok   create-inbound/SKILL.md exists"; else echo "FAIL create-inbound/SKILL.md missing"; fails=$((fails + 1)); fi
+check "create-inbound SKILL.md has allowed-tools frontmatter" "allowed-tools: Bash" "$(cat "$CISKILL" 2>/dev/null)"
+check "create-inbound SKILL.md wires board.sh issues (search first)" "board.sh\" issues" "$(cat "$CISKILL" 2>/dev/null)"
+check "create-inbound SKILL.md invokes similar.py via python3" "python3 \"\${CLAUDE_PLUGIN_ROOT}/scripts/similar.py\"" "$(cat "$CISKILL" 2>/dev/null)"
+check "create-inbound SKILL.md creates via board.sh add --type inbound" "board.sh\" add --type inbound" "$(cat "$CISKILL" 2>/dev/null)"
+check "create-inbound SKILL.md: high tier default is comment, not create" "do NOT create a new issue" "$(cat "$CISKILL" 2>/dev/null)"
+check "create-inbound SKILL.md: high tier default action is comment on the existing issue" "comment the description onto the existing issue instead" "$(cat "$CISKILL" 2>/dev/null)"
+check "create-inbound SKILL.md: medium tier asks the human" "ask the human" "$(cat "$CISKILL" 2>/dev/null)"
+check "create-inbound SKILL.md: medium tier, absent human -- do not create" "absent or does not answer, do NOT create" "$(cat "$CISKILL" 2>/dev/null)"
+
 echo "== identity resolution =="
 T3="$(mktemp -d)"
 ( cd "$T3" && git init -q . && git config user.name "Test User" && git config user.email "test.user@example.com" )
