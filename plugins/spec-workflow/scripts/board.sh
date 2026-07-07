@@ -96,10 +96,22 @@ case "${1:-}" in
         [[ -z "$prio" ]] && prio="$(python3 -c 'import sys; import config as C; c=C.load_config(path=sys.argv[1], warn=False); b=c["boards"][0]; print(list(b["fields"]["priority"]["options"])[0])' "$CONFIG")"
         body="Bug found after a task reached a released status; filed as new work (never reopen shipped tasks)."
         [[ -n "$link" ]] && body="$body Originating task: #$link."
-        url=$(gh issue create -R "$REPO" --title "BUG: $title" --body "$body" --label "$BUG_LABEL")
+        url=$(gh issue create -R "$REPO" --title "BUG: $title" --body "$body" --label "$BUG_LABEL") ||
+            { echo "ERROR: gh issue create failed for '$title'" >&2; exit 1; }
         num=$(basename "$url")
-        sleep 1
-        "$0" move "$num" "$FIRST_STATUS"; "$0" prio "$num" "$prio"
+        gh project item-add "$PN" --owner "$OWNER" --url "$url" >/dev/null ||
+            { echo "ERROR: issue #$num was created but gh project item-add failed — it is not on the board" >&2; exit 1; }
+        # item-add is eventually consistent: poll item-list until the new item is visible
+        # before touching it, instead of a blind sleep that flakes under load.
+        id=""
+        for ((_i = 0; _i < 10; _i++)); do
+            id="$(item_id "$num")"
+            [[ -n "$id" ]] && break
+            sleep 0.3
+        done
+        [[ -z "$id" ]] && { echo "ERROR: issue #$num was created and added, but never became visible in the board item list (gave up after 10 attempts) — check the board manually" >&2; exit 1; }
+        "$0" move "$num" "$FIRST_STATUS" && "$0" prio "$num" "$prio" ||
+            { echo "ERROR: issue #$num is on the board but move/prio failed" >&2; exit 1; }
         echo "filed bug #$num [$prio]"
         ;;
     list)
