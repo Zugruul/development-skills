@@ -43,7 +43,9 @@ Brains live at <root>/.claude/identities/<role>/brain/ — notes/<slug>.md
 .activation.jsonl. Everything is read READ-ONLY; absent dirs/files just yield
 an empty graph. Graph node ids are "<repo>/<role>/<slug>" (unique across repos);
 /note/<repo>/<role>/<slug> addresses one; /events cursors are opaque and carry
-a per-repo, per-role byte offset.
+a per-repo, per-role byte offset. POST /open/<repo>/<role>/<slug> opens that
+note in a local viewer — Obsidian, else VS Code, else a terminal `cat`
+(fixed fallback chain; preferred-viewer settings are a later feature).
 
 GET /graph also returns repoRoles: {repo: [role, ...]} (alphabetical) — the
 CANONICAL_ROLES (dev/orchestrator/reviewer) unioned with any role that has a
@@ -74,6 +76,7 @@ import base64
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import socket
@@ -81,6 +84,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -491,6 +495,101 @@ def note_payload(repos, repo, role, slug):
     return None
 
 
+def note_file_path(repos, repo, role, slug):
+    """Absolute Path of a note's markdown file, with the same (repo, role,
+    slug) addressing and traversal guards as read_note(); None if absent."""
+    if not _safe_slug(slug):
+        return None
+    for name, root in repos:
+        if name != repo:
+            continue
+        for r, brain in iter_brains(root):
+            if r != role:
+                continue
+            notes_dir = brain / "notes"
+            f = notes_dir / f"{slug}.md"
+            if _within(f, notes_dir) and f.is_file():
+                return f
+            return None
+        return None
+    return None
+
+
+def _mac_app_installed(app):
+    try:
+        return subprocess.run(["open", "-Ra", app], capture_output=True, timeout=5).returncode == 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
+_VIEWER_CACHE = None  # detected once per process; installs don't change mid-run
+
+
+def detect_viewer():
+    """Which local viewer POST /open would use — "obsidian" | "vscode" |
+    "terminal" | None. Fixed fallback chain for now; a preferred-viewer
+    setting is a later feature. Cached so the detection subprocesses run at
+    most once per server process (GET /viewer is called on every page load)."""
+    global _VIEWER_CACHE
+    if _VIEWER_CACHE is None:
+        _VIEWER_CACHE = _detect_viewer_uncached() or "none"
+    return None if _VIEWER_CACHE == "none" else _VIEWER_CACHE
+
+
+def _detect_viewer_uncached():
+    try:
+        if sys.platform == "darwin":
+            if _mac_app_installed("Obsidian"):
+                return "obsidian"
+            if _mac_app_installed("Visual Studio Code") or shutil.which("code"):
+                return "vscode"
+            return "terminal"  # osascript+Terminal are always present on macOS
+        if shutil.which("obsidian"):
+            return "obsidian"
+        if shutil.which("code"):
+            return "vscode"
+        for term in ("x-terminal-emulator", "gnome-terminal", "konsole", "xterm"):
+            if shutil.which(term):
+                return "terminal"
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+def open_note_externally(path):
+    """Open a note in the viewer detect_viewer() picked. Returns the viewer
+    used or None if nothing launched. Launching a viewer reads the note but
+    never mutates a brain, so the tool's read-only contract holds."""
+    p = str(path)
+    viewer = detect_viewer()
+    try:
+        if viewer == "obsidian":
+            uri = "obsidian://open?path=" + urllib.parse.quote(p, safe="")
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", uri])
+            else:
+                subprocess.Popen(["obsidian", uri])
+            return "obsidian"
+        if viewer == "vscode":
+            if sys.platform == "darwin" and not shutil.which("code"):
+                subprocess.Popen(["open", "-a", "Visual Studio Code", p])
+            else:
+                subprocess.Popen(["code", p])
+            return "vscode"
+        if viewer == "terminal":
+            if sys.platform == "darwin":
+                script = f'tell application "Terminal"\n  activate\n  do script "cat {shlex.quote(p)}"\nend tell'
+                subprocess.Popen(["osascript", "-e", script])
+                return "terminal"
+            for term in ("x-terminal-emulator", "gnome-terminal", "konsole", "xterm"):
+                if shutil.which(term):
+                    subprocess.Popen([term, "-e", f"sh -c 'cat {shlex.quote(p)}; exec sh'"])
+                    return "terminal"
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Per-repo project/board state (GET /projects) and locally-discoverable
 # Claude Code sessions (GET /sessions) — both best-effort, read-only, and
@@ -540,6 +639,10 @@ def _classify_board_failure(raw):
         m2 = _RESET_TIME_RE.search(clean)
         when = (m2.group(1) or m2.group(2)) if m2 else "soon"
         return f"board unavailable: GitHub API rate limit (resets {when})"
+    if "unknown owner type" in clean:
+        # gh 2.54 masks a failed GraphQL owner-type lookup (most often an
+        # exhausted GraphQL rate limit, sometimes auth) behind this message.
+        return "board unavailable: gh could not resolve the project owner (usually the GraphQL rate limit — check `gh api rate_limit`)"
     for line in reversed(clean.strip().splitlines()):
         line = line.strip()
         if line:
@@ -714,12 +817,30 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, out)
         if path == "/sessions":
             return self._send(200, discover_sessions(REPOS))
+        if path == "/viewer":
+            # which viewer POST /open would use, so the inspect panel can
+            # label its "View in ..." button without launching anything.
+            return self._send(200, {"viewer": detect_viewer()})
         if path.startswith("/note/"):
             parts = path[len("/note/"):].split("/", 2)
             if len(parts) == 3 and parts[0] and parts[1] and parts[2]:
                 payload = note_payload(REPOS, parts[0], parts[1], parts[2])
                 if payload is not None:
                     return self._send(200, payload)
+            return self._send(404, {"error": "unknown note"})
+        return self._send(404, {"error": "not found"})
+
+    def do_POST(self):
+        path = self.path.split("?")[0]
+        if path.startswith("/open/"):
+            parts = path[len("/open/"):].split("/", 2)
+            if len(parts) == 3 and all(parts):
+                f = note_file_path(REPOS, parts[0], parts[1], parts[2])
+                if f is not None:
+                    viewer = open_note_externally(f)
+                    if viewer:
+                        return self._send(200, {"opened": viewer, "path": str(f)})
+                    return self._send(500, {"error": "no viewer available"})
             return self._send(404, {"error": "unknown note"})
         return self._send(404, {"error": "not found"})
 
