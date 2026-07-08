@@ -1130,3 +1130,32 @@ items:
   routing:
     action: backlog
     ref: 'development-skills#86'
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-08T12:35:00Z'
+iteration:
+  task: '91'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: board
+  severity: low
+  summary: board.sh prio immediately after adopt failed with "bad issue# or priority"
+    (item-id lookup missed the just-added item) and succeeded on plain retry seconds
+    later
+  detail: Adopted #100/#101 then prio'd them in the same shell invocation; both prio
+    calls returned rc=3 (bad issue#). Rerunning the identical prio commands ~30s later
+    succeeded. GitHub-side propagation lag between item-add and item-list visibility;
+    the #78 cache drop-and-retry-once refetches immediately, which is still inside
+    the lag window.
+  generalized: Mutations that depend on an item created moments earlier need a short
+    delayed retry (e.g. one retry after 2-5s), not just an immediate cache-refresh
+    retry — propagation lag is a time problem, not a staleness problem.
+  routing:
+    action: backlog
+    ref: 'development-skills#102'

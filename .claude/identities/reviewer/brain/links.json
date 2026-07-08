@@ -44,6 +44,16 @@
     "last": null,
     "weight": 0.5
   },
+  "emission-vs-assertion->fixture-provenance-check": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "emission-vs-assertion->reports-are-not-the-code": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "equality-guards-invite-ordering-probes->outcome-language-marks-unverified-seams": {
     "fires": 0,
     "last": null,
