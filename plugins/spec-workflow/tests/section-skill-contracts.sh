@@ -52,6 +52,10 @@ check "auto-review.md points the merge-route report line at build-next SKILL.md 
 check "auto-review.md on-behalf recipe: flags line goes before commit" "git <paste flags line> commit" "$ARBODY"
 check "auto-review.md on-behalf recipe: commit-flags line goes after commit" "commit <paste commit-flags line> -m" "$ARBODY"
 check_absent "auto-review.md on-behalf recipe: --author never lands in the pre-commit flags position" "flags line> --author" "$ARBODY"
+# Verdict-delivery instruction (#66): a reviewer can finish analysis and idle
+# without transmitting the result -- the brief must say the review isn't done
+# until the verdict reaches the orchestrator over messaging.
+check "auto-review.md brief mandates delivering the verdict over messaging, not just producing it" "Completing analysis without sending it means the review never happened" "$ARBODY"
 check "build-next SKILL.md report step states the merge route" "merge route" "$BNBODY"
 check "build-next SKILL.md report step gives the requirements report token" "requirements: <verdict from merge-mode.sh requirements>" "$BNBODY"
 check "build-next SKILL.md report step gives the local-route report token" "route: local-route" "$BNBODY"

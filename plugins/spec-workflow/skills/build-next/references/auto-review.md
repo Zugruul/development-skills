@@ -57,6 +57,8 @@ VERDICT: APPROVE — followed by a one-paragraph justification citing the
   criteria you checked.
 Do not approve out of politeness or fatigue; approve only when you would merge
 it into a production repo you own.
+
+Finishing your analysis is not finishing the review: once you have a verdict, send it to the orchestrator via SendMessage immediately. Completing analysis without sending it means the review never happened.
 ```
 
 ## 2. Dialogue rounds (max 3)
