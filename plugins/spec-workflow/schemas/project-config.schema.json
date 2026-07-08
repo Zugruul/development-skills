@@ -321,6 +321,11 @@
                     "type": "array",
                     "items": { "type": "string" },
                     "description": "Optional path globs (fnmatch, ** crosses directories). When a task's changed/expected paths match, this identity is selected (monorepo per-package routing). An entry with no `covers` is the fallback."
+                },
+                "color": {
+                    "type": "string",
+                    "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
+                    "description": "Optional hex color for this role's brain in the neural view — nodes, synapses, cluster labels and gauges all derive from its hue. Omit to use the viewer's default palette (dev #38e0fa, reviewer #38a9fa, orchestrator #38fad4)."
                 }
             }
         },

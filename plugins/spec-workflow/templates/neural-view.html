@@ -59,9 +59,22 @@ canvas.grabbing{cursor:grabbing}
 .iconbtn:hover{color:var(--cyan);border-color:var(--cyan-dim)}
 
 /* gauges (top-left, below topbar) */
-#gauges{top:70px;left:14px;width:214px;max-height:calc(100vh - 130px);overflow:auto;
+#gauges{top:70px;left:14px;width:264px;max-height:calc(100vh - 130px);overflow:auto;
+  transition:transform .25s ease,opacity .25s ease}
+#gauges.collapsed{transform:translateX(calc(-100% - 24px));opacity:0;pointer-events:none}
+#gauges-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem}
+/* section headers double as collapse toggles (chevron reflects state) */
+.secthead{background:none;border:0;padding:0;display:block;width:100%;text-align:left;cursor:pointer;
+  font-family:var(--mono);font-size:.6rem;letter-spacing:.26em;text-transform:uppercase;color:var(--muted)}
+.secthead:hover{color:var(--cyan)}
+.secthead::before{content:"▾";margin-right:.45rem;color:var(--cyan-dim)}
+.secthead[aria-expanded="false"]::before{content:"▸"}
+#sect-boards{margin:.6rem 0 .4rem}
+/* edge tab that restores the collapsed panel */
+#gauges-tab{position:fixed;top:70px;left:0;z-index:20;border-left:0;border-radius:0 8px 8px 0;
+  padding:.55rem .4rem;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:.8rem}
+#gauges-tab:hover{color:var(--cyan)}
   padding:.7rem .8rem}
-#gauges h2{margin:0 0 .5rem;font-size:.6rem;letter-spacing:.26em;text-transform:uppercase;color:var(--muted);font-weight:400}
 .repo-brains{margin:0}
 .repo-brains-h{font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan);
   margin:.6rem 0 .1rem;border-top:1px solid rgba(90,190,255,.18);padding-top:.5rem}
@@ -128,8 +141,7 @@ canvas.grabbing{cursor:grabbing}
 #tooltip .tt-tags{color:var(--muted);margin:.15rem 0}
 
 /* per-repo board-state section in the Brains panel */
-#project-list{margin-top:.5rem}
-#project-list h2{margin:.3rem 0 .4rem;font-size:.6rem;letter-spacing:.26em;text-transform:uppercase;color:var(--muted);font-weight:400}
+#project-list{margin-top:.2rem}
 .projrow{padding:.35rem 0;border-top:1px solid rgba(90,190,255,.12);font-size:.62rem}
 .projrow:first-of-type{border-top:0}
 .projrow .pname{color:var(--cyan);letter-spacing:.06em;text-transform:uppercase;font-size:.62rem}
@@ -163,7 +175,16 @@ canvas.grabbing{cursor:grabbing}
   </div>
 </div>
 
-<div class="hud" id="gauges"><h2>Brains</h2><div id="gauge-list"></div><div id="project-list"></div></div>
+<div class="hud" id="gauges">
+  <div id="gauges-head">
+    <button class="secthead" id="sect-brains" aria-expanded="true">Brains</button>
+    <button class="iconbtn" id="gauges-collapse" title="Hide panel" aria-label="Hide panel">⟨</button>
+  </div>
+  <div id="gauge-list"></div>
+  <button class="secthead" id="sect-boards" aria-expanded="true" hidden>Boards</button>
+  <div id="project-list"></div>
+</div>
+<button class="hud" id="gauges-tab" title="Show panel" aria-label="Show panel" hidden>⟩</button>
 
 <div class="hud" id="ticker"><h2>Activation log</h2><div id="tickerlog" aria-live="polite"></div></div>
 
@@ -197,6 +218,25 @@ let W = 0, H = 0, DPR = 1;
 const ROLE_HUES = {dev:188, reviewer:205, orchestrator:168};
 let hueSpin = 150;
 function roleHue(role){ if(!(role in ROLE_HUES)) ROLE_HUES[role] = (hueSpin += 47) % 360; return ROLE_HUES[role]; }
+// a brain's configured color (delegation.identities.<role>.color in that
+// repo's project.yaml, surfaced via /graph roleColors) overrides the default
+// palette; only its hue is used so the existing lightness/alpha ramps
+// (cores, halos, labels, gauges) keep working unchanged.
+function hueFromCss(c){
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(c||"").trim());
+  if(!m) return null;
+  let hx = m[1]; if(hx.length===3) hx = [...hx].map(ch=>ch+ch).join("");
+  const r=parseInt(hx.slice(0,2),16)/255, g=parseInt(hx.slice(2,4),16)/255, b=parseInt(hx.slice(4,6),16)/255;
+  const mx=Math.max(r,g,b), d=mx-Math.min(r,g,b);
+  if(!d) return 0;
+  const h = mx===r ? ((g-b)/d)%6 : mx===g ? (b-r)/d+2 : (r-g)/d+4;
+  return (h*60+360)%360;
+}
+function comboHue(repo, role){
+  const c = ((window.__roleColors||{})[repo]||{})[role];
+  if(c != null){ const h = hueFromCss(c); if(h != null) return h; }
+  return roleHue(role);
+}
 function threeColor(h,l){ const c = new THREE.Color(); c.setHSL((h%360)/360, 0.95, l/100); return c; }
 function cssColor(h,l,a){ return `hsla(${h},95%,${l}%,${a})`; }
 
@@ -251,7 +291,7 @@ function layoutClusters(){
     const R = n>1 ? repoRadius.get(repo)*0.6 : 0;
     rolesInRepo.forEach((role,i)=>{
       const off = n>1 ? fibSphere(i, n, R) : {x:0,y:0,z:0};
-      clusters.set(clusterKey(repo,role), {x: rc.x+off.x, y: rc.y+off.y, z: rc.z+off.z, hue: roleHue(role), n:0, repo, role});
+      clusters.set(clusterKey(repo,role), {x: rc.x+off.x, y: rc.y+off.y, z: rc.z+off.z, hue: comboHue(repo,role), n:0, repo, role});
     });
   }
   nodes.forEach(nd=>{ const c = clusters.get(clusterKey(nd.repo,nd.role)); if(c) c.n++; });
@@ -541,17 +581,20 @@ function rebuildScene(){
   // lines only.
   for(const l of links){
     const dim = (l.a.graduated||l.b.graduated) ? 0.5 : 1;
+    // a synapse carries its SOURCE note's brain color (links never cross a
+    // brain, so source == target brain in practice)
+    const lhue = comboHue(l.a.repo, l.a.role);
     const geo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(l.a.x,l.a.y,l.a.z), new THREE.Vector3(l.b.x,l.b.y,l.b.z)]);
     l.baseOpacity = (0.1 + l.w*0.5)*dim;   // updateVisuals() adds a hover boost on top of this each frame
-    const mat = new THREE.LineBasicMaterial({color: threeColor(190,62), transparent:true,
+    const mat = new THREE.LineBasicMaterial({color: threeColor(lhue,62), transparent:true,
       opacity:l.baseOpacity, blending:THREE.AdditiveBlending, fog:true});
     const line = new THREE.Line(geo, mat);
     line.userData = {kind:"synapse", link:l};
     sceneGroup.add(line);
     l.pulse = null;
     if(!REDUCED){
-      const pmat = new THREE.SpriteMaterial({map:CORE_TEX, color:threeColor(190,70), transparent:true,
+      const pmat = new THREE.SpriteMaterial({map:CORE_TEX, color:threeColor(lhue,70), transparent:true,
         opacity:0.32*dim, blending:THREE.AdditiveBlending, depthWrite:false, fog:true});
       const psprite = new THREE.Sprite(pmat);
       psprite.scale.set(7,7,1);
@@ -600,6 +643,7 @@ async function loadGraph(){
   roles = [...new Set(g.nodes.map(n=>n.role))].sort();
   repoList = (g.repos && g.repos.length) ? [...g.repos].sort() : [...new Set(g.nodes.map(n=>n.repo))].sort();
   window.__repoRoles = g.repoRoles || {};
+  window.__roleColors = g.roleColors || {};
   nodes = g.nodes.map(n=>{
     const old = prev.get(n.id);
     return Object.assign(n, {
@@ -868,7 +912,7 @@ function renderGauges(){
     for(const role of orderedRoles(repo)){
       const k=clusterKey(repo,role); const s=perCombo.get(k);
       const n=s?s.n:0, avg=(s&&s.n)?s.str/s.n:0, lk=linkCount.get(k)||0;
-      const hue=roleHue(role);
+      const hue=comboHue(repo, role);
       const row=document.createElement("div"); row.className = n ? "brainrow" : "brainrow brainrow-empty";
       row.tabIndex = 0;
       row.setAttribute("role", "button");
@@ -926,8 +970,9 @@ function renderProjects(){
   const el = document.getElementById("project-list");
   if(!el) return;
   const repos = Object.keys(window.__projects||{}).sort();
+  document.getElementById("sect-boards").hidden = !repos.length;
   if(!repos.length){ el.innerHTML = ""; return; }
-  el.innerHTML = '<h2>Boards</h2>' + repos.map(r=>{
+  el.innerHTML = repos.map(r=>{
     const p = window.__projects[r];
     if(!p || !p.ok){
       const err = (p && p.error) ? escapeHtml(p.error) : "board unavailable";
@@ -1192,6 +1237,28 @@ canvas.addEventListener("dblclick", ev=>{
   resetView();
 });
 document.getElementById("reset-view").onclick = resetView;
+
+// ---- sidebar collapse: whole panel (edge tab restores) + per-section
+// (Brains / Boards headers toggle), persisted across reloads ----
+const gaugesEl = document.getElementById("gauges");
+const gaugesTab = document.getElementById("gauges-tab");
+const UI_KEY = "nv-ui";
+let uiState = {};
+try{ uiState = JSON.parse(localStorage.getItem(UI_KEY) || "{}") || {}; }catch{ uiState = {}; }
+function saveUiState(){ try{ localStorage.setItem(UI_KEY, JSON.stringify(uiState)); }catch{} }
+function applyUiState(){
+  gaugesEl.classList.toggle("collapsed", !!uiState.panel);
+  gaugesTab.hidden = !uiState.panel;
+  for(const [sect, bodyId] of [["brains","gauge-list"], ["boards","project-list"]]){
+    document.getElementById("sect-"+sect).setAttribute("aria-expanded", uiState[sect] ? "false" : "true");
+    document.getElementById(bodyId).hidden = !!uiState[sect];
+  }
+}
+document.getElementById("sect-brains").onclick = ()=>{ uiState.brains = !uiState.brains; saveUiState(); applyUiState(); };
+document.getElementById("sect-boards").onclick = ()=>{ uiState.boards = !uiState.boards; saveUiState(); applyUiState(); };
+document.getElementById("gauges-collapse").onclick = ()=>{ uiState.panel = true; saveUiState(); applyUiState(); };
+gaugesTab.onclick = ()=>{ uiState.panel = false; saveUiState(); applyUiState(); };
+applyUiState();
 const panel=document.getElementById("inspect");
 document.getElementById("inspect-close").onclick=()=>{ panel.classList.remove("open"); panel.setAttribute("aria-hidden","true"); panel.setAttribute("inert",""); };
 async function openNote(nd){

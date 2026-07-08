@@ -97,17 +97,20 @@ delegation:
         dev:
         -   name: Dev Agent - {name}
             email: '{local}+dev_agent@{domain}'
+            color: '#38e0fa'
             models:
             - claude-sonnet-5
         reviewer:
             name: Reviewer Agent - {name}
             email: '{local}+reviewer_agent@{domain}'
+            color: '#38a9fa'
             models:
             - claude-sonnet-5
             - claude-sonnet-5[1m]
         orchestrator:
             name: Orchestrator Agent - {name}
             email: '{local}+orchestrator_agent@{domain}'
+            color: '#38fad4'
 paths:
     handoffDir: docs/handoffs
     checkpointFile: .claude/CHECKPOINT

@@ -89,6 +89,8 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # import config (project.yaml reader) beside this script
+
 
 def git_root():
     try:
@@ -299,7 +301,37 @@ def build_graph(repos):
             edges.append({"source": f"{name}/{consumer}", "target": f"{name}/{role}",
                            "type": "consult", "weight": 0.4, "repo": name})
         repo_roles[name] = sorted(roles_here)
-    return {"nodes": nodes, "edges": edges, "repos": [name for name, _ in repos], "repoRoles": repo_roles}
+    role_colors = {name: repo_role_colors(root) for name, root in repos}
+    return {"nodes": nodes, "edges": edges, "repos": [name for name, _ in repos], "repoRoles": repo_roles,
+            "roleColors": role_colors}
+
+
+def repo_role_colors(root):
+    """{role: cssColor} from the repo's own project config —
+    delegation.identities.<role>.color (first entry carrying one, for the
+    array/monorepo form). Optional everywhere: a missing config, disabled
+    identities, or an absent color just falls back to the client's default
+    palette. Read via config.py so v1/v2 normalization stays in one place."""
+    cfgp = _repo_config_path(root)
+    if cfgp is None:
+        return {}
+    try:
+        import config as _config
+        cfg = _config.load_config(path=str(cfgp), warn=False)
+    except Exception:  # noqa: BLE001
+        return {}
+    delegation = cfg.get("delegation")
+    idents = delegation.get("identities") if isinstance(delegation, dict) else None
+    if not isinstance(idents, dict):
+        return {}
+    out = {}
+    for role, spec in idents.items():
+        for entry in (spec if isinstance(spec, list) else [spec]):
+            color = entry.get("color") if isinstance(entry, dict) else None
+            if isinstance(color, str) and color.strip():
+                out[role] = color.strip()
+                break
+    return out
 
 
 def _parse_lines(repo, role, blob, out):
