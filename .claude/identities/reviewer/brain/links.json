@@ -1,4 +1,9 @@
 {
+  "confirmed-broken-only->reports-are-not-the-code": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "diff-against-merge-base->explicit-cd-every-command": {
     "fires": 0,
     "last": null,
@@ -15,6 +20,11 @@
     "weight": 0.5
   },
   "diff-invariant-artifact-on-refactor->reproduce-on-deployment-floor": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "domain-inventory-sweep->emission-vs-assertion": {
     "fires": 0,
     "last": null,
     "weight": 0.5

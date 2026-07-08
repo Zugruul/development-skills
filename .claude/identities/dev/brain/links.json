@@ -94,6 +94,16 @@
     "last": "2026-07-08",
     "weight": 0.5
   },
+  "enumerate-the-contract-domain->red-commit-as-you-go": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "enumerate-the-contract-domain->swallow-fix-matrix": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "exclude-before-scan->circular-fixture-detector": {
     "fires": 2,
     "last": "2026-07-08",
