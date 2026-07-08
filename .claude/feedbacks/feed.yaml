@@ -990,3 +990,143 @@ items:
   routing:
     action: brain-note
     ref: orchestrator/pre-diagnose-before-brief
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-08T05:50:00Z'
+iteration:
+  task: 70+71+72+81
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: board
+  severity: high
+  summary: Ad-hoc sleep-until-reset background jobs mistimed against the actual quota
+    reset and failed in bulk; one stale queued move regressed a task status a newer
+    move had already advanced
+  detail: Multiple queued batches fired pre-reset and every board op in them failed;
+    a leftover queued In-progress move later overwrote an In-review status. Durable
+    queue + idempotent flush is in active development.
+  generalized: Time-based retry jobs computed by hand against a rate-limit reset are
+    fragile (mistimed sleeps, stale replays that regress newer state); board mutations
+    need a durable queue with status-checked idempotent flush, not scheduled one-shot
+    retries.
+  routing:
+    action: backlog
+    ref: '#77'
+- category: friction
+  area: board
+  severity: medium
+  summary: Mutations against issues not yet on the board fail with an argument-shaped
+    error, and the roles config knob is parsed but never enforced at emit
+  detail: prio/move on REST-created issues said bad issue#/priority; feedback.py accepts
+    any source.role regardless of methodology.feedback.roles.
+  generalized: Error messages must distinguish "target not on the board" from bad
+    arguments, and every config knob that reads as a policy gate must actually be
+    enforced or be removed from the schema.
+  routing:
+    action: backlog
+    ref: '#84'
+- category: worked-well
+  area: merge
+  severity: medium
+  summary: The local delivery route (recorded verdict comment, plain-git squash-merge,
+    REST PR close) kept merges flowing under both quota exhaustion and permission-classifier
+    blocks
+  generalized: When the PR-merge API is unavailable (quota) or hard-gated (self-authored-PR
+    floors), recording the independent review as a comment and delivering via plain
+    git squash + push preserves review integrity with zero human round-trips; worth
+    being the documented fallback.
+  routing:
+    action: backlog
+    ref: '#85'
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-08T05:51:00Z'
+iteration:
+  task: 70+71+72+81
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: dev
+  model: claude-sonnet-5
+items:
+- category: friction
+  area: testing
+  severity: low
+  summary: The harness's check helpers only match single-line fixed strings, which
+    is undocumented in briefs and forces multi-line assertions into separate eval
+    scripts
+  detail: check()/check_absent() are grep -F single-line matchers; discovered by reading
+    _lib.sh.
+  generalized: Briefs for test-writing tasks should state the assertion helpers' matching
+    semantics (single-line fixed-string) up front, or the helpers should document
+    it where a test author will look; each dev rediscovers it by trial.
+  routing:
+    action: brain-note
+    ref: dev/anonymous-listener-slice-eval
+- category: friction
+  area: other
+  severity: low
+  summary: Commit messages built with backticks inside -m double quotes silently lose
+    words to command substitution
+  generalized: Any generated commit message containing backticks must go through a
+    quoted heredoc; a plain -m string silently corrupts.
+  routing:
+    action: brain-note
+    ref: dev/heredoc-commit-messages
+- category: recommendation
+  area: briefing
+  severity: medium
+  summary: Briefs that assert "no change needed in X" without flagging known interactions
+    read as "nothing to check there" and hide cross-lane cleanup work
+  generalized: A brief's no-change claims must either cite verification or flag the
+    known interaction for the owning lane; verified-absence and unexamined-absence
+    are different claims.
+  routing:
+    action: brain-note
+    ref: orchestrator/no-change-claims-need-interaction-flags
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-08T05:52:00Z'
+iteration:
+  task: 70+71+72+81
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: reviewer
+  model: claude-sonnet-5
+items:
+- category: incident
+  area: concurrency
+  severity: high
+  summary: A review's final verification round silently executed in a sibling lane's
+    worktree after concurrent lanes repointed the shared shell cwd; near-miss wrong-branch
+    approval
+  detail: Caught only because git diff --name-only showed the wrong files; the whole
+    round was redone with explicit cd prefixes.
+  generalized: In multi-lane sessions the shell cwd is shared, mutable state; review
+    and gate commands must carry an explicit cd-to-lane prefix on EVERY invocation,
+    and reviewers should cross-check the diff file list against what they have been
+    reading before trusting any run.
+  routing:
+    action: brain-note
+    ref: reviewer/explicit-cd-every-command
+- category: recommendation
+  area: review
+  severity: low
+  summary: Asserting "this diff touches only symbol X" requires manual line-range
+    grepping; a diff-hunk-to-enclosing-function mapping helper would make scope checks
+    one-liners
+  generalized: Scope verification (diff touches only named functions) is a recurring
+    reviewer chore worth a small tool — map each hunk to its enclosing definition
+    and diff the symbol sets.
+  routing:
+    action: backlog
+    ref: '#86'
