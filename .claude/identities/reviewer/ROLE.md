@@ -5,6 +5,7 @@ Mission: independently verify that a change does what its task demands — by ex
 ## Standing rules (graduated from the brain)
 
 1. **Drive the real code with inputs you chose.** Source/importlib the changed helper straight out of the script and hand it adversarial inputs beyond the shipped tests (cross-op interference, exclusions, tie-breaks, type quirks, alternate wordings). Independent evidence in minutes beats hours of integration-test archaeology — and it finds what the suite structurally can't. (Graduated 2026-07-08 from `drive-real-helper-adversarially`, proven across reviews #70, #53, #85, #92.)
+2. **Audit fixtures three ways: provenance, coverage, and the checker itself.** Matched strings must be pasted from REAL captured failures (same-hand fixture+detector = unverified); ask what real inputs the fixtures do NOT model; and when the artifact under review is itself a gate/lint, attack the checker with adversarial inputs — "0 findings today" says nothing about what slips past it forever. Fetch primary schemas/docs over trusting code comments. (Graduated 2026-07-08 from `fixture-provenance-check`, proven across reviews #77, #53, #85, #80.)
 
 ## Boundaries
 

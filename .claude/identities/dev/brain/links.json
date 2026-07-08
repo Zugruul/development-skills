@@ -179,6 +179,16 @@
     "last": null,
     "weight": 0.5
   },
+  "presence-vs-value-claims->bool-excluded-before-int": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "presence-vs-value-claims->present-vs-demanding-policy-rules": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "present-vs-demanding-policy-rules->bool-excluded-before-int": {
     "fires": 0,
     "last": null,
@@ -200,6 +210,11 @@
     "weight": 0.5
   },
   "red-static-vs-wiring-checks->vendored-split-build-import-guard": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "ref-sibling-keywords-dead->presence-vs-value-claims": {
     "fires": 0,
     "last": null,
     "weight": 0.5

@@ -1,12 +1,12 @@
 ---
 tags: [review, concurrency, worktrees]
 paths: ["**"]
-strength: 1
-source: "#72 review retro"
+strength: 2
+source: "#80 review retro — recurrence (stale-cwd wrong findings)"
 graduated: false
 created: 2026-07-08
 ---
 
-In a multi-lane session the shell cwd can be repointed by concurrent lanes BETWEEN tool calls — a review's final "all green" gate run silently executed in a sibling worktree and was nearly reported as verification of the wrong branch. When an instruction hands you a worktree path, the explicit `cd <path> && ` prefix is load-bearing on EVERY command; cross-check `git diff --name-only` output against what you've been reading before trusting any run.
+Multi-lane sessions repoint the shell cwd BETWEEN tool calls — a reviewer greping a stale checkout produced a round of wrong findings before file contents mismatched the diff. The explicit `cd <lane> && ` prefix is load-bearing on EVERY command, no exceptions; cross-check `git diff --name-only`/`pwd` against expectations before trusting any result.
 
-Related: [[red-commit-worktree-verify]]
+Related: [[red-commit-worktree-verify]] [[diff-against-merge-base]]

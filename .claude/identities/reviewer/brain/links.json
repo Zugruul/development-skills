@@ -44,6 +44,11 @@
     "last": null,
     "weight": 0.5
   },
+  "explicit-cd-every-command->diff-against-merge-base": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "explicit-cd-every-command->red-commit-worktree-verify": {
     "fires": 0,
     "last": null,
