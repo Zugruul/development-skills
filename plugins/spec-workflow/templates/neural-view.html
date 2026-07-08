@@ -215,7 +215,7 @@ const canvas = document.getElementById("c");
 let W = 0, H = 0, DPR = 1;
 
 // ---- role palette (deterministic hue per role, all in the cyan/blue family) ----
-const ROLE_HUES = {dev:188, reviewer:347, orchestrator:168};   // reviewer: red-pink (#ff5b7f)
+const ROLE_HUES = {dev:45, reviewer:347, orchestrator:168};   // dev: yellow (#ffd24d), reviewer: red-pink (#ff5b7f)
 let hueSpin = 150;
 function roleHue(role){ if(!(role in ROLE_HUES)) ROLE_HUES[role] = (hueSpin += 47) % 360; return ROLE_HUES[role]; }
 // a brain's configured color (delegation.identities.<role>.color in that
@@ -251,6 +251,7 @@ const MIN_REGION = 46, BASE_REGION = 110;
 let nodes = [], nodeById = new Map(), links = [], roles = [], repoList = [], clusters = new Map();
 let repoCenters = new Map(), repoRadius = new Map();   // world coords/radius, incl. brainless repos
 let liveRepoCenters = new Map();   // live note centroids per repo (updateVisuals) — where the region is DRAWN
+let liveClusterCenters = new Map();   // live centroids per repo|role — where role labels are DRAWN (and picked)
 let anims = [];                // active visual activations
 const queue = [];              // pending events, played on a stagger
 let cursor = null, tick = 0;
@@ -743,7 +744,8 @@ function updateVisuals(){
     const s = liveCluster.get(clusterKey(nd.repo, nd.role));
     if(s) s.rad = Math.max(s.rad, Math.hypot(nd.x-s.x, nd.y-s.y, nd.z-s.z)+nd.r+16);
   }
-  liveRepoCenters = liveRepo;   // pickRepoAt() must agree with where the wireframe is drawn
+  liveRepoCenters = liveRepo;         // pickRepoAt() must agree with where the wireframe is drawn
+  liveClusterCenters = liveCluster;   // pickRoleLabelAt() must agree with where the label is drawn
   const now = performance.now();
   for(const child of sceneGroup.children){
     const ud = child.userData || {};
@@ -751,16 +753,18 @@ function updateVisuals(){
       const s = liveCluster.get(clusterKey(ud.repo, ud.role));
       if(s && s.n){
         if(ud.kind==="roleCluster"){ child.position.set(s.x, s.y, s.z); child.scale.set(s.rad*2.2, s.rad*2.2, 1); }
-        else child.position.set(s.x, s.y+s.rad+14, s.z);
+        // just above the centroid, INSIDE the cluster's own mass — a
+        // radius-offset placement lands in a NEIGHBORING cluster whenever
+        // brains interpenetrate (they do), which mislabels the wrong network
+        else child.position.set(s.x, s.y+26, s.z);
       }
       continue;
     }
     if(ud.kind==="repoRegion" || ud.kind==="repoLabel"){
       const r = liveRepo.get(ud.repo);   // empty repos keep their static layout spot
       if(r && r.n){
-        const rad = repoRadius.get(ud.repo) || MIN_REGION;
         if(ud.kind==="repoRegion") child.position.set(r.x, r.y, r.z);
-        else child.position.set(r.x, r.y+rad+26, r.z);
+        else child.position.set(r.x, r.y+56, r.z);   // same inside-the-mass rule as role labels
       }
       continue;
     }
@@ -1054,6 +1058,10 @@ function tooltipHtml(ud){
       `<div class="tt-sub">${label}</div>` + (tags ? `<div class="tt-tags">${tags}</div>` : "") +
       `<div class="tt-sub">strength ${nd.strength ?? "?"}${nd.graduated?" · graduated":""}</div>`;
   }
+  if(ud.kind==="brain"){
+    return `<div class="tt-kind">brain</div><div class="tt-title">${escapeHtml(ud.role)}</div>`+
+      `<div class="tt-sub">${escapeHtml(ud.repo)} · ${ud.n} note(s) · click to fly to it</div>`;
+  }
   if(ud.kind==="repoRegion" || ud.kind==="repoLabel"){
     const repo = ud.repo;
     const inRepo = nodes.filter(n=>n.repo===repo);
@@ -1148,7 +1156,8 @@ function pickRepoAt(clientX, clientY){
     const rc = (live && live.n) ? live : repoCenters.get(repo);
     if(!rc) continue;
     const rad = repoRadius.get(repo) || MIN_REGION;
-    const lp = projectToScreen(rc.x, rc.y+rad+26, rc.z);
+    const labelY = (live && live.n) ? rc.y+56 : rc.y+rad+26;   // must match updateVisuals' drawn spot
+    const lp = projectToScreen(rc.x, labelY, rc.z);
     if(lp && Math.hypot(lp.x-clientX, lp.y-clientY) <= 46) return {kind:"repoLabel", repo};
     const cp = projectToScreen(rc.x, rc.y, rc.z);
     if(cp){
@@ -1158,9 +1167,23 @@ function pickRepoAt(clientX, clientY){
   }
   return null;
 }
+// role (brain) labels: hover shows the brain, click flies to its cluster —
+// picked where updateVisuals draws them (just above the live centroid).
+function pickRoleLabelAt(clientX, clientY){
+  if(!webglOK) return null;
+  for(const [key, s] of liveClusterCenters){
+    if(!s.n) continue;
+    const lp = projectToScreen(s.x, s.y+26, s.z);
+    if(lp && Math.hypot(lp.x-clientX, lp.y-clientY) <= 40){
+      const [repo, role] = key.split("|");
+      return {kind:"brain", repo, role, n:s.n};
+    }
+  }
+  return null;
+}
 function hoverTest(clientX, clientY){
   if(!webglOK || !sceneGroup){ hideTooltip(); return; }
-  // priority: note > synapse > repo label/region.
+  // priority: note > synapse > brain (role) label > repo label/region.
   const nd = pickNoteAt(clientX, clientY);
   if(nd){
     hoveredNode = nd; hoveredLink = null;
@@ -1173,10 +1196,10 @@ function hoverTest(clientX, clientY){
     showTooltip(clientX, clientY, tooltipHtml({kind:"synapse", link:l}));
     return;
   }
-  const repoHit = pickRepoAt(clientX, clientY);
-  if(repoHit){
+  const hit = pickRoleLabelAt(clientX, clientY) || pickRepoAt(clientX, clientY);
+  if(hit){
     hoveredNode = null; hoveredLink = null;
-    showTooltip(clientX, clientY, tooltipHtml(repoHit));
+    showTooltip(clientX, clientY, tooltipHtml(hit));
     return;
   }
   hideTooltip();
@@ -1188,7 +1211,9 @@ function hoverTest(clientX, clientY){
 function hitTest(clientX, clientY){
   if(!webglOK) return;
   const nd = pickNoteAt(clientX, clientY);
-  if(nd) openNote(nd);   // external viewing goes through the panel's "View in ..." button
+  if(nd){ openNote(nd); return; }   // external viewing goes through the panel's "View in ..." button
+  const brain = pickRoleLabelAt(clientX, clientY);
+  if(brain) flyToCluster(brain.repo, brain.role);   // clicking a brain label frames its cluster
 }
 // Fire-and-forget: the server opens the note in the best local viewer
 // (Obsidian → VS Code → terminal cat) and reports which one it used.

@@ -97,7 +97,7 @@ delegation:
         dev:
         -   name: Dev Agent - {name}
             email: '{local}+dev_agent@{domain}'
-            color: '#38e0fa'
+            color: '#ffd24d'
             models:
             - claude-sonnet-5
         reviewer:

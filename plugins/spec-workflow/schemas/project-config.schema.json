@@ -325,7 +325,7 @@
                 "color": {
                     "type": "string",
                     "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
-                    "description": "Optional hex color for this role's brain in the neural view — nodes, synapses, cluster labels and gauges all derive from its hue. Omit to use the viewer's default palette (dev #38e0fa, reviewer #ff5b7f, orchestrator #38fad4)."
+                    "description": "Optional hex color for this role's brain in the neural view — nodes, synapses, cluster labels and gauges all derive from its hue. Omit to use the viewer's default palette (dev #ffd24d, reviewer #ff5b7f, orchestrator #38fad4)."
                 }
             }
         },
