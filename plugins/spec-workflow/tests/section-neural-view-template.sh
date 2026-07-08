@@ -19,13 +19,21 @@ check "ambient pulse position is interpolated from the link's live endpoints (l.
 check "template has a tooltip DOM element for hover inspection" 'id="tooltip"' "$(cat "$NVHTML")"
 check "tooltip is positioned fixed and never intercepts pointer events" "pointer-events:none;z-index:50" "$(cat "$NVHTML")"
 check "pointermove wires a throttled hover raycast" "hoverTest(ev.clientX, ev.clientY)" "$(cat "$NVHTML")"
-check "click-to-inspect behavior (hitTest) is untouched by the hover feature" "function hitTest(clientX, clientY){" "$(cat "$NVHTML")"
+check "hitTest(clientX, clientY) keeps its signature -- only its raycast target set changes (#88)" "function hitTest(clientX, clientY){" "$(cat "$NVHTML")"
 # #72: note hover hit area must match the VISIBLE glow (the halo sprite,
 # scaled nd.r*6), not the tiny bright core (nd.r*2) -- the halo carries its
 # own "note" userData so hoverTest()'s note-priority group can raycast it
 # directly instead of the core.
 check "note halo sprite carries note userData so its visible glow is hoverable, not just the tiny core" 'halo.userData = {kind:"note", node:nd};' "$(cat "$NVHTML")"
 check "hoverTest()'s note group raycasts the halo (visible glow), not the small core sprite" "if(nd._halo) noteTargets.push(nd._halo);" "$(cat "$NVHTML")"
+# #88: click-to-inspect (hitTest) raycast the tiny core sprite (nd._core,
+# nd.r*2) while hover raycasts the visible halo (nd._halo, nd.r*6) -- a note
+# that shows a tooltip on hover could miss when clicked. hitTest's note
+# target (and the dblclick empty-space guard's, so double-click-on-a-note
+# stays aligned with what a single click can hit) must raycast the halo
+# instead, matching hover's hit area exactly.
+check_absent "hitTest()/dblclick guard no longer raycast the tiny core sprite -- must match hover's halo hit area (#88)" "nd=>nd._core).filter(Boolean)" "$(cat "$NVHTML")"
+check "hitTest()'s note target is nd._halo, the same visible glow hover raycasts (#88)" "const noteSprites = nodes.map(nd=>nd._halo).filter(Boolean);" "$(cat "$NVHTML")"
 # #72: the repo region boundary must be raycast as its rendered wireframe
 # lines (so raycaster.params.Line.threshold narrows hits to near the visible
 # lines), not as the underlying solid icosahedron Mesh -- a Mesh's face
@@ -504,6 +512,91 @@ NODEJS
     hovertest_out="$(node "$_nvhovertest" "$NVHTML" 2>&1)"
     check "hoverTest() resolves overlapping hits by kind priority (note > synapse/pulse > repoLabel > repoRegion) and drives the hoverable cursor affordance" "HOVERTEST_PRIORITY_OK" "$hovertest_out"
     rm -f "$_nvhovertest"
+
+    # #88 behavioral: hitTest() (click-to-inspect) must raycast the same halo
+    # sprite hoverTest() raycasts (nd._halo, the visible glow), not the tiny
+    # core sprite (nd._core) -- a note that shows a tooltip on hover must not
+    # be missable by a click on the same spot. The dblclick empty-space-reset
+    # guard raycasts its own noteSprites array to decide "did this land on a
+    # note", so it must be realigned to the same halo target set: double-
+    # clicking a note's halo (visible glow, not just its tiny core) must still
+    # suppress the reset, and double-clicking real empty space must still
+    # reset. Drives the real extracted hitTest() and the anonymous dblclick
+    # listener (sliced by unique markers, same pattern as the #71/#73 pointer-
+    # wiring harnesses) against a stub raycaster keyed on object IDENTITY
+    # (which array was actually passed to intersectObjects), so this pins the
+    # real runtime target, not just source text.
+    _nvhittest="$(mktemp).cjs"
+    cat >"$_nvhittest" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+function extractOneLine(name) {
+    const re = new RegExp("function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\}\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find function " + name + "() in template");
+    return m[0];
+}
+const dblStart = html.indexOf('canvas.addEventListener("dblclick", ev=>{');
+const dblEndMarker = "resetView();\n});";
+const dblEndIdx = html.indexOf(dblEndMarker, dblStart);
+if (dblStart === -1 || dblEndIdx === -1) throw new Error("could not locate the dblclick listener block -- markers may be stale");
+const dblBlock = html.slice(dblStart, dblEndIdx + dblEndMarker.length);
+
+const webglOK = true;
+const W = 800, H = 600;
+class Vector2Stub { constructor(x, y) { this.x = x; this.y = y; } }
+const THREE = { Vector2: Vector2Stub };
+const camera = {};
+
+const core = { userData: { kind: "note", node: { slug: "n1" } } };
+const halo = { userData: { kind: "note", node: { slug: "n1" } } };
+let nodes = [{ _core: core, _halo: halo }];
+
+let openNoteCalls = [];
+function openNote(nd) { openNoteCalls.push(nd); }
+let resetViewCalls = 0;
+function resetView() { resetViewCalls++; }
+
+// stub raycaster reports a hit only when the target array's first element is
+// IDENTICALLY the halo stub -- so a hit here proves the real code raycast the
+// halo array, not the core array (which would report no hit).
+let lastTargets = null;
+const raycaster = {
+    setFromCamera() {},
+    intersectObjects(targets) {
+        lastTargets = targets;
+        if (!targets.length) return [];
+        return targets[0] === halo ? [{ object: targets[0] }] : [];
+    },
+};
+
+eval(extractOneLine("hitTest"));
+eval(dblBlock.replace('canvas.addEventListener("dblclick", ev=>{', "function dblclickHandler(ev){").replace(/\}\);\s*$/, "}"));
+
+// case 1: click lands on the visible halo -- hitTest() must open the note,
+// proving its raycast target is nd._halo (a core-only raycast would miss).
+hitTest(1, 1);
+if (openNoteCalls.length !== 1 || openNoteCalls[0].slug !== "n1") throw new Error("hitTest() did not open the note when only the halo (not the core) reports a hit -- it is not raycasting nd._halo");
+if (lastTargets[0] !== halo) throw new Error("hitTest() did not pass the halo sprite as its raycast target");
+
+// case 2: dblclick on the halo -- must NOT reset (aligned with hitTest's own
+// target set, so a note reachable by click is also exempt from the reset).
+resetViewCalls = 0; lastTargets = null;
+dblclickHandler({ clientX: 1, clientY: 1 });
+if (resetViewCalls !== 0) throw new Error("dblclick on the halo must not reset the view (guard not aligned with hitTest's halo target)");
+if (lastTargets[0] !== halo) throw new Error("dblclick guard did not raycast the halo sprite");
+
+// case 3: dblclick on real empty space (nothing hits) -- reset must still fire.
+raycaster.intersectObjects = (targets) => { lastTargets = targets; return []; };
+resetViewCalls = 0;
+dblclickHandler({ clientX: 500, clientY: 500 });
+if (resetViewCalls !== 1) throw new Error("dblclick on empty space must still reset the view");
+
+console.log("HITTEST_HALO_ALIGNED_OK");
+NODEJS
+    hittest_out="$(node "$_nvhittest" "$NVHTML" 2>&1)"
+    check "hitTest() and the dblclick empty-space guard raycast the same halo sprite hover uses, not the tiny core (#88)" "HITTEST_HALO_ALIGNED_OK" "$hittest_out"
+    rm -f "$_nvhittest"
 
     # #75 behavioral: renderGauges() must (a) group into one section per repo
     # in repoList order, (b) order roles orchestrator-first-then-alphabetical

@@ -984,11 +984,16 @@ function hoverTest(clientX, clientY){
 // drag + single-finger touch orbit; two active pointers pinch-zoom; wheel
 // zooms toward the target; right-click-drag or shift-drag pans) ----
 const raycaster = webglOK ? new THREE.Raycaster() : null;
+// #88: raycast the halo (the visible glow hoverTest() also targets, #72), not
+// the tiny core -- click and hover must agree on what's hittable, or a note
+// that highlights on hover can miss when clicked. Notes are the only click
+// target here (unlike hoverTest()'s note/synapse/label/region priority chain)
+// since synapses/labels/regions have no click-to-inspect action of their own.
 function hitTest(clientX, clientY){
   if(!webglOK) return;
   const ndc = new THREE.Vector2((clientX/W)*2-1, -(clientY/H)*2+1);
   raycaster.setFromCamera(ndc, camera);
-  const noteSprites = nodes.map(nd=>nd._core).filter(Boolean);
+  const noteSprites = nodes.map(nd=>nd._halo).filter(Boolean);
   const hits = raycaster.intersectObjects(noteSprites, false);
   if(hits.length) openNote(hits[0].object.userData.node);
 }
@@ -1078,7 +1083,7 @@ canvas.addEventListener("dblclick", ev=>{
   if(!webglOK) return;
   const ndc = new THREE.Vector2((ev.clientX/W)*2-1, -(ev.clientY/H)*2+1);
   raycaster.setFromCamera(ndc, camera);
-  const noteSprites = nodes.map(nd=>nd._core).filter(Boolean);
+  const noteSprites = nodes.map(nd=>nd._halo).filter(Boolean);   // #88: aligned with hitTest()'s halo target
   if(raycaster.intersectObjects(noteSprites, false).length) return;  // dblclick on a note: no reset
   resetView();
 });
