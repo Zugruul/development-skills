@@ -909,8 +909,12 @@ canvas.addEventListener("pointermove", ev=>{
     userMoved = true;
   } else if(pointers.size===1 && dragLast){
     const dx = ev.clientX-dragLast.x, dy = ev.clientY-dragLast.y;
-    if(panning) panBy(dx, dy); else orbitBy(dx, dy);
     dragLast = {x:ev.clientX, y:ev.clientY};
+    // gate on the same threshold used for click-vs-drag detection (`moved`)
+    // -- a bare click's sub-pixel pointermove jitter must not orbit/pan and
+    // must not set userMoved, or the pending first /graph auto-fit is
+    // cancelled by mere page focus (#71).
+    if(moved){ if(panning) panBy(dx, dy); else orbitBy(dx, dy); }
   }
 });
 canvas.addEventListener("pointerleave", hideTooltip);
