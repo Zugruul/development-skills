@@ -331,3 +331,73 @@ check "migrate-qualify second run reports no changes (idempotent)" "no changes" 
 post2="$(cat "$MG/.claude/feedbacks/feed.yaml")"
 check "migrate-qualify idempotent: file byte-identical after second run" "$post" "$post2"
 rm -rf "$MG"
+
+# --- ts normalization (sw-063) ---------------------------------------------
+# ts is the record's routing identity. An unquoted ISO-8601 ts in a record
+# YAML is re-typed by PyYAML into a datetime object; if emit dumped that
+# object as-is, the feed line would be unquoted and CLI-string `route`
+# lookups could never match it. emit must normalize ts to a canonical
+# quoted ISO-8601 string before the duplicate check and before dumping, and
+# route must match legacy (already-in-feed) datetime-typed ts values too.
+
+TS="$(mktemp -d)"; mkdir -p "$TS/.claude"
+cp "$FIX/valid.project.yaml" "$TS/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$TS" set methodology.feedback true >/dev/null
+ts_() { (cd "$TS" && python3 "$PLUGIN/scripts/feedback.py" "$TS" "$@"); }
+
+ts_ emit "$FIX/feedback-unquoted-ts.yaml" >/dev/null
+check "emit normalizes an unquoted-ISO ts to a quoted feed line" \
+  "ts: '2026-07-02T09:00:00Z'" "$(cat "$TS/.claude/feedbacks/feed.yaml")"
+out="$(ts_ route "2026-07-02T09:00:00Z" 0 ignore "n/a")"
+check "route addresses a record whose ts was normalized at emit time" "OK: routed" "$out"
+rm -rf "$TS"
+
+# legacy feed: a record already sitting in the feed with a datetime-typed
+# (unquoted) ts -- built by writing the raw line directly, not via emit --
+# must still be addressable by route via the equivalent CLI string.
+TL="$(mktemp -d)"; mkdir -p "$TL/.claude/feedbacks"
+cp "$FIX/valid.project.yaml" "$TL/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$TL" set methodology.feedback true >/dev/null
+cat >"$TL/.claude/feedbacks/feed.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: 2026-07-03T00:00:00Z
+iteration: {task: FX-064, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "legacy datetime ts", generalized: "legacy datetime ts"}
+YAML
+out="$(cd "$TL" && python3 "$PLUGIN/scripts/feedback.py" "$TL" route "2026-07-03T00:00:00Z" 0 ignore "n/a")"
+check "route matches a legacy datetime-typed ts already in the feed" "OK: routed" "$out"
+rm -rf "$TL"
+
+# duplicate-ts rejection must hold across the string/datetime boundary: an
+# unquoted (datetime-typed) ts and a quoted (string) ts for the same instant
+# must collide, not coexist as two "different" records.
+TD="$(mktemp -d)"; mkdir -p "$TD/.claude"
+cp "$FIX/valid.project.yaml" "$TD/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$TD" set methodology.feedback true >/dev/null
+td_() { (cd "$TD" && python3 "$PLUGIN/scripts/feedback.py" "$TD" "$@"); }
+td_ emit "$FIX/feedback-unquoted-ts.yaml" >/dev/null
+DUPREC="$TD/dup-quoted-ts.yaml"
+cat >"$DUPREC" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-07-02T09:00:00Z"
+iteration:
+  task: FX-065
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: dev
+  model: claude-sonnet-5
+items:
+  - category: friction
+    area: board
+    severity: low
+    summary: "same instant, quoted this time"
+    generalized: "same instant, quoted this time"
+YAML
+out="$(td_ emit "$DUPREC" || true)"
+check "duplicate-ts rejection holds across the string/datetime boundary" "already exists" "$out"
+rm -rf "$TD"

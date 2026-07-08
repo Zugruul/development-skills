@@ -37,7 +37,11 @@ YAML documents, one per emitted record:
 
     schemaVersion: 1
     kind: loop-feedback
-    ts: <ISO 8601, an input — never datetime.now() in tested paths>
+    ts: <quoted ISO 8601 string, an input — never datetime.now() in tested
+        paths. `emit` normalizes an unquoted ts (which PyYAML re-types to a
+        datetime/date object on load) back to this canonical quoted string
+        form before the duplicate check and before dumping, so the feed
+        never accumulates an unroutable, unquoted ts.>
     iteration:
         task: <task id>
         outcome: merged | in-review | blocked | abandoned
@@ -85,7 +89,12 @@ place.
 
 `ts` also doubles as the record's identity for `route` — two records sharing
 a `ts` make routing ambiguous, so `emit` rejects a `ts` that already exists
-in the feed.
+in the feed (the comparison is on the normalized string form, so a new
+quoted ts collides with an existing legacy datetime-typed one for the same
+instant). `route`'s own ts lookup normalizes each feed record's ts the same
+way before comparing, so a legacy unquoted (datetime-typed) record already
+sitting in an existing feed remains addressable by its CLI string without a
+hand-edit.
 
 Concurrency: the feed assumes a single writer (the orchestrator process,
 serially) — there is no file locking. Concurrent `emit`/`route` calls against
@@ -100,6 +109,7 @@ CLI:
                                                             # bare #N refs already
                                                             # in the feed (sw-089)
 """
+import datetime
 import os
 import re
 import sys
@@ -206,6 +216,26 @@ def _project_specific_refs(text, task_id):
 def _project_name(root):
     cfg = C.load_config(root, warn=False)
     return C.dig(cfg, "project.name") if cfg else None
+
+
+def _normalize_ts(value):
+    """Canonicalize a record's `ts` to an ISO-8601 `Z` string.
+
+    PyYAML re-types an UNQUOTED ISO timestamp in a loaded record into a
+    datetime.date(time) object; if that object were dumped as-is the feed
+    line would come out unquoted and no CLI string passed to `route` could
+    ever equal it again (the record becomes unroutable). Convert any
+    datetime/date object to "%Y-%m-%dT%H:%M:%SZ" (UTC assumed for a naive
+    datetime, converted for an aware one; a bare date gets midnight UTC).
+    A value that is already a string (the quoted, well-formed case) passes
+    through untouched -- this is a pure identity function for strings."""
+    if isinstance(value, datetime.datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(datetime.timezone.utc)
+        return value.strftime("%Y-%m-%dT%H:%M:%SZ")
+    if isinstance(value, datetime.date):
+        return value.strftime("%Y-%m-%dT00:00:00Z")
+    return value
 
 
 def _qualify_text(text, project_name):
@@ -331,6 +361,9 @@ def cmd_emit(root, record_path):
         print(f"INVALID: cannot parse {record_path}: {e}")
         return 1
 
+    if isinstance(rec, dict) and "ts" in rec:
+        rec["ts"] = _normalize_ts(rec["ts"])
+
     cfg = C.load_config(root, warn=False)
     _qualify_record_refs(rec, C.dig(cfg, "project.name") if cfg else None)
 
@@ -350,7 +383,7 @@ def cmd_emit(root, record_path):
         print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root — refusing to write")
         return 1
     existing = _load_feed(feed_path)
-    if any(r.get("ts") == rec.get("ts") for r in existing):
+    if any(_normalize_ts(r.get("ts")) == rec.get("ts") for r in existing):
         print(f"INVALID: ts {rec.get('ts')!r} already exists in the feed — routing would become ambiguous; use a distinct ts")
         return 1
 
@@ -404,7 +437,7 @@ def cmd_route(root, ts, idx_str, action, ref):
         print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
         return 1
     docs = _load_feed(feed_path)
-    matches = [i for i, rec in enumerate(docs) if rec.get("ts") == ts]
+    matches = [i for i, rec in enumerate(docs) if _normalize_ts(rec.get("ts")) == ts]
     if len(matches) > 1:
         print(f"ERROR: ambiguous ts {ts!r} — {len(matches)} records in the feed share it; "
               "fix the feed (unique ts per record) before routing")

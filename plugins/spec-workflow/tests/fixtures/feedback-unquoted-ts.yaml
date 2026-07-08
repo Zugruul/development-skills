@@ -1,0 +1,16 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: 2026-07-02T09:00:00Z
+iteration:
+  task: FX-063
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: dev
+  model: claude-sonnet-5
+items:
+  - category: incident
+    area: other
+    severity: high
+    summary: "Unquoted ts re-typed by YAML made the record unroutable."
+    generalized: "An unquoted ISO timestamp re-typed by the YAML loader can make a feed record unroutable by ts."
