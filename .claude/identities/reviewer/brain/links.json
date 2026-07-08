@@ -29,6 +29,11 @@
     "last": null,
     "weight": 0.5
   },
+  "red-commit-worktree-verify->recompute-hashes-never-eyeball": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "reproduce-on-deployment-floor->named-attack-class-briefs": {
     "fires": 0,
     "last": null,
@@ -45,6 +50,11 @@
     "weight": 0.5
   },
   "verify-guard-regex-on-real-artifact->recompute-hashes-never-eyeball": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "verify-guard-regex-on-real-artifact->red-commit-worktree-verify": {
     "fires": 0,
     "last": null,
     "weight": 0.5

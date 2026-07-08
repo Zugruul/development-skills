@@ -49,6 +49,11 @@
     "last": null,
     "weight": 0.5
   },
+  "raf-rearm-first->red-static-vs-wiring-checks": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "red-static-vs-wiring-checks->vendored-split-build-import-guard": {
     "fires": 0,
     "last": null,
@@ -57,6 +62,11 @@
   "surgical-yaml-edits->budget-count-join-separators": {
     "fires": 1,
     "last": "2026-07-07",
+    "weight": 0.5
+  },
+  "template-extract-anchor-check->hermetic-tmpdir-per-guard-case": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "vendored-split-build-import-guard->red-static-vs-wiring-checks": {
