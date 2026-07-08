@@ -34,6 +34,16 @@
     "last": null,
     "weight": 0.5
   },
+  "pin-reviewer-adhoc-checks->no-change-claims-need-interaction-flags": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "pin-reviewer-adhoc-checks->pre-diagnose-before-brief": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "post-hoc-review-over-rewrite->shared-checkout-hazard": {
     "fires": 0,
     "last": null,

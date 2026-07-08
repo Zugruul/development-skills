@@ -19,6 +19,11 @@
     "last": null,
     "weight": 0.5
   },
+  "bool-excluded-before-int->stdlib-vs-enrichment-split": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "extraction-tests-must-verify-match->lane-cwd-distrust": {
     "fires": 0,
     "last": null,
@@ -85,6 +90,16 @@
     "weight": 0.5
   },
   "red-static-vs-wiring-checks->vendored-split-build-import-guard": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "single-cause-fixtures->bool-excluded-before-int": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "single-cause-fixtures->hermetic-tmpdir-per-guard-case": {
     "fires": 0,
     "last": null,
     "weight": 0.5
