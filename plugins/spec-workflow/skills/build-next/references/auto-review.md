@@ -40,6 +40,7 @@ Documentation sets in scope for this diff (from cfg `docs[]`, matched by
 <for each in-scope set: "- <id>: <path> — covers <globs>; <notes>">
 
 Review `gh pr diff <n>` (and checked-out files as needed) for ALL of:
+(tip: `gh pr diff <n> | python3 "${CLAUDE_PLUGIN_ROOT}/scripts/diff-symbols.py"` maps every hunk to its enclosing symbol — a fast scope check for claims like "only functions X/Y changed")
 (a) spec compliance — each criterion satisfied, nothing more, nothing less;
 (b) code quality — correctness, tests (red-first evidence in git log), style,
     scaling hazards, security;
