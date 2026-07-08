@@ -45,10 +45,42 @@ check_absent() { # name  forbidden-substring  actual-output
 # instead of either failing innocent work or being silently swallowed.
 _used_ports=()
 
+# development-skills#97: the port-in-use check inside _rand_port() only ever
+# sees THIS process's own picks (_used_ports is per-process) -- it has no
+# way to know what some OTHER concurrently-running run-tests.sh already
+# claimed. Two suites drawing from the same full 20000-39999 band can (and,
+# rarely but repeatably under load, did) land on the identical port number.
+# When that port then gets reused for a genuine neural-view server in one
+# suite while the other suite's kill gate is still looking at it, the gate
+# (which only ever asks "who holds MY configured port right now" -- correct
+# in isolation, see section-lifecycle-retry.sh's cross-suite gate check)
+# kills a completely unrelated process. Fix: slice the band into disjoint
+# _PORT_SLICE_COUNT bands of _PORT_SLICE_WIDTH ports each and floor every
+# draw by a band chosen from this PROCESS's own PID ($$, guaranteed unique
+# among concurrently-running processes on one host) -- two suites now
+# collide only if their PIDs happen to be congruent mod _PORT_SLICE_COUNT,
+# not on every shared draw. A suite-scoped slice (rather than true
+# cross-process bind-first allocation) is sufficient here: nothing but this
+# same process ever reads _used_ports, and the port is handed to a spawned
+# child (neural-view's "serve"), so there's no way to hold the socket open
+# across the handoff anyway.
+_PORT_SLICE_COUNT=200
+_PORT_SLICE_WIDTH=100   # _PORT_SLICE_COUNT * _PORT_SLICE_WIDTH == 20000, the full band
+
+# _port_base [pid] -- this suite's disjoint port-range floor. Pure function
+# of pid (defaults to $$, this process's own PID); exposed separately from
+# _rand_port so tests can probe the PID->band mapping with arbitrary pid
+# values instead of depending on real spawned PIDs happening to differ.
+_port_base() {
+    local pid="${1:-$$}"
+    printf '%s\n' $((20000 + (pid % _PORT_SLICE_COUNT) * _PORT_SLICE_WIDTH))
+}
+
 _rand_port() {
-    local p tries=0
+    local p tries=0 base
+    base="$(_port_base "$$")"
     while :; do
-        p=$((20000 + RANDOM % 20000))
+        p=$((base + RANDOM % _PORT_SLICE_WIDTH))
         tries=$((tries + 1))
         case " ${_used_ports[*]-} " in
             *" $p "*) [[ $tries -lt 50 ]] && continue ;;
