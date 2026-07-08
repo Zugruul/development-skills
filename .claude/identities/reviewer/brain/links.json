@@ -119,6 +119,16 @@
     "last": null,
     "weight": 0.5
   },
+  "test-default-seams->fixture-provenance-check": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "test-default-seams->red-passing-checks-may-pin-later": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "verify-guard-regex-on-real-artifact->diff-invariant-artifact-on-refactor": {
     "fires": 0,
     "last": null,

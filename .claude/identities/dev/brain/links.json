@@ -14,6 +14,16 @@
     "last": "2026-07-07",
     "weight": 0.5
   },
+  "batch-red-across-surfaces->flag-safety-language-removal": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "batch-red-across-surfaces->single-cause-fixtures": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "behavioral-guard-is-spec-worthy->old-path-repo-wide-sweep": {
     "fires": 0,
     "last": null,
