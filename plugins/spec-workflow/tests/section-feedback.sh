@@ -14,13 +14,13 @@ python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback true >/dev/nu
 check "shorthand feedback=true readable" "true" "$(python3 "$PLUGIN/scripts/config.py" "$FT" get methodology.feedback)"
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.claude/project.yaml")"
 check "validator accepts shorthand feedback" "VALID: " "$out"
-python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": ".claude/feedback/feed.yaml", "roles": ["orchestrator"], "autoTriage": false}' >/dev/null
+python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": ".claude/feedbacks/feed.yaml", "roles": ["orchestrator"], "autoTriage": false}' >/dev/null
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.claude/project.yaml")"
 check "validator accepts expanded feedback" "VALID: " "$out"
 python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "bogus": 1}' >/dev/null
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.claude/project.yaml" || true)"
 check "validator rejects unknown feedback key" "unknown key" "$out"
-python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": ".claude/feedback/feed.yaml", "roles": ["orchestrator"], "autoTriage": false}' >/dev/null
+python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": ".claude/feedbacks/feed.yaml", "roles": ["orchestrator"], "autoTriage": false}' >/dev/null
 
 # feed path containment: absolute paths and ../ escapes are rejected by the validator
 python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": "/tmp/escape-feed.yaml"}' >/dev/null
@@ -29,7 +29,7 @@ check "validator rejects absolute feed path" "must be repo-relative" "$out"
 python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": "../../escape/feed.yaml"}' >/dev/null
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.claude/project.yaml" || true)"
 check "validator rejects ../ escaping feed path" "must not escape" "$out"
-python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": ".claude/feedback/feed.yaml", "roles": ["orchestrator"], "autoTriage": false}' >/dev/null
+python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": ".claude/feedbacks/feed.yaml", "roles": ["orchestrator"], "autoTriage": false}' >/dev/null
 
 # status: disabled by default (no methodology.feedback key)
 FD="$(mktemp -d)"; mkdir -p "$FD/.claude"; cp "$FIX/valid.project.yaml" "$FD/.claude/project.yaml"
@@ -37,12 +37,12 @@ out="$(cd "$FD" && python3 "$PLUGIN/scripts/feedback.py" "$FD" status)"
 check "status: disabled by default" "feedback: disabled" "$out"
 rm -rf "$FD"
 
-check "status: enabled + feed path + pending=0" "feedback: enabled feed=.claude/feedback/feed.yaml pending=0" "$(fb status)"
+check "status: enabled + feed path + pending=0" "feedback: enabled feed=.claude/feedbacks/feed.yaml pending=0" "$(fb status)"
 
 # emit: valid record round-trips into the feed
 out="$(fb emit "$FIX/feedback-valid.yaml")"
 check "emit ok" "OK" "$out"
-check "feed file created" "loop-feedback" "$(cat "$FT/.claude/feedback/feed.yaml" 2>/dev/null)"
+check "feed file created" "loop-feedback" "$(cat "$FT/.claude/feedbacks/feed.yaml" 2>/dev/null)"
 check "status: pending reflects 2 unrouted items" "pending=2" "$(fb status)"
 
 # emit: rejects a second record reusing an already-emitted ts (would make routing ambiguous)
@@ -91,7 +91,7 @@ check "route rejects unknown action" "unknown routing action" "$out"
 fb route "2026-07-01T10:00:00Z" 0 brain-note "friction-self-approval" >/dev/null
 fb route "2026-07-01T10:00:00Z" 1 backlog "#41" >/dev/null
 check "status: pending drops to zero after routing" "pending=0" "$(fb status)"
-check "routing written into feed" "brain-note" "$(cat "$FT/.claude/feedback/feed.yaml")"
+check "routing written into feed" "brain-note" "$(cat "$FT/.claude/feedbacks/feed.yaml")"
 
 # route: re-routing an already-routed item is allowed but names the prior action
 out="$(fb route "2026-07-01T10:00:00Z" 0 graduate "graduated-lesson")"
@@ -100,10 +100,10 @@ rm -rf "$FT"
 
 # route: a hand-crafted feed with a duplicate ts is refused as ambiguous rather than
 # silently rewriting the first match and stranding the second
-DT="$(mktemp -d)"; mkdir -p "$DT/.claude/feedback"
+DT="$(mktemp -d)"; mkdir -p "$DT/.claude/feedbacks"
 cp "$FIX/valid.project.yaml" "$DT/.claude/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$DT" set methodology.feedback true >/dev/null
-cat >"$DT/.claude/feedback/feed.yaml" <<'YAML'
+cat >"$DT/.claude/feedbacks/feed.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: "2026-08-01T00:00:00Z"
@@ -138,3 +138,68 @@ check "feedback.py refuses to emit outside repo root: nonzero exit" "rc=1" "$out
 check "feedback.py did not write outside the root" "MISSING" "$([[ -f "$ESCTARGET/feed.yaml" ]] && echo FOUND || echo MISSING)"
 rm -rf "$ESC" "$ESCTARGET"
 
+# --- legacy-path migration guard (sw-062) --------------------------------
+# .claude/feedback/ (singular) was the old, gitignored home of the feed;
+# .claude/feedbacks/ (plural) is the new tracked archive. When the DEFAULT
+# feed path is in effect (no explicit methodology.feedback.feed override)
+# and a legacy feed exists but the new path doesn't, every subcommand that
+# touches the feed must refuse and point at the migration rather than
+# silently starting a fresh, empty archive that strands the old history.
+
+# case 1: legacy exists, new path absent, DEFAULT (no override) -> every
+# feed-touching subcommand fails loudly with a migration message.
+LG="$(mktemp -d)"; mkdir -p "$LG/.claude/feedback"
+cp "$FIX/valid.project.yaml" "$LG/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$LG" set methodology.feedback true >/dev/null
+cat >"$LG/.claude/feedback/feed.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-06-01T00:00:00Z"
+iteration: {task: FX-000, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "legacy", generalized: "legacy"}
+YAML
+lg() { (cd "$LG" && python3 "$PLUGIN/scripts/feedback.py" "$LG" "$@" 2>&1; echo "rc=$?"); }
+out="$(lg status)"
+check "legacy guard: status fails" "rc=1" "$out"
+check "legacy guard: status names migration" "migrat" "$out"
+out="$(lg pending)"
+check "legacy guard: pending fails" "rc=1" "$out"
+out="$(lg emit "$FIX/feedback-valid.yaml")"
+check "legacy guard: emit fails" "rc=1" "$out"
+out="$(lg route "2026-06-01T00:00:00Z" 0 ignore "n/a")"
+check "legacy guard: route fails" "rc=1" "$out"
+check "legacy guard: never created the new feed" "MISSING" "$([[ -f "$LG/.claude/feedbacks/feed.yaml" ]] && echo FOUND || echo MISSING)"
+rm -rf "$LG"
+
+# case 2: legacy exists, but an explicit methodology.feedback.feed override
+# is set -> guard does not apply, override path used as normal.
+LO="$(mktemp -d)"; mkdir -p "$LO/.claude/feedback"
+cp "$FIX/valid.project.yaml" "$LO/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$LO" set methodology.feedback '{"enabled": true, "feed": ".claude/custom-feed.yaml"}' >/dev/null
+cat >"$LO/.claude/feedback/feed.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-06-01T00:00:00Z"
+iteration: {task: FX-000, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "legacy", generalized: "legacy"}
+YAML
+out="$(cd "$LO" && python3 "$PLUGIN/scripts/feedback.py" "$LO" status)"
+check "override: legacy guard does not apply" "feedback: enabled feed=.claude/custom-feed.yaml pending=0" "$out"
+rm -rf "$LO"
+
+# case 3: neither legacy nor new path exists -> normal fresh feed (no guard)
+LN="$(mktemp -d)"; mkdir -p "$LN/.claude"
+cp "$FIX/valid.project.yaml" "$LN/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$LN" set methodology.feedback true >/dev/null
+out="$(cd "$LN" && python3 "$PLUGIN/scripts/feedback.py" "$LN" status)"
+check "fresh feed: no legacy, no guard, starts clean" "feedback: enabled feed=.claude/feedbacks/feed.yaml pending=0" "$out"
+rm -rf "$LN"
+
+# --- setup-project no longer gitignores the (now tracked) archive --------
+setup_skill="$PLUGIN/skills/setup-project/SKILL.md"
+check_absent "setup-project gitignore printf drops .claude/feedback/" ".claude/feedback/" \
+  "$(grep -F 'printf' "$setup_skill")"
