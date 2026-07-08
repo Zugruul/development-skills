@@ -15,108 +15,108 @@
     "weight": 0.5
   },
   "bash32-empty-array-set-u->budget-count-join-separators": {
-    "fires": 2,
+    "fires": 3,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "batch-red-across-surfaces->flag-safety-language-removal": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "batch-red-across-surfaces->single-cause-fixtures": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "behavioral-guard-is-spec-worthy->old-path-repo-wide-sweep": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "bool-excluded-before-int->stdlib-vs-enrichment-split": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "capture-dont-transcribe->deterministic-repro-fast": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "circular-fixture-detector->bool-excluded-before-int": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "circular-fixture-detector->unassumed-full-pipeline-repro": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "claims-point-at-diff-lines->fake-cli-exit-code-is-contract": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "claims-point-at-diff-lines->flag-safety-language-removal": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "deterministic-repro-fast->hotfix-repro-incident-sequence": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "deterministic-repro-fast->poll-own-children": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "duplicate-with-agreement-pin->batch-red-across-surfaces": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "duplicate-with-agreement-pin->enumerate-state-writers": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "enumerate-state-writers->raf-rearm-first": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "enumerate-state-writers->trace-state-mutation-not-named-trigger": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "exclude-before-scan->circular-fixture-detector": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "exclude-before-scan->heredoc-commit-messages": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "execute-paste-recipes->circular-fixture-detector": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "execute-paste-recipes->fake-cli-exit-code-is-contract": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "extend-may-mean-prove-and-legible->circular-fixture-detector": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "extraction-tests-must-verify-match->lane-cwd-distrust": {
@@ -125,57 +125,57 @@
     "weight": 0.5
   },
   "fake-cli-exit-code-is-contract->circular-fixture-detector": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "fake-cli-exit-code-is-contract->cond": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "fake-cli-exit-code-is-contract->heredoc-commit-messages": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "flag-safety-language-removal->heredoc-commit-messages": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "flag-safety-language-removal->present-vs-demanding-policy-rules": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "guards-are-not-cache-targets->equality-guards-invite-ordering-probes": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "guards-are-not-cache-targets->second-order-after-concurrency-fix": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "heredoc-commit-messages->bash32-empty-array-set-u": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "hermetic-tmpdir-per-guard-case->old-path-repo-wide-sweep": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "hotfix-repro-incident-sequence->stderr-suppression-hides-evidence": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "hotfix-repro-incident-sequence->unassumed-full-pipeline-repro": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
@@ -200,78 +200,78 @@
     "weight": 0.5
   },
   "naive-counters-need-quotes-first->exclude-before-scan": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "naive-counters-need-quotes-first->self-scan-first-class": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "normalize-after-load-identity-fields->bool-excluded-before-int": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "normalize-after-load-identity-fields->rehearse-migration-on-real-copy": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "old-path-repo-wide-sweep->enumerate-state-writers": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "old-path-repo-wide-sweep->hermetic-tmpdir-per-guard-case": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "old-path-repo-wide-sweep->surgical-yaml-edits": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "pair-every-side-effect-with-undo->behavioral-guard-is-spec-worthy": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "pair-every-side-effect-with-undo->old-path-repo-wide-sweep": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "poll-own-children->second-order-after-concurrency-fix": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "poll-own-children->stderr-suppression-hides-evidence": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "presence-vs-value-claims->bool-excluded-before-int": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "presence-vs-value-claims->present-vs-demanding-policy-rules": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "present-vs-demanding-policy-rules->bool-excluded-before-int": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "present-vs-demanding-policy-rules->circular-fixture-detector": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "raf-rearm-first->red-static-vs-wiring-checks": {
@@ -285,12 +285,12 @@
     "weight": 0.5
   },
   "red-commit-as-you-go->batch-red-across-surfaces": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "red-commit-as-you-go->claims-point-at-diff-lines": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
@@ -305,68 +305,78 @@
     "weight": 0.5
   },
   "rehearse-migration-on-real-copy->single-cause-fixtures": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "rehearse-migration-on-real-copy->surgical-yaml-edits": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "second-order-after-concurrency-fix->normalize-after-load-identity-fields": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "second-order-after-concurrency-fix->pair-every-side-effect-with-undo": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "self-scan-first-class->circular-fixture-detector": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "self-scan-first-class->exclude-before-scan": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "shared-quota-not-for-fixtures->capture-dont-transcribe": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-08",
     "weight": 0.5
   },
   "single-cause-fixtures->bool-excluded-before-int": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "single-cause-fixtures->hermetic-tmpdir-per-guard-case": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "stderr-suppression-hides-evidence->circular-fixture-detector": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "stderr-suppression-hides-evidence->trace-state-mutation-not-named-trigger": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "stdlib-vs-enrichment-split->unassumed-full-pipeline-repro": {
+    "fires": 1,
+    "last": "2026-07-08",
+    "weight": 0.5
+  },
+  "surgical-yaml-edits->budget-count-join-separators": {
+    "fires": 3,
+    "last": "2026-07-08",
+    "weight": 0.5
+  },
+  "swallow-fix-matrix->capture-dont-transcribe": {
     "fires": 0,
     "last": null,
     "weight": 0.5
   },
-  "surgical-yaml-edits->budget-count-join-separators": {
-    "fires": 2,
-    "last": "2026-07-08",
+  "swallow-fix-matrix->red-commit-as-you-go": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "template-extract-anchor-check->hermetic-tmpdir-per-guard-case": {
@@ -375,27 +385,27 @@
     "weight": 0.5
   },
   "trace-state-mutation-not-named-trigger->anonymous-listener-slice-eval": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "trace-state-mutation-not-named-trigger->raf-rearm-first": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
   "ui-bug-may-be-upstream-data-loss->trace-state-mutation-not-named-trigger": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "unassumed-full-pipeline-repro->hermetic-tmpdir-per-guard-case": {
     "fires": 1,
     "last": "2026-07-08",
     "weight": 0.5
   },
+  "unassumed-full-pipeline-repro->hermetic-tmpdir-per-guard-case": {
+    "fires": 2,
+    "last": "2026-07-08",
+    "weight": 0.5
+  },
   "unassumed-full-pipeline-repro->trace-state-mutation-not-named-trigger": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   },
@@ -405,7 +415,7 @@
     "weight": 0.5
   },
   "worktree-loss-recovery->deterministic-repro-fast": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-07-08",
     "weight": 0.5
   }

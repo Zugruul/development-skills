@@ -1,12 +1,10 @@
 ---
-tags: [review, fixtures, detection]
-paths: ["plugins/spec-workflow/tests/**"]
-strength: 3
-source: "#80 review retro — recurrence (audit the checker itself)"
-graduated: true
+tags: [fixtures, provenance]
+paths: ["**"]
+strength: 4
+source: "#50 retro — refinement (assertion-matched vs trigger-only strings)"
+graduated: false
 created: 2026-07-08
 ---
 
-Three-sided fixture audit: (1) provenance — matched strings pasted from REAL captured failures, never authored beside the detector; (2) coverage — what real inputs do the fixtures NOT model; (3) when the check under review IS a permanent gate: attack the CHECKER with adversarial inputs (empty strings, unvisited constructs) — "0 findings today" says nothing about what a careless future edit slips past forever. Fetch primary schemas/docs over trusting code comments.
-
-Related: [[drive-real-helper-adversarially]] [[red-passing-checks-may-pin-later]]
+Refinement: provenance rigor is owed to the TEXT AN ASSERTION MATCHES, not to every string a fixture emits. Mechanical check per fixture string: "does any assertion match THIS string?" — no: provenance immaterial (trigger-only synthetic markers are fine); yes: must be pasted from a real capture, else fixture and detector are the same hand and prove nothing.
