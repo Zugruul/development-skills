@@ -214,6 +214,16 @@
     "last": null,
     "weight": 0.5
   },
+  "unnecessary-vs-inconsistent->narrowed-exploit-survives": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "unnecessary-vs-inconsistent->read-beyond-the-diff": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "verify-guard-regex-on-real-artifact->diff-invariant-artifact-on-refactor": {
     "fires": 0,
     "last": null,
