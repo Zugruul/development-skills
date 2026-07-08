@@ -41,6 +41,9 @@ case "$1 $2" in
             echo "unknown owner type" >&2
             exit 1
         fi
+        if [[ -n "${FAKE_GH_ITEM_ADD_MARKER:-}" ]]; then
+            : >"$FAKE_GH_ITEM_ADD_MARKER"
+        fi
         ;;
     "project item-list")
         n=$(( $(cat "$FAKE_GH_LIST_CALLCOUNT" 2>/dev/null || echo 0) + 1 ))
@@ -53,7 +56,12 @@ case "$1 $2" in
             echo "unknown owner type" >&2
             exit 1
         fi
-        if [[ "${FAKE_GH_ITEM_VISIBLE:-1}" == "1" ]]; then
+        # FAKE_GH_ITEM_ADD_MARKER (if set): the item is invisible until
+        # project item-add has actually run once -- models eventual-consistency
+        # visibility that only kicks in AFTER a real add (#92 adopt test).
+        if [[ -n "${FAKE_GH_ITEM_ADD_MARKER:-}" && ! -f "${FAKE_GH_ITEM_ADD_MARKER:-}" ]]; then
+            echo '{"items":[]}'
+        elif [[ "${FAKE_GH_ITEM_VISIBLE:-1}" == "1" ]]; then
             echo "{\"items\":[{\"id\":\"ITEM_${FAKE_GH_ISSUE_NUM:-900}\",\"content\":{\"number\":${FAKE_GH_ISSUE_NUM:-900}},\"status\":\"${FAKE_GH_ITEM_STATUS:-Backlog}\"}]}"
         else
             echo '{"items":[]}'
@@ -314,6 +322,217 @@ check "(l) list under masked rate limit: RATE-LIMITED fail-fast message with res
 check "(l) list under masked rate limit: exits nonzero" "rc=1" "$out"
 check_absent "(l) list under masked rate limit: no raw masked text leak" "unknown owner type" "$out"
 rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC"
+
+echo "== board.sh flush concurrency (#92): mutual exclusion, lost-append prevention, stale lock, adopt status =="
+
+# --- (m) two concurrent flushers: mutual exclusion -> zero op loss, exactly-once
+# application, the loser skips without ever touching gh. Uses _flush_sync (a
+# test-only hook in board-queue.sh) to pin the exact interleaving instead of
+# racing wall-clock sleeps: flusher A pauses right after it commits to a batch
+# (pre-fix: right after its snapshot copy, before the destructive truncate;
+# post-fix: once it holds the lock) so flusher B is guaranteed to start while
+# A is still mid-flush.
+_qsetup
+mkdir -p "$BQ/.claude"
+printf '{"op":"prio","issue":"880","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
+LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
+OUTA="$(mktemp)"; OUTB="$(mktemp)"
+
+(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
+    FAKE_GH_ISSUE_NUM=880 FAKE_GH_ITEM_VISIBLE=1 FAKE_GH_ITEM_STATUS="Backlog" \
+    BOARD_QUEUE_TEST_SYNC="$SYNC" BOARD_QUEUE_TEST_TAG=A \
+    bash "$PLUGIN/scripts/board.sh" flush >"$OUTA" 2>&1; echo "rc=$?" >>"$OUTA") &
+PIDA=$!
+
+_i=0
+while [[ ! -f "$SYNC/A.ready" && $_i -lt 150 ]]; do sleep 0.02; _i=$((_i + 1)); done
+
+(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
+    FAKE_GH_ISSUE_NUM=880 FAKE_GH_ITEM_VISIBLE=1 FAKE_GH_ITEM_STATUS="Backlog" \
+    BOARD_QUEUE_TEST_SYNC="$SYNC" BOARD_QUEUE_TEST_TAG=B \
+    bash "$PLUGIN/scripts/board.sh" flush >"$OUTB" 2>&1; echo "rc=$?" >>"$OUTB") &
+PIDB=$!
+
+# Give B a bounded window to either (fixed code) fail the lock and exit on
+# its own, or (unfixed code) reach its own snapshot pause -- if it does, let
+# it proceed too so the unfixed race actually plays out instead of hanging.
+_i=0
+while kill -0 "$PIDB" 2>/dev/null && [[ ! -f "$SYNC/B.ready" ]] && [[ $_i -lt 150 ]]; do sleep 0.02; _i=$((_i + 1)); done
+[[ -f "$SYNC/B.ready" ]] && : >"$SYNC/B.go"
+
+: >"$SYNC/A.go"
+wait "$PIDA" 2>/dev/null
+wait "$PIDB" 2>/dev/null
+
+outA="$(cat "$OUTA")"; outB="$(cat "$OUTB")"
+editcalls="$(grep -c "project item-edit" "$LOG" 2>/dev/null || echo 0)"
+if [[ "$editcalls" -eq 1 ]]; then
+    echo "ok   (m) concurrent flush: exactly-once application (1 item-edit call)"
+else
+    echo "FAIL (m) concurrent flush: expected exactly 1 item-edit call, got $editcalls"
+    fails=$((fails + 1))
+fi
+if grep -qF "prio #880 -> P1" <<<"$outA$outB"; then
+    echo "ok   (m) concurrent flush: the op was actually applied"
+else
+    echo "FAIL (m) concurrent flush: op #880 was never applied"
+    fails=$((fails + 1))
+fi
+if grep -qi "skip" <<<"$outA$outB"; then
+    echo "ok   (m) concurrent flush: one flusher reports a skip"
+else
+    echo "FAIL (m) concurrent flush: no flusher reported skipping"
+    fails=$((fails + 1))
+fi
+if [[ -s "$BQ/.claude/board-queue.jsonl" ]]; then
+    echo "FAIL (m) concurrent flush: queue should be fully drained, nothing lost or stuck"
+    fails=$((fails + 1))
+else
+    echo "ok   (m) concurrent flush: queue drained, nothing lost or stuck"
+fi
+rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC" "$OUTA" "$OUTB" "$SYNC"
+
+# --- (n) queue_append DURING an active flush survives (must not be clobbered
+# by the flush's own snapshot/replace of the queue file). Same _flush_sync
+# hook: the single flusher pauses right after it has committed to its batch
+# (pre-fix: post-cp, pre-truncate -- exactly the unsafe gap; post-fix:
+# post-aside-move, which is atomic and safe by construction) while the test
+# appends a brand-new op directly to the live queue file.
+_qsetup
+mkdir -p "$BQ/.claude"
+printf '{"op":"prio","issue":"890","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
+LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"; OUT="$(mktemp)"
+
+(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
+    FAKE_GH_ISSUE_NUM=890 FAKE_GH_ITEM_VISIBLE=1 FAKE_GH_ITEM_STATUS="Backlog" \
+    BOARD_QUEUE_TEST_SYNC="$SYNC" BOARD_QUEUE_TEST_TAG=solo \
+    bash "$PLUGIN/scripts/board.sh" flush >"$OUT" 2>&1; echo "rc=$?" >>"$OUT") &
+PID=$!
+
+_i=0
+while [[ ! -f "$SYNC/solo.ready" && $_i -lt 150 ]]; do sleep 0.02; _i=$((_i + 1)); done
+printf '{"op":"prio","issue":"891","priority":"P2","ts":"2020-01-01T00:00:00Z"}\n' >>"$BQ/.claude/board-queue.jsonl"
+: >"$SYNC/solo.go"
+wait "$PID" 2>/dev/null
+
+out="$(cat "$OUT")"
+check "(n) append-during-flush: the original queued op was applied" "prio #890 -> P1" "$out"
+remainder="$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+check "(n) append-during-flush: the concurrently-appended op survives" '"issue":"891"' "$remainder"
+rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC" "$OUT" "$SYNC"
+
+# --- (o) stale lock (older than the TTL) is broken with a warning, not wedged forever ---
+_qsetup
+mkdir -p "$BQ/.claude" "$BQ/.claude/board-queue.lock"
+printf '{"op":"prio","issue":"895","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+sleep 1.1
+LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
+out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
+    FAKE_GH_ISSUE_NUM=895 FAKE_GH_ITEM_VISIBLE=1 FAKE_GH_ITEM_STATUS="Backlog" \
+    BOARD_QUEUE_LOCK_TTL=1 \
+    bash "$PLUGIN/scripts/board.sh" flush 2>&1; echo "rc=$?")"
+check "(o) stale lock: broken with a warning" "stale" "$out"
+check "(o) stale lock: the op still gets applied after breaking the lock" "prio #895 -> P1" "$out"
+check "(o) stale lock: exits 0" "rc=0" "$out"
+if [[ -d "$BQ/.claude/board-queue.lock" ]]; then
+    echo "FAIL (o) stale lock: lock dir should be released after the flush completes"
+    fails=$((fails + 1))
+else
+    echo "ok   (o) stale lock: lock dir released after flush"
+fi
+rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC"
+
+# --- (p) adopt (#92): a freshly-adopted, now-visible item gets an initial status
+# instead of landing with no status ('-' on the board) ---
+_qsetup
+LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"; MARKER="$(mktemp -u)"
+out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
+    FAKE_GH_ISSUE_NUM=896 FAKE_GH_ITEM_VISIBLE=1 FAKE_GH_ITEM_STATUS="NoStatus" FAKE_GH_ITEM_ADD_MARKER="$MARKER" \
+    bash "$PLUGIN/scripts/board.sh" adopt 896 2>&1; echo "rc=$?")"
+check "(p) adopt: still reports adopted" "adopted #896" "$out"
+check "(p) adopt: exits 0" "rc=0" "$out"
+check "(p) adopt: sets the initial status (matches add's FIRST_STATUS behavior)" "fixtureStatus0" "$(cat "$LOG")"
+check "(p) adopt: initial status is Backlog (statusFlow[0])" "aaaa0001" "$(cat "$LOG")"
+rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC" "$MARKER"
+
+echo "== board.sh flush concurrency round 2 (#92 review): dedupe stale requeue, sync-hook safety, queue-empty message =="
+
+# --- (q) explicit `flush` verb on an empty, unlocked queue reports "queue empty"
+# (review round 2, finding 3: this went silent when the emptiness check moved
+# inside _flush_queue behind the lock) ---
+_qsetup
+out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$(mktemp)" bash "$PLUGIN/scripts/board.sh" flush 2>&1; echo "rc=$?")"
+check "(q) flush on empty queue: reports queue empty" "queue empty" "$out"
+check "(q) flush on empty queue: exits 0" "rc=0" "$out"
+rm -rf "$BQ" "$FGH"
+
+# --- (r) _flush_sync's wait is capped, not unbounded (review round 2, finding 2:
+# a leaked BOARD_QUEUE_TEST_SYNC would otherwise hang every flush forever).
+# Use a tiny cap so the test itself stays fast. ---
+_qsetup
+mkdir -p "$BQ/.claude"
+printf '{"op":"prio","issue":"897","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
+LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
+out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
+    FAKE_GH_ISSUE_NUM=897 FAKE_GH_ITEM_VISIBLE=1 FAKE_GH_ITEM_STATUS="Backlog" \
+    BOARD_QUEUE_TEST_SYNC="$SYNC" BOARD_QUEUE_TEST_SYNC_MAX_WAIT_ITERS=3 BOARD_QUEUE_TEST_TAG=cap \
+    bash "$PLUGIN/scripts/board.sh" flush 2>&1; echo "rc=$?")"
+check "(r) sync-wait cap: gives up loudly instead of hanging" "gave up after" "$out"
+check "(r) sync-wait cap: still completes the flush after giving up" "prio #897 -> P1" "$out"
+check "(r) sync-wait cap: exits 0" "rc=0" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC" "$SYNC"
+
+# --- (s) stale requeue must not regress a status past a newer move for the
+# same issue (review round 2, finding 1, BLOCKING): reproduces the exact
+# interleaving -- an old move (#900 -> QA) gets rate-limited and requeued to
+# the TAIL of the live file, but a newer move (#900 -> Ready) was appended to
+# the live file first (while the first flush was paused mid-flight, via
+# _flush_sync). The next flush must not replay the stale QA op over the
+# already-newer Ready one: the file-order cur==target skip alone doesn't
+# catch this (cur ends up Ready, target is QA -- they never match) so flush
+# must dedupe by (op, issue), keeping the most-recently-enqueued entry. ---
+_qsetup
+mkdir -p "$BQ/.claude"
+printf '{"op":"move","issue":"900","status":"QA","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
+LOG1="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"; OUT1="$(mktemp)"
+
+(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG1" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
+    FAKE_GH_ISSUE_NUM=900 FAKE_GH_ITEM_VISIBLE=1 FAKE_GH_ITEM_STATUS="Backlog" \
+    FAKE_GH_EDIT_RATE_LIMIT_FROM=1 FAKE_GH_RESET_EPOCH=1735689600 \
+    BOARD_QUEUE_TEST_SYNC="$SYNC" BOARD_QUEUE_TEST_TAG=first \
+    bash "$PLUGIN/scripts/board.sh" flush >"$OUT1" 2>&1; echo "rc=$?" >>"$OUT1") &
+PID1=$!
+
+_i=0
+while [[ ! -f "$SYNC/first.ready" && $_i -lt 150 ]]; do sleep 0.02; _i=$((_i + 1)); done
+printf '{"op":"move","issue":"900","status":"Ready","ts":"2020-01-01T00:00:05Z"}\n' >>"$BQ/.claude/board-queue.jsonl"
+: >"$SYNC/first.go"
+wait "$PID1" 2>/dev/null
+
+out1="$(cat "$OUT1")"
+check "(s) first flush: the old op rate-limits and gets requeued" "QUEUED (rate-limited until 2025-01-01T00:00:00Z): move #900" "$out1"
+combined="$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+check "(s) after first flush: the newer Ready op landed ahead of the stale requeued QA op" '"status":"Ready"' "$(head -1 <<<"$combined")"
+check "(s) after first flush: the stale QA op followed it (verifying the exact interleaving)" '"status":"QA"' "$(tail -1 <<<"$combined")"
+
+LOG2="$(mktemp)"; EDITCC2="$(mktemp)"
+out2="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG2" FAKE_GH_LIST_CALLCOUNT="$(mktemp)" FAKE_GH_EDIT_CALLCOUNT="$EDITCC2" \
+    FAKE_GH_ISSUE_NUM=900 FAKE_GH_ITEM_VISIBLE=1 FAKE_GH_ITEM_STATUS="Ready" \
+    bash "$PLUGIN/scripts/board.sh" flush 2>&1; echo "rc=$?")"
+check "(s) second flush: the current (newer) status is recognized and skipped" "flush: skip move #900 (already Ready)" "$out2"
+check_absent "(s) second flush: the stale QA move must NOT regress the status" "moved #900 -> QA" "$out2"
+check_absent "(s) second flush: no item-edit call at all (both ops resolved without one)" "project item-edit" "$(cat "$LOG2")"
+if [[ -s "$BQ/.claude/board-queue.jsonl" ]]; then
+    echo "FAIL (s) second flush: queue should be fully drained"
+    fails=$((fails + 1))
+else
+    echo "ok   (s) second flush: queue drained"
+fi
+rm -rf "$BQ" "$FGH" "$SYNC" "$LOG1" "$LISTCC" "$EDITCC" "$OUT1" "$LOG2" "$EDITCC2"
 
 echo "== setup-project: .gitignore covers the board-queue feed =="
 check "setup-project SKILL.md gitignores .claude/board-queue.jsonl" '.claude/board-queue.jsonl' "$(cat "$PLUGIN/skills/setup-project/SKILL.md")"

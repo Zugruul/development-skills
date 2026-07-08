@@ -19,6 +19,14 @@ set -uo pipefail
 
 QUEUE_FILE="${BOARD_QUEUE_FILE:-$ROOT/.claude/board-queue.jsonl}"
 
+# Mutual exclusion for flush (#92): a bash-3.2-portable mutex -- macOS bash
+# has no flock builtin, but mkdir is atomic on every POSIX filesystem, so a
+# lockdir next to the queue file is the portable equivalent. A stale lock
+# (older than QUEUE_LOCK_TTL, mtime-based) is broken with a warning so a
+# flusher that crashed mid-flush can't wedge the queue forever.
+QUEUE_LOCK_DIR="$(dirname "$QUEUE_FILE")/board-queue.lock"
+QUEUE_LOCK_TTL="${BOARD_QUEUE_LOCK_TTL:-600}"  # seconds
+
 # _rate_limited <captured-stderr-or-combined-output> -> 0 if it looks like a
 # GitHub rate-limit response. Two layers:
 #  1. Fast path — case-insensitive "rate limit" substring (REST "API rate
@@ -95,6 +103,34 @@ print(json.dumps(d))
 
 _jf() { # <json-line> <field> -> value ("" if absent)
     python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get(sys.argv[2],""))' "$1" "$2"
+}
+
+# _flush_sync <tag>: test-only synchronization point, a no-op in production.
+# Two conditions must BOTH hold before this does anything (review #92
+# round 2 -- an unbounded wait here, misfired outside a test, would hang
+# every flush forever, silently):
+#   1. BOARD_QUEUE_TEST_SYNC names a directory that exists.
+#   2. That directory contains an explicit opt-in sentinel file,
+#      .board-queue-test-sync -- a stray/leaked env var pointing at some
+#      unrelated real directory must not activate this hook.
+# When active: touches <dir>/<tag>.ready then blocks (poll) until
+# <dir>/<tag>.go appears, capped at BOARD_QUEUE_TEST_SYNC_MAX_WAIT_ITERS
+# iterations of a 0.02s sleep (default 1500 =~ 30s) -- past the cap it
+# gives up loudly and proceeds, rather than hanging forever. Lets
+# concurrency tests pin the exact interleaving of overlapping flush calls
+# instead of racing on wall-clock sleeps (see section-board-queue.sh, #92).
+_flush_sync() {
+    local tag="$1" dir="${BOARD_QUEUE_TEST_SYNC:-}" waited=0 cap="${BOARD_QUEUE_TEST_SYNC_MAX_WAIT_ITERS:-1500}"
+    [[ -n "$dir" && -d "$dir" && -f "$dir/.board-queue-test-sync" ]] || return 0
+    : >"$dir/$tag.ready"
+    while [[ ! -f "$dir/$tag.go" ]]; do
+        sleep 0.02
+        waited=$((waited + 1))
+        if [[ "$waited" -ge "$cap" ]]; then
+            echo "flush: WARNING _flush_sync($tag) gave up after $waited iterations waiting for $dir/$tag.go -- proceeding without the test hook" >&2
+            return 0
+        fi
+    done
 }
 
 # _item_id_rl <issue#> -> prints the project item id to stdout if found.
@@ -249,9 +285,15 @@ _do_add_finish() {
 }
 
 # _do_adopt: add an EXISTING issue to the board (issue #84). Idempotent —
-# a no-op (with a message) if the issue is already a board item.
+# a no-op (with a message) if the issue is already a board item. #92: a
+# freshly-added item has no Status set by item-add itself (it landed with
+# '-' on the board) -- poll briefly for visibility (same 3x/0.3s cap as
+# _do_add_finish) and set FIRST_STATUS, matching `add`'s behavior. If the
+# item never becomes visible in that window the adopt still succeeds (the
+# issue IS on the board); if setting the status itself rate-limits, queue a
+# follow-up move instead of failing the whole adopt.
 _do_adopt() {
-    local num="$1" id url out rc
+    local num="$1" id url out rc cur i
     id="$(_item_id_rl "$num")"; rc=$?
     [[ $rc -eq 2 ]] && return 2
     if [[ -n "$id" ]]; then
@@ -260,24 +302,164 @@ _do_adopt() {
     fi
     url="https://github.com/$REPO/issues/$num"
     out="$(gh project item-add "$PN" --owner "$OWNER" --url "$url" 2>&1)"; rc=$?
-    if [[ $rc -eq 0 ]]; then
-        echo "adopted #$num"
-        return 0
+    if [[ $rc -ne 0 ]]; then
+        _rate_limited "$out" && return 2
+        echo "ERROR: adopt #$num: gh project item-add failed: $out" >&2
+        return 1
     fi
-    _rate_limited "$out" && return 2
-    echo "ERROR: adopt #$num: gh project item-add failed: $out" >&2
+    id=""
+    for ((i = 0; i < 3; i++)); do
+        id="$(_item_id_rl "$num")"; rc=$?
+        [[ $rc -eq 2 ]] && { echo "adopted #$num"; return 0; }
+        [[ -n "$id" ]] && break
+        sleep 0.3
+    done
+    if [[ -n "$id" ]]; then
+        cur="$(_current_status "$num")"
+        # shellcheck disable=SC2153  # FIRST_STATUS is the global set by board.sh's
+        # eval block, not a typo of a local first_status
+        if [[ "$cur" != "$FIRST_STATUS" ]]; then
+            _do_move "$num" "$FIRST_STATUS"; rc=$?
+            if [[ "$rc" -eq 2 ]]; then
+                queue_append move issue="$num" status="$FIRST_STATUS"
+            elif [[ "$rc" -ne 0 ]]; then
+                echo "ERROR: adopt #$num: added to board but failed to set initial status" >&2
+                return 1
+            fi
+        fi
+    fi
+    echo "adopted #$num"
+    return 0
+}
+
+# _dir_mtime <dir> -> mtime as epoch seconds (GNU stat, then BSD/macOS stat;
+# 0 if neither works, which never satisfies a staleness check as "past TTL"
+# less than TTL is treated as fresh, so a stat failure fails safe: the lock
+# is treated as held, never spuriously broken).
+_dir_mtime() {
+    stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || date +%s
+}
+
+# _queue_lock_acquire: mkdir-based mutex (#92) -- portable on bash 3.2/macOS,
+# which has no flock builtin, and mkdir is atomic on every POSIX filesystem.
+# Returns 0 = lock now held by us, 1 = another flush holds a live lock (the
+# caller SKIPS -- never blocks, never replays concurrently). A lock older
+# than QUEUE_LOCK_TTL is broken with a warning: a flusher that crashed
+# mid-flush must not wedge the queue forever.
+_queue_lock_acquire() {
+    mkdir -p "$(dirname "$QUEUE_LOCK_DIR")"
+    mkdir "$QUEUE_LOCK_DIR" 2>/dev/null && return 0
+    local age
+    age=$(( $(date +%s) - $(_dir_mtime "$QUEUE_LOCK_DIR") ))
+    if [[ "$age" -ge "$QUEUE_LOCK_TTL" ]]; then
+        echo "flush: WARNING breaking stale lock (age ${age}s >= ${QUEUE_LOCK_TTL}s TTL) -- a previous flush likely crashed" >&2
+        rmdir "$QUEUE_LOCK_DIR" 2>/dev/null
+        mkdir "$QUEUE_LOCK_DIR" 2>/dev/null && return 0
+    fi
     return 1
 }
 
-# _flush_queue: replay QUEUE_FILE in order. No-op if empty/absent. On a
-# rate-limit mid-replay, re-queues the current op + every op after it
-# (untouched, order preserved) and returns 0 — the caller (a read command or
-# the explicit `flush` verb) keeps going, nothing is lost.
+_queue_lock_release() {
+    rmdir "$QUEUE_LOCK_DIR" 2>/dev/null || true
+}
+
+# _dedupe_aside <file>: rewrites <file> in place (review #92 round 2,
+# BLOCKING finding), keeping only the most-recently-enqueued entry per
+# (op, issue) for op kinds whose replay can regress a value if a stale
+# entry re-applies after a newer one already has (move/prio/est). Without
+# this: a rate-limited requeue appends the OLDER op to the TAIL of the
+# live queue file, but a NEWER op for the same issue can already be
+# sitting there (queued live while the first flush was mid-flight) ahead
+# of it. Replay in file order then applies the newer one first (cur
+# becomes its target) and the stale older one second -- the `cur ==
+# target` skip guard doesn't catch this, since cur is now the NEWER
+# target, not the one the stale op checks against -- so the stale op
+# re-applies and regresses the value. Recency is judged by each entry's
+# own `ts` (untouched across every requeue, so it always reflects original
+# enqueue time, not append time); ties keep the later file position.
+# Survivors keep their original relative order -- only the stale
+# duplicates are dropped.
+_dedupe_aside() {
+    python3 -c '
+import json, sys
+
+path = sys.argv[1]
+DEDUPE_OPS = {"move", "prio", "est"}
+with open(path) as f:
+    lines = [ln for ln in f.read().splitlines() if ln.strip()]
+
+best_idx = {}  # (op, issue) -> (ts, line-index) of the winning entry
+for i, ln in enumerate(lines):
+    try:
+        d = json.loads(ln)
+    except Exception:
+        continue
+    op = d.get("op")
+    if op not in DEDUPE_OPS:
+        continue
+    key = (op, d.get("issue"))
+    ts = d.get("ts", "")
+    if key not in best_idx or ts >= best_idx[key][0]:
+        best_idx[key] = (ts, i)
+
+winners = {idx for _, idx in best_idx.values()}
+kept = []
+for i, ln in enumerate(lines):
+    try:
+        d = json.loads(ln)
+    except Exception:
+        kept.append(ln)
+        continue
+    if d.get("op") not in DEDUPE_OPS or i in winners:
+        kept.append(ln)
+
+with open(path, "w") as f:
+    for ln in kept:
+        f.write(ln + "\n")
+' "$1"
+}
+
+# _flush_queue [--verbose]: replay QUEUE_FILE in order, guarded by the
+# lockdir mutex. A second flush that can't take the lock SKIPS immediately
+# (issue #92) -- never blocks, never replays concurrently with another
+# flush. The lock is taken BEFORE the emptiness check (not after): once
+# another flush has moved the queue file aside, the live path is briefly
+# and legitimately empty, but that's a "locked" state, not a "nothing to
+# do" state -- an emptiness check ahead of the lock attempt would
+# misreport the former as the latter. --verbose (used by the explicit
+# `flush` verb) prints "queue empty" when there's genuinely nothing to do
+# AFTER the lock is held -- so it can never misfire as "empty" during
+# another flush's momentary aside-move window. Auto-flush call sites
+# (next/list/show) omit --verbose and stay silent on an empty queue,
+# matching pre-#92 behavior.
 _flush_queue() {
-    [[ -s "$QUEUE_FILE" ]] || return 0
-    local tmp line op issue status priority points url first_status prio rc cur requeued reset
-    tmp="$(mktemp)"; cp "$QUEUE_FILE" "$tmp"
-    : >"$QUEUE_FILE"
+    local verbose=0
+    [[ "${1:-}" == "--verbose" ]] && verbose=1
+    if ! _queue_lock_acquire; then
+        echo "flush: SKIP -- another flush holds the lock ($QUEUE_LOCK_DIR)"
+        return 0
+    fi
+    if [[ -s "$QUEUE_FILE" ]]; then
+        _flush_queue_locked
+    elif [[ "$verbose" -eq 1 ]]; then
+        echo "queue empty"
+    fi
+    _queue_lock_release
+}
+
+# _flush_queue_locked: the actual replay, called with the lock already held.
+# Lost-append prevention (#92): instead of a blind truncate, the queue file
+# is MOVED ASIDE atomically (mv, same filesystem -- a single rename syscall,
+# no read-then-clear gap for a concurrent queue_append to fall into and get
+# wiped) before replay. Any re-queued remainder is appended back to the LIVE
+# queue path afterward -- which new queue_appends may have grown meanwhile --
+# instead of clobbering it.
+_flush_queue_locked() {
+    local aside line op issue status priority points url first_status prio rc cur requeued reset
+    aside="$(mktemp "$(dirname "$QUEUE_FILE")/.flush.XXXXXX")"
+    mv "$QUEUE_FILE" "$aside" 2>/dev/null || { rm -f "$aside"; return 0; }
+    _dedupe_aside "$aside"
+    _flush_sync "${BOARD_QUEUE_TEST_TAG:-flush}"
     requeued=0
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -z "$line" ]] && continue
@@ -325,6 +507,6 @@ _flush_queue() {
             printf '%s\n' "$line" >>"$QUEUE_FILE"
             requeued=1
         fi
-    done <"$tmp"
-    rm -f "$tmp"
+    done <"$aside"
+    rm -f "$aside"
 }

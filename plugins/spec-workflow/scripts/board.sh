@@ -228,11 +228,14 @@ case "${1:-}" in
         exit "$rc"
         ;;
     flush)
-        if [[ ! -s "$QUEUE_FILE" ]]; then
-            echo "queue empty"
-            exit 0
-        fi
-        _flush_queue
+        # No pre-check here (#92): _flush_queue itself decides empty-vs-locked
+        # -- a separate emptiness check here, run before any lock attempt,
+        # would let a second flusher see the (correctly, but momentarily)
+        # empty file left by a concurrent flush's aside-move and report
+        # "queue empty" instead of the honest "another flush holds the lock".
+        # --verbose restores the "queue empty" message for this explicit verb
+        # (auto-flush call sites elsewhere stay silent on an empty queue).
+        _flush_queue --verbose
         ;;
     adopt)
         [[ -z "${2:-}" ]] && { echo "ERROR: adopt requires an issue number" >&2; exit 1; }
