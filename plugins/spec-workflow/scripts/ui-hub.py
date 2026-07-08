@@ -253,7 +253,24 @@ def main():
         pid = pid_alive()
         if pid:
             os.kill(pid, signal.SIGTERM)
-            print("stopped")
+            # Unlike start's own-child check (#55, where child.poll() is
+            # required because a crashed direct child becomes a zombie
+            # until WE reap it, and kill(pid, 0) reports zombies as
+            # alive), stop's target is a DETACHED server started with
+            # start_new_session=True -- it is not our child, there is no
+            # zombie-until-reaped window, and kill(pid, 0) is the correct
+            # liveness check here.
+            for _ in range(20):
+                time.sleep(0.15)
+                if not pid_alive():
+                    print("stopped")
+                    return
+            # Still alive after the bound: report truthfully instead of
+            # claiming success. No auto-escalation to SIGKILL -- stop is
+            # polite by design; forceful teardown is a separate decision
+            # the caller should make explicitly.
+            print(f"still running after SIGTERM -- kill {pid} yourself or retry")
+            sys.exit(1)
         else:
             print("not running")
 

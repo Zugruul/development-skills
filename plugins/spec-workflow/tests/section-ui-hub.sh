@@ -33,6 +33,31 @@ out="$(UI_HUB_STATE="$_collide_dir" python3 "$HUB" start --port "$UI_HUB_PORT" 2
 check_rc "hub start reports failure on an already-bound port" 1 "$?"
 rm -rf "$(dirname "$_collide_dir")"
 
-python3 "$HUB" stop >/dev/null
+out="$(python3 "$HUB" stop)"; check "hub stop confirms exit (normal path)" "stopped" "$out"
+out="$(python3 "$HUB" status)"; check "hub status shows STOPPED after confirmed exit" "STOPPED" "$out"
+
+# #98: stop must poll for actual process exit after SIGTERM and only claim
+# "stopped" once it's confirmed gone -- printing it unconditionally is the
+# same premature-success-declaration class as #55's start bug. Prove it
+# against a process that IGNORES SIGTERM (a detached target that won't die
+# politely), so a truthful non-zero failure is the only correct behavior.
+_ignoretmp="$(mktemp -d)/hub"
+mkdir -p "$_ignoretmp"
+UI_HUB_STATE="$_ignoretmp" python3 -c '
+import os, signal, time
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+with open(os.environ["UI_HUB_STATE"] + "/pid", "w") as f:
+    f.write(str(os.getpid()))
+time.sleep(30)
+' &
+_ignore_pid=$!
+for _ in $(seq 1 30); do [[ -s "$_ignoretmp/pid" ]] && break; sleep 0.1; done
+out="$(UI_HUB_STATE="$_ignoretmp" python3 "$HUB" stop 2>&1)"; rc=$?
+check "hub stop is truthful when target ignores SIGTERM" "still running after SIGTERM" "$out"
+check_rc "hub stop exits non-zero when target survives SIGTERM" 1 "$rc"
+kill -9 "$_ignore_pid" 2>/dev/null
+wait "$_ignore_pid" 2>/dev/null
+rm -rf "$(dirname "$_ignoretmp")"
+
 unset UI_HUB_STATE UI_HUB_PORT
 
