@@ -205,6 +205,34 @@ def main(path):
             elif val < 1:
                 errs.append(f"methodology.{key}: must be >= 1 (got {val})")
 
+    # work: PR-less local delivery (type) + board-sync batching policy (sync).
+    # Absent == {type: pr}; sync is only meaningful (and only accepted) under
+    # type: local -- see schemas/project-config.schema.json's `work` object.
+    work = cfg.get("work")
+    if work is not None:
+        if not isinstance(work, dict):
+            errs.append("work: must be a mapping with 'type' and optional 'sync'")
+        else:
+            for k in work:
+                if k not in ("type", "sync"):
+                    errs.append(f"work.{k}: unknown key (allowed: ['sync', 'type'])")
+            wtype = work.get("type", "pr")
+            if "type" in work and work["type"] not in ("pr", "local"):
+                errs.append(f"work.type must be 'pr' or 'local' (got {work.get('type')!r})")
+            sync = work.get("sync")
+            if sync is not None:
+                if wtype != "local":
+                    errs.append("work.sync is only valid with work.type: local")
+                if not isinstance(sync, dict):
+                    errs.append("work.sync: must be a mapping with 'mode'")
+                else:
+                    for k in sync:
+                        if k != "mode":
+                            errs.append(f"work.sync.{k}: unknown key (allowed: ['mode'])")
+                    modes = ("realtime", "task-close", "session-end", "manual")
+                    if "mode" in sync and sync["mode"] not in modes:
+                        errs.append(f"work.sync.mode must be one of {', '.join(modes)} (got {sync.get('mode')!r})")
+
     if errs:
         print(f"INVALID: {len(errs)} problem(s) in {path}:")
         for e in errs:

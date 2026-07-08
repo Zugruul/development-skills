@@ -85,6 +85,8 @@ Review in **two passes**, each by a review agent (`model:` a suitable id from th
 
 The orchestrator's OWN artifacts (design docs it wrote, release notes) use the `flags:` line from `identity.sh orchestrator` the same per-commit way (skip if OFF/UNRESOLVED). Recording work another role produced (a folded spec delta the dev agent wrote, a relayed fix) uses `identity.sh on-behalf <that role>` instead so the author stays truthful — see auto-review.md §Commit identities.
 
+work.type governs delivery (absent == `pr`): `pr` — push the branch, `gh pr create` (body "Closes #N"), review the PR, `gh pr merge` (current text above stands). `local` — the branch stays local; review is `git diff <cfg:project.mainBranch>..<branch>` instead of a PR diff; approval recorded as an ISSUE comment (not a PR review); the orchestrator squash-merges locally with role attribution (same Applied-by/Reviewed-by/Co-authored-by recipe as the PR path — `auto-review.md` §Commit identities) and pushes `<cfg:project.mainBranch>` (skip the push if the repo has no remote, and say so in the report); board announce carries the merge SHA, not a PR link. `autoMerge: false` + `work.type: local` → leave the branch unmerged at *In review* for the human (mirrors today's human-approves-a-PR path, just without the PR). Full protocol: `auto-review.md` §5 (LOCAL-ROUTE).
+
 **Auto-merge** (`methodology.autoMerge: true`): after both passes are clean, do NOT wait for a human — run the PR-review/approve/merge protocol in `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/auto-review.md` (independent reviewer agent on a suitable model from the reviewer identity's allowed list, ≤3 fix rounds, approval recorded on the PR, `gh pr merge`, merge announced on the issue + to live teammates).
 
 ## 4. Stop

@@ -32,6 +32,7 @@ source "$HERE/_lib.sh"
 SECTIONS=(
     section-syntax.sh
     section-config.sh
+    section-work-mode.sh
     section-next-similar.sh
     section-preflight.sh
     section-ui-hub.sh

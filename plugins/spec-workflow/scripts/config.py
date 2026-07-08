@@ -160,6 +160,26 @@ def load_config(root=None, path=None, warn=True):
     return cfg
 
 
+# work.type / work.sync.mode: the only dotted paths with a script-side
+# default resolved by `get` itself (so bash callers never special-case
+# "key absent" -- config.py get work.type always prints a value when a
+# config file exists). See work-mode.sh, which resolves the same pair when
+# NO config file exists at all (this map is only consulted once cfg is
+# already loaded).
+WORK_DEFAULTS = {
+    "work.type": "pr",
+    "work.sync.mode": "realtime",
+}
+
+
+def get_with_default(cfg, dotpath):
+    """dig() a dotpath, falling back to WORK_DEFAULTS when the value is absent."""
+    val = dig(cfg, dotpath)
+    if val is None and dotpath in WORK_DEFAULTS:
+        return WORK_DEFAULTS[dotpath]
+    return val
+
+
 def dig(cfg, dotpath):
     """Navigate a dot path; integer segments index lists. None if absent."""
     node = cfg
@@ -325,7 +345,7 @@ def _cli(argv):
         if len(argv) < 3:
             sys.stderr.write("usage: config.py <root> get <dot.path>\n")
             return 2
-        val = dig(cfg, argv[2])
+        val = get_with_default(cfg, argv[2])
         if val is None:
             return 0
         if isinstance(val, (dict, list)):

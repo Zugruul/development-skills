@@ -121,6 +121,42 @@
                 }
             }
         },
+        "work": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "PR-less local delivery + board-sync batching policy (SW-079). Absent == { type: pr } (today's default: push a branch, open a GitHub PR, review + merge via gh).",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": ["pr", "local"],
+                    "default": "pr",
+                    "description": "How a task's work is delivered. pr (default): push the branch, open a GitHub PR, review it, `gh pr merge`. local: the branch stays local — review is `git diff <main>..<branch>`, approval is recorded as an ISSUE comment, and the orchestrator squash-merges locally (role attribution in the commit) and pushes main (skipped, with a stated reason, if the repo has no remote).",
+                    "enumDescriptions": [
+                        "Push the branch, open a GitHub PR, review + merge it via gh (today's default).",
+                        "No PR is ever opened — review the local diff, record approval as an issue comment, and squash-merge locally."
+                    ]
+                },
+                "sync": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Only valid when type: local — governs WHEN queued board mutations flush. Rejected (validate-config.py) when type is pr, since PR delivery already syncs the board in real time as a side effect of each step.",
+                    "properties": {
+                        "mode": {
+                            "type": "string",
+                            "enum": ["realtime", "task-close", "session-end", "manual"],
+                            "default": "realtime",
+                            "description": "Board-sync cadence for local delivery. In every mode, a `blocked` or `new-item` event ALWAYS syncs immediately (the safety valve) — never held back for batching. See scripts/work-mode.sh should-sync.",
+                            "enumDescriptions": [
+                                "Every board transition syncs immediately, same as PR delivery.",
+                                "Board mutations batch via the board queue and flush when a task closes.",
+                                "Board mutations batch and flush at iteration/session boundaries.",
+                                "Board mutations only flush via an explicit board.sh flush call."
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "docs": {
             "type": "array",
             "description": "Documentation sets the reviewer enforces: when a diff touches files under a set's `covers` globs and changes behavior/contracts/usage, that set's docs must be updated in the same PR (or the PR must state why not). Standalone repo: one entry covering everything. Monorepo: one entry per package/app plus an optional root entry.",

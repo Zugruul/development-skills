@@ -200,6 +200,17 @@ PATCH-close) itself hits a hard denial, that falls back to the doc's
 top-level floor: never retry around a denial — it means ask the human, full
 stop. There is no further re-routing exception beyond this documented one.
 
+When `work.type` is `local` from the start (no PR was ever opened, so there
+is no §4 PR comment or `gh pr merge` to fall back FROM — this route is the
+ONLY route), step 1's recorded verdict is an ISSUE comment instead of a PR
+comment, and the board announce carries the merge SHA (not a PR link) since
+there is no PR to point at. `work.sync` (governs WHEN, not whether, board
+mutations under `work.type: local`) gates each of this route's own board
+calls the same way it gates any other event — consult
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/work-mode.sh" should-sync <event>`
+first; a `defer` here just means the `board.sh move N "QA"` / announce call
+waits for the next sync point, never that the merge itself waits.
+
 ## Commit identities (`delegation.identities` — ON by default)
 
 Each role's commits carry its own author so `git log`/GitHub show which agent
