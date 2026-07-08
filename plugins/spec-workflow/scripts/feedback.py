@@ -11,12 +11,28 @@ Config — `methodology.feedback` in `.claude/project.yaml`:
     feedback: true                    # shorthand for the defaults below
     feedback:                         # expanded form
         enabled: true
-        feed: .claude/feedback/feed.yaml   # relative to repo root
+        feed: .claude/feedbacks/feed.yaml  # relative to repo root
         roles: [orchestrator]
         autoTriage: false             # routing creates board items -> explicit consent
 Absent key = disabled. Unknown keys are rejected by validate-config.py.
 
-Feed format — `.claude/feedback/feed.yaml` is a sequence of `---`-separated
+The feed lives under `.claude/feedbacks/` (plural) — a tracked, orchestrator-
+mediated archive: committed and pushed alongside code by default (opt out via
+the repo's own .gitignore), and never read or written by dev/reviewer
+subagents, same isolation as the identity brains. See the `feedback` skill
+and plugin README for the archive statement; nothing in this module enforces
+subagent access — that's a docs/process contract, not a runtime one.
+
+Legacy-path migration guard: `.claude/feedback/` (singular) was the old,
+gitignored home of the feed. WHEN the DEFAULT feed path is in effect (no
+explicit `methodology.feedback.feed` override) AND the legacy path
+`.claude/feedback/feed.yaml` exists AND the new default path does not, every
+subcommand that touches the feed (emit/pending/route/status) refuses with a
+migration message instead of silently starting a fresh, empty archive that
+would orphan the old history. An explicit `feed` override bypasses the guard
+entirely — the override is trusted at face value.
+
+Feed format — `.claude/feedbacks/feed.yaml` is a sequence of `---`-separated
 YAML documents, one per emitted record:
 
     schemaVersion: 1
@@ -82,10 +98,12 @@ ACTIONS = {"backlog", "brain-note", "graduate", "upstream", "ignore"}
 
 DEFAULTS = {
     "enabled": False,
-    "feed": ".claude/feedback/feed.yaml",
+    "feed": ".claude/feedbacks/feed.yaml",
     "roles": ["orchestrator"],
     "autoTriage": False,
 }
+
+LEGACY_FEED = ".claude/feedback/feed.yaml"
 
 _ISSUE_REF_RE = re.compile(r"#\d+")
 _SEP = "---\n"
@@ -101,16 +119,39 @@ def _yaml():
 
 
 def parse_feedback_cfg(cfg):
-    """methodology.feedback (bool shorthand or expanded dict) -> the four-key dict."""
+    """methodology.feedback (bool shorthand or expanded dict) -> the four-key dict.
+    Also returns whether `feed` was an explicit override (vs the default),
+    since the legacy-path migration guard only applies to the default path."""
     raw = C.dig(cfg, "methodology.feedback") if cfg else None
     out = dict(DEFAULTS)
+    feed_overridden = False
     if raw is True:
         out["enabled"] = True
     elif isinstance(raw, dict):
         for k in ("enabled", "feed", "roles", "autoTriage"):
             if k in raw:
                 out[k] = raw[k]
-    return out
+        feed_overridden = "feed" in raw
+    return out, feed_overridden
+
+
+def _legacy_guard_error(root, fcfg, feed_overridden):
+    """None if OK to proceed; else the migration error message.
+    Only fires for the DEFAULT feed path: an explicit override is trusted
+    as-is, never second-guessed against the legacy location."""
+    if feed_overridden:
+        return None
+    new_path = os.path.join(root, fcfg["feed"])
+    legacy_path = os.path.join(root, LEGACY_FEED)
+    if os.path.exists(legacy_path) and not os.path.exists(new_path):
+        return (
+            f"ERROR: legacy feedback feed found at {LEGACY_FEED} but the new default "
+            f"path {fcfg['feed']} does not exist — refusing to start a fresh feed and "
+            f"orphan the archive. migration: `mv {os.path.dirname(LEGACY_FEED)} "
+            f"{os.path.dirname(fcfg['feed'])}` and drop the `{os.path.dirname(LEGACY_FEED)}/` "
+            "line from .gitignore."
+        )
+    return None
 
 
 def _feed_path(root, fcfg):
@@ -233,7 +274,11 @@ def cmd_emit(root, record_path):
         return 1
 
     cfg = C.load_config(root, warn=False)
-    fcfg = parse_feedback_cfg(cfg)
+    fcfg, feed_overridden = parse_feedback_cfg(cfg)
+    guard_err = _legacy_guard_error(root, fcfg, feed_overridden)
+    if guard_err:
+        print(guard_err)
+        return 1
     feed_path = _feed_path(root, fcfg)
     if feed_path is None:
         print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root — refusing to write")
@@ -256,7 +301,11 @@ def cmd_emit(root, record_path):
 
 def cmd_pending(root):
     cfg = C.load_config(root, warn=False)
-    fcfg = parse_feedback_cfg(cfg)
+    fcfg, feed_overridden = parse_feedback_cfg(cfg)
+    guard_err = _legacy_guard_error(root, fcfg, feed_overridden)
+    if guard_err:
+        print(guard_err)
+        return 1
     feed_path = _feed_path(root, fcfg)
     if feed_path is None:
         print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
@@ -279,7 +328,11 @@ def cmd_route(root, ts, idx_str, action, ref):
         return 1
 
     cfg = C.load_config(root, warn=False)
-    fcfg = parse_feedback_cfg(cfg)
+    fcfg, feed_overridden = parse_feedback_cfg(cfg)
+    guard_err = _legacy_guard_error(root, fcfg, feed_overridden)
+    if guard_err:
+        print(guard_err)
+        return 1
     feed_path = _feed_path(root, fcfg)
     if feed_path is None:
         print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
@@ -310,7 +363,11 @@ def cmd_route(root, ts, idx_str, action, ref):
 
 def cmd_status(root):
     cfg = C.load_config(root, warn=False)
-    fcfg = parse_feedback_cfg(cfg)
+    fcfg, feed_overridden = parse_feedback_cfg(cfg)
+    guard_err = _legacy_guard_error(root, fcfg, feed_overridden)
+    if guard_err:
+        print(guard_err)
+        return 1
     feed_path = _feed_path(root, fcfg)
     if feed_path is None:
         print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")

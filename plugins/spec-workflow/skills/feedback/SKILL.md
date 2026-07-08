@@ -6,6 +6,8 @@ allowed-tools: Bash
 
 # Feedback — emit a structured process-feedback record
 
+The feed lives at `.claude/feedbacks/` (adjacent to `project.yaml`) — a tracked archive, committed and pushed alongside code by default (opt out only via the repo's own `.gitignore`). Like the identity brains, it is orchestrator-mediated only: no dev/reviewer subagent ever reads or writes it directly — this skill (run by the orchestrator) is the sole path in.
+
 `methodology.feedback` (`true` shorthand or `{enabled, feed, roles, autoTriage}`) gates this skill. Check first:
 
 ```bash
