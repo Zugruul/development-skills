@@ -117,6 +117,7 @@ SECTIONS=(
     section-diff-symbols.sh
     section-gh-failures-corpus.sh
     section-runner-filter.sh
+    section-section-guard.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then
