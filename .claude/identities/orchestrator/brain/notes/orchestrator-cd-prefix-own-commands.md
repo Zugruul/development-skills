@@ -1,12 +1,12 @@
 ---
 tags: [orchestration, worktrees, git]
 paths: ["**"]
-strength: 1
-source: "third own cwd slip (#79, #92, #66 retro commits landed in live lanes)"
+strength: 2
+source: "fourth slip: sw-86's worktree created NESTED inside sw-55 via drifted cwd; deleted with sw-55's retirement, destroying a dev's uncommitted work"
 graduated: false
 created: 2026-07-08
 ---
 
-The orchestrator's OWN shell drifts exactly like the agents' — three retro/config commits landed on live lanes' branches mid-review this session. Every brain.sh/git/telemetry command the orchestrator runs must start with `cd <main checkout absolute path> && `, ESPECIALLY the mint-then-commit sequences that follow lane verification calls. Repair recipe when it happens: cherry-pick the stray commit to main from the MAIN checkout, then reset the lane to its true HEAD from INSIDE the lane (never a compound that could reset the wrong tree), then notify the affected reviewer.
+The orchestrator's OWN shell drifts exactly like the agents' — four incidents this session, the worst: `git worktree add .claude/worktrees/sw-86` ran with cwd inside sw-55's lane, nesting the new worktree INSIDE it; retiring sw-55 then deleted sw-86's directory mid-task and destroyed a dev's uncommitted work. EVERY orchestrator command — worktree add/remove above all — starts with `cd <main checkout absolute path> && `, and worktree adds are verified with `git worktree list | grep <name>` showing the expected ABSOLUTE path before any agent is briefed into it.
 
 Related: [[board-comment-bodies-via-file]] [[pre-diagnose-before-brief]]
