@@ -118,7 +118,10 @@ methodology:
     maxInProgress: 5
     autoMerge: true
     mergeMethod: squash
-    feedback: true
+    feedback:
+        enabled: true
+        roles: [orchestrator, dev, reviewer]
+        autoTriage: true
 work:
     type: local
     sync:
