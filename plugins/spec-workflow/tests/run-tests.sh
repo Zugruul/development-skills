@@ -54,6 +54,7 @@ SECTIONS=(
     section-find-task.sh
     section-pagination.sh
     section-skill-contracts.sh
+    section-sync-configs.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then
