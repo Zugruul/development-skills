@@ -133,11 +133,17 @@ DEV_MODE = os.environ.get("NEURAL_VIEW_DEV") == "1"
 
 # GET /projects: per-repo board state, cached (see project_state()) so a slow/
 # hung `gh` call is bounded and never re-invoked more than once per TTL.
-PROJECTS_TTL = float(os.environ.get("NEURAL_VIEW_PROJECTS_TTL", "60"))
+PROJECTS_TTL = float(os.environ.get("NEURAL_VIEW_PROJECTS_TTL", "300"))
+# After a rate-limited board read, no repo's board is re-fetched for this long
+# (a global circuit breaker — retrying per-repo per-TTL while exhausted just
+# burns more of the shared GraphQL budget); stale last-good data is served.
+RATE_COOLDOWN = float(os.environ.get("NEURAL_VIEW_RATE_COOLDOWN", "900"))
 BOARD_TIMEOUT = float(os.environ.get("NEURAL_VIEW_BOARD_TIMEOUT", "12"))
 BOARD_SH = Path(__file__).resolve().parent / "board.sh"
 PROJECTS_CACHE = {}          # repo name -> (fetched_at, result-dict-or-None)
+PROJECTS_GOOD = {}           # repo name -> (fetched_at, last OK result) — served stale on failure
 PROJECTS_LOCK = threading.Lock()
+RATE_LIMIT_UNTIL = 0.0       # epoch: gh board reads are suspended until then (circuit breaker)
 
 # GET /sessions: best-effort locally-discoverable Claude Code sessions.
 SESSION_RECENT_SECS = float(os.environ.get("NEURAL_VIEW_SESSION_RECENT_SECS", "900"))
@@ -719,11 +725,29 @@ def _run_board_list(root):
     return {"ok": True, "statusCounts": status_counts, "inProgress": in_progress, "inReview": in_review}
 
 
+def _stale_copy(name, now, note):
+    """Last-good board data marked stale (never None unless no good data yet).
+    A transient gh failure must not blank a board the HUD showed seconds ago."""
+    good = PROJECTS_GOOD.get(name)
+    if good is None:
+        return None
+    fetched_at, result = good
+    return dict(result, stale=True, staleForSecs=int(now - fetched_at), staleReason=note)
+
+
 def project_state(name, root):
     """A repo's board state, cached for PROJECTS_TTL seconds. Returns None
     (caller omits the repo entirely, per the /projects contract) if the repo
     has no .claude/project.yaml or .json at all — a repo that never opted
-    into the board should not even show a "board unavailable" badge."""
+    into the board should not even show a "board unavailable" badge.
+
+    GraphQL-budget discipline (the board reads share the user's 5000/hr
+    GraphQL quota with the build loops): long TTL, a global RATE_COOLDOWN
+    circuit breaker after any rate-limited read (retrying per-repo per-TTL
+    while exhausted only digs the hole deeper), and last-good data served
+    stale — marked {stale, staleForSecs, staleReason} — instead of an error
+    whenever a fetch fails or the breaker is open."""
+    global RATE_LIMIT_UNTIL
     if _repo_config_path(root) is None:
         return None
     now = time.time()
@@ -731,10 +755,23 @@ def project_state(name, root):
         cached = PROJECTS_CACHE.get(name)
         if cached is not None and (now - cached[0]) < PROJECTS_TTL:
             return cached[1]
+        if now < RATE_LIMIT_UNTIL:
+            served = _stale_copy(name, now, "rate-limit cooldown") or \
+                {"ok": False, "error": "board unavailable: GitHub API rate limit (cooling down)"}
+            PROJECTS_CACHE[name] = (now, served)
+            return served
     result = _run_board_list(root)
     with PROJECTS_LOCK:
-        PROJECTS_CACHE[name] = (now, result)
-    return result
+        if result.get("ok"):
+            PROJECTS_GOOD[name] = (now, result)
+            served = result
+        else:
+            err = str(result.get("error") or "")
+            if _RATE_LIMIT_RE.search(err) or "rate limit" in err.lower() or "could not resolve the project owner" in err:
+                RATE_LIMIT_UNTIL = now + RATE_COOLDOWN
+            served = _stale_copy(name, now, err) or result
+        PROJECTS_CACHE[name] = (now, served)
+    return served
 
 
 def claude_dir():

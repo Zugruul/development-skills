@@ -89,16 +89,22 @@ canvas.grabbing{cursor:grabbing}
 .arc{width:28px;height:28px;flex:none}
 
 /* ticker (bottom) */
-#ticker{left:14px;right:14px;bottom:14px;height:64px;padding:.45rem .7rem;overflow:hidden}
-#ticker h2{margin:0 0 .25rem;font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);font-weight:400}
-#tickerlog{font-size:.66rem;line-height:1.45;color:var(--slate);height:34px;overflow:hidden}
-#tickerlog .ev{white-space:nowrap}
+/* activation log — right sidebar, mirroring the left panel's collapse UX */
+#rightbar{top:70px;right:14px;width:300px;max-height:calc(100vh - 100px);overflow:auto;
+  padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease}
+#rightbar.collapsed{transform:translateX(calc(100% + 24px));opacity:0;pointer-events:none}
+#rightbar-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem}
+#rightbar-tab{position:fixed;top:70px;right:0;z-index:20;border-right:0;border-radius:8px 0 0 8px;
+  padding:.55rem .4rem;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:.8rem}
+#rightbar-tab:hover{color:var(--cyan)}
+#tickerlog{font-size:.62rem;line-height:1.55;color:var(--slate)}
+#tickerlog .ev{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #tickerlog .k{color:var(--cyan)}
 #tickerlog .warn{color:var(--amber)}
 #tickerlog .t{color:#7c92a6}
 
 /* inspect panel (right) */
-#inspect{top:70px;right:14px;width:min(340px,42vw);max-height:calc(100vh - 150px);
+#inspect{top:70px;right:14px;width:min(340px,42vw);max-height:calc(100vh - 150px);z-index:30;   /* overlays the activation-log sidebar while open */
   overflow:auto;padding:.9rem 1rem;transform:translateX(120%);transition:transform .25s ease;
   opacity:0}
 #inspect.open{transform:none;opacity:1}
@@ -188,7 +194,14 @@ canvas.grabbing{cursor:grabbing}
 </div>
 <button class="hud" id="gauges-tab" title="Show panel" aria-label="Show panel" hidden>⟩</button>
 
-<div class="hud" id="ticker"><h2>Activation log</h2><div id="tickerlog" aria-live="polite"></div></div>
+<div class="hud" id="rightbar">
+  <div id="rightbar-head">
+    <button class="secthead" id="sect-log" aria-expanded="true">Activation log</button>
+    <button class="iconbtn" id="rightbar-collapse" title="Hide log" aria-label="Hide log">⟩</button>
+  </div>
+  <div id="tickerlog" aria-live="polite"></div>
+</div>
+<button class="hud" id="rightbar-tab" title="Show log" aria-label="Show log" hidden>⟨</button>
 
 <aside class="hud" id="inspect" aria-hidden="true" inert>
   <button class="close" id="inspect-close" aria-label="Close note">✕</button>
@@ -932,7 +945,7 @@ function logEvent(e){
   const tag = (repoList.length>1 && e.repo) ? `<span class="t">[${escapeHtml(e.repo)}]</span> ` : "";
   div.innerHTML = `<span class="t">${t}</span> ${tag}<span class="${cls}">${(e.role||"?").toUpperCase()} · ${kind}</span>${escapeHtml(what)}`;
   LOG.prepend(div);
-  while(LOG.childNodes.length>12) LOG.lastChild.remove();
+  while(LOG.childNodes.length>40) LOG.lastChild.remove();   // sidebar has vertical room the old bottom strip lacked
 }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
@@ -1032,7 +1045,8 @@ function renderProjects(){
     const counts = Object.entries(p.statusCounts||{}).map(([k,v])=>`${escapeHtml(k)} ${v}`).join(" · ");
     const tasks = [...(p.inProgress||[]).map(t=>"▸ "+t), ...(p.inReview||[]).map(t=>"◆ "+t)].slice(0,6);
     const taskHtml = tasks.length ? `<div class="ptasks">${tasks.map(t=>`<div class="ptask" title="${escapeHtml(t)}">${escapeHtml(t)}</div>`).join("")}</div>` : "";
-    return `<div class="projrow"><div class="pname">${escapeHtml(r)}</div><div class="pcounts">${counts||"no items"}</div>${taskHtml}</div>`;
+    const stale = p.stale ? `<div class="pdim">cached ${Math.max(1,Math.round((p.staleForSecs||0)/60))}m ago (${escapeHtml(p.staleReason||"fetch failed")})</div>` : "";
+    return `<div class="projrow"><div class="pname">${escapeHtml(r)}</div><div class="pcounts">${counts||"no items"}</div>${stale}${taskHtml}</div>`;
   }).join("");
 }
 
@@ -1325,15 +1339,20 @@ function saveUiState(){ try{ localStorage.setItem(UI_KEY, JSON.stringify(uiState
 function applyUiState(){
   gaugesEl.classList.toggle("collapsed", !!uiState.panel);
   gaugesTab.hidden = !uiState.panel;
-  for(const [sect, bodyId] of [["brains","gauge-list"], ["boards","project-list"]]){
+  document.getElementById("rightbar").classList.toggle("collapsed", !!uiState.rpanel);
+  document.getElementById("rightbar-tab").hidden = !uiState.rpanel;
+  for(const [sect, bodyId] of [["brains","gauge-list"], ["boards","project-list"], ["log","tickerlog"]]){
     document.getElementById("sect-"+sect).setAttribute("aria-expanded", uiState[sect] ? "false" : "true");
     document.getElementById(bodyId).hidden = !!uiState[sect];
   }
 }
 document.getElementById("sect-brains").onclick = ()=>{ uiState.brains = !uiState.brains; saveUiState(); applyUiState(); };
 document.getElementById("sect-boards").onclick = ()=>{ uiState.boards = !uiState.boards; saveUiState(); applyUiState(); };
+document.getElementById("sect-log").onclick = ()=>{ uiState.log = !uiState.log; saveUiState(); applyUiState(); };
 document.getElementById("gauges-collapse").onclick = ()=>{ uiState.panel = true; saveUiState(); applyUiState(); };
 gaugesTab.onclick = ()=>{ uiState.panel = false; saveUiState(); applyUiState(); };
+document.getElementById("rightbar-collapse").onclick = ()=>{ uiState.rpanel = true; saveUiState(); applyUiState(); };
+document.getElementById("rightbar-tab").onclick = ()=>{ uiState.rpanel = false; saveUiState(); applyUiState(); };
 applyUiState();
 const panel=document.getElementById("inspect");
 document.getElementById("inspect-close").onclick=()=>{ panel.classList.remove("open"); panel.setAttribute("aria-hidden","true"); panel.setAttribute("inert",""); };
@@ -1438,7 +1457,7 @@ const PROBE = location.search.includes("hoverprobe");
   st.textContent = !webglOK ? "live · 3D unavailable" : (REDUCED ? "live · reduced motion" : "live · recalls light up");
   setInterval(loadGraph, 15000);     // pick up new notes/links periodically
   setInterval(loadSessions, 20000);  // best-effort local session discovery
-  setInterval(loadProjects, 20000);  // per-repo board state (server itself caches for PROJECTS_TTL)
+  setInterval(loadProjects, 60000);  // per-repo board state (server caches for PROJECTS_TTL + rate-limit breaker)
 })();
 </script>
 </body>
