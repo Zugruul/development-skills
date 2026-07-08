@@ -38,5 +38,6 @@
             ]
         }
     ],
-    "commands": {}
+    "commands": {},
+    "methodology": { "maxInProgress": "two", "graduationThreshold": 0 }
 }

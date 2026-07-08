@@ -31,3 +31,6 @@ specs:
           - epic: EZ
             untilStatus: Shipped
 commands: {}
+methodology:
+    maxInProgress: -3
+    graduationThreshold: "many"

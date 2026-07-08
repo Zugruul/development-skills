@@ -191,6 +191,20 @@ def main(path):
             if "autoTriage" in feedback and not isinstance(feedback["autoTriage"], bool):
                 errs.append("methodology.feedback.autoTriage must be a boolean")
 
+    # methodology.maxInProgress / graduationThreshold: positive integers.
+    # Mirrors schemas/project-config.schema.json's {type: integer, minimum: 1}
+    # for these two keys — keep both in sync if either changes.
+    methodology = cfg.get("methodology")
+    if isinstance(methodology, dict):
+        for key in ("maxInProgress", "graduationThreshold"):
+            if key not in methodology:
+                continue
+            val = methodology[key]
+            if isinstance(val, bool) or not isinstance(val, int):
+                errs.append(f"methodology.{key}: must be an integer >= 1 (got {val!r})")
+            elif val < 1:
+                errs.append(f"methodology.{key}: must be >= 1 (got {val})")
+
     if errs:
         print(f"INVALID: {len(errs)} problem(s) in {path}:")
         for e in errs:
