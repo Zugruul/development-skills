@@ -89,6 +89,16 @@
     "last": null,
     "weight": 0.5
   },
+  "narrowed-exploit-survives->equality-guards-invite-ordering-probes": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "narrowed-exploit-survives->own-payload-not-devs": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "ordering-words-are-contract->named-attack-class-briefs": {
     "fires": 0,
     "last": null,

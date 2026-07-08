@@ -69,6 +69,16 @@
     "last": null,
     "weight": 0.5
   },
+  "exclude-before-scan->circular-fixture-detector": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "exclude-before-scan->heredoc-commit-messages": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "execute-paste-recipes->circular-fixture-detector": {
     "fires": 0,
     "last": null,
