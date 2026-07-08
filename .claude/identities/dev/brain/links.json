@@ -4,7 +4,17 @@
     "last": "2026-07-07",
     "weight": 0.5
   },
+  "behavioral-guard-is-spec-worthy->old-path-repo-wide-sweep": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "extraction-tests-must-verify-match->lane-cwd-distrust": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "hermetic-tmpdir-per-guard-case->old-path-repo-wide-sweep": {
     "fires": 0,
     "last": null,
     "weight": 0.5
@@ -25,6 +35,16 @@
     "weight": 0.5
   },
   "loop-state-fingerprint-exclusion->lane-cwd-distrust": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "old-path-repo-wide-sweep->hermetic-tmpdir-per-guard-case": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "old-path-repo-wide-sweep->surgical-yaml-edits": {
     "fires": 0,
     "last": null,
     "weight": 0.5

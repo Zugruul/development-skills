@@ -34,6 +34,11 @@
     "last": null,
     "weight": 0.5
   },
+  "signature-change-grep-all-callsites->verify-guard-regex-on-real-artifact": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "verify-guard-regex-on-real-artifact->diff-invariant-artifact-on-refactor": {
     "fires": 0,
     "last": null,

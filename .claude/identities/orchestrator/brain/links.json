@@ -1,4 +1,9 @@
 {
+  "board-comment-bodies-via-file->board-out-of-compound-commands": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "decide-oqs-before-brief->frozen-contracts-parallel-prs": {
     "fires": 0,
     "last": null,
