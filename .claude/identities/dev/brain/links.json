@@ -59,6 +59,16 @@
     "last": null,
     "weight": 0.5
   },
+  "deterministic-repro-fast->hotfix-repro-incident-sequence": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "deterministic-repro-fast->poll-own-children": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "duplicate-with-agreement-pin->batch-red-across-surfaces": {
     "fires": 0,
     "last": null,
@@ -205,6 +215,16 @@
     "weight": 0.5
   },
   "pair-every-side-effect-with-undo->old-path-repo-wide-sweep": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "poll-own-children->second-order-after-concurrency-fix": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "poll-own-children->stderr-suppression-hides-evidence": {
     "fires": 0,
     "last": null,
     "weight": 0.5

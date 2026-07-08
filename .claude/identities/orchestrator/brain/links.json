@@ -4,6 +4,16 @@
     "last": null,
     "weight": 0.5
   },
+  "brief-hypotheses-anchor->no-change-claims-need-interaction-flags": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "brief-hypotheses-anchor->pre-diagnose-before-brief": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "contract-shapes-stated-in-briefs->no-change-claims-need-interaction-flags": {
     "fires": 0,
     "last": null,
