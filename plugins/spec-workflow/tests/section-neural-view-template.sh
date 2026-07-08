@@ -286,6 +286,7 @@ function extract(name) {
 let tick = 0, webglOK = true;
 function step() { throw new Error("simulated per-frame exception"); }
 function updateVisuals() {}
+function updateFly() {}
 function updateCameraPosition() {}
 const renderer = { render: () => {} };
 const scene = {}, camera = {};
@@ -531,10 +532,11 @@ function extractOneLine(name) {
 
 function makeEl() {
     return {
-        _className: "", _children: [], _html: "",
+        _className: "", _children: [], _html: "", _attrs: {},
         set className(v) { this._className = v; }, get className() { return this._className; },
         set innerHTML(v) { this._html = v; }, get innerHTML() { return this._html; },
         appendChild(c) { this._children.push(c); },
+        setAttribute(k, v) { this._attrs[k] = v; },
     };
 }
 let gaugeList;
@@ -590,5 +592,283 @@ NODEJS
     gauges_out="$(node "$_nvgauges" "$NVHTML" 2>&1)"
     check "renderGauges() groups per repo, orders orchestrator-first-then-alphabetical, and renders empty brains as dimmed rows instead of omitting them (#75)" "RENDERGAUGES_GROUPED_ORDERED_EMPTY_OK" "$gauges_out"
     rm -f "$_nvgauges"
+
+    # #73: clicking a brain row in the BRAINS panel flies the camera to frame
+    # that brain's cluster. Structural wiring first (cursor affordance,
+    # click/keyboard handlers on every row -- including empty ones, so a
+    # 0-note brain is still reachable and falls back to its repo region).
+    check "CSS gives every brain row a pointer cursor, signalling it's clickable (#73)" ".brainrow{cursor:pointer;" "$(cat "$NVHTML")"
+    check "CSS gives brain rows a hover/focus affordance consistent with the rest of the HUD (#73)" ".brainrow:hover,.brainrow:focus-visible{" "$(cat "$NVHTML")"
+    check "brain rows are keyboard-focusable so Enter can trigger the fly-to (#73)" "row.tabIndex = 0;" "$(cat "$NVHTML")"
+    check "brain rows expose a button role for assistive tech (#73)" 'row.setAttribute("role", "button");' "$(cat "$NVHTML")"
+    check "clicking a brain row flies the camera to that (repo,role) cluster (#73)" "row.onclick = ()=>flyToCluster(repo, role);" "$(cat "$NVHTML")"
+    check "Enter on a focused brain row triggers the same fly-to as a click (#73)" 'if(ev.key==="Enter"){ ev.preventDefault(); flyToCluster(repo, role); }' "$(cat "$NVHTML")"
+    check "frame() steps the in-flight fly-to animation every frame before repositioning the camera (#73)" "updateFly();" "$(cat "$NVHTML")"
+
+    # #73 behavioral: clusterSphere()/distanceForSphere() -- the fly-to framing
+    # math, mirroring boundingSphere()/fitDistance()'s centroid+margin+FOV-fit
+    # approach but scoped to one (repo,role) cluster's own nodes instead of the
+    # whole graph. Covers: correct centroid/radius over just that cluster's
+    # nodes (excluding other roles), and the empty-cluster -> repo-region
+    # fallback (acceptance criterion 3 -- no NaN/crash on a 0-note brain).
+    _nvclustersphere="$(mktemp).cjs"
+    cat >"$_nvclustersphere" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+function extract(name) {
+    const re = new RegExp("function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\n\\}\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find function " + name + "() in template");
+    return m[0];
+}
+const MIN_DIST = 80, MAX_DIST = 6000, FOV = 50 * Math.PI / 180, MIN_REGION = 46;
+let nodes, repoCenters, repoRadius;
+eval(extract("clusterSphere"));
+eval(extract("distanceForSphere"));
+
+// case 1: a populated cluster -- centroid is the mean of ITS OWN nodes only
+// (a same-repo different-role node must not skew it), and the radius covers
+// the farthest node's own extent (distance from centroid + that node's r),
+// not just a floor.
+nodes = [
+  {repo: "r1", role: "dev", x: 0, y: 0, z: 0, r: 5},
+  {repo: "r1", role: "dev", x: 200, y: 0, z: 0, r: 5},
+  {repo: "r1", role: "reviewer", x: 999, y: 999, z: 999, r: 5},
+];
+repoCenters = new Map([["r1", {x: 0, y: 0, z: 0}]]);
+repoRadius = new Map([["r1", 100]]);
+let b = clusterSphere("r1", "dev");
+if (Math.abs(b.x - 100) > 0.001 || b.y !== 0 || b.z !== 0) throw new Error("centroid must be the mean of only this cluster's own nodes: " + JSON.stringify(b));
+if (b.r < 100) throw new Error("radius must cover the farthest node's own extent, not just a floor: got " + b.r);
+
+// case 2: an empty cluster (zero notes for this repo/role) falls back to
+// framing the repo region instead of NaN/crashing (#73 acceptance 3).
+nodes = [];
+b = clusterSphere("r1", "dev");
+if (Number.isNaN(b.x) || Number.isNaN(b.r)) throw new Error("empty cluster produced NaN: " + JSON.stringify(b));
+if (b.x !== 0 || b.y !== 0 || b.z !== 0) throw new Error("empty cluster must fall back to its repo's own center: " + JSON.stringify(b));
+if (Math.abs(b.r - 130) > 0.001) throw new Error("empty cluster must fall back to repoRadius+30: got " + b.r);
+
+// case 3: an empty cluster in a repo with no layout yet still returns a sane,
+// non-NaN sphere (pre-/graph-load safety, same spirit as fitDistance()'s
+// single-origin-point boot fallback).
+repoCenters = new Map(); repoRadius = new Map();
+b = clusterSphere("ghost-repo", "dev");
+if (Number.isNaN(b.x) || Number.isNaN(b.r)) throw new Error("unknown-repo empty cluster produced NaN: " + JSON.stringify(b));
+
+// distanceForSphere(): same FOV-fit formula as fitDistance() (margin*1.35,
+// clamped to [MIN_DIST,MAX_DIST]), applied to an arbitrary sphere.
+const fit = distanceForSphere({x: 1, y: 2, z: 3, r: 50}, 1600 / 900);
+if (fit.target.x !== 1 || fit.target.y !== 2 || fit.target.z !== 3) throw new Error("distanceForSphere()'s target must equal the sphere's own center: " + JSON.stringify(fit));
+if (fit.distance < MIN_DIST || fit.distance > MAX_DIST) throw new Error("distanceForSphere() distance out of clamp range: " + fit.distance);
+
+console.log("CLUSTERSPHERE_OK");
+NODEJS
+    clustersphere_out="$(node "$_nvclustersphere" "$NVHTML" 2>&1)"
+    check "clusterSphere() bounds one (repo,role) cluster's own nodes (centroid+radius), falling back to the repo region when empty (#73)" "CLUSTERSPHERE_OK" "$clustersphere_out"
+    rm -f "$_nvclustersphere"
+
+    # #73 behavioral: flyToCluster()/updateFly() -- the fly-to counts as taking
+    # the wheel (userMoved=true, so auto-refit doesn't fight it); under
+    # prefers-reduced-motion it jumps the camera instantly (no animation
+    # object, camera repositioned synchronously); otherwise it starts a short
+    # eased animation that updateFly() converges to the exact destination by
+    # the animation's own duration, then clears itself.
+    _nvflytocluster="$(mktemp).cjs"
+    cat >"$_nvflytocluster" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+function extract(name) {
+    const re = new RegExp("function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\n\\}\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find function " + name + "() in template");
+    return m[0];
+}
+
+const MIN_DIST = 80, MAX_DIST = 6000, FOV = 50 * Math.PI / 180, MIN_REGION = 46;
+let nodes = [{repo: "r1", role: "dev", x: 50, y: 0, z: 0, r: 5}];
+let repoCenters = new Map([["r1", {x: 0, y: 0, z: 0}]]);
+let repoRadius = new Map([["r1", 100]]);
+let W = 1600, H = 900;
+const webglOK = true;
+let target = {x: 0, y: 0, z: 0}, radius = 900;
+let flyAnim = null;
+let userMoved = false;
+let updateCameraPositionCalls = 0;
+function updateCameraPosition() { updateCameraPositionCalls++; }
+let nowVal = 0;
+global.performance = { now: () => nowVal };
+
+eval(extract("clusterSphere"));
+eval(extract("distanceForSphere"));
+
+// case (a): prefers-reduced-motion -- instant jump, no animation object, the
+// camera is repositioned synchronously (not left for a future frame).
+let REDUCED = true;
+eval(extract("flyToCluster"));
+flyToCluster("r1", "dev");
+if (!userMoved) throw new Error("flyToCluster() did not set userMoved=true under reduced motion");
+if (flyAnim !== null) throw new Error("reduced motion must jump instantly, not create an animation");
+if (updateCameraPositionCalls !== 1) throw new Error("reduced motion must reposition the camera synchronously: calls=" + updateCameraPositionCalls);
+if (target.x <= 0) throw new Error("reduced motion did not move the target toward the cluster: " + JSON.stringify(target));
+
+// case (b): motion allowed -- a short animated transition, not an instant
+// jump, converging on the same destination that the reduced-motion path
+// jumps to directly.
+REDUCED = false;
+userMoved = false; flyAnim = null; updateCameraPositionCalls = 0;
+target = {x: 0, y: 0, z: 0}; radius = 900; nowVal = 0;
+flyToCluster("r1", "dev");
+if (!userMoved) throw new Error("flyToCluster() did not set userMoved=true");
+if (!flyAnim) throw new Error("non-reduced-motion fly-to must start an animation, not jump instantly");
+if (updateCameraPositionCalls !== 0) throw new Error("non-reduced-motion fly-to must not snap the camera synchronously -- updateFly() drives it per frame");
+const dest = { x: flyAnim.toTarget.x, radius: flyAnim.toRadius };
+
+eval(extract("updateFly"));
+nowVal = 0; updateFly();
+if (target.x === dest.x) throw new Error("updateFly() at t0 should not already be at the destination");
+
+nowVal = flyAnim.dur; updateFly();
+if (Math.abs(target.x - dest.x) > 0.01) throw new Error("updateFly() did not converge on the destination target by the animation's own duration: " + JSON.stringify(target));
+if (Math.abs(radius - dest.radius) > 0.01) throw new Error("updateFly() did not converge on the destination radius by the animation's own duration: got " + radius);
+if (flyAnim !== null) throw new Error("updateFly() must clear the animation once it completes");
+
+console.log("FLYTOCLUSTER_OK");
+NODEJS
+    flytocluster_out="$(node "$_nvflytocluster" "$NVHTML" 2>&1)"
+    check "flyToCluster() sets userMoved and jumps instantly under reduced motion, else animates (#73)" "FLYTOCLUSTER_OK" "$flytocluster_out"
+    rm -f "$_nvflytocluster"
+
+    # #73 review follow-up (1/2): distanceForSphere() is a deliberate parallel
+    # copy of fitDistance()'s margin/FOV-fit formula (kept separate so it
+    # doesn't disturb the pinned boundingSphere()/fitDistance() extraction
+    # tests above) -- nothing else pins that the two formulas actually AGREE,
+    # so a future tweak to fitDistance()'s margin/clamp could silently diverge
+    # fly-to framing from the whole-graph auto-fit. This feeds
+    # distanceForSphere() the exact sphere boundingSphere() computes for a
+    # single-repo layout and asserts fitDistance(aspect) and
+    # distanceForSphere(sphere, aspect) produce identical output across
+    # several aspect ratios (landscape, portrait, square, ultrawide).
+    _nvformulaagreement="$(mktemp).cjs"
+    cat >"$_nvformulaagreement" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+function extract(name) {
+    const re = new RegExp("function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\n\\}\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find function " + name + "() in template");
+    return m[0];
+}
+const MIN_DIST = 80, MAX_DIST = 6000, FOV = 50 * Math.PI / 180, MIN_REGION = 46;
+let repoList = ["r1"];
+let repoCenters = new Map([["r1", {x: 5, y: 6, z: 7}]]);
+let repoRadius = new Map([["r1", 50]]);
+
+eval(extract("boundingSphere"));
+eval(extract("fitDistance"));
+eval(extract("distanceForSphere"));
+
+const equivalentSphere = boundingSphere();   // the exact sphere fitDistance() itself frames
+for (const [label, aspect] of [["landscape", 1600 / 900], ["portrait", 900 / 1600], ["square", 1], ["ultrawide", 21 / 9]]) {
+    const viaFit = fitDistance(aspect);
+    const viaGeneric = distanceForSphere(equivalentSphere, aspect);
+    if (Math.abs(viaFit.distance - viaGeneric.distance) > 1e-9) throw new Error(label + ": fitDistance() and distanceForSphere() disagree on distance: " + viaFit.distance + " vs " + viaGeneric.distance);
+    if (viaFit.target.x !== viaGeneric.target.x || viaFit.target.y !== viaGeneric.target.y || viaFit.target.z !== viaGeneric.target.z) throw new Error(label + ": fitDistance() and distanceForSphere() disagree on target: " + JSON.stringify(viaFit.target) + " vs " + JSON.stringify(viaGeneric.target));
+}
+console.log("FORMULA_AGREEMENT_OK");
+NODEJS
+    formulaagreement_out="$(node "$_nvformulaagreement" "$NVHTML" 2>&1)"
+    check "distanceForSphere() agrees with fitDistance() on an equivalent sphere across aspect ratios -- a margin/clamp tweak to one alone must not silently diverge fly-to framing (#73 review)" "FORMULA_AGREEMENT_OK" "$formulaagreement_out"
+    rm -f "$_nvformulaagreement"
+
+    # #73 review follow-up (2/2): a real drag/wheel/pinch gesture started while
+    # a fly-to is still animating must win instantly -- the user's own camera
+    # input should never be stomped by up to 650ms of a stale in-flight
+    # animation. Extends the pinned #71 pointer-wiring harness (same
+    # start/end markers, same stub canvas/THREE) with a flyAnim sentinel:
+    # every case that already sets userMoved=true must also clear flyAnim,
+    # and every case that must NOT set userMoved (bare click/jitter) must
+    # leave flyAnim untouched.
+    _nvflycancel="$(mktemp).cjs"
+    cat >"$_nvflycancel" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+
+const startMarker = "const pointers = new Map();";
+const endMarker = "}, {passive:false});";
+const startIdx = html.indexOf(startMarker);
+const endIdx = html.indexOf(endMarker, startIdx);
+if (startIdx === -1 || endIdx === -1) throw new Error("could not locate the pointer-interaction wiring block (pointerdown..wheel) in template -- markers may be stale");
+const block = html.slice(startIdx, endIdx + endMarker.length);
+
+const handlers = {};
+const canvas = {
+    addEventListener(type, fn) { handlers[type] = fn; },
+    setPointerCapture() {},
+    classList: { add() {}, remove() {} },
+};
+const webglOK = true;
+let userMoved = false;
+let theta = 0, phi = 1, radius = 900, target = {x: 0, y: 0, z: 0};
+const MIN_DIST = 80, MAX_DIST = 6000;
+function updateCameraPosition() {}
+function hitTest() {}
+function hideTooltip() {}
+function hoverTest() {}
+let hoverThrottle = 0;
+global.performance = {now: () => 0};
+class Vector3Stub { constructor(x, y, z) { this.x = x; this.y = y; this.z = z; } applyQuaternion() { return this; } }
+const THREE = {Vector3: Vector3Stub};
+const camera = {quaternion: {}};
+
+const SENTINEL = {fromTarget: {x: 0, y: 0, z: 0}, toTarget: {x: 1, y: 1, z: 1}, fromRadius: 1, toRadius: 2, t0: 0, dur: 1};
+let flyAnim = null;
+
+eval(block);
+
+function fireEvent(type, x, y, extra) {
+    handlers[type](Object.assign({clientX: x, clientY: y, pointerId: 1, button: 0, shiftKey: false, preventDefault(){}}, extra || {}));
+}
+
+// bare pointerdown/pointerup, no movement -- must NOT clear an in-flight fly-to.
+flyAnim = SENTINEL;
+fireEvent("pointerdown", 100, 100);
+fireEvent("pointerup", 100, 100);
+if (flyAnim !== SENTINEL) throw new Error("a bare pointerdown/pointerup with zero movement must not cancel an in-flight fly-to");
+
+// sub-threshold jitter (realistic click) -- must NOT clear an in-flight fly-to.
+flyAnim = SENTINEL;
+fireEvent("pointerdown", 100, 100);
+fireEvent("pointermove", 101, 100);
+fireEvent("pointerup", 101, 100);
+if (flyAnim !== SENTINEL) throw new Error("a click's sub-pixel jitter must not cancel an in-flight fly-to");
+
+// a real drag past the threshold DOES cancel an in-flight fly-to -- the
+// user's own gesture wins instantly instead of being stomped for up to 650ms.
+flyAnim = SENTINEL;
+fireEvent("pointerdown", 200, 200);
+fireEvent("pointermove", 300, 200);
+if (flyAnim !== null) throw new Error("a real drag past the movement threshold did not cancel an in-flight fly-to");
+fireEvent("pointerup", 300, 200);
+
+// wheel always cancels an in-flight fly-to, no threshold.
+flyAnim = SENTINEL;
+handlers["wheel"]({deltaY: 10, preventDefault(){}});
+if (flyAnim !== null) throw new Error("a wheel event did not cancel an in-flight fly-to");
+
+// a two-pointer pinch move always cancels an in-flight fly-to, no threshold.
+flyAnim = SENTINEL;
+fireEvent("pointerdown", 100, 100, {pointerId: 1});
+fireEvent("pointerdown", 120, 100, {pointerId: 2});
+fireEvent("pointermove", 121, 100, {pointerId: 2});
+if (flyAnim !== null) throw new Error("a two-pointer pinch move did not cancel an in-flight fly-to");
+fireEvent("pointerup", 121, 100, {pointerId: 1});
+fireEvent("pointerup", 121, 100, {pointerId: 2});
+
+console.log("FLYANIM_CANCELLED_ON_REAL_INTERACTION_OK");
+NODEJS
+    flycancel_out="$(node "$_nvflycancel" "$NVHTML" 2>&1)"
+    check "a real drag/wheel/pinch cancels an in-flight fly-to instantly instead of being stomped by it (#73 review)" "FLYANIM_CANCELLED_ON_REAL_INTERACTION_OK" "$flycancel_out"
+    rm -f "$_nvflycancel"
 fi
 

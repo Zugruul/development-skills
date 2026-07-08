@@ -36,8 +36,10 @@ scan base, falls back to the git root of cwd (single-repo behavior).
 The page renders in 3D (three.js, vendored same-origin — no CDN, no build step, zero
 external requests): drag to orbit, wheel/pinch to zoom, right-drag or shift-drag to pan,
 click a neuron to inspect it, and the ⌂ button (or double-clicking empty space) resets
-the view. If `status` says STOPPED, `start` it. Nothing here mutates a brain — it is
-purely a viewer.
+the view. Clicking (or Enter-ing, keyboard-focused) a brain row in the BRAINS sidebar
+flies the camera to frame that brain's own cluster, falling back to its repo region if
+the brain has zero notes yet. If `status` says STOPPED, `start` it. Nothing here mutates
+a brain — it is purely a viewer.
 
 It's also a one-page overview of every project on the machine: hovering any note, repo
 region, or synapse (no click needed) opens a tooltip identifying it; each repo shows its

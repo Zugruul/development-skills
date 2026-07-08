@@ -60,7 +60,8 @@ canvas.grabbing{cursor:grabbing}
 .repo-brains-h{font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan);
   margin:.6rem 0 .1rem;border-top:1px solid rgba(90,190,255,.18);padding-top:.5rem}
 .repo-brains:first-of-type .repo-brains-h{border-top:0;margin-top:0;padding-top:0}
-.brainrow{display:flex;align-items:center;gap:.55rem;padding:.35rem 0;border-top:1px solid rgba(90,190,255,.12)}
+.brainrow{cursor:pointer;display:flex;align-items:center;gap:.55rem;padding:.35rem 0;border-top:1px solid rgba(90,190,255,.12)}
+.brainrow:hover,.brainrow:focus-visible{background:rgba(90,190,255,.08);outline:none}
 .repo-brains .brainrow:first-of-type{border-top:0}
 .brainrow .rname{flex:1;font-size:.66rem;letter-spacing:.12em;text-transform:uppercase}
 .brainrow-empty{opacity:.4}
@@ -270,6 +271,38 @@ function fitDistance(aspect){
   return {target: {x:b.x,y:b.y,z:b.z}, distance: Math.max(MIN_DIST, Math.min(MAX_DIST, dist)), boundR: b.r};
 }
 
+// #73: bounding sphere of ONE (repo,role) cluster's own nodes, mirroring
+// boundingSphere()'s centroid+margin approach but scoped to a single brain
+// instead of the whole graph, so a brain-row click can fly the camera to
+// frame just that cluster. A cluster with zero notes has nothing of its own
+// to bound, so it falls back to framing the repo region instead (graceful --
+// no NaN/crash on an empty brain).
+function clusterSphere(repo, role){
+  const pts = [];
+  for(const nd of nodes) if(nd.repo===repo && nd.role===role) pts.push({x:nd.x, y:nd.y, z:nd.z, r:nd.r||4});
+  if(!pts.length){
+    const rc = repoCenters.get(repo);
+    if(rc) return {x:rc.x, y:rc.y, z:rc.z, r:(repoRadius.get(repo)||MIN_REGION)+30};
+    return {x:0, y:0, z:0, r:160};
+  }
+  let cx=0, cy=0, cz=0;
+  for(const p of pts){ cx+=p.x; cy+=p.y; cz+=p.z; }
+  cx/=pts.length; cy/=pts.length; cz/=pts.length;
+  let R = 30;
+  for(const p of pts) R = Math.max(R, Math.hypot(p.x-cx,p.y-cy,p.z-cz)+p.r);
+  return {x:cx, y:cy, z:cz, r:R};
+}
+// Same FOV-fit formula fitDistance() applies to boundingSphere() (margin
+// factor 1.35, clamped to [MIN_DIST,MAX_DIST]), generalized to an arbitrary
+// sphere so a single-cluster fly-to (#73) frames exactly like the
+// whole-graph auto-fit does.
+function distanceForSphere(b, aspect){
+  const hFov = 2*Math.atan(Math.tan(FOV/2)*aspect);
+  const half = Math.min(FOV, hFov)/2;
+  const dist = (b.r*1.35) / Math.sin(half);
+  return {target: {x:b.x, y:b.y, z:b.z}, distance: Math.max(MIN_DIST, Math.min(MAX_DIST, dist))};
+}
+
 // ---- WebGL bring-up (feature-detected before touching three.js's renderer,
 // so an unsupported browser/GPU degrades to the gauges/ticker instead of
 // throwing mid-boot) ----
@@ -285,6 +318,7 @@ if(!webglOK) document.getElementById("nowebgl").style.display = "grid";
 let renderer=null, scene=null, camera=null;
 let target = {x:0,y:0,z:0}, radius = 900, theta = THETA0, phi = PHI0;
 let userMoved = false;   // once the user orbits/pans/zooms, stop auto-fitting until reset
+let flyAnim = null;      // #73: in-flight brain-row fly-to (target/radius easing), stepped by updateFly()
 
 if(webglOK){
   renderer = new THREE.WebGLRenderer({canvas, antialias:true});
@@ -311,7 +345,38 @@ function applyFit(resetAngles){
   if(resetAngles){ theta = THETA0; phi = PHI0; }
   updateCameraPosition();
 }
-function resetView(){ userMoved = false; applyFit(true); }
+function resetView(){ userMoved = false; flyAnim = null; applyFit(true); }
+
+// #73: clicking (or Enter-ing) a brain row in the sidebar flies the camera to
+// frame that brain's own cluster. Counts as taking the wheel (userMoved=true)
+// so the periodic auto-refit in loadGraph()/resize() doesn't fight it, same
+// as any other camera gesture. Under prefers-reduced-motion it jumps
+// straight there (no animation); otherwise updateFly() eases target/radius
+// toward the destination over a short, fixed duration each frame.
+function flyToCluster(repo, role){
+  if(!webglOK) return;
+  userMoved = true;
+  const fit = distanceForSphere(clusterSphere(repo, role), W/Math.max(1,H));
+  if(REDUCED){
+    flyAnim = null;
+    target = fit.target; radius = fit.distance;
+    updateCameraPosition();
+    return;
+  }
+  flyAnim = {fromTarget: {...target}, toTarget: fit.target, fromRadius: radius, toRadius: fit.distance, t0: performance.now(), dur: 650};
+}
+function updateFly(){
+  if(!flyAnim) return;
+  const p = Math.min(1, (performance.now() - flyAnim.t0) / flyAnim.dur);
+  const e = 1 - Math.pow(1-p, 3);   // ease-out cubic
+  target = {
+    x: flyAnim.fromTarget.x + (flyAnim.toTarget.x - flyAnim.fromTarget.x)*e,
+    y: flyAnim.fromTarget.y + (flyAnim.toTarget.y - flyAnim.fromTarget.y)*e,
+    z: flyAnim.fromTarget.z + (flyAnim.toTarget.z - flyAnim.fromTarget.z)*e,
+  };
+  radius = flyAnim.fromRadius + (flyAnim.toRadius - flyAnim.fromRadius)*e;
+  if(p>=1) flyAnim = null;
+}
 
 function resize(){
   DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -608,6 +673,7 @@ function frame(){
   step();
   if(webglOK){
     updateVisuals();
+    updateFly();
     updateCameraPosition();   // theta/phi/target/radius may have changed since last frame (orbit/pan/zoom/fit)
     renderer.render(scene, camera);
   }
@@ -760,6 +826,11 @@ function renderGauges(){
       const n=s?s.n:0, avg=(s&&s.n)?s.str/s.n:0, lk=linkCount.get(k)||0;
       const hue=roleHue(role);
       const row=document.createElement("div"); row.className = n ? "brainrow" : "brainrow brainrow-empty";
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      row.setAttribute("aria-label", `Fly to ${role} in ${repo}`);
+      row.onclick = ()=>flyToCluster(repo, role);
+      row.onkeydown = ev=>{ if(ev.key==="Enter"){ ev.preventDefault(); flyToCluster(repo, role); } };
       row.innerHTML =
         arc(n/maxN, hue, n) +
         `<div class="rname" style="color:${cssColor(hue,72,.95)}">${escapeHtml(role)}</div>` +
@@ -953,7 +1024,7 @@ canvas.addEventListener("pointermove", ev=>{
     const pts=[...pointers.values()];
     const dist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1;
     radius = Math.max(MIN_DIST, Math.min(MAX_DIST, pinchStart.radius * (pinchStart.dist/dist)));
-    userMoved = true;
+    userMoved = true; flyAnim = null;   // #73: a real gesture wins instantly over a stale in-flight fly-to
   } else if(pointers.size===1 && dragLast){
     const dx = ev.clientX-dragLast.x, dy = ev.clientY-dragLast.y;
     dragLast = {x:ev.clientX, y:ev.clientY};
@@ -968,7 +1039,7 @@ canvas.addEventListener("pointerleave", hideTooltip);
 function orbitBy(dxPix, dyPix){
   theta -= dxPix*0.006;
   phi = Math.max(0.05, Math.min(Math.PI-0.05, phi - dyPix*0.006));
-  userMoved = true;
+  userMoved = true; flyAnim = null;   // #73: a real gesture wins instantly over a stale in-flight fly-to
 }
 function panBy(dxPix, dyPix){
   updateCameraPosition();   // ensure quaternion reflects the current theta/phi before reading basis vectors
@@ -980,7 +1051,7 @@ function panBy(dxPix, dyPix){
     y: target.y - right.y*dxPix*s + up.y*dyPix*s,
     z: target.z - right.z*dxPix*s + up.z*dyPix*s,
   };
-  userMoved = true;
+  userMoved = true; flyAnim = null;   // #73: a real gesture wins instantly over a stale in-flight fly-to
 }
 function endPointer(ev){
   const wasSingle = pointers.size===1;
@@ -1001,7 +1072,7 @@ canvas.addEventListener("wheel", ev=>{
   if(!webglOK) return;
   ev.preventDefault();
   radius = Math.max(MIN_DIST, Math.min(MAX_DIST, radius * Math.exp(ev.deltaY * 0.0015)));
-  userMoved = true;
+  userMoved = true; flyAnim = null;   // #73: a real gesture wins instantly over a stale in-flight fly-to
 }, {passive:false});
 canvas.addEventListener("dblclick", ev=>{
   if(!webglOK) return;
