@@ -1,12 +1,12 @@
 ---
 tags: [review, python, verification]
 paths: ["plugins/spec-workflow/scripts/**"]
-strength: 2
-source: "#53 review retro — recurrence (bool/float fixtures)"
-graduated: false
+strength: 3
+source: "#92 review retro — recurrence (sourcing _dedupe_aside directly)"
+graduated: true
 created: 2026-07-08
 ---
 
-importlib-load or directly execute the changed code with adversarial inputs BEYOND the shipped tests (bool-as-int, float-equals-int, alternate wordings, oversized lines) — for dynamically-typed edge cases execution is the only real proof; reasoning about isinstance()/coercion semantics from memory gets subtly wrong exactly where it matters.
+Source/importlib the changed helper straight out of the script and drive it with adversarial inputs YOU chose (beyond the shipped tests): cross-op non-interference, exclusions, tie-breaks, alternate wordings. Independent evidence in minutes vs hours of integration-test construction — and it finds what the suite structurally can't.
 
-Related: [[verify-with-library-own-classes]] [[json-escaped-check-weakness]]
+Related: [[verify-with-library-own-classes]] [[equality-guards-invite-ordering-probes]]

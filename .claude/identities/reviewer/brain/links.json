@@ -19,12 +19,27 @@
     "last": null,
     "weight": 0.5
   },
+  "drive-real-helper-adversarially->equality-guards-invite-ordering-probes": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "drive-real-helper-adversarially->json-escaped-check-weakness": {
     "fires": 0,
     "last": null,
     "weight": 0.5
   },
   "drive-real-helper-adversarially->verify-with-library-own-classes": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "equality-guards-invite-ordering-probes->outcome-language-marks-unverified-seams": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "equality-guards-invite-ordering-probes->red-passing-checks-may-pin-later": {
     "fires": 0,
     "last": null,
     "weight": 0.5

@@ -74,6 +74,21 @@
     "last": null,
     "weight": 0.5
   },
+  "fake-cli-exit-code-is-contract->circular-fixture-detector": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "fake-cli-exit-code-is-contract->cond": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "fake-cli-exit-code-is-contract->heredoc-commit-messages": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "flag-safety-language-removal->heredoc-commit-messages": {
     "fires": 0,
     "last": null,
@@ -185,6 +200,16 @@
     "weight": 0.5
   },
   "rehearse-migration-on-real-copy->surgical-yaml-edits": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "second-order-after-concurrency-fix->normalize-after-load-identity-fields": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "second-order-after-concurrency-fix->pair-every-side-effect-with-undo": {
     "fires": 0,
     "last": null,
     "weight": 0.5
