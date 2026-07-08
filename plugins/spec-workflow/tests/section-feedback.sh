@@ -203,3 +203,131 @@ rm -rf "$LN"
 setup_skill="$PLUGIN/skills/setup-project/SKILL.md"
 check_absent "setup-project gitignore printf drops .claude/feedback/" ".claude/feedback/" \
   "$(grep -F 'printf' "$setup_skill")"
+
+# --- qualified references (sw-089) ----------------------------------------
+# Feedback references must carry the emitting project so a multi-project
+# archive stays unambiguous: bare #N in items[].evidence[] and
+# items[].routing.ref is normalized to <project.name>#N (project.name from
+# THIS repo's own .claude/project.yaml); refs already qualified by ANY
+# project (<slug>#N) pass through verbatim.
+
+QR="$(mktemp -d)"; mkdir -p "$QR/.claude"
+cp "$FIX/valid.project.yaml" "$QR/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$QR" set methodology.feedback true >/dev/null
+qr() { (cd "$QR" && python3 "$PLUGIN/scripts/feedback.py" "$QR" "$@"); }
+
+QRREC="$QR/qualify.yaml"
+cat >"$QRREC" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-07-05T00:00:00Z"
+iteration:
+  task: FX-050
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: dev
+  model: claude-sonnet-5
+items:
+  - category: friction
+    area: board
+    severity: low
+    summary: "Board sync lagged during the run."
+    generalized: "Board sync lagging under load is worth tracking."
+    evidence: ["PR #61", "already qualified comm-platform#71 stays untouched", "#5"]
+    routing: {action: backlog, ref: "#77"}
+YAML
+qr emit "$QRREC" >/dev/null
+out="$(cat "$QR/.claude/feedbacks/feed.yaml")"
+check "emit qualifies bare evidence ref with own project name" "fixture-project#61" "$out"
+check "emit qualifies bare short evidence ref" "fixture-project#5" "$out"
+check "emit leaves foreign-qualified evidence untouched" "comm-platform#71" "$out"
+check "emit qualifies routing.ref" "fixture-project#77" "$out"
+check_absent "emit does not double-qualify an already-qualified evidence ref" "fixture-project#comm-platform" "$out"
+
+# route: normalizes the ref argument the same way; foreign-qualified refs pass through
+qr route "2026-07-05T00:00:00Z" 0 upstream "#90" >/dev/null
+out="$(cat "$QR/.claude/feedbacks/feed.yaml")"
+check "route normalizes a bare ref argument" "fixture-project#90" "$out"
+
+qr route "2026-07-05T00:00:00Z" 0 upstream "other-repo#12" >/dev/null
+out="$(cat "$QR/.claude/feedbacks/feed.yaml")"
+check "route passes a foreign-qualified ref argument through verbatim" "other-repo#12" "$out"
+rm -rf "$QR"
+
+# generalization ban: extended to also reject qualified refs (<slug>#N), not
+# just bare #N -- a generalized/summary text naming ANY project's issue still
+# leaks project specifics out of the feed.
+GB="$(mktemp -d)"; mkdir -p "$GB/.claude"
+cp "$FIX/valid.project.yaml" "$GB/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$GB" set methodology.feedback true >/dev/null
+GBREC="$GB/qualified-ref-banned.yaml"
+cat >"$GBREC" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-07-06T00:00:00Z"
+iteration:
+  task: FX-051
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: dev
+  model: claude-sonnet-5
+items:
+  - category: friction
+    area: board
+    severity: low
+    summary: "Board sync lagged, see some-repo#12 for background."
+    generalized: "Board sync lagged, see some-repo#12 for background."
+YAML
+out="$(cd "$GB" && python3 "$PLUGIN/scripts/feedback.py" "$GB" emit "$GBREC" || true)"
+check "generalization ban rejects a qualified ref (slug#N), not just bare #N" "INVALID" "$out"
+check "generalization ban names the qualified ref" "some-repo#12" "$out"
+rm -rf "$GB"
+
+# migration: --migrate-qualify normalizes an existing feed's bare refs in
+# evidence[]/routing.ref in place, surgically (every other byte untouched),
+# and is idempotent (a second run changes nothing).
+MG="$(mktemp -d)"; mkdir -p "$MG/.claude/feedbacks"
+cp "$FIX/valid.project.yaml" "$MG/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$MG" set methodology.feedback true >/dev/null
+cat >"$MG/.claude/feedbacks/feed.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-06-01T00:00:00Z'
+iteration:
+  task: '10'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: dev
+  model: claude-sonnet-5
+items:
+- category: friction
+  area: board
+  severity: low
+  summary: pre-migration item
+  detail: 'seen in PR #61 and issue #60'
+  evidence:
+  - 'PR #61'
+  - 'already qualified comm-platform#71'
+  generalized: pre-migration generalized text
+  routing:
+    action: backlog
+    ref: '#77'
+YAML
+out="$(cd "$MG" && python3 "$PLUGIN/scripts/feedback.py" "$MG" migrate-qualify)"
+check "migrate-qualify reports success" "OK" "$out"
+post="$(cat "$MG/.claude/feedbacks/feed.yaml")"
+check "migrate-qualify qualifies an evidence ref" "fixture-project#61" "$post"
+check "migrate-qualify leaves a foreign-qualified evidence ref untouched" "comm-platform#71" "$post"
+check "migrate-qualify qualifies routing.ref" "fixture-project#77" "$post"
+check "migrate-qualify leaves detail text alone (only evidence[]/routing.ref are in scope)" \
+  "detail: 'seen in PR #61 and issue #60'" "$post"
+check "migrate-qualify preserves unrelated quoting/formatting" "ts: '2026-06-01T00:00:00Z'" "$post"
+
+out2="$(cd "$MG" && python3 "$PLUGIN/scripts/feedback.py" "$MG" migrate-qualify)"
+check "migrate-qualify second run reports no changes (idempotent)" "no changes" "$out2"
+post2="$(cat "$MG/.claude/feedbacks/feed.yaml")"
+check "migrate-qualify idempotent: file byte-identical after second run" "$post" "$post2"
+rm -rf "$MG"

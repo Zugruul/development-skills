@@ -63,11 +63,25 @@ YAML documents, one per emitted record:
 
 Generalization contract (enforced at emit time; re-checked at triage): when
 `generalized` is non-empty, neither it nor `summary` may contain the
-iteration's own task id or a `#<digits>` issue/PR reference — restate
+iteration's own task id or an issue/PR reference — bare (`#<digits>`) OR
+qualified (`<slug>#<digits>`, e.g. `comm-platform#71`) — restate
 agnostically, or clear `generalized` to mark the item local-only. This is a
 textual, not semantic, check: ordinary markdown like a `#1` heading in
 `summary`/`generalized` also trips it — a safe failure mode (an over-eager
 rejection, never a leak), but worth knowing if a clean-looking item bounces.
+
+Qualified references: `items[].evidence[]` and `items[].routing.ref` are the
+one place a task ref belongs (they are NOT bound by the generalization ban
+above). A bare `#N` there is ambiguous once an archive spans multiple
+projects, so `emit` and `route` normalize every bare `#N` in those two
+fields to `<project.name>#N`, where `project.name` comes from THIS repo's
+own `.claude/project.yaml` (the emitting project) — never from the record
+itself. A ref already qualified by ANY project (`<slug>#N`, slug = a run of
+word/hyphen characters immediately before the `#`, no intervening
+whitespace) passes through verbatim — qualification never rewrites another
+project's ref, and re-running it is a no-op (idempotent). `migrate-qualify`
+applies the same normalization, surgically, to an existing feed file in
+place.
 
 `ts` also doubles as the record's identity for `route` — two records sharing
 a `ts` make routing ambiguous, so `emit` rejects a `ts` that already exists
@@ -82,6 +96,9 @@ CLI:
     feedback.py <root> pending                            # unrouted items
     feedback.py <root> route <ts> <item-index> <action> <ref>
     feedback.py <root> status                             # one-line summary
+    feedback.py <root> migrate-qualify                     # one-shot: qualify
+                                                            # bare #N refs already
+                                                            # in the feed (sw-089)
 """
 import os
 import re
@@ -105,7 +122,19 @@ DEFAULTS = {
 
 LEGACY_FEED = ".claude/feedback/feed.yaml"
 
-_ISSUE_REF_RE = re.compile(r"#\d+")
+# Matches a bare OR qualified issue/PR ref for the generalization ban's report
+# (e.g. "#12" or "some-repo#12" both hit, deliberately -- see the module
+# docstring's generalization contract). Matches a BARE ref only for
+# qualification (see _BARE_REF_RE below): the two serve different purposes
+# and must not be conflated.
+_ISSUE_REF_RE = re.compile(r"[\w-]*#\d+")
+
+# A "bare" #N: not immediately preceded by a slug character, i.e. not already
+# qualified by some project. `(?<![\w-])` is the boundary — a `#` glued to a
+# word/hyphen character just before it is someone's `<slug>#N` and is left
+# alone. Re-running qualification is therefore a no-op: once qualified, the
+# ref no longer matches.
+_BARE_REF_RE = re.compile(r"(?<![\w-])#(\d+)\b")
 _SEP = "---\n"
 
 
@@ -172,6 +201,40 @@ def _project_specific_refs(text, task_id):
         hits.append(task_id)
     hits.extend(_ISSUE_REF_RE.findall(text))
     return hits
+
+
+def _project_name(root):
+    cfg = C.load_config(root, warn=False)
+    return C.dig(cfg, "project.name") if cfg else None
+
+
+def _qualify_text(text, project_name):
+    """Normalize every bare #N in `text` to `<project_name>#N`. Refs already
+    qualified by any project pass through untouched. No-op if project_name
+    is falsy (config missing a name -- don't guess)."""
+    if not project_name or not isinstance(text, str) or "#" not in text:
+        return text
+    return _BARE_REF_RE.sub(lambda m: f"{project_name}#{m.group(1)}", text)
+
+
+def _qualify_record_refs(rec, project_name):
+    """In place: qualify bare refs in every item's evidence[] and
+    routing.ref. Never touches summary/generalized -- those are banned from
+    carrying refs at all, qualified or bare (see the generalization contract)."""
+    if not project_name or not isinstance(rec, dict):
+        return
+    items = rec.get("items")
+    if not isinstance(items, list):
+        return
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        evidence = item.get("evidence")
+        if isinstance(evidence, list):
+            item["evidence"] = [_qualify_text(e, project_name) for e in evidence]
+        routing = item.get("routing")
+        if isinstance(routing, dict) and isinstance(routing.get("ref"), str):
+            routing["ref"] = _qualify_text(routing["ref"], project_name)
 
 
 def validate_record(rec):
@@ -267,13 +330,16 @@ def cmd_emit(root, record_path):
     except Exception as e:  # noqa: BLE001
         print(f"INVALID: cannot parse {record_path}: {e}")
         return 1
+
+    cfg = C.load_config(root, warn=False)
+    _qualify_record_refs(rec, C.dig(cfg, "project.name") if cfg else None)
+
     errs = validate_record(rec)
     if errs:
         for e in errs:
             print(f"INVALID: {e}")
         return 1
 
-    cfg = C.load_config(root, warn=False)
     fcfg, feed_overridden = parse_feedback_cfg(cfg)
     guard_err = _legacy_guard_error(root, fcfg, feed_overridden)
     if guard_err:
@@ -353,11 +419,91 @@ def cmd_route(root, ts, idx_str, action, ref):
         print(f"ERROR: item index {idx} out of range for record {ts}")
         return 1
     prior = (items[idx].get("routing") or {}).get("action")
+    ref = _qualify_text(ref, C.dig(cfg, "project.name") if cfg else None)
     items[idx]["routing"] = {"action": action, "ref": ref}
     with open(feed_path, "w") as fh:
         fh.write(_dump_all(docs))
     suffix = f" (was: {prior})" if prior else ""
     print(f"OK: routed {ts} item {idx} -> {action} {ref}{suffix}")
+    return 0
+
+
+_EVIDENCE_KEY_RE = re.compile(r"^(\s*)evidence:\s*$")
+_REF_KV_RE = re.compile(r"^(\s*)ref:(\s*)(.*)$")
+_LIST_ITEM_RE = re.compile(r"^(\s*)-\s?(.*)$")
+
+
+def _migrate_qualify_lines(lines, project_name):
+    """Surgical, line-level pass over a feed file's raw text: qualify bare
+    #N refs ONLY inside evidence[] list entries and `ref:` values (routing.ref)
+    -- everything else (summary/generalized/detail/comments/blank lines/
+    quoting) passes through byte-for-byte. Returns (new_lines, changed)."""
+    out = []
+    changed = False
+    in_evidence = False
+    evidence_indent = None
+    for raw in lines:
+        line = raw[:-1] if raw.endswith("\n") else raw
+        if in_evidence:
+            m_item = _LIST_ITEM_RE.match(line)
+            if m_item and len(m_item.group(1)) >= evidence_indent:
+                new_val = _qualify_text(m_item.group(2), project_name)
+                if new_val != m_item.group(2):
+                    changed = True
+                out.append(f"{m_item.group(1)}- {new_val}\n")
+                continue
+            in_evidence = False
+
+        m_ev = _EVIDENCE_KEY_RE.match(line)
+        if m_ev:
+            in_evidence = True
+            evidence_indent = len(m_ev.group(1))
+            out.append(raw if raw.endswith("\n") else raw + "\n")
+            continue
+
+        m_ref = _REF_KV_RE.match(line)
+        if m_ref:
+            new_val = _qualify_text(m_ref.group(3), project_name)
+            if new_val != m_ref.group(3):
+                changed = True
+            out.append(f"{m_ref.group(1)}ref:{m_ref.group(2)}{new_val}\n")
+            continue
+
+        out.append(raw if raw.endswith("\n") else raw + "\n")
+    return out, changed
+
+
+def cmd_migrate_qualify(root):
+    """One-shot (idempotent) migration: qualify every bare #N already sitting
+    in evidence[]/routing.ref of an existing feed, via surgical text edits
+    that preserve every other byte -- never a full YAML parse+redump, which
+    would reformat the whole archive (sw-089)."""
+    cfg = C.load_config(root, warn=False)
+    project_name = C.dig(cfg, "project.name") if cfg else None
+    if not project_name:
+        print("ERROR: project.name is not set in .claude/project.yaml — cannot qualify refs")
+        return 1
+    fcfg, feed_overridden = parse_feedback_cfg(cfg)
+    guard_err = _legacy_guard_error(root, fcfg, feed_overridden)
+    if guard_err:
+        print(guard_err)
+        return 1
+    feed_path = _feed_path(root, fcfg)
+    if feed_path is None:
+        print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
+        return 1
+    if not os.path.exists(feed_path):
+        print(f"OK: no changes — {feed_path} does not exist")
+        return 0
+    with open(feed_path) as fh:
+        lines = fh.readlines()
+    new_lines, changed = _migrate_qualify_lines(lines, project_name)
+    if not changed:
+        print(f"OK: no changes — {feed_path} already qualified")
+        return 0
+    with open(feed_path, "w") as fh:
+        fh.writelines(new_lines)
+    print(f"OK: qualified bare refs in {feed_path} (project={project_name})")
     return 0
 
 
@@ -380,7 +526,7 @@ def cmd_status(root):
 
 def _cli(argv):
     if len(argv) < 2:
-        sys.stderr.write("usage: feedback.py <root> {emit <record.yaml>|pending|route <ts> <idx> <action> <ref>|status}\n")
+        sys.stderr.write("usage: feedback.py <root> {emit <record.yaml>|pending|route <ts> <idx> <action> <ref>|status|migrate-qualify}\n")
         return 2
     root, verb = argv[0], argv[1]
     if verb == "emit":
@@ -397,6 +543,8 @@ def _cli(argv):
         return cmd_route(root, argv[2], argv[3], argv[4], argv[5])
     if verb == "status":
         return cmd_status(root)
+    if verb == "migrate-qualify":
+        return cmd_migrate_qualify(root)
     sys.stderr.write(f"feedback.py: unknown verb {verb!r}\n")
     return 2
 

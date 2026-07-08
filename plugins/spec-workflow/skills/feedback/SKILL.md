@@ -19,13 +19,25 @@ If it reports `feedback: disabled`, say so and stop — do nothing else.
 ## When enabled
 
 1. **Reflect on the ITERATION, not the project.** For each notable thing, ask: did the *workflow* (a skill, a script, a protocol, permissions, review, merge, briefing, board mechanics) help or hurt? Categories: `worked-well`, `friction`, `incident`, `recommendation`. Never file feedback about the project's own code/product — that's a normal board issue or a retro brain note about the project, not this feed.
-2. **Write the record to a temp file** matching the schema documented in `scripts/feedback.py`'s module docstring (`schemaVersion`, `kind`, `ts`, `iteration`, `source`, `items[]`). For every item, fill `generalized` with a restatement that could apply to ANY project using this plugin — no task ids, no `#N` issue/PR references, no repo-specific names. If an item is genuinely local-only, leave `generalized: ""` (it will only ever be routable as `ignore`).
+2. **Write the record to a temp file** matching the schema documented in `scripts/feedback.py`'s module docstring (`schemaVersion`, `kind`, `ts`, `iteration`, `source`, `items[]`). For every item, fill `generalized` with a restatement that could apply to ANY project using this plugin — no task ids, no issue/PR references bare OR qualified (neither `#N` nor `some-repo#N`), no repo-specific names. If an item is genuinely local-only, leave `generalized: ""` (it will only ever be routable as `ignore`). `evidence[]` and `routing.ref`, in contrast, are exactly where a task ref belongs — you may write it bare (`#71`) and `emit` will qualify it to `<project.name>#71` for you.
 3. **Emit it:**
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.py" "$(git rev-parse --show-toplevel)" emit /path/to/record.yaml
    ```
-   A rejection (`INVALID: ...`) means the generalization contract failed (a task id or `#N` ref leaked into `summary`/`generalized`) or the record is malformed — fix the file and re-emit; never weaken the item to force it through.
+   A rejection (`INVALID: ...`) means the generalization contract failed (a task id or an issue/PR ref, bare or qualified, leaked into `summary`/`generalized`) or the record is malformed — fix the file and re-emit; never weaken the item to force it through.
 4. **Report** the emit result and the current pending count (`feedback.py <root> status`).
+
+## Qualified references
+
+A multi-project archive makes a bare `#71` ambiguous — is it this repo's issue 71, or another project's? `emit` and `route` both normalize bare `#N` in `items[].evidence[]` and `items[].routing.ref` to `<project.name>#N`, reading `project.name` from THIS repo's own `.claude/project.yaml`. A ref another project already qualified (`comm-platform#71`, `event-sorc#22`, ...) passes through untouched — qualification never rewrites someone else's ref, and is a no-op if run twice.
+
+An existing feed predating this contract can be brought into line with a one-shot, surgical migration that touches only bare refs in `evidence[]`/`routing.ref` and leaves every other byte (comments, quoting, `summary`/`generalized`/`detail` text) alone:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.py" "$(git rev-parse --show-toplevel)" migrate-qualify
+```
+
+Idempotent — safe to re-run; a clean feed reports `OK: no changes`.
 
 ## Triage (retro time)
 

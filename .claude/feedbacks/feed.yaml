@@ -44,7 +44,7 @@ items:
       it may not bind the permission layer
   routing:
     action: backlog
-    ref: '#33'
+    ref: 'development-skills#33'
 - category: friction
   area: concurrency
   component: skills/build-next/references/concurrency.md
@@ -72,7 +72,7 @@ items:
     change: split run-tests.sh into per-area section files sourced by the runner
   routing:
     action: backlog
-    ref: '#34'
+    ref: 'development-skills#34'
 - category: worked-well
   area: review
   severity: low
@@ -119,7 +119,7 @@ items:
     '
   routing:
     action: backlog
-    ref: '#26'
+    ref: 'development-skills#26'
 ---
 schemaVersion: 1
 kind: loop-feedback
@@ -446,7 +446,7 @@ items:
     '
   routing:
     action: backlog
-    ref: '#47'
+    ref: 'development-skills#47'
 - category: worked-well
   area: board
   severity: low
@@ -589,7 +589,7 @@ items:
     '
   routing:
     action: backlog
-    ref: '#46'
+    ref: 'development-skills#46'
 ---
 schemaVersion: 1
 kind: loop-feedback
@@ -687,7 +687,7 @@ items:
     '
   routing:
     action: backlog
-    ref: '#16'
+    ref: 'development-skills#16'
 - category: worked-well
   area: board
   severity: low
@@ -842,8 +842,8 @@ items:
     agent (self-approval heuristic). Resolved via AskUserQuestion; user granted explicit
     per-artifact direction and the comment+merge then succeeded.'
   evidence:
-  - 'PR #61'
-  - 'issue #60'
+  - 'PR development-skills#61'
+  - 'issue development-skills#60'
   generalized: The preauth probe only checks allowlist rules, but the permission layer
     can deny review/merge on a distinct self-approval heuristic (orchestrator posting
     approval of its own subagent's PR); the auto-review protocol should name this
@@ -914,7 +914,7 @@ items:
     change: Add the verdict-delivery instruction line to the reviewer brief template.
   routing:
     action: backlog
-    ref: '#66'
+    ref: 'development-skills#66'
 - category: friction
   area: board
   component: plugins/spec-workflow/scripts/guard-board-move.sh
@@ -976,7 +976,7 @@ items:
       the real cause and reset time.
   routing:
     action: backlog
-    ref: '#74'
+    ref: 'development-skills#74'
 - category: worked-well
   area: briefing
   severity: low
@@ -1017,7 +1017,7 @@ items:
     retries.
   routing:
     action: backlog
-    ref: '#77'
+    ref: 'development-skills#77'
 - category: friction
   area: board
   severity: medium
@@ -1030,7 +1030,7 @@ items:
     enforced or be removed from the schema.
   routing:
     action: backlog
-    ref: '#84'
+    ref: 'development-skills#84'
 - category: worked-well
   area: merge
   severity: medium
@@ -1043,7 +1043,7 @@ items:
     being the documented fallback.
   routing:
     action: backlog
-    ref: '#85'
+    ref: 'development-skills#85'
 ---
 schemaVersion: 1
 kind: loop-feedback
@@ -1129,4 +1129,4 @@ items:
     and diff the symbol sets.
   routing:
     action: backlog
-    ref: '#86'
+    ref: 'development-skills#86'
