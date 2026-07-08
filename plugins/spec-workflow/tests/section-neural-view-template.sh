@@ -264,5 +264,112 @@ NODEJS
     frame_out="$(node "$_nvframe" "$NVHTML" 2>&1)"
     check "frame() re-arms requestAnimationFrame(frame) even when its body throws" "FRAME_REARM_ON_THROW_OK" "$frame_out"
     rm -f "$_nvframe"
+
+    # #71 regression: userMoved must become true ONLY on a genuine camera
+    # gesture (drag past a small pixel threshold, wheel, or pinch) -- never on
+    # a bare pointerdown/pointerup with no real movement (e.g. clicking the
+    # page/tab to focus it, which still fires a sub-pixel-to-few-pixel
+    # pointermove jitter). Before the fix, the pointermove handler called
+    # orbitBy()/panBy() (which set userMoved=true) on ANY move while a single
+    # pointer was down, with no threshold gate -- so that jitter alone
+    # cancelled the pending first /graph auto-fit and the constellation
+    # rendered off-viewport until a manual (V) reset.
+    #
+    # The pointer handlers are addEventListener callbacks, not named
+    # functions, so the generic extract() pattern (which anchors on
+    # "function name(...){...}\n}\n") doesn't apply here. Instead we slice the
+    # literal wiring block between two unique, stable substrings already
+    # present in the template (the pointers Map declaration through the end
+    # of the wheel listener) and eval it against a stub canvas/THREE, then
+    # drive it with synthetic pointer/wheel events -- this pins the actual
+    # runtime behavior of the handlers, not just their source text.
+    _nvusermoved="$(mktemp).cjs"
+    cat >"$_nvusermoved" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+
+const startMarker = "const pointers = new Map();";
+const endMarker = "}, {passive:false});";
+const startIdx = html.indexOf(startMarker);
+const endIdx = html.indexOf(endMarker, startIdx);
+if (startIdx === -1 || endIdx === -1) throw new Error("could not locate the pointer-interaction wiring block (pointerdown..wheel) in template -- markers may be stale");
+const block = html.slice(startIdx, endIdx + endMarker.length);
+
+function extractOneLine(name) {
+    const re = new RegExp("function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\}\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find function " + name + "() in template");
+    return m[0];
+}
+
+const handlers = {};
+const canvas = {
+    addEventListener(type, fn) { handlers[type] = fn; },
+    setPointerCapture() {},
+    classList: { add() {}, remove() {} },
+};
+const webglOK = true;
+let userMoved = false;
+let theta = 0, phi = 1, radius = 900, target = {x: 0, y: 0, z: 0};
+const MIN_DIST = 80, MAX_DIST = 6000;
+function updateCameraPosition() {}
+function hitTest() {}
+function hideTooltip() {}
+function hoverTest() {}
+let hoverThrottle = 0;
+global.performance = {now: () => 0};
+class Vector3Stub { constructor(x, y, z) { this.x = x; this.y = y; this.z = z; } applyQuaternion() { return this; } }
+const THREE = {Vector3: Vector3Stub};
+const camera = {quaternion: {}};
+
+eval(block);
+eval(extractOneLine("resetView"));
+function applyFit() {}   // resetView() calls this; layout is irrelevant here
+
+function fireEvent(type, x, y, extra) {
+    handlers[type](Object.assign({clientX: x, clientY: y, pointerId: 1, button: 0, shiftKey: false, preventDefault(){}}, extra || {}));
+}
+
+// case (a): bare pointerdown/pointerup, no movement at all -- must not set userMoved.
+fireEvent("pointerdown", 100, 100);
+fireEvent("pointerup", 100, 100);
+if (userMoved) throw new Error("a bare pointerdown/pointerup with zero movement set userMoved=true");
+
+// case (a'): pointerdown + sub-threshold jitter (the realistic click case) + pointerup -- must not set userMoved.
+fireEvent("pointerdown", 100, 100);
+fireEvent("pointermove", 101, 100);   // 1px jitter, well under the drag threshold
+fireEvent("pointerup", 101, 100);
+if (userMoved) throw new Error("a click's sub-pixel-threshold pointermove jitter set userMoved=true (the #71 regression)");
+
+// case (b): a real drag past the threshold DOES set userMoved.
+fireEvent("pointerdown", 200, 200);
+fireEvent("pointermove", 300, 200);   // 100px, well past any reasonable threshold
+if (!userMoved) throw new Error("a real drag past the movement threshold did not set userMoved=true");
+fireEvent("pointerup", 300, 200);
+
+// case (c): wheel always counts as a real interaction, no threshold.
+userMoved = false;
+handlers["wheel"]({deltaY: 10, preventDefault(){}});
+if (!userMoved) throw new Error("a wheel event did not set userMoved=true");
+
+// case (d): a two-pointer pinch always counts as a real interaction, no threshold.
+userMoved = false;
+fireEvent("pointerdown", 100, 100, {pointerId: 1});
+fireEvent("pointerdown", 120, 100, {pointerId: 2});
+fireEvent("pointermove", 121, 100, {pointerId: 2});   // 1px pinch move
+if (!userMoved) throw new Error("a two-pointer pinch move did not set userMoved=true");
+fireEvent("pointerup", 121, 100, {pointerId: 1});
+fireEvent("pointerup", 121, 100, {pointerId: 2});
+
+// case (e): resetView() unregressed -- clears userMoved back to false.
+userMoved = true;
+resetView();
+if (userMoved) throw new Error("resetView() did not clear userMoved back to false");
+
+console.log("USERMOVED_GATED_ON_REAL_INTERACTION_OK");
+NODEJS
+    usermoved_out="$(node "$_nvusermoved" "$NVHTML" 2>&1)"
+    check "userMoved is set only by a real drag past threshold, wheel, or pinch -- never a bare click/jitter (#71)" "USERMOVED_GATED_ON_REAL_INTERACTION_OK" "$usermoved_out"
+    rm -f "$_nvusermoved"
 fi
 
