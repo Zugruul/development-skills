@@ -89,6 +89,16 @@
     "last": null,
     "weight": 0.5
   },
+  "own-payload-not-devs->drive-real-helper-adversarially": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "own-payload-not-devs->fixture-provenance-check": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "paired-pr-single-reviewer->symmetric-boundary-guards": {
     "fires": 0,
     "last": null,

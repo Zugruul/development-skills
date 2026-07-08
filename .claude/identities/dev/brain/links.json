@@ -64,6 +64,16 @@
     "last": null,
     "weight": 0.5
   },
+  "execute-paste-recipes->circular-fixture-detector": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "execute-paste-recipes->fake-cli-exit-code-is-contract": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "extend-may-mean-prove-and-legible->circular-fixture-detector": {
     "fires": 0,
     "last": null,
