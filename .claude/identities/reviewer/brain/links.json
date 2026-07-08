@@ -54,6 +54,16 @@
     "last": null,
     "weight": 0.5
   },
+  "fetch-before-merge-forward->diff-against-merge-base": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "fetch-before-merge-forward->explicit-cd-every-command": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "fixture-provenance-check->drive-real-helper-adversarially": {
     "fires": 0,
     "last": null,
