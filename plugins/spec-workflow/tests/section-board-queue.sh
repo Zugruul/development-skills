@@ -5,13 +5,19 @@
 # HERE/PLUGIN/FIX/fails/flaky before sourcing this file. This file assumes
 # those are already in scope.
 #
-# Covers issue #77 (board-queue rate-limit resilience) and #84 (adopt).
+# Covers issue #77 (board-queue rate-limit resilience), #84 (adopt), and #90
+# (probe-based detection of MASKED rate limits -- gh's real GraphQL-exhausted
+# errors don't always contain "rate limit" text; e.g. "unknown owner type").
 # Fake gh understands: issue create / project item-add / project item-list /
-# project item-edit / api rate_limit / issue view. All rate-limit failures
+# project item-edit / api rate_limit / issue view. Plain rate-limit failures
 # are simulated by writing "API rate limit exceeded for installation ID 123."
-# to stderr and exiting 1 -- the real GitHub REST/GraphQL rate-limit message
-# always contains "rate limit" (case-insensitive), which is exactly what
-# board-queue.sh's _rate_limited() matches on.
+# to stderr and exiting 1 (text-matched fast path). MASKED rate-limit
+# failures are simulated by writing "unknown owner type" to stderr and
+# exiting 1 (no "rate limit" text anywhere) -- board-queue.sh must fall back
+# to probing `gh api rate_limit` and reading .resources.graphql.remaining to
+# tell a masked exhaustion from a real error. FAKE_GH_GRAPHQL_REMAINING
+# controls what that probe reports (default 0, so pre-#90 tests that never
+# probe -- because they hit the text-matched fast path -- are unaffected).
 echo "== board.sh rate-limit queue (#77) + adopt (#84): fake gh =="
 
 _qsetup() { # -> sets BQ (fixture repo dir) and FGH (fake-gh dir on PATH)
@@ -31,12 +37,20 @@ case "$1 $2" in
             echo "API rate limit exceeded for installation ID 123." >&2
             exit 1
         fi
+        if [[ "${FAKE_GH_ITEM_ADD_MASKED_RATE_LIMIT:-0}" == "1" ]]; then
+            echo "unknown owner type" >&2
+            exit 1
+        fi
         ;;
     "project item-list")
         n=$(( $(cat "$FAKE_GH_LIST_CALLCOUNT" 2>/dev/null || echo 0) + 1 ))
         echo "$n" >"$FAKE_GH_LIST_CALLCOUNT"
         if [[ "${FAKE_GH_ITEM_LIST_RATE_LIMIT:-0}" == "1" ]]; then
             echo "API rate limit exceeded for installation ID 123." >&2
+            exit 1
+        fi
+        if [[ "${FAKE_GH_ITEM_LIST_MASKED_RATE_LIMIT:-0}" == "1" ]]; then
+            echo "unknown owner type" >&2
             exit 1
         fi
         if [[ "${FAKE_GH_ITEM_VISIBLE:-1}" == "1" ]]; then
@@ -52,10 +66,14 @@ case "$1 $2" in
             echo "API rate limit exceeded for installation ID 123." >&2
             exit 1
         fi
+        if [[ "$n" -ge "${FAKE_GH_EDIT_MASKED_RATE_LIMIT_FROM:-999}" ]]; then
+            echo "unknown owner type" >&2
+            exit 1
+        fi
         echo "edited"
         ;;
     "api rate_limit")
-        echo "{\"rate\":{\"limit\":5000,\"remaining\":0,\"reset\":${FAKE_GH_RESET_EPOCH:-1735689600}}}"
+        echo "{\"resources\":{\"graphql\":{\"limit\":5000,\"remaining\":${FAKE_GH_GRAPHQL_REMAINING:-0},\"reset\":${FAKE_GH_RESET_EPOCH:-1735689600}}},\"rate\":{\"limit\":5000,\"remaining\":${FAKE_GH_GRAPHQL_REMAINING:-0},\"reset\":${FAKE_GH_RESET_EPOCH:-1735689600}}}"
         ;;
     "issue view")
         if [[ "${FAKE_GH_ISSUE_VIEW_RATE_LIMIT:-0}" == "1" ]]; then
@@ -239,6 +257,63 @@ check "(h) adopt: rate-limited item-add queues instead of failing" "QUEUED (rate
 check "(h) adopt: rate-limited exits 0" "rc=0" "$out"
 check "(h) adopt: queued op recorded" '"op": "adopt", "issue": "809"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
 rm -rf "$BQ" "$FGH" "$LISTCC" "$LOG3"
+
+# --- (i) #90: masked rate-limit on a mutation (item-edit) + probe remaining==0 -> QUEUED, exit 0 ---
+_qsetup
+LOG="$(mktemp)"; EDITCC="$(mktemp)"
+out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" FAKE_GH_LIST_CALLCOUNT="$(mktemp)" \
+    FAKE_GH_ISSUE_NUM=810 FAKE_GH_ITEM_VISIBLE=1 \
+    FAKE_GH_EDIT_MASKED_RATE_LIMIT_FROM=1 FAKE_GH_GRAPHQL_REMAINING=0 FAKE_GH_RESET_EPOCH=1735689600 \
+    bash "$PLUGIN/scripts/board.sh" move 810 "In progress" 2>&1; echo "rc=$?")"
+check "(i) masked rate-limit mutation: QUEUED message with reset time" "QUEUED (rate-limited until 2025-01-01T00:00:00Z): move #810 -> In progress" "$out"
+check "(i) masked rate-limit mutation: exits 0 (loop keeps going)" "rc=0" "$out"
+check_absent "(i) masked rate-limit mutation: original masked text never surfaces raw" "unknown owner type" "$out"
+qf="$BQ/.claude/board-queue.jsonl"
+check "(i) masked rate-limit mutation: queued for replay" '"op": "move"' "$(cat "$qf" 2>/dev/null)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC"
+
+# --- (j) #90: same masked error but probe remaining>0 -> a REAL error, surfaced verbatim, not queued ---
+_qsetup
+LOG="$(mktemp)"; EDITCC="$(mktemp)"
+out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" FAKE_GH_LIST_CALLCOUNT="$(mktemp)" \
+    FAKE_GH_ISSUE_NUM=811 FAKE_GH_ITEM_VISIBLE=1 \
+    FAKE_GH_EDIT_MASKED_RATE_LIMIT_FROM=1 FAKE_GH_GRAPHQL_REMAINING=5000 FAKE_GH_RESET_EPOCH=1735689600 \
+    bash "$PLUGIN/scripts/board.sh" move 811 "In progress" 2>&1; echo "rc=$?")"
+check "(j) masked-but-real error: original error surfaced verbatim" "unknown owner type" "$out"
+check "(j) masked-but-real error: exits non-zero" "rc=1" "$out"
+check_absent "(j) masked-but-real error: not treated as QUEUED" "QUEUED" "$out"
+qf="$BQ/.claude/board-queue.jsonl"
+if [[ -s "$qf" ]]; then
+    echo "FAIL (j) masked-but-real error: must NOT be queued"
+    fails=$((fails + 1))
+else
+    echo "ok   (j) masked-but-real error: nothing queued"
+fi
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC"
+
+# --- (k) #90: move's item-id LOOKUP (item-list) fails masked-rate-limited -> QUEUED, not "bad issue# or status" ---
+_qsetup
+LOG="$(mktemp)"; LISTCC="$(mktemp)"
+out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" \
+    FAKE_GH_ISSUE_NUM=812 FAKE_GH_ITEM_LIST_MASKED_RATE_LIMIT=1 FAKE_GH_GRAPHQL_REMAINING=0 FAKE_GH_RESET_EPOCH=1735689600 \
+    bash "$PLUGIN/scripts/board.sh" move 812 "In progress" 2>&1; echo "rc=$?")"
+check "(k) lookup masked-rate-limited: QUEUED, not a bad-issue error" "QUEUED (rate-limited until 2025-01-01T00:00:00Z): move #812 -> In progress" "$out"
+check "(k) lookup masked-rate-limited: exits 0" "rc=0" "$out"
+check_absent "(k) lookup masked-rate-limited: never prints the masked bad-issue error" "bad issue# or status" "$out"
+qf="$BQ/.claude/board-queue.jsonl"
+check "(k) lookup masked-rate-limited: queued for replay" '"op": "move"' "$(cat "$qf" 2>/dev/null)"
+rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC"
+
+# --- (l) #90: read op (list) fails fast with reset time when the masked error is a REAL rate limit ---
+_qsetup
+LOG="$(mktemp)"; LISTCC="$(mktemp)"
+out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" \
+    FAKE_GH_ITEM_LIST_MASKED_RATE_LIMIT=1 FAKE_GH_GRAPHQL_REMAINING=0 FAKE_GH_RESET_EPOCH=1735689600 \
+    bash "$PLUGIN/scripts/board.sh" list 2>&1; echo "rc=$?")"
+check "(l) list under masked rate limit: RATE-LIMITED fail-fast message with reset time" "RATE-LIMITED until 2025-01-01T00:00:00Z" "$out"
+check "(l) list under masked rate limit: exits nonzero" "rc=1" "$out"
+check_absent "(l) list under masked rate limit: no raw masked text leak" "unknown owner type" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC"
 
 echo "== setup-project: .gitignore covers the board-queue feed =="
 check "setup-project SKILL.md gitignores .claude/board-queue.jsonl" '.claude/board-queue.jsonl' "$(cat "$PLUGIN/skills/setup-project/SKILL.md")"

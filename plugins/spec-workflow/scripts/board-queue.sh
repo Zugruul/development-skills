@@ -20,17 +20,44 @@ set -uo pipefail
 QUEUE_FILE="${BOARD_QUEUE_FILE:-$ROOT/.claude/board-queue.jsonl}"
 
 # _rate_limited <captured-stderr-or-combined-output> -> 0 if it looks like a
-# GitHub rate-limit response (REST "API rate limit exceeded", GraphQL
-# "API rate limit exceeded (RATE_LIMITED)", or a secondary rate limit).
-# Deliberately broad (case-insensitive "rate limit" substring): every real
-# variant we've seen contains that phrase, and a false positive here just
-# means an op gets queued instead of erroring — safe, not silent.
+# GitHub rate-limit response. Two layers:
+#  1. Fast path — case-insensitive "rate limit" substring (REST "API rate
+#     limit exceeded", GraphQL "API rate limit exceeded (RATE_LIMITED)", a
+#     secondary rate limit): every TEXT-VISIBLE variant we've seen contains
+#     that phrase.
+#  2. Probe fallback (#90) — gh sometimes MASKS GraphQL exhaustion as an
+#     unrelated error (e.g. "unknown owner type", no "rate limit" text
+#     anywhere: live evidence, #90). When the fast path misses, probe the
+#     REST rate_limit endpoint (works even while GraphQL itself is
+#     exhausted) and treat remaining==0 on the graphql resource as ground
+#     truth. remaining>0 means the error is real — surface it verbatim.
 _rate_limited() {
-    grep -qi "rate limit" <<<"$1"
+    grep -qi "rate limit" <<<"$1" && return 0
+    _graphql_remaining_is_zero
+}
+
+# _graphql_remaining_is_zero -> 0 (true) iff `gh api rate_limit`'s graphql
+# resource reports remaining==0. A probe failure (gh itself erroring, e.g.
+# also rate-limited on REST, or unparseable JSON) is NOT treated as
+# rate-limited — that would mask a real error behind a silent queue.
+_graphql_remaining_is_zero() {
+    local raw remaining
+    raw="$(gh api rate_limit 2>/dev/null)" || return 1
+    remaining="$(python3 -c '
+import json, sys
+try:
+    print(json.loads(sys.argv[1])["resources"]["graphql"]["remaining"])
+except Exception:
+    print(-1)
+' "$raw")"
+    [[ "$remaining" == "0" ]]
 }
 
 # _rate_limit_reset_human -> ISO-8601 UTC reset time from the REST rate_limit
-# endpoint (works even when GraphQL itself is the thing exhausted).
+# endpoint. Prefers the graphql resource's reset (the counter that's
+# actually exhausted when GraphQL masks its own errors), falling back to
+# the top-level `rate` alias if `resources.graphql` is absent -- both are
+# real shapes of gh's response.
 _rate_limit_reset_human() {
     local raw
     raw="$(gh api rate_limit 2>/dev/null)" || { echo "unknown"; return; }
@@ -38,7 +65,10 @@ _rate_limit_reset_human() {
 import json, sys, datetime
 try:
     d = json.loads(sys.argv[1])
-    ts = d["rate"]["reset"]
+    try:
+        ts = d["resources"]["graphql"]["reset"]
+    except Exception:
+        ts = d["rate"]["reset"]
     print(datetime.datetime.utcfromtimestamp(ts).strftime("%Y-%m-%dT%H:%M:%SZ"))
 except Exception:
     print("unknown")
@@ -67,6 +97,45 @@ _jf() { # <json-line> <field> -> value ("" if absent)
     python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get(sys.argv[2],""))' "$1" "$2"
 }
 
+# _item_id_rl <issue#> -> prints the project item id to stdout if found.
+# Unlike item_id() (board.sh), this does NOT swallow the underlying gh
+# error — it distinguishes "no such item" from "the lookup itself failed
+# rate-limited (incl. masked, #90)" so callers can queue instead of
+# misreporting a masked rate limit as "bad issue# or status" (#90).
+# Return: 0 = found (id on stdout), 1 = real miss (gh call succeeded, no
+# such item/issue), 2 = the gh call failed and looks rate-limited.
+_item_id_rl() {
+    local num="$1" out err rc id
+    err="$(mktemp)"
+    out="$(gh_project_items_json "$PN" "$OWNER" 2>"$err")"; rc=$?
+    if [[ $rc -ne 0 ]]; then
+        if _rate_limited "$(cat "$err")"; then
+            rm -f "$err"
+            return 2
+        fi
+        rm -f "$err"
+        return 1
+    fi
+    rm -f "$err"
+    id="$(python3 -c '
+import json, sys
+try:
+    n = int(sys.argv[1])
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for it in data.get("items", []):
+    if (it.get("content") or {}).get("number") == n:
+        print(it["id"])
+        break
+' "$num" <<<"$out")"
+    if [[ -n "$id" ]]; then
+        printf '%s' "$id"
+        return 0
+    fi
+    return 1
+}
+
 _current_status() { # issue# -> status string ("" if not found / lookup failed)
     gh_project_items_json "$PN" "$OWNER" 2>/dev/null | python3 -c '
 import json, sys
@@ -88,7 +157,9 @@ for it in data.get("items", []):
 # 2 = rate-limited (caller decides: queue live, or re-queue-and-stop in flush).
 _do_move() {
     local num="$1" status="$2" id opt out rc
-    id="$(item_id "$num")"; opt="$(opt_id status "$status")"
+    id="$(_item_id_rl "$num")"; rc=$?
+    [[ $rc -eq 2 ]] && return 2
+    opt="$(opt_id status "$status")"
     if [[ -z "$id" || -z "$opt" ]]; then
         echo "ERROR: bad issue# or status '$status' (must match statusFlow)" >&2
         return 1
@@ -108,7 +179,9 @@ _do_move() {
 
 _do_prio() {
     local num="$1" prio="$2" id opt out rc
-    id="$(item_id "$num")"; opt="$(opt_id priority "$prio")"
+    id="$(_item_id_rl "$num")"; rc=$?
+    [[ $rc -eq 2 ]] && return 2
+    opt="$(opt_id priority "$prio")"
     if [[ -z "$id" || -z "$opt" ]]; then
         echo "ERROR: bad issue# or priority '$prio'" >&2
         return 1
@@ -129,7 +202,8 @@ _do_est() {
         echo "ERROR: no estimate field configured" >&2
         return 1
     fi
-    id="$(item_id "$num")"
+    id="$(_item_id_rl "$num")"; rc=$?
+    [[ $rc -eq 2 ]] && return 2
     out="$(gh project item-edit --id "$id" --project-id "$PID" --field-id "$EST_FIELD" --number "$points" 2>&1)"; rc=$?
     if [[ $rc -eq 0 ]]; then
         echo "est #$num -> $points"
@@ -147,7 +221,8 @@ _do_est() {
 # the item is already visible / already at the target status.
 _do_add_finish() {
     local num="$1" url="$2" first_status="$3" prio="$4" id out rc cur i
-    id="$(item_id "$num")"
+    id="$(_item_id_rl "$num")"; rc=$?
+    [[ $rc -eq 2 ]] && return 2
     if [[ -z "$id" ]]; then
         out="$(gh project item-add "$PN" --owner "$OWNER" --url "$url" 2>&1)"; rc=$?
         if [[ $rc -ne 0 ]]; then
@@ -177,7 +252,8 @@ _do_add_finish() {
 # a no-op (with a message) if the issue is already a board item.
 _do_adopt() {
     local num="$1" id url out rc
-    id="$(item_id "$num")"
+    id="$(_item_id_rl "$num")"; rc=$?
+    [[ $rc -eq 2 ]] && return 2
     if [[ -n "$id" ]]; then
         echo "adopt #$num: already on board"
         return 0
