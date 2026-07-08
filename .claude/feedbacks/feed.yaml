@@ -945,3 +945,45 @@ items:
     action: ignore
     ref: defect filed directly as board bug during the iteration, not feedback-derived
       routing
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-08T03:05:00Z'
+iteration:
+  task: '68'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: board
+  component: plugins/spec-workflow/scripts/board.sh
+  severity: medium
+  summary: GraphQL rate-limit exhaustion was surfaced as an owner-resolution error
+    and a bad-status error, misdirecting diagnosis
+  detail: gh project item-list printed "unknown owner type" and board.sh concluded
+    "bad issue# or status" when the real cause was graphql remaining=0. Board writes
+    were blocked ~15 minutes; a background retry after the reset window completed
+    the move.
+  generalized: Board tooling should detect API rate-limit exhaustion and report it
+    as such (with the reset timestamp) instead of letting it masquerade as owner/status/argument
+    errors — a misdiagnosed rate limit sends the operator chasing configuration ghosts.
+  proposal:
+    target: scripts/board.sh
+    change: On gh failure, probe the rate_limit endpoint and prefix the error with
+      the real cause and reset time.
+- category: worked-well
+  area: briefing
+  severity: low
+  summary: The orchestrator pre-diagnosing the root cause with exact file lines before
+    briefing made the dev cycle rework-free
+  detail: Dev reported the brief already correctly diagnosed both failure modes; the
+    TDD cycle ran clean with no back-and-forth.
+  generalized: When the orchestrator verifies the root cause itself (exact lines,
+    both failure modes) before briefing, the dev agent's cycle is rework-free; triage
+    effort spent before delegation is repaid in review rounds.
+  routing:
+    action: brain-note
+    ref: orchestrator/pre-diagnose-before-brief
