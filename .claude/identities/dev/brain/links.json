@@ -279,6 +279,16 @@
     "last": null,
     "weight": 0.5
   },
+  "red-commit-as-you-go->batch-red-across-surfaces": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "red-commit-as-you-go->claims-point-at-diff-lines": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "red-static-vs-wiring-checks->vendored-split-build-import-guard": {
     "fires": 0,
     "last": null,
