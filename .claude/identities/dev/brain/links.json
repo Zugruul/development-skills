@@ -44,6 +44,26 @@
     "last": null,
     "weight": 0.5
   },
+  "duplicate-with-agreement-pin->batch-red-across-surfaces": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "duplicate-with-agreement-pin->enumerate-state-writers": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "enumerate-state-writers->raf-rearm-first": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "enumerate-state-writers->trace-state-mutation-not-named-trigger": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "extend-may-mean-prove-and-legible->circular-fixture-detector": {
     "fires": 0,
     "last": null,
