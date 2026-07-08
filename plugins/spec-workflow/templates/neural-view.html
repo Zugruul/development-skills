@@ -28,7 +28,13 @@
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
   font-family:var(--mono);overflow:hidden}
 #stage{position:fixed;inset:0}
-canvas{position:absolute;inset:0;display:block;touch-action:none;cursor:grab}
+/* width/height 100% is load-bearing: canvas is a REPLACED element, so
+   inset:0 alone does NOT stretch it — with renderer.setSize(..., false)
+   never touching the style, the element would render at its intrinsic
+   buffer size (W*devicePixelRatio), i.e. 2x on retina, anchored top-left:
+   the whole scene displaced into the bottom-right corner while pointer
+   math (correctly) used viewport coordinates. */
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 canvas.hoverable{cursor:pointer}
 canvas.grabbing{cursor:grabbing}
 .hud{position:fixed;background:var(--panel);border:1px solid var(--border);
@@ -107,6 +113,12 @@ canvas.grabbing{cursor:grabbing}
   padding:.32rem .7rem;cursor:pointer}
 #i-open button:hover{border-color:var(--cyan-dim);background:rgba(70,230,255,.08)}
 
+/* screen-space ring around the hovered node — repositioned every frame so it
+   stays glued to the ball while the sim drifts or the camera moves */
+#hoverring{position:fixed;display:none;pointer-events:none;z-index:40;
+  border:1px solid rgba(70,230,255,.85);border-radius:50%;
+  box-shadow:0 0 10px rgba(70,230,255,.45),inset 0 0 6px rgba(70,230,255,.25)}
+
 #tooltip{position:fixed;display:none;padding:.5rem .7rem;max-width:300px;
   pointer-events:none;z-index:50;font-size:.66rem;line-height:1.42}
 #tooltip .tt-kind{font-size:.56rem;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
@@ -166,6 +178,7 @@ canvas.grabbing{cursor:grabbing}
 </aside>
 
 <div class="hud" id="tooltip" aria-hidden="true"></div>
+<div id="hoverring" aria-hidden="true"></div>
 
 <div id="empty"><div><b>No brains yet</b>Once an identity starts learning, its notes appear here as neurons and light up as they are recalled.</div></div>
 <div id="nowebgl"><div><b>WebGL unavailable</b>This browser/GPU can't render the 3D view. The brains, gauges and activation log below are still live.</div></div>
@@ -692,8 +705,22 @@ function frame(){
     updateFly();
     updateCameraPosition();   // theta/phi/target/radius may have changed since last frame (orbit/pan/zoom/fit)
     renderer.render(scene, camera);
+    updateHoverRing();   // after render: ring uses the same camera state as the drawn frame
     if(PROBE && tick%20===0) hoverProbe();   // same-frame overlay: sim, camera and rings agree
   }
+}
+// screen-space circle around the hovered node, repositioned every frame so it
+// tracks the ball through sim drift and camera motion.
+const hoverRingEl = document.getElementById("hoverring");
+function updateHoverRing(){
+  if(!hoveredNode){ hoverRingEl.style.display = "none"; return; }
+  const p = projectToScreen(hoveredNode.x, hoveredNode.y, hoveredNode.z);
+  if(!p){ hoverRingEl.style.display = "none"; return; }
+  const r = Math.max(9, worldToPixels(hoveredNode.r*1.8, p.depth)) + 3;
+  hoverRingEl.style.display = "block";
+  hoverRingEl.style.left = (p.x - r).toFixed(1) + "px";
+  hoverRingEl.style.top = (p.y - r).toFixed(1) + "px";
+  hoverRingEl.style.width = hoverRingEl.style.height = (r*2).toFixed(1) + "px";
 }
 requestAnimationFrame(frame);
 
