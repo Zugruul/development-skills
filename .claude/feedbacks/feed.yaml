@@ -974,6 +974,9 @@ items:
     target: scripts/board.sh
     change: On gh failure, probe the rate_limit endpoint and prefix the error with
       the real cause and reset time.
+  routing:
+    action: backlog
+    ref: '#74'
 - category: worked-well
   area: briefing
   severity: low
