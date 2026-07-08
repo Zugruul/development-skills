@@ -67,3 +67,120 @@ check "preauth-snippet has push rule" "Bash(git push:*)" "$snippet"
 valid="$(python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); print("valid" if "Bash(gh pr merge:*)" in d["permissions"]["allow"] else "invalid")' <<<"$snippet")"
 check "preauth-snippet is valid JSON with the rules" "valid" "$valid"
 
+echo "== merge-mode requirements (GitHub branch protection / rulesets probe — #85) =="
+# Fake gh understands only `api <path>`; every invocation increments
+# FAKE_GH_CALLCOUNT so tests can prove the cache avoids a second call.
+_rqsetup() { # -> sets RQ (fixture repo dir) and FGH2 (fake-gh dir on PATH)
+    RQ="$(mktemp -d)"; mkdir -p "$RQ/.claude"
+    cp "$FIX/valid.project.yaml" "$RQ/.claude/project.yaml"
+    FGH2="$(mktemp -d)"
+    cat >"$FGH2/gh" <<'FAKE'
+#!/usr/bin/env bash
+set -uo pipefail
+n=$(( $(cat "$FAKE_GH_CALLCOUNT" 2>/dev/null || echo 0) + 1 ))
+echo "$n" >"$FAKE_GH_CALLCOUNT"
+case "$1" in
+    api)
+        case "$2" in
+            */protection/required_pull_request_reviews)
+                case "${FAKE_GH_PROTECTION_MODE:-404}" in
+                    404) echo "gh: Branch not protected (HTTP 404: Not Found)" >&2; exit 1 ;;
+                    required) echo '{"required_approving_review_count":1}' ;;
+                    error) echo "gh: connection reset by peer" >&2; exit 1 ;;
+                esac
+                ;;
+            */rules/branches/*)
+                case "${FAKE_GH_RULES_MODE:-empty}" in
+                    empty) echo '[]' ;;
+                    zero-count) echo '[{"type":"pull_request","parameters":{"required_approving_review_count":0}}]' ;;
+                    required) echo '[{"type":"pull_request","parameters":{"required_approving_review_count":2}}]' ;;
+                esac
+                ;;
+            *) echo "fake gh: unexpected api path: $2" >&2; exit 1 ;;
+        esac
+        ;;
+    *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
+esac
+FAKE
+    chmod +x "$FGH2/gh"
+}
+
+# (1) no branch protection, no matching ruleset -> none
+_rqsetup
+CC="$(mktemp)"; echo 0 >"$CC"
+out="$(cd "$RQ" && PATH="$FGH2:$PATH" FAKE_GH_CALLCOUNT="$CC" FAKE_GH_PROTECTION_MODE=404 \
+    bash "$PLUGIN/scripts/merge-mode.sh" requirements 2>&1)"
+check "requirements: no protection/ruleset -> none" "requirements: none" "$out"
+rm -rf "$RQ" "$FGH2" "$CC"
+
+# (1b) a pull_request ruleset rule is PRESENT but requires 0 approvals -> none
+# (a rule matched by TYPE ALONE, ignoring required_approving_review_count, is
+# a false positive: PRs-required-but-zero-approvals is not formal review).
+_rqsetup
+CC="$(mktemp)"; echo 0 >"$CC"
+out="$(cd "$RQ" && PATH="$FGH2:$PATH" FAKE_GH_CALLCOUNT="$CC" FAKE_GH_PROTECTION_MODE=404 FAKE_GH_RULES_MODE=zero-count \
+    bash "$PLUGIN/scripts/merge-mode.sh" requirements 2>&1)"
+check "requirements: pull_request rule present with 0 required approvals -> none" "requirements: none" "$out"
+rm -rf "$RQ" "$FGH2" "$CC"
+
+# (1c) a pull_request ruleset rule requiring >=1 approvals -> formal-review-required
+_rqsetup
+CC="$(mktemp)"; echo 0 >"$CC"
+out="$(cd "$RQ" && PATH="$FGH2:$PATH" FAKE_GH_CALLCOUNT="$CC" FAKE_GH_PROTECTION_MODE=404 FAKE_GH_RULES_MODE=required \
+    bash "$PLUGIN/scripts/merge-mode.sh" requirements 2>&1)"
+check "requirements: pull_request rule requiring approvals -> formal-review-required" "requirements: formal-review-required" "$out"
+rm -rf "$RQ" "$FGH2" "$CC"
+
+# (2) branch protection requires approving reviews -> formal-review-required
+_rqsetup
+CC="$(mktemp)"; echo 0 >"$CC"
+out="$(cd "$RQ" && PATH="$FGH2:$PATH" FAKE_GH_CALLCOUNT="$CC" FAKE_GH_PROTECTION_MODE=required \
+    bash "$PLUGIN/scripts/merge-mode.sh" requirements 2>&1)"
+check "requirements: protection required -> formal-review-required" "requirements: formal-review-required" "$out"
+rm -rf "$RQ" "$FGH2" "$CC"
+
+# (3) gh call itself fails (not a 404) -> unknown, with a reason
+_rqsetup
+CC="$(mktemp)"; echo 0 >"$CC"
+out="$(cd "$RQ" && PATH="$FGH2:$PATH" FAKE_GH_CALLCOUNT="$CC" FAKE_GH_PROTECTION_MODE=error \
+    bash "$PLUGIN/scripts/merge-mode.sh" requirements 2>&1)"
+check "requirements: gh failure -> unknown" "requirements: unknown" "$out"
+rm -rf "$RQ" "$FGH2" "$CC"
+
+# (4) cache file written on first probe, reused (no second gh call) on the next
+_rqsetup
+CC="$(mktemp)"; echo 0 >"$CC"
+out1="$(cd "$RQ" && PATH="$FGH2:$PATH" FAKE_GH_CALLCOUNT="$CC" FAKE_GH_PROTECTION_MODE=404 \
+    bash "$PLUGIN/scripts/merge-mode.sh" requirements 2>&1)"
+check "requirements: first probe -> none" "requirements: none" "$out1"
+if [[ -f "$RQ/.claude/merge-requirements.json" ]]; then
+    echo "ok   requirements: cache file written"
+else
+    echo "FAIL requirements: cache file not written"; fails=$((fails + 1))
+fi
+callcount1="$(cat "$CC")"
+# Flip the fake gh's answer -- if the cache were bypassed this would flip the verdict too.
+out2="$(cd "$RQ" && PATH="$FGH2:$PATH" FAKE_GH_CALLCOUNT="$CC" FAKE_GH_PROTECTION_MODE=required \
+    bash "$PLUGIN/scripts/merge-mode.sh" requirements 2>&1)"
+callcount2="$(cat "$CC")"
+check "requirements: cached verdict reused (not re-probed)" "requirements: none" "$out2"
+if [[ "$callcount1" -eq "$callcount2" ]]; then
+    echo "ok   requirements: cache hit made no additional gh call ($callcount1 == $callcount2)"
+else
+    echo "FAIL requirements: cache hit made additional gh call(s) ($callcount1 -> $callcount2)"
+    fails=$((fails + 1))
+fi
+
+# (5) --refresh forces a fresh probe even with a warm cache
+out3="$(cd "$RQ" && PATH="$FGH2:$PATH" FAKE_GH_CALLCOUNT="$CC" FAKE_GH_PROTECTION_MODE=required \
+    bash "$PLUGIN/scripts/merge-mode.sh" requirements --refresh 2>&1)"
+callcount3="$(cat "$CC")"
+check "requirements --refresh: re-probes and picks up the new verdict" "requirements: formal-review-required" "$out3"
+if [[ "$callcount3" -gt "$callcount2" ]]; then
+    echo "ok   requirements --refresh made a fresh gh call ($callcount2 -> $callcount3)"
+else
+    echo "FAIL requirements --refresh did not re-probe ($callcount2 -> $callcount3)"
+    fails=$((fails + 1))
+fi
+rm -rf "$RQ" "$FGH2" "$CC"
+
