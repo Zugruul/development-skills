@@ -54,6 +54,13 @@ code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PO
 check "vendor route serves three.module.min.js (200)" "200" "$code"
 ctype="$(curl -s -D - -o /dev/null "http://127.0.0.1:$NEURAL_VIEW_PORT/vendor/three.module.min.js" | tr -d '\r' | grep -i '^content-type:')"
 check "vendor route content-type is javascript" "javascript" "$ctype"
+# three.module.min.js's split-build companion (relatively imported as
+# ./three.core.min.js) must also be served same-origin, or the module import
+# 404s and the 3D scene never boots.
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/vendor/three.core.min.js")"
+check "vendor route serves three.core.min.js (200)" "200" "$code"
+ctype="$(curl -s -D - -o /dev/null "http://127.0.0.1:$NEURAL_VIEW_PORT/vendor/three.core.min.js" | tr -d '\r' | grep -i '^content-type:')"
+check "vendor route three.core.min.js content-type is javascript" "javascript" "$ctype"
 for trav in "/vendor/../scripts/config.py" "/vendor/..%2fscripts%2fconfig.py" "/vendor/../../etc/passwd" "/vendor/not-on-the-allowlist.js"; do
     code="$(curl -s --path-as-is -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT$trav")"
     check "vendor route rejects $trav (404)" "404" "$code"
