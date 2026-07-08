@@ -164,6 +164,16 @@
     "last": null,
     "weight": 0.5
   },
+  "reports-are-not-the-code->fetch-before-merge-forward": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "reports-are-not-the-code->fixture-provenance-check": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "reproduce-on-deployment-floor->named-attack-class-briefs": {
     "fires": 0,
     "last": null,

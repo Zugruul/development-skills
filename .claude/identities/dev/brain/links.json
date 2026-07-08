@@ -49,6 +49,16 @@
     "last": null,
     "weight": 0.5
   },
+  "claims-point-at-diff-lines->fake-cli-exit-code-is-contract": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "claims-point-at-diff-lines->flag-safety-language-removal": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "duplicate-with-agreement-pin->batch-red-across-surfaces": {
     "fires": 0,
     "last": null,
@@ -255,6 +265,16 @@
     "weight": 0.5
   },
   "second-order-after-concurrency-fix->pair-every-side-effect-with-undo": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "self-scan-first-class->circular-fixture-detector": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "self-scan-first-class->exclude-before-scan": {
     "fires": 0,
     "last": null,
     "weight": 0.5
