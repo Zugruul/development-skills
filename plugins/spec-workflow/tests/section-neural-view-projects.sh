@@ -29,9 +29,6 @@ case "$1 $2" in
         fi
         if [[ "${FAKE_GH_RATELIMIT_FAIL:-0}" == "1" ]]; then
             printf 'gh: API rate limit exceeded for installation ID 1234.\n' >&2
-            if [[ "${FAKE_GH_RATELIMIT_NORESET:-0}" != "1" ]]; then
-                printf 'rate limit already exceeded until %s\n' "${FAKE_GH_RATELIMIT_RESET:-2026-07-08T04:11:00Z}" >&2
-            fi
             exit 1
         fi
         if [[ "${FAKE_GH_HANG:-0}" == "1" ]]; then
@@ -47,6 +44,19 @@ case "$1 $2" in
             items="$(python3 -c 'import json,sys; a=json.loads(sys.argv[1]); a.append(json.loads(sys.argv[2])); print(json.dumps(a))' "$items" "$extra")"
         fi
         python3 -c 'import json,sys; print(json.dumps({"items": json.loads(sys.argv[1])}))' "$items"
+        ;;
+    "api rate_limit")
+        # board.sh's board-queue.sh asks this REST endpoint for the authoritative
+        # reset time (works even when GraphQL itself is what's exhausted). NORESET
+        # simulates that endpoint being unavailable too, so board.sh falls back to
+        # "unknown" -- which the classifier below renders as "(resets soon)".
+        if [[ "${FAKE_GH_RATELIMIT_NORESET:-0}" == "1" ]]; then
+            echo "fake gh: api rate_limit unavailable" >&2
+            exit 1
+        fi
+        epoch="$(python3 -c 'import calendar, datetime, sys
+print(calendar.timegm(datetime.datetime.strptime(sys.argv[1], "%Y-%m-%dT%H:%M:%SZ").timetuple()))' "${FAKE_GH_RATELIMIT_RESET:-2026-07-08T04:11:00Z}")"
+        echo "{\"rate\":{\"limit\":5000,\"remaining\":0,\"reset\":$epoch}}"
         ;;
     *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
 esac
@@ -95,27 +105,23 @@ check "projects: gh failure reported as ok:false" '"ok": false' "$body"
 check "projects: gh failure carries an error message" '"error"' "$body"
 python3 "$NV" stop >/dev/null
 
-# scenario 3b: real evidence -- board.sh's `list` pipes gh's stdout straight into a
-# `json.load(sys.stdin)` with no exit-code gate, so ANY gh failure (empty stdout)
-# additionally raises a Python traceback. This Python colorizes that traceback by
-# default (forced here via FORCE_COLOR so the assertion doesn't depend on the
-# ambient shell's color detection) -- the ANSI-garbled last line of that traceback
-# is exactly what leaked into the live HUD. It must reach the client ANSI-stripped
-# and phrased as "board unavailable: <last meaningful line>" (requirement c).
+# scenario 3b: a plain (non-rate-limit) gh failure. board.sh's `list` gates on gh's
+# own exit code (SPEC #77) before it ever reaches `json.load`, so this no longer
+# raises a Python traceback -- board.sh reports the honest gh error directly, and
+# the classifier's fallback (last non-blank, ANSI-stripped line) renders it as-is.
 LOG3B="$(mktemp)"; CC3B="$(mktemp)"
-lifecycle_start "neural-view starts (ANSI-traceback failure scenario)" NEURAL_VIEW_PORT 'PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG3B" FAKE_GH_CALLCOUNT="$CC3B" FAKE_GH_FAIL=1 FORCE_COLOR=1 python3 "$NV" start --dir "$NVP_REPO"'
+lifecycle_start "neural-view starts (plain gh-failure scenario)" NEURAL_VIEW_PORT 'PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG3B" FAKE_GH_CALLCOUNT="$CC3B" FAKE_GH_FAIL=1 FORCE_COLOR=1 python3 "$NV" start --dir "$NVP_REPO"'
 body="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/projects")"
-check "projects: ANSI-traceback failure reported as ok:false" '"ok": false' "$body"
-check "projects: ANSI-traceback failure is stripped of color, keeping the last meaningful line" 'board unavailable: json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)' "$body"
-check_absent "projects: ANSI-traceback failure error contains no raw ESC byte" $'\x1b[' "$body"
-check_absent "projects: ANSI-traceback failure error contains no literal SGR code" '[1;35m' "$body"
+check "projects: plain gh-failure reported as ok:false" '"ok": false' "$body"
+check "projects: plain gh-failure keeps the last meaningful line, no traceback" 'board unavailable: fake gh: item-list boom' "$body"
+check_absent "projects: plain gh-failure error contains no raw ESC byte" $'\x1b[' "$body"
+check_absent "projects: plain gh-failure error contains no literal SGR code" '[1;35m' "$body"
+check_absent "projects: plain gh-failure never leaks a JSONDecodeError traceback" 'JSONDecodeError' "$body"
 python3 "$NV" stop >/dev/null
 
-# scenario 3c/3d: a rate-limit-shaped failure gets a friendly, specific error instead
-# of the raw gh/traceback text. The same trailing JSONDecodeError traceback from
-# scenario 3b follows the rate-limit text here too (board.sh's own bug fires on ANY
-# gh failure) -- proving the classifier looks at the whole captured text for the
-# rate-limit signal, not just the (traceback-polluted) last line.
+# scenario 3c/3d: a rate-limit failure gets board.sh's own "RATE-LIMITED until
+# <reset>" line (board.sh asks `gh api rate_limit` for the authoritative reset
+# time -- SPEC #77), which the classifier renders as a friendly, specific message.
 LOG3C="$(mktemp)"; CC3C="$(mktemp)"
 lifecycle_start "neural-view starts (rate-limit scenario, with reset time)" NEURAL_VIEW_PORT 'PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG3C" FAKE_GH_CALLCOUNT="$CC3C" FAKE_GH_RATELIMIT_FAIL=1 FAKE_GH_RATELIMIT_RESET="2026-07-08T04:11:00Z" FORCE_COLOR=1 python3 "$NV" start --dir "$NVP_REPO"'
 body="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/projects")"

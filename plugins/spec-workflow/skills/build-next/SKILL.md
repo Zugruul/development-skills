@@ -32,6 +32,9 @@ When the task involves UI-affecting decisions and iterative UI is on (`.claude/I
 ## Advancing beyond In review
 *In review* → *QA* after the PR merges (auto-merge does this in the same iteration; otherwise wait for the human merge) — **and fold the task's spec delta on that transition**: if `<paths.specDeltaDir|docs/spec-deltas>/<task-id>.md` exists, apply its blocks into the spec, move it to `applied/`, commit both (procedure: implement-task's `references/design-and-deltas.md` §3). The canonical spec must always describe merged reality. Then validate on the running stack (`dev-up`) against acceptance criteria → *Ready*; → *Deployed* only when actually published. Never fake these transitions. Bugs found after *Ready*: `board.sh bug "<desc>" <top-prio> <origin#>` — never reopen shipped tasks.
 
+## Rate-limited board ≠ blocked-on-human
+`board.sh` queues instead of failing when GitHub rate-limits a mutation (move/prio/est/add's item-add step, or `adopt`): it prints `QUEUED (rate-limited until <reset>): <op>` and exits 0. **A rate limit is never a stop condition.** Keep implementing, reviewing, and merging — mutations queue locally (`.claude/board-queue.jsonl`, gitignored) and replay automatically the next time any board-reading command (`next`/`list`/`show`) runs, or explicitly via `board.sh flush`. If a read itself is rate-limited, `board.sh` fails fast with `RATE-LIMITED until <reset> — work continues; mutations queue; retry reads after reset.`; treat that as "the board view is stale," not "stop the loop" — retry the read after the stated reset time, or continue non-board work meanwhile. Your iteration report (step 6) must state any ops that are still queued (unflushed) at the time you report.
+
 ## Stop conditions (write a `handoff`, then stop)
 - checkpoint flag present, OR
 - `board.sh next` reports empty/only-blocked backlog, OR

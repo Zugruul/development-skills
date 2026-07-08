@@ -51,23 +51,26 @@ check "bug verb: default priority is first option (P0)" "filed bug #501 [P0]" "$
 check "bug verb: origin-issue link in body" "Originating task: #42." "$(cat "$LOG1")"
 check "bug verb: item-add invoked with the created issue's URL" "project item-add 1 --owner fixture-owner --url https://github.com/fixture-owner/fixture-project/issues/501" "$(cat "$LOG1")"
 
-# scenario 2: eventual consistency -- item-list only shows the new item from the 4th call onward
+# scenario 2: eventual consistency -- item-list only shows the new item from the 3rd call onward
+# (the visibility-poll cap is 3, not 10 -- SPEC #77: a stuck poll loop was itself burning quota)
 LOG2="$(mktemp)"; CC2="$(mktemp)"
-out="$(cd "$BG" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG2" FAKE_GH_CALLCOUNT="$CC2" FAKE_GH_ISSUE_NUM=502 FAKE_GH_VISIBLE_AFTER=4 \
+out="$(cd "$BG" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG2" FAKE_GH_CALLCOUNT="$CC2" FAKE_GH_ISSUE_NUM=502 FAKE_GH_VISIBLE_AFTER=3 \
     bash "$PLUGIN/scripts/board.sh" bug "flaky spinner" P1 2>&1; echo "rc=$?")"
 check "bug verb: eventual consistency -- retries until item-list shows the item, then succeeds" "filed bug #502 [P1]" "$out"
 check "bug verb: eventual consistency exits 0" "rc=0" "$out"
 n2="$(cat "$CC2")"
-if [[ "$n2" -ge 4 ]]; then echo "ok   bug verb: item-list was polled multiple times before succeeding"
-else echo "FAIL bug verb: expected >=4 item-list polls, got $n2"; fails=$((fails + 1)); fi
+if [[ "$n2" -ge 3 ]]; then echo "ok   bug verb: item-list was polled multiple times before succeeding"
+else echo "FAIL bug verb: expected >=3 item-list polls, got $n2"; fails=$((fails + 1)); fi
 
-# scenario 3: the item never becomes visible -- honest failure, not a false "filed bug"
+# scenario 3 (SPEC #77): the item never becomes visible within the poll cap -- queues the
+# add-finish instead of erroring (the pre-#77 behavior burned quota back to zero retrying)
 LOG3="$(mktemp)"; CC3="$(mktemp)"
 out="$(cd "$BG" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG3" FAKE_GH_CALLCOUNT="$CC3" FAKE_GH_ISSUE_NUM=503 FAKE_GH_NEVER_VISIBLE=1 \
     bash "$PLUGIN/scripts/board.sh" bug "ghost item" P2 2>&1; echo "rc=$?")"
-check "bug verb: never-visible item -- actionable ERROR naming the issue" "ERROR: issue #503" "$out"
-check_absent "bug verb: never-visible item -- no false success line" "filed bug" "$out"
-check "bug verb: never-visible item exits nonzero" "rc=1" "$out"
+check "bug verb: never-visible item -- queues instead of erroring, names the issue" "QUEUED" "$out"
+check "bug verb: never-visible item -- QUEUED message names the issue" "item-add #503" "$out"
+check_absent "bug verb: never-visible item -- no false 'filed' success line" "filed bug" "$out"
+check "bug verb: never-visible item exits 0 (loop keeps going)" "rc=0" "$out"
 
 # scenario 4 (invariant #3): item-add/visibility succeed but the subsequent move/prio fails --
 # the verb must not report success
@@ -140,13 +143,14 @@ out="$(cd "$AG" && PATH="$AGH:$PATH" FAKE_GH_LOG="$LOGA3" FAKE_GH_CALLCOUNT="$CC
 check "bug alias: filed line matches add --type bug shape" "filed bug #603 [P1]" "$out"
 check "bug alias: still prefixes BUG: and uses type:bug label" "issue create -R fixture-owner/fixture-project --title BUG: widget breaks on save --body Bug found after a task reached a released status; filed as new work (never reopen shipped tasks). --label type:bug" "$(cat "$LOGA3")"
 
-# scenario 4: visibility timeout -- honest non-zero failure, no false success line
+# scenario 4 (SPEC #77): visibility timeout -- queues the add-finish instead of erroring
 LOGA4="$(mktemp)"; CCA4="$(mktemp)"
 out="$(cd "$AG" && PATH="$AGH:$PATH" FAKE_GH_LOG="$LOGA4" FAKE_GH_CALLCOUNT="$CCA4" FAKE_GH_ISSUE_NUM=604 FAKE_GH_NEVER_VISIBLE=1 \
     bash "$PLUGIN/scripts/board.sh" add --type inbound "ghost inbound item" P2 2>&1; echo "rc=$?")"
-check "add: never-visible item -- actionable ERROR naming the issue" "ERROR: issue #604" "$out"
+check "add: never-visible item -- queues instead of erroring, names the issue" "QUEUED" "$out"
+check "add: never-visible item -- QUEUED message names the issue" "item-add #604" "$out"
 check_absent "add: never-visible item -- no false success line" "filed inbound" "$out"
-check "add: never-visible item exits nonzero" "rc=1" "$out"
+check "add: never-visible item exits 0 (loop keeps going)" "rc=0" "$out"
 
 # scenario 5: item-add failure -- honest non-zero failure, no false success line
 LOGA5="$(mktemp)"; CCA5="$(mktemp)"

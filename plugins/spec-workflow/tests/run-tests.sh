@@ -45,6 +45,7 @@ SECTIONS=(
     section-gate-lessons.sh
     section-session-init.sh
     section-board-bug-add.sh
+    section-board-queue.sh
     section-identity.sh
     section-merge-mode.sh
     section-concurrency.sh

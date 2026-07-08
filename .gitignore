@@ -8,3 +8,4 @@ evals/results/
 .claude/telemetry.jsonl
 .claude/lessons.jsonl
 .claude/neural-view/
+.claude/board-queue.jsonl

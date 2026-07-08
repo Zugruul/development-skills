@@ -509,6 +509,7 @@ def _repo_config_path(root):
 
 
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+_QUEUE_RATE_LIMIT_RE = re.compile(r'RATE-LIMITED until (\S+)')
 _RATE_LIMIT_RE = re.compile(r'API rate limit|rate limit already exceeded', re.IGNORECASE)
 _RESET_TIME_RE = re.compile(
     r'[0-9]{4}-[0-9]{2}-[0-9]{2}T([0-9]{2}:[0-9]{2})(?::[0-9]{2})?Z?'
@@ -519,18 +520,25 @@ _RESET_TIME_RE = re.compile(
 
 def _classify_board_failure(raw):
     """Turn board.sh's raw stderr/stdout into a human-readable, ANSI-free
-    error. board.sh's `list` pipes gh's output straight into a `json.load`
-    with no exit-code gate, so ANY gh failure additionally raises a Python
-    traceback -- one that this Python colorizes by default, which is exactly
-    what leaked ANSI-garbled tracebacks into the boards HUD. A rate-limit
-    failure (detected anywhere in the text, since the real signal is often
-    buried before that trailing traceback) gets a friendly, specific message
-    with the reset time when the text carries one; anything else falls back
-    to the last non-blank, ANSI-stripped line."""
+    error. board.sh's `list`/`next`/`show`/`issues` gate on gh's own exit
+    code (SPEC #77) so a gh failure never reaches a bare `json.load` and
+    raises a Python traceback anymore -- but this stays defense-in-depth for
+    any other text that slips through. board.sh's OWN rate-limit detection
+    (a "RATE-LIMITED until <reset>" line, sourced from `gh api rate_limit`)
+    is authoritative and checked first; a raw, un-queued "API rate limit"
+    string (e.g. from a gh call this script invokes directly, outside
+    board.sh) is a fallback. Anything else falls back to the last
+    non-blank, ANSI-stripped line."""
     clean = _ANSI_RE.sub('', raw)
+    m = _QUEUE_RATE_LIMIT_RE.search(clean)
+    if m:
+        when = m.group(1)
+        if when == "unknown":
+            when = "soon"
+        return f"board unavailable: GitHub API rate limit (resets {when})"
     if _RATE_LIMIT_RE.search(clean):
-        m = _RESET_TIME_RE.search(clean)
-        when = (m.group(1) or m.group(2)) if m else "soon"
+        m2 = _RESET_TIME_RE.search(clean)
+        when = (m2.group(1) or m2.group(2)) if m2 else "soon"
         return f"board unavailable: GitHub API rate limit (resets {when})"
     for line in reversed(clean.strip().splitlines()):
         line = line.strip()
