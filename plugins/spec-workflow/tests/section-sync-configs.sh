@@ -60,6 +60,17 @@ methodology:
 EOF
 }
 
+# _sc_base_yaml_noeol -- the same VALID body as _sc_base_yaml(false, ...) but
+# with NO trailing newline after the last methodology line. This is a real
+# (if obscure) trigger for ensure-feedback-key's insertion landing on the
+# same line as the file's last key (no "\n" separator before it), which
+# corrupts the YAML -- i.e. a genuine way to make validate() fail on the
+# POST-edit call while the ORIGINAL file was fully valid, without any
+# test-only hook in the script itself.
+_sc_base_yaml_noeol() {
+    printf '%s' "$(_sc_base_yaml false)"
+}
+
 # _sc_mkrepo <dir> <feedback:true|false> <add_schema_dup:yes|no>
 # Creates <dir>/origin.git (bare) + <dir>/work (the "live" clone), commits an
 # initial project.yaml on main, and pushes it to origin.
@@ -195,3 +206,46 @@ check_rc "case f: legacy dir gone" 1 "$([[ -d "$SCF/r/work/.claude/feedback" ]] 
 check_absent "case f: gitignore line dropped" ".claude/feedback/" "$(cat "$SCF/r/work/.gitignore" 2>/dev/null)"
 check "case f: other gitignore lines survive" "some-other-line" "$(cat "$SCF/r/work/.gitignore" 2>/dev/null)"
 rm -rf "$SCF"
+
+echo "== sync-configs.py: post-edit INVALID rolls back the sw062 filesystem move too (case g) =="
+SCG="$(mktemp -d)"
+mkdir -p "$SCG/r"
+git init -q --bare "$SCG/r/origin.git"
+git init -q -b main "$SCG/r/work"
+git -C "$SCG/r/work" config user.name "Fixture Human"
+git -C "$SCG/r/work" config user.email "fixture@example.com"
+git -C "$SCG/r/work" remote add origin "$SCG/r/origin.git"
+mkdir -p "$SCG/r/work/.claude"
+: > "$SCG/r/work/.claude/.neural-network"
+_sc_base_yaml_noeol > "$SCG/r/work/.claude/project.yaml"
+mkdir -p "$SCG/r/work/.claude/feedback"
+echo "legacy: true" > "$SCG/r/work/.claude/feedback/feed.yaml"
+{
+    echo "some-other-line"
+    echo ".claude/feedback/"
+} > "$SCG/r/work/.gitignore"
+git -C "$SCG/r/work" add -A
+git -C "$SCG/r/work" commit -q -m init
+git -C "$SCG/r/work" push -q origin main
+before_head="$(_sc_head "$SCG/r/work")"
+out="$(python3 "$SYNCCFG" --repo "$SCG/r/work" --apply 2>&1)"
+check "case g: pre-validate passed (original file was valid)" "validate pre: VALID" "$out"
+check "case g: post-validate caught the corruption" "validate post: INVALID" "$out"
+check "case g: reports rolled back" "rolled-back-invalid" "$out"
+after_head="$(_sc_head "$SCG/r/work")"
+check_rc "case g: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
+check_rc "case g: legacy .claude/feedback restored (not stranded)" 0 "$([[ -d "$SCG/r/work/.claude/feedback" ]] && echo 0 || echo 1)"
+check_rc "case g: .claude/feedbacks NOT left behind" 1 "$([[ -d "$SCG/r/work/.claude/feedbacks" ]] && echo 0 || echo 1)"
+check "case g: .gitignore feedback line restored" ".claude/feedback/" "$(cat "$SCG/r/work/.gitignore" 2>/dev/null)"
+check_rc "case g: repo is still detectable by a future run (not permanently stranded)" 0 "$(python3 - "$SCG/r/work" "$SYNCCFG" <<'PY'
+import sys
+import importlib.util
+repo_arg, script_arg = sys.argv[1], sys.argv[2]
+spec = importlib.util.spec_from_file_location("sync_configs", script_arg)
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+from pathlib import Path
+print(0 if m.sw062_detect(Path(repo_arg)) else 1)
+PY
+)"
+rm -rf "$SCG"
