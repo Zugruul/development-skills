@@ -887,3 +887,61 @@ items:
   routing:
     action: ignore
     ref: positive signal; practice already standard in briefs, no artifact needed
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-08T02:05:00Z'
+iteration:
+  task: '62'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: low
+  summary: Ending the reviewer brief with an explicit deliver-your-verdict-via-message
+    instruction eliminated the idle-without-verdict stall seen the previous iteration
+  detail: Reviewer sent its verdict unprompted this time; last iteration required
+    a follow-up ping.
+  generalized: Reviewer subagent briefs should always end with an explicit instruction
+    to transmit the verdict back to the orchestrator via the messaging tool; a subagent
+    finishing its analysis and idling silently is otherwise a recurring stall.
+  proposal:
+    target: skills/build-next/references/auto-review.md
+    change: Add the verdict-delivery instruction line to the reviewer brief template.
+  routing:
+    action: upstream
+    ref: surfaced in iteration report; auto-review.md template change offered to human
+- category: friction
+  area: board
+  component: plugins/spec-workflow/scripts/guard-board-move.sh
+  severity: low
+  summary: The board-move guard blocked a benign comment whose body arrived via heredoc,
+    with a could-not-safely-parse error; a file redirect worked
+  detail: 'Content-dependent: an earlier heredoc comment passed, a later one was blocked.
+    Workaround: write the body to a file and redirect stdin.'
+  generalized: A hook that falls back to blocking when it cannot parse a command will
+    intermittently block benign invocations whose bodies arrive inline (heredocs);
+    passing long bodies via file redirect is the reliable pattern and briefs/skills
+    should prescribe it.
+  routing:
+    action: brain-note
+    ref: orchestrator/board-comment-bodies-via-file
+- category: incident
+  area: merge
+  component: plugins/spec-workflow/scripts/identity.sh
+  severity: medium
+  summary: The on-behalf commit recipe as templated produces an invalid git command
+    because the author flag precedes the subcommand
+  detail: Pasting the printed flags line into git <flags> commit failed with unknown
+    option --author; had to reorder manually. Filed as a board bug during the iteration.
+  generalized: When a script prints a paste-ready command recipe, the recipe must
+    be executable verbatim in the documented template position — option ordering constraints
+    (global vs subcommand options) are exactly what such recipes exist to get right.
+  routing:
+    action: ignore
+    ref: defect filed directly as board bug during the iteration, not feedback-derived
+      routing
