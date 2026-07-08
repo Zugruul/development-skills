@@ -115,7 +115,11 @@ paths:
     specDeltaDir: docs/spec-deltas
 methodology:
     tdd: true
-    maxInProgress: 3
+    maxInProgress: 5
     autoMerge: true
     mergeMethod: squash
     feedback: true
+work:
+    type: local
+    sync:
+        mode: task-close
