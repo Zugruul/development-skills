@@ -44,6 +44,16 @@
     "last": null,
     "weight": 0.5
   },
+  "flag-safety-language-removal->heredoc-commit-messages": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "flag-safety-language-removal->present-vs-demanding-policy-rules": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "heredoc-commit-messages->bash32-empty-array-set-u": {
     "fires": 0,
     "last": null,
@@ -100,6 +110,16 @@
     "weight": 0.5
   },
   "pair-every-side-effect-with-undo->old-path-repo-wide-sweep": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "present-vs-demanding-policy-rules->bool-excluded-before-int": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "present-vs-demanding-policy-rules->circular-fixture-detector": {
     "fires": 0,
     "last": null,
     "weight": 0.5

@@ -1,12 +1,12 @@
 ---
 tags: [review, fixtures, detection]
 paths: ["plugins/spec-workflow/tests/**"]
-strength: 1
-source: "#77 review retro (+#90)"
+strength: 2
+source: "#85 review retro — recurrence (coverage gaps + primary source)"
 graduated: false
 created: 2026-07-08
 ---
 
-Checklist for any error-text classifier: (1) was the exact matched string pasted from a REAL captured failure, with provenance — or authored in the same commit by the same hand as the regex? Same-hand = treat the match as UNVERIFIED. (2) Does the classifier have an independent way to confirm its diagnosis (follow-up probe to a stable endpoint) rather than one string match? The #77→#90 gap passed a rigorous review because every check ran against the fixture's own invented text.
+Two-sided fixture audit: (1) provenance — is the matched string pasted from a REAL captured failure, or authored beside the detector (same-hand = unverified)? (2) coverage — what real-world API responses do the fixtures NOT model ("all tests pass" and "the parsing is correct" decouple exactly there)? Fetch the PRIMARY schema/docs for the external API instead of trusting the code's comment about what a field means.
 
-Related: [[drive-real-helper-adversarially]] [[json-escaped-check-weakness]]
+Related: [[drive-real-helper-adversarially]] [[red-passing-checks-may-pin-later]]

@@ -44,6 +44,11 @@
     "last": null,
     "weight": 0.5
   },
+  "fixture-provenance-check->red-passing-checks-may-pin-later": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "json-escaped-check-weakness->verify-guard-regex-on-real-artifact": {
     "fires": 0,
     "last": null,
