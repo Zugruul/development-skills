@@ -11,3 +11,4 @@ evals/results/
 .claude/board-queue.jsonl
 .claude/board-cache.json
 .claude/merge-requirements.json
+.claude/.flush*
