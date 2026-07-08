@@ -207,6 +207,20 @@ check_absent "case f: gitignore line dropped" ".claude/feedback/" "$(cat "$SCF/r
 check "case f: other gitignore lines survive" "some-other-line" "$(cat "$SCF/r/work/.gitignore" 2>/dev/null)"
 rm -rf "$SCF"
 
+echo "== sync-configs.py: sw062 migration rule with no .gitignore at all (case f2) =="
+SCF2="$(mktemp -d)"
+_sc_mkrepo "$SCF2/r" true no
+mkdir -p "$SCF2/r/work/.claude/feedback"
+echo "legacy: true" > "$SCF2/r/work/.claude/feedback/feed.yaml"
+git -C "$SCF2/r/work" add -A
+git -C "$SCF2/r/work" commit -q -m "add legacy feedback dir, no gitignore"
+git -C "$SCF2/r/work" push -q origin main
+out="$(python3 "$SYNCCFG" --repo "$SCF2/r/work" --apply 2>&1)"
+check "case f2: sw062 migration rule applied" "sw062-feedbacks-migration" "$out"
+check_rc "case f2: legacy dir moved" 0 "$([[ -d "$SCF2/r/work/.claude/feedbacks" ]] && echo 0 || echo 1)"
+check_rc "case f2: no .gitignore crash -- repo still committed" 0 "$([[ -n "$(_sc_head "$SCF2/r/work")" ]] && echo 0 || echo 1)"
+rm -rf "$SCF2"
+
 echo "== sync-configs.py: post-edit INVALID rolls back the sw062 filesystem move too (case g) =="
 SCG="$(mktemp -d)"
 mkdir -p "$SCG/r"

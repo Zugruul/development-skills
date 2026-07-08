@@ -122,6 +122,20 @@ def sw062_apply(repo_root):
     return changed
 
 
+def sw062_rollback(repo_root):
+    """Undo sw062_apply()'s filesystem move so a post-edit INVALID never
+    strands a half-migrated repo. `git checkout -- .` only restores tracked
+    file CONTENTS (the .gitignore line); it does not know how to reverse a
+    real `shutil.move` of an untracked-vs-tracked directory pair, so that
+    part needs its own paired undo. Leaves the repo exactly as
+    sw062_detect() would see it before sw062_apply() ran (legacy dir back,
+    new dir gone) -- i.e. still detectable and re-appliable by a future run."""
+    legacy = repo_root / ".claude" / "feedback"
+    new = repo_root / ".claude" / "feedbacks"
+    if new.exists() and not legacy.exists():
+        shutil.move(str(new), str(legacy))
+
+
 # --- git / process helpers ------------------------------------------------
 
 def run(cmd, cwd=None, check=False):
@@ -290,6 +304,8 @@ def process_repo(repo_root, args):
         if not post_ok:
             result.add("route: rolled-back-invalid")
             result.add(post_out.replace("\n", "\n  "))
+            if sw062_applies:
+                sw062_rollback(work_dir)
             git(["checkout", "--", "."], work_dir)
             return result, False
 
