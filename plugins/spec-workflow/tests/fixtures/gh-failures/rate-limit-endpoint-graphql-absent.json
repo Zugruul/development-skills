@@ -1,0 +1,16 @@
+# provenance: DERIVED, not an independent live capture. This is the real
+# `gh api rate_limit` response in rate-limit-endpoint-sample.json (live-captured
+# this account, 2026-07-08T~11:35Z, resources.graphql.remaining=41) with the
+# `resources.graphql` key REMOVED, byte-for-byte otherwise. Purpose: exercise
+# the fallback branch of board-queue.sh's _rate_limit_reset_human(), which only
+# fires when `resources.graphql` is absent from the payload -- the two genuine
+# captures both always carry graphql, so that branch has no live coverage. The
+# load-bearing property preserved from the real sample: the top-level `rate` key
+# ALIASES resources.core (reset=1783513577 == core.reset, 2026-07-08T12:26:17Z),
+# which is ~12min LATER than the removed graphql.reset (1783512842,
+# 2026-07-08T12:14:02Z) -- so a fallback that reads `rate`/`core` reports a
+# wrong-but-confident graphql-reset time.
+# command: gh api rate_limit  (then: python3, del d["resources"]["graphql"])
+# source: rate-limit-endpoint-sample.json (this directory), graphql key stripped.
+
+{"resources":{"core":{"limit":5000,"used":7,"remaining":4993,"reset":1783513577},"search":{"limit":30,"used":0,"remaining":30,"reset":1783510957},"integration_manifest":{"limit":5000,"used":0,"remaining":5000,"reset":1783514497},"source_import":{"limit":100,"used":0,"remaining":100,"reset":1783510957},"code_scanning_autofix":{"limit":10,"used":0,"remaining":10,"reset":1783510957},"actions_runner_registration":{"limit":10000,"used":0,"remaining":10000,"reset":1783514497},"scim":{"limit":15000,"used":0,"remaining":15000,"reset":1783514497},"dependency_snapshots":{"limit":100,"used":0,"remaining":100,"reset":1783510957},"dependency_sbom":{"limit":100,"used":0,"remaining":100,"reset":1783510957},"audit_log":{"limit":1750,"used":0,"remaining":1750,"reset":1783514497},"audit_log_streaming":{"limit":15,"used":0,"remaining":15,"reset":1783514497},"code_search":{"limit":10,"used":0,"remaining":10,"reset":1783510957},"copilot_usage_records":{"limit":1750,"used":0,"remaining":1750,"reset":1783514497}},"rate":{"limit":5000,"used":7,"remaining":4993,"reset":1783513577}}

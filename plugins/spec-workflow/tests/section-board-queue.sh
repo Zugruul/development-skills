@@ -375,6 +375,30 @@ check "(u) real rate_limit sample (remaining=1, near-exhausted boundary): exits 
 check_absent "(u) real rate_limit sample (remaining=1, near-exhausted boundary): not treated as QUEUED" "QUEUED" "$out"
 rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC"
 
+# --- (v) #101: _rate_limit_reset_human against a REAL rate_limit payload that
+# LACKS resources.graphql -- the only shape that fires its fallback branch.
+# rate-limit-endpoint-graphql-absent.json is the live sample with the graphql
+# key stripped; in that real sample the top-level `rate` key ALIASES core, whose
+# reset (1783513577 -> 2026-07-08T12:26:17Z) is ~12min LATER than the removed
+# graphql reset (1783512842 -> 2026-07-08T12:14:02Z). An honest-text rate-limit
+# on the move queues it, then _rate_limit_reset_human probes the endpoint for the
+# QUEUED message's "until X". The fallback must NOT report core's time as if it
+# were graphql's (a wrong-but-confident timestamp is worse than an honest
+# unknown), and the helper must not leak a datetime.utcfromtimestamp
+# DeprecationWarning (Python 3.13) into that message.
+_qsetup
+LOG="$(mktemp)"; EDITCC="$(mktemp)"; ERR="$(mktemp)"
+out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" FAKE_GH_LIST_CALLCOUNT="$(mktemp)" \
+    FAKE_GH_ISSUE_NUM=815 FAKE_GH_ITEM_VISIBLE=1 \
+    FAKE_GH_EDIT_RATE_LIMIT_FROM=1 FAKE_GH_RATE_LIMIT_REAL_SAMPLE=rate-limit-endpoint-graphql-absent.json \
+    bash "$PLUGIN/scripts/board.sh" move 815 "In progress" 2>"$ERR"; echo "rc=$?")"
+err="$(cat "$ERR")"
+check "(v) graphql-absent reset: QUEUED reports an honest 'unknown', not core's reset" "QUEUED (rate-limited until unknown): move #815 -> In progress" "$out"
+check_absent "(v) graphql-absent reset: does NOT report core's reset as if graphql's" "2026-07-08T12:26:17Z" "$out"
+check "(v) graphql-absent reset: move still queued (exits 0)" "rc=0" "$out"
+check_absent "(v) graphql-absent reset: no utcfromtimestamp DeprecationWarning leaks to stderr" "DeprecationWarning" "$err"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$ERR"
+
 echo "== board.sh flush concurrency (#92): mutual exclusion, lost-append prevention, stale lock, adopt status =="
 
 # --- (m) two concurrent flushers: mutual exclusion -> zero op loss, exactly-once
