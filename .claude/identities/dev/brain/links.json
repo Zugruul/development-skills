@@ -184,6 +184,16 @@
     "last": null,
     "weight": 0.5
   },
+  "naive-counters-need-quotes-first->exclude-before-scan": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "naive-counters-need-quotes-first->self-scan-first-class": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "normalize-after-load-identity-fields->bool-excluded-before-int": {
     "fires": 0,
     "last": null,
@@ -360,6 +370,11 @@
     "weight": 0.5
   },
   "vendored-split-build-import-guard->red-static-vs-wiring-checks": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "worktree-loss-recovery->deterministic-repro-fast": {
     "fires": 0,
     "last": null,
     "weight": 0.5

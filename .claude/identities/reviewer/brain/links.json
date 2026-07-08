@@ -129,6 +129,16 @@
     "last": null,
     "weight": 0.5
   },
+  "probe-with-real-repos->own-payload-not-devs": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "probe-with-real-repos->red-commit-worktree-verify": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "prove-flakiness-fix-on-baseline->reproduce-on-deployment-floor": {
     "fires": 0,
     "last": null,
