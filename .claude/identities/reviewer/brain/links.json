@@ -144,7 +144,17 @@
     "last": null,
     "weight": 0.5
   },
+  "verify-with-library-own-classes->drive-real-helper-adversarially": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "verify-with-library-own-classes->recompute-hashes-never-eyeball": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "verify-with-library-own-classes->test-default-seams": {
     "fires": 0,
     "last": null,
     "weight": 0.5

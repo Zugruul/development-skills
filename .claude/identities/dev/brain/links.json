@@ -104,6 +104,16 @@
     "last": null,
     "weight": 0.5
   },
+  "normalize-after-load-identity-fields->bool-excluded-before-int": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "normalize-after-load-identity-fields->rehearse-migration-on-real-copy": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "old-path-repo-wide-sweep->hermetic-tmpdir-per-guard-case": {
     "fires": 0,
     "last": null,

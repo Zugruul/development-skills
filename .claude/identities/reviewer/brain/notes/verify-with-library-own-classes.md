@@ -1,12 +1,12 @@
 ---
 tags: [review, verification]
-paths: ["plugins/spec-workflow/templates/**", "plugins/spec-workflow/scripts/**"]
-strength: 1
-source: "#72 review retro"
+paths: ["plugins/spec-workflow/**"]
+strength: 2
+source: "#63 review retro — recurrence (PyYAML live checks)"
 graduated: false
 created: 2026-07-08
 ---
 
-When a diff claims two representations are equivalent ("visually identical", "same edge set"), compute the equivalence with the library's own runtime — a throwaway script importing the actual vendored dependency, comparing counts/shapes — instead of eyeballing. Converts "it should look the same" into a falsifiable number.
+Treat "I'm confident library X does Y" as a hypothesis to TEST, not a fact to assert — equivalence claims, type-coercion behavior, and auto-quoting rules are each one live one-liner away from a definitive answer (python3 -c / node -e against the actual vendored dependency). Memory of resolver/representer quirks is exactly where reviews go subtly wrong.
 
-Related: [[verify-guard-regex-on-real-artifact]] [[recompute-hashes-never-eyeball]]
+Related: [[drive-real-helper-adversarially]] [[test-default-seams]]
