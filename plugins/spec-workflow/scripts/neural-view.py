@@ -35,7 +35,10 @@ Repo discovery (both apply; results are deduped and sorted by repo name):
     marker FILE is included. Directories without the marker are ignored,
     even if they have brains — inclusion is explicit and cheap.
   - If neither yields anything (no flags/env at all, empty scan base), falls
-    back to the git root of the cwd — the old single-repo default.
+    back to the git root of the cwd — the old single-repo default — and, as a
+    side effect, creates that repo's own <root>/.claude/.neural-network
+    marker if it's missing, so a bare `start` from inside a fresh repo opts
+    it into every future multi-repo scan too, not just this one-off session.
   A discovered repo with no `.claude/identities/` brains yet still appears as
   an empty, labeled region on the canvas (nodes/edges: none) rather than being
   dropped — it shows the constellation is there, just not yet populated.
@@ -119,6 +122,25 @@ VENDOR_FILES = {
 }
 WIKILINK = re.compile(r"\[\[([^\]]+)\]\]")
 MARKER_NAME = ".neural-network"
+MARKER_CONTENT = "# neural-view discovery marker — repos with this file are included in the aggregated neural view\n"
+
+
+def ensure_marker(root):
+    """Create <root>/.claude/.neural-network if missing, so a repo you start
+    neural-view against (the single-repo cwd fallback — no --dir/--scan match)
+    joins the aggregate on every future scan too, not just this one-off
+    session. Best-effort: a read-only .claude/ or missing .claude/ dir must
+    never fail `start` — same philosophy as board.sh/telemetry.py's cache
+    writes."""
+    try:
+        claude_dir = Path(root) / ".claude"
+        marker = claude_dir / MARKER_NAME
+        if marker.is_file():
+            return
+        claude_dir.mkdir(parents=True, exist_ok=True)
+        marker.write_text(MARKER_CONTENT)
+    except OSError:
+        pass
 FAVICON = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
            b'<circle cx="16" cy="16" r="14" fill="#04070d"/>'
            b'<circle cx="16" cy="16" r="6" fill="#46e6ff"/></svg>')
@@ -1099,6 +1121,7 @@ def discover_repos(args):
     if not found:
         p = Path(git_root())
         found[str(p)] = p
+        ensure_marker(p)  # the single-repo fallback opts this repo into every future scan too
     return sorted(((p.name, p) for p in found.values()), key=lambda t: t[0])
 
 

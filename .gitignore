@@ -12,3 +12,6 @@ evals/results/
 .claude/board-cache.json
 .claude/merge-requirements.json
 .claude/.flush*
+.claude/telemetry.jsonl
+.claude/board-cache.json
+.claude/feedbacks/

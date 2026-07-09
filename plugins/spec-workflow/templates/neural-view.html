@@ -45,7 +45,9 @@ canvas.grabbing{cursor:grabbing}
 
 /* top bar */
 #topbar{top:14px;left:14px;right:14px;display:flex;gap:14px;align-items:center;
-  padding:.55rem .9rem;justify-content:space-between}
+  padding:.55rem .9rem;justify-content:space-between;z-index:25}   /* .hud's backdrop-filter makes
+  every panel its own stacking context — a descendant's z-index (e.g. #settings-panel) can never
+  outrank a later-in-DOM sibling .hud (#rightbar) without the PANEL itself being raised */
 #brand{letter-spacing:.34em;text-transform:uppercase;font-size:.72rem;color:var(--cyan);
   text-shadow:0 0 12px rgba(70,230,255,.5)}
 #brand b{color:var(--fg)}
@@ -61,7 +63,8 @@ canvas.grabbing{cursor:grabbing}
 /* settings popover (top bar gear) */
 #settings-wrap{position:relative}
 #settings-panel{position:absolute;top:calc(100% + 8px);right:0;min-width:260px;
-  padding:.7rem .8rem;display:none;flex-direction:column;gap:.4rem;z-index:20}
+  padding:.7rem .8rem;display:none;flex-direction:column;gap:.4rem;z-index:60;
+  background:var(--panel-solid);backdrop-filter:none;-webkit-backdrop-filter:none}
 #settings-panel.open{display:flex}
 #settings-panel label{display:flex;align-items:center;gap:.5rem;font-size:.66rem;
   color:var(--fg);cursor:pointer}
@@ -72,21 +75,30 @@ canvas.grabbing{cursor:grabbing}
   padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease}
 #gauges.collapsed{transform:translateX(calc(-100% - 24px));opacity:0;pointer-events:none}
 #gauges-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem}
+#boards-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
+#boards-refresh.spin{animation:spin 1.5s linear}
+@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
 /* section headers double as collapse toggles (chevron reflects state) */
 .secthead{background:none;border:0;padding:0;display:block;width:100%;text-align:left;cursor:pointer;
   font-family:var(--mono);font-size:.54rem;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
 .secthead:hover{color:var(--cyan)}
 .secthead::before{content:"▾";margin-right:.45rem;color:var(--cyan-dim)}
 .secthead[aria-expanded="false"]::before{content:"▸"}
-#sect-boards{margin:.6rem 0 .4rem}
+#boards-head{margin:.6rem 0 .4rem}
 /* edge tab that restores the collapsed panel */
 #gauges-tab{position:fixed;top:70px;left:0;z-index:20;border-left:0;border-radius:0 8px 8px 0;
   padding:.55rem .4rem;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:.8rem}
 #gauges-tab:hover{color:var(--cyan)}
 .repo-brains{margin:0}
 .repo-brains-h{font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan);
-  margin:.6rem 0 .1rem;border-top:1px solid rgba(90,190,255,.18);padding-top:.5rem}
+  margin:.6rem 0 .1rem;border-top:1px solid rgba(90,190,255,.18);padding-top:.5rem;
+  background:none;border-left:0;border-right:0;border-bottom:0;display:block;width:100%;
+  text-align:left;cursor:pointer;font-family:var(--mono)}
+.repo-brains-h:hover{color:var(--fg)}
+.repo-brains-h::before{content:"▾";margin-right:.4rem;color:var(--cyan-dim)}
+.repo-brains-h[aria-expanded="false"]::before{content:"▸"}
 .repo-brains:first-of-type .repo-brains-h{border-top:0;margin-top:0;padding-top:0}
+.repo-brains-rows.collapsed{display:none}
 .brainrow{cursor:pointer;display:flex;align-items:center;gap:.4rem;padding:.3rem 0;border-top:1px solid rgba(90,190,255,.12)}
 .brainrow:hover,.brainrow:focus-visible{background:rgba(90,190,255,.08);outline:none}
 .repo-brains .brainrow:first-of-type{border-top:0}
@@ -205,7 +217,10 @@ canvas.grabbing{cursor:grabbing}
     <button class="iconbtn" id="gauges-collapse" title="Hide panel" aria-label="Hide panel">⟨</button>
   </div>
   <div id="gauge-list"></div>
-  <button class="secthead" id="sect-boards" aria-expanded="true" hidden>Boards</button>
+  <div id="boards-head" hidden>
+    <button class="secthead" id="sect-boards" aria-expanded="true">Boards</button>
+    <button class="iconbtn" id="boards-refresh" title="Refresh boards now (ignores the live-fetch setting)" aria-label="Refresh boards now">⟳</button>
+  </div>
   <div id="project-list"></div>
 </div>
 <button class="hud" id="gauges-tab" title="Show panel" aria-label="Show panel" hidden>⟩</button>
@@ -988,9 +1003,17 @@ function renderGauges(){
   for(const l of links){ const k=clusterKey(l.a.repo,l.a.role); linkCount.set(k,(linkCount.get(k)||0)+1); }
   const maxN = Math.max(1,...[...perCombo.values()].map(s=>s.n));
   if(!repoList.length){ list.innerHTML='<div class="label">no brains</div>'; return; }
+  uiState.repoCollapse = uiState.repoCollapse || {};
   for(const repo of repoList){
     const section=document.createElement("div"); section.className="repo-brains";
-    section.innerHTML = `<div class="repo-brains-h">${escapeHtml(dispName(repo))}</div>`;
+    const collapsed = !!uiState.repoCollapse[repo];
+    const head=document.createElement("button");
+    head.className="repo-brains-h"; head.setAttribute("aria-expanded", collapsed?"false":"true");
+    head.setAttribute("aria-label", `Toggle ${repo} brains`);
+    head.textContent = dispName(repo);
+    head.onclick = ()=>{ uiState.repoCollapse[repo] = !uiState.repoCollapse[repo]; saveUiState(); renderGauges(); };
+    section.appendChild(head);
+    const rows=document.createElement("div"); rows.className = "repo-brains-rows" + (collapsed?" collapsed":"");
     for(const role of orderedRoles(repo)){
       const k=clusterKey(repo,role); const s=perCombo.get(k);
       const n=s?s.n:0, avg=(s&&s.n)?s.str/s.n:0, lk=linkCount.get(k)||0;
@@ -1006,8 +1029,9 @@ function renderGauges(){
         `<div class="rname" style="color:${cssColor(hue,72,.95)}">${escapeHtml(role)}</div>` +
         `<div class="label" title="avg strength">str <span class="val">${avg.toFixed(1)}</span></div>` +
         `<div class="label" title="synapses">syn <span class="val">${lk}</span></div>`;
-      section.appendChild(row);
+      rows.appendChild(row);
     }
+    section.appendChild(rows);
     list.appendChild(section);
   }
 }
@@ -1067,7 +1091,7 @@ function renderProjects(){
   const el = document.getElementById("project-list");
   if(!el) return;
   const repos = Object.keys(window.__projects||{}).sort();
-  document.getElementById("sect-boards").hidden = !repos.length;
+  document.getElementById("boards-head").hidden = !repos.length;
   if(!repos.length){ el.innerHTML = ""; return; }
   el.innerHTML = repos.map(r=>{
     const p = window.__projects[r];
@@ -1407,6 +1431,16 @@ liveBoardToggle.onchange = ()=>{
   uiState.liveBoard = liveBoardToggle.checked;
   saveUiState();
   if(uiState.liveBoard) startBoardPolling(); else stopBoardPolling();
+};
+const boardsRefreshBtn = document.getElementById("boards-refresh");
+const BOARDS_REFRESH_MIN_MS = 1500;
+boardsRefreshBtn.onclick = (ev)=>{
+  ev.stopPropagation();                 // don't also toggle the section collapse
+  if(uiState.boards){ uiState.boards = false; saveUiState(); applyUiState(); }  // expand even if collapsed
+  loadProjects();                       // one-shot fetch, independent of uiState.liveBoard
+  boardsRefreshBtn.classList.remove("spin"); void boardsRefreshBtn.offsetWidth; boardsRefreshBtn.classList.add("spin");
+  clearTimeout(boardsRefreshBtn._spinTimer);
+  boardsRefreshBtn._spinTimer = setTimeout(()=>boardsRefreshBtn.classList.remove("spin"), BOARDS_REFRESH_MIN_MS);
 };
 const panel=document.getElementById("inspect");
 document.getElementById("inspect-close").onclick=()=>{ panel.classList.remove("open"); panel.setAttribute("aria-hidden","true"); panel.setAttribute("inert",""); };
