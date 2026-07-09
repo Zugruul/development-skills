@@ -42,3 +42,11 @@ Idempotent — safe to re-run; a clean feed reports `OK: no changes`.
 ## Triage (retro time)
 
 Triage — dedupe, routing, board-item creation — is the ORCHESTRATOR's job, done as part of the retro step in `build-next` (see `skills/build-next/SKILL.md` and `references/brains.md`). This skill only emits; it never routes.
+
+## Standalone invocation — offer a retrospective now
+
+When a human explicitly runs `/feedback` outside a `build-next` iteration (no PR just closed, no retro about to happen), that record's `brain-note`-worthy items will sit unrouted until some future retro — which, if this repo's loop never reaches one (e.g. no `.claude/identities/` orchestrator identity, or the loop simply isn't run that way), means they **never** get minted; this is exactly how two live repos silently accumulated dozens of task-closes with zero brain notes. So after step 4's report, **offer** (don't just assume a later retro will catch it):
+
+"Also run a retrospective now (dedupe, route, and mint any brain-note items from pending feedback) — since there's no PR/retro boundary here to catch it later?"
+
+If the human says yes, run the `retrospective` skill. Decline is fine — the items simply remain pending for the next retro, same as today.

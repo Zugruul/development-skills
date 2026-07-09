@@ -29,7 +29,8 @@ Everything project-specific lives in the consumer repo's **`.claude/project.yaml
 | `checkpoint` / `handoff` | Pause/resume the loop via a local flag; session handoff docs |
 | `dev-up` | Bring up the project's dev stack for QA |
 | `neural-view` | Start/stop/status for the live JARVIS-style visualization of the identity brains |
-| `feedback` | Emit structured process feedback about the workflow itself (`methodology.feedback`); triaged at retro time |
+| `feedback` | Emit structured process feedback about the workflow itself (`methodology.feedback`); triaged at retro time, or offers `retrospective` when run standalone |
+| `retrospective` | On-demand retro — triage pending feedback and mint/prune/graduate brain notes, outside a `build-next` PR-close |
 | `sync-project-configs` | Discover anchored repos (`.claude/.neural-network` marker) and bring their `.claude/project.yaml` up to this plugin's config surface via versioned sync rules; dry-run by default |
 
 ## Scripts (`scripts/`)

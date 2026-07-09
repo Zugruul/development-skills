@@ -316,8 +316,9 @@ def build_graph(repos):
                            "type": "consult", "weight": 0.4, "repo": name})
         repo_roles[name] = sorted(roles_here)
     role_colors = {name: repo_role_colors(root) for name, root in repos}
+    display_names = {name: repo_display_name(root, name) for name, root in repos}
     return {"nodes": nodes, "edges": edges, "repos": [name for name, _ in repos], "repoRoles": repo_roles,
-            "roleColors": role_colors}
+            "roleColors": role_colors, "displayNames": display_names}
 
 
 def repo_role_colors(root):
@@ -346,6 +347,25 @@ def repo_role_colors(root):
                 out[role] = color.strip()
                 break
     return out
+
+
+def repo_display_name(root, name):
+    """The label shown for a repo in the HUD — project.displayName if the
+    repo's config sets one (e.g. an npm scope or product name that differs
+    from the checkout's folder name), else the folder-derived repo id
+    unchanged. Display-only: node ids, /projects keys, and all matching
+    logic keep using `name`, never this."""
+    cfgp = _repo_config_path(root)
+    if cfgp is None:
+        return name
+    try:
+        import config as _config
+        cfg = _config.load_config(path=str(cfgp), warn=False)
+    except Exception:  # noqa: BLE001
+        return name
+    project = cfg.get("project")
+    display = project.get("displayName") if isinstance(project, dict) else None
+    return display.strip() if isinstance(display, str) and display.strip() else name
 
 
 def _parse_lines(repo, role, blob, out):

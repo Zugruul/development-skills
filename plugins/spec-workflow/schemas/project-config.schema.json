@@ -14,7 +14,8 @@
             "required": ["name", "mainBranch", "branchPattern"],
             "description": "Identity of the repo this config governs: its name, main branch, and branch-naming convention.",
             "properties": {
-                "name": { "type": "string", "description": "Project name. Used to qualify feedback-feed refs across a multi-project archive (<project.name>#N) and shown in status/summary output." },
+                "name": { "type": "string", "description": "Project identity, in <org-or-user>/<repository> form matching the repo's real GitHub coordinates (e.g. Zugruul/development-skills) — not a bare short name. Used to qualify feedback-feed refs across a multi-project archive (<project.name>#N) and shown in status/summary output. For a shorter human-facing label, set displayName instead." },
+                "displayName": { "type": "string", "description": "Optional human-facing label for this repo, shown in place of the checkout's folder name in the neural-view HUD (repo regions, tooltips, boards panel, brain sidebar). Use when the folder name differs from how the project is actually known (e.g. an npm scope or product name). Purely cosmetic — `name` and the repo's discovery key are unaffected." },
                 "description": { "type": "string", "description": "Free-text one-line summary of the project, shown in setup/status output. Optional." },
                 "mainBranch": { "type": "string", "description": "The branch tasks merge into (e.g. main, master). Used by gate.sh, board.sh, and the merge/sync protocols as the diff/merge base." },
                 "branchPattern": {

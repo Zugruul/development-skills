@@ -70,8 +70,9 @@ Each spec is a design document plus a backlog of numbered tasks. One repo can ha
     ```
   - `.vscode/extensions.json` — add `"redhat.vscode-yaml"` to `recommendations` (the Red Hat YAML extension that reads the modeline schema).
 - Create `paths.handoffDir` (default `docs/handoffs/`).
+- **Seed `.claude/identities/<role>/brain/` for every role in `delegation.identities`** (an empty `notes/` dir + a one-line `ROLE.md` stub is enough) so the directory exists from the first commit — build-next's retro step is self-bootstrapping (`brain.py mint` would create it anyway), but seeding it here means the loop's very first retro is never the one iteration that has to decide "is a missing dir a skip reason or not."
 - If the project has a dev stack, set `commands.devUp` and write the doc at `paths.devDoc` (ports, profiles, preconditions).
-- Commit `.claude/project.yaml` + `.vscode/*` + docs.
+- Commit `.claude/project.yaml` + `.vscode/*` + `.claude/identities/` + docs.
 
 ## Phase 6 — seed and go
 1. Run the `seed-board` skill to create one issue + board item per backlog task.

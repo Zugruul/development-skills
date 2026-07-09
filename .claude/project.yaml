@@ -4,7 +4,7 @@
 # (Priority/Estimate fields + full Status flow re-created there to match).
 schemaVersion: 2
 project:
-    name: development-skills
+    name: Zugruul/development-skills
     description: Claude Code plugin marketplace; spec-workflow (the autonomous build-loop plugin) develops itself here — dogfood.
     mainBranch: main
     branchPattern: sw/<id>-<slug>

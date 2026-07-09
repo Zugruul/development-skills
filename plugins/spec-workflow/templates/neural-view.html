@@ -58,6 +58,15 @@ canvas.grabbing{cursor:grabbing}
   font-family:var(--mono);font-size:.8rem;line-height:1;padding:.25rem .4rem;cursor:pointer}
 .iconbtn:hover{color:var(--cyan);border-color:var(--cyan-dim)}
 
+/* settings popover (top bar gear) */
+#settings-wrap{position:relative}
+#settings-panel{position:absolute;top:calc(100% + 8px);right:0;min-width:260px;
+  padding:.7rem .8rem;display:none;flex-direction:column;gap:.4rem;z-index:20}
+#settings-panel.open{display:flex}
+#settings-panel label{display:flex;align-items:center;gap:.5rem;font-size:.66rem;
+  color:var(--fg);cursor:pointer}
+#settings-panel .hint{font-size:.58rem;color:var(--muted);line-height:1.4}
+
 /* gauges (top-left, below topbar) */
 #gauges{top:70px;left:14px;width:264px;max-height:calc(100vh - 130px);overflow:auto;
   padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease}
@@ -180,6 +189,13 @@ canvas.grabbing{cursor:grabbing}
   <div id="status">
     <button class="iconbtn" id="reset-view" title="Reset view (or double-click empty space)">⌂</button>
     <span><span class="dot"></span><span id="status-txt">live · recalls light up</span></span>
+    <div id="settings-wrap">
+      <button class="iconbtn" id="settings-btn" title="Settings" aria-label="Settings" aria-haspopup="true">⚙</button>
+      <div class="hud" id="settings-panel">
+        <label><input type="checkbox" id="live-board-toggle"> Fetch live GitHub board state</label>
+        <div class="hint">Polls each repo's board via <code>board.sh</code> (per-repo cache + rate-limit backoff). Off by default.</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -247,6 +263,7 @@ function hueFromCss(c){
   const h = mx===r ? ((g-b)/d)%6 : mx===g ? (b-r)/d+2 : (r-g)/d+4;
   return (h*60+360)%360;
 }
+function dispName(repo){ return (window.__repoDisplay||{})[repo] || repo; }
 function comboHue(repo, role){
   const c = ((window.__roleColors||{})[repo]||{})[role];
   if(c != null){ const h = hueFromCss(c); if(h != null) return h; }
@@ -563,7 +580,7 @@ function rebuildScene(){
       mesh.userData = {kind:"repoRegion", repo};
       sceneGroup.add(mesh);
       const sessN = sessionCountFor(repo);
-      const labelText = repo.toUpperCase() + (sessN ? ` · ${sessN} LIVE` : "");
+      const labelText = dispName(repo).toUpperCase() + (sessN ? ` · ${sessN} LIVE` : "");
       const label = makeLabelSprite(labelText, sessN ? 45 : 190, 22);
       label.position.set(rc.x, rc.y+rad+26, rc.z);
       label.userData = {kind:"repoLabel", repo};
@@ -665,6 +682,7 @@ async function loadGraph(){
   repoList = (g.repos && g.repos.length) ? [...g.repos].sort() : [...new Set(g.nodes.map(n=>n.repo))].sort();
   window.__repoRoles = g.repoRoles || {};
   window.__roleColors = g.roleColors || {};
+  window.__repoDisplay = g.displayNames || {};
   nodes = g.nodes.map(n=>{
     const old = prev.get(n.id);
     return Object.assign(n, {
@@ -972,7 +990,7 @@ function renderGauges(){
   if(!repoList.length){ list.innerHTML='<div class="label">no brains</div>'; return; }
   for(const repo of repoList){
     const section=document.createElement("div"); section.className="repo-brains";
-    section.innerHTML = `<div class="repo-brains-h">${escapeHtml(repo)}</div>`;
+    section.innerHTML = `<div class="repo-brains-h">${escapeHtml(dispName(repo))}</div>`;
     for(const role of orderedRoles(repo)){
       const k=clusterKey(repo,role); const s=perCombo.get(k);
       const n=s?s.n:0, avg=(s&&s.n)?s.str/s.n:0, lk=linkCount.get(k)||0;
@@ -1018,6 +1036,21 @@ async function loadProjects(){
   renderProjects();
   renderBoardsIndicator();
 }
+// live board fetch is opt-in (off by default, toggled from the Settings
+// popover) — nothing calls GET /projects, and no board.sh/gh subprocess
+// runs server-side, until the user turns it on.
+let boardPollId = null;
+function startBoardPolling(){
+  loadProjects();
+  if(boardPollId) return;
+  boardPollId = setInterval(loadProjects, 60000);
+}
+function stopBoardPolling(){
+  if(boardPollId){ clearInterval(boardPollId); boardPollId = null; }
+  window.__projects = {};
+  renderProjects();
+  renderBoardsIndicator();
+}
 async function loadSessions(){
   let data; try{ data = await (await fetch("/sessions")).json(); }catch{ return; }
   window.__sessions = Array.isArray(data) ? data : [];
@@ -1040,13 +1073,13 @@ function renderProjects(){
     const p = window.__projects[r];
     if(!p || !p.ok){
       const err = (p && p.error) ? escapeHtml(p.error) : "board unavailable";
-      return `<div class="projrow"><div class="pname">${escapeHtml(r)}</div><div class="pdim">${err}</div></div>`;
+      return `<div class="projrow"><div class="pname">${escapeHtml(dispName(r))}</div><div class="pdim">${err}</div></div>`;
     }
     const counts = Object.entries(p.statusCounts||{}).map(([k,v])=>`${escapeHtml(k)} ${v}`).join(" · ");
     const tasks = [...(p.inProgress||[]).map(t=>"▸ "+t), ...(p.inReview||[]).map(t=>"◆ "+t)].slice(0,6);
     const taskHtml = tasks.length ? `<div class="ptasks">${tasks.map(t=>`<div class="ptask" title="${escapeHtml(t)}">${escapeHtml(t)}</div>`).join("")}</div>` : "";
     const stale = p.stale ? `<div class="pdim">cached ${Math.max(1,Math.round((p.staleForSecs||0)/60))}m ago (${escapeHtml(p.staleReason||"fetch failed")})</div>` : "";
-    return `<div class="projrow"><div class="pname">${escapeHtml(r)}</div><div class="pcounts">${counts||"no items"}</div>${stale}${taskHtml}</div>`;
+    return `<div class="projrow"><div class="pname">${escapeHtml(dispName(r))}</div><div class="pcounts">${counts||"no items"}</div>${stale}${taskHtml}</div>`;
   }).join("");
 }
 
@@ -1084,7 +1117,11 @@ function tooltipHtml(ud){
     const brains = new Set(inRepo.map(n=>n.role)).size;
     const proj = (window.__projects||{})[repo];
     let projHtml;
-    if(!proj) projHtml = '<div class="tt-sub tt-dim">no board configured</div>';
+    if(!proj){
+      projHtml = uiState.liveBoard
+        ? '<div class="tt-sub tt-dim">no board configured</div>'
+        : '<div class="tt-sub tt-dim">live board fetch is off (⚙ Settings)</div>';
+    }
     else if(!proj.ok){
       // #75: the server MAY already prefix proj.error with "board unavailable"
       // itself -- render it as-is when it does, so we never double up the
@@ -1098,7 +1135,7 @@ function tooltipHtml(ud){
       projHtml = `<div class="tt-sub">${counts||"no items"}</div>`;
     }
     const sess = sessionCountFor(repo);
-    return `<div class="tt-kind">repo</div><div class="tt-title">${escapeHtml(repo)}</div>`+
+    return `<div class="tt-kind">repo</div><div class="tt-title">${escapeHtml(dispName(repo))}</div>`+
       `<div class="tt-sub">${inRepo.length} note(s) · ${brains} brain(s)</div>${projHtml}`+
       (sess ? `<div class="tt-sub">${sess} active session(s)</div>` : "");
   }
@@ -1354,6 +1391,23 @@ gaugesTab.onclick = ()=>{ uiState.panel = false; saveUiState(); applyUiState(); 
 document.getElementById("rightbar-collapse").onclick = ()=>{ uiState.rpanel = true; saveUiState(); applyUiState(); };
 document.getElementById("rightbar-tab").onclick = ()=>{ uiState.rpanel = false; saveUiState(); applyUiState(); };
 applyUiState();
+
+// ---- settings popover: live GitHub board fetch, off by default ----
+const settingsBtn = document.getElementById("settings-btn");
+const settingsPanel = document.getElementById("settings-panel");
+const liveBoardToggle = document.getElementById("live-board-toggle");
+liveBoardToggle.checked = !!uiState.liveBoard;
+settingsBtn.onclick = (ev)=>{ ev.stopPropagation(); settingsPanel.classList.toggle("open"); };
+document.addEventListener("click", (ev)=>{
+  if(settingsPanel.classList.contains("open") && !settingsPanel.contains(ev.target) && ev.target!==settingsBtn){
+    settingsPanel.classList.remove("open");
+  }
+});
+liveBoardToggle.onchange = ()=>{
+  uiState.liveBoard = liveBoardToggle.checked;
+  saveUiState();
+  if(uiState.liveBoard) startBoardPolling(); else stopBoardPolling();
+};
 const panel=document.getElementById("inspect");
 document.getElementById("inspect-close").onclick=()=>{ panel.classList.remove("open"); panel.setAttribute("aria-hidden","true"); panel.setAttribute("inert",""); };
 async function openNote(nd){
@@ -1452,12 +1506,12 @@ const PROBE = location.search.includes("hoverprobe");
   window.__viewer = null;   // which external viewer POST /open would use (labels the panel button)
   fetch("/viewer").then(r=>r.json()).then(d=>{ window.__viewer = (d && d.viewer) || null; }).catch(()=>{});
   await loadGraph(); poll();
-  await loadSessions(); await loadProjects();
+  await loadSessions();
+  if(uiState.liveBoard) startBoardPolling();  // off by default — enable via the ⚙ Settings popover
   const st=document.getElementById("status-txt");
   st.textContent = !webglOK ? "live · 3D unavailable" : (REDUCED ? "live · reduced motion" : "live · recalls light up");
   setInterval(loadGraph, 15000);     // pick up new notes/links periodically
   setInterval(loadSessions, 20000);  // best-effort local session discovery
-  setInterval(loadProjects, 60000);  // per-repo board state (server caches for PROJECTS_TTL + rate-limit breaker)
 })();
 </script>
 </body>

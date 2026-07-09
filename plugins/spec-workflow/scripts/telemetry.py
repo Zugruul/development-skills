@@ -29,7 +29,7 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 
-KINDS = {"transition", "gate", "review-round", "task-close"}
+KINDS = {"transition", "gate", "review-round", "task-close", "retro-skip"}
 TELEMETRY_REL = os.path.join(".claude", "telemetry.jsonl")
 
 
@@ -68,6 +68,9 @@ def validate_event(rec):
         est = rec.get("estimate")
         if not isinstance(est, (int, float)) or isinstance(est, bool):
             errs.append("task-close.estimate must be a number")
+    elif kind == "retro-skip":
+        if not rec.get("reason"):
+            errs.append("retro-skip.reason is required — a skip always needs a stated reason")
     return errs
 
 
@@ -177,6 +180,8 @@ def cmd_metrics(root):
         if e["kind"] == "task-close":
             by_task_close[e["task"]] = e  # last one wins if duplicated
 
+    retro_skips = [e for e in events if e["kind"] == "retro-skip"]
+
     print(f"tasks={len(tasks)} events={len(events)} skipped={skipped}")
     print()
     print("cycle time per status (avg over closed transitions):")
@@ -215,6 +220,14 @@ def cmd_metrics(root):
             print(f"  task={task}  estimate={close_e['estimate']}  actual={actual:.1f}h")
     else:
         print("  (no closed tasks)")
+    print()
+
+    if retro_skips:
+        print(f"retro skips: {len(retro_skips)} (retro is MANDATORY at PR close — investigate)")
+        for e in retro_skips:
+            print(f"  task={e['task']}  reason={e.get('reason', '?')}  ts={e['ts']}")
+    else:
+        print("retro skips: none")
     return 0
 
 
