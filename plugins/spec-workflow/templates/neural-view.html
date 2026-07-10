@@ -654,8 +654,17 @@ function updateFly(){
   if(p>=1) flyAnim = null;
 }
 
+// Adaptive resolution: fill rate (framebuffer pixels × MSAA × additive
+// overdraw from thousands of gradient halos) is the render bottleneck at
+// card-vault scale — a retina DPR-2 buffer with 4x MSAA shades up to 16x the
+// logical pixels. The fps monitor in frame() lowers the render DPR in 0.25
+// steps while fps sags below 45 and restores it (with hysteresis) when fps
+// holds above 57, so small scenes stay pixel-perfect and huge ones stay
+// fluid. Picking/labels use CSS pixels (W/H) and are unaffected.
+const DPR_CAP = Math.min(window.devicePixelRatio || 1, 2);
+let dprCur = DPR_CAP;
 function resize(){
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  DPR = dprCur;
   W = innerWidth; H = innerHeight;
   if(webglOK){
     renderer.setPixelRatio(DPR);
@@ -712,6 +721,61 @@ function makeLabelSprite(text, hue, fontPx){
   sprite.scale.set(cnv.width*scale, cnv.height*scale, 1);
   return sprite;
 }
+
+// ---- batched rendering layers ----
+// One Sprite per neuron half (core+halo) and one Line per synapse meant
+// 20k-25k draw calls at card-vault scale (~6k notes / ~12k links) — the page
+// was GPU-submission-bound at a few FPS even with the sim off the hot path.
+// Neurons and ambient pulses now render as INSTANCED billboard quads (one
+// draw call per layer, billboarded in the vertex shader exactly like
+// THREE.Sprite: view-space offset by the quad corner × size) and all
+// synapses as ONE LineSegments. Same textures, same additive blending, same
+// per-thing color/alpha/size formulas — the visuals are computed per frame
+// into instanced attributes instead of per-object materials. FogExp2 is
+// replicated in the shader (mix toward fog color), matching fog:true.
+// Per-link opacity rides the line VERTEX COLOR (rgb scale ≡ alpha scale
+// under additive blending; the fog term differs only by the near-black fog
+// color, imperceptible).
+const BILLBOARD_VERT = `
+  attribute vec3 aOffset; attribute float aSize; attribute float aAlpha; attribute vec3 aColor;
+  varying vec2 vUv; varying float vAlpha; varying vec3 vColor; varying float vFogDepth;
+  void main(){
+    vUv = uv; vAlpha = aAlpha; vColor = aColor;
+    vec4 mv = modelViewMatrix * vec4(aOffset, 1.0);
+    mv.xy += position.xy * aSize;
+    vFogDepth = -mv.z;
+    gl_Position = projectionMatrix * mv;
+  }`;
+const BILLBOARD_FRAG = `
+  uniform sampler2D map; uniform vec3 uFogColor; uniform float uFogDensity;
+  varying vec2 vUv; varying float vAlpha; varying vec3 vColor; varying float vFogDepth;
+  void main(){
+    vec4 t = texture2D(map, vUv);
+    float fogFactor = 1.0 - exp(-uFogDensity*uFogDensity*vFogDepth*vFogDepth);
+    gl_FragColor = vec4(mix(vColor * t.rgb, uFogColor, fogFactor), t.a * vAlpha);
+  }`;
+function makeBillboardLayer(tex, count){
+  const geo = new THREE.InstancedBufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array([-0.5,-0.5,0, 0.5,-0.5,0, 0.5,0.5,0, -0.5,0.5,0]), 3));
+  geo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array([0,0, 1,0, 1,1, 0,1]), 2));
+  geo.setIndex([0,1,2, 0,2,3]);
+  const offset = new Float32Array(count*3), size = new Float32Array(count),
+        alpha = new Float32Array(count), color = new Float32Array(count*3);
+  geo.setAttribute("aOffset", new THREE.InstancedBufferAttribute(offset, 3));
+  geo.setAttribute("aSize", new THREE.InstancedBufferAttribute(size, 1));
+  geo.setAttribute("aAlpha", new THREE.InstancedBufferAttribute(alpha, 1));
+  geo.setAttribute("aColor", new THREE.InstancedBufferAttribute(color, 3));
+  geo.instanceCount = count;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { map:{value:tex}, uFogColor:{value:new THREE.Color(0x04070d)}, uFogDensity:{value:0.0009} },
+    vertexShader: BILLBOARD_VERT, fragmentShader: BILLBOARD_FRAG,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;   // instances move every sim step; no useful static bounds
+  return {mesh, geo, offset, size, alpha, color};
+}
+let noteCore = null, noteHalo = null, synLines = null, synPulses = null;   // rebuilt with the scene
 
 // ---- scene contents, rebuilt whenever the graph reloads (node/link identity
 // can change; positions persist across reloads via nodeById reuse below, so a
@@ -787,37 +851,42 @@ function rebuildScene(){
     sceneGroup.add(label);
   }
 
-  // synapses (one Line per link — counts are small enough that per-link
-  // objects are simpler than a merged BufferGeometry, and weight/graduated
-  // dimming is baked in at rebuild time since it doesn't change per frame).
-  // Each also gets a slow ambient "pulse" sprite that drifts source→target
-  // continuously (the baseline directional-flow cue — see makeTravelAnim for
-  // the brighter, event-driven hop pulse this is deliberately dimmer than).
-  // Skipped entirely under prefers-reduced-motion: links render as static
-  // lines only.
-  for(const l of links){
-    const dim = (l.a.graduated||l.b.graduated) ? 0.5 : 1;
-    // a synapse carries its SOURCE note's brain color (links never cross a
-    // brain, so source == target brain in practice)
-    const lhue = comboHue(l.a.repo, l.a.role);
-    const geo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(l.a.x,l.a.y,l.a.z), new THREE.Vector3(l.b.x,l.b.y,l.b.z)]);
-    l.baseOpacity = (0.1 + l.w*0.5)*dim;   // updateVisuals() adds a hover boost on top of this each frame
-    const mat = new THREE.LineBasicMaterial({color: threeColor(lhue,62), transparent:true,
-      opacity:l.baseOpacity, blending:THREE.AdditiveBlending, fog:true});
-    const line = new THREE.Line(geo, mat);
-    line.userData = {kind:"synapse", link:l};
-    sceneGroup.add(line);
-    l.pulse = null;
-    if(!REDUCED){
-      const pmat = new THREE.SpriteMaterial({map:CORE_TEX, color:threeColor(lhue,70), transparent:true,
-        opacity:0.32*dim, blending:THREE.AdditiveBlending, depthWrite:false, fog:true});
-      const psprite = new THREE.Sprite(pmat);
-      psprite.scale.set(7,7,1);
-      psprite.userData = {kind:"synapsePulse", link:l, baseOpacity:0.32*dim};   // baseOpacity: updateVisuals() search-dims off this, not the live material.opacity
-      sceneGroup.add(psprite);
-      l.pulse = psprite;
+  // synapses: ONE LineSegments for every link (2 vertices each). Weight/
+  // graduated dimming and the source-brain hue bake into l.baseOpacity/l.hue;
+  // updateVisuals() writes position + (opacity-scaled) vertex color per frame.
+  // Ambient source→target "pulse" dots are one instanced billboard layer
+  // (the baseline directional-flow cue — see makeTravelAnim for the brighter,
+  // event-driven hop pulse this is deliberately dimmer than). Skipped
+  // entirely under prefers-reduced-motion: links render as static lines only.
+  {
+    const lgeo = new THREE.BufferGeometry();
+    const lpos = new Float32Array(links.length*2*3), lcol = new Float32Array(links.length*2*3);
+    lgeo.setAttribute("position", new THREE.BufferAttribute(lpos, 3));
+    lgeo.setAttribute("color", new THREE.BufferAttribute(lcol, 3));
+    const lmat = new THREE.LineBasicMaterial({vertexColors:true, transparent:true,
+      blending:THREE.AdditiveBlending});
+    const lmesh = new THREE.LineSegments(lgeo, lmat);
+    lmesh.frustumCulled = false;
+    lmesh.userData = {kind:"synapseBatch"};
+    sceneGroup.add(lmesh);
+    synLines = {mesh:lmesh, geo:lgeo, pos:lpos, col:lcol};
+    synPulses = REDUCED ? null : makeBillboardLayer(CORE_TEX, links.length);
+    if(synPulses){ synPulses.mesh.userData = {kind:"synapsePulseBatch"}; sceneGroup.add(synPulses.mesh); }
+    for(let i=0;i<links.length;i++){
+      const l = links[i];
+      const dim = (l.a.graduated||l.b.graduated) ? 0.5 : 1;
+      // a synapse carries its SOURCE note's brain color (links never cross a
+      // brain, so source == target brain in practice)
+      const lhue = comboHue(l.a.repo, l.a.role);
+      l.baseOpacity = (0.1 + l.w*0.5)*dim;   // updateVisuals() adds a hover boost on top of this each frame
+      l.color = threeColor(lhue,62);
+      l.pulseBase = 0.32*dim;
       l.pulsePhase = Math.random();   // desyncs pulses so the whole network doesn't throb in lockstep
+      if(synPulses){
+        synPulses.size[i] = 7;
+        const pc = threeColor(lhue,70);
+        synPulses.color[i*3] = pc.r; synPulses.color[i*3+1] = pc.g; synPulses.color[i*3+2] = pc.b;
+      }
     }
   }
 
@@ -835,24 +904,31 @@ function rebuildScene(){
     sceneGroup.add(new THREE.Line(geo, mat));
   }
 
-  // neurons: core (bright, sharp) + halo (soft, pulses/highlights) sprite pair.
-  for(const nd of nodes){
+  // neurons: core (bright, sharp) + halo (soft, pulses/highlights) — one
+  // instanced billboard layer per half instead of two Sprites per note.
+  // Hover/click hit-testing is screen-space (pickNoteAt projects node
+  // coords), so batching changes nothing about interaction.
+  noteCore = makeBillboardLayer(CORE_TEX, nodes.length);
+  noteHalo = makeBillboardLayer(HALO_TEX, nodes.length);
+  noteCore.mesh.userData = {kind:"noteCoreBatch"};
+  noteHalo.mesh.userData = {kind:"noteHaloBatch"};
+  sceneGroup.add(noteCore.mesh); sceneGroup.add(noteHalo.mesh);
+  for(let i=0;i<nodes.length;i++){
+    const nd = nodes[i];
     const c = clusters.get(clusterKey(nd.repo,nd.role)), hue = c?c.hue:190;
     // L 72, not the old 88: at ~88% lightness every hue collapses to near-white
     // under additive blending, which made per-brain colors invisible on the
     // actual balls (the halo carried the only perceptible tint).
-    const coreMat = new THREE.SpriteMaterial({map:CORE_TEX, color:threeColor(hue,72), transparent:true,
-      opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false, fog:true});
-    const core = new THREE.Sprite(coreMat);
-    core.scale.set(nd.r*2, nd.r*2, 1);
-    core.userData = {kind:"note", node:nd};
-    const haloMat = new THREE.SpriteMaterial({map:HALO_TEX, color:threeColor(hue,60), transparent:true,
-      opacity:0.4, blending:THREE.AdditiveBlending, depthWrite:false, fog:true});
-    const halo = new THREE.Sprite(haloMat);
-    halo.scale.set(nd.r*6, nd.r*6, 1);
-    halo.userData = {kind:"note", node:nd};   // hover hit target is the visible glow (#72), not the tiny core
-    sceneGroup.add(core); sceneGroup.add(halo);
-    nd._core = core; nd._halo = halo;
+    const cc = threeColor(hue,72), hc = threeColor(hue,60);
+    noteCore.color[i*3] = cc.r; noteCore.color[i*3+1] = cc.g; noteCore.color[i*3+2] = cc.b;
+    noteHalo.color[i*3] = hc.r; noteHalo.color[i*3+1] = hc.g; noteHalo.color[i*3+2] = hc.b;
+    nd._idx = i;   // instanced-attribute slot; updateVisuals() writes size/alpha/offset here
+  }
+  noteCore.geo.attributes.aColor.needsUpdate = true;
+  noteHalo.geo.attributes.aColor.needsUpdate = true;
+  if(synPulses){
+    synPulses.geo.attributes.aColor.needsUpdate = true;
+    synPulses.geo.attributes.aSize.needsUpdate = true;
   }
 }
 
@@ -1163,23 +1239,33 @@ function step(calibrate){
 
 function updateVisuals(){
   if(!webglOK || !sceneGroup) return;
-  for(const nd of nodes){
-    if(!nd._core) continue;
-    nd._core.position.set(nd.x, nd.y, nd.z);
-    nd._halo.position.set(nd.x, nd.y, nd.z);
-    const pulse = REDUCED ? 0 : (Math.sin(tick*0.05 + nd.phase)*0.5+0.5)*0.18;
-    const base = nd.graduated ? 0.55 : 0.9;
-    const hoverBoost = (nd === hoveredNode) ? 0.35 : 0;   // hover-inspection highlight, reuses the hl visual mechanism
-    // search highlight: a matched note glows extra (like a sustained hover);
-    // everything else fades near-invisible so matches pop out of a graph of
-    // a thousand+ notes — see triggerSearch()/nd.searchMatch.
-    const searchBoost = (searchActive && nd.searchMatch) ? 0.45 : 0;
-    const dimMul = (searchActive && !nd.searchMatch) ? 0.15 : 1;
-    const rr = nd.r * (1 + pulse*0.15 + nd.hl*0.5 + hoverBoost*0.6 + searchBoost*0.5);
-    nd._core.scale.set(rr*2, rr*2, 1);
-    nd._core.material.opacity = Math.min(1, (base*0.55 + pulse*0.3 + nd.hl*0.5 + hoverBoost + searchBoost) * dimMul);
-    nd._halo.scale.set(rr*6*(1+nd.hl*0.6+hoverBoost*0.4+searchBoost*0.5), rr*6*(1+nd.hl*0.6+hoverBoost*0.4+searchBoost*0.5), 1);
-    nd._halo.material.opacity = Math.min(0.75, (0.28 + pulse*0.2 + nd.hl*0.5 + hoverBoost*0.3 + searchBoost*0.5) * dimMul);
+  // neurons: same per-note formulas as the old Sprite pair, written into the
+  // instanced layers' attribute arrays (one draw call per layer).
+  if(noteCore){
+    for(const nd of nodes){
+      const i = nd._idx;
+      if(i === undefined) continue;
+      noteCore.offset[i*3] = nd.x; noteCore.offset[i*3+1] = nd.y; noteCore.offset[i*3+2] = nd.z;
+      noteHalo.offset[i*3] = nd.x; noteHalo.offset[i*3+1] = nd.y; noteHalo.offset[i*3+2] = nd.z;
+      const pulse = REDUCED ? 0 : (Math.sin(tick*0.05 + nd.phase)*0.5+0.5)*0.18;
+      const base = nd.graduated ? 0.55 : 0.9;
+      const hoverBoost = (nd === hoveredNode) ? 0.35 : 0;   // hover-inspection highlight, reuses the hl visual mechanism
+      // search highlight: a matched note glows extra (like a sustained hover);
+      // everything else fades near-invisible so matches pop out of a graph of
+      // a thousand+ notes — see triggerSearch()/nd.searchMatch.
+      const searchBoost = (searchActive && nd.searchMatch) ? 0.45 : 0;
+      const dimMul = (searchActive && !nd.searchMatch) ? 0.15 : 1;
+      const rr = nd.r * (1 + pulse*0.15 + nd.hl*0.5 + hoverBoost*0.6 + searchBoost*0.5);
+      noteCore.size[i] = rr*2;
+      noteCore.alpha[i] = Math.min(1, (base*0.55 + pulse*0.3 + nd.hl*0.5 + hoverBoost + searchBoost) * dimMul);
+      noteHalo.size[i] = rr*6*(1+nd.hl*0.6+hoverBoost*0.4+searchBoost*0.5);
+      noteHalo.alpha[i] = Math.min(0.75, (0.28 + pulse*0.2 + nd.hl*0.5 + hoverBoost*0.3 + searchBoost*0.5) * dimMul);
+    }
+    for(const layer of [noteCore, noteHalo]){
+      layer.geo.attributes.aOffset.needsUpdate = true;
+      layer.geo.attributes.aSize.needsUpdate = true;
+      layer.geo.attributes.aAlpha.needsUpdate = true;
+    }
   }
   // live centroids: cluster glows, role/repo labels and region wireframes
   // track where each group's notes ACTUALLY are right now — the force sim
@@ -1223,24 +1309,42 @@ function updateVisuals(){
       }
       continue;
     }
-    const l = ud.kind==="synapse" ? ud.link : null;
-    if(!l) continue;
-    const pos = child.geometry.attributes.position;
-    pos.setXYZ(0, l.a.x, l.a.y, l.a.z);
-    pos.setXYZ(1, l.b.x, l.b.y, l.b.z);
-    pos.needsUpdate = true;
-    // search highlight: a synapse touching a matched note stays lit (and
-    // gets a boost); one between two non-matches fades with its endpoints.
-    const synMatch = searchActive && (l.a.searchMatch || l.b.searchMatch);
-    const synDimMul = (searchActive && !synMatch) ? 0.12 : 1;
-    child.material.opacity = (l.baseOpacity + (l===hoveredLink ? 0.45 : 0) + (synMatch ? 0.3 : 0)) * synDimMul;   // hover-inspection highlight
-    if(l.pulse){
-      // ambient directional drift, source(a) → target(b), ~4.5s per lap,
-      // desynced per-link via pulsePhase; deliberately dim/slow relative to
-      // the bright event-driven travel pulse in makeTravelAnim.
-      const p = ((now*0.00022 + l.pulsePhase) % 1);
-      l.pulse.position.set(l.a.x+(l.b.x-l.a.x)*p, l.a.y+(l.b.y-l.a.y)*p, l.a.z+(l.b.z-l.a.z)*p);
-      l.pulse.material.opacity = l.pulse.userData.baseOpacity * synDimMul;
+  }
+  // synapses + ambient pulses: same per-link formulas as the old one-Line-
+  // per-link scene, written into the single LineSegments' position/color
+  // buffers and the pulse layer's instanced attributes. Per-link opacity is
+  // encoded as a vertex-color scale (≡ alpha under additive blending).
+  if(synLines){
+    for(let i=0;i<links.length;i++){
+      const l = links[i];
+      const o = i*6;
+      synLines.pos[o]   = l.a.x; synLines.pos[o+1] = l.a.y; synLines.pos[o+2] = l.a.z;
+      synLines.pos[o+3] = l.b.x; synLines.pos[o+4] = l.b.y; synLines.pos[o+5] = l.b.z;
+      // search highlight: a synapse touching a matched note stays lit (and
+      // gets a boost); one between two non-matches fades with its endpoints.
+      const synMatch = searchActive && (l.a.searchMatch || l.b.searchMatch);
+      const synDimMul = (searchActive && !synMatch) ? 0.12 : 1;
+      const op = (l.baseOpacity + (l===hoveredLink ? 0.45 : 0) + (synMatch ? 0.3 : 0)) * synDimMul;   // hover-inspection highlight
+      const r = l.color.r*op, g = l.color.g*op, b = l.color.b*op;
+      synLines.col[o]   = r; synLines.col[o+1] = g; synLines.col[o+2] = b;
+      synLines.col[o+3] = r; synLines.col[o+4] = g; synLines.col[o+5] = b;
+      if(synPulses){
+        // ambient directional drift, source(a) → target(b), ~4.5s per lap,
+        // desynced per-link via pulsePhase; deliberately dim/slow relative to
+        // the bright event-driven travel pulse in makeTravelAnim.
+        const p = ((now*0.00022 + l.pulsePhase) % 1);
+        const po = i*3;
+        synPulses.offset[po]   = l.a.x+(l.b.x-l.a.x)*p;
+        synPulses.offset[po+1] = l.a.y+(l.b.y-l.a.y)*p;
+        synPulses.offset[po+2] = l.a.z+(l.b.z-l.a.z)*p;
+        synPulses.alpha[i] = l.pulseBase * synDimMul;
+      }
+    }
+    synLines.geo.attributes.position.needsUpdate = true;
+    synLines.geo.attributes.color.needsUpdate = true;
+    if(synPulses){
+      synPulses.geo.attributes.aOffset.needsUpdate = true;
+      synPulses.geo.attributes.aAlpha.needsUpdate = true;
     }
   }
   updateAnims();
@@ -1270,9 +1374,22 @@ function updateVisuals(){
 // trajectory, played quickly while the scene is still forming, landing in
 // the same final layout.
 let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
+// Template version, shown in the status chip so it's always unambiguous WHICH
+// build a given tab is rendering (three copies of this file exist on disk —
+// dev repo / marketplace clone / plugin cache — and "why does it look old"
+// has burned real debugging time). Bump the PATCH on every template change
+// within an increment of work; bump the MINOR when the increment ships.
+const NV_VERSION = "0.25.3";
 // live fps readout in the status chip (replaces the static tagline)
-let fpsFrames = 0, fpsWindowStart = 0;
+let fpsFrames = 0, fpsWindowStart = 0, fpsGoodWindows = 0;
+// ?perf: per-section frame-time EMAs shown in the chip (sim step / visual
+// attribute writes / render submission), for diagnosing where a slow frame
+// actually goes without opening devtools.
+const PERF = /[?&]perf\b/.test(location.search);
+const perfMs = {step:0, vis:0, render:0};
+function ema(k, ms){ perfMs[k] += (ms - perfMs[k]) * 0.08; }
 const statusEl = document.getElementById("status-txt");
+if(statusEl) statusEl.textContent = `live · v${NV_VERSION}`;   // fps appended once the first second of frames is measured
 function frame(){
   requestAnimationFrame(frame);   // re-arm first: any exception below must never permanently kill the render loop
   tick++;
@@ -1281,31 +1398,43 @@ function frame(){
   if(nowMs - fpsWindowStart >= 1000){
     if(webglOK && statusEl){
       const fps = Math.round(fpsFrames * 1000 / (nowMs - fpsWindowStart));
-      statusEl.textContent = `live · ${fps} fps` + (REDUCED ? " · reduced motion" : "");
+      // adaptive-resolution governor (see resize()): step down fast while
+      // struggling, step back up only after 3 consecutive healthy seconds.
+      if(fps < 45 && dprCur > 1){ dprCur = Math.max(1, dprCur - 0.25); fpsGoodWindows = 0; resize(); }
+      else if(fps > 57 && dprCur < DPR_CAP){ if(++fpsGoodWindows >= 3){ dprCur = Math.min(DPR_CAP, dprCur + 0.25); fpsGoodWindows = 0; resize(); } }
+      else fpsGoodWindows = 0;
+      statusEl.textContent = `live · v${NV_VERSION} · ${fps} fps`
+        + (dprCur < DPR_CAP ? ` · ${dprCur}x` : "")
+        + (PERF ? ` · sim ${perfMs.step.toFixed(1)} · vis ${perfMs.vis.toFixed(1)} · draw ${perfMs.render.toFixed(1)}ms` : "")
+        + (REDUCED ? " · reduced motion" : "");
     }
     fpsFrames = 0; fpsWindowStart = nowMs;
   }
+  const tSim0 = performance.now();
   if(simFastForward > 0){
-    const t0 = performance.now();
-    while(simFastForward > 0 && performance.now() - t0 < 8){ step(false); simFastForward--; }
+    while(simFastForward > 0 && performance.now() - tSim0 < 8){ step(false); simFastForward--; }
     lastStepMs = nowMs;
   } else if(nowMs - lastStepMs >= simStepMs){
     lastStepMs = nowMs;
     const needCalibration = nodes.length && Math.abs(nodes.length - simCalibratedN) > Math.max(50, simCalibratedN*0.1);
     if(needCalibration && pointers.size === 0){
       simCalibratedN = nodes.length;
-      const t0 = performance.now();
       step(true);
-      simStepMs = Math.max(1000/60, performance.now() - t0);
+      simStepMs = Math.max(1000/60, performance.now() - tSim0);
     } else {
       step(false);
     }
   }
+  const tSim1 = performance.now();
+  ema("step", tSim1 - tSim0);
   if(webglOK){
     updateVisuals();
     updateFly();
     updateCameraPosition();   // theta/phi/target/radius may have changed since last frame (orbit/pan/zoom/fit)
+    const tVis = performance.now();
+    ema("vis", tVis - tSim1);
     renderer.render(scene, camera);
+    ema("render", performance.now() - tVis);
     updateHoverRing();   // after render: ring uses the same camera state as the drawn frame
     if(PROBE && tick%20===0) hoverProbe();   // same-frame overlay: sim, camera and rings agree
   }
@@ -2175,9 +2304,10 @@ function hoverProbe(){
   // confusing the eye.
   if(sceneGroup) for(const child of sceneGroup.children){
     const k = child.userData && child.userData.kind;
-    if(k==="synapsePulse" || k==="roleCluster") child.visible = false;
+    if(k==="roleCluster") child.visible = false;
   }
-  for(const nd of nodes) if(nd._halo) nd._halo.visible = false;
+  if(synPulses) synPulses.mesh.visible = false;
+  if(noteHalo) noteHalo.mesh.visible = false;
   const old = document.getElementById("hoverprobe"); if(old) old.remove();
   const wrap = document.createElement("div");
   wrap.id = "hoverprobe";
@@ -2230,7 +2360,7 @@ const PROBE = location.search.includes("hoverprobe");
   await loadSessions();
   if(uiState.liveBoard) startBoardPolling();  // off by default — enable via the ⚙ Settings popover
   const st=document.getElementById("status-txt");
-  if(!webglOK) st.textContent = "live · 3D unavailable";   // webglOK: fps is written by frame() once per second
+  if(!webglOK) st.textContent = `live · v${NV_VERSION} · 3D unavailable`;   // webglOK: fps is written by frame() once per second
   setInterval(loadGraph, 15000);     // pick up new notes/links periodically
   setInterval(loadSessions, 20000);  // best-effort local session discovery
 })();
