@@ -71,7 +71,7 @@ canvas.grabbing{cursor:grabbing}
 #settings-panel .hint{font-size:.58rem;color:var(--muted);line-height:1.4}
 
 /* Talk panel (left bar → deep-link a new session, see docs.claude.com/en/deep-links) */
-.hud#talk-panel{top:70px;left:292px;width:320px;max-height:calc(100vh - 100px);overflow:auto;
+.hud#talk-panel{top:70px;left:324px;width:320px;max-height:calc(100vh - 100px);overflow:auto;
   padding:.75rem .85rem;display:none;flex-direction:column;gap:.55rem;z-index:60;
   background:var(--panel-solid);backdrop-filter:none;-webkit-backdrop-filter:none}
 .hud#talk-panel.open{display:flex}
@@ -99,7 +99,7 @@ canvas.grabbing{cursor:grabbing}
 #talk-panel .hint{font-size:.58rem;color:var(--muted);line-height:1.4}
 
 /* gauges (top-left, below topbar) */
-#gauges{top:70px;left:14px;width:264px;max-height:calc(100vh - 130px);overflow:auto;
+#gauges{top:70px;left:14px;width:296px;max-height:calc(100vh - 130px);overflow:auto;
   padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease}
 #gauges.collapsed{transform:translateX(calc(-100% - 24px));opacity:0;pointer-events:none}
 #gauges-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem}
@@ -127,19 +127,26 @@ canvas.grabbing{cursor:grabbing}
 .repo-brains-h[aria-expanded="false"]::before{content:"▸"}
 .repo-brains:first-of-type .repo-brains-h{border-top:0;margin-top:0;padding-top:0}
 .repo-brains-rows.collapsed{display:none}
-.brainrow{cursor:pointer;display:flex;align-items:center;gap:.4rem;padding:.3rem 0;border-top:1px solid rgba(90,190,255,.12)}
+.brainrow{cursor:pointer;position:relative;display:flex;align-items:center;gap:.4rem;
+  padding:.3rem 1.15rem .3rem 0;border-top:1px solid rgba(90,190,255,.12)}
 .brainrow:hover,.brainrow:focus-visible{background:rgba(90,190,255,.08);outline:none}
 .repo-brains .brainrow:first-of-type{border-top:0}
 .brainrow .rname{flex:1;font-size:.6rem;letter-spacing:.08em;text-transform:uppercase}
-/* stat cells sized to always fit the 264px panel on one line — the default
-   .label letter-spacing (.28em) wrapped/clipped STR/SYN on long role names */
+/* stat cells sized to always fit the panel on one line — the default .label
+   letter-spacing (.28em) wrapped/clipped STR/SYN on long role names. The
+   eyebtn is deliberately NOT a flex sibling here (it used to squeeze this
+   row past its budget on long values like "SYN 739") — it's absolutely
+   positioned in the row's reserved right padding instead, so it never
+   competes with str/syn for width. */
 .brainrow .label{font-size:.56rem;letter-spacing:.06em;white-space:nowrap}
 .brainrow-empty{opacity:.4}
 .brainrow-hidden{opacity:.35}
 .brainrow-hidden .rname{text-decoration:line-through;text-decoration-color:var(--cyan-dim)}
 .arc{width:28px;height:28px;flex:none}
-.eyebtn{flex:none;background:none;border:0;color:var(--muted);cursor:pointer;font-size:.66rem;
-  padding:.1rem .2rem;line-height:1}
+.eyebtn{position:absolute;right:0;top:50%;transform:translateY(-50%);background:none;border:0;
+  color:var(--muted);cursor:pointer;font-size:.66rem;padding:.1rem .25rem;line-height:1;
+  opacity:0;transition:opacity .12s ease}
+.brainrow:hover .eyebtn,.brainrow:focus-within .eyebtn,.brainrow-hidden .eyebtn{opacity:1}
 .eyebtn:hover{color:var(--cyan)}
 .brainrow-hidden .eyebtn{color:var(--amber)}
 /* loop-active badge (best-effort — see loopSessionsFor()) on repo labels/tooltips */
