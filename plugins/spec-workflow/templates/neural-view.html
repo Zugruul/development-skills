@@ -820,13 +820,27 @@ function applyGraph(g){
   window.__brainRawCounts = rawCounts;
   const visibleNodes = rawNodes.filter(n=>!isBrainHidden(n.repo, n.role));
   roles = [...new Set(visibleNodes.map(n=>n.role))].sort();
+  // Degree (synapse count) per node id, from the raw edges — computed before
+  // the node map below so radius can reflect it. A handful of "index"/"map"
+  // notes that many others [[wikilink]] to (glossary-index at 594 links,
+  // keywords-index at 383, in fab-cli/judge) are genuine hubs; sizing them
+  // like an ordinary 1-10-link note buried them visually despite dominating
+  // the graph.
+  const degree = {};
+  for(const e of (g.edges||[])){
+    if(e.type==="consult") continue;
+    degree[e.source] = (degree[e.source]||0)+1;
+    degree[e.target] = (degree[e.target]||0)+1;
+  }
   nodes = visibleNodes.map(n=>{
     const old = prev.get(n.id);
+    const deg = degree[n.id]||0;
     return Object.assign(n, {
       // world coords — spawn near origin, gravity pulls into place
       x: old ? old.x : (Math.random()-.5)*260, y: old ? old.y : (Math.random()-.5)*260, z: old ? old.z : (Math.random()-.5)*260,
       vx: old?old.vx:0, vy: old?old.vy:0, vz: old?old.vz:0, hl: old?old.hl:0, phase: Math.random()*6.283,
-      r: 4 + Math.min(n.strength||1, 12) * 1.7
+      degree: deg,
+      r: 4 + Math.min(n.strength||1, 12) * 1.2 + Math.min(Math.sqrt(deg), 24) * 1.4
     });
   });
   nodeById = new Map(nodes.map(n=>[n.id,n]));
@@ -883,7 +897,16 @@ function step(){
     const dx=l.b.x-l.a.x, dy=l.b.y-l.a.y, dz=l.b.z-l.a.z, d=Math.hypot(dx,dy,dz)||.01;
     const target2 = 70 + (1-l.w)*70, f = KSPRING*(d-target2);
     const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
-    l.a.vx+=fx; l.a.vy+=fy; l.a.vz+=fz; l.b.vx-=fx; l.b.vy-=fy; l.b.vz-=fz;
+    // Split each spring's pull by 1/sqrt(degree) per endpoint: an ordinary
+    // note (degree ~1-10) is unaffected, but a hub with hundreds of links
+    // (glossary/keyword "index" notes — see the node-radius comment above)
+    // no longer gets pulled by the FULL force of every single one of them
+    // every frame, which is what kept it oscillating/flickering instead of
+    // settling. Without this, total incoming spring force scales with
+    // degree; with it, it scales with sqrt(degree).
+    const da = Math.sqrt(Math.max(1, l.a.degree||1)), db = Math.sqrt(Math.max(1, l.b.degree||1));
+    l.a.vx+=fx/da; l.a.vy+=fy/da; l.a.vz+=fz/da;
+    l.b.vx-=fx/db; l.b.vy-=fy/db; l.b.vz-=fz/db;
   }
   for(const nd of nodes){
     const c = clusters.get(clusterKey(nd.repo,nd.role));
