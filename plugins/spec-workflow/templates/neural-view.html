@@ -1071,6 +1071,7 @@ function applyGraph(g){
     a: nodeById.get(e.source), b: nodeById.get(e.target), w: e.weight ?? .5, fires: e.fires ?? 0, key: e.source+"->"+e.target
   })).filter(l=>l.a && l.b);
   window.__consultEdges = (g.edges||[]).filter(e=>e.type==="consult" && !isBrainHidden(e.source.split("/")[0], e.source.split("/")[1]) && !isBrainHidden(e.target.split("/")[0], e.target.split("/")[1]));
+  wakeSim();   // nodes/links/cluster targets may have changed — resume integrating (no-op if awake)
   layoutClusters();
   // Fresh nodes spawn INSIDE their own cluster's region at roughly resting
   // density, instead of all piled into one small cube at the origin. The old
@@ -1125,6 +1126,19 @@ function applyGraph(g){
 //  - all-pairs: the original loop, kept as the periodic CALIBRATION step —
 //    see frame(): its measured wall-clock cost paces the sim so motion plays
 //    at exactly the speed the old code produced on this machine.
+// Settle-freeze (conservative — no force cooling, which distorted where the
+// layout came to rest): once the WHOLE graph has been essentially motionless
+// for a sustained stretch, stop integrating — positions are final and the
+// step was measured to dominate frame time at card-vault density even on the
+// grid path. hl decay keeps running while asleep; throb/pulses are visual-
+// layer and never stop. wakeSim() on anything that can move nodes (graph
+// reload / re-filter / brain toggle — all via applyGraph). simAvgSpeed is
+// exported in /metrics as `spd` so the calm threshold is tuned from data,
+// not guesses.
+let simCalmSteps = 0, simAsleep = false, simAvgSpeed = 0;
+const SIM_CALM_SPEED = 0.05;   // avg per-node speed under this counts as "at rest"
+const SIM_CALM_STEPS = 240;    // sustained calm steps before sleeping
+function wakeSim(){ simAsleep = false; simCalmSteps = 0; }
 const REP_CUTOFF = 300, REP_CUTOFF2 = REP_CUTOFF*REP_CUTOFF;
 // The 13 "forward" neighbor offsets (half of the 26 surrounding cells):
 // visiting only the forward half enumerates each cross-cell pair exactly once,
@@ -1135,6 +1149,12 @@ for(let dz=-1;dz<=1;dz++) for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
 }
 function step(calibrate){
   if(!webglOK) return;
+  if(simAsleep){
+    // positions are final; hl (recall highlight) must keep fading exactly as
+    // it did when this lived in the integration loop.
+    for(const nd of nodes) if(nd.hl>0) nd.hl = Math.max(0, nd.hl - 0.018);
+    return;
+  }
   const KREP = 2600, KSPRING = 0.012, KGRAV = 0.015, DAMP = 0.86;
   // Two hard caps against the sim "exploding" — nodes rocketing off past the
   // camera in one frame, seen on brains with hundreds of notes (e.g.
@@ -1210,6 +1230,7 @@ function step(calibrate){
     l.a.vx+=fx/da; l.a.vy+=fy/da; l.a.vz+=fz/da;
     l.b.vx-=fx/db; l.b.vy-=fy/db; l.b.vz-=fz/db;
   }
+  let speedSum = 0;
   for(const nd of nodes){
     const c = clusters.get(clusterKey(nd.repo,nd.role));
     if(c){ nd.vx += (c.x-nd.x)*KGRAV; nd.vy += (c.y-nd.y)*KGRAV; nd.vz += (c.z-nd.z)*KGRAV; }
@@ -1225,6 +1246,7 @@ function step(calibrate){
     nd.vx*=d; nd.vy*=d; nd.vz*=d;
     const speed = Math.hypot(nd.vx, nd.vy, nd.vz);
     if(speed > MAX_SPEED){ const s = MAX_SPEED/speed; nd.vx*=s; nd.vy*=s; nd.vz*=s; }
+    speedSum += Math.min(speed, MAX_SPEED);
     nd.x+=nd.vx; nd.y+=nd.vy; nd.z+=nd.vz;
     // Self-heal non-finite state: ONE NaN position poisons every geometry it
     // touches (three.js bounding spheres go NaN and whole buffers stop
@@ -1236,6 +1258,12 @@ function step(calibrate){
       nd.vx = nd.vy = nd.vz = 0;
     }
     if(nd.hl>0) nd.hl = Math.max(0, nd.hl - 0.018);
+  }
+  simAvgSpeed = nodes.length ? speedSum/nodes.length : 0;
+  if(nodes.length && simAvgSpeed < SIM_CALM_SPEED){
+    if(++simCalmSteps >= SIM_CALM_STEPS) simAsleep = true;
+  } else {
+    simCalmSteps = 0;
   }
 }
 
@@ -1381,7 +1409,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // dev repo / marketplace clone / plugin cache — and "why does it look old"
 // has burned real debugging time). Bump the PATCH on every template change
 // within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.25.6";
+const NV_VERSION = "0.25.7";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -1432,6 +1460,7 @@ function frame(){
         id: METRICS_ID, v: NV_VERSION, fps, dpr: dprCur,
         sim: +perfMs.step.toFixed(1), vis: +perfMs.vis.toFixed(1), draw: +perfMs.render.toFixed(1),
         notes: nodes.length, links: links.length,
+        spd: +simAvgSpeed.toFixed(3), asleep: simAsleep,
       })}).catch(()=>{});
     }
     fpsFrames = 0; fpsWindowStart = nowMs;
