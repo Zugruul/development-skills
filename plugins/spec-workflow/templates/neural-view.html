@@ -59,6 +59,30 @@ canvas.grabbing{cursor:grabbing}
 .iconbtn{background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;
   font-family:var(--mono);font-size:.8rem;line-height:1;padding:.25rem .4rem;cursor:pointer}
 .iconbtn:hover{color:var(--cyan);border-color:var(--cyan-dim)}
+.iconbtn.active{color:var(--cyan);border-color:var(--cyan-dim);background:rgba(70,230,255,.1)}
+
+/* search bar (below topbar, centered — search notes/synapses + a brains/fields filter popover) */
+#searchbar{top:70px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:.4rem;
+  padding:.4rem .55rem;z-index:22;max-width:min(560px,64vw)}
+#search-input{flex:1;min-width:140px;background:rgba(10,20,34,.6);border:1px solid var(--border);
+  color:var(--fg);border-radius:6px;font-family:var(--mono);font-size:.72rem;padding:.32rem .5rem}
+#search-input::placeholder{color:var(--muted)}
+#search-count{font-size:.58rem;color:var(--muted);white-space:nowrap}
+#search-filters-wrap{position:relative}
+#search-filters-panel{position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);
+  min-width:230px;max-height:min(60vh,420px);overflow:auto;padding:.65rem .75rem;display:none;
+  flex-direction:column;gap:.6rem;z-index:60;background:var(--panel-solid);backdrop-filter:none;
+  -webkit-backdrop-filter:none}
+#search-filters-panel.open{display:flex}
+.sf-h{font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:.3rem}
+.sf-section label{display:flex;align-items:center;gap:.45rem;font-size:.66rem;color:var(--fg);
+  padding:.15rem 0;cursor:pointer}
+.sf-repo{margin-top:.5rem}
+.sf-repo-h{display:flex;align-items:center;gap:.4rem;font-size:.6rem;color:var(--cyan);
+  letter-spacing:.06em;text-transform:uppercase;margin-bottom:.15rem}
+.sf-repo-h button{background:none;border:0;color:var(--muted);cursor:pointer;font-size:.56rem;
+  padding:0;text-decoration:underline;text-underline-offset:2px}
+.sf-repo-h button:hover{color:var(--cyan)}
 
 /* settings popover (top bar gear) */
 #settings-wrap{position:relative}
@@ -265,6 +289,27 @@ canvas.grabbing{cursor:grabbing}
       <div class="hud" id="settings-panel">
         <label><input type="checkbox" id="live-board-toggle"> Fetch live GitHub board state</label>
         <div class="hint">Polls each repo's board via <code>board.sh</code> (per-repo cache + rate-limit backoff). Off by default.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="hud" id="searchbar">
+  <button class="iconbtn" id="search-btn" title="Search notes &amp; synapses" aria-label="Search">⌕</button>
+  <input id="search-input" type="text" placeholder="Search notes &amp; synapses…" autocomplete="off" spellcheck="false">
+  <button class="iconbtn" id="search-clear" title="Clear search" aria-label="Clear search" hidden>✕</button>
+  <span id="search-count" class="label"></span>
+  <div id="search-filters-wrap">
+    <button class="iconbtn" id="search-filters-btn" title="Search filters" aria-label="Search filters" aria-haspopup="true">▾ filters</button>
+    <div class="hud" id="search-filters-panel">
+      <div class="sf-section">
+        <div class="sf-h">Search in</div>
+        <label><input type="checkbox" id="sf-field-slug" checked> Title / slug</label>
+        <label><input type="checkbox" id="sf-field-tags" checked> Tags</label>
+      </div>
+      <div class="sf-section">
+        <div class="sf-h">Brains</div>
+        <div id="sf-brains"></div>
       </div>
     </div>
   </div>
@@ -742,7 +787,7 @@ function rebuildScene(){
         opacity:0.32*dim, blending:THREE.AdditiveBlending, depthWrite:false, fog:true});
       const psprite = new THREE.Sprite(pmat);
       psprite.scale.set(7,7,1);
-      psprite.userData = {kind:"synapsePulse", link:l};
+      psprite.userData = {kind:"synapsePulse", link:l, baseOpacity:0.32*dim};   // baseOpacity: updateVisuals() search-dims off this, not the live material.opacity
       sceneGroup.add(psprite);
       l.pulse = psprite;
       l.pulsePhase = Math.random();   // desyncs pulses so the whole network doesn't throb in lockstep
@@ -802,6 +847,68 @@ function hiddenBrainCountFor(repo){
   return Object.keys(hidden).filter(k=>k.startsWith(repo+"/")).length;
 }
 
+// ---- search (notes + synapses) — a query matches a note's slug and/or its
+// tags (frontmatter fields already in the /graph payload; note BODY text is
+// not, so this is metadata search, not full-text). Matched notes glow and
+// everything else fades (see updateVisuals()); a synapse touching a matched
+// note stays lit too. Filterable by which fields count and which brains are
+// in scope — see the "filters" popover. ----
+let searchActive = false;
+let lastSearchQuery = null;   // tracks the LAST query a search actually ran with, so re-issuing the
+                               // same search (click/Enter again unchanged) reads as "toggle off"
+const searchFilters = {
+  fields: {slug: true, tags: true},
+  brains: null,   // null = every brain in scope; else a Set of "repo/role" keys
+};
+function searchBrainInScope(repo, role){ return !searchFilters.brains || searchFilters.brains.has(brainKey(repo, role)); }
+function searchNoteMatches(nd, ql){
+  if(!searchBrainInScope(nd.repo, nd.role)) return false;
+  const hay = [];
+  if(searchFilters.fields.slug) hay.push(String(nd.slug||"").replace(/[-_]/g, " "));
+  if(searchFilters.fields.tags) hay.push((nd.tags||[]).join(" "));
+  return hay.join("   ").toLowerCase().includes(ql);
+}
+function applySearchToNodes(){
+  const active = searchActive && lastSearchQuery;
+  let count = 0;
+  for(const nd of nodes){
+    nd.searchMatch = !!active && searchNoteMatches(nd, lastSearchQuery);
+    if(nd.searchMatch) count++;
+  }
+  return count;
+}
+function updateSearchUI(count){
+  const clearBtn = document.getElementById("search-clear");
+  const countEl = document.getElementById("search-count");
+  const btn = document.getElementById("search-btn");
+  clearBtn.hidden = !searchActive;
+  countEl.textContent = searchActive ? `${count} match${count===1?"":"es"}` : "";
+  btn.classList.toggle("active", searchActive);
+}
+function triggerSearch(){
+  const q = document.getElementById("search-input").value.trim();
+  if(!q){ clearSearch(); return; }
+  const ql = q.toLowerCase();
+  if(searchActive && ql === lastSearchQuery){ clearSearch(); return; }   // re-issuing the same search de-highlights
+  lastSearchQuery = ql;
+  searchActive = true;
+  updateSearchUI(applySearchToNodes());
+}
+function clearSearch(){
+  searchActive = false;
+  lastSearchQuery = null;
+  for(const nd of nodes) nd.searchMatch = false;
+  updateSearchUI(0);
+}
+// Called after a graph reload rebuilds `nodes` (fresh objects — searchMatch
+// doesn't survive that) and after a filter checkbox changes — re-run the
+// SAME lastSearchQuery against current data/filters without touching the
+// toggle-off logic in triggerSearch().
+function refreshSearchHighlight(){
+  if(!searchActive) return;
+  updateSearchUI(applySearchToNodes());
+}
+
 let lastRawGraph = null;
 async function loadGraph(){
   let g; try { g = await (await fetch("/graph")).json(); } catch { return; }
@@ -845,6 +952,7 @@ function applyGraph(g){
     });
   });
   nodeById = new Map(nodes.map(n=>[n.id,n]));
+  refreshSearchHighlight();   // new node objects each reload — searchMatch must be recomputed, not just carried over
   links = (g.edges||[]).filter(e=>e.type!=="consult").map(e=>({
     a: nodeById.get(e.source), b: nodeById.get(e.target), w: e.weight ?? .5, fires: e.fires ?? 0, key: e.source+"->"+e.target
   })).filter(l=>l.a && l.b);
@@ -938,11 +1046,16 @@ function updateVisuals(){
     const pulse = REDUCED ? 0 : (Math.sin(tick*0.05 + nd.phase)*0.5+0.5)*0.18;
     const base = nd.graduated ? 0.55 : 0.9;
     const hoverBoost = (nd === hoveredNode) ? 0.35 : 0;   // hover-inspection highlight, reuses the hl visual mechanism
-    const rr = nd.r * (1 + pulse*0.15 + nd.hl*0.5 + hoverBoost*0.6);
+    // search highlight: a matched note glows extra (like a sustained hover);
+    // everything else fades near-invisible so matches pop out of a graph of
+    // a thousand+ notes — see triggerSearch()/nd.searchMatch.
+    const searchBoost = (searchActive && nd.searchMatch) ? 0.45 : 0;
+    const dimMul = (searchActive && !nd.searchMatch) ? 0.15 : 1;
+    const rr = nd.r * (1 + pulse*0.15 + nd.hl*0.5 + hoverBoost*0.6 + searchBoost*0.5);
     nd._core.scale.set(rr*2, rr*2, 1);
-    nd._core.material.opacity = Math.min(1, base*0.55 + pulse*0.3 + nd.hl*0.5 + hoverBoost);
-    nd._halo.scale.set(rr*6*(1+nd.hl*0.6+hoverBoost*0.4), rr*6*(1+nd.hl*0.6+hoverBoost*0.4), 1);
-    nd._halo.material.opacity = Math.min(0.75, 0.28 + pulse*0.2 + nd.hl*0.5 + hoverBoost*0.3);
+    nd._core.material.opacity = Math.min(1, (base*0.55 + pulse*0.3 + nd.hl*0.5 + hoverBoost + searchBoost) * dimMul);
+    nd._halo.scale.set(rr*6*(1+nd.hl*0.6+hoverBoost*0.4+searchBoost*0.5), rr*6*(1+nd.hl*0.6+hoverBoost*0.4+searchBoost*0.5), 1);
+    nd._halo.material.opacity = Math.min(0.75, (0.28 + pulse*0.2 + nd.hl*0.5 + hoverBoost*0.3 + searchBoost*0.5) * dimMul);
   }
   // live centroids: cluster glows, role/repo labels and region wireframes
   // track where each group's notes ACTUALLY are right now — the force sim
@@ -992,13 +1105,18 @@ function updateVisuals(){
     pos.setXYZ(0, l.a.x, l.a.y, l.a.z);
     pos.setXYZ(1, l.b.x, l.b.y, l.b.z);
     pos.needsUpdate = true;
-    child.material.opacity = l.baseOpacity + (l===hoveredLink ? 0.45 : 0);   // hover-inspection highlight
+    // search highlight: a synapse touching a matched note stays lit (and
+    // gets a boost); one between two non-matches fades with its endpoints.
+    const synMatch = searchActive && (l.a.searchMatch || l.b.searchMatch);
+    const synDimMul = (searchActive && !synMatch) ? 0.12 : 1;
+    child.material.opacity = (l.baseOpacity + (l===hoveredLink ? 0.45 : 0) + (synMatch ? 0.3 : 0)) * synDimMul;   // hover-inspection highlight
     if(l.pulse){
       // ambient directional drift, source(a) → target(b), ~4.5s per lap,
       // desynced per-link via pulsePhase; deliberately dim/slow relative to
       // the bright event-driven travel pulse in makeTravelAnim.
       const p = ((now*0.00022 + l.pulsePhase) % 1);
       l.pulse.position.set(l.a.x+(l.b.x-l.a.x)*p, l.a.y+(l.b.y-l.a.y)*p, l.a.z+(l.b.z-l.a.z)*p);
+      l.pulse.material.opacity = l.pulse.userData.baseOpacity * synDimMul;
     }
   }
   updateAnims();
@@ -1639,6 +1757,68 @@ gaugesTab.onclick = ()=>{ uiState.panel = false; saveUiState(); applyUiState(); 
 document.getElementById("rightbar-collapse").onclick = ()=>{ uiState.rpanel = true; saveUiState(); applyUiState(); };
 document.getElementById("rightbar-tab").onclick = ()=>{ uiState.rpanel = false; saveUiState(); applyUiState(); };
 applyUiState();
+
+// ---- search bar: wire the button/input/clear + the filters popover ----
+function renderSearchFiltersBrains(){
+  const wrap = document.getElementById("sf-brains");
+  wrap.innerHTML = "";
+  for(const repo of repoList){
+    const roles = (window.__repoRoles||{})[repo] || [];
+    if(!roles.length) continue;
+    const section = document.createElement("div"); section.className = "sf-repo";
+    const h = document.createElement("div"); h.className = "sf-repo-h";
+    const label = document.createElement("span"); label.textContent = dispName(repo);
+    h.appendChild(label);
+    const allBtn = document.createElement("button");
+    allBtn.type = "button"; allBtn.textContent = "all/none";
+    allBtn.onclick = ()=>{
+      const boxes = section.querySelectorAll('input[type="checkbox"]');
+      const anyUnchecked = [...boxes].some(b=>!b.checked);
+      boxes.forEach(b=>{ b.checked = anyUnchecked; });
+      syncSearchBrainFilter();
+    };
+    h.appendChild(allBtn);
+    section.appendChild(h);
+    for(const role of roles){
+      const k = brainKey(repo, role);
+      const row = document.createElement("label");
+      const checked = !searchFilters.brains || searchFilters.brains.has(k);
+      row.innerHTML = `<input type="checkbox" data-key="${escapeHtml(k)}" ${checked?"checked":""}> ${escapeHtml(role)}`;
+      row.querySelector("input").onchange = syncSearchBrainFilter;
+      section.appendChild(row);
+    }
+    wrap.appendChild(section);
+  }
+}
+function syncSearchBrainFilter(){
+  const boxes = document.querySelectorAll('#sf-brains input[type="checkbox"]');
+  const allChecked = [...boxes].every(b=>b.checked);
+  searchFilters.brains = allChecked ? null : new Set([...boxes].filter(b=>b.checked).map(b=>b.dataset.key));
+  refreshSearchHighlight();
+}
+document.getElementById("search-btn").onclick = triggerSearch;
+document.getElementById("search-input").addEventListener("keydown", ev=>{
+  if(ev.key==="Enter"){ ev.preventDefault(); triggerSearch(); }
+});
+document.getElementById("search-clear").onclick = ()=>{
+  document.getElementById("search-input").value = "";
+  clearSearch();
+};
+document.getElementById("sf-field-slug").onchange = ev=>{ searchFilters.fields.slug = ev.target.checked; refreshSearchHighlight(); };
+document.getElementById("sf-field-tags").onchange = ev=>{ searchFilters.fields.tags = ev.target.checked; refreshSearchHighlight(); };
+const searchFiltersBtn = document.getElementById("search-filters-btn");
+const searchFiltersPanel = document.getElementById("search-filters-panel");
+searchFiltersBtn.onclick = (ev)=>{
+  ev.stopPropagation();
+  const willOpen = !searchFiltersPanel.classList.contains("open");
+  if(willOpen) renderSearchFiltersBrains();
+  searchFiltersPanel.classList.toggle("open", willOpen);
+};
+document.addEventListener("click", (ev)=>{
+  if(searchFiltersPanel.classList.contains("open") && !searchFiltersPanel.contains(ev.target) && ev.target!==searchFiltersBtn){
+    searchFiltersPanel.classList.remove("open");
+  }
+});
 
 // ---- settings popover: live GitHub board fetch, off by default ----
 const settingsBtn = document.getElementById("settings-btn");
