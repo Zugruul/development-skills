@@ -1255,39 +1255,53 @@ function step(calibrate){
       }
     }
     const grid = simGrid, gcx = simGcx, gcy = simGcy, gcz = simGcz;
-    // NOTE: duty-cycled steps apply UNSCALED forces — scaling by P and
-    // capping per impulse produced bang-bang dynamics (violent chunky motion
-    // that never calmed). Unscaled means relaxation is just P× slower toward
-    // the SAME equilibrium.
-    const repel = (a,b)=>{   // EXACT same pair force as the all-pairs loop above
+    // Bounded work WITHOUT starving anyone: every cell block is processed
+    // EVERY step, but a block whose pair count exceeds its budget is SAMPLED
+    // — rows iterate with a stride and each sampled pair's force is scaled
+    // by that stride (mean-preserving estimator of the full sum; the
+    // per-impulse cap still bounds any single kick). At target equilibrium
+    // density every stride is 1, i.e. exact physics — sampling only engages
+    // in dense transients. (Two earlier schemes failed measurably: a global
+    // duty cycle over cells starved repulsion for P-1 of every P steps while
+    // springs/gravity pushed every step — the layout compressed and
+    // oscillated, never settling — and pre-scaling force by the duty period
+    // into the impulse cap made bang-bang dynamics.)
+    const BLOCK_BUDGET = 2048;   // max pair evaluations per cell block per step
+    let maxStride = 1;
+    const repel = (a,b,fs)=>{   // same pair force as the all-pairs loop when fs=1
       let dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z, d2=dx*dx+dy*dy+dz*dz||0.01;
-      if(d2 < REP_CUTOFF2){ const f=Math.min(KREP/d2, MAX_PAIR_FORCE), d=Math.sqrt(d2)||0.01; const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
+      if(d2 < REP_CUTOFF2){ const f=Math.min(KREP*fs/d2, MAX_PAIR_FORCE), d=Math.sqrt(d2)||0.01; const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
         a.vx+=fx; a.vy+=fy; a.vz+=fz; b.vx-=fx; b.vy-=fy; b.vz-=fz; }
     };
     const tGrid0 = performance.now();
-    let ci = 0;
     for(const cell of grid.values()){
-      if(simPhaseP > 1 && (ci++ % simPhaseP) !== (simPhaseI % simPhaseP)) continue;
       const i0 = cell[0];
       const cx = gcx[i0], cy = gcy[i0], cz = gcz[i0];
-      for(let ai=0;ai<cell.length;ai++){
+      const m = cell.length;
+      const rowBudget = Math.max(1, Math.floor(BLOCK_BUDGET / m));
+      for(let ai=0;ai<m;ai++){
         const a = nodes[cell[ai]];
-        for(let bi=ai+1;bi<cell.length;bi++) repel(a, nodes[cell[bi]]);
+        const rem = m - ai - 1;
+        if(rem <= 0) break;
+        const stride = Math.max(1, Math.ceil(rem / rowBudget));
+        if(stride > maxStride) maxStride = stride;
+        for(let bi=ai+1+((simPhaseI+ai) % stride); bi<m; bi+=stride) repel(a, nodes[cell[bi]], stride);
       }
       for(const off of GRID_FWD){
         const nkey = (cx+off[0]+512) + (cy+off[1]+512)*1024 + (cz+off[2]+512)*1048576;
         const ncell = grid.get(nkey);
         if(!ncell) continue;
-        for(let ai=0;ai<cell.length;ai++){
+        const stride = Math.max(1, Math.ceil(ncell.length / rowBudget));
+        if(stride > maxStride) maxStride = stride;
+        for(let ai=0;ai<m;ai++){
           const a = nodes[cell[ai]];
-          for(let bi=0;bi<ncell.length;bi++) repel(a, nodes[ncell[bi]]);
+          for(let bi=(simPhaseI+ai) % stride; bi<ncell.length; bi+=stride) repel(a, nodes[ncell[bi]], stride);
         }
       }
     }
     simPhaseI++;
+    simPhaseP = maxStride;   // reported as `p` in /metrics: max sampling stride this step (1 = fully exact)
     lastGridStepMs = performance.now() - tGrid0;
-    if(lastGridStepMs > 24 && simPhaseP < 64) simPhaseP *= 2;
-    else if(lastGridStepMs < 8 && simPhaseP > 1) simPhaseP = Math.max(1, simPhaseP >> 1);
   }
   for(const l of links){
     const dx=l.b.x-l.a.x, dy=l.b.y-l.a.y, dz=l.b.z-l.a.z, d=Math.hypot(dx,dy,dz)||.01;
@@ -1483,7 +1497,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // dev repo / marketplace clone / plugin cache — and "why does it look old"
 // has burned real debugging time). Bump the PATCH on every template change
 // within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.25.11";
+const NV_VERSION = "0.25.12";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
