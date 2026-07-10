@@ -57,6 +57,10 @@ CANONICAL_ROLES (dev/orchestrator/reviewer) unioned with any role that has a
 brain/ dir on disk, per repo. This lets the BRAINS panel show every anchored
 repo with all three roles, dimmed/zero when a role has no notes yet, instead
 of a role silently vanishing because it has no notes to contribute nodes.
+It also returns roots: {repo: absoluteLocalPath} — the client's "Talk" panel
+uses this as the `cwd` of a claude-cli://open deep link (see
+https://code.claude.com/docs/en/deep-links) so a new session opens in the
+right checkout regardless of GitHub repo/clone state.
 
 GET /projects: {repo: {ok, statusCounts:{status:N}, inProgress:[title], inReview:[title]}}
 or {repo: {ok:false, error}} — per-repo board state, read via THIS plugin's
@@ -339,8 +343,12 @@ def build_graph(repos):
         repo_roles[name] = sorted(roles_here)
     role_colors = {name: repo_role_colors(root) for name, root in repos}
     display_names = {name: repo_display_name(root, name) for name, root in repos}
+    # Absolute local path per repo, for the client's "Talk" deep-link panel
+    # (claude-cli://open?cwd=...) — the only thing that reliably resolves a
+    # new session's working directory regardless of GitHub state.
+    roots = {name: str(root) for name, root in repos}
     return {"nodes": nodes, "edges": edges, "repos": [name for name, _ in repos], "repoRoles": repo_roles,
-            "roleColors": role_colors, "displayNames": display_names}
+            "roleColors": role_colors, "displayNames": display_names, "roots": roots}
 
 
 def repo_role_colors(root):

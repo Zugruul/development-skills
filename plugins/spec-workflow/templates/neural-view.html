@@ -70,6 +70,34 @@ canvas.grabbing{cursor:grabbing}
   color:var(--fg);cursor:pointer}
 #settings-panel .hint{font-size:.58rem;color:var(--muted);line-height:1.4}
 
+/* Talk panel (left bar → deep-link a new session, see docs.claude.com/en/deep-links) */
+.hud#talk-panel{top:70px;left:292px;width:320px;max-height:calc(100vh - 100px);overflow:auto;
+  padding:.75rem .85rem;display:none;flex-direction:column;gap:.55rem;z-index:60;
+  background:var(--panel-solid);backdrop-filter:none;-webkit-backdrop-filter:none}
+.hud#talk-panel.open{display:flex}
+.talk-head{display:flex;justify-content:space-between;align-items:center}
+.talk-head .secthead{cursor:default}
+.talk-head .secthead::before{content:""}
+.talk-head .close{cursor:pointer;color:var(--muted);border:0;background:none;font-size:.9rem;font-family:var(--mono)}
+.talk-head .close:hover{color:var(--cyan)}
+.tlabel{display:flex;flex-direction:column;gap:.3rem;font-size:.58rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted)}
+.tfield,#talk-panel select,#talk-panel input,#talk-panel textarea{background:rgba(10,20,34,.6);
+  border:1px solid var(--border);color:var(--fg);border-radius:6px;font-family:var(--mono);
+  font-size:.72rem;padding:.32rem .45rem;width:100%}
+#talk-panel textarea{resize:vertical;min-height:70px}
+.talk-name-row{display:flex;gap:.4rem}
+.talk-name-row input{flex:1}
+.talk-preview{font-size:.6rem;line-height:1.4;color:var(--slate);white-space:pre-wrap;
+  word-break:break-word;background:rgba(255,255,255,.03);border:1px solid rgba(90,190,255,.12);
+  border-radius:6px;padding:.4rem .5rem;max-height:90px;overflow:auto}
+.talk-count{font-size:.56rem;color:var(--muted);text-align:right}
+.talk-count.over{color:#ff6b6b}
+.talk-actions{display:flex;gap:.5rem;justify-content:flex-end}
+.talk-actions .iconbtn{padding:.32rem .7rem;text-transform:uppercase;letter-spacing:.08em;font-size:.62rem}
+.talk-actions .iconbtn.primary{color:var(--cyan);border-color:var(--cyan-dim);background:rgba(70,230,255,.08)}
+#talk-panel .hint{font-size:.58rem;color:var(--muted);line-height:1.4}
+
 /* gauges (top-left, below topbar) */
 #gauges{top:70px;left:14px;width:264px;max-height:calc(100vh - 130px);overflow:auto;
   padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease}
@@ -107,7 +135,15 @@ canvas.grabbing{cursor:grabbing}
    .label letter-spacing (.28em) wrapped/clipped STR/SYN on long role names */
 .brainrow .label{font-size:.56rem;letter-spacing:.06em;white-space:nowrap}
 .brainrow-empty{opacity:.4}
+.brainrow-hidden{opacity:.35}
+.brainrow-hidden .rname{text-decoration:line-through;text-decoration-color:var(--cyan-dim)}
 .arc{width:28px;height:28px;flex:none}
+.eyebtn{flex:none;background:none;border:0;color:var(--muted);cursor:pointer;font-size:.66rem;
+  padding:.1rem .2rem;line-height:1}
+.eyebtn:hover{color:var(--cyan)}
+.brainrow-hidden .eyebtn{color:var(--amber)}
+/* loop-active badge (best-effort — see loopSessionsFor()) on repo labels/tooltips */
+.tt-loop{color:var(--amber)}
 
 /* ticker (bottom) */
 /* activation log — right sidebar, mirroring the left panel's collapse UX */
@@ -214,7 +250,10 @@ canvas.grabbing{cursor:grabbing}
 <div class="hud" id="gauges">
   <div id="gauges-head">
     <button class="secthead" id="sect-brains" aria-expanded="true">Brains</button>
-    <button class="iconbtn" id="gauges-collapse" title="Hide panel" aria-label="Hide panel">⟨</button>
+    <div style="display:flex;gap:.3rem">
+      <button class="iconbtn" id="talk-btn" title="Talk — open a new session via deep link" aria-label="Talk" aria-haspopup="true">✎ talk</button>
+      <button class="iconbtn" id="gauges-collapse" title="Hide panel" aria-label="Hide panel">⟨</button>
+    </div>
   </div>
   <div id="gauge-list"></div>
   <div id="boards-head" hidden>
@@ -224,6 +263,34 @@ canvas.grabbing{cursor:grabbing}
   <div id="project-list"></div>
 </div>
 <button class="hud" id="gauges-tab" title="Show panel" aria-label="Show panel" hidden>⟩</button>
+
+<div class="hud" id="talk-panel" aria-hidden="true">
+  <div class="talk-head">
+    <span class="secthead">Talk</span>
+    <button class="close" id="talk-close" aria-label="Close">✕</button>
+  </div>
+  <label class="tlabel">Repo
+    <select id="talk-repo"></select>
+  </label>
+  <label class="tlabel">Session name
+    <div class="talk-name-row">
+      <input id="talk-project" placeholder="project" spellcheck="false">
+      <input id="talk-slug" placeholder="slug, e.g. build-loop" spellcheck="false">
+    </div>
+  </label>
+  <label class="tlabel">Prompt
+    <textarea id="talk-prompt" rows="5" placeholder="What should the new session do?"></textarea>
+  </label>
+  <div class="talk-preview" id="talk-preview"></div>
+  <div class="talk-count" id="talk-count"></div>
+  <div class="talk-actions">
+    <button class="iconbtn" id="talk-copy" title="Copy the deep link instead of opening it">Copy link</button>
+    <button class="iconbtn primary" id="talk-send" title="Open claude-cli://open with this prompt">Send ↗</button>
+  </div>
+  <div class="hint">Opens a <code>claude-cli://open</code> deep link — a new terminal session starts
+    in the chosen repo with the text above pre-filled, prefixed by a <code>/rename</code> so it gets
+    a short, greppable name. Nothing is sent to Claude until you press Enter in that session.</div>
+</div>
 
 <div class="hud" id="rightbar">
   <div id="rightbar-head">
@@ -595,7 +662,8 @@ function rebuildScene(){
       mesh.userData = {kind:"repoRegion", repo};
       sceneGroup.add(mesh);
       const sessN = sessionCountFor(repo);
-      const labelText = dispName(repo).toUpperCase() + (sessN ? ` · ${sessN} LIVE` : "");
+      const loopN = loopSessionsFor(repo).length;
+      const labelText = dispName(repo).toUpperCase() + (sessN ? ` · ${sessN} LIVE` : "") + (loopN ? " · ↻ LOOP" : "");
       const label = makeLabelSprite(labelText, sessN ? 45 : 190, 22);
       label.position.set(rc.x, rc.y+rad+26, rc.z);
       label.userData = {kind:"repoLabel", repo};
@@ -690,15 +758,44 @@ function rebuildScene(){
   }
 }
 
+// ---- brain visibility (hide a repo/role brain to focus on others — the
+// scene, totals and gauge counts all exclude a hidden brain's notes; the
+// gauge row itself stays visible, struck through, with an eye toggle to
+// bring it back). Persisted in uiState like the other panel toggles. ----
+function brainKey(repo,role){ return repo+"/"+role; }
+function isBrainHidden(repo,role){ return !!(uiState.hiddenBrains||{})[brainKey(repo,role)]; }
+function toggleBrainHidden(repo,role){
+  uiState.hiddenBrains = uiState.hiddenBrains || {};
+  const k = brainKey(repo,role);
+  if(uiState.hiddenBrains[k]) delete uiState.hiddenBrains[k]; else uiState.hiddenBrains[k] = true;
+  saveUiState();
+  if(lastRawGraph) applyGraph(lastRawGraph);   // re-filter/re-render without a round trip to the server
+}
+function hiddenBrainCountFor(repo){
+  const hidden = uiState.hiddenBrains||{};
+  return Object.keys(hidden).filter(k=>k.startsWith(repo+"/")).length;
+}
+
+let lastRawGraph = null;
 async function loadGraph(){
   let g; try { g = await (await fetch("/graph")).json(); } catch { return; }
+  lastRawGraph = g;
+  applyGraph(g);
+}
+function applyGraph(g){
   const prev = nodeById;
-  roles = [...new Set(g.nodes.map(n=>n.role))].sort();
-  repoList = (g.repos && g.repos.length) ? [...g.repos].sort() : [...new Set(g.nodes.map(n=>n.repo))].sort();
+  repoList = (g.repos && g.repos.length) ? [...g.repos].sort() : [...new Set((g.nodes||[]).map(n=>n.repo))].sort();
   window.__repoRoles = g.repoRoles || {};
   window.__roleColors = g.roleColors || {};
   window.__repoDisplay = g.displayNames || {};
-  nodes = g.nodes.map(n=>{
+  window.__repoRoots = g.roots || {};
+  const rawNodes = g.nodes || [];
+  const rawCounts = {};
+  for(const n of rawNodes){ const k = brainKey(n.repo, n.role); rawCounts[k] = (rawCounts[k]||0) + 1; }
+  window.__brainRawCounts = rawCounts;
+  const visibleNodes = rawNodes.filter(n=>!isBrainHidden(n.repo, n.role));
+  roles = [...new Set(visibleNodes.map(n=>n.role))].sort();
+  nodes = visibleNodes.map(n=>{
     const old = prev.get(n.id);
     return Object.assign(n, {
       // world coords — spawn near origin, gravity pulls into place
@@ -708,10 +805,10 @@ async function loadGraph(){
     });
   });
   nodeById = new Map(nodes.map(n=>[n.id,n]));
-  links = g.edges.filter(e=>e.type!=="consult").map(e=>({
+  links = (g.edges||[]).filter(e=>e.type!=="consult").map(e=>({
     a: nodeById.get(e.source), b: nodeById.get(e.target), w: e.weight ?? .5, fires: e.fires ?? 0, key: e.source+"->"+e.target
   })).filter(l=>l.a && l.b);
-  window.__consultEdges = g.edges.filter(e=>e.type==="consult");
+  window.__consultEdges = (g.edges||[]).filter(e=>e.type==="consult" && !isBrainHidden(e.source.split("/")[0], e.source.split("/")[1]) && !isBrainHidden(e.target.split("/")[0], e.target.split("/")[1]));
   layoutClusters();
   rebuildScene();
   // The FIRST graph with content always fits, even if userMoved — /graph can
@@ -726,7 +823,10 @@ async function loadGraph(){
   document.getElementById("t-links").textContent = links.length;
   document.getElementById("t-brains").textContent = roles.length;
   document.getElementById("t-repos").textContent = repoList.length;
-  document.getElementById("empty").style.display = nodes.length ? "none" : "grid";
+  // rawNodes.length (not nodes.length): hiding every brain must not show the
+  // "no brains yet" empty-state — that message means no identity has ever
+  // learned anything, which hidden-but-populated brains contradict.
+  document.getElementById("empty").style.display = rawNodes.length ? "none" : "grid";
   renderGauges();
 }
 
@@ -1016,19 +1116,32 @@ function renderGauges(){
     const rows=document.createElement("div"); rows.className = "repo-brains-rows" + (collapsed?" collapsed":"");
     for(const role of orderedRoles(repo)){
       const k=clusterKey(repo,role); const s=perCombo.get(k);
+      const hidden = isBrainHidden(repo, role);
       const n=s?s.n:0, avg=(s&&s.n)?s.str/s.n:0, lk=linkCount.get(k)||0;
       const hue=comboHue(repo, role);
-      const row=document.createElement("div"); row.className = n ? "brainrow" : "brainrow brainrow-empty";
+      const row=document.createElement("div");
+      row.className = (n ? "brainrow" : "brainrow brainrow-empty") + (hidden ? " brainrow-hidden" : "");
       row.tabIndex = 0;
       row.setAttribute("role", "button");
       row.setAttribute("aria-label", `Fly to ${role} in ${repo}`);
       row.onclick = ()=>flyToCluster(repo, role);
       row.onkeydown = ev=>{ if(ev.key==="Enter"){ ev.preventDefault(); flyToCluster(repo, role); } };
+      const rawN = (window.__brainRawCounts||{})[k] || 0;
       row.innerHTML =
         arc(n/maxN, hue, n) +
         `<div class="rname" style="color:${cssColor(hue,72,.95)}">${escapeHtml(role)}</div>` +
-        `<div class="label" title="avg strength">str <span class="val">${avg.toFixed(1)}</span></div>` +
-        `<div class="label" title="synapses">syn <span class="val">${lk}</span></div>`;
+        (hidden
+          ? `<div class="label" title="${rawN} note(s), excluded from totals">hidden</div>`
+          : `<div class="label" title="avg strength">str <span class="val">${avg.toFixed(1)}</span></div>` +
+            `<div class="label" title="synapses">syn <span class="val">${lk}</span></div>`);
+      const eye=document.createElement("button");
+      eye.className = "eyebtn"; eye.type = "button";
+      eye.title = hidden ? `Show ${role} in totals/scene again` : `Hide ${role} from totals/scene`;
+      eye.setAttribute("aria-label", eye.title);
+      eye.textContent = hidden ? "◌" : "●";
+      eye.onclick = ev=>{ ev.stopPropagation(); toggleBrainHidden(repo, role); };
+      eye.onkeydown = ev=>ev.stopPropagation();
+      row.appendChild(eye);
       rows.appendChild(row);
     }
     section.appendChild(rows);
@@ -1054,6 +1167,18 @@ function arc(frac, hue, label){
 window.__projects = {};
 window.__sessions = [];
 function sessionCountFor(repo){ return (window.__sessions||[]).filter(s=>s.repo===repo).length; }
+// Best-effort "a /loop or /build-next iteration is running" badge. There is
+// no real heartbeat — GET /sessions deliberately only exposes a job's
+// name/state/cwd (never transcript/detail content, see discover_sessions()
+// server-side), and a loop's job name is whatever label the harness/user
+// picked, not the command that's running. This just flags a "working" job
+// whose name happens to mention loop/build-next; it will miss loops running
+// under an unrelated name and can't tell a loop from a manual session named
+// "loop-fix-thing". Treat the badge as a hint, not a fact.
+function loopSessionsFor(repo){
+  return (window.__sessions||[]).filter(s=>s.repo===repo && s.state==="working" &&
+    /\bloop\b|build-next|build-loop/i.test(s.description||""));
+}
 async function loadProjects(){
   let data; try{ data = await (await fetch("/projects")).json(); }catch{ return; }
   window.__projects = data && typeof data==="object" ? data : {};
@@ -1159,9 +1284,12 @@ function tooltipHtml(ud){
       projHtml = `<div class="tt-sub">${counts||"no items"}</div>`;
     }
     const sess = sessionCountFor(repo);
+    const loopN = loopSessionsFor(repo).length;
+    const hiddenN = hiddenBrainCountFor(repo);
     return `<div class="tt-kind">repo</div><div class="tt-title">${escapeHtml(dispName(repo))}</div>`+
-      `<div class="tt-sub">${inRepo.length} note(s) · ${brains} brain(s)</div>${projHtml}`+
-      (sess ? `<div class="tt-sub">${sess} active session(s)</div>` : "");
+      `<div class="tt-sub">${inRepo.length} note(s) · ${brains} brain(s)${hiddenN ? ` · ${hiddenN} hidden` : ""}</div>${projHtml}`+
+      (sess ? `<div class="tt-sub">${sess} active session(s)</div>` : "")+
+      (loopN ? `<div class="tt-sub tt-loop">↻ ${loopN} loop/build session(s) (best-effort — name match)</div>` : "");
   }
   if(ud.kind==="synapse" || ud.kind==="synapsePulse"){
     const l = ud.link;
@@ -1442,6 +1570,83 @@ boardsRefreshBtn.onclick = (ev)=>{
   clearTimeout(boardsRefreshBtn._spinTimer);
   boardsRefreshBtn._spinTimer = setTimeout(()=>boardsRefreshBtn.classList.remove("spin"), BOARDS_REFRESH_MIN_MS);
 };
+// ---- Talk panel: compose a claude-cli://open deep link to launch a new
+// Claude Code session in a chosen repo with a pre-filled prompt. See
+// https://code.claude.com/docs/en/deep-links — the link only fills the
+// prompt box, it never auto-sends. We prefix the prompt with `/rename
+// <project> <slug>` so the new session gets a short, greppable name instead
+// of an auto-generated one; the composed text is shown verbatim in the
+// preview box so you can check it (and edit the fields) before sending. ----
+const Q_MAX = 5000;   // deep-link `q` hard limit per the docs
+const talkBtn = document.getElementById("talk-btn");
+const talkPanel = document.getElementById("talk-panel");
+const talkRepoSel = document.getElementById("talk-repo");
+const talkProjectInput = document.getElementById("talk-project");
+const talkSlugInput = document.getElementById("talk-slug");
+const talkPromptInput = document.getElementById("talk-prompt");
+const talkPreview = document.getElementById("talk-preview");
+const talkCount = document.getElementById("talk-count");
+
+function talkProjectDefault(repo){
+  // "@event-sorc/monorepo" -> "event-sorc"; else fall back to the repo key.
+  const disp = dispName(repo) || repo || "";
+  const m = disp.match(/^@([a-z0-9._-]+)\//i);
+  return (m ? m[1] : repo || "").toLowerCase();
+}
+function buildTalkText(){
+  const project = talkProjectInput.value.trim();
+  const slug = talkSlugInput.value.trim();
+  const prompt = talkPromptInput.value.trim();
+  const nameArgs = [project, slug].filter(Boolean).join(" ");
+  const rename = nameArgs ? `/rename ${nameArgs}` : "";
+  return [rename, prompt].filter(Boolean).join("\n");
+}
+function buildTalkUrl(){
+  const repo = talkRepoSel.value;
+  const cwd = (window.__repoRoots||{})[repo];
+  const text = buildTalkText();
+  const parts = [];
+  if(cwd) parts.push("cwd="+encodeURIComponent(cwd));
+  if(text) parts.push("q="+encodeURIComponent(text));
+  return "claude-cli://open" + (parts.length ? "?"+parts.join("&") : "");
+}
+function updateTalkPreview(){
+  const text = buildTalkText();
+  talkPreview.textContent = text || "(empty — type a prompt below)";
+  talkCount.textContent = `${text.length} / ${Q_MAX}`;
+  talkCount.classList.toggle("over", text.length > Q_MAX);
+}
+function openTalkPanel(){
+  const cur = talkRepoSel.value;
+  talkRepoSel.innerHTML = repoList.map(r=>`<option value="${escapeHtml(r)}">${escapeHtml(dispName(r))}</option>`).join("");
+  talkRepoSel.value = (cur && repoList.includes(cur)) ? cur : (repoList[0] || "");
+  if(!talkProjectInput.value) talkProjectInput.value = talkProjectDefault(talkRepoSel.value);
+  talkPanel.classList.add("open"); talkPanel.setAttribute("aria-hidden","false");
+  updateTalkPreview();
+  talkPromptInput.focus();
+}
+function closeTalkPanel(){ talkPanel.classList.remove("open"); talkPanel.setAttribute("aria-hidden","true"); }
+talkBtn.onclick = (ev)=>{ ev.stopPropagation(); talkPanel.classList.contains("open") ? closeTalkPanel() : openTalkPanel(); };
+document.getElementById("talk-close").onclick = closeTalkPanel;
+document.addEventListener("click", (ev)=>{
+  if(talkPanel.classList.contains("open") && !talkPanel.contains(ev.target) && ev.target!==talkBtn){
+    closeTalkPanel();
+  }
+});
+talkRepoSel.onchange = ()=>{ talkProjectInput.value = talkProjectDefault(talkRepoSel.value); updateTalkPreview(); };
+for(const el of [talkProjectInput, talkSlugInput, talkPromptInput]) el.addEventListener("input", updateTalkPreview);
+document.getElementById("talk-send").onclick = ()=>{
+  const text = buildTalkText();
+  if(text.length > Q_MAX) return;
+  window.location.href = buildTalkUrl();
+};
+document.getElementById("talk-copy").onclick = async ()=>{
+  const btn = document.getElementById("talk-copy");
+  try{ await navigator.clipboard.writeText(buildTalkUrl()); btn.textContent = "Copied"; }
+  catch{ btn.textContent = "Copy failed"; }
+  setTimeout(()=>{ btn.textContent = "Copy link"; }, 1200);
+};
+
 const panel=document.getElementById("inspect");
 document.getElementById("inspect-close").onclick=()=>{ panel.classList.remove("open"); panel.setAttribute("aria-hidden","true"); panel.setAttribute("inert",""); };
 async function openNote(nd){
