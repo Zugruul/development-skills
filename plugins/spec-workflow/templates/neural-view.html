@@ -311,10 +311,10 @@ canvas.grabbing{cursor:grabbing}
     <button class="iconbtn primary" id="talk-send" title="Open claude-cli://open with this prompt">Send ↗</button>
   </div>
   <div class="hint">Opens a <code>claude-cli://open</code> deep link — a new terminal session starts
-    in the chosen repo and asks the question via <code>/ask-identity</code> (one role) or
-    <code>/ask-brain</code> (whole repo, when Identity is "whole brain") — both are read-only
-    consults, see the <code>ask-identity</code>/<code>ask-brain</code> skills — then picks up the
-    trailing <code>/rename</code> line to name itself. Nothing is sent to Claude until you press
+    in the chosen repo and asks the question via <code>/spec-workflow:ask-identity</code> (one role)
+    or <code>/spec-workflow:ask-brain</code> (whole repo, when Identity is "whole brain") — both are
+    read-only consults, see the <code>ask-identity</code>/<code>ask-brain</code> skills — then picks
+    up the trailing <code>/rename</code> line to name itself. Nothing is sent to Claude until you press
     Enter in that session.</div>
 </div>
 
@@ -1669,17 +1669,23 @@ boardsRefreshBtn.onclick = (ev)=>{
 // ---- Talk panel: compose a claude-cli://open deep link to launch a new
 // Claude Code session in a chosen repo with a pre-filled prompt. See
 // https://code.claude.com/docs/en/deep-links — the link only fills the
-// prompt box, it never auto-sends. The prompt is two lines: a `/rename
-// <project> <slug>` so the new session gets a short, greppable name instead
-// of an auto-generated one, then either `/ask-identity <role> <question>`
-// (one brain) or `/ask-brain <question>` (whole repo, "whole brain" picked)
-// — both are read-only brain consults, see the ask-identity/ask-brain
-// skills. There is deliberately no free-form "just open a session" mode
-// here: Talk is scoped to a brain or an identity, never a bare repo. The
-// composed text is shown verbatim in the preview box so you can check it
+// prompt box, it never auto-sends. The prompt is two lines: either
+// `/spec-workflow:ask-identity <role> <question>` (one brain) or
+// `/spec-workflow:ask-brain <question>` (whole repo, "whole brain" picked)
+// first, then `/rename <project> <slug>` trailing on its own line — both
+// ask-* are read-only brain consults, see the ask-identity/ask-brain
+// skills. Skills are ALWAYS namespaced by plugin name ("/plugin:skill"),
+// never bare — see SKILL_NS below. There is deliberately no free-form "just
+// open a session" mode here: Talk is scoped to a brain or an identity,
+// never a bare repo. The composed text is shown verbatim in the preview box
+// so you can check it
 // (and edit the fields) before sending. ----
 const Q_MAX = 5000;   // deep-link `q` hard limit per the docs
-const WHOLE_BRAIN = "";   // talk-identity value meaning "/ask-brain", not a specific role
+const WHOLE_BRAIN = "";   // talk-identity value meaning "/spec-workflow:ask-brain", not a specific role
+// Skills are namespaced by plugin name ("/plugin-name:skill-name"), never
+// bare — a bare "/ask-identity" 404s as "Unknown command" even once the
+// skill exists and the plugin is up to date. Must match plugin.json's name.
+const SKILL_NS = "spec-workflow";
 const talkPanel = document.getElementById("talk-panel");
 const talkRepoSel = document.getElementById("talk-repo");
 const talkIdentitySel = document.getElementById("talk-identity");
@@ -1709,7 +1715,7 @@ function buildTalkText(){
   const identity = talkIdentitySel.value;
   const nameArgs = [project, slug].filter(Boolean).join(" ");
   const rename = nameArgs ? `/rename ${nameArgs}` : "";
-  const ask = prompt ? (identity ? `/ask-identity ${identity} ${prompt}` : `/ask-brain ${prompt}`) : "";
+  const ask = prompt ? (identity ? `/${SKILL_NS}:ask-identity ${identity} ${prompt}` : `/${SKILL_NS}:ask-brain ${prompt}`) : "";
   // /ask-* goes FIRST, /rename LAST. The harness only recognizes a slash
   // command on the first line of the input; whichever came first was the
   // only one that actually ran, and /rename-first silently ate the ask.

@@ -1,6 +1,6 @@
 ---
 name: ask-brain
-description: Ask a repo's identity brains collectively (every role that has a .claude/identities/<role>/brain/, not just one) a question grounded in what they've learned, without running a build iteration or touching the board. Use for '/ask-brain <question>' — e.g. clicked from a neural-view "Talk" deep link when you want the whole repo's accumulated knowledge rather than one specific identity (for that, use /ask-identity instead).
+description: Ask a repo's identity brains collectively (every role that has a .claude/identities/<role>/brain/, not just one) a question grounded in what they've learned, without running a build iteration or touching the board. Use for '/spec-workflow:ask-brain <question>' — e.g. clicked from a neural-view "Talk" deep link when you want the whole repo's accumulated knowledge rather than one specific identity (for that, use /spec-workflow:ask-identity instead).
 allowed-tools: Bash, Read
 ---
 
