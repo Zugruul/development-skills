@@ -171,8 +171,14 @@ canvas.grabbing{cursor:grabbing}
 #rightbar-tab{position:fixed;top:70px;right:0;z-index:20;border-right:0;border-radius:8px 0 0 8px;
   padding:.55rem .4rem;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:.8rem}
 #rightbar-tab:hover{color:var(--cyan)}
-#tickerlog{font-size:.62rem;line-height:1.55;color:var(--slate)}
-#tickerlog .ev{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tickerlog{font-size:.62rem;line-height:1.5;color:var(--slate)}
+#tickerlog .ev{padding:.28rem 0;border-top:1px solid rgba(90,190,255,.1)}
+#tickerlog .ev:first-child{border-top:0}
+/* head (time · repo tag · ROLE · kind) stays one line — it's short and
+   never the part that was overflowing; the note/link name is what got
+   truncated to an unreadable "inject deco…", so only IT wraps. */
+#tickerlog .ev-head{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tickerlog .ev-note{white-space:normal;overflow-wrap:break-word;color:var(--muted);margin-top:.12rem}
 #tickerlog .k{color:var(--cyan)}
 #tickerlog .warn{color:var(--amber)}
 #tickerlog .t{color:#7c92a6}
@@ -854,12 +860,22 @@ function applyGraph(g){
 function step(){
   if(!webglOK) return;
   const KREP = 2600, KSPRING = 0.012, KGRAV = 0.015, DAMP = 0.86;
+  // Two hard caps against the sim "exploding" — nodes rocketing off past the
+  // camera in one frame, seen on brains with hundreds of notes (e.g.
+  // fab-cli/judge at ~570). All nodes spawn in the same small ±130 cube
+  // around the origin regardless of final cluster (see loadGraph's spawn
+  // comment), so with enough of them a few pairs land nearly coincident by
+  // chance; d2 for those pairs can be a small fraction of 1, and
+  // f=KREP/d2 (uncapped) turns into millions — a single-frame velocity
+  // spike DAMP alone can't tame before it's already off-screen.
+  const MAX_PAIR_FORCE = 40;   // caps any one repulsion impulse, however close the pair is
+  const MAX_SPEED = 40;        // coarser backstop: whatever produced it, no node teleports in one step
   for(let i=0;i<nodes.length;i++){
     const a = nodes[i];
     for(let j=i+1;j<nodes.length;j++){
       const b = nodes[j];
       let dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z, d2=dx*dx+dy*dy+dz*dz||0.01;
-      if(d2 < 90000){ const f=KREP/d2, d=Math.sqrt(d2); const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
+      if(d2 < 90000){ const f=Math.min(KREP/d2, MAX_PAIR_FORCE), d=Math.sqrt(d2)||0.01; const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
         a.vx+=fx; a.vy+=fy; a.vz+=fz; b.vx-=fx; b.vy-=fy; b.vz-=fz; }
     }
   }
@@ -873,6 +889,8 @@ function step(){
     const c = clusters.get(clusterKey(nd.repo,nd.role));
     if(c){ nd.vx += (c.x-nd.x)*KGRAV; nd.vy += (c.y-nd.y)*KGRAV; nd.vz += (c.z-nd.z)*KGRAV; }
     nd.vx*=DAMP; nd.vy*=DAMP; nd.vz*=DAMP;
+    const speed = Math.hypot(nd.vx, nd.vy, nd.vz);
+    if(speed > MAX_SPEED){ const s = MAX_SPEED/speed; nd.vx*=s; nd.vy*=s; nd.vz*=s; }
     nd.x+=nd.vx; nd.y+=nd.vy; nd.z+=nd.vz;
     if(nd.hl>0) nd.hl = Math.max(0, nd.hl - 0.018);
   }
@@ -1090,12 +1108,17 @@ async function poll(){
 const LOG = document.getElementById("tickerlog");
 function logEvent(e){
   const div=document.createElement("div"); div.className="ev";
-  const t=(e.ts||"").replace("T"," ").replace(/\..*/,"").slice(11) || "--:--:--";
+  // HH:MM:SS only — e.ts is a full ISO timestamp ("...T05:11:34+00:00"); the
+  // old slice(11) kept everything after that including the "+00:00" offset,
+  // which is noise nobody reads in a live-scrolling log.
+  const tm = (e.ts||"").match(/T(\d{2}:\d{2}:\d{2})/);
+  const t = tm ? tm[1] : "--:--:--";
   const kind = e.event||"?";
   const cls = kind==="consult" ? "warn" : "k";
-  const what = e.note ? " "+e.note : (e.link?" "+e.link:"");
+  const what = e.note || e.link || "";
   const tag = (repoList.length>1 && e.repo) ? `<span class="t">[${escapeHtml(e.repo)}]</span> ` : "";
-  div.innerHTML = `<span class="t">${t}</span> ${tag}<span class="${cls}">${(e.role||"?").toUpperCase()} · ${kind}</span>${escapeHtml(what)}`;
+  div.innerHTML = `<div class="ev-head"><span class="t">${t}</span> ${tag}<span class="${cls}">${(e.role||"?").toUpperCase()} · ${kind}</span></div>` +
+    (what ? `<div class="ev-note">${escapeHtml(what)}</div>` : "");
   LOG.prepend(div);
   while(LOG.childNodes.length>40) LOG.lastChild.remove();   // sidebar has vertical room the old bottom strip lacked
 }
