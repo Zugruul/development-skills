@@ -1196,6 +1196,7 @@ const REP_CUTOFF = 300, REP_CUTOFF2 = REP_CUTOFF*REP_CUTOFF;
 // for every scene that fits the budget — the current 1x graph never engages
 // this.
 let simPhaseP = 1, simPhaseI = 0, lastGridStepMs = 0;
+let simGrid = null, simGridN = -1, simGcx = null, simGcy = null, simGcz = null;   // cached spatial grid (see step)
 // The 13 "forward" neighbor offsets (half of the 26 surrounding cells):
 // visiting only the forward half enumerates each cross-cell pair exactly once,
 // mirroring the all-pairs loop's j>i asymmetry.
@@ -1234,24 +1235,33 @@ function step(calibrate){
     }
   } else {
     // grid repulsion — same pairs, same forces, no O(n²) scan.
-    // bucket nodes into cutoff-sized cells (coords clamped to keep keys
-    // unique; MAX_SPEED bounds real positions far inside that range anyway)
-    const grid = new Map();
-    const gcx = new Int32Array(nodes.length), gcy = new Int32Array(nodes.length), gcz = new Int32Array(nodes.length);
-    const clampC = c => c < -500 ? -500 : (c > 500 ? 500 : c);
-    for(let i=0;i<nodes.length;i++){
-      const n = nodes[i];
-      const cx = clampC(Math.floor(n.x/REP_CUTOFF)), cy = clampC(Math.floor(n.y/REP_CUTOFF)), cz = clampC(Math.floor(n.z/REP_CUTOFF));
-      gcx[i]=cx; gcy[i]=cy; gcz[i]=cz;
-      const key = (cx+512) + (cy+512)*1024 + (cz+512)*1048576;
-      let cell = grid.get(key);
-      if(!cell){ cell = []; grid.set(key, cell); }
-      cell.push(i);
+    // The grid itself is CACHED and rebuilt every few steps: at 60k nodes the
+    // per-step Map churn alone cost ~15-25ms, pinning the duty cycle high.
+    // Nodes move ≤ MAX_SPEED per step and the cutoff has slack, so a grid a
+    // few steps stale misses nothing that matters.
+    if(!simGrid || nodes.length !== simGridN || (simPhaseI % 8) === 0){
+      simGrid = new Map();
+      simGridN = nodes.length;
+      simGcx = new Int32Array(nodes.length); simGcy = new Int32Array(nodes.length); simGcz = new Int32Array(nodes.length);
+      const clampC = c => c < -500 ? -500 : (c > 500 ? 500 : c);
+      for(let i=0;i<nodes.length;i++){
+        const n = nodes[i];
+        const cx = clampC(Math.floor(n.x/REP_CUTOFF)), cy = clampC(Math.floor(n.y/REP_CUTOFF)), cz = clampC(Math.floor(n.z/REP_CUTOFF));
+        simGcx[i]=cx; simGcy[i]=cy; simGcz[i]=cz;
+        const key = (cx+512) + (cy+512)*1024 + (cz+512)*1048576;
+        let cell = simGrid.get(key);
+        if(!cell){ cell = []; simGrid.set(key, cell); }
+        cell.push(i);
+      }
     }
-    const FS = simPhaseP;   // duty-cycle force scale — 1 (exact) unless a step measured over budget
-    const repel = (a,b)=>{   // same pair force as the all-pairs loop above (scaled by FS when duty-cycling)
+    const grid = simGrid, gcx = simGcx, gcy = simGcy, gcz = simGcz;
+    // NOTE: duty-cycled steps apply UNSCALED forces — scaling by P and
+    // capping per impulse produced bang-bang dynamics (violent chunky motion
+    // that never calmed). Unscaled means relaxation is just P× slower toward
+    // the SAME equilibrium.
+    const repel = (a,b)=>{   // EXACT same pair force as the all-pairs loop above
       let dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z, d2=dx*dx+dy*dy+dz*dz||0.01;
-      if(d2 < REP_CUTOFF2){ const f=Math.min(KREP*FS/d2, MAX_PAIR_FORCE), d=Math.sqrt(d2)||0.01; const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
+      if(d2 < REP_CUTOFF2){ const f=Math.min(KREP/d2, MAX_PAIR_FORCE), d=Math.sqrt(d2)||0.01; const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
         a.vx+=fx; a.vy+=fy; a.vz+=fz; b.vx-=fx; b.vy-=fy; b.vz-=fz; }
     };
     const tGrid0 = performance.now();
@@ -1276,8 +1286,8 @@ function step(calibrate){
     }
     simPhaseI++;
     lastGridStepMs = performance.now() - tGrid0;
-    if(lastGridStepMs > 40 && simPhaseP < 64) simPhaseP *= 2;
-    else if(lastGridStepMs < 10 && simPhaseP > 1) simPhaseP = Math.max(1, simPhaseP >> 1);
+    if(lastGridStepMs > 24 && simPhaseP < 64) simPhaseP *= 2;
+    else if(lastGridStepMs < 8 && simPhaseP > 1) simPhaseP = Math.max(1, simPhaseP >> 1);
   }
   for(const l of links){
     const dx=l.b.x-l.a.x, dy=l.b.y-l.a.y, dz=l.b.z-l.a.z, d=Math.hypot(dx,dy,dz)||.01;
@@ -1473,7 +1483,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // dev repo / marketplace clone / plugin cache — and "why does it look old"
 // has burned real debugging time). Bump the PATCH on every template change
 // within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.25.10";
+const NV_VERSION = "0.25.11";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -1541,13 +1551,22 @@ function frame(){
     lastStepMs = nowMs;
   } else if(nowMs - lastStepMs >= simStepMs){
     lastStepMs = nowMs;
-    const needCalibration = nodes.length && Math.abs(nodes.length - simCalibratedN) > Math.max(50, simCalibratedN*0.1);
+    // Historical-cadence calibration only applies at sizes the ORIGINAL
+    // O(n²)-every-frame code could actually run (small graphs, where its
+    // pace is the look users know). Beyond that the measured all-pairs cost
+    // is seconds — pacing by it means one violent step every few seconds and
+    // a layout that never finishes organizing. Big scenes pace for progress
+    // instead: steps as often as their own measured cost affords, capped so
+    // the sim leaves most of the frame budget to rendering.
+    const needCalibration = nodes.length && nodes.length <= 20000
+      && Math.abs(nodes.length - simCalibratedN) > Math.max(50, simCalibratedN*0.1);
     if(needCalibration && pointers.size === 0){
       simCalibratedN = nodes.length;
       step(true);
       simStepMs = Math.max(1000/60, performance.now() - tSim0);
     } else {
       step(false);
+      if(nodes.length > 20000) simStepMs = Math.min(200, Math.max(1000/60, lastGridStepMs * 1.6));
     }
   }
   const tSim1 = performance.now();
