@@ -912,7 +912,16 @@ function step(){
   for(const nd of nodes){
     const c = clusters.get(clusterKey(nd.repo,nd.role));
     if(c){ nd.vx += (c.x-nd.x)*KGRAV; nd.vy += (c.y-nd.y)*KGRAV; nd.vz += (c.z-nd.z)*KGRAV; }
-    nd.vx*=DAMP; nd.vy*=DAMP; nd.vz*=DAMP;
+    // Sqrt-normalizing the spring pull above (da/db) tamed the explosion,
+    // but a hub still nets ~sqrt(degree)x an ordinary note's force every
+    // frame — mostly from its many neighbors' OWN small settling motions,
+    // which never fully stop. That shows as gentle persistent jitter/drift
+    // instead of settling like every other note. Extra damping scaled by
+    // degree (no-op below ~9 links, i.e. ordinary notes are untouched)
+    // bleeds that off faster so hubs come to rest too.
+    const extraDamp = 1 / (1 + Math.max(0, Math.sqrt(nd.degree||0) - 3) / 10);
+    const d = DAMP * extraDamp;
+    nd.vx*=d; nd.vy*=d; nd.vz*=d;
     const speed = Math.hypot(nd.vx, nd.vy, nd.vz);
     if(speed > MAX_SPEED){ const s = MAX_SPEED/speed; nd.vx*=s; nd.vy*=s; nd.vz*=s; }
     nd.x+=nd.vx; nd.y+=nd.vy; nd.z+=nd.vz;
