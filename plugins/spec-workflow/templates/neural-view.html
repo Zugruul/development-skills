@@ -309,6 +309,8 @@ canvas.grabbing{cursor:grabbing}
       <div class="hud" id="settings-panel">
         <label><input type="checkbox" id="live-board-toggle"> Fetch live GitHub board state</label>
         <div class="hint">Polls each repo's board via <code>board.sh</code> (per-repo cache + rate-limit backoff). Off by default.</div>
+        <label><input type="checkbox" id="perf-toggle"> Show performance timers</label>
+        <div class="hint">Adds per-frame CPU timings to the status chip: <code>sim</code> (physics step), <code>vis</code> (visual attribute writes), <code>draw</code> (render submission). Low fps with all three small means the cost is GPU fill. <code>?perf</code> in the URL forces this on.</div>
       </div>
     </div>
   </div>
@@ -1379,7 +1381,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // dev repo / marketplace clone / plugin cache — and "why does it look old"
 // has burned real debugging time). Bump the PATCH on every template change
 // within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.25.4";
+const NV_VERSION = "0.25.5";
 // status chip segments carry native title tooltips explaining what each
 // readout means (hover "live", the version, the fps, the DPR marker, ...).
 function chipHtml(segs){
@@ -1390,10 +1392,12 @@ const CHIP_LIVE = ["live", "Connected — the page re-reads the brains every 15s
 const CHIP_VER = [`v${NV_VERSION}`, "neural-view template version — confirms which build this tab is rendering (bumped on every template change)"];
 // live fps readout in the status chip (replaces the static tagline)
 let fpsFrames = 0, fpsWindowStart = 0, fpsGoodWindows = 0;
-// ?perf: per-section frame-time EMAs shown in the chip (sim step / visual
-// attribute writes / render submission), for diagnosing where a slow frame
-// actually goes without opening devtools.
-const PERF = /[?&]perf\b/.test(location.search);
+// perf timers: per-section frame-time EMAs shown in the chip (sim step /
+// visual attribute writes / render submission), for diagnosing where a slow
+// frame actually goes without opening devtools. Toggled from ⚙ Settings
+// (persisted in uiState); `?perf` in the URL forces them on for a session.
+const PERF_FORCED = /[?&]perf\b/.test(location.search);
+function perfOn(){ return PERF_FORCED || !!uiState.perfTimers; }
 const perfMs = {step:0, vis:0, render:0};
 function ema(k, ms){ perfMs[k] += (ms - perfMs[k]) * 0.08; }
 const statusEl = document.getElementById("status-txt");
@@ -1415,9 +1419,9 @@ function frame(){
         CHIP_LIVE, CHIP_VER,
         [`${fps} fps`, "rendered frames per second, measured over the last second (display target: 60)"],
         dprCur < DPR_CAP && [`${dprCur}x`, "adaptive render resolution — pixel ratio lowered from " + DPR_CAP + "x to keep fps up; restores automatically when the frame rate recovers"],
-        PERF && [`sim ${perfMs.step.toFixed(1)}`, "physics step CPU ms per frame (smoothed) — force sim / fast-forward / calibration"],
-        PERF && [`vis ${perfMs.vis.toFixed(1)}`, "visual update CPU ms per frame (smoothed) — per-note/per-link attribute writes, labels, fly-to"],
-        PERF && [`draw ${perfMs.render.toFixed(1)}ms`, "render submission CPU ms per frame (smoothed) — if fps is low but sim+vis+draw are small, the cost is GPU fill"],
+        perfOn() && [`sim ${perfMs.step.toFixed(1)}`, "physics step CPU ms per frame (smoothed) — force sim / fast-forward / calibration"],
+        perfOn() && [`vis ${perfMs.vis.toFixed(1)}`, "visual update CPU ms per frame (smoothed) — per-note/per-link attribute writes, labels, fly-to"],
+        perfOn() && [`draw ${perfMs.render.toFixed(1)}ms`, "render submission CPU ms per frame (smoothed) — if fps is low but sim+vis+draw are small, the cost is GPU fill"],
         REDUCED && ["reduced motion", "prefers-reduced-motion is on: ambient throb and pulse dots are disabled"],
       ]);
     }
@@ -2140,6 +2144,10 @@ document.addEventListener("click", (ev)=>{
 // ---- settings popover: live GitHub board fetch, off by default ----
 const settingsBtn = document.getElementById("settings-btn");
 const settingsPanel = document.getElementById("settings-panel");
+const perfToggle = document.getElementById("perf-toggle");
+perfToggle.checked = perfOn();
+perfToggle.disabled = PERF_FORCED;   // URL ?perf overrides the setting for this session
+perfToggle.onchange = ()=>{ uiState.perfTimers = perfToggle.checked; saveUiState(); };
 const liveBoardToggle = document.getElementById("live-board-toggle");
 liveBoardToggle.checked = !!uiState.liveBoard;
 settingsBtn.onclick = (ev)=>{ ev.stopPropagation(); settingsPanel.classList.toggle("open"); };
