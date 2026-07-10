@@ -78,6 +78,7 @@ canvas.grabbing{cursor:grabbing}
 #search-input-wrap #search-btn{position:absolute;right:.1rem;top:50%;transform:translateY(-50%);
   border:0;background:none;padding:.2rem .3rem;font-size:1.05rem}
 #search-count{font-size:.58rem;color:var(--muted);white-space:nowrap}
+#search-filters-btn{display:inline-flex;align-items:center;justify-content:center}
 #search-filters-wrap{position:relative}
 #search-filters-panel{position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);
   min-width:230px;max-height:min(60vh,420px);overflow-y:scroll;padding:.65rem .75rem;display:none;
@@ -321,7 +322,12 @@ canvas.grabbing{cursor:grabbing}
   <button class="iconbtn" id="search-clear" title="Clear search" aria-label="Clear search" hidden>✕</button>
   <span id="search-count" class="label"></span>
   <div id="search-filters-wrap">
-    <button class="iconbtn" id="search-filters-btn" title="Search filters" aria-label="Search filters" aria-haspopup="true">≡</button>
+    <button class="iconbtn" id="search-filters-btn" title="Search filters" aria-label="Search filters" aria-haspopup="true">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+      </svg>
+    </button>
     <div class="hud" id="search-filters-panel">
       <div class="sf-section">
         <div class="sf-h">Search in</div>
