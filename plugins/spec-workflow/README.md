@@ -72,6 +72,27 @@ Each agent role (dev / reviewer / orchestrator, extensible) owns a **private** b
 
 Full protocol: [`skills/build-next/references/brains.md`](./skills/build-next/references/brains.md).
 
+### Recommended `/goal` for an autonomous loop
+
+`build-next` already runs retro (step 7) and feedback (step 8) as mandatory,
+in-protocol parts of every iteration — in principle nothing external should be
+needed. In practice, an ambiguous skip-condition wording once let two live
+repos silently never run retro despite dozens of real task closes each (fixed,
+but the failure mode was invisible until specifically investigated). As
+cheap, redundant insurance against that class of silent skip, set:
+
+```
+/goal /loop /build-next with between each task /spec-workflow:feedback and /spec-workflow:retrospective
+```
+
+`retrospective` is a safe no-op when nothing is pending (0 pending → nothing
+to route or mint), so forcing it externally after every task costs nothing
+when `build-next`'s own step 7 already ran cleanly, and catches it when step 7
+was silently skipped. `feedback`, forced externally like this, WILL emit an
+additional record each iteration on top of step 8's own — treat that as a
+deliberate second reflection pass (a meta-process check on the loop itself),
+not a bug; it isn't deduped against step 8's emission.
+
 ## Human steering
 
 - **Issue comments** — read before every task; scope changes are folded into the issue body and acknowledged.
