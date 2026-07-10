@@ -1305,7 +1305,14 @@ function step(calibrate){
   }
   for(const l of links){
     const dx=l.b.x-l.a.x, dy=l.b.y-l.a.y, dz=l.b.z-l.a.z, d=Math.hypot(dx,dy,dz)||.01;
-    const target2 = 70 + (1-l.w)*70, f = KSPRING*(d-target2);
+    // Spring force is CAPPED: unbounded 0.012*(d-target) means a link
+    // stretched across a big cluster pulls ~10 units/step — with many such
+    // links (hub notes, cross-cluster references) the graph compresses to
+    // ~9x target density and thrashes instead of settling (measured on a
+    // 60k synthetic corpus: spd pinned ~21, never slept). At/near target
+    // length the force is far below the cap, so settled scenes are
+    // unaffected — the cap only tames unsatisfiable topologies.
+    const target2 = 70 + (1-l.w)*70, f = Math.max(-3, Math.min(3, KSPRING*(d-target2)));
     const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
     // Split each spring's pull by 1/sqrt(degree) per endpoint: an ordinary
     // note (degree ~1-10) is unaffected, but a hub with hundreds of links
@@ -1497,7 +1504,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // dev repo / marketplace clone / plugin cache — and "why does it look old"
 // has burned real debugging time). Bump the PATCH on every template change
 // within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.25.12";
+const NV_VERSION = "0.25.13";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
