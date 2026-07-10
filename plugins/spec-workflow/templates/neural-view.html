@@ -1071,7 +1071,12 @@ function applyGraph(g){
     a: nodeById.get(e.source), b: nodeById.get(e.target), w: e.weight ?? .5, fires: e.fires ?? 0, key: e.source+"->"+e.target
   })).filter(l=>l.a && l.b);
   window.__consultEdges = (g.edges||[]).filter(e=>e.type==="consult" && !isBrainHidden(e.source.split("/")[0], e.source.split("/")[1]) && !isBrainHidden(e.target.split("/")[0], e.target.split("/")[1]));
-  wakeSim();   // nodes/links/cluster targets may have changed — resume integrating (no-op if awake)
+  // wake the sim ONLY when the graph actually changed shape (fresh nodes or
+  // a different count) — an unconditional wake on every 15s poll resets the
+  // calm counter forever and the settle-freeze can never engage.
+  const topologyChanged = nodes.length !== prevNodeCount || nodes.some(n=>n._fresh);
+  prevNodeCount = nodes.length;
+  if(topologyChanged) wakeSim();
   layoutClusters();
   // Fresh nodes spawn INSIDE their own cluster's region at roughly resting
   // density, instead of all piled into one small cube at the origin. The old
@@ -1135,11 +1140,21 @@ function applyGraph(g){
 // reload / re-filter / brain toggle — all via applyGraph). simAvgSpeed is
 // exported in /metrics as `spd` so the calm threshold is tuned from data,
 // not guesses.
-let simCalmSteps = 0, simAsleep = false, simAvgSpeed = 0;
+let simCalmSteps = 0, simAsleep = false, simAvgSpeed = 0, prevNodeCount = -1;
 const SIM_CALM_SPEED = 0.12;   // avg per-node speed under this counts as "at rest" — measured settled jitter floor is ~0.08 (spd metric), i.e. ~2-3 world units/s of drift, imperceptible at scene scale
-const SIM_CALM_STEPS = 240;    // sustained calm steps before sleeping
+const SIM_CALM_STEPS = 120;    // sustained calm steps before sleeping
 function wakeSim(){ simAsleep = false; simCalmSteps = 0; }
 const REP_CUTOFF = 300, REP_CUTOFF2 = REP_CUTOFF*REP_CUTOFF;
+// Bounded step at extreme scale: when one grid step exceeds ~40ms (measured,
+// self-tuning), repulsion switches to a rotating duty cycle over grid cells —
+// each step processes 1/P of the cells (with each processed pair's force
+// scaled by P so the MEAN force is unchanged; the per-pair cap still bounds
+// any single impulse). Every pair is still visited every P steps, so the
+// equilibrium is the same; the settle just relaxes in rotating sweeps. P
+// halves again once steps get cheap. P stays 1 (exact physics, no scaling)
+// for every scene that fits the budget — the current 1x graph never engages
+// this.
+let simPhaseP = 1, simPhaseI = 0, lastGridStepMs = 0;
 // The 13 "forward" neighbor offsets (half of the 26 surrounding cells):
 // visiting only the forward half enumerates each cross-cell pair exactly once,
 // mirroring the all-pairs loop's j>i asymmetry.
@@ -1192,12 +1207,16 @@ function step(calibrate){
       if(!cell){ cell = []; grid.set(key, cell); }
       cell.push(i);
     }
-    const repel = (a,b)=>{   // EXACT same pair force as the all-pairs loop above
+    const FS = simPhaseP;   // duty-cycle force scale — 1 (exact) unless a step measured over budget
+    const repel = (a,b)=>{   // same pair force as the all-pairs loop above (scaled by FS when duty-cycling)
       let dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z, d2=dx*dx+dy*dy+dz*dz||0.01;
-      if(d2 < REP_CUTOFF2){ const f=Math.min(KREP/d2, MAX_PAIR_FORCE), d=Math.sqrt(d2)||0.01; const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
+      if(d2 < REP_CUTOFF2){ const f=Math.min(KREP*FS/d2, MAX_PAIR_FORCE), d=Math.sqrt(d2)||0.01; const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
         a.vx+=fx; a.vy+=fy; a.vz+=fz; b.vx-=fx; b.vy-=fy; b.vz-=fz; }
     };
+    const tGrid0 = performance.now();
+    let ci = 0;
     for(const cell of grid.values()){
+      if(simPhaseP > 1 && (ci++ % simPhaseP) !== (simPhaseI % simPhaseP)) continue;
       const i0 = cell[0];
       const cx = gcx[i0], cy = gcy[i0], cz = gcz[i0];
       for(let ai=0;ai<cell.length;ai++){
@@ -1214,6 +1233,10 @@ function step(calibrate){
         }
       }
     }
+    simPhaseI++;
+    lastGridStepMs = performance.now() - tGrid0;
+    if(lastGridStepMs > 40 && simPhaseP < 64) simPhaseP *= 2;
+    else if(lastGridStepMs < 10 && simPhaseP > 1) simPhaseP = Math.max(1, simPhaseP >> 1);
   }
   for(const l of links){
     const dx=l.b.x-l.a.x, dy=l.b.y-l.a.y, dz=l.b.z-l.a.z, d=Math.hypot(dx,dy,dz)||.01;
@@ -1409,7 +1432,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // dev repo / marketplace clone / plugin cache — and "why does it look old"
 // has burned real debugging time). Bump the PATCH on every template change
 // within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.25.8";
+const NV_VERSION = "0.25.9";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -1460,14 +1483,20 @@ function frame(){
         id: METRICS_ID, v: NV_VERSION, fps, dpr: dprCur,
         sim: +perfMs.step.toFixed(1), vis: +perfMs.vis.toFixed(1), draw: +perfMs.render.toFixed(1),
         notes: nodes.length, links: links.length,
-        spd: +simAvgSpeed.toFixed(3), asleep: simAsleep,
+        spd: +simAvgSpeed.toFixed(3), asleep: simAsleep, p: simPhaseP,
       })}).catch(()=>{});
     }
     fpsFrames = 0; fpsWindowStart = nowMs;
   }
   const tSim0 = performance.now();
   if(simFastForward > 0){
-    while(simFastForward > 0 && performance.now() - tSim0 < 8){ step(false); simFastForward--; }
+    // budget the burst — and bail after any single step that blows it, or a
+    // huge scene renders at 0 fps while "fast-forwarding" 1.8s steps.
+    while(simFastForward > 0 && performance.now() - tSim0 < 8){
+      const t1 = performance.now();
+      step(false); simFastForward--;
+      if(performance.now() - t1 > 24) break;
+    }
     lastStepMs = nowMs;
   } else if(nowMs - lastStepMs >= simStepMs){
     lastStepMs = nowMs;
