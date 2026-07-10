@@ -1,8 +1,8 @@
 ---
 tags: [deep-links, claude-cli, neural-view, tooling]
 paths: ["plugins/spec-workflow/templates/neural-view.html", "plugins/spec-workflow/scripts/neural-view.py"]
-strength: 1
-source: "neural-view Talk panel (event-sorc/monorepo session)"
+strength: 2
+source: "neural-view Talk panel, confirmed via user manual testing"
 graduated: false
 created: 2026-07-10
 ---
@@ -21,20 +21,24 @@ user still presses Enter. Build one as:
   form-encoding turns spaces into `+`, which a `claude-cli://` handler may
   not form-decode back). Use `%0A`/`\n` for multi-line prompts. `q` caps at
   5000 chars.
-- To give the new session a short name instead of an auto-generated one,
-  prefix the prompt with a `/rename <name>` line (e.g. `/rename event-sorc
-  build-loop`) before the actual task text, joined by `\n`. `/rename` is a
-  real built-in slash command (Claude Code v2.1.205+); unverified whether it
-  still fires correctly when it's the first line of a longer multi-line
-  prompt vs. the entire input — worth confirming once someone actually
-  clicks a generated link.
+- CONFIRMED (manual test, not just theory): the harness only recognizes a
+  slash command on the FIRST line of a multi-line pre-filled prompt. Putting
+  `/rename <name>` first and the real instruction second silently eats the
+  instruction — only the rename fires. Put the real command/instruction
+  FIRST, and `/rename <name>` LAST on its own trailing line — the session
+  still picks it up and renames itself after acting on the first line, but
+  now the actual task isn't lost. `/rename` is a real built-in slash command
+  (Claude Code v2.1.205+).
 - Registration is per-machine and automatic on first `claude` run; a link
   does nothing on a machine that has never run `claude` interactively.
 - GitHub-rendered markdown strips `claude-cli://` links to plain text — only
   matters for links embedded in README/issues/PRs, not the neural-view HUD.
 
-Implemented in neural-view's "Talk" panel (left BRAINS bar → ✎ talk): picks
-a repo, composes `/rename <project> <slug>` + prompt, shows the literal
-composed text before sending so you can catch a mis-parsed rename. `cwd` per
-repo comes from GET /graph's new `roots` field (server already knows each
-repo's absolute root — no need to resolve `repo=owner/name`).
+Implemented in neural-view's "Talk" panel (left BRAINS bar → per-repo-header
+✎ for "ask the whole brain", per-identity-row ✎ for one role): picks a
+repo + optional identity, composes `/ask-identity <role> <question>` (or
+`/ask-brain <question>`) FIRST, `/rename <project> <slug>` LAST, shows the
+literal composed text before sending. `cwd` per repo comes from GET
+/graph's `roots` field (server already knows each repo's absolute root —
+no need to resolve `repo=owner/name`). ask-identity/ask-brain are read-only
+brain consults (see those skills), not build-loop iterations.

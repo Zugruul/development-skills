@@ -311,10 +311,11 @@ canvas.grabbing{cursor:grabbing}
     <button class="iconbtn primary" id="talk-send" title="Open claude-cli://open with this prompt">Send ↗</button>
   </div>
   <div class="hint">Opens a <code>claude-cli://open</code> deep link — a new terminal session starts
-    in the chosen repo, named by <code>/rename</code>, and asks the question via
-    <code>/ask-identity</code> (one role) or <code>/ask-brain</code> (whole repo, when Identity is
-    "whole brain") — both are read-only consults of that brain, see the <code>ask-identity</code>/
-    <code>ask-brain</code> skills. Nothing is sent to Claude until you press Enter in that session.</div>
+    in the chosen repo and asks the question via <code>/ask-identity</code> (one role) or
+    <code>/ask-brain</code> (whole repo, when Identity is "whole brain") — both are read-only
+    consults, see the <code>ask-identity</code>/<code>ask-brain</code> skills — then picks up the
+    trailing <code>/rename</code> line to name itself. Nothing is sent to Claude until you press
+    Enter in that session.</div>
 </div>
 
 <div class="hud" id="rightbar">
@@ -1700,7 +1701,13 @@ function buildTalkText(){
   const nameArgs = [project, slug].filter(Boolean).join(" ");
   const rename = nameArgs ? `/rename ${nameArgs}` : "";
   const ask = prompt ? (identity ? `/ask-identity ${identity} ${prompt}` : `/ask-brain ${prompt}`) : "";
-  return [rename, ask].filter(Boolean).join("\n");
+  // /ask-* goes FIRST, /rename LAST. The harness only recognizes a slash
+  // command on the first line of the input; whichever came first was the
+  // only one that actually ran, and /rename-first silently ate the ask.
+  // Ask-first means the real instruction fires; /rename trailing on its own
+  // line still reads as a plain instruction the session picks up and acts
+  // on once the ask is answered — confirmed via manual deep-link testing.
+  return [ask, rename].filter(Boolean).join("\n");
 }
 function buildTalkUrl(){
   const repo = talkRepoSel.value;
