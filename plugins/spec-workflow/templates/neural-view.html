@@ -1136,7 +1136,7 @@ function applyGraph(g){
 // exported in /metrics as `spd` so the calm threshold is tuned from data,
 // not guesses.
 let simCalmSteps = 0, simAsleep = false, simAvgSpeed = 0;
-const SIM_CALM_SPEED = 0.05;   // avg per-node speed under this counts as "at rest"
+const SIM_CALM_SPEED = 0.12;   // avg per-node speed under this counts as "at rest" — measured settled jitter floor is ~0.08 (spd metric), i.e. ~2-3 world units/s of drift, imperceptible at scene scale
 const SIM_CALM_STEPS = 240;    // sustained calm steps before sleeping
 function wakeSim(){ simAsleep = false; simCalmSteps = 0; }
 const REP_CUTOFF = 300, REP_CUTOFF2 = REP_CUTOFF*REP_CUTOFF;
@@ -1409,7 +1409,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // dev repo / marketplace clone / plugin cache — and "why does it look old"
 // has burned real debugging time). Bump the PATCH on every template change
 // within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.25.7";
+const NV_VERSION = "0.25.8";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
