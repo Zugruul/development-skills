@@ -82,16 +82,21 @@ but the failure mode was invisible until specifically investigated). As
 cheap, redundant insurance against that class of silent skip, set:
 
 ```
-/goal /loop /build-next with between each task /spec-workflow:feedback and /spec-workflow:retrospective
+/goal /loop /build-next — after every task's iteration report, before picking
+the next task, always run /spec-workflow:feedback then /spec-workflow:retrospective
+(in that order — retrospective triages/mints from what feedback just emitted),
+even if build-next's own retro/feedback already ran that iteration
 ```
 
-`retrospective` is a safe no-op when nothing is pending (0 pending → nothing
-to route or mint), so forcing it externally after every task costs nothing
-when `build-next`'s own step 7 already ran cleanly, and catches it when step 7
-was silently skipped. `feedback`, forced externally like this, WILL emit an
-additional record each iteration on top of step 8's own — treat that as a
-deliberate second reflection pass (a meta-process check on the loop itself),
-not a bug; it isn't deduped against step 8's emission.
+Order matters — `feedback` first, `retrospective` second, since retrospective
+triages and mints from whatever `feedback` just emitted (plus anything still
+pending from before). `retrospective` is a safe no-op when nothing is pending
+(0 pending → nothing to route or mint), so forcing it externally after every
+task costs nothing when `build-next`'s own step 7 already ran cleanly, and
+catches it when step 7 was silently skipped. `feedback`, forced externally
+like this, WILL emit an additional record each iteration on top of step 8's
+own — treat that as a deliberate second reflection pass (a meta-process check
+on the loop itself), not a bug; it isn't deduped against step 8's emission.
 
 ## Human steering
 
