@@ -781,13 +781,53 @@ function makeLabelSprite(text, hue, fontPx){
 // Per-link opacity rides the line VERTEX COLOR (rgb scale ≡ alpha scale
 // under additive blending; the fog term differs only by the near-black fog
 // color, imperceptible).
-const BILLBOARD_VERT = `
-  attribute vec3 aOffset; attribute float aSize; attribute float aAlpha; attribute vec3 aColor;
+// The per-note visual formulas (throb, recall highlight, hover boost, search
+// dim/boost, graduated dimming) run in the VERTEX SHADER, driven by uniforms
+// (uTick/uHoverIdx/uSearchOn) plus mostly-static per-instance attributes —
+// the CPU writes attribute data only when something actually changed
+// (positions on stepped frames, hl while an activation fades, search flags on
+// search changes) instead of recomputing ~5 floats × N notes × 60fps. At 60k
+// notes that CPU loop alone was 12-18ms/frame.
+const NOTE_VERT = `
+  attribute vec3 aOffset; attribute vec3 aColor;
+  attribute float aPhase, aR, aGrad, aIdx, aHl, aSearch;
+  uniform float uTick, uHoverIdx, uSearchOn, uReduced, uHalo;
   varying vec2 vUv; varying float vAlpha; varying vec3 vColor; varying float vFogDepth;
   void main(){
-    vUv = uv; vAlpha = aAlpha; vColor = aColor;
+    vUv = uv; vColor = aColor;
+    float pulse = (uReduced > 0.5) ? 0.0 : (sin(uTick*0.05 + aPhase)*0.5 + 0.5)*0.18;
+    float hover = (abs(aIdx - uHoverIdx) < 0.5) ? 0.35 : 0.0;
+    float search = (uSearchOn > 0.5 && aSearch > 0.5) ? 0.45 : 0.0;
+    float dimMul = (uSearchOn > 0.5 && aSearch < 0.5) ? 0.15 : 1.0;
+    float base = (aGrad > 0.5) ? 0.55 : 0.9;
+    float rr = aR * (1.0 + pulse*0.15 + aHl*0.5 + hover*0.6 + search*0.5);
+    float size;
+    if(uHalo > 0.5){
+      float k = 1.0 + aHl*0.6 + hover*0.4 + search*0.5;
+      size = rr*6.0*k;
+      vAlpha = min(0.75, (0.28 + pulse*0.2 + aHl*0.5 + hover*0.3 + search*0.5) * dimMul);
+    } else {
+      size = rr*2.0;
+      vAlpha = min(1.0, (base*0.55 + pulse*0.3 + aHl*0.5 + hover + search) * dimMul);
+    }
     vec4 mv = modelViewMatrix * vec4(aOffset, 1.0);
-    mv.xy += position.xy * aSize;
+    mv.xy += position.xy * size;
+    vFogDepth = -mv.z;
+    gl_Position = projectionMatrix * mv;
+  }`;
+// ambient pulse dots ride their link ENTIRELY on the GPU: endpoints are
+// attributes (rewritten only on stepped frames), the position along the link
+// comes from uNow — zero per-frame CPU for the drift itself.
+const PULSE_VERT = `
+  attribute vec3 aA; attribute vec3 aB; attribute vec3 aColor;
+  attribute float aPhase, aDim;
+  uniform float uNow;
+  varying vec2 vUv; varying float vAlpha; varying vec3 vColor; varying float vFogDepth;
+  void main(){
+    vUv = uv; vColor = aColor; vAlpha = aDim;
+    float p = fract(uNow*0.00022 + aPhase);
+    vec4 mv = modelViewMatrix * vec4(mix(aA, aB, p), 1.0);
+    mv.xy += position.xy * 7.0;
     vFogDepth = -mv.z;
     gl_Position = projectionMatrix * mv;
   }`;
@@ -799,28 +839,69 @@ const BILLBOARD_FRAG = `
     float fogFactor = 1.0 - exp(-uFogDensity*uFogDensity*vFogDepth*vFogDepth);
     gl_FragColor = vec4(mix(vColor * t.rgb, uFogColor, fogFactor), t.a * vAlpha);
   }`;
-function makeBillboardLayer(tex, count){
+function quadGeo(count){
   const geo = new THREE.InstancedBufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array([-0.5,-0.5,0, 0.5,-0.5,0, 0.5,0.5,0, -0.5,0.5,0]), 3));
   geo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array([0,0, 1,0, 1,1, 0,1]), 2));
   geo.setIndex([0,1,2, 0,2,3]);
-  const offset = new Float32Array(count*3), size = new Float32Array(count),
-        alpha = new Float32Array(count), color = new Float32Array(count*3);
-  geo.setAttribute("aOffset", new THREE.InstancedBufferAttribute(offset, 3));
-  geo.setAttribute("aSize", new THREE.InstancedBufferAttribute(size, 1));
-  geo.setAttribute("aAlpha", new THREE.InstancedBufferAttribute(alpha, 1));
-  geo.setAttribute("aColor", new THREE.InstancedBufferAttribute(color, 3));
   geo.instanceCount = count;
+  return geo;
+}
+function makeNoteLayer(tex, count, isHalo){
+  const geo = quadGeo(count);
+  const L = {
+    offset: new Float32Array(count*3), color: new Float32Array(count*3),
+    phase: new Float32Array(count), r: new Float32Array(count),
+    grad: new Float32Array(count), idx: new Float32Array(count),
+    hl: new Float32Array(count), search: new Float32Array(count),
+  };
+  geo.setAttribute("aOffset", new THREE.InstancedBufferAttribute(L.offset, 3));
+  geo.setAttribute("aColor", new THREE.InstancedBufferAttribute(L.color, 3));
+  geo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(L.phase, 1));
+  geo.setAttribute("aR", new THREE.InstancedBufferAttribute(L.r, 1));
+  geo.setAttribute("aGrad", new THREE.InstancedBufferAttribute(L.grad, 1));
+  geo.setAttribute("aIdx", new THREE.InstancedBufferAttribute(L.idx, 1));
+  geo.setAttribute("aHl", new THREE.InstancedBufferAttribute(L.hl, 1));
+  geo.setAttribute("aSearch", new THREE.InstancedBufferAttribute(L.search, 1));
   const mat = new THREE.ShaderMaterial({
-    uniforms: { map:{value:tex}, uFogColor:{value:new THREE.Color(0x04070d)}, uFogDensity:{value:sceneFogDensity} },
-    vertexShader: BILLBOARD_VERT, fragmentShader: BILLBOARD_FRAG,
+    uniforms: {
+      map:{value:tex}, uFogColor:{value:new THREE.Color(0x04070d)}, uFogDensity:{value:sceneFogDensity},
+      uTick:{value:0}, uHoverIdx:{value:-1}, uSearchOn:{value:0},
+      uReduced:{value:REDUCED?1:0}, uHalo:{value:isHalo?1:0},
+    },
+    vertexShader: NOTE_VERT, fragmentShader: BILLBOARD_FRAG,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.frustumCulled = false;   // instances move every sim step; no useful static bounds
-  return {mesh, geo, offset, size, alpha, color};
+  mesh.frustumCulled = false;   // instances move on sim steps; no useful static bounds
+  L.mesh = mesh; L.geo = geo;
+  return L;
+}
+function makePulseLayer(tex, count){
+  const geo = quadGeo(count);
+  const L = {
+    a: new Float32Array(count*3), b: new Float32Array(count*3),
+    color: new Float32Array(count*3), phase: new Float32Array(count), dim: new Float32Array(count),
+  };
+  geo.setAttribute("aA", new THREE.InstancedBufferAttribute(L.a, 3));
+  geo.setAttribute("aB", new THREE.InstancedBufferAttribute(L.b, 3));
+  geo.setAttribute("aColor", new THREE.InstancedBufferAttribute(L.color, 3));
+  geo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(L.phase, 1));
+  geo.setAttribute("aDim", new THREE.InstancedBufferAttribute(L.dim, 1));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { map:{value:tex}, uFogColor:{value:new THREE.Color(0x04070d)}, uFogDensity:{value:sceneFogDensity}, uNow:{value:0} },
+    vertexShader: PULSE_VERT, fragmentShader: BILLBOARD_FRAG,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  L.mesh = mesh; L.geo = geo;
+  return L;
 }
 let noteCore = null, noteHalo = null, synLines = null, synPulses = null;   // rebuilt with the scene
+let simMovedFrame = true;        // set by step()/applyGraph; updateVisuals uploads positions only then
+let hlActive = new Set();        // nodes with a fading recall highlight — the only per-frame attr writes
+let visSearchEpoch = 0, visSeenSearchEpoch = -1, lastHoveredLink = null;   // search/hover dirt tracking
 
 // ---- scene contents, rebuilt whenever the graph reloads (node/link identity
 // can change; positions persist across reloads via nodeById reuse below, so a
@@ -915,7 +996,7 @@ function rebuildScene(){
     lmesh.userData = {kind:"synapseBatch"};
     sceneGroup.add(lmesh);
     synLines = {mesh:lmesh, geo:lgeo, pos:lpos, col:lcol};
-    synPulses = REDUCED ? null : makeBillboardLayer(CORE_TEX, links.length);
+    synPulses = REDUCED ? null : makePulseLayer(CORE_TEX, links.length);
     if(synPulses){ synPulses.mesh.userData = {kind:"synapsePulseBatch"}; sceneGroup.add(synPulses.mesh); }
     for(let i=0;i<links.length;i++){
       const l = links[i];
@@ -928,10 +1009,16 @@ function rebuildScene(){
       l.pulseBase = 0.32*dim;
       l.pulsePhase = Math.random();   // desyncs pulses so the whole network doesn't throb in lockstep
       if(synPulses){
-        synPulses.size[i] = 7;
         const pc = threeColor(lhue,70);
         synPulses.color[i*3] = pc.r; synPulses.color[i*3+1] = pc.g; synPulses.color[i*3+2] = pc.b;
+        synPulses.phase[i] = l.pulsePhase;
+        synPulses.dim[i] = l.pulseBase;
       }
+    }
+    if(synPulses){
+      synPulses.geo.attributes.aColor.needsUpdate = true;
+      synPulses.geo.attributes.aPhase.needsUpdate = true;
+      synPulses.geo.attributes.aDim.needsUpdate = true;
     }
   }
 
@@ -953,11 +1040,12 @@ function rebuildScene(){
   // instanced billboard layer per half instead of two Sprites per note.
   // Hover/click hit-testing is screen-space (pickNoteAt projects node
   // coords), so batching changes nothing about interaction.
-  noteCore = makeBillboardLayer(CORE_TEX, nodes.length);
-  noteHalo = makeBillboardLayer(HALO_TEX, nodes.length);
+  noteCore = makeNoteLayer(CORE_TEX, nodes.length, false);
+  noteHalo = makeNoteLayer(HALO_TEX, nodes.length, true);
   noteCore.mesh.userData = {kind:"noteCoreBatch"};
   noteHalo.mesh.userData = {kind:"noteHaloBatch"};
   sceneGroup.add(noteCore.mesh); sceneGroup.add(noteHalo.mesh);
+  hlActive = new Set();
   for(let i=0;i<nodes.length;i++){
     const nd = nodes[i];
     const c = clusters.get(clusterKey(nd.repo,nd.role)), hue = c?c.hue:190;
@@ -965,16 +1053,20 @@ function rebuildScene(){
     // under additive blending, which made per-brain colors invisible on the
     // actual balls (the halo carried the only perceptible tint).
     const cc = threeColor(hue,72), hc = threeColor(hue,60);
+    for(const L of [noteCore, noteHalo]){
+      L.phase[i] = nd.phase; L.r[i] = nd.r; L.grad[i] = nd.graduated ? 1 : 0;
+      L.idx[i] = i; L.hl[i] = nd.hl || 0; L.search[i] = nd.searchMatch ? 1 : 0;
+    }
     noteCore.color[i*3] = cc.r; noteCore.color[i*3+1] = cc.g; noteCore.color[i*3+2] = cc.b;
     noteHalo.color[i*3] = hc.r; noteHalo.color[i*3+1] = hc.g; noteHalo.color[i*3+2] = hc.b;
-    nd._idx = i;   // instanced-attribute slot; updateVisuals() writes size/alpha/offset here
+    nd._idx = i;   // instanced-attribute slot
+    if(nd.hl > 0) hlActive.add(nd);
   }
-  noteCore.geo.attributes.aColor.needsUpdate = true;
-  noteHalo.geo.attributes.aColor.needsUpdate = true;
-  if(synPulses){
-    synPulses.geo.attributes.aColor.needsUpdate = true;
-    synPulses.geo.attributes.aSize.needsUpdate = true;
-  }
+  for(const L of [noteCore, noteHalo])
+    for(const k of ["aColor","aPhase","aR","aGrad","aIdx","aHl","aSearch"])
+      L.geo.attributes[k].needsUpdate = true;
+  simMovedFrame = true;          // fresh buffers — force one full position upload
+  visSeenSearchEpoch = -1;       // and a search/link-color refresh
 }
 
 // ---- brain visibility (hide a repo/role brain to focus on others — the
@@ -1041,12 +1133,14 @@ function triggerSearch(){
   lastSearchQuery = ql;
   searchActive = true;
   updateSearchUI(applySearchToNodes());
+  visSearchEpoch++;   // updateVisuals(): rewrite aSearch + link colors once
 }
 function clearSearch(){
   searchActive = false;
   lastSearchQuery = null;
   for(const nd of nodes) nd.searchMatch = false;
   updateSearchUI(0);
+  visSearchEpoch++;   // updateVisuals(): rewrite aSearch + link colors once
 }
 // Called after a graph reload rebuilds `nodes` (fresh objects — searchMatch
 // doesn't survive that) and after a filter checkbox changes — re-run the
@@ -1055,6 +1149,7 @@ function clearSearch(){
 function refreshSearchHighlight(){
   if(!searchActive) return;
   updateSearchUI(applySearchToNodes());
+  visSearchEpoch++;   // updateVisuals(): rewrite aSearch + link colors once
 }
 
 let lastRawGraph = null;
@@ -1381,118 +1476,144 @@ function step(calibrate){
   } else {
     simCalmSteps = 0;
   }
+  simMovedFrame = true;   // positions changed — updateVisuals() uploads them this frame
 }
 
 function updateVisuals(){
   if(!webglOK || !sceneGroup) return;
-  // neurons: same per-note formulas as the old Sprite pair, written into the
-  // instanced layers' attribute arrays (one draw call per layer).
+  // per-note visual formulas live in the vertex shader — per frame the CPU
+  // only refreshes uniforms; attribute uploads happen when their data
+  // actually changed:
+  //  - positions (notes, line endpoints, pulse endpoints): stepped frames
+  //  - aHl: only for notes with a fading recall highlight
+  //  - aSearch + link colors + pulse dim: on search/hover-link changes
+  const stepped = simMovedFrame;
+  simMovedFrame = false;
+  const hoverIdx = (hoveredNode && hoveredNode._idx !== undefined) ? hoveredNode._idx : -1;
+  const searchDirty = visSeenSearchEpoch !== visSearchEpoch;
+  const hoverLinkDirty = lastHoveredLink !== hoveredLink;
   if(noteCore){
+    for(const L of [noteCore, noteHalo]){
+      L.mesh.material.uniforms.uTick.value = tick;
+      L.mesh.material.uniforms.uHoverIdx.value = hoverIdx;
+      L.mesh.material.uniforms.uSearchOn.value = searchActive ? 1 : 0;
+    }
+    if(synPulses) synPulses.mesh.material.uniforms.uNow.value = performance.now();
+    if(stepped){
+      for(const nd of nodes){
+        const i = nd._idx;
+        if(i === undefined) continue;
+        noteCore.offset[i*3] = nd.x; noteCore.offset[i*3+1] = nd.y; noteCore.offset[i*3+2] = nd.z;
+        noteHalo.offset[i*3] = nd.x; noteHalo.offset[i*3+1] = nd.y; noteHalo.offset[i*3+2] = nd.z;
+      }
+      noteCore.geo.attributes.aOffset.needsUpdate = true;
+      noteHalo.geo.attributes.aOffset.needsUpdate = true;
+    }
+    if(hlActive.size){
+      for(const nd of hlActive){
+        const i = nd._idx;
+        if(i !== undefined){ noteCore.hl[i] = nd.hl; noteHalo.hl[i] = nd.hl; }
+        if(!nd.hl) hlActive.delete(nd);
+      }
+      noteCore.geo.attributes.aHl.needsUpdate = true;
+      noteHalo.geo.attributes.aHl.needsUpdate = true;
+    }
+    if(searchDirty){
+      for(const nd of nodes){
+        const i = nd._idx;
+        if(i === undefined) continue;
+        const s = nd.searchMatch ? 1 : 0;
+        noteCore.search[i] = s; noteHalo.search[i] = s;
+      }
+      noteCore.geo.attributes.aSearch.needsUpdate = true;
+      noteHalo.geo.attributes.aSearch.needsUpdate = true;
+    }
+  }
+  if(stepped){
+    // live centroids: cluster glows, role/repo labels and region wireframes
+    // track where each group's notes ACTUALLY are — positions only change on
+    // stepped frames, so this O(n) pass is gated with them.
+    const liveCluster = new Map(), liveRepo = new Map();
     for(const nd of nodes){
-      const i = nd._idx;
-      if(i === undefined) continue;
-      noteCore.offset[i*3] = nd.x; noteCore.offset[i*3+1] = nd.y; noteCore.offset[i*3+2] = nd.z;
-      noteHalo.offset[i*3] = nd.x; noteHalo.offset[i*3+1] = nd.y; noteHalo.offset[i*3+2] = nd.z;
-      const pulse = REDUCED ? 0 : (Math.sin(tick*0.05 + nd.phase)*0.5+0.5)*0.18;
-      const base = nd.graduated ? 0.55 : 0.9;
-      const hoverBoost = (nd === hoveredNode) ? 0.35 : 0;   // hover-inspection highlight, reuses the hl visual mechanism
-      // search highlight: a matched note glows extra (like a sustained hover);
-      // everything else fades near-invisible so matches pop out of a graph of
-      // a thousand+ notes — see triggerSearch()/nd.searchMatch.
-      const searchBoost = (searchActive && nd.searchMatch) ? 0.45 : 0;
-      const dimMul = (searchActive && !nd.searchMatch) ? 0.15 : 1;
-      const rr = nd.r * (1 + pulse*0.15 + nd.hl*0.5 + hoverBoost*0.6 + searchBoost*0.5);
-      noteCore.size[i] = rr*2;
-      noteCore.alpha[i] = Math.min(1, (base*0.55 + pulse*0.3 + nd.hl*0.5 + hoverBoost + searchBoost) * dimMul);
-      noteHalo.size[i] = rr*6*(1+nd.hl*0.6+hoverBoost*0.4+searchBoost*0.5);
-      noteHalo.alpha[i] = Math.min(0.75, (0.28 + pulse*0.2 + nd.hl*0.5 + hoverBoost*0.3 + searchBoost*0.5) * dimMul);
+      const ck = clusterKey(nd.repo, nd.role);
+      let s = liveCluster.get(ck); if(!s){ s = {x:0,y:0,z:0,n:0,rad:60}; liveCluster.set(ck, s); }
+      s.x += nd.x; s.y += nd.y; s.z += nd.z; s.n++;
+      let r = liveRepo.get(nd.repo); if(!r){ r = {x:0,y:0,z:0,n:0}; liveRepo.set(nd.repo, r); }
+      r.x += nd.x; r.y += nd.y; r.z += nd.z; r.n++;
     }
-    for(const layer of [noteCore, noteHalo]){
-      layer.geo.attributes.aOffset.needsUpdate = true;
-      layer.geo.attributes.aSize.needsUpdate = true;
-      layer.geo.attributes.aAlpha.needsUpdate = true;
+    for(const s of liveCluster.values()){ s.x/=s.n; s.y/=s.n; s.z/=s.n; }
+    for(const r of liveRepo.values()){ r.x/=r.n; r.y/=r.n; r.z/=r.n; }
+    for(const nd of nodes){
+      const s = liveCluster.get(clusterKey(nd.repo, nd.role));
+      if(s) s.rad = Math.max(s.rad, Math.hypot(nd.x-s.x, nd.y-s.y, nd.z-s.z)+nd.r+16);
     }
-  }
-  // live centroids: cluster glows, role/repo labels and region wireframes
-  // track where each group's notes ACTUALLY are right now — the force sim
-  // drifts clusters away from the layout's gravity targets, and a label
-  // pinned at rebuild time ends up floating over the wrong notes.
-  const liveCluster = new Map(), liveRepo = new Map();
-  for(const nd of nodes){
-    const ck = clusterKey(nd.repo, nd.role);
-    let s = liveCluster.get(ck); if(!s){ s = {x:0,y:0,z:0,n:0,rad:60}; liveCluster.set(ck, s); }
-    s.x += nd.x; s.y += nd.y; s.z += nd.z; s.n++;
-    let r = liveRepo.get(nd.repo); if(!r){ r = {x:0,y:0,z:0,n:0}; liveRepo.set(nd.repo, r); }
-    r.x += nd.x; r.y += nd.y; r.z += nd.z; r.n++;
-  }
-  for(const s of liveCluster.values()){ s.x/=s.n; s.y/=s.n; s.z/=s.n; }
-  for(const r of liveRepo.values()){ r.x/=r.n; r.y/=r.n; r.z/=r.n; }
-  for(const nd of nodes){
-    const s = liveCluster.get(clusterKey(nd.repo, nd.role));
-    if(s) s.rad = Math.max(s.rad, Math.hypot(nd.x-s.x, nd.y-s.y, nd.z-s.z)+nd.r+16);
-  }
-  liveRepoCenters = liveRepo;         // pickRepoAt() must agree with where the wireframe is drawn
-  liveClusterCenters = liveCluster;   // pickRoleLabelAt() must agree with where the label is drawn
-  const now = performance.now();
-  for(const child of sceneGroup.children){
-    const ud = child.userData || {};
-    if(ud.kind==="roleCluster" || ud.kind==="roleLabel"){
-      const s = liveCluster.get(clusterKey(ud.repo, ud.role));
-      if(s && s.n){
-        if(ud.kind==="roleCluster"){ child.position.set(s.x, s.y, s.z); child.scale.set(s.rad*2.2, s.rad*2.2, 1); }
-        // just above the centroid, INSIDE the cluster's own mass — a
-        // radius-offset placement lands in a NEIGHBORING cluster whenever
-        // brains interpenetrate (they do), which mislabels the wrong network
-        else child.position.set(s.x, s.y+26, s.z);
+    liveRepoCenters = liveRepo;         // pickRepoAt() must agree with where the wireframe is drawn
+    liveClusterCenters = liveCluster;   // pickRoleLabelAt() must agree with where the label is drawn
+    for(const child of sceneGroup.children){
+      const ud = child.userData || {};
+      if(ud.kind==="roleCluster" || ud.kind==="roleLabel"){
+        const s = liveCluster.get(clusterKey(ud.repo, ud.role));
+        if(s && s.n){
+          if(ud.kind==="roleCluster"){ child.position.set(s.x, s.y, s.z); child.scale.set(s.rad*2.2, s.rad*2.2, 1); }
+          // just above the centroid, INSIDE the cluster's own mass — a
+          // radius-offset placement lands in a NEIGHBORING cluster whenever
+          // brains interpenetrate (they do), which mislabels the wrong network
+          else child.position.set(s.x, s.y+26, s.z);
+        }
+        continue;
       }
-      continue;
-    }
-    if(ud.kind==="repoRegion" || ud.kind==="repoLabel"){
-      const r = liveRepo.get(ud.repo);   // empty repos keep their static layout spot
-      if(r && r.n){
-        if(ud.kind==="repoRegion") child.position.set(r.x, r.y, r.z);
-        else child.position.set(r.x, r.y+56, r.z);   // same inside-the-mass rule as role labels
+      if(ud.kind==="repoRegion" || ud.kind==="repoLabel"){
+        const r = liveRepo.get(ud.repo);   // empty repos keep their static layout spot
+        if(r && r.n){
+          if(ud.kind==="repoRegion") child.position.set(r.x, r.y, r.z);
+          else child.position.set(r.x, r.y+56, r.z);   // same inside-the-mass rule as role labels
+        }
+        continue;
       }
-      continue;
     }
   }
-  // synapses + ambient pulses: same per-link formulas as the old one-Line-
-  // per-link scene, written into the single LineSegments' position/color
-  // buffers and the pulse layer's instanced attributes. Per-link opacity is
-  // encoded as a vertex-color scale (≡ alpha under additive blending).
+  // synapse line positions follow node positions (stepped frames); colors
+  // encode per-link opacity as a vertex-color scale (≡ alpha under additive
+  // blending) and change only with search state or the hovered link.
   if(synLines){
-    for(let i=0;i<links.length;i++){
-      const l = links[i];
-      const o = i*6;
-      synLines.pos[o]   = l.a.x; synLines.pos[o+1] = l.a.y; synLines.pos[o+2] = l.a.z;
-      synLines.pos[o+3] = l.b.x; synLines.pos[o+4] = l.b.y; synLines.pos[o+5] = l.b.z;
-      // search highlight: a synapse touching a matched note stays lit (and
-      // gets a boost); one between two non-matches fades with its endpoints.
-      const synMatch = searchActive && (l.a.searchMatch || l.b.searchMatch);
-      const synDimMul = (searchActive && !synMatch) ? 0.12 : 1;
-      const op = (l.baseOpacity + (l===hoveredLink ? 0.45 : 0) + (synMatch ? 0.3 : 0)) * synDimMul;   // hover-inspection highlight
-      const r = l.color.r*op, g = l.color.g*op, b = l.color.b*op;
-      synLines.col[o]   = r; synLines.col[o+1] = g; synLines.col[o+2] = b;
-      synLines.col[o+3] = r; synLines.col[o+4] = g; synLines.col[o+5] = b;
+    if(stepped){
+      for(let i=0;i<links.length;i++){
+        const l = links[i];
+        const o = i*6;
+        synLines.pos[o]   = l.a.x; synLines.pos[o+1] = l.a.y; synLines.pos[o+2] = l.a.z;
+        synLines.pos[o+3] = l.b.x; synLines.pos[o+4] = l.b.y; synLines.pos[o+5] = l.b.z;
+        if(synPulses){
+          const po = i*3;
+          synPulses.a[po] = l.a.x; synPulses.a[po+1] = l.a.y; synPulses.a[po+2] = l.a.z;
+          synPulses.b[po] = l.b.x; synPulses.b[po+1] = l.b.y; synPulses.b[po+2] = l.b.z;
+        }
+      }
+      synLines.geo.attributes.position.needsUpdate = true;
       if(synPulses){
-        // ambient directional drift, source(a) → target(b), ~4.5s per lap,
-        // desynced per-link via pulsePhase; deliberately dim/slow relative to
-        // the bright event-driven travel pulse in makeTravelAnim.
-        const p = ((now*0.00022 + l.pulsePhase) % 1);
-        const po = i*3;
-        synPulses.offset[po]   = l.a.x+(l.b.x-l.a.x)*p;
-        synPulses.offset[po+1] = l.a.y+(l.b.y-l.a.y)*p;
-        synPulses.offset[po+2] = l.a.z+(l.b.z-l.a.z)*p;
-        synPulses.alpha[i] = l.pulseBase * synDimMul;
+        synPulses.geo.attributes.aA.needsUpdate = true;
+        synPulses.geo.attributes.aB.needsUpdate = true;
       }
     }
-    synLines.geo.attributes.position.needsUpdate = true;
-    synLines.geo.attributes.color.needsUpdate = true;
-    if(synPulses){
-      synPulses.geo.attributes.aOffset.needsUpdate = true;
-      synPulses.geo.attributes.aAlpha.needsUpdate = true;
+    if(searchDirty || hoverLinkDirty){
+      for(let i=0;i<links.length;i++){
+        const l = links[i];
+        const o = i*6;
+        // search highlight: a synapse touching a matched note stays lit (and
+        // gets a boost); one between two non-matches fades with its endpoints.
+        const synMatch = searchActive && (l.a.searchMatch || l.b.searchMatch);
+        const synDimMul = (searchActive && !synMatch) ? 0.12 : 1;
+        const op = (l.baseOpacity + (l===hoveredLink ? 0.45 : 0) + (synMatch ? 0.3 : 0)) * synDimMul;   // hover-inspection highlight
+        const r = l.color.r*op, g = l.color.g*op, b = l.color.b*op;
+        synLines.col[o]   = r; synLines.col[o+1] = g; synLines.col[o+2] = b;
+        synLines.col[o+3] = r; synLines.col[o+4] = g; synLines.col[o+5] = b;
+        if(synPulses) synPulses.dim[i] = l.pulseBase * synDimMul;
+      }
+      synLines.geo.attributes.color.needsUpdate = true;
+      if(synPulses) synPulses.geo.attributes.aDim.needsUpdate = true;
     }
   }
+  visSeenSearchEpoch = visSearchEpoch;
+  lastHoveredLink = hoveredLink;
   updateAnims();
 }
 
@@ -1525,7 +1646,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // dev repo / marketplace clone / plugin cache — and "why does it look old"
 // has burned real debugging time). Bump the PATCH on every template change
 // within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.25.16";
+const NV_VERSION = "0.25.17";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -1650,7 +1771,7 @@ function playEvent(e){
   const nd = e.note ? nodeById.get(repo+"/"+e.role+"/"+e.note) : null;
   const hue = nd ? (clusters.get(clusterKey(nd.repo,nd.role))?.hue ?? 190) : 190;
   const inten = Math.max(0.4, Math.min(1, e.activation ?? 0.7));
-  if(nd) nd.hl = Math.max(nd.hl, inten);
+  if(nd){ nd.hl = Math.max(nd.hl, inten); hlActive.add(nd); }   // hlActive: updateVisuals writes this note's fading aHl
   if(REDUCED || !webglOK) return;   // reduced-motion / no-webgl: instant highlight only
   const now = performance.now();
   if(e.event==="seed" && nd){
