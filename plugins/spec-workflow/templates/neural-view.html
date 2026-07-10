@@ -70,8 +70,36 @@ canvas.grabbing{cursor:grabbing}
   color:var(--fg);cursor:pointer}
 #settings-panel .hint{font-size:.58rem;color:var(--muted);line-height:1.4}
 
+/* Talk panel (left bar → deep-link a new session, see docs.claude.com/en/deep-links) */
+.hud#talk-panel{top:70px;left:324px;width:320px;max-height:calc(100vh - 100px);overflow:auto;
+  padding:.75rem .85rem;display:none;flex-direction:column;gap:.55rem;z-index:60;
+  background:var(--panel-solid);backdrop-filter:none;-webkit-backdrop-filter:none}
+.hud#talk-panel.open{display:flex}
+.talk-head{display:flex;justify-content:space-between;align-items:center}
+.talk-head .secthead{cursor:default}
+.talk-head .secthead::before{content:""}
+.talk-head .close{cursor:pointer;color:var(--muted);border:0;background:none;font-size:.9rem;font-family:var(--mono)}
+.talk-head .close:hover{color:var(--cyan)}
+.tlabel{display:flex;flex-direction:column;gap:.3rem;font-size:.58rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted)}
+.tfield,#talk-panel select,#talk-panel input,#talk-panel textarea{background:rgba(10,20,34,.6);
+  border:1px solid var(--border);color:var(--fg);border-radius:6px;font-family:var(--mono);
+  font-size:.72rem;padding:.32rem .45rem;width:100%}
+#talk-panel textarea{resize:vertical;min-height:70px}
+.talk-name-row{display:flex;gap:.4rem}
+.talk-name-row input{flex:1}
+.talk-preview{font-size:.6rem;line-height:1.4;color:var(--slate);white-space:pre-wrap;
+  word-break:break-word;background:rgba(255,255,255,.03);border:1px solid rgba(90,190,255,.12);
+  border-radius:6px;padding:.4rem .5rem;max-height:90px;overflow:auto}
+.talk-count{font-size:.56rem;color:var(--muted);text-align:right}
+.talk-count.over{color:#ff6b6b}
+.talk-actions{display:flex;gap:.5rem;justify-content:flex-end}
+.talk-actions .iconbtn{padding:.32rem .7rem;text-transform:uppercase;letter-spacing:.08em;font-size:.62rem}
+.talk-actions .iconbtn.primary{color:var(--cyan);border-color:var(--cyan-dim);background:rgba(70,230,255,.08)}
+#talk-panel .hint{font-size:.58rem;color:var(--muted);line-height:1.4}
+
 /* gauges (top-left, below topbar) */
-#gauges{top:70px;left:14px;width:264px;max-height:calc(100vh - 130px);overflow:auto;
+#gauges{top:70px;left:14px;width:296px;max-height:calc(100vh - 130px);overflow:auto;
   padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease}
 #gauges.collapsed{transform:translateX(calc(-100% - 24px));opacity:0;pointer-events:none}
 #gauges-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem}
@@ -90,24 +118,49 @@ canvas.grabbing{cursor:grabbing}
   padding:.55rem .4rem;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:.8rem}
 #gauges-tab:hover{color:var(--cyan)}
 .repo-brains{margin:0}
-.repo-brains-h{font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan);
-  margin:.6rem 0 .1rem;border-top:1px solid rgba(90,190,255,.18);padding-top:.5rem;
-  background:none;border-left:0;border-right:0;border-bottom:0;display:block;width:100%;
-  text-align:left;cursor:pointer;font-family:var(--mono)}
+.repo-brains-hrow{display:flex;align-items:center;gap:.3rem;
+  margin:.6rem 0 .1rem;border-top:1px solid rgba(90,190,255,.18);padding-top:.5rem}
+.repo-brains:first-of-type .repo-brains-hrow{border-top:0;margin-top:0;padding-top:0}
+.repo-brains-h{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan);
+  background:none;border:0;text-align:left;cursor:pointer;font-family:var(--mono);padding:0}
 .repo-brains-h:hover{color:var(--fg)}
 .repo-brains-h::before{content:"▾";margin-right:.4rem;color:var(--cyan-dim)}
 .repo-brains-h[aria-expanded="false"]::before{content:"▸"}
-.repo-brains:first-of-type .repo-brains-h{border-top:0;margin-top:0;padding-top:0}
+.repo-talk-btn{flex:none;background:none;border:0;color:var(--muted);cursor:pointer;
+  font-size:.62rem;padding:.1rem .25rem;line-height:1;font-family:var(--mono)}
+.repo-talk-btn:hover{color:var(--cyan)}
 .repo-brains-rows.collapsed{display:none}
-.brainrow{cursor:pointer;display:flex;align-items:center;gap:.4rem;padding:.3rem 0;border-top:1px solid rgba(90,190,255,.12)}
+.brainrow{cursor:pointer;position:relative;display:flex;align-items:center;gap:.5rem;
+  padding:.3rem 2.35rem .3rem 0;border-top:1px solid rgba(90,190,255,.12)}
 .brainrow:hover,.brainrow:focus-visible{background:rgba(90,190,255,.08);outline:none}
 .repo-brains .brainrow:first-of-type{border-top:0}
-.brainrow .rname{flex:1;font-size:.6rem;letter-spacing:.08em;text-transform:uppercase}
-/* stat cells sized to always fit the 264px panel on one line — the default
-   .label letter-spacing (.28em) wrapped/clipped STR/SYN on long role names */
+/* rname is capped, not flex:1 — flex:1 let it claim all leftover space (even
+   though its own text is short), shoving str/syn flush against the far
+   edge with a big dead gap after the name. A fixed max-width + ellipsis
+   packs name/str/syn together and leaves the row's own right-padding strip
+   (not flex space) for the action icons. */
+.brainrow .rname{flex:0 1 auto;max-width:7.2rem;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;font-size:.6rem;letter-spacing:.08em;text-transform:uppercase}
+.brainrow .stats{display:flex;gap:.5rem;flex:none}
 .brainrow .label{font-size:.56rem;letter-spacing:.06em;white-space:nowrap}
 .brainrow-empty{opacity:.4}
+.brainrow-hidden{opacity:.35}
+.brainrow-hidden .rname{text-decoration:line-through;text-decoration-color:var(--cyan-dim)}
 .arc{width:28px;height:28px;flex:none}
+/* action icons live in the row's own right-padding strip (2.35rem), stacked
+   side by side — never flex siblings of name/str/syn, so they can't squeeze
+   those out regardless of how long a value gets. */
+.brainrow-actions{position:absolute;right:.1rem;top:50%;transform:translateY(-50%);
+  display:flex;gap:.05rem;opacity:0;transition:opacity .12s ease}
+.brainrow:hover .brainrow-actions,.brainrow:focus-within .brainrow-actions,
+.brainrow-hidden .brainrow-actions{opacity:1}
+.brainrow-actions button{background:none;border:0;color:var(--muted);cursor:pointer;
+  font-size:.64rem;padding:.1rem .2rem;line-height:1}
+.brainrow-actions button:hover{color:var(--cyan)}
+.brainrow-hidden .eyebtn{color:var(--amber)}
+/* loop-active badge (best-effort — see loopSessionsFor()) on repo labels/tooltips */
+.tt-loop{color:var(--amber)}
 
 /* ticker (bottom) */
 /* activation log — right sidebar, mirroring the left panel's collapse UX */
@@ -118,8 +171,14 @@ canvas.grabbing{cursor:grabbing}
 #rightbar-tab{position:fixed;top:70px;right:0;z-index:20;border-right:0;border-radius:8px 0 0 8px;
   padding:.55rem .4rem;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:.8rem}
 #rightbar-tab:hover{color:var(--cyan)}
-#tickerlog{font-size:.62rem;line-height:1.55;color:var(--slate)}
-#tickerlog .ev{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tickerlog{font-size:.62rem;line-height:1.5;color:var(--slate)}
+#tickerlog .ev{padding:.28rem 0;border-top:1px solid rgba(90,190,255,.1)}
+#tickerlog .ev:first-child{border-top:0}
+/* head (time · repo tag · ROLE · kind) stays one line — it's short and
+   never the part that was overflowing; the note/link name is what got
+   truncated to an unreadable "inject deco…", so only IT wraps. */
+#tickerlog .ev-head{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tickerlog .ev-note{white-space:normal;overflow-wrap:break-word;color:var(--muted);margin-top:.12rem}
 #tickerlog .k{color:var(--cyan)}
 #tickerlog .warn{color:var(--amber)}
 #tickerlog .t{color:#7c92a6}
@@ -224,6 +283,40 @@ canvas.grabbing{cursor:grabbing}
   <div id="project-list"></div>
 </div>
 <button class="hud" id="gauges-tab" title="Show panel" aria-label="Show panel" hidden>⟩</button>
+
+<div class="hud" id="talk-panel" aria-hidden="true">
+  <div class="talk-head">
+    <span class="secthead">Talk</span>
+    <button class="close" id="talk-close" aria-label="Close">✕</button>
+  </div>
+  <label class="tlabel">Repo
+    <select id="talk-repo"></select>
+  </label>
+  <label class="tlabel">Identity
+    <select id="talk-identity"></select>
+  </label>
+  <label class="tlabel">Session name
+    <div class="talk-name-row">
+      <input id="talk-project" placeholder="project" spellcheck="false">
+      <input id="talk-slug" placeholder="slug, e.g. build-loop" spellcheck="false">
+    </div>
+  </label>
+  <label class="tlabel">Question / prompt
+    <textarea id="talk-prompt" rows="5" placeholder="What do you want to ask?"></textarea>
+  </label>
+  <div class="talk-preview" id="talk-preview"></div>
+  <div class="talk-count" id="talk-count"></div>
+  <div class="talk-actions">
+    <button class="iconbtn" id="talk-copy" title="Copy the deep link instead of opening it">Copy link</button>
+    <button class="iconbtn primary" id="talk-send" title="Open claude-cli://open with this prompt">Send ↗</button>
+  </div>
+  <div class="hint">Opens a <code>claude-cli://open</code> deep link — a new terminal session starts
+    in the chosen repo and asks the question via <code>/spec-workflow:ask-identity</code> (one role)
+    or <code>/spec-workflow:ask-brain</code> (whole repo, when Identity is "whole brain") — both are
+    read-only consults, see the <code>ask-identity</code>/<code>ask-brain</code> skills — then picks
+    up the trailing <code>/rename</code> line to name itself. Nothing is sent to Claude until you press
+    Enter in that session.</div>
+</div>
 
 <div class="hud" id="rightbar">
   <div id="rightbar-head">
@@ -595,7 +688,8 @@ function rebuildScene(){
       mesh.userData = {kind:"repoRegion", repo};
       sceneGroup.add(mesh);
       const sessN = sessionCountFor(repo);
-      const labelText = dispName(repo).toUpperCase() + (sessN ? ` · ${sessN} LIVE` : "");
+      const loopN = loopSessionsFor(repo).length;
+      const labelText = dispName(repo).toUpperCase() + (sessN ? ` · ${sessN} LIVE` : "") + (loopN ? " · ↻ LOOP" : "");
       const label = makeLabelSprite(labelText, sessN ? 45 : 190, 22);
       label.position.set(rc.x, rc.y+rad+26, rc.z);
       label.userData = {kind:"repoLabel", repo};
@@ -690,28 +784,71 @@ function rebuildScene(){
   }
 }
 
+// ---- brain visibility (hide a repo/role brain to focus on others — the
+// scene, totals and gauge counts all exclude a hidden brain's notes; the
+// gauge row itself stays visible, struck through, with an eye toggle to
+// bring it back). Persisted in uiState like the other panel toggles. ----
+function brainKey(repo,role){ return repo+"/"+role; }
+function isBrainHidden(repo,role){ return !!(uiState.hiddenBrains||{})[brainKey(repo,role)]; }
+function toggleBrainHidden(repo,role){
+  uiState.hiddenBrains = uiState.hiddenBrains || {};
+  const k = brainKey(repo,role);
+  if(uiState.hiddenBrains[k]) delete uiState.hiddenBrains[k]; else uiState.hiddenBrains[k] = true;
+  saveUiState();
+  if(lastRawGraph) applyGraph(lastRawGraph);   // re-filter/re-render without a round trip to the server
+}
+function hiddenBrainCountFor(repo){
+  const hidden = uiState.hiddenBrains||{};
+  return Object.keys(hidden).filter(k=>k.startsWith(repo+"/")).length;
+}
+
+let lastRawGraph = null;
 async function loadGraph(){
   let g; try { g = await (await fetch("/graph")).json(); } catch { return; }
+  lastRawGraph = g;
+  applyGraph(g);
+}
+function applyGraph(g){
   const prev = nodeById;
-  roles = [...new Set(g.nodes.map(n=>n.role))].sort();
-  repoList = (g.repos && g.repos.length) ? [...g.repos].sort() : [...new Set(g.nodes.map(n=>n.repo))].sort();
+  repoList = (g.repos && g.repos.length) ? [...g.repos].sort() : [...new Set((g.nodes||[]).map(n=>n.repo))].sort();
   window.__repoRoles = g.repoRoles || {};
   window.__roleColors = g.roleColors || {};
   window.__repoDisplay = g.displayNames || {};
-  nodes = g.nodes.map(n=>{
+  window.__repoRoots = g.roots || {};
+  const rawNodes = g.nodes || [];
+  const rawCounts = {};
+  for(const n of rawNodes){ const k = brainKey(n.repo, n.role); rawCounts[k] = (rawCounts[k]||0) + 1; }
+  window.__brainRawCounts = rawCounts;
+  const visibleNodes = rawNodes.filter(n=>!isBrainHidden(n.repo, n.role));
+  roles = [...new Set(visibleNodes.map(n=>n.role))].sort();
+  // Degree (synapse count) per node id, from the raw edges — computed before
+  // the node map below so radius can reflect it. A handful of "index"/"map"
+  // notes that many others [[wikilink]] to (glossary-index at 594 links,
+  // keywords-index at 383, in fab-cli/judge) are genuine hubs; sizing them
+  // like an ordinary 1-10-link note buried them visually despite dominating
+  // the graph.
+  const degree = {};
+  for(const e of (g.edges||[])){
+    if(e.type==="consult") continue;
+    degree[e.source] = (degree[e.source]||0)+1;
+    degree[e.target] = (degree[e.target]||0)+1;
+  }
+  nodes = visibleNodes.map(n=>{
     const old = prev.get(n.id);
+    const deg = degree[n.id]||0;
     return Object.assign(n, {
       // world coords — spawn near origin, gravity pulls into place
       x: old ? old.x : (Math.random()-.5)*260, y: old ? old.y : (Math.random()-.5)*260, z: old ? old.z : (Math.random()-.5)*260,
       vx: old?old.vx:0, vy: old?old.vy:0, vz: old?old.vz:0, hl: old?old.hl:0, phase: Math.random()*6.283,
-      r: 4 + Math.min(n.strength||1, 12) * 1.7
+      degree: deg,
+      r: 4 + Math.min(n.strength||1, 12) * 1.2 + Math.min(Math.sqrt(deg), 24) * 1.4
     });
   });
   nodeById = new Map(nodes.map(n=>[n.id,n]));
-  links = g.edges.filter(e=>e.type!=="consult").map(e=>({
+  links = (g.edges||[]).filter(e=>e.type!=="consult").map(e=>({
     a: nodeById.get(e.source), b: nodeById.get(e.target), w: e.weight ?? .5, fires: e.fires ?? 0, key: e.source+"->"+e.target
   })).filter(l=>l.a && l.b);
-  window.__consultEdges = g.edges.filter(e=>e.type==="consult");
+  window.__consultEdges = (g.edges||[]).filter(e=>e.type==="consult" && !isBrainHidden(e.source.split("/")[0], e.source.split("/")[1]) && !isBrainHidden(e.target.split("/")[0], e.target.split("/")[1]));
   layoutClusters();
   rebuildScene();
   // The FIRST graph with content always fits, even if userMoved — /graph can
@@ -726,7 +863,10 @@ async function loadGraph(){
   document.getElementById("t-links").textContent = links.length;
   document.getElementById("t-brains").textContent = roles.length;
   document.getElementById("t-repos").textContent = repoList.length;
-  document.getElementById("empty").style.display = nodes.length ? "none" : "grid";
+  // rawNodes.length (not nodes.length): hiding every brain must not show the
+  // "no brains yet" empty-state — that message means no identity has ever
+  // learned anything, which hidden-but-populated brains contradict.
+  document.getElementById("empty").style.display = rawNodes.length ? "none" : "grid";
   renderGauges();
 }
 
@@ -735,12 +875,22 @@ async function loadGraph(){
 function step(){
   if(!webglOK) return;
   const KREP = 2600, KSPRING = 0.012, KGRAV = 0.015, DAMP = 0.86;
+  // Two hard caps against the sim "exploding" — nodes rocketing off past the
+  // camera in one frame, seen on brains with hundreds of notes (e.g.
+  // fab-cli/judge at ~570). All nodes spawn in the same small ±130 cube
+  // around the origin regardless of final cluster (see loadGraph's spawn
+  // comment), so with enough of them a few pairs land nearly coincident by
+  // chance; d2 for those pairs can be a small fraction of 1, and
+  // f=KREP/d2 (uncapped) turns into millions — a single-frame velocity
+  // spike DAMP alone can't tame before it's already off-screen.
+  const MAX_PAIR_FORCE = 40;   // caps any one repulsion impulse, however close the pair is
+  const MAX_SPEED = 40;        // coarser backstop: whatever produced it, no node teleports in one step
   for(let i=0;i<nodes.length;i++){
     const a = nodes[i];
     for(let j=i+1;j<nodes.length;j++){
       const b = nodes[j];
       let dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z, d2=dx*dx+dy*dy+dz*dz||0.01;
-      if(d2 < 90000){ const f=KREP/d2, d=Math.sqrt(d2); const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
+      if(d2 < 90000){ const f=Math.min(KREP/d2, MAX_PAIR_FORCE), d=Math.sqrt(d2)||0.01; const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
         a.vx+=fx; a.vy+=fy; a.vz+=fz; b.vx-=fx; b.vy-=fy; b.vz-=fz; }
     }
   }
@@ -748,12 +898,32 @@ function step(){
     const dx=l.b.x-l.a.x, dy=l.b.y-l.a.y, dz=l.b.z-l.a.z, d=Math.hypot(dx,dy,dz)||.01;
     const target2 = 70 + (1-l.w)*70, f = KSPRING*(d-target2);
     const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
-    l.a.vx+=fx; l.a.vy+=fy; l.a.vz+=fz; l.b.vx-=fx; l.b.vy-=fy; l.b.vz-=fz;
+    // Split each spring's pull by 1/sqrt(degree) per endpoint: an ordinary
+    // note (degree ~1-10) is unaffected, but a hub with hundreds of links
+    // (glossary/keyword "index" notes — see the node-radius comment above)
+    // no longer gets pulled by the FULL force of every single one of them
+    // every frame, which is what kept it oscillating/flickering instead of
+    // settling. Without this, total incoming spring force scales with
+    // degree; with it, it scales with sqrt(degree).
+    const da = Math.sqrt(Math.max(1, l.a.degree||1)), db = Math.sqrt(Math.max(1, l.b.degree||1));
+    l.a.vx+=fx/da; l.a.vy+=fy/da; l.a.vz+=fz/da;
+    l.b.vx-=fx/db; l.b.vy-=fy/db; l.b.vz-=fz/db;
   }
   for(const nd of nodes){
     const c = clusters.get(clusterKey(nd.repo,nd.role));
     if(c){ nd.vx += (c.x-nd.x)*KGRAV; nd.vy += (c.y-nd.y)*KGRAV; nd.vz += (c.z-nd.z)*KGRAV; }
-    nd.vx*=DAMP; nd.vy*=DAMP; nd.vz*=DAMP;
+    // Sqrt-normalizing the spring pull above (da/db) tamed the explosion,
+    // but a hub still nets ~sqrt(degree)x an ordinary note's force every
+    // frame — mostly from its many neighbors' OWN small settling motions,
+    // which never fully stop. That shows as gentle persistent jitter/drift
+    // instead of settling like every other note. Extra damping scaled by
+    // degree (no-op below ~9 links, i.e. ordinary notes are untouched)
+    // bleeds that off faster so hubs come to rest too.
+    const extraDamp = 1 / (1 + Math.max(0, Math.sqrt(nd.degree||0) - 3) / 10);
+    const d = DAMP * extraDamp;
+    nd.vx*=d; nd.vy*=d; nd.vz*=d;
+    const speed = Math.hypot(nd.vx, nd.vy, nd.vz);
+    if(speed > MAX_SPEED){ const s = MAX_SPEED/speed; nd.vx*=s; nd.vy*=s; nd.vz*=s; }
     nd.x+=nd.vx; nd.y+=nd.vy; nd.z+=nd.vz;
     if(nd.hl>0) nd.hl = Math.max(0, nd.hl - 0.018);
   }
@@ -971,12 +1141,17 @@ async function poll(){
 const LOG = document.getElementById("tickerlog");
 function logEvent(e){
   const div=document.createElement("div"); div.className="ev";
-  const t=(e.ts||"").replace("T"," ").replace(/\..*/,"").slice(11) || "--:--:--";
+  // HH:MM:SS only — e.ts is a full ISO timestamp ("...T05:11:34+00:00"); the
+  // old slice(11) kept everything after that including the "+00:00" offset,
+  // which is noise nobody reads in a live-scrolling log.
+  const tm = (e.ts||"").match(/T(\d{2}:\d{2}:\d{2})/);
+  const t = tm ? tm[1] : "--:--:--";
   const kind = e.event||"?";
   const cls = kind==="consult" ? "warn" : "k";
-  const what = e.note ? " "+e.note : (e.link?" "+e.link:"");
+  const what = e.note || e.link || "";
   const tag = (repoList.length>1 && e.repo) ? `<span class="t">[${escapeHtml(e.repo)}]</span> ` : "";
-  div.innerHTML = `<span class="t">${t}</span> ${tag}<span class="${cls}">${(e.role||"?").toUpperCase()} · ${kind}</span>${escapeHtml(what)}`;
+  div.innerHTML = `<div class="ev-head"><span class="t">${t}</span> ${tag}<span class="${cls}">${(e.role||"?").toUpperCase()} · ${kind}</span></div>` +
+    (what ? `<div class="ev-note">${escapeHtml(what)}</div>` : "");
   LOG.prepend(div);
   while(LOG.childNodes.length>40) LOG.lastChild.remove();   // sidebar has vertical room the old bottom strip lacked
 }
@@ -1007,28 +1182,62 @@ function renderGauges(){
   for(const repo of repoList){
     const section=document.createElement("div"); section.className="repo-brains";
     const collapsed = !!uiState.repoCollapse[repo];
+    const hrow=document.createElement("div"); hrow.className="repo-brains-hrow";
     const head=document.createElement("button");
     head.className="repo-brains-h"; head.setAttribute("aria-expanded", collapsed?"false":"true");
     head.setAttribute("aria-label", `Toggle ${repo} brains`);
     head.textContent = dispName(repo);
     head.onclick = ()=>{ uiState.repoCollapse[repo] = !uiState.repoCollapse[repo]; saveUiState(); renderGauges(); };
-    section.appendChild(head);
+    hrow.appendChild(head);
+    const repoTalk=document.createElement("button");
+    repoTalk.className="repo-talk-btn"; repoTalk.type="button";
+    repoTalk.title = `Ask ${dispName(repo)}'s whole brain`;
+    repoTalk.setAttribute("aria-label", repoTalk.title);
+    repoTalk.textContent = "✎";
+    repoTalk.onclick = ev=>{ ev.stopPropagation(); openTalkPanel(repo, WHOLE_BRAIN, repoTalk); };
+    hrow.appendChild(repoTalk);
+    section.appendChild(hrow);
     const rows=document.createElement("div"); rows.className = "repo-brains-rows" + (collapsed?" collapsed":"");
     for(const role of orderedRoles(repo)){
       const k=clusterKey(repo,role); const s=perCombo.get(k);
+      const hidden = isBrainHidden(repo, role);
       const n=s?s.n:0, avg=(s&&s.n)?s.str/s.n:0, lk=linkCount.get(k)||0;
       const hue=comboHue(repo, role);
-      const row=document.createElement("div"); row.className = n ? "brainrow" : "brainrow brainrow-empty";
+      const row=document.createElement("div");
+      row.className = (n ? "brainrow" : "brainrow brainrow-empty") + (hidden ? " brainrow-hidden" : "");
       row.tabIndex = 0;
       row.setAttribute("role", "button");
       row.setAttribute("aria-label", `Fly to ${role} in ${repo}`);
       row.onclick = ()=>flyToCluster(repo, role);
       row.onkeydown = ev=>{ if(ev.key==="Enter"){ ev.preventDefault(); flyToCluster(repo, role); } };
+      const rawN = (window.__brainRawCounts||{})[k] || 0;
       row.innerHTML =
         arc(n/maxN, hue, n) +
-        `<div class="rname" style="color:${cssColor(hue,72,.95)}">${escapeHtml(role)}</div>` +
-        `<div class="label" title="avg strength">str <span class="val">${avg.toFixed(1)}</span></div>` +
-        `<div class="label" title="synapses">syn <span class="val">${lk}</span></div>`;
+        `<div class="rname" style="color:${cssColor(hue,72,.95)}" title="${escapeHtml(role)}">${escapeHtml(role)}</div>` +
+        (hidden
+          ? `<div class="stats"><div class="label" title="${rawN} note(s), excluded from totals">hidden</div></div>`
+          : `<div class="stats">`+
+              `<div class="label" title="avg strength">str <span class="val">${avg.toFixed(1)}</span></div>` +
+              `<div class="label" title="synapses">syn <span class="val">${lk}</span></div>`+
+            `</div>`);
+      const actions=document.createElement("div"); actions.className="brainrow-actions";
+      const talk=document.createElement("button");
+      talk.className="talkrowbtn"; talk.type="button";
+      talk.title = `Ask ${role} in ${repo}`;
+      talk.setAttribute("aria-label", talk.title);
+      talk.textContent = "✎";
+      talk.onclick = ev=>{ ev.stopPropagation(); openTalkPanel(repo, role, talk); };
+      talk.onkeydown = ev=>ev.stopPropagation();
+      actions.appendChild(talk);
+      const eye=document.createElement("button");
+      eye.className = "eyebtn"; eye.type = "button";
+      eye.title = hidden ? `Show ${role} in totals/scene again` : `Hide ${role} from totals/scene`;
+      eye.setAttribute("aria-label", eye.title);
+      eye.textContent = hidden ? "◌" : "●";
+      eye.onclick = ev=>{ ev.stopPropagation(); toggleBrainHidden(repo, role); };
+      eye.onkeydown = ev=>ev.stopPropagation();
+      actions.appendChild(eye);
+      row.appendChild(actions);
       rows.appendChild(row);
     }
     section.appendChild(rows);
@@ -1054,6 +1263,18 @@ function arc(frac, hue, label){
 window.__projects = {};
 window.__sessions = [];
 function sessionCountFor(repo){ return (window.__sessions||[]).filter(s=>s.repo===repo).length; }
+// Best-effort "a /loop or /build-next iteration is running" badge. There is
+// no real heartbeat — GET /sessions deliberately only exposes a job's
+// name/state/cwd (never transcript/detail content, see discover_sessions()
+// server-side), and a loop's job name is whatever label the harness/user
+// picked, not the command that's running. This just flags a "working" job
+// whose name happens to mention loop/build-next; it will miss loops running
+// under an unrelated name and can't tell a loop from a manual session named
+// "loop-fix-thing". Treat the badge as a hint, not a fact.
+function loopSessionsFor(repo){
+  return (window.__sessions||[]).filter(s=>s.repo===repo && s.state==="working" &&
+    /\bloop\b|build-next|build-loop/i.test(s.description||""));
+}
 async function loadProjects(){
   let data; try{ data = await (await fetch("/projects")).json(); }catch{ return; }
   window.__projects = data && typeof data==="object" ? data : {};
@@ -1159,9 +1380,12 @@ function tooltipHtml(ud){
       projHtml = `<div class="tt-sub">${counts||"no items"}</div>`;
     }
     const sess = sessionCountFor(repo);
+    const loopN = loopSessionsFor(repo).length;
+    const hiddenN = hiddenBrainCountFor(repo);
     return `<div class="tt-kind">repo</div><div class="tt-title">${escapeHtml(dispName(repo))}</div>`+
-      `<div class="tt-sub">${inRepo.length} note(s) · ${brains} brain(s)</div>${projHtml}`+
-      (sess ? `<div class="tt-sub">${sess} active session(s)</div>` : "");
+      `<div class="tt-sub">${inRepo.length} note(s) · ${brains} brain(s)${hiddenN ? ` · ${hiddenN} hidden` : ""}</div>${projHtml}`+
+      (sess ? `<div class="tt-sub">${sess} active session(s)</div>` : "")+
+      (loopN ? `<div class="tt-sub tt-loop">↻ ${loopN} loop/build session(s) (best-effort — name match)</div>` : "");
   }
   if(ud.kind==="synapse" || ud.kind==="synapsePulse"){
     const l = ud.link;
@@ -1442,6 +1666,114 @@ boardsRefreshBtn.onclick = (ev)=>{
   clearTimeout(boardsRefreshBtn._spinTimer);
   boardsRefreshBtn._spinTimer = setTimeout(()=>boardsRefreshBtn.classList.remove("spin"), BOARDS_REFRESH_MIN_MS);
 };
+// ---- Talk panel: compose a claude-cli://open deep link to launch a new
+// Claude Code session in a chosen repo with a pre-filled prompt. See
+// https://code.claude.com/docs/en/deep-links — the link only fills the
+// prompt box, it never auto-sends. The prompt is two lines: either
+// `/spec-workflow:ask-identity <role> <question>` (one brain) or
+// `/spec-workflow:ask-brain <question>` (whole repo, "whole brain" picked)
+// first, then `/rename <project> <slug>` trailing on its own line — both
+// ask-* are read-only brain consults, see the ask-identity/ask-brain
+// skills. Skills are ALWAYS namespaced by plugin name ("/plugin:skill"),
+// never bare — see SKILL_NS below. There is deliberately no free-form "just
+// open a session" mode here: Talk is scoped to a brain or an identity,
+// never a bare repo. The composed text is shown verbatim in the preview box
+// so you can check it
+// (and edit the fields) before sending. ----
+const Q_MAX = 5000;   // deep-link `q` hard limit per the docs
+const WHOLE_BRAIN = "";   // talk-identity value meaning "/spec-workflow:ask-brain", not a specific role
+// Skills are namespaced by plugin name ("/plugin-name:skill-name"), never
+// bare — a bare "/ask-identity" 404s as "Unknown command" even once the
+// skill exists and the plugin is up to date. Must match plugin.json's name.
+const SKILL_NS = "spec-workflow";
+const talkPanel = document.getElementById("talk-panel");
+const talkRepoSel = document.getElementById("talk-repo");
+const talkIdentitySel = document.getElementById("talk-identity");
+const talkProjectInput = document.getElementById("talk-project");
+const talkSlugInput = document.getElementById("talk-slug");
+const talkPromptInput = document.getElementById("talk-prompt");
+const talkPreview = document.getElementById("talk-preview");
+const talkCount = document.getElementById("talk-count");
+let talkOpener = null;   // element that opened the panel, for outside-click/focus-return handling
+
+function talkProjectDefault(repo){
+  // "@event-sorc/monorepo" -> "event-sorc"; else fall back to the repo key.
+  const disp = dispName(repo) || repo || "";
+  const m = disp.match(/^@([a-z0-9._-]+)\//i);
+  return (m ? m[1] : repo || "").toLowerCase();
+}
+function populateTalkIdentity(repo, preferRole){
+  const roles = (window.__repoRoles||{})[repo] || [];
+  talkIdentitySel.innerHTML = '<option value="">— whole brain —</option>' +
+    roles.map(r=>`<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join("");
+  talkIdentitySel.value = (preferRole && roles.includes(preferRole)) ? preferRole : WHOLE_BRAIN;
+}
+function buildTalkText(){
+  const project = talkProjectInput.value.trim();
+  const slug = talkSlugInput.value.trim();
+  const prompt = talkPromptInput.value.trim();
+  const identity = talkIdentitySel.value;
+  const nameArgs = [project, slug].filter(Boolean).join(" ");
+  const rename = nameArgs ? `/rename ${nameArgs}` : "";
+  const ask = prompt ? (identity ? `/${SKILL_NS}:ask-identity ${identity} ${prompt}` : `/${SKILL_NS}:ask-brain ${prompt}`) : "";
+  // /ask-* goes FIRST, /rename LAST. The harness only recognizes a slash
+  // command on the first line of the input; whichever came first was the
+  // only one that actually ran, and /rename-first silently ate the ask.
+  // Ask-first means the real instruction fires; /rename trailing on its own
+  // line still reads as a plain instruction the session picks up and acts
+  // on once the ask is answered — confirmed via manual deep-link testing.
+  return [ask, rename].filter(Boolean).join("\n");
+}
+function buildTalkUrl(){
+  const repo = talkRepoSel.value;
+  const cwd = (window.__repoRoots||{})[repo];
+  const text = buildTalkText();
+  const parts = [];
+  if(cwd) parts.push("cwd="+encodeURIComponent(cwd));
+  if(text) parts.push("q="+encodeURIComponent(text));
+  return "claude-cli://open" + (parts.length ? "?"+parts.join("&") : "");
+}
+function updateTalkPreview(){
+  const text = buildTalkText();
+  talkPreview.textContent = text || "(empty — type a question below)";
+  talkCount.textContent = `${text.length} / ${Q_MAX}`;
+  talkCount.classList.toggle("over", text.length > Q_MAX);
+}
+// repo: which repo to preselect. role: WHOLE_BRAIN or a specific identity to
+// preselect — pass the row/header element that triggered this as opener so
+// outside-click-to-close doesn't immediately re-close on the same click.
+function openTalkPanel(repo, role, opener){
+  talkOpener = opener || null;
+  talkRepoSel.innerHTML = repoList.map(r=>`<option value="${escapeHtml(r)}">${escapeHtml(dispName(r))}</option>`).join("");
+  talkRepoSel.value = (repo && repoList.includes(repo)) ? repo : (repoList[0] || "");
+  populateTalkIdentity(talkRepoSel.value, role);
+  talkProjectInput.value = talkProjectDefault(talkRepoSel.value);
+  talkPanel.classList.add("open"); talkPanel.setAttribute("aria-hidden","false");
+  updateTalkPreview();
+  talkPromptInput.focus();
+}
+function closeTalkPanel(){ talkPanel.classList.remove("open"); talkPanel.setAttribute("aria-hidden","true"); talkOpener = null; }
+document.getElementById("talk-close").onclick = closeTalkPanel;
+document.addEventListener("click", (ev)=>{
+  if(talkPanel.classList.contains("open") && !talkPanel.contains(ev.target) && ev.target!==talkOpener){
+    closeTalkPanel();
+  }
+});
+talkRepoSel.onchange = ()=>{ talkProjectInput.value = talkProjectDefault(talkRepoSel.value); populateTalkIdentity(talkRepoSel.value); updateTalkPreview(); };
+talkIdentitySel.onchange = updateTalkPreview;
+for(const el of [talkProjectInput, talkSlugInput, talkPromptInput]) el.addEventListener("input", updateTalkPreview);
+document.getElementById("talk-send").onclick = ()=>{
+  const text = buildTalkText();
+  if(text.length > Q_MAX) return;
+  window.location.href = buildTalkUrl();
+};
+document.getElementById("talk-copy").onclick = async ()=>{
+  const btn = document.getElementById("talk-copy");
+  try{ await navigator.clipboard.writeText(buildTalkUrl()); btn.textContent = "Copied"; }
+  catch{ btn.textContent = "Copy failed"; }
+  setTimeout(()=>{ btn.textContent = "Copy link"; }, 1200);
+};
+
 const panel=document.getElementById("inspect");
 document.getElementById("inspect-close").onclick=()=>{ panel.classList.remove("open"); panel.setAttribute("aria-hidden","true"); panel.setAttribute("inert",""); };
 async function openNote(nd){
