@@ -531,8 +531,8 @@ function layoutClusters(){
     });
   }
   nodes.forEach(nd=>{ const c = clusters.get(clusterKey(nd.repo,nd.role)); if(c) c.n++; });
-  // gravity scale for constant equilibrium density (see the integrate loop)
-  for(const c of clusters.values()) c.gf = Math.cbrt(Math.min(1, 600 / Math.max(1, c.n)));
+  // container radius for big brains' gravity (see the integrate loop)
+  for(const c of clusters.values()) c.rt = ballR(c.n);
   updateSceneScale();
 }
 
@@ -1330,17 +1330,26 @@ function step(calibrate){
   let speedSum = 0;
   for(const nd of nodes){
     const c = clusters.get(clusterKey(nd.repo,nd.role));
-    // Cluster gravity is scaled by cbrt(n0/n) for big brains: with CONSTANT
-    // gravity, force balance puts a ball's radius at R ∝ N^(1/4) — density
-    // GROWS with note count, so at 10k-note brains every node has hundreds
-    // of in-range neighbors, repulsion sampling needs huge strides, and the
-    // sampling variance becomes a permanent noise floor (measured: spd
-    // pinned ~20, never sleeping). Scaling gravity keeps equilibrium density
-    // CONSTANT (R ∝ cbrt(N), the same constant the layout and spawn use), so
-    // neighbor counts, step cost, and settle behavior are corpus-size-
-    // independent. Brains under ~600 notes are untouched; a big brain's ball
-    // is a bit airier than before (its radius finally matches the layout's).
-    if(c){ const g = KGRAV * (c.gf || 1); nd.vx += (c.x-nd.x)*g; nd.vy += (c.y-nd.y)*g; nd.vz += (c.z-nd.z)*g; }
+    // Cluster gravity comes in two regimes:
+    //  - small brains (n ≤ 600): the classic center pull — unchanged look.
+    //  - big brains: a CONTAINER — zero gravity inside the target radius
+    //    (ballR(n), the same constant layout and spawn use), spring-to-shell
+    //    beyond it. With a center pull, equilibrium density GROWS with n
+    //    (R ∝ N^(1/4); and force caps make repulsion pressure saturate, so
+    //    scaled-pull corrections undershoot — measured: 4.5x target density,
+    //    sampling strides ~15, variance noise floor spd ~9, never sleeping).
+    //    A container can't over-compress BY CONSTRUCTION: density stays at
+    //    or below target at any corpus size, keeping neighbor counts, step
+    //    cost, and settling scale-independent.
+    if(c){
+      const dx = c.x-nd.x, dy = c.y-nd.y, dz = c.z-nd.z;
+      if(c.n <= 600){
+        nd.vx += dx*KGRAV; nd.vy += dy*KGRAV; nd.vz += dz*KGRAV;
+      } else {
+        const r = Math.hypot(dx,dy,dz);
+        if(r > c.rt){ const pull = KGRAV * (r - c.rt) / (r || 1); nd.vx += dx*pull; nd.vy += dy*pull; nd.vz += dz*pull; }
+      }
+    }
     // Sqrt-normalizing the spring pull above (da/db) tamed the explosion,
     // but a hub still nets ~sqrt(degree)x an ordinary note's force every
     // frame — mostly from its many neighbors' OWN small settling motions,
@@ -1516,7 +1525,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // dev repo / marketplace clone / plugin cache — and "why does it look old"
 // has burned real debugging time). Bump the PATCH on every template change
 // within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.25.14";
+const NV_VERSION = "0.25.15";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
