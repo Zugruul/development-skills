@@ -61,22 +61,31 @@ canvas.grabbing{cursor:grabbing}
 .iconbtn:hover{color:var(--cyan);border-color:var(--cyan-dim)}
 .iconbtn.active{color:var(--cyan);border-color:var(--cyan-dim);background:rgba(70,230,255,.1)}
 
-/* search bar (below topbar, centered — search notes/synapses + a brains/fields filter popover) */
-#searchbar{top:70px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:.4rem;
-  padding:.4rem .55rem;z-index:22;max-width:min(1040px,84vw)}
-/* input wraps its own search-icon button, right-inset INSIDE the field
-   (not a separate control to its left) — the input itself is the primary
-   element and gets the lion's share of the bar's width. No box: just an
-   underline with real breathing room below the text, matching the rest of
+/* search bar (below topbar, centered — search notes/synapses + a brains/fields filter popover),
+   and the results panel that opens directly under it while a search is active. Both share
+   #search-wrap's fixed width so the results panel reads as physically attached to the bar, not a
+   separate floating thing — see the corner-flattening/no-border-between rule below. */
+#search-wrap{position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:22;
+  width:min(1040px,84vw);display:flex;flex-direction:column}
+#searchbar{position:static;display:flex;align-items:center;gap:.4rem;padding:.4rem .55rem;width:100%}
+#searchbar.results-open{border-radius:12px 12px 0 0;border-bottom-color:transparent}
+/* input wraps its own search-icon (+ clear, when active) buttons, right-inset INSIDE the field —
+   not separate controls beside it. The input itself is the primary element and gets the bar's
+   width. No box: just an underline with real breathing room below the text, matching the rest of
    the HUD's understated field style instead of a boxed text input. */
 #search-input-wrap{position:relative;flex:1;min-width:336px;display:flex;align-items:center}
 #search-input{width:100%;background:none;border:0;border-bottom:1px solid var(--border);
   color:var(--fg);font-family:var(--mono);font-size:.72rem;
-  padding:.32rem 2.3rem .55rem .1rem}
+  padding:.32rem 3.7rem .55rem .1rem}
 #search-input:focus{outline:0;border-bottom-color:var(--cyan-dim)}
 #search-input::placeholder{color:var(--muted)}
-#search-input-wrap #search-btn{position:absolute;right:.1rem;top:50%;transform:translateY(-50%);
-  border:0;background:none;padding:.2rem .3rem;font-size:1.25rem}
+/* clear (X) THEN search icon, left-to-right, both borderless, both riding inside the input's
+   right edge as one icon cluster — X hidden via [hidden] until a search is active. */
+#search-input-icons{position:absolute;right:.1rem;top:50%;transform:translateY(-50%);
+  display:flex;align-items:center;gap:.1rem}
+#search-input-icons button{border:0;background:none;padding:.2rem .3rem}
+#search-clear{font-size:.85rem;color:var(--muted)}
+#search-btn{font-size:1.25rem}
 #search-count{font-size:.58rem;color:var(--muted);white-space:nowrap}
 #search-filters-btn{display:inline-flex;align-items:center;justify-content:center;border:0;background:none}
 #search-filters-wrap{position:relative}
@@ -93,6 +102,30 @@ canvas.grabbing{cursor:grabbing}
 #search-filters-panel::-webkit-scrollbar{width:9px}
 #search-filters-panel::-webkit-scrollbar-track{background:rgba(255,255,255,.05);border-radius:5px}
 #search-filters-panel::-webkit-scrollbar-thumb{background:rgba(90,190,255,.4);border-radius:5px}
+#search-filters-panel::-webkit-scrollbar-thumb:hover{background:rgba(90,190,255,.6)}
+
+/* search results — opens attached to #searchbar's bottom edge (see #search-wrap above) */
+#search-results{width:100%;border-radius:0 0 12px 12px;border-top:1px solid rgba(90,190,255,.18);
+  max-height:min(50vh,360px);display:flex;flex-direction:column;overflow:hidden}
+#search-results[hidden]{display:none}
+#search-results-head{display:flex;justify-content:space-between;align-items:center;
+  padding:.35rem .7rem;flex:none}
+#search-results-head .label{font-size:.58rem}
+#search-results-list{overflow-y:scroll;flex:1;min-height:0;padding:0 .7rem .5rem;
+  scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:rgba(90,190,255,.4) rgba(255,255,255,.05)}
+#search-results-list.collapsed{display:none}
+#search-results-list::-webkit-scrollbar{width:9px}
+#search-results-list::-webkit-scrollbar-track{background:rgba(255,255,255,.05);border-radius:5px}
+#search-results-list::-webkit-scrollbar-thumb{background:rgba(90,190,255,.4);border-radius:5px}
+#search-results-list::-webkit-scrollbar-thumb:hover{background:rgba(90,190,255,.6)}
+.srrow{cursor:pointer;display:flex;align-items:center;gap:.5rem;padding:.32rem 0;
+  border-top:1px solid rgba(90,190,255,.1);font-size:.66rem}
+.srrow:first-child{border-top:0}
+.srrow:hover,.srrow:focus-visible{background:rgba(90,190,255,.08);outline:none}
+.srrow .dot{width:8px;height:8px;border-radius:50%;flex:none}
+.srrow .srslug{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
+.srrow .srmeta{color:var(--muted);white-space:nowrap;font-size:.6rem}
+#search-results-empty{padding:.5rem 0;color:var(--muted);font-size:.64rem}
 #search-filters-panel::-webkit-scrollbar-thumb:hover{background:rgba(90,190,255,.6)}
 .sf-h{font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:.3rem}
 .sf-section label{display:flex;align-items:center;gap:.45rem;font-size:.66rem;color:var(--fg);
@@ -314,31 +347,42 @@ canvas.grabbing{cursor:grabbing}
   </div>
 </div>
 
-<div class="hud" id="searchbar">
-  <div id="search-input-wrap">
-    <input id="search-input" type="text" placeholder="Search notes &amp; synapses…" autocomplete="off" spellcheck="false">
-    <button class="iconbtn" id="search-btn" title="Search notes &amp; synapses" aria-label="Search">⌕</button>
-  </div>
-  <button class="iconbtn" id="search-clear" title="Clear search" aria-label="Clear search" hidden>✕</button>
-  <span id="search-count" class="label"></span>
-  <div id="search-filters-wrap">
-    <button class="iconbtn" id="search-filters-btn" title="Search filters" aria-label="Search filters" aria-haspopup="true">
-      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
-        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
-      </svg>
-    </button>
-    <div class="hud" id="search-filters-panel">
-      <div class="sf-section">
-        <div class="sf-h">Search in</div>
-        <label><input type="checkbox" id="sf-field-slug" checked> Title / slug</label>
-        <label><input type="checkbox" id="sf-field-tags" checked> Tags</label>
-      </div>
-      <div class="sf-section">
-        <div class="sf-h">Brains</div>
-        <div id="sf-brains"></div>
+<div id="search-wrap">
+  <div class="hud" id="searchbar">
+    <div id="search-input-wrap">
+      <input id="search-input" type="text" placeholder="Search notes &amp; synapses…" autocomplete="off" spellcheck="false">
+      <div id="search-input-icons">
+        <button class="iconbtn" id="search-clear" title="Clear search" aria-label="Clear search" hidden>✕</button>
+        <button class="iconbtn" id="search-btn" title="Search notes &amp; synapses" aria-label="Search">⌕</button>
       </div>
     </div>
+    <span id="search-count" class="label"></span>
+    <div id="search-filters-wrap">
+      <button class="iconbtn" id="search-filters-btn" title="Search filters" aria-label="Search filters" aria-haspopup="true">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+        </svg>
+      </button>
+      <div class="hud" id="search-filters-panel">
+        <div class="sf-section">
+          <div class="sf-h">Search in</div>
+          <label><input type="checkbox" id="sf-field-slug" checked> Title / slug</label>
+          <label><input type="checkbox" id="sf-field-tags" checked> Tags</label>
+        </div>
+        <div class="sf-section">
+          <div class="sf-h">Brains</div>
+          <div id="sf-brains"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="hud" id="search-results" hidden>
+    <div id="search-results-head">
+      <span class="label" id="search-results-label">Results</span>
+      <button class="iconbtn" id="sr-collapse" title="Collapse results" aria-label="Collapse results">▾</button>
+    </div>
+    <div id="search-results-list"></div>
   </div>
 </div>
 
@@ -897,20 +941,55 @@ function searchNoteMatches(nd, ql){
 }
 function applySearchToNodes(){
   const active = searchActive && lastSearchQuery;
-  let count = 0;
+  const matches = [];
   for(const nd of nodes){
     nd.searchMatch = !!active && searchNoteMatches(nd, lastSearchQuery);
-    if(nd.searchMatch) count++;
+    if(nd.searchMatch) matches.push(nd);
   }
-  return count;
+  return matches;
 }
-function updateSearchUI(count){
+let searchResultsCollapsed = false;   // sticky across refreshSearchHighlight() (poll/filter changes);
+                                        // reset to expanded only when a NEW search actually starts
+function renderSearchResults(matches){
+  const label = document.getElementById("search-results-label");
+  const collapseBtn = document.getElementById("sr-collapse");
+  const list = document.getElementById("search-results-list");
+  label.textContent = `${matches.length} match${matches.length===1?"":"es"}`;
+  collapseBtn.textContent = searchResultsCollapsed ? "▸" : "▾";
+  collapseBtn.setAttribute("aria-label", searchResultsCollapsed ? "Expand results" : "Collapse results");
+  list.classList.toggle("collapsed", searchResultsCollapsed);
+  list.innerHTML = "";
+  if(!matches.length){
+    list.innerHTML = '<div id="search-results-empty">No matches</div>';
+    return;
+  }
+  const sorted = [...matches].sort((a,b)=>
+    a.repo===b.repo ? (a.role===b.role ? a.slug.localeCompare(b.slug) : a.role.localeCompare(b.role)) : a.repo.localeCompare(b.repo));
+  for(const nd of sorted){
+    const hue = comboHue(nd.repo, nd.role);
+    const row = document.createElement("div");
+    row.className = "srrow"; row.tabIndex = 0; row.setAttribute("role", "button");
+    row.setAttribute("aria-label", `Open ${nd.slug}`);
+    row.innerHTML = `<span class="dot" style="background:${cssColor(hue,62,.95)}"></span>`+
+      `<span class="srslug">${escapeHtml(nd.slug)}</span>`+
+      `<span class="srmeta">${repoList.length>1 ? escapeHtml(dispName(nd.repo))+" · " : ""}${escapeHtml(nd.role)}</span>`;
+    row.onclick = ()=>openNote(nd);
+    row.onkeydown = ev=>{ if(ev.key==="Enter"){ ev.preventDefault(); openNote(nd); } };
+    list.appendChild(row);
+  }
+}
+function updateSearchUI(matches){
   const clearBtn = document.getElementById("search-clear");
   const countEl = document.getElementById("search-count");
   const btn = document.getElementById("search-btn");
+  const bar = document.getElementById("searchbar");
+  const resultsPanel = document.getElementById("search-results");
   clearBtn.hidden = !searchActive;
-  countEl.textContent = searchActive ? `${count} match${count===1?"":"es"}` : "";
+  countEl.textContent = searchActive ? `${matches.length} match${matches.length===1?"":"es"}` : "";
   btn.classList.toggle("active", searchActive);
+  bar.classList.toggle("results-open", searchActive);
+  resultsPanel.hidden = !searchActive;
+  if(searchActive) renderSearchResults(matches);
 }
 function triggerSearch(){
   const q = document.getElementById("search-input").value.trim();
@@ -919,13 +998,14 @@ function triggerSearch(){
   if(searchActive && ql === lastSearchQuery){ clearSearch(); return; }   // re-issuing the same search de-highlights
   lastSearchQuery = ql;
   searchActive = true;
+  searchResultsCollapsed = false;   // a fresh search always opens expanded
   updateSearchUI(applySearchToNodes());
 }
 function clearSearch(){
   searchActive = false;
   lastSearchQuery = null;
   for(const nd of nodes) nd.searchMatch = false;
-  updateSearchUI(0);
+  updateSearchUI([]);
 }
 // Called after a graph reload rebuilds `nodes` (fresh objects — searchMatch
 // doesn't survive that) and after a filter checkbox changes — re-run the
@@ -1910,6 +1990,10 @@ document.getElementById("search-input").addEventListener("keydown", ev=>{
 document.getElementById("search-clear").onclick = ()=>{
   document.getElementById("search-input").value = "";
   clearSearch();
+};
+document.getElementById("sr-collapse").onclick = ()=>{
+  searchResultsCollapsed = !searchResultsCollapsed;
+  if(searchActive) renderSearchResults([...nodes].filter(nd=>nd.searchMatch));
 };
 document.getElementById("sf-field-slug").onchange = ev=>{ searchFilters.fields.slug = ev.target.checked; refreshSearchHighlight(); };
 document.getElementById("sf-field-tags").onchange = ev=>{ searchFilters.fields.tags = ev.target.checked; refreshSearchHighlight(); };
