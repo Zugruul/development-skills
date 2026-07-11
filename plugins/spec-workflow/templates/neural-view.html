@@ -66,7 +66,7 @@ canvas.grabbing{cursor:grabbing}
    #search-wrap's fixed width so the results panel reads as physically attached to the bar, not a
    separate floating thing — see the corner-flattening/no-border-between rule below. */
 #search-wrap{position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:22;
-  width:min(1040px,84vw);display:flex;flex-direction:column}
+  width:min(600px,52vw);display:flex;flex-direction:column}
 #searchbar{position:static;display:flex;align-items:center;gap:.4rem;padding:.4rem .55rem;width:100%}
 #searchbar.results-open{border-radius:12px 12px 0 0;border-bottom-color:transparent}
 /* input wraps its own search-icon (+ clear, when active) buttons, right-inset INSIDE the field —
@@ -107,7 +107,7 @@ canvas.grabbing{cursor:grabbing}
 /* search results — opens attached to #searchbar's bottom edge (see #search-wrap above), inset
    slightly narrower than the bar itself so the seam still reads as one attached unit but the
    panel doesn't look like a plain continuation of the same box. */
-#search-results{width:calc(100% - 22px);margin:0 auto;border-radius:0 0 12px 12px;
+#search-results{position:static;width:calc(100% - 22px);margin:0 auto;border-radius:0 0 12px 12px;
   border-top:1px solid rgba(90,190,255,.18);
   max-height:min(50vh,360px);display:flex;flex-direction:column;overflow:hidden}
 #search-results[hidden]{display:none}
