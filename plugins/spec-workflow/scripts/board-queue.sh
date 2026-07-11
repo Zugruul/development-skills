@@ -419,20 +419,50 @@ _dir_mtime() {
 # caller SKIPS -- never blocks, never replays concurrently). A lock older
 # than QUEUE_LOCK_TTL is broken with a warning: a flusher that crashed
 # mid-flush must not wedge the queue forever.
+#
+# Liveness probe (#104): the TTL-only check above meant a crashed flush's
+# lock sat SKIPping every auto-flush for up to the full TTL (600s default)
+# even though the holder was verifiably dead seconds after the crash -- the
+# 2026-07-08 incident needed a human to `ps`/rmdir it by hand. Every
+# acquired lock now also gets a pidfile ($QUEUE_LOCK_DIR/pid, this process's
+# $$). When mkdir fails (someone else holds it), read that pidfile FIRST: if
+# it names a PID that `kill -0` says isn't running, the holder is
+# definitively dead -- break the lock immediately, regardless of the TTL
+# age, instead of waiting it out. A pidfile naming a live PID, or no
+# pidfile at all (e.g. a lock left by a pre-#104 build), falls back to the
+# existing TTL-age behavior unchanged.
 _queue_lock_acquire() {
     mkdir -p "$(dirname "$QUEUE_LOCK_DIR")"
-    mkdir "$QUEUE_LOCK_DIR" 2>/dev/null && return 0
-    local age
+    if mkdir "$QUEUE_LOCK_DIR" 2>/dev/null; then
+        echo "$$" >"$QUEUE_LOCK_DIR/pid" 2>/dev/null || true
+        return 0
+    fi
+    local holder_pid age
+    holder_pid="$(cat "$QUEUE_LOCK_DIR/pid" 2>/dev/null || true)"
+    if [[ -n "$holder_pid" ]] && ! kill -0 "$holder_pid" 2>/dev/null; then
+        echo "flush: WARNING breaking dead-holder lock (pid $holder_pid not running)" >&2
+        rm -f "$QUEUE_LOCK_DIR/pid"
+        rmdir "$QUEUE_LOCK_DIR" 2>/dev/null
+        if mkdir "$QUEUE_LOCK_DIR" 2>/dev/null; then
+            echo "$$" >"$QUEUE_LOCK_DIR/pid" 2>/dev/null || true
+            return 0
+        fi
+    fi
     age=$(( $(date +%s) - $(_dir_mtime "$QUEUE_LOCK_DIR") ))
     if [[ "$age" -ge "$QUEUE_LOCK_TTL" ]]; then
         echo "flush: WARNING breaking stale lock (age ${age}s >= ${QUEUE_LOCK_TTL}s TTL) -- a previous flush likely crashed" >&2
+        rm -f "$QUEUE_LOCK_DIR/pid"
         rmdir "$QUEUE_LOCK_DIR" 2>/dev/null
-        mkdir "$QUEUE_LOCK_DIR" 2>/dev/null && return 0
+        if mkdir "$QUEUE_LOCK_DIR" 2>/dev/null; then
+            echo "$$" >"$QUEUE_LOCK_DIR/pid" 2>/dev/null || true
+            return 0
+        fi
     fi
     return 1
 }
 
 _queue_lock_release() {
+    rm -f "$QUEUE_LOCK_DIR/pid" 2>/dev/null
     rmdir "$QUEUE_LOCK_DIR" 2>/dev/null || true
 }
 
@@ -520,6 +550,46 @@ _flush_queue() {
     _queue_lock_release
 }
 
+# _aside_write_remaining <aside-file> <line>... : atomically REPLACES
+# <aside-file> with exactly the given lines (one per arg), one per line.
+# Factored out of _flush_queue_locked (#104) so the durability invariant it
+# exists to maintain -- an entry's bytes exist on disk (aside or queue)
+# until its mutation is CONFIRMED applied, never a delete-then-apply window
+# -- has one tested chokepoint instead of being inlined at every call site.
+# Review finding (#104, round 1): an earlier version truncated <aside-file>
+# in place (`: >"$file"` then appended line-by-line) -- a kill -9 between
+# the truncate and the last append left the aside file empty or partially
+# written, i.e. an entry mid-rewrite in neither the aside file nor
+# $QUEUE_FILE, exactly the invariant this function exists to close. Fixed
+# by writing the new content to a sibling temp file first, then a single
+# atomic `mv` over the aside path (same filesystem, one rename syscall --
+# the same mv-based atomicity _flush_queue_locked already relies on for the
+# queue file itself, just applied here too): the aside path always shows
+# either its old (pre-rewrite) content or its new (post-rewrite) content in
+# full, never a partial write.
+#
+# BOARD_QUEUE_TEST_ASIDE_SYNC=1 (test-only, opt-in SEPARATELY from the
+# general BOARD_QUEUE_TEST_SYNC gate _flush_sync itself checks) pauses right
+# before the `mv`, tagged "<BOARD_QUEUE_TEST_TAG>-aside-write" -- lets a test
+# pin exactly this window and assert the aside path still shows its OLD,
+# untruncated content while the new content sits only in the sibling temp
+# file. Gated behind its own flag (not just _flush_sync's existing dir+
+# sentinel check) because this call happens once per queued line, not once
+# per flush -- an unconditional pause here would silently cost every OTHER
+# test that already sets BOARD_QUEUE_TEST_SYNC (v/w/x/m/n/r/s) up to
+# BOARD_QUEUE_TEST_SYNC_MAX_WAIT_ITERS' worth of wall-clock time per line,
+# since none of them know about this tag and would never supply its .go file.
+_aside_write_remaining() {
+    local file="$1"; shift
+    local tmp l
+    tmp="$(mktemp "$(dirname "$file")/.flush-remaining.XXXXXX")"
+    for l in "$@"; do
+        printf '%s\n' "$l" >>"$tmp"
+    done
+    [[ "${BOARD_QUEUE_TEST_ASIDE_SYNC:-0}" == "1" ]] && _flush_sync "${BOARD_QUEUE_TEST_TAG:-flush}-aside-write"
+    mv "$tmp" "$file"
+}
+
 # _flush_queue_locked: the actual replay, called with the lock already held.
 # Lost-append prevention (#92): instead of a blind truncate, the queue file
 # is MOVED ASIDE atomically (mv, same filesystem -- a single rename syscall,
@@ -527,23 +597,57 @@ _flush_queue() {
 # wiped) before replay. Any re-queued remainder is appended back to the LIVE
 # queue path afterward -- which new queue_appends may have grown meanwhile --
 # instead of clobbering it.
+#
+# Durability (#104): a live incident (2026-07-08) saw a flush die mid-replay
+# and leave NEITHER the queue file NOR the aside file behind -- every queued
+# mutation had to be reconstructed by hand from session memory. The prior
+# code unconditionally `rm -f`'d the aside file once the loop over its lines
+# finished, regardless of whether each line had actually been confirmed
+# applied -- a kill -9 anywhere in the loop (or in the final rm itself) could
+# lose everything not yet requeued to $QUEUE_FILE. Fixed by rewriting the
+# aside file (via _aside_write_remaining) after EVERY line is resolved --
+# applied, requeued (rate limit), or written back on a real failure -- so it
+# always holds exactly "remaining unconfirmed work": a crash at any point
+# leaves every not-yet-confirmed entry either still in the aside file or
+# already durably in $QUEUE_FILE, never in neither. The trailing `rm -f
+# "$aside"` is then just tidying up an already-empty file, not a durability
+# boundary.
+#
+# Also #104: a real (non-rate-limit, rc=1) apply failure used to vanish the
+# line silently -- only rc==2 (rate-limited) got written back anywhere. Now
+# rc==1 writes the line back to $QUEUE_FILE too (so a human/next flush can
+# see and address it -- _mutate_field already echoes the underlying gh error
+# to stderr) instead of dropping it, and the loop keeps processing the
+# REMAINING lines (unlike rc==2, which stops touching gh at all -- once
+# rate-limited, further calls this pass would just burn quota for nothing).
 _flush_queue_locked() {
     local aside line op issue status priority points url first_status prio rc cur requeued reset
+    local -a lines
+    local i n
     aside="$(mktemp "$(dirname "$QUEUE_FILE")/.flush.XXXXXX")"
     mv "$QUEUE_FILE" "$aside" 2>/dev/null || { rm -f "$aside"; return 0; }
     _dedupe_aside "$aside"
     _flush_sync "${BOARD_QUEUE_TEST_TAG:-flush}"
-    requeued=0
+
+    lines=()
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -z "$line" ]] && continue
+        lines+=("$line")
+    done <"$aside"
+    n=${#lines[@]}
+    requeued=0
+    for ((i = 0; i < n; i++)); do
+        line="${lines[$i]}"
+        op="$(_jf "$line" op)"
+        issue="$(_jf "$line" issue)"
         if [[ "$requeued" -eq 1 ]]; then
             printf '%s\n' "$line" >>"$QUEUE_FILE"
+            _aside_write_remaining "$aside" "${lines[@]:$((i + 1))}"
             continue
         fi
-        op="$(_jf "$line" op)"
         case "$op" in
             move)
-                issue="$(_jf "$line" issue)"; status="$(_jf "$line" status)"
+                status="$(_jf "$line" status)"
                 cur="$(_current_status "$issue")"
                 if [[ -n "$cur" && "$cur" == "$status" ]]; then
                     echo "flush: skip move #$issue (already $status)"
@@ -553,20 +657,19 @@ _flush_queue_locked() {
                 fi
                 ;;
             prio)
-                issue="$(_jf "$line" issue)"; priority="$(_jf "$line" priority)"
+                priority="$(_jf "$line" priority)"
                 _do_prio "$issue" "$priority"; rc=$?
                 ;;
             est)
-                issue="$(_jf "$line" issue)"; points="$(_jf "$line" points)"
+                points="$(_jf "$line" points)"
                 _do_est "$issue" "$points"; rc=$?
                 ;;
             add-finish)
-                issue="$(_jf "$line" issue)"; url="$(_jf "$line" url)"
+                url="$(_jf "$line" url)"
                 first_status="$(_jf "$line" first_status)"; prio="$(_jf "$line" prio)"
                 _do_add_finish "$issue" "$url" "$first_status" "$prio"; rc=$?
                 ;;
             adopt)
-                issue="$(_jf "$line" issue)"
                 _do_adopt "$issue"; rc=$?
                 ;;
             *)
@@ -574,12 +677,24 @@ _flush_queue_locked() {
                 rc=0
                 ;;
         esac
-        if [[ "$rc" -eq 2 ]]; then
-            reset="$(_rate_limit_reset_human)"
-            echo "QUEUED (rate-limited until $reset): $op #$issue"
-            printf '%s\n' "$line" >>"$QUEUE_FILE"
-            requeued=1
-        fi
-    done <"$aside"
+        case "$rc" in
+            2)
+                reset="$(_rate_limit_reset_human)"
+                echo "QUEUED (rate-limited until $reset): $op #$issue"
+                printf '%s\n' "$line" >>"$QUEUE_FILE"
+                requeued=1
+                ;;
+            1)
+                echo "flush: ERROR $op #$issue failed (not rate-limited) -- kept in queue for follow-up" >&2
+                printf '%s\n' "$line" >>"$QUEUE_FILE"
+                ;;
+        esac
+        _aside_write_remaining "$aside" "${lines[@]:$((i + 1))}"
+    done
+    # Second test-only sync point (#104): right before the now-purely-cosmetic
+    # cleanup (the aside file is already empty by construction at this point,
+    # see the durability comment above) -- lets a test pin the exact
+    # "last mutation confirmed, cleanup not yet run" window.
+    _flush_sync "${BOARD_QUEUE_TEST_TAG:-flush}-done"
     rm -f "$aside"
 }
