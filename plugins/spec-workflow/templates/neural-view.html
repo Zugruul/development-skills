@@ -154,7 +154,10 @@ canvas.grabbing{cursor:grabbing}
    blocks have uneven heights (different role counts per repo). */
 #sf-brains{column-width:150px;column-gap:1.1rem}
 #sf-facets{column-width:150px;column-gap:1.1rem}
-#sf-facets-heading{display:flex;align-items:center;justify-content:space-between}
+/* NOT space-between: the collapse chevron addCollapseToggle() inserts becomes
+   this row's first child, and space-between shoved it to the far left with
+   "Filters" pushed all the way to the far right, an empty gap between them. */
+#sf-facets-heading{display:flex;align-items:center;gap:.4rem}
 #sf-facets-heading .sf-hint{text-transform:none;letter-spacing:normal;font-size:.6rem}
 .sf-repo{margin-top:.5rem;break-inside:avoid}
 .sf-repo-h{display:flex;align-items:center;gap:.4rem;font-size:.6rem;color:var(--cyan);
@@ -173,7 +176,9 @@ canvas.grabbing{cursor:grabbing}
 .sf-toggle input{margin:0;accent-color:var(--cyan)}
 .sf-h-row{display:flex;align-items:center;gap:.4rem}
 .sf-brainrow{display:flex;align-items:center;justify-content:space-between;gap:.4rem;
-  padding:.15rem 0;cursor:pointer;font-size:.66rem;color:var(--fg)}
+  padding:.15rem .3rem;margin:0 -.3rem;border-radius:4px;cursor:pointer;font-size:.66rem;
+  color:var(--fg);transition:background .1s}
+.sf-brainrow:hover{background:rgba(90,190,255,.08)}
 .sf-brainrow-left{display:flex;align-items:center;gap:.4rem;min-width:0;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 .sf-schema-icon{flex:none;color:var(--cyan);opacity:.85}
@@ -194,17 +199,25 @@ canvas.grabbing{cursor:grabbing}
    checkbox — unselected is a faint outline (not a stark white box), include
    is cyan+check, exclude is amber/red+minus, so "will I see MORE or LESS"
    reads at a glance without hovering or opening a legend. */
-.sf-facetrow{display:flex;align-items:center;gap:.45rem;padding:.15rem 0;
-  font-size:.66rem;color:var(--fg);cursor:pointer;user-select:none}
+.sf-facetrow{display:flex;align-items:center;gap:.45rem;padding:.2rem .3rem;margin:0 -.3rem;
+  border-radius:4px;font-size:.66rem;color:var(--fg);cursor:pointer;user-select:none;
+  transition:background .1s}
+.sf-facetrow:hover{background:rgba(90,190,255,.08)}
 .sf-facetrow:focus-visible{outline:1px solid var(--cyan-dim);outline-offset:2px;border-radius:3px}
-.sf-tristate{width:13px;height:13px;border-radius:4px;flex:none;position:relative;
-  border:1.5px solid rgba(143,166,189,.4);background:rgba(255,255,255,.04);transition:background .1s,border-color .1s}
+/* +/- glyph via ::before on a flex-centered box — a text character centers
+   exactly regardless of font metrics, unlike the old border-triangle/bar
+   trick (which was never quite centered and reads worse at a glance than a
+   plain +/- pair for "will I see MORE or LESS of this"). */
+.sf-tristate{width:13px;height:13px;border-radius:4px;flex:none;
+  border:1.5px solid rgba(143,166,189,.4);background:rgba(255,255,255,.04);
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:700;line-height:1;color:transparent;
+  transition:background .1s,border-color .1s,color .1s}
 .sf-facetrow:hover .sf-tristate{border-color:var(--cyan-dim)}
-.sf-tristate[data-state="include"]{background:var(--cyan);border-color:var(--cyan)}
-.sf-tristate[data-state="include"]::after{content:"";position:absolute;left:3px;top:0;width:4px;height:8px;
-  border:solid var(--bg);border-width:0 2px 2px 0;transform:rotate(45deg)}
-.sf-tristate[data-state="exclude"]{background:var(--amber);border-color:var(--amber)}
-.sf-tristate[data-state="exclude"]::after{content:"";position:absolute;left:2px;top:5px;width:7px;height:2px;background:var(--bg)}
+.sf-tristate[data-state="include"]{background:var(--cyan);border-color:var(--cyan);color:var(--bg)}
+.sf-tristate[data-state="include"]::before{content:"+"}
+.sf-tristate[data-state="exclude"]{background:var(--amber);border-color:var(--amber);color:var(--bg)}
+.sf-tristate[data-state="exclude"]::before{content:"−"}
 /* collapsible sections/groups — same ▾/▸ glyph as the left sidebar's own
    .secthead section headers (#sect-brains etc.), just sized for these
    smaller sub-headers. Hiding the body: everything in a collapsed
@@ -2831,6 +2844,12 @@ function renderSearchFiltersBrains(){
         ev.preventDefault(); ev.stopPropagation();   // don't let the enclosing <label> also toggle this checkbox
         brainRoleCheckboxes().forEach(b=>{ b.checked = (b.dataset.key === k); });
         expandAncestors(row);
+        // "only" is a declutter action — every OTHER repo group now has
+        // nothing checked, so collapse them instead of leaving the whole
+        // list expanded around the one thing that's actually selected.
+        document.querySelectorAll("#sf-brains .sf-repo").forEach(g=>{
+          if(g !== section) setCollapsed(g, true);
+        });
         syncSearchBrainFilter();
       };
       section.appendChild(row);
