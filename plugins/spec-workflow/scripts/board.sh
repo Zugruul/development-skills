@@ -87,6 +87,36 @@ for it in data.get("items", []):
 ' "$1" <<<"$out"
 }
 
+# Local item-id cache (issue #78): issue# -> {itemId, lastKnownStatus}, gitignored.
+# Mutating/lookup commands resolve from here first; on a miss the ONE gh call
+# that would have happened anyway (a full item-list) refreshes the WHOLE
+# cache as a side effect, so every subsequent lookup this session is free.
+# Never used for `next`/`list`/`audit` (those already need the whole board;
+# they refresh the cache themselves rather than reading it).
+# Restored 2026-07-11 (#104 prep): accidentally deleted by e0df2a9 (a plain
+# "chore" commit that rewrote item_id/list/fields to a capture-then-parse
+# pattern but was based on a pre-#78 copy of this file) -- board-queue.sh's
+# _item_id_rl/_mutate_field/_cache_put/_cache_drop all still called
+# _cache_get/$CACHE_FILE, so every flush silently broke with "_cache_get:
+# command not found" / "CACHE_FILE: unbound variable" until this was noticed
+# while building #104's durability fix.
+CACHE_FILE="${BOARD_CACHE_FILE:-$ROOT/.claude/board-cache.json}"
+
+_cache_get() { # issue# -> "itemId<TAB>status" on stdout, rc 0, iff cached
+    python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+except Exception:
+    sys.exit(1)
+entry = data.get(sys.argv[2])
+if not entry or not entry.get("itemId"):
+    sys.exit(1)
+print(entry.get("itemId") + "\t" + entry.get("status", ""))
+' "$CACHE_FILE" "$1"
+}
+
 # Cache writes are best-effort (same philosophy as telemetry.py's
 # transition/gate records, see gate.sh/board-queue.sh's own comments): a
 # read-only .claude/, a full disk, etc. must never fail the caller's real
@@ -363,11 +393,29 @@ case "${1:-}" in
         _board_add bug "${2:-}" "${3:-}" "${4:-}" || exit 1
         ;;
     list)
-        # capture-then-parse (see item_id): an empty/failed gh read must not
-        # reach json.load — that traceback is what leaked into the neural-view
-        # boards HUD whenever the GraphQL rate limit was exhausted.
-        out="$(gh_project_items_json "$PN" "$OWNER")" ||
-            { echo "ERROR: gh project item-list failed — if gh said 'unknown owner type', the GraphQL rate limit is usually exhausted (check: gh api rate_limit)" >&2; exit 1; }
+        # Restored 2026-07-11 (#104 prep, see the CACHE_FILE comment above):
+        # e0df2a9 dropped this case's auto-flush (#77/#92) and its
+        # _rate_limited-branched failure message (RATE-LIMITED with a reset
+        # time, per test (e)/(l)) in favor of a plain capture-then-parse
+        # exit-1 -- both invariants restored here; the capture-then-parse
+        # pattern itself (stdout/stderr captured separately, gated on gh's
+        # own exit code before touching json.load) is kept as-is, it's the
+        # right fix for the traceback-leak issue e0df2a9 was chasing.
+        _flush_queue
+        _errf="$(mktemp)"
+        out="$(gh_project_items_json "$PN" "$OWNER" 2>"$_errf")"; _rc=$?
+        if [[ $_rc -ne 0 ]]; then
+            _errtext="$(cat "$_errf")"; rm -f "$_errf"
+            if _rate_limited "$_errtext"; then
+                echo "RATE-LIMITED until $(_rate_limit_reset_human) — work continues; mutations queue; retry reads after reset." >&2
+            else
+                echo "$_errtext" >&2
+            fi
+            exit 1
+        fi
+        [[ -s "$_errf" ]] && cat "$_errf" >&2
+        rm -f "$_errf"
+        printf '%s' "$out" | _cache_refresh_from_items  # whole-board command (#78): refresh the cache as a side effect
         python3 -c '
 import json, sys
 status_filter = sys.argv[1]
