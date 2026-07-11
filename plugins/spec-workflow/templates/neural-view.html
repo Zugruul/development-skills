@@ -1471,7 +1471,15 @@ function step(calibrate){
     if(nd.hl>0) nd.hl = Math.max(0, nd.hl - 0.018);
   }
   simAvgSpeed = nodes.length ? speedSum/nodes.length : 0;
-  if(nodes.length && simAvgSpeed < SIM_CALM_SPEED){
+  // Calm is judged on WALL-CLOCK drift (units/s = spd × steps-per-second),
+  // not per-step speed: big scenes step rarely (progress pacing), so the
+  // same per-step spd means far less on-screen motion. Sleeping at equal
+  // perceived stillness lets a 180k scene rest in minutes instead of
+  // decaying an exponential tail at 0.7 steps/s. The absolute spd guard
+  // keeps us from freezing mid-relaxation while forces are still large.
+  const stepsPerSec = 1000 / Math.max(1000/60, simStepMs || 1000/60);
+  const driftPerSec = simAvgSpeed * stepsPerSec;
+  if(nodes.length && (simAvgSpeed < SIM_CALM_SPEED || (driftPerSec < 3 && simAvgSpeed < 3))){
     if(++simCalmSteps >= SIM_CALM_STEPS) simAsleep = true;
   } else {
     simCalmSteps = 0;
@@ -1646,7 +1654,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // dev repo / marketplace clone / plugin cache — and "why does it look old"
 // has burned real debugging time). Bump the PATCH on every template change
 // within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.25.19";
+const NV_VERSION = "0.25.20";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -1709,7 +1717,10 @@ function frame(){
     while(simFastForward > 0 && performance.now() - tSim0 < 8){
       const t1 = performance.now();
       step(false); simFastForward--;
-      if(performance.now() - t1 > 24) break;
+      // a scene whose SINGLE step blows the frame budget can't be fast-
+      // forwarded — burning one heavy step per frame just renders the whole
+      // burst at 2fps. Cancel the burst and let paced stepping handle it.
+      if(performance.now() - t1 > 24){ if(performance.now() - t1 > 80) simFastForward = 0; break; }
     }
     lastStepMs = nowMs;
   } else if(nowMs - lastStepMs >= simStepMs){
