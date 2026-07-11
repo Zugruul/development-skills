@@ -100,6 +100,14 @@ Concurrency: the feed assumes a single writer (the orchestrator process,
 serially) — there is no file locking. Concurrent `emit`/`route` calls against
 the same feed can race.
 
+Feed lifecycle: emit -> route -> archive. Once every item in a document has
+been routed, `archive` moves that document out of the active feed and into
+`.claude/feedbacks/archive/<YYYY-MM>.yaml` (month taken from the document's
+own `ts`), keeping the active feed small while the archived record remains
+on disk as queryable episodic history. Archiving never rewrites the moved
+bytes through yaml.dump -- the document's raw text, exactly as it sat in the
+feed, is appended to the archive file (see `cmd_archive` for why).
+
 CLI:
     feedback.py <root> emit <record.yaml>                 # validate + append
     feedback.py <root> pending                            # unrouted items
@@ -108,6 +116,10 @@ CLI:
     feedback.py <root> migrate-qualify                     # one-shot: qualify
                                                             # bare #N refs already
                                                             # in the feed (sw-089)
+    feedback.py <root> archive                             # move fully-routed
+                                                            # documents to
+                                                            # .claude/feedbacks/
+                                                            # archive/<YYYY-MM>.yaml
 """
 import datetime
 import os
@@ -540,6 +552,142 @@ def cmd_migrate_qualify(root):
     return 0
 
 
+_DOC_SEP_RE = re.compile(rb"(?m)^---[ \t]*\r?\n")
+_MONTH_RE = re.compile(r"^(\d{4}-\d{2})")
+
+
+def _split_feed_raw(raw_bytes):
+    """Split a feed file's raw bytes into (byte_offset, raw_doc_bytes) per
+    `---`-separated document, discarding the separator lines themselves.
+    byte_offset is where the document's own text starts in the file -- used
+    to report where a corrupt document sits without ever needing to parse
+    the whole file to find out."""
+    docs = []
+    start = 0
+    for m in _DOC_SEP_RE.finditer(raw_bytes):
+        docs.append((start, raw_bytes[start:m.start()]))
+        start = m.end()
+    docs.append((start, raw_bytes[start:]))
+    return docs
+
+
+def _atomic_write_bytes(path, data):
+    """Write `data` to `path` via a temp file in the same directory + os.replace,
+    so a reader never observes a partially-written file and a crash mid-write
+    leaves the original untouched."""
+    d = os.path.dirname(path) or "."
+    tmp = f"{path}.tmp-{os.getpid()}"
+    with open(tmp, "wb") as fh:
+        fh.write(data)
+    os.replace(tmp, path)
+
+
+def cmd_archive(root):
+    """Move every feed document whose items are ALL routed (non-empty
+    `routing.action`) into .claude/feedbacks/archive/<YYYY-MM>.yaml, month
+    taken from the document's own `ts`. A document with zero items, or with
+    at least one unrouted item, is left in the feed untouched.
+
+    The moved bytes are the document's raw slice of the feed file exactly as
+    it sat there -- never round-tripped through yaml.dump, which could
+    silently reformat quoting/key order/wrapping and break the "byte-
+    identical archive" contract. The feed is parsed only to decide routed/
+    unrouted and to read `ts`.
+
+    Every touched file (the feed, each archive file) is written via temp
+    file + os.replace (atomic within that file). Archive files are written
+    BEFORE the feed, so a write failure (e.g. an unwritable archive/ dir)
+    aborts before the feed is ever touched. If ANY document in the feed
+    fails to parse -- or a fully-routed document has a malformed/missing
+    `ts` -- the whole operation aborts before any file is modified, and the
+    byte offset of that document's start is reported.
+    """
+    cfg = C.load_config(root, warn=False)
+    fcfg, feed_overridden = parse_feedback_cfg(cfg)
+    guard_err = _legacy_guard_error(root, fcfg, feed_overridden)
+    if guard_err:
+        print(guard_err)
+        return 1
+    feed_path = _feed_path(root, fcfg)
+    if feed_path is None:
+        print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
+        return 1
+    if not os.path.exists(feed_path):
+        print(f"OK: no changes — {feed_path} does not exist")
+        return 0
+    with open(feed_path, "rb") as fh:
+        raw = fh.read()
+    if not raw.strip():
+        print(f"OK: no changes — {feed_path} is empty")
+        return 0
+
+    yaml = _yaml()
+    survivors = []       # raw bytes of documents staying in the feed, in order
+    to_move = []         # (raw_bytes, month) for documents leaving the feed
+    for offset, raw_doc in _split_feed_raw(raw):
+        if not raw_doc.strip():
+            continue
+        try:
+            rec = yaml.safe_load(raw_doc)
+        except Exception:  # noqa: BLE001
+            print(f"ERROR: corrupt feed document at byte offset {offset} in {feed_path} — aborting, no files modified")
+            return 1
+        if not isinstance(rec, dict):
+            print(f"ERROR: corrupt feed document at byte offset {offset} in {feed_path} — aborting, no files modified")
+            return 1
+
+        items = rec.get("items")
+        fully_routed = (
+            isinstance(items, list) and len(items) > 0 and
+            all(isinstance(it, dict) and (it.get("routing") or {}).get("action") for it in items)
+        )
+        if not fully_routed:
+            survivors.append(raw_doc)
+            continue
+
+        ts_norm = _normalize_ts(rec.get("ts"))
+        month_match = _MONTH_RE.match(ts_norm) if isinstance(ts_norm, str) else None
+        if not month_match:
+            print(
+                f"ERROR: corrupt feed document at byte offset {offset} in {feed_path} — "
+                "fully routed but ts is missing or malformed, aborting, no files modified"
+            )
+            return 1
+        to_move.append((raw_doc, month_match.group(1)))
+
+    if not to_move:
+        print(f"OK: no changes — nothing fully routed to archive in {feed_path}")
+        return 0
+
+    archive_dir = os.path.join(os.path.dirname(feed_path), "archive")
+    by_month = {}
+    for raw_doc, month in to_move:
+        by_month.setdefault(month, []).append(raw_doc)
+
+    try:
+        os.makedirs(archive_dir, exist_ok=True)
+        for month, raw_docs in by_month.items():
+            archive_path = os.path.join(archive_dir, f"{month}.yaml")
+            existing = b""
+            if os.path.exists(archive_path) and os.path.getsize(archive_path) > 0:
+                with open(archive_path, "rb") as fh:
+                    existing = fh.read()
+            new_block = _SEP.encode().join(raw_docs)
+            new_content = (existing + _SEP.encode() + new_block) if existing else new_block
+            _atomic_write_bytes(archive_path, new_content)
+    except OSError as e:
+        print(f"ERROR: failed writing archive under {archive_dir}: {e} — feed left untouched")
+        return 1
+
+    new_feed = _SEP.encode().join(survivors)
+    _atomic_write_bytes(feed_path, new_feed)
+
+    total_items = sum(len(yaml.safe_load(d).get("items", [])) for d, _ in to_move)
+    months = sorted(by_month)
+    print(f"OK: archived {len(to_move)} document(s), {total_items} item(s) -> {archive_dir} ({', '.join(months)})")
+    return 0
+
+
 def cmd_status(root):
     cfg = C.load_config(root, warn=False)
     fcfg, feed_overridden = parse_feedback_cfg(cfg)
@@ -559,7 +707,10 @@ def cmd_status(root):
 
 def _cli(argv):
     if len(argv) < 2:
-        sys.stderr.write("usage: feedback.py <root> {emit <record.yaml>|pending|route <ts> <idx> <action> <ref>|status|migrate-qualify}\n")
+        sys.stderr.write(
+            "usage: feedback.py <root> {emit <record.yaml>|pending|route <ts> <idx> <action> <ref>"
+            "|status|migrate-qualify|archive}\n"
+        )
         return 2
     root, verb = argv[0], argv[1]
     if verb == "emit":
@@ -578,6 +729,8 @@ def _cli(argv):
         return cmd_status(root)
     if verb == "migrate-qualify":
         return cmd_migrate_qualify(root)
+    if verb == "archive":
+        return cmd_archive(root)
     sys.stderr.write(f"feedback.py: unknown verb {verb!r}\n")
     return 2
 
