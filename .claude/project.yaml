@@ -77,6 +77,58 @@ specs:
     - Model ids use full nomenclature only (e.g. claude-sonnet-5[1m]), never shorthand.
     - Agent names are role-prefix-first with a meaningful scope suffix (dev-sw001), never bare counters.
     - No generic Claude co-author trailers on in-workflow commits; role identities are the attribution.
+-   id: mem
+    title: Memory scaling — identity-brain memory (SPEC-MEMORY.md)
+    board: main
+    specPath: SPEC-MEMORY.md
+    backlogPath: docs/BACKLOG-MEM.md
+    taskPrefix: MEM
+    epics:
+    -   id: E0
+        title: Feedback lifecycle
+        taskRanges:
+        -   - 1
+            - 9
+    -   id: E1
+        title: Local-state gitignore management
+        taskRanges:
+        -   - 10
+            - 19
+    -   id: E2
+        title: Unified brain-event feed
+        taskRanges:
+        -   - 20
+            - 29
+    -   id: E3
+        title: Retrieval upgrade (embeddings + PPR)
+        taskRanges:
+        -   - 30
+            - 39
+    -   id: E4
+        title: Write-path anti-degradation
+        taskRanges:
+        -   - 40
+            - 49
+        blockedBy:
+        -   epic: E3
+            untilStatus: Deployed
+    -   id: E5
+        title: Neural-view on the unified feed
+        taskRanges:
+        -   - 50
+            - 59
+        blockedBy:
+        -   epic: E2
+            untilStatus: Deployed
+    invariants:
+    - Notes are plain markdown + YAML frontmatter, OKF-compatible; no note content lives only in a database.
+    - Every derived layer (embedding index, folds, adjacency caches) is rebuildable from committed files + feeds alone.
+    - Feed appends are atomic single-line writes; no shared JSON file is read-modify-written on any concurrent path unless it is a derived cache.
+    - Role privacy holds — no role reads another role's brain; consult is the only cross-role path and is orchestrator-mediated.
+    - Superseded notes are never deleted and never injected.
+    - Core scripts remain stdlib-only; capability modules own their dependencies in isolated venvs and their absence degrades features, never breaks flows.
+    - Graduation and skill promotion remain verifier-gated, never model self-judgment.
+    - Additive-only — every new mechanism is opt-in, defaults preserve current behavior, and no existing flow breaks when a new component is absent or disabled.
 commands:
     gate: bash plugins/spec-workflow/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/tests/*.sh && claude plugin validate plugins/spec-workflow
 docs:
