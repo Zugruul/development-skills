@@ -155,6 +155,13 @@ REPOS = [("", Path(git_root()))]  # list of (repo_name, root); replaced by serve
 # process, `template` on every template edit; `dev` is true only under the
 # `dev` command, and the page only ever polls when it is.
 BOOT_ID = f"{os.getpid()}-{int(time.time() * 1000)}"
+# live viewer metrics, POSTed by each open tab about once a second
+# (version/fps/dpr/frame-section timings). Read back via GET /metrics and
+# surfaced by `neural-view.py status` so an agent can measure the page's real
+# frame rate without screenshots. Keyed by a per-tab id; entries expire.
+METRICS: dict = {}
+METRICS_TTL = 30.0
+GRAPH_CACHE = None   # {"at", "cost", "body"} — see the /graph handler
 DEV_MODE = os.environ.get("NEURAL_VIEW_DEV") == "1"
 
 # GET /projects: per-repo board state, cached (see project_state()) so a slow/
@@ -922,7 +929,20 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, f.read_bytes(), ctype)
             return self._send(404, {"error": "not found"})
         if path == "/graph":
-            return self._send(200, build_graph(REPOS))
+            # Big corpora make build_graph expensive (measured: 39s scan /
+            # 86MB payload at 180k notes) while every open tab re-polls —
+            # serve a cached payload within a TTL so overlapping polls don't
+            # keep the server scanning at 100% CPU. TTL scales with how long
+            # the build actually took (min 15s, or 6x build time).
+            global GRAPH_CACHE
+            now = time.time()
+            cached = GRAPH_CACHE
+            if cached and now - cached["at"] < max(15.0, cached["cost"] * 6):
+                return self._send(200, cached["body"], "application/json")
+            t0 = time.time()
+            body = json.dumps(build_graph(REPOS)).encode()
+            GRAPH_CACHE = {"at": time.time(), "cost": time.time() - t0, "body": body}
+            return self._send(200, body, "application/json")
         if path == "/events":
             token = ""
             q = self.path.split("?", 1)[1] if "?" in self.path else ""
@@ -948,6 +968,16 @@ class Handler(BaseHTTPRequestHandler):
             # which viewer POST /open would use, so the inspect panel can
             # label its "View in ..." button without launching anything.
             return self._send(200, {"viewer": detect_viewer()})
+        if path == "/metrics":
+            now = time.time()
+            for k in [k for k, v in METRICS.items() if now - v.get("received", 0) > METRICS_TTL]:
+                METRICS.pop(k, None)
+            out = []
+            for v in METRICS.values():
+                d = dict(v)
+                d["age"] = round(now - d.pop("received", now), 1)
+                out.append(d)
+            return self._send(200, {"clients": sorted(out, key=lambda d: d.get("age", 0))})
         if path == "/version":
             tmpl = TEMPLATE.stat().st_mtime_ns if TEMPLATE.is_file() else 0
             return self._send(200, {"boot": BOOT_ID, "template": tmpl, "dev": DEV_MODE})
@@ -962,6 +992,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?")[0]
+        if path == "/metrics":
+            try:
+                n = min(int(self.headers.get("Content-Length", 0)), 4096)
+                data = json.loads(self.rfile.read(n) or b"{}")
+                cid = str(data.get("id", ""))[:16] or "anon"
+                data["received"] = time.time()
+                METRICS[cid] = data
+            except Exception:  # noqa: BLE001 — malformed metrics are just dropped
+                pass
+            return self._send(200, {})
         if path.startswith("/open/"):
             parts = path[len("/open/"):].split("/", 2)
             if len(parts) == 3 and all(parts):
@@ -1209,7 +1249,23 @@ def main():
         if pid_alive():
             repos = load_repos_file()
             notes, brains = counts(repos)
-            print(f"RUNNING http://127.0.0.1:{PORTFILE.read_text().strip()} notes={notes} brains={brains} repos={len(repos)}")
+            port = PORTFILE.read_text().strip()
+            print(f"RUNNING http://127.0.0.1:{port} notes={notes} brains={brains} repos={len(repos)}")
+            # live viewer metrics (posted by open tabs; see POST /metrics)
+            try:
+                import urllib.request
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/metrics", timeout=2) as r:
+                    clients = json.loads(r.read()).get("clients", [])
+                if not clients:
+                    print("viewer: no metrics yet (no tab open, or tab pre-dates v0.25.6 — reload it)")
+                for c in clients:
+                    perf = (f" · sim {c['sim']} vis {c['vis']} draw {c['draw']} ms"
+                            if all(k in c for k in ("sim", "vis", "draw")) else "")
+                    print(f"viewer[{c.get('id','?')}]: v{c.get('v','?')} · {c.get('fps','?')} fps"
+                          f" · dpr {c.get('dpr','?')}{perf}"
+                          f" · notes {c.get('notes','?')} links {c.get('links','?')} · age {c.get('age','?')}s")
+            except Exception as e:  # noqa: BLE001
+                print(f"viewer: metrics unavailable ({e})")
         else:
             port = configured_port()
             zombie = port_zombie(port)

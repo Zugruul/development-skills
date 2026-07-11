@@ -118,5 +118,15 @@
     "fires": 0,
     "last": null,
     "weight": 0.5
+  },
+  "synthetic-corpus-perf-rig->ui-perf-metrics-loop": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "ui-perf-metrics-loop->synthetic-corpus-perf-rig": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
   }
 }

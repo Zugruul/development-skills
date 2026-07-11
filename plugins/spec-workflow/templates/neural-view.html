@@ -339,12 +339,14 @@ canvas.grabbing{cursor:grabbing}
   </div>
   <div id="status">
     <button class="iconbtn" id="reset-view" title="Reset view (or double-click empty space)">⌂</button>
-    <span><span class="dot"></span><span id="status-txt">live · recalls light up</span></span>
+    <span><span class="dot"></span><span id="status-txt">live</span></span>
     <div id="settings-wrap">
       <button class="iconbtn" id="settings-btn" title="Settings" aria-label="Settings" aria-haspopup="true">⚙</button>
       <div class="hud" id="settings-panel">
         <label><input type="checkbox" id="live-board-toggle"> Fetch live GitHub board state</label>
         <div class="hint">Polls each repo's board via <code>board.sh</code> (per-repo cache + rate-limit backoff). Off by default.</div>
+        <label><input type="checkbox" id="perf-toggle"> Show performance timers</label>
+        <div class="hint">Adds per-frame CPU timings to the status chip: <code>sim</code> (physics step), <code>vis</code> (visual attribute writes), <code>draw</code> (render submission). Low fps with all three small means the cost is GPU fill. <code>?perf</code> in the URL forces this on.</div>
       </div>
     </div>
   </div>
@@ -530,14 +532,35 @@ function fibSphere(i, n, radius){
   const theta = ga*i;
   return {x: Math.cos(theta)*r*radius, y: y*radius, z: Math.sin(theta)*r*radius};
 }
+// A brain of n notes settles into a ball of radius ≈ BALL_K·∛n (the
+// gravity/repulsion equilibrium measured on real brains; the spawn density
+// in applyGraph uses the same constant). Cluster centers MUST be spaced by
+// these radii: the old relative sizing packed every brain inside a fixed
+// ~110-unit region, which at 10k-note brains meant tens of thousands of
+// nodes permanently inside each other's repulsion cutoff — an equilibrium so
+// dense the sim could never be cheap OR settle. Sizing by ∛n keeps
+// equilibrium density constant at ANY corpus size; small scenes come out
+// within a few units of the old layout.
+const BALL_K = 55;
+const ballR = n => BALL_K * Math.cbrt(Math.max(1, n));
 function layoutClusters(){
   clusters.clear(); repoCenters.clear(); repoRadius.clear();
-  const noteCount = new Map();
-  for(const nd of nodes) noteCount.set(nd.repo, (noteCount.get(nd.repo)||0)+1);
-  const maxCount = Math.max(1, ...repoList.map(r=>noteCount.get(r)||0));
+  const noteCount = new Map(), roleCount = new Map();
+  for(const nd of nodes){
+    noteCount.set(nd.repo, (noteCount.get(nd.repo)||0)+1);
+    const ck = clusterKey(nd.repo, nd.role);
+    roleCount.set(ck, (roleCount.get(ck)||0)+1);
+  }
+  // per repo: place role clusters on a fibSphere spaced by the LARGEST role
+  // ball, and size the repo region to contain them.
+  const roleRing = new Map();   // repo -> ring radius for its role clusters
   for(const repo of repoList){
-    const frac = (noteCount.get(repo)||0) / maxCount;
-    repoRadius.set(repo, MIN_REGION + (BASE_REGION - MIN_REGION) * Math.sqrt(frac));
+    const rolesInRepo = [...new Set(nodes.filter(n=>n.repo===repo).map(n=>n.role))].sort();
+    let maxBall = 0;
+    for(const role of rolesInRepo) maxBall = Math.max(maxBall, ballR(roleCount.get(clusterKey(repo,role))||0));
+    const ring = rolesInRepo.length>1 ? Math.max(BASE_REGION*0.6, maxBall*1.7) : 0;
+    roleRing.set(repo, {ring, rolesInRepo, maxBall});
+    repoRadius.set(repo, Math.max(MIN_REGION, ring + maxBall + 30));
   }
   const nRepos = repoList.length || 1;
   const totalR = [...repoRadius.values()].reduce((a,b)=>a+b, 0) || MIN_REGION;
@@ -547,15 +570,17 @@ function layoutClusters(){
   });
   for(const repo of repoList){
     const rc = repoCenters.get(repo);
-    const rolesInRepo = [...new Set(nodes.filter(n=>n.repo===repo).map(n=>n.role))].sort();
+    const {ring, rolesInRepo} = roleRing.get(repo);
     const n = rolesInRepo.length || 1;
-    const R = n>1 ? repoRadius.get(repo)*0.6 : 0;
     rolesInRepo.forEach((role,i)=>{
-      const off = n>1 ? fibSphere(i, n, R) : {x:0,y:0,z:0};
+      const off = n>1 ? fibSphere(i, n, ring) : {x:0,y:0,z:0};
       clusters.set(clusterKey(repo,role), {x: rc.x+off.x, y: rc.y+off.y, z: rc.z+off.z, hue: comboHue(repo,role), n:0, repo, role});
     });
   }
   nodes.forEach(nd=>{ const c = clusters.get(clusterKey(nd.repo,nd.role)); if(c) c.n++; });
+  // container radius for big brains' gravity (see the integrate loop)
+  for(const c of clusters.values()) c.rt = ballR(c.n);
+  updateSceneScale();
 }
 
 // ---- camera: hand-rolled spherical orbit rig (no OrbitControls addon
@@ -566,7 +591,27 @@ function layoutClusters(){
 // standing in for the fixed HUD panels' screen real estate (the old 2D view
 // subtracted their pixel width directly; a fixed margin is the 3D analogue). ----
 const FOV = 50 * Math.PI/180;      // vertical fov, radians
-const MIN_DIST = 80, MAX_DIST = 6000;
+const MIN_DIST = 80;
+let MAX_DIST = 6000;   // zoom ceiling — raised by updateSceneScale() for big corpora
+// scale-adaptive view: far plane, zoom ceiling and fog density must track the
+// scene's physical size (which now grows with ∛notes) or a big corpus gets
+// clipped by the far plane and fogged into a black screen.
+let sceneFogDensity = 0.0009;
+function updateSceneScale(){
+  if(!webglOK || !camera) return;
+  let R = 900;
+  for(const repo of repoList){
+    const rc = repoCenters.get(repo); if(!rc) continue;
+    R = Math.max(R, Math.hypot(rc.x, rc.y, rc.z) + (repoRadius.get(repo)||MIN_REGION));
+  }
+  MAX_DIST = Math.max(6000, R*7);
+  camera.far = Math.max(8000, R*12);
+  camera.updateProjectionMatrix();
+  sceneFogDensity = Math.min(0.0009, 0.0009 * (900/R));
+  scene.fog.density = sceneFogDensity;
+  for(const layer of [noteCore, noteHalo, synPulses])
+    if(layer) layer.mesh.material.uniforms.uFogDensity.value = sceneFogDensity;
+}
 const THETA0 = -0.6, PHI0 = 1.15;  // default orbit angle: a 3/4 elevated view
 function boundingSphere(){
   const pts = [];
@@ -719,8 +764,17 @@ function updateFly(){
   if(p>=1) flyAnim = null;
 }
 
+// Adaptive resolution: fill rate (framebuffer pixels × MSAA × additive
+// overdraw from thousands of gradient halos) is the render bottleneck at
+// card-vault scale — a retina DPR-2 buffer with 4x MSAA shades up to 16x the
+// logical pixels. The fps monitor in frame() lowers the render DPR in 0.25
+// steps while fps sags below 45 and restores it (with hysteresis) when fps
+// holds above 57, so small scenes stay pixel-perfect and huge ones stay
+// fluid. Picking/labels use CSS pixels (W/H) and are unaffected.
+const DPR_CAP = Math.min(window.devicePixelRatio || 1, 2);
+let dprCur = DPR_CAP;
 function resize(){
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  DPR = dprCur;
   W = innerWidth; H = innerHeight;
   if(webglOK){
     renderer.setPixelRatio(DPR);
@@ -777,6 +831,142 @@ function makeLabelSprite(text, hue, fontPx){
   sprite.scale.set(cnv.width*scale, cnv.height*scale, 1);
   return sprite;
 }
+
+// ---- batched rendering layers ----
+// One Sprite per neuron half (core+halo) and one Line per synapse meant
+// 20k-25k draw calls at card-vault scale (~6k notes / ~12k links) — the page
+// was GPU-submission-bound at a few FPS even with the sim off the hot path.
+// Neurons and ambient pulses now render as INSTANCED billboard quads (one
+// draw call per layer, billboarded in the vertex shader exactly like
+// THREE.Sprite: view-space offset by the quad corner × size) and all
+// synapses as ONE LineSegments. Same textures, same additive blending, same
+// per-thing color/alpha/size formulas — the visuals are computed per frame
+// into instanced attributes instead of per-object materials. FogExp2 is
+// replicated in the shader (mix toward fog color), matching fog:true.
+// Per-link opacity rides the line VERTEX COLOR (rgb scale ≡ alpha scale
+// under additive blending; the fog term differs only by the near-black fog
+// color, imperceptible).
+// The per-note visual formulas (throb, recall highlight, hover boost, search
+// dim/boost, graduated dimming) run in the VERTEX SHADER, driven by uniforms
+// (uTick/uHoverIdx/uSearchOn) plus mostly-static per-instance attributes —
+// the CPU writes attribute data only when something actually changed
+// (positions on stepped frames, hl while an activation fades, search flags on
+// search changes) instead of recomputing ~5 floats × N notes × 60fps. At 60k
+// notes that CPU loop alone was 12-18ms/frame.
+const NOTE_VERT = `
+  attribute vec3 aOffset; attribute vec3 aColor;
+  attribute float aPhase, aR, aGrad, aIdx, aHl, aSearch;
+  uniform float uTick, uHoverIdx, uSearchOn, uReduced, uHalo;
+  varying vec2 vUv; varying float vAlpha; varying vec3 vColor; varying float vFogDepth;
+  void main(){
+    vUv = uv; vColor = aColor;
+    float pulse = (uReduced > 0.5) ? 0.0 : (sin(uTick*0.05 + aPhase)*0.5 + 0.5)*0.18;
+    float hover = (abs(aIdx - uHoverIdx) < 0.5) ? 0.35 : 0.0;
+    float search = (uSearchOn > 0.5 && aSearch > 0.5) ? 0.45 : 0.0;
+    float dimMul = (uSearchOn > 0.5 && aSearch < 0.5) ? 0.15 : 1.0;
+    float base = (aGrad > 0.5) ? 0.55 : 0.9;
+    float rr = aR * (1.0 + pulse*0.15 + aHl*0.5 + hover*0.6 + search*0.5);
+    float size;
+    if(uHalo > 0.5){
+      float k = 1.0 + aHl*0.6 + hover*0.4 + search*0.5;
+      size = rr*6.0*k;
+      vAlpha = min(0.75, (0.28 + pulse*0.2 + aHl*0.5 + hover*0.3 + search*0.5) * dimMul);
+    } else {
+      size = rr*2.0;
+      vAlpha = min(1.0, (base*0.55 + pulse*0.3 + aHl*0.5 + hover + search) * dimMul);
+    }
+    vec4 mv = modelViewMatrix * vec4(aOffset, 1.0);
+    mv.xy += position.xy * size;
+    vFogDepth = -mv.z;
+    gl_Position = projectionMatrix * mv;
+  }`;
+// ambient pulse dots ride their link ENTIRELY on the GPU: endpoints are
+// attributes (rewritten only on stepped frames), the position along the link
+// comes from uNow — zero per-frame CPU for the drift itself.
+const PULSE_VERT = `
+  attribute vec3 aA; attribute vec3 aB; attribute vec3 aColor;
+  attribute float aPhase, aDim;
+  uniform float uNow;
+  varying vec2 vUv; varying float vAlpha; varying vec3 vColor; varying float vFogDepth;
+  void main(){
+    vUv = uv; vColor = aColor; vAlpha = aDim;
+    float p = fract(uNow*0.00022 + aPhase);
+    vec4 mv = modelViewMatrix * vec4(mix(aA, aB, p), 1.0);
+    mv.xy += position.xy * 7.0;
+    vFogDepth = -mv.z;
+    gl_Position = projectionMatrix * mv;
+  }`;
+const BILLBOARD_FRAG = `
+  uniform sampler2D map; uniform vec3 uFogColor; uniform float uFogDensity;
+  varying vec2 vUv; varying float vAlpha; varying vec3 vColor; varying float vFogDepth;
+  void main(){
+    vec4 t = texture2D(map, vUv);
+    float fogFactor = 1.0 - exp(-uFogDensity*uFogDensity*vFogDepth*vFogDepth);
+    gl_FragColor = vec4(mix(vColor * t.rgb, uFogColor, fogFactor), t.a * vAlpha);
+  }`;
+function quadGeo(count){
+  const geo = new THREE.InstancedBufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array([-0.5,-0.5,0, 0.5,-0.5,0, 0.5,0.5,0, -0.5,0.5,0]), 3));
+  geo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array([0,0, 1,0, 1,1, 0,1]), 2));
+  geo.setIndex([0,1,2, 0,2,3]);
+  geo.instanceCount = count;
+  return geo;
+}
+function makeNoteLayer(tex, count, isHalo){
+  const geo = quadGeo(count);
+  const L = {
+    offset: new Float32Array(count*3), color: new Float32Array(count*3),
+    phase: new Float32Array(count), r: new Float32Array(count),
+    grad: new Float32Array(count), idx: new Float32Array(count),
+    hl: new Float32Array(count), search: new Float32Array(count),
+  };
+  geo.setAttribute("aOffset", new THREE.InstancedBufferAttribute(L.offset, 3));
+  geo.setAttribute("aColor", new THREE.InstancedBufferAttribute(L.color, 3));
+  geo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(L.phase, 1));
+  geo.setAttribute("aR", new THREE.InstancedBufferAttribute(L.r, 1));
+  geo.setAttribute("aGrad", new THREE.InstancedBufferAttribute(L.grad, 1));
+  geo.setAttribute("aIdx", new THREE.InstancedBufferAttribute(L.idx, 1));
+  geo.setAttribute("aHl", new THREE.InstancedBufferAttribute(L.hl, 1));
+  geo.setAttribute("aSearch", new THREE.InstancedBufferAttribute(L.search, 1));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      map:{value:tex}, uFogColor:{value:new THREE.Color(0x04070d)}, uFogDensity:{value:sceneFogDensity},
+      uTick:{value:0}, uHoverIdx:{value:-1}, uSearchOn:{value:0},
+      uReduced:{value:REDUCED?1:0}, uHalo:{value:isHalo?1:0},
+    },
+    vertexShader: NOTE_VERT, fragmentShader: BILLBOARD_FRAG,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;   // instances move on sim steps; no useful static bounds
+  L.mesh = mesh; L.geo = geo;
+  return L;
+}
+function makePulseLayer(tex, count){
+  const geo = quadGeo(count);
+  const L = {
+    a: new Float32Array(count*3), b: new Float32Array(count*3),
+    color: new Float32Array(count*3), phase: new Float32Array(count), dim: new Float32Array(count),
+  };
+  geo.setAttribute("aA", new THREE.InstancedBufferAttribute(L.a, 3));
+  geo.setAttribute("aB", new THREE.InstancedBufferAttribute(L.b, 3));
+  geo.setAttribute("aColor", new THREE.InstancedBufferAttribute(L.color, 3));
+  geo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(L.phase, 1));
+  geo.setAttribute("aDim", new THREE.InstancedBufferAttribute(L.dim, 1));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { map:{value:tex}, uFogColor:{value:new THREE.Color(0x04070d)}, uFogDensity:{value:sceneFogDensity}, uNow:{value:0} },
+    vertexShader: PULSE_VERT, fragmentShader: BILLBOARD_FRAG,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  L.mesh = mesh; L.geo = geo;
+  return L;
+}
+let noteCore = null, noteHalo = null, synLines = null, synPulses = null;   // rebuilt with the scene
+let simMovedFrame = true;        // set by step()/applyGraph; updateVisuals uploads positions only then
+let hlActive = new Set();        // nodes with a fading recall highlight — the only per-frame attr writes
+let visSearchEpoch = 0, visSeenSearchEpoch = -1, lastHoveredLink = null;   // search/hover dirt tracking
 
 // ---- scene contents, rebuilt whenever the graph reloads (node/link identity
 // can change; positions persist across reloads via nodeById reuse below, so a
@@ -852,37 +1042,48 @@ function rebuildScene(){
     sceneGroup.add(label);
   }
 
-  // synapses (one Line per link — counts are small enough that per-link
-  // objects are simpler than a merged BufferGeometry, and weight/graduated
-  // dimming is baked in at rebuild time since it doesn't change per frame).
-  // Each also gets a slow ambient "pulse" sprite that drifts source→target
-  // continuously (the baseline directional-flow cue — see makeTravelAnim for
-  // the brighter, event-driven hop pulse this is deliberately dimmer than).
-  // Skipped entirely under prefers-reduced-motion: links render as static
-  // lines only.
-  for(const l of links){
-    const dim = (l.a.graduated||l.b.graduated) ? 0.5 : 1;
-    // a synapse carries its SOURCE note's brain color (links never cross a
-    // brain, so source == target brain in practice)
-    const lhue = comboHue(l.a.repo, l.a.role);
-    const geo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(l.a.x,l.a.y,l.a.z), new THREE.Vector3(l.b.x,l.b.y,l.b.z)]);
-    l.baseOpacity = (0.1 + l.w*0.5)*dim;   // updateVisuals() adds a hover boost on top of this each frame
-    const mat = new THREE.LineBasicMaterial({color: threeColor(lhue,62), transparent:true,
-      opacity:l.baseOpacity, blending:THREE.AdditiveBlending, fog:true});
-    const line = new THREE.Line(geo, mat);
-    line.userData = {kind:"synapse", link:l};
-    sceneGroup.add(line);
-    l.pulse = null;
-    if(!REDUCED){
-      const pmat = new THREE.SpriteMaterial({map:CORE_TEX, color:threeColor(lhue,70), transparent:true,
-        opacity:0.32*dim, blending:THREE.AdditiveBlending, depthWrite:false, fog:true});
-      const psprite = new THREE.Sprite(pmat);
-      psprite.scale.set(7,7,1);
-      psprite.userData = {kind:"synapsePulse", link:l, baseOpacity:0.32*dim};   // baseOpacity: updateVisuals() search-dims off this, not the live material.opacity
-      sceneGroup.add(psprite);
-      l.pulse = psprite;
+  // synapses: ONE LineSegments for every link (2 vertices each). Weight/
+  // graduated dimming and the source-brain hue bake into l.baseOpacity/l.hue;
+  // updateVisuals() writes position + (opacity-scaled) vertex color per frame.
+  // Ambient source→target "pulse" dots are one instanced billboard layer
+  // (the baseline directional-flow cue — see makeTravelAnim for the brighter,
+  // event-driven hop pulse this is deliberately dimmer than). Skipped
+  // entirely under prefers-reduced-motion: links render as static lines only.
+  {
+    const lgeo = new THREE.BufferGeometry();
+    const lpos = new Float32Array(links.length*2*3), lcol = new Float32Array(links.length*2*3);
+    lgeo.setAttribute("position", new THREE.BufferAttribute(lpos, 3));
+    lgeo.setAttribute("color", new THREE.BufferAttribute(lcol, 3));
+    const lmat = new THREE.LineBasicMaterial({vertexColors:true, transparent:true,
+      blending:THREE.AdditiveBlending});
+    const lmesh = new THREE.LineSegments(lgeo, lmat);
+    lmesh.frustumCulled = false;
+    lmesh.userData = {kind:"synapseBatch"};
+    sceneGroup.add(lmesh);
+    synLines = {mesh:lmesh, geo:lgeo, pos:lpos, col:lcol};
+    synPulses = REDUCED ? null : makePulseLayer(CORE_TEX, links.length);
+    if(synPulses){ synPulses.mesh.userData = {kind:"synapsePulseBatch"}; sceneGroup.add(synPulses.mesh); }
+    for(let i=0;i<links.length;i++){
+      const l = links[i];
+      const dim = (l.a.graduated||l.b.graduated) ? 0.5 : 1;
+      // a synapse carries its SOURCE note's brain color (links never cross a
+      // brain, so source == target brain in practice)
+      const lhue = comboHue(l.a.repo, l.a.role);
+      l.baseOpacity = (0.1 + l.w*0.5)*dim;   // updateVisuals() adds a hover boost on top of this each frame
+      l.color = threeColor(lhue,62);
+      l.pulseBase = 0.32*dim;
       l.pulsePhase = Math.random();   // desyncs pulses so the whole network doesn't throb in lockstep
+      if(synPulses){
+        const pc = threeColor(lhue,70);
+        synPulses.color[i*3] = pc.r; synPulses.color[i*3+1] = pc.g; synPulses.color[i*3+2] = pc.b;
+        synPulses.phase[i] = l.pulsePhase;
+        synPulses.dim[i] = l.pulseBase;
+      }
+    }
+    if(synPulses){
+      synPulses.geo.attributes.aColor.needsUpdate = true;
+      synPulses.geo.attributes.aPhase.needsUpdate = true;
+      synPulses.geo.attributes.aDim.needsUpdate = true;
     }
   }
 
@@ -900,25 +1101,37 @@ function rebuildScene(){
     sceneGroup.add(new THREE.Line(geo, mat));
   }
 
-  // neurons: core (bright, sharp) + halo (soft, pulses/highlights) sprite pair.
-  for(const nd of nodes){
+  // neurons: core (bright, sharp) + halo (soft, pulses/highlights) — one
+  // instanced billboard layer per half instead of two Sprites per note.
+  // Hover/click hit-testing is screen-space (pickNoteAt projects node
+  // coords), so batching changes nothing about interaction.
+  noteCore = makeNoteLayer(CORE_TEX, nodes.length, false);
+  noteHalo = makeNoteLayer(HALO_TEX, nodes.length, true);
+  noteCore.mesh.userData = {kind:"noteCoreBatch"};
+  noteHalo.mesh.userData = {kind:"noteHaloBatch"};
+  sceneGroup.add(noteCore.mesh); sceneGroup.add(noteHalo.mesh);
+  hlActive = new Set();
+  for(let i=0;i<nodes.length;i++){
+    const nd = nodes[i];
     const c = clusters.get(clusterKey(nd.repo,nd.role)), hue = c?c.hue:190;
     // L 72, not the old 88: at ~88% lightness every hue collapses to near-white
     // under additive blending, which made per-brain colors invisible on the
     // actual balls (the halo carried the only perceptible tint).
-    const coreMat = new THREE.SpriteMaterial({map:CORE_TEX, color:threeColor(hue,72), transparent:true,
-      opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false, fog:true});
-    const core = new THREE.Sprite(coreMat);
-    core.scale.set(nd.r*2, nd.r*2, 1);
-    core.userData = {kind:"note", node:nd};
-    const haloMat = new THREE.SpriteMaterial({map:HALO_TEX, color:threeColor(hue,60), transparent:true,
-      opacity:0.4, blending:THREE.AdditiveBlending, depthWrite:false, fog:true});
-    const halo = new THREE.Sprite(haloMat);
-    halo.scale.set(nd.r*6, nd.r*6, 1);
-    halo.userData = {kind:"note", node:nd};   // hover hit target is the visible glow (#72), not the tiny core
-    sceneGroup.add(core); sceneGroup.add(halo);
-    nd._core = core; nd._halo = halo;
+    const cc = threeColor(hue,72), hc = threeColor(hue,60);
+    for(const L of [noteCore, noteHalo]){
+      L.phase[i] = nd.phase; L.r[i] = nd.r; L.grad[i] = nd.graduated ? 1 : 0;
+      L.idx[i] = i; L.hl[i] = nd.hl || 0; L.search[i] = nd.searchMatch ? 1 : 0;
+    }
+    noteCore.color[i*3] = cc.r; noteCore.color[i*3+1] = cc.g; noteCore.color[i*3+2] = cc.b;
+    noteHalo.color[i*3] = hc.r; noteHalo.color[i*3+1] = hc.g; noteHalo.color[i*3+2] = hc.b;
+    nd._idx = i;   // instanced-attribute slot
+    if(nd.hl > 0) hlActive.add(nd);
   }
+  for(const L of [noteCore, noteHalo])
+    for(const k of ["aColor","aPhase","aR","aGrad","aIdx","aHl","aSearch"])
+      L.geo.attributes[k].needsUpdate = true;
+  simMovedFrame = true;          // fresh buffers — force one full position upload
+  visSeenSearchEpoch = -1;       // and a search/link-color refresh
 }
 
 // ---- brain visibility (hide a repo/role brain to focus on others — the
@@ -1022,12 +1235,14 @@ function triggerSearch(){
   searchActive = true;
   searchResultsCollapsed = false;   // a fresh search always opens expanded
   updateSearchUI(applySearchToNodes());
+  visSearchEpoch++;   // updateVisuals(): rewrite aSearch + link colors once
 }
 function clearSearch(){
   searchActive = false;
   lastSearchQuery = null;
   for(const nd of nodes) nd.searchMatch = false;
   updateSearchUI([]);
+  visSearchEpoch++;   // updateVisuals(): rewrite aSearch + link colors once
 }
 // Called after a graph reload rebuilds `nodes` (fresh objects — searchMatch
 // doesn't survive that) and after a filter checkbox changes — re-run the
@@ -1036,10 +1251,10 @@ function clearSearch(){
 function refreshSearchHighlight(){
   if(!searchActive) return;
   updateSearchUI(applySearchToNodes());
+  visSearchEpoch++;   // updateVisuals(): rewrite aSearch + link colors once
 }
 
 let lastRawGraph = null;
-let lastNodeIdSet = null;   // wakeSim() gate — see applyGraph()
 async function loadGraph(){
   let g; try { g = await (await fetch("/graph")).json(); } catch { return; }
   lastRawGraph = g;
@@ -1070,47 +1285,58 @@ function applyGraph(g){
     degree[e.source] = (degree[e.source]||0)+1;
     degree[e.target] = (degree[e.target]||0)+1;
   }
-  // Spawn cube scales with cbrt(count) so INITIAL density stays bounded: in a
-  // fixed ±130 cube, a few thousand notes all start within the repulsion
-  // cutoff of each other — the grid's worst case (still ~n²/2 in-range pairs)
-  // and one giant first-frame shockwave. Constant density keeps the settle
-  // phase cheap at any brain size; the look is unchanged (random ball around
-  // the origin, gravity pulls clusters into place).
-  const spawnR = 260 * Math.max(1, Math.cbrt(visibleNodes.length/600));
   nodes = visibleNodes.map(n=>{
     const old = prev.get(n.id);
     const deg = degree[n.id]||0;
     return Object.assign(n, {
-      // world coords — spawn near origin, gravity pulls into place
-      x: old ? old.x : (Math.random()-.5)*spawnR, y: old ? old.y : (Math.random()-.5)*spawnR, z: old ? old.z : (Math.random()-.5)*spawnR,
+      // world coords — carried over for known nodes; fresh nodes are placed
+      // inside their cluster's region after layoutClusters() below
+      x: old ? old.x : 0, y: old ? old.y : 0, z: old ? old.z : 0,
+      _fresh: !old,
       vx: old?old.vx:0, vy: old?old.vy:0, vz: old?old.vz:0, hl: old?old.hl:0, phase: Math.random()*6.283,
       degree: deg,
       r: 4 + Math.min(n.strength||1, 12) * 1.2 + Math.min(Math.sqrt(deg), 24) * 1.4
     });
   });
   nodeById = new Map(nodes.map(n=>[n.id,n]));
+  // A large batch of fresh spawns (initial load, un-hiding a big brain) used
+  // to take dozens of seconds to organize only because each sim step was
+  // expensive — fast-forward the settle within frame() instead of making the
+  // user watch it in real time. Carried-over nodes keep positions; small
+  // additions settle quickly on their own.
+  const freshSpawns = nodes.reduce((s,n)=>s + (prev.get(n.id) ? 0 : 1), 0);
+  if(freshSpawns > 200) simFastForward = 300;
   refreshSearchHighlight();   // new node objects each reload — searchMatch must be recomputed, not just carried over
   links = (g.edges||[]).filter(e=>e.type!=="consult").map(e=>({
     a: nodeById.get(e.source), b: nodeById.get(e.target), w: e.weight ?? .5, fires: e.fires ?? 0, key: e.source+"->"+e.target
   })).filter(l=>l.a && l.b);
   window.__consultEdges = (g.edges||[]).filter(e=>e.type==="consult" && !isBrainHidden(e.source.split("/")[0], e.source.split("/")[1]) && !isBrainHidden(e.target.split("/")[0], e.target.split("/")[1]));
+  // wake the sim ONLY when the graph actually changed shape (fresh nodes or
+  // a different count) — an unconditional wake on every 15s poll resets the
+  // calm counter forever and the settle-freeze can never engage.
+  const topologyChanged = nodes.length !== prevNodeCount || nodes.some(n=>n._fresh);
+  prevNodeCount = nodes.length;
+  if(topologyChanged) wakeSim();
   layoutClusters();
+  // Fresh nodes spawn INSIDE their own cluster's region at roughly resting
+  // density, instead of all piled into one small cube at the origin. The old
+  // pile-up made every big (re)load detonate: thousands of coincident nodes
+  // hit the pair-force cap, rocketed outward at MAX_SPEED far past their
+  // resting radius, then crawled back in on the (weak) cluster gravity.
+  // Spawning where nodes will roughly end up leaves repulsion only local
+  // spacing to resolve — the scene forms in place, no explosion.
+  for(const nd of nodes){
+    if(!nd._fresh) continue;
+    nd._fresh = false;
+    const c = clusters.get(clusterKey(nd.repo, nd.role)) || {x:0, y:0, z:0, n: nodes.length};
+    const R = ballR(c.n);   // same equilibrium-density constant the layout uses
+    const u = Math.random()*2 - 1, ang = Math.random()*6.283, rr = R * Math.cbrt(Math.random());
+    const s = Math.sqrt(Math.max(0, 1 - u*u));
+    nd.x = c.x + rr*s*Math.cos(ang);
+    nd.y = c.y + rr*s*Math.sin(ang);
+    nd.z = c.z + rr*u;
+  }
   rebuildScene();
-  // Only wake the sim when the set of VISIBLE notes actually changed (added,
-  // removed, or a hide/show toggle) — not on every routine 15s poll of an
-  // unchanged graph. Existing notes keep their settled x/y/z (old.x reuse
-  // above), so an unconditional wake here bought nothing but cost twice
-  // over at the thousands-of-notes scale this now runs at: (1) a real perf
-  // hit — a full physics burst (~90 frames) every single poll, forever; (2)
-  // each of those unnecessary wakes gave repulsion (strong at close range)
-  // another chance to nudge notes apart before the much weaker cluster
-  // gravity (0.015) could fully pull them back within the ~1.5s settle
-  // window, and refreezing there — repeated over hours, this is what
-  // "dispersed" a brain that used to sit in a tight cluster.
-  const idSet = new Set(nodes.map(n=>n.id));
-  const idsChanged = !lastNodeIdSet || idSet.size !== lastNodeIdSet.size || [...idSet].some(id=>!lastNodeIdSet.has(id));
-  lastNodeIdSet = idSet;
-  if(idsChanged) wakeSim();
   // The FIRST graph with content always fits, even if userMoved — /graph can
   // take a while (it scans every repo's notes), and a stray wheel tick or
   // drag in that window would otherwise cancel the initial framing forever,
@@ -1133,93 +1359,159 @@ function applyGraph(g){
 // ---- force simulation (3D repulsion/spring/gravity — the 3D analogue of the
 // 2D layout's force-directed settle) ----
 //
-// Two performance layers keep this frame-rate-friendly at brain sizes in the
-// thousands (fab-cli/card-vault alone is ~5k notes / ~10k synapses) WITHOUT
-// changing the physics or the look:
-//
-//  - repulsion runs on a uniform spatial hash grid with cell size equal to
-//    the existing 300-unit interaction cutoff, so each node only tests the
-//    27-cell neighborhood that can possibly contain in-range partners. Every
-//    pair inside the cutoff is still computed exactly once with the same
-//    force formula — the result is identical to the old all-pairs loop; what
-//    disappears is the O(n²) scan over pairs the cutoff discarded anyway
-//    (~17M iterations/frame at 5.9k nodes, the FPS killer).
-//
-//  - settle-freeze: when the whole graph has been essentially at rest for
-//    ~1.5s the integrator goes to sleep — forces and position updates are
-//    skipped; hl decay, ambient pulses, hover, camera and event visuals all
-//    keep running, so a sleeping scene is indistinguishable from a settled
-//    one. Anything that can move nodes again (graph reload/re-filter, brain
-//    show/hide — both flow through applyGraph) calls wakeSim().
-let simCalmFrames = 0, simAsleep = false;
-const SIM_CALM_SPEED = 0.02;    // avg per-node speed under this counts as "at rest"
-const SIM_CALM_FRAMES = 90;     // sustained calm frames before sleeping (~1.5s)
-function wakeSim(){ simAsleep = false; simCalmFrames = 0; }
+// Repulsion has two code paths computing THE SAME forces:
+//  - grid: a uniform spatial hash with cell size equal to the existing
+//    300-unit interaction cutoff — each node only tests the 27-cell
+//    neighborhood that can contain in-range partners, and every in-range
+//    pair is computed exactly once with the same formula. Identical result
+//    to the all-pairs loop (verified: max velocity diff ~1e-14, float
+//    summation order), minus the O(n²) scan over pairs the cutoff discarded
+//    anyway (~17M iterations/step at 5.9k nodes — fab-cli/card-vault scale,
+//    which dropped the whole page to slideshow FPS).
+//  - all-pairs: the original loop, kept as the periodic CALIBRATION step —
+//    see frame(): its measured wall-clock cost paces the sim so motion plays
+//    at exactly the speed the old code produced on this machine.
+// Settle-freeze (conservative — no force cooling, which distorted where the
+// layout came to rest): once the WHOLE graph has been essentially motionless
+// for a sustained stretch, stop integrating — positions are final and the
+// step was measured to dominate frame time at card-vault density even on the
+// grid path. hl decay keeps running while asleep; throb/pulses are visual-
+// layer and never stop. wakeSim() on anything that can move nodes (graph
+// reload / re-filter / brain toggle — all via applyGraph). simAvgSpeed is
+// exported in /metrics as `spd` so the calm threshold is tuned from data,
+// not guesses.
+let simCalmSteps = 0, simAsleep = false, simAvgSpeed = 0, prevNodeCount = -1;
+const SIM_CALM_SPEED = 0.2;    // avg per-node speed under this counts as "at rest". Measured settle tails asymptote at ~0.10-0.15 (container-wall + hub jitter floors, spd metric); 0.2 at paced cadence is ~4 world units/s of residual drift — imperceptible at scene scale
+const SIM_CALM_STEPS = 120;    // sustained calm steps before sleeping
+function wakeSim(){ simAsleep = false; simCalmSteps = 0; }
 const REP_CUTOFF = 300, REP_CUTOFF2 = REP_CUTOFF*REP_CUTOFF;
+// Bounded step at extreme scale: when one grid step exceeds ~40ms (measured,
+// self-tuning), repulsion switches to a rotating duty cycle over grid cells —
+// each step processes 1/P of the cells (with each processed pair's force
+// scaled by P so the MEAN force is unchanged; the per-pair cap still bounds
+// any single impulse). Every pair is still visited every P steps, so the
+// equilibrium is the same; the settle just relaxes in rotating sweeps. P
+// halves again once steps get cheap. P stays 1 (exact physics, no scaling)
+// for every scene that fits the budget — the current 1x graph never engages
+// this.
+let simPhaseP = 1, simPhaseI = 0, lastGridStepMs = 0;
+let simGrid = null, simGridN = -1, simGcx = null, simGcy = null, simGcz = null;   // cached spatial grid (see step)
 // The 13 "forward" neighbor offsets (half of the 26 surrounding cells):
 // visiting only the forward half enumerates each cross-cell pair exactly once,
-// mirroring the old loop's j>i asymmetry.
+// mirroring the all-pairs loop's j>i asymmetry.
 const GRID_FWD = [];
 for(let dz=-1;dz<=1;dz++) for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
   if(dz>0 || (dz===0 && dy>0) || (dz===0 && dy===0 && dx>0)) GRID_FWD.push([dx,dy,dz]);
 }
-function step(){
+function step(calibrate){
   if(!webglOK) return;
   if(simAsleep){
-    // integrator asleep: positions are final, but hl (recall highlights) must
-    // still fade exactly as it did when this lived in the integration loop.
+    // positions are final; hl (recall highlight) must keep fading exactly as
+    // it did when this lived in the integration loop.
     for(const nd of nodes) if(nd.hl>0) nd.hl = Math.max(0, nd.hl - 0.018);
     return;
   }
   const KREP = 2600, KSPRING = 0.012, KGRAV = 0.015, DAMP = 0.86;
   // Two hard caps against the sim "exploding" — nodes rocketing off past the
   // camera in one frame, seen on brains with hundreds of notes (e.g.
-  // fab-cli/judge at ~570). Nodes spawn in a shared cube around the origin
-  // (see loadGraph's spawn comment), so some pairs land nearly coincident by
-  // chance; d2 for those pairs can be a small fraction of 1, and
-  // f=KREP/d2 (uncapped) turns into millions — a single-frame velocity
-  // spike DAMP alone can't tame before it's already off-screen.
+  // fab-cli/judge at ~570). Even with cluster-local spawning (see
+  // applyGraph), some pairs land nearly coincident by chance; d2 for those
+  // pairs can be a small fraction of 1, and f=KREP/d2 (uncapped) turns into
+  // millions — a single-frame velocity spike DAMP alone can't tame before
+  // it's already off-screen.
   const MAX_PAIR_FORCE = 40;   // caps any one repulsion impulse, however close the pair is
   const MAX_SPEED = 40;        // coarser backstop: whatever produced it, no node teleports in one step
-  // bucket nodes into cutoff-sized cells (coords clamped to keep keys unique;
-  // MAX_SPEED bounds real positions far inside that range anyway)
-  const grid = new Map();
-  const gcx = new Int32Array(nodes.length), gcy = new Int32Array(nodes.length), gcz = new Int32Array(nodes.length);
-  const clampC = c => c < -500 ? -500 : (c > 500 ? 500 : c);
-  for(let i=0;i<nodes.length;i++){
-    const n = nodes[i];
-    const cx = clampC(Math.floor(n.x/REP_CUTOFF)), cy = clampC(Math.floor(n.y/REP_CUTOFF)), cz = clampC(Math.floor(n.z/REP_CUTOFF));
-    gcx[i]=cx; gcy[i]=cy; gcz[i]=cz;
-    const key = (cx+512) + (cy+512)*1024 + (cz+512)*1048576;
-    let cell = grid.get(key);
-    if(!cell){ cell = []; grid.set(key, cell); }
-    cell.push(i);
-  }
-  const repel = (a,b)=>{   // EXACT same pair force as the old all-pairs loop
-    let dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z, d2=dx*dx+dy*dy+dz*dz||0.01;
-    if(d2 < REP_CUTOFF2){ const f=Math.min(KREP/d2, MAX_PAIR_FORCE), d=Math.sqrt(d2)||0.01; const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
-      a.vx+=fx; a.vy+=fy; a.vz+=fz; b.vx-=fx; b.vy-=fy; b.vz-=fz; }
-  };
-  for(const cell of grid.values()){
-    const i0 = cell[0];
-    const cx = gcx[i0], cy = gcy[i0], cz = gcz[i0];
-    for(let ai=0;ai<cell.length;ai++){
-      const a = nodes[cell[ai]];
-      for(let bi=ai+1;bi<cell.length;bi++) repel(a, nodes[cell[bi]]);
-    }
-    for(const off of GRID_FWD){
-      const nkey = (cx+off[0]+512) + (cy+off[1]+512)*1024 + (cz+off[2]+512)*1048576;
-      const ncell = grid.get(nkey);
-      if(!ncell) continue;
-      for(let ai=0;ai<cell.length;ai++){
-        const a = nodes[cell[ai]];
-        for(let bi=0;bi<ncell.length;bi++) repel(a, nodes[ncell[bi]]);
+  if(calibrate){
+    // original all-pairs repulsion — the historical per-step cost on this machine
+    for(let i=0;i<nodes.length;i++){
+      const a = nodes[i];
+      for(let j=i+1;j<nodes.length;j++){
+        const b = nodes[j];
+        let dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z, d2=dx*dx+dy*dy+dz*dz||0.01;
+        if(d2 < REP_CUTOFF2){ const f=Math.min(KREP/d2, MAX_PAIR_FORCE), d=Math.sqrt(d2)||0.01; const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
+          a.vx+=fx; a.vy+=fy; a.vz+=fz; b.vx-=fx; b.vy-=fy; b.vz-=fz; }
       }
     }
+  } else {
+    // grid repulsion — same pairs, same forces, no O(n²) scan.
+    // The grid itself is CACHED and rebuilt every few steps: at 60k nodes the
+    // per-step Map churn alone cost ~15-25ms, pinning the duty cycle high.
+    // Nodes move ≤ MAX_SPEED per step and the cutoff has slack, so a grid a
+    // few steps stale misses nothing that matters.
+    if(!simGrid || nodes.length !== simGridN || (simPhaseI % 8) === 0){
+      simGrid = new Map();
+      simGridN = nodes.length;
+      simGcx = new Int32Array(nodes.length); simGcy = new Int32Array(nodes.length); simGcz = new Int32Array(nodes.length);
+      const clampC = c => c < -500 ? -500 : (c > 500 ? 500 : c);
+      for(let i=0;i<nodes.length;i++){
+        const n = nodes[i];
+        const cx = clampC(Math.floor(n.x/REP_CUTOFF)), cy = clampC(Math.floor(n.y/REP_CUTOFF)), cz = clampC(Math.floor(n.z/REP_CUTOFF));
+        simGcx[i]=cx; simGcy[i]=cy; simGcz[i]=cz;
+        const key = (cx+512) + (cy+512)*1024 + (cz+512)*1048576;
+        let cell = simGrid.get(key);
+        if(!cell){ cell = []; simGrid.set(key, cell); }
+        cell.push(i);
+      }
+    }
+    const grid = simGrid, gcx = simGcx, gcy = simGcy, gcz = simGcz;
+    // Bounded work WITHOUT starving anyone: every cell block is processed
+    // EVERY step, but a block whose pair count exceeds its budget is SAMPLED
+    // — rows iterate with a stride and each sampled pair's force is scaled
+    // by that stride (mean-preserving estimator of the full sum; the
+    // per-impulse cap still bounds any single kick). At target equilibrium
+    // density every stride is 1, i.e. exact physics — sampling only engages
+    // in dense transients. (Two earlier schemes failed measurably: a global
+    // duty cycle over cells starved repulsion for P-1 of every P steps while
+    // springs/gravity pushed every step — the layout compressed and
+    // oscillated, never settling — and pre-scaling force by the duty period
+    // into the impulse cap made bang-bang dynamics.)
+    const BLOCK_BUDGET = 2048;   // max pair evaluations per cell block per step
+    let maxStride = 1;
+    const repel = (a,b,fs)=>{   // same pair force as the all-pairs loop when fs=1
+      let dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z, d2=dx*dx+dy*dy+dz*dz||0.01;
+      if(d2 < REP_CUTOFF2){ const f=Math.min(KREP*fs/d2, MAX_PAIR_FORCE), d=Math.sqrt(d2)||0.01; const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
+        a.vx+=fx; a.vy+=fy; a.vz+=fz; b.vx-=fx; b.vy-=fy; b.vz-=fz; }
+    };
+    const tGrid0 = performance.now();
+    for(const cell of grid.values()){
+      const i0 = cell[0];
+      const cx = gcx[i0], cy = gcy[i0], cz = gcz[i0];
+      const m = cell.length;
+      const rowBudget = Math.max(1, Math.floor(BLOCK_BUDGET / m));
+      for(let ai=0;ai<m;ai++){
+        const a = nodes[cell[ai]];
+        const rem = m - ai - 1;
+        if(rem <= 0) break;
+        const stride = Math.max(1, Math.ceil(rem / rowBudget));
+        if(stride > maxStride) maxStride = stride;
+        for(let bi=ai+1+((simPhaseI+ai) % stride); bi<m; bi+=stride) repel(a, nodes[cell[bi]], stride);
+      }
+      for(const off of GRID_FWD){
+        const nkey = (cx+off[0]+512) + (cy+off[1]+512)*1024 + (cz+off[2]+512)*1048576;
+        const ncell = grid.get(nkey);
+        if(!ncell) continue;
+        const stride = Math.max(1, Math.ceil(ncell.length / rowBudget));
+        if(stride > maxStride) maxStride = stride;
+        for(let ai=0;ai<m;ai++){
+          const a = nodes[cell[ai]];
+          for(let bi=(simPhaseI+ai) % stride; bi<ncell.length; bi+=stride) repel(a, nodes[ncell[bi]], stride);
+        }
+      }
+    }
+    simPhaseI++;
+    simPhaseP = maxStride;   // reported as `p` in /metrics: max sampling stride this step (1 = fully exact)
+    lastGridStepMs = performance.now() - tGrid0;
   }
   for(const l of links){
     const dx=l.b.x-l.a.x, dy=l.b.y-l.a.y, dz=l.b.z-l.a.z, d=Math.hypot(dx,dy,dz)||.01;
-    const target2 = 70 + (1-l.w)*70, f = KSPRING*(d-target2);
+    // Spring force is CAPPED: unbounded 0.012*(d-target) means a link
+    // stretched across a big cluster pulls ~10 units/step — with many such
+    // links (hub notes, cross-cluster references) the graph compresses to
+    // ~9x target density and thrashes instead of settling (measured on a
+    // 60k synthetic corpus: spd pinned ~21, never slept). At/near target
+    // length the force is far below the cap, so settled scenes are
+    // unaffected — the cap only tames unsatisfiable topologies.
+    const target2 = 70 + (1-l.w)*70, f = Math.max(-3, Math.min(3, KSPRING*(d-target2)));
     const fx=f*dx/d, fy=f*dy/d, fz=f*dz/d;
     // Split each spring's pull by 1/sqrt(degree) per endpoint: an ordinary
     // note (degree ~1-10) is unaffected, but a hub with hundreds of links
@@ -1235,7 +1527,26 @@ function step(){
   let speedSum = 0;
   for(const nd of nodes){
     const c = clusters.get(clusterKey(nd.repo,nd.role));
-    if(c){ nd.vx += (c.x-nd.x)*KGRAV; nd.vy += (c.y-nd.y)*KGRAV; nd.vz += (c.z-nd.z)*KGRAV; }
+    // Cluster gravity comes in two regimes:
+    //  - small brains (n ≤ 600): the classic center pull — unchanged look.
+    //  - big brains: a CONTAINER — zero gravity inside the target radius
+    //    (ballR(n), the same constant layout and spawn use), spring-to-shell
+    //    beyond it. With a center pull, equilibrium density GROWS with n
+    //    (R ∝ N^(1/4); and force caps make repulsion pressure saturate, so
+    //    scaled-pull corrections undershoot — measured: 4.5x target density,
+    //    sampling strides ~15, variance noise floor spd ~9, never sleeping).
+    //    A container can't over-compress BY CONSTRUCTION: density stays at
+    //    or below target at any corpus size, keeping neighbor counts, step
+    //    cost, and settling scale-independent.
+    if(c){
+      const dx = c.x-nd.x, dy = c.y-nd.y, dz = c.z-nd.z;
+      if(c.n <= 600){
+        nd.vx += dx*KGRAV; nd.vy += dy*KGRAV; nd.vz += dz*KGRAV;
+      } else {
+        const r = Math.hypot(dx,dy,dz);
+        if(r > c.rt){ const pull = KGRAV * (r - c.rt) / (r || 1); nd.vx += dx*pull; nd.vy += dy*pull; nd.vz += dz*pull; }
+      }
+    }
     // Sqrt-normalizing the spring pull above (da/db) tamed the explosion,
     // but a hub still nets ~sqrt(degree)x an ordinary note's force every
     // frame — mostly from its many neighbors' OWN small settling motions,
@@ -1250,111 +1561,305 @@ function step(){
     if(speed > MAX_SPEED){ const s = MAX_SPEED/speed; nd.vx*=s; nd.vy*=s; nd.vz*=s; }
     speedSum += Math.min(speed, MAX_SPEED);
     nd.x+=nd.vx; nd.y+=nd.vy; nd.z+=nd.vz;
+    // Self-heal non-finite state: ONE NaN position poisons every geometry it
+    // touches (three.js bounding spheres go NaN and whole buffers stop
+    // rendering — "everything disappeared"). Re-seat the node at its cluster
+    // center at rest instead of letting the poison spread through forces.
+    if(!Number.isFinite(nd.x + nd.y + nd.z + nd.vx + nd.vy + nd.vz)){
+      const cc = clusters.get(clusterKey(nd.repo,nd.role));
+      nd.x = cc ? cc.x : 0; nd.y = cc ? cc.y : 0; nd.z = cc ? cc.z : 0;
+      nd.vx = nd.vy = nd.vz = 0;
+    }
     if(nd.hl>0) nd.hl = Math.max(0, nd.hl - 0.018);
   }
-  // settle-freeze: sustained near-zero average motion → stop integrating until
-  // something that can move nodes calls wakeSim()
-  if(nodes.length && speedSum/nodes.length < SIM_CALM_SPEED){
-    if(++simCalmFrames >= SIM_CALM_FRAMES) simAsleep = true;
+  simAvgSpeed = nodes.length ? speedSum/nodes.length : 0;
+  // Calm is judged on WALL-CLOCK drift (units/s = spd × steps-per-second),
+  // not per-step speed: big scenes step rarely (progress pacing), so the
+  // same per-step spd means far less on-screen motion. Sleeping at equal
+  // perceived stillness lets a 180k scene rest in minutes instead of
+  // decaying an exponential tail at 0.7 steps/s. The absolute spd guard
+  // keeps us from freezing mid-relaxation while forces are still large.
+  const stepsPerSec = 1000 / Math.max(1000/60, simStepMs || 1000/60);
+  const driftPerSec = simAvgSpeed * stepsPerSec;
+  if(nodes.length && (simAvgSpeed < SIM_CALM_SPEED || (driftPerSec < 3 && simAvgSpeed < 3))){
+    if(++simCalmSteps >= SIM_CALM_STEPS) simAsleep = true;
   } else {
-    simCalmFrames = 0;
+    simCalmSteps = 0;
   }
+  simMovedFrame = true;   // positions changed — updateVisuals() uploads them this frame
 }
 
 function updateVisuals(){
   if(!webglOK || !sceneGroup) return;
-  for(const nd of nodes){
-    if(!nd._core) continue;
-    nd._core.position.set(nd.x, nd.y, nd.z);
-    nd._halo.position.set(nd.x, nd.y, nd.z);
-    const pulse = REDUCED ? 0 : (Math.sin(tick*0.05 + nd.phase)*0.5+0.5)*0.18;
-    const base = nd.graduated ? 0.55 : 0.9;
-    const hoverBoost = (nd === hoveredNode) ? 0.35 : 0;   // hover-inspection highlight, reuses the hl visual mechanism
-    // search highlight: a matched note glows extra (like a sustained hover);
-    // everything else fades near-invisible so matches pop out of a graph of
-    // a thousand+ notes — see triggerSearch()/nd.searchMatch.
-    const searchBoost = (searchActive && nd.searchMatch) ? 0.45 : 0;
-    const dimMul = (searchActive && !nd.searchMatch) ? 0.15 : 1;
-    const rr = nd.r * (1 + pulse*0.15 + nd.hl*0.5 + hoverBoost*0.6 + searchBoost*0.5);
-    nd._core.scale.set(rr*2, rr*2, 1);
-    nd._core.material.opacity = Math.min(1, (base*0.55 + pulse*0.3 + nd.hl*0.5 + hoverBoost + searchBoost) * dimMul);
-    nd._halo.scale.set(rr*6*(1+nd.hl*0.6+hoverBoost*0.4+searchBoost*0.5), rr*6*(1+nd.hl*0.6+hoverBoost*0.4+searchBoost*0.5), 1);
-    nd._halo.material.opacity = Math.min(0.75, (0.28 + pulse*0.2 + nd.hl*0.5 + hoverBoost*0.3 + searchBoost*0.5) * dimMul);
-  }
-  // live centroids: cluster glows, role/repo labels and region wireframes
-  // track where each group's notes ACTUALLY are right now — the force sim
-  // drifts clusters away from the layout's gravity targets, and a label
-  // pinned at rebuild time ends up floating over the wrong notes.
-  const liveCluster = new Map(), liveRepo = new Map();
-  for(const nd of nodes){
-    const ck = clusterKey(nd.repo, nd.role);
-    let s = liveCluster.get(ck); if(!s){ s = {x:0,y:0,z:0,n:0,rad:60}; liveCluster.set(ck, s); }
-    s.x += nd.x; s.y += nd.y; s.z += nd.z; s.n++;
-    let r = liveRepo.get(nd.repo); if(!r){ r = {x:0,y:0,z:0,n:0}; liveRepo.set(nd.repo, r); }
-    r.x += nd.x; r.y += nd.y; r.z += nd.z; r.n++;
-  }
-  for(const s of liveCluster.values()){ s.x/=s.n; s.y/=s.n; s.z/=s.n; }
-  for(const r of liveRepo.values()){ r.x/=r.n; r.y/=r.n; r.z/=r.n; }
-  for(const nd of nodes){
-    const s = liveCluster.get(clusterKey(nd.repo, nd.role));
-    if(s) s.rad = Math.max(s.rad, Math.hypot(nd.x-s.x, nd.y-s.y, nd.z-s.z)+nd.r+16);
-  }
-  liveRepoCenters = liveRepo;         // pickRepoAt() must agree with where the wireframe is drawn
-  liveClusterCenters = liveCluster;   // pickRoleLabelAt() must agree with where the label is drawn
-  const now = performance.now();
-  for(const child of sceneGroup.children){
-    const ud = child.userData || {};
-    if(ud.kind==="roleCluster" || ud.kind==="roleLabel"){
-      const s = liveCluster.get(clusterKey(ud.repo, ud.role));
-      if(s && s.n){
-        if(ud.kind==="roleCluster"){ child.position.set(s.x, s.y, s.z); child.scale.set(s.rad*2.2, s.rad*2.2, 1); }
-        // just above the centroid, INSIDE the cluster's own mass — a
-        // radius-offset placement lands in a NEIGHBORING cluster whenever
-        // brains interpenetrate (they do), which mislabels the wrong network
-        else child.position.set(s.x, s.y+26, s.z);
+  // per-note visual formulas live in the vertex shader — per frame the CPU
+  // only refreshes uniforms; attribute uploads happen when their data
+  // actually changed:
+  //  - positions (notes, line endpoints, pulse endpoints): stepped frames
+  //  - aHl: only for notes with a fading recall highlight
+  //  - aSearch + link colors + pulse dim: on search/hover-link changes
+  const stepped = simMovedFrame;
+  simMovedFrame = false;
+  const hoverIdx = (hoveredNode && hoveredNode._idx !== undefined) ? hoveredNode._idx : -1;
+  const searchDirty = visSeenSearchEpoch !== visSearchEpoch;
+  const hoverLinkDirty = lastHoveredLink !== hoveredLink;
+  if(noteCore){
+    for(const L of [noteCore, noteHalo]){
+      L.mesh.material.uniforms.uTick.value = tick;
+      L.mesh.material.uniforms.uHoverIdx.value = hoverIdx;
+      L.mesh.material.uniforms.uSearchOn.value = searchActive ? 1 : 0;
+    }
+    if(synPulses) synPulses.mesh.material.uniforms.uNow.value = performance.now();
+    if(stepped){
+      for(const nd of nodes){
+        const i = nd._idx;
+        if(i === undefined) continue;
+        noteCore.offset[i*3] = nd.x; noteCore.offset[i*3+1] = nd.y; noteCore.offset[i*3+2] = nd.z;
+        noteHalo.offset[i*3] = nd.x; noteHalo.offset[i*3+1] = nd.y; noteHalo.offset[i*3+2] = nd.z;
       }
-      continue;
+      noteCore.geo.attributes.aOffset.needsUpdate = true;
+      noteHalo.geo.attributes.aOffset.needsUpdate = true;
     }
-    if(ud.kind==="repoRegion" || ud.kind==="repoLabel"){
-      const r = liveRepo.get(ud.repo);   // empty repos keep their static layout spot
-      if(r && r.n){
-        if(ud.kind==="repoRegion") child.position.set(r.x, r.y, r.z);
-        else child.position.set(r.x, r.y+56, r.z);   // same inside-the-mass rule as role labels
+    if(hlActive.size){
+      for(const nd of hlActive){
+        const i = nd._idx;
+        if(i !== undefined){ noteCore.hl[i] = nd.hl; noteHalo.hl[i] = nd.hl; }
+        if(!nd.hl) hlActive.delete(nd);
       }
-      continue;
+      noteCore.geo.attributes.aHl.needsUpdate = true;
+      noteHalo.geo.attributes.aHl.needsUpdate = true;
     }
-    const l = ud.kind==="synapse" ? ud.link : null;
-    if(!l) continue;
-    const pos = child.geometry.attributes.position;
-    pos.setXYZ(0, l.a.x, l.a.y, l.a.z);
-    pos.setXYZ(1, l.b.x, l.b.y, l.b.z);
-    pos.needsUpdate = true;
-    // search highlight: a synapse touching a matched note stays lit (and
-    // gets a boost); one between two non-matches fades with its endpoints.
-    const synMatch = searchActive && (l.a.searchMatch || l.b.searchMatch);
-    const synDimMul = (searchActive && !synMatch) ? 0.12 : 1;
-    child.material.opacity = (l.baseOpacity + (l===hoveredLink ? 0.45 : 0) + (synMatch ? 0.3 : 0)) * synDimMul;   // hover-inspection highlight
-    if(l.pulse){
-      // ambient directional drift, source(a) → target(b), ~4.5s per lap,
-      // desynced per-link via pulsePhase; deliberately dim/slow relative to
-      // the bright event-driven travel pulse in makeTravelAnim.
-      const p = ((now*0.00022 + l.pulsePhase) % 1);
-      l.pulse.position.set(l.a.x+(l.b.x-l.a.x)*p, l.a.y+(l.b.y-l.a.y)*p, l.a.z+(l.b.z-l.a.z)*p);
-      l.pulse.material.opacity = l.pulse.userData.baseOpacity * synDimMul;
+    if(searchDirty){
+      for(const nd of nodes){
+        const i = nd._idx;
+        if(i === undefined) continue;
+        const s = nd.searchMatch ? 1 : 0;
+        noteCore.search[i] = s; noteHalo.search[i] = s;
+      }
+      noteCore.geo.attributes.aSearch.needsUpdate = true;
+      noteHalo.geo.attributes.aSearch.needsUpdate = true;
     }
   }
+  if(stepped){
+    // live centroids: cluster glows, role/repo labels and region wireframes
+    // track where each group's notes ACTUALLY are — positions only change on
+    // stepped frames, so this O(n) pass is gated with them.
+    const liveCluster = new Map(), liveRepo = new Map();
+    for(const nd of nodes){
+      const ck = clusterKey(nd.repo, nd.role);
+      let s = liveCluster.get(ck); if(!s){ s = {x:0,y:0,z:0,n:0,rad:60}; liveCluster.set(ck, s); }
+      s.x += nd.x; s.y += nd.y; s.z += nd.z; s.n++;
+      let r = liveRepo.get(nd.repo); if(!r){ r = {x:0,y:0,z:0,n:0}; liveRepo.set(nd.repo, r); }
+      r.x += nd.x; r.y += nd.y; r.z += nd.z; r.n++;
+    }
+    for(const s of liveCluster.values()){ s.x/=s.n; s.y/=s.n; s.z/=s.n; }
+    for(const r of liveRepo.values()){ r.x/=r.n; r.y/=r.n; r.z/=r.n; }
+    for(const nd of nodes){
+      const s = liveCluster.get(clusterKey(nd.repo, nd.role));
+      if(s) s.rad = Math.max(s.rad, Math.hypot(nd.x-s.x, nd.y-s.y, nd.z-s.z)+nd.r+16);
+    }
+    liveRepoCenters = liveRepo;         // pickRepoAt() must agree with where the wireframe is drawn
+    liveClusterCenters = liveCluster;   // pickRoleLabelAt() must agree with where the label is drawn
+    for(const child of sceneGroup.children){
+      const ud = child.userData || {};
+      if(ud.kind==="roleCluster" || ud.kind==="roleLabel"){
+        const s = liveCluster.get(clusterKey(ud.repo, ud.role));
+        if(s && s.n){
+          if(ud.kind==="roleCluster"){ child.position.set(s.x, s.y, s.z); child.scale.set(s.rad*2.2, s.rad*2.2, 1); }
+          // just above the centroid, INSIDE the cluster's own mass — a
+          // radius-offset placement lands in a NEIGHBORING cluster whenever
+          // brains interpenetrate (they do), which mislabels the wrong network
+          else child.position.set(s.x, s.y+26, s.z);
+        }
+        continue;
+      }
+      if(ud.kind==="repoRegion" || ud.kind==="repoLabel"){
+        const r = liveRepo.get(ud.repo);   // empty repos keep their static layout spot
+        if(r && r.n){
+          if(ud.kind==="repoRegion") child.position.set(r.x, r.y, r.z);
+          else child.position.set(r.x, r.y+56, r.z);   // same inside-the-mass rule as role labels
+        }
+        continue;
+      }
+    }
+  }
+  // synapse line positions follow node positions (stepped frames); colors
+  // encode per-link opacity as a vertex-color scale (≡ alpha under additive
+  // blending) and change only with search state or the hovered link.
+  if(synLines){
+    if(stepped){
+      for(let i=0;i<links.length;i++){
+        const l = links[i];
+        const o = i*6;
+        synLines.pos[o]   = l.a.x; synLines.pos[o+1] = l.a.y; synLines.pos[o+2] = l.a.z;
+        synLines.pos[o+3] = l.b.x; synLines.pos[o+4] = l.b.y; synLines.pos[o+5] = l.b.z;
+        if(synPulses){
+          const po = i*3;
+          synPulses.a[po] = l.a.x; synPulses.a[po+1] = l.a.y; synPulses.a[po+2] = l.a.z;
+          synPulses.b[po] = l.b.x; synPulses.b[po+1] = l.b.y; synPulses.b[po+2] = l.b.z;
+        }
+      }
+      synLines.geo.attributes.position.needsUpdate = true;
+      if(synPulses){
+        synPulses.geo.attributes.aA.needsUpdate = true;
+        synPulses.geo.attributes.aB.needsUpdate = true;
+      }
+    }
+    if(searchDirty || hoverLinkDirty){
+      for(let i=0;i<links.length;i++){
+        const l = links[i];
+        const o = i*6;
+        // search highlight: a synapse touching a matched note stays lit (and
+        // gets a boost); one between two non-matches fades with its endpoints.
+        const synMatch = searchActive && (l.a.searchMatch || l.b.searchMatch);
+        const synDimMul = (searchActive && !synMatch) ? 0.12 : 1;
+        const op = (l.baseOpacity + (l===hoveredLink ? 0.45 : 0) + (synMatch ? 0.3 : 0)) * synDimMul;   // hover-inspection highlight
+        const r = l.color.r*op, g = l.color.g*op, b = l.color.b*op;
+        synLines.col[o]   = r; synLines.col[o+1] = g; synLines.col[o+2] = b;
+        synLines.col[o+3] = r; synLines.col[o+4] = g; synLines.col[o+5] = b;
+        if(synPulses) synPulses.dim[i] = l.pulseBase * synDimMul;
+      }
+      synLines.geo.attributes.color.needsUpdate = true;
+      if(synPulses) synPulses.geo.attributes.aDim.needsUpdate = true;
+    }
+  }
+  visSeenSearchEpoch = visSearchEpoch;
+  lastHoveredLink = hoveredLink;
   updateAnims();
 }
 
+// Sim pacing: the physics has no dt term, so wall-clock motion speed is
+// (steps per second) × (per-step motion) — and historically steps ran once
+// per rendered frame, meaning big graphs (throttled by the O(n²) repulsion)
+// moved in proportion to how slowly they rendered. To keep motion looking
+// as it always has while rendering at full display rate, the sim steps at
+// that same historical cadence: a CALIBRATION step runs the original
+// all-pairs code path (same forces — it IS the same physics) and its
+// measured duration becomes the step interval. Small graphs measure under a
+// frame and step at full 60Hz, exactly as before; huge graphs advance at
+// the rate the old code did on this machine — minus the render lag, since
+// drawing/hover/camera no longer wait for the sim.
+//
+// Calibration runs only when the node count has meaningfully changed
+// (machine speed doesn't drift; re-measuring on a timer just re-pays the
+// deliberately-slow all-pairs cost) and NEVER while a pointer is dragging —
+// a 60-100ms hitch mid-orbit reads as the rotation freezing/jumping.
+//
+// simFastForward (set by applyGraph on a large fresh spawn): the settle-in
+// after a big load used to take dozens of seconds only because each step
+// was expensive. Steps are cheap now, so the initial organization phase is
+// fast-forwarded within a strict per-frame time budget — the same
+// trajectory, played quickly while the scene is still forming, landing in
+// the same final layout.
+let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
+// Template version, shown in the status chip so it's always unambiguous WHICH
+// build a given tab is rendering (three copies of this file exist on disk —
+// dev repo / marketplace clone / plugin cache — and "why does it look old"
+// has burned real debugging time). Bump the PATCH on every template change
+// within an increment of work; bump the MINOR when the increment ships.
+const NV_VERSION = "0.26.0";
+// every tab reports its live numbers to the server about once a second
+// (POST /metrics) so `neural-view.py status` — and any agent driving it —
+// can read the page's real frame rate without screenshots.
+const METRICS_ID = Math.random().toString(36).slice(2, 8);
+// status chip segments carry native title tooltips explaining what each
+// readout means (hover "live", the version, the fps, the DPR marker, ...).
+function chipHtml(segs){
+  return segs.filter(Boolean).map(([text, title]) =>
+    `<span title="${title.replace(/"/g,"&quot;")}">${text}</span>`).join(" · ");
+}
+const CHIP_LIVE = ["live", "Connected — the page re-reads the brains every 15s and streams recall activations in as they happen"];
+const CHIP_VER = [`v${NV_VERSION}`, "neural-view template version — confirms which build this tab is rendering (bumped on every template change)"];
+// live fps readout in the status chip (replaces the static tagline)
+let fpsFrames = 0, fpsWindowStart = 0, fpsGoodWindows = 0;
+// perf timers: per-section frame-time EMAs shown in the chip (sim step /
+// visual attribute writes / render submission), for diagnosing where a slow
+// frame actually goes without opening devtools. Toggled from ⚙ Settings
+// (persisted in uiState); `?perf` in the URL forces them on for a session.
+const PERF_FORCED = /[?&]perf\b/.test(location.search);
+function perfOn(){ return PERF_FORCED || !!uiState.perfTimers; }
+const perfMs = {step:0, vis:0, render:0};
+function ema(k, ms){ perfMs[k] += (ms - perfMs[k]) * 0.08; }
+const statusEl = document.getElementById("status-txt");
+if(statusEl) statusEl.innerHTML = chipHtml([CHIP_LIVE, CHIP_VER]);   // fps appended once the first second of frames is measured
 function frame(){
   requestAnimationFrame(frame);   // re-arm first: any exception below must never permanently kill the render loop
   tick++;
-  step();
+  const nowMs = performance.now();
+  fpsFrames++;
+  if(nowMs - fpsWindowStart >= 1000){
+    if(webglOK && statusEl){
+      const fps = Math.round(fpsFrames * 1000 / (nowMs - fpsWindowStart));
+      // adaptive-resolution governor (see resize()): step down fast while
+      // struggling, step back up only after 3 consecutive healthy seconds.
+      if(fps < 45 && dprCur > 1){ dprCur = Math.max(1, dprCur - 0.25); fpsGoodWindows = 0; resize(); }
+      else if(fps > 57 && dprCur < DPR_CAP){ if(++fpsGoodWindows >= 3){ dprCur = Math.min(DPR_CAP, dprCur + 0.25); fpsGoodWindows = 0; resize(); } }
+      else fpsGoodWindows = 0;
+      statusEl.innerHTML = chipHtml([
+        CHIP_LIVE, CHIP_VER,
+        [`${fps} fps`, "rendered frames per second, measured over the last second (display target: 60)"],
+        dprCur < DPR_CAP && [`${dprCur}x`, "adaptive render resolution — pixel ratio lowered from " + DPR_CAP + "x to keep fps up; restores automatically when the frame rate recovers"],
+        perfOn() && [`sim ${perfMs.step.toFixed(1)}`, "physics step CPU ms per frame (smoothed) — force sim / fast-forward / calibration"],
+        perfOn() && [`vis ${perfMs.vis.toFixed(1)}`, "visual update CPU ms per frame (smoothed) — per-note/per-link attribute writes, labels, fly-to"],
+        perfOn() && [`draw ${perfMs.render.toFixed(1)}ms`, "render submission CPU ms per frame (smoothed) — if fps is low but sim+vis+draw are small, the cost is GPU fill"],
+        REDUCED && ["reduced motion", "prefers-reduced-motion is on: ambient throb and pulse dots are disabled"],
+      ]);
+      fetch("/metrics", {method:"POST", body: JSON.stringify({
+        id: METRICS_ID, v: NV_VERSION, fps, dpr: dprCur,
+        sim: +perfMs.step.toFixed(1), vis: +perfMs.vis.toFixed(1), draw: +perfMs.render.toFixed(1),
+        notes: nodes.length, links: links.length,
+        spd: +simAvgSpeed.toFixed(3), asleep: simAsleep, p: simPhaseP,
+      })}).catch(()=>{});
+    }
+    fpsFrames = 0; fpsWindowStart = nowMs;
+  }
+  const tSim0 = performance.now();
+  if(simFastForward > 0){
+    // budget the burst — and bail after any single step that blows it, or a
+    // huge scene renders at 0 fps while "fast-forwarding" 1.8s steps.
+    while(simFastForward > 0 && performance.now() - tSim0 < 8){
+      const t1 = performance.now();
+      step(false); simFastForward--;
+      // a scene whose SINGLE step blows the frame budget can't be fast-
+      // forwarded — burning one heavy step per frame just renders the whole
+      // burst at 2fps. Cancel the burst and let paced stepping handle it.
+      if(performance.now() - t1 > 24){ if(performance.now() - t1 > 80) simFastForward = 0; break; }
+    }
+    lastStepMs = nowMs;
+  } else if(nowMs - lastStepMs >= simStepMs){
+    lastStepMs = nowMs;
+    // Historical-cadence calibration only applies at sizes the ORIGINAL
+    // O(n²)-every-frame code could actually run (small graphs, where its
+    // pace is the look users know). Beyond that the measured all-pairs cost
+    // is seconds — pacing by it means one violent step every few seconds and
+    // a layout that never finishes organizing. Big scenes pace for progress
+    // instead: steps as often as their own measured cost affords, capped so
+    // the sim leaves most of the frame budget to rendering.
+    const needCalibration = nodes.length && nodes.length <= 20000
+      && Math.abs(nodes.length - simCalibratedN) > Math.max(50, simCalibratedN*0.1);
+    if(needCalibration && pointers.size === 0){
+      simCalibratedN = nodes.length;
+      step(true);
+      simStepMs = Math.max(1000/60, performance.now() - tSim0);
+    } else {
+      step(false);
+      // progress-paced big scenes: keep the sim to ~1/4 of wall-clock so the
+      // page stays interactive WHILE organizing. (The old 200ms cap meant a
+      // 150ms step every 200ms at 180k notes — 2fps until the freeze. Settle
+      // takes proportionally longer at a fraction of the budget, and the
+      // freeze ends it either way.)
+      if(nodes.length > 20000) simStepMs = Math.max(1000/60, lastGridStepMs * 4);
+    }
+  }
+  const tSim1 = performance.now();
+  ema("step", tSim1 - tSim0);
   if(webglOK){
     updateVisuals();
     updateFly();
     updateCameraPosition();   // theta/phi/target/radius may have changed since last frame (orbit/pan/zoom/fit)
+    const tVis = performance.now();
+    ema("vis", tVis - tSim1);
     renderer.render(scene, camera);
+    ema("render", performance.now() - tVis);
     updateHoverRing();   // after render: ring uses the same camera state as the drawn frame
     if(PROBE && tick%20===0) hoverProbe();   // same-frame overlay: sim, camera and rings agree
   }
@@ -1384,7 +1889,7 @@ function playEvent(e){
   const nd = e.note ? nodeById.get(repo+"/"+e.role+"/"+e.note) : null;
   const hue = nd ? (clusters.get(clusterKey(nd.repo,nd.role))?.hue ?? 190) : 190;
   const inten = Math.max(0.4, Math.min(1, e.activation ?? 0.7));
-  if(nd) nd.hl = Math.max(nd.hl, inten);
+  if(nd){ nd.hl = Math.max(nd.hl, inten); hlActive.add(nd); }   // hlActive: updateVisuals writes this note's fading aHl
   if(REDUCED || !webglOK) return;   // reduced-motion / no-webgl: instant highlight only
   const now = performance.now();
   if(e.event==="seed" && nd){
@@ -2051,6 +2556,10 @@ document.addEventListener("click", (ev)=>{
 // ---- settings popover: live GitHub board fetch, off by default ----
 const settingsBtn = document.getElementById("settings-btn");
 const settingsPanel = document.getElementById("settings-panel");
+const perfToggle = document.getElementById("perf-toggle");
+perfToggle.checked = perfOn();
+perfToggle.disabled = PERF_FORCED;   // URL ?perf overrides the setting for this session
+perfToggle.onchange = ()=>{ uiState.perfTimers = perfToggle.checked; saveUiState(); };
 const liveBoardToggle = document.getElementById("live-board-toggle");
 liveBoardToggle.checked = !!uiState.liveBoard;
 settingsBtn.onclick = (ev)=>{ ev.stopPropagation(); settingsPanel.classList.toggle("open"); };
@@ -2228,9 +2737,10 @@ function hoverProbe(){
   // confusing the eye.
   if(sceneGroup) for(const child of sceneGroup.children){
     const k = child.userData && child.userData.kind;
-    if(k==="synapsePulse" || k==="roleCluster") child.visible = false;
+    if(k==="roleCluster") child.visible = false;
   }
-  for(const nd of nodes) if(nd._halo) nd._halo.visible = false;
+  if(synPulses) synPulses.mesh.visible = false;
+  if(noteHalo) noteHalo.mesh.visible = false;
   const old = document.getElementById("hoverprobe"); if(old) old.remove();
   const wrap = document.createElement("div");
   wrap.id = "hoverprobe";
@@ -2279,12 +2789,23 @@ const PROBE = location.search.includes("hoverprobe");
 (async function(){
   window.__viewer = null;   // which external viewer POST /open would use (labels the panel button)
   fetch("/viewer").then(r=>r.json()).then(d=>{ window.__viewer = (d && d.viewer) || null; }).catch(()=>{});
-  await loadGraph(); poll();
+  poll();
   await loadSessions();
   if(uiState.liveBoard) startBoardPolling();  // off by default — enable via the ⚙ Settings popover
   const st=document.getElementById("status-txt");
-  st.textContent = !webglOK ? "live · 3D unavailable" : (REDUCED ? "live · reduced motion" : "live · recalls light up");
-  setInterval(loadGraph, 15000);     // pick up new notes/links periodically
+  if(!webglOK) st.innerHTML = chipHtml([CHIP_LIVE, CHIP_VER,
+    ["3D unavailable", "this browser/GPU can't create a WebGL context — the sidebar and boards still work, the 3D scene doesn't render"]]);   // webglOK: fps is written by frame() once per second
+  // graph poll: adaptive — a huge corpus can take tens of seconds to scan
+  // and tens of MB to parse; re-polling such a graph every 15s would keep
+  // both server and tab permanently busy. The interval stretches to 8x the
+  // measured load time (floor 15s).
+  (function schedGraph(){
+    const t0 = performance.now();
+    loadGraph().finally(()=>{
+      const cost = performance.now() - t0;
+      setTimeout(schedGraph, Math.max(15000, cost*8));
+    });
+  })();
   setInterval(loadSessions, 20000);  // best-effort local session discovery
 })();
 </script>

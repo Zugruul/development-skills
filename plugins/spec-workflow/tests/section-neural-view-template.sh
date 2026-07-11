@@ -13,9 +13,9 @@ check_absent "resize() no longer assigns read-only canvas.clientHeight" "canvas.
 check_absent "template has no CDN/external script or asset references" 'src="http' "$(cat "$NVHTML")"
 check "template's importmap points three at the vendored, same-origin file" '"three":"/vendor/three.module.min.js"' "$(cat "$NVHTML")"
 check "template imports three via the importmap specifier, not a URL" 'from "three"' "$(cat "$NVHTML")"
-check "template wires an ambient directional pulse sprite per synapse link" 'kind:"synapsePulse"' "$(cat "$NVHTML")"
-check "ambient synapse pulses are gated by the reduced-motion check" "if(!REDUCED){" "$(cat "$NVHTML")"
-check "ambient pulse position is interpolated from the link's live endpoints (l.a/l.b), not a cached copy" "l.pulse.position.set(l.a.x+(l.b.x-l.a.x)*p, l.a.y+(l.b.y-l.a.y)*p, l.a.z+(l.b.z-l.a.z)*p)" "$(cat "$NVHTML")"
+check "template wires an ambient directional pulse layer for synapse links (batched)" 'synPulses = REDUCED ? null : makePulseLayer(CORE_TEX, links.length)' "$(cat "$NVHTML")"
+check "ambient synapse pulses are gated by the reduced-motion check" 'REDUCED ? null : makePulseLayer(CORE_TEX' "$(cat "$NVHTML")"
+check "ambient pulse position is interpolated from the link's live endpoints (l.a/l.b), not a cached copy" "mix(aA, aB, p)" "$(cat "$NVHTML")"
 check "template has a tooltip DOM element for hover inspection" 'id="tooltip"' "$(cat "$NVHTML")"
 check "tooltip is positioned fixed and never intercepts pointer events" "pointer-events:none;z-index:50" "$(cat "$NVHTML")"
 check "pointermove wires a throttled hover raycast" "hoverTest(ev.clientX, ev.clientY)" "$(cat "$NVHTML")"
@@ -24,7 +24,7 @@ check "hitTest(clientX, clientY) keeps its signature -- only its raycast target 
 # scaled nd.r*6), not the tiny bright core (nd.r*2) -- the halo carries its
 # own "note" userData so hoverTest()'s note-priority group can raycast it
 # directly instead of the core.
-check "note halo sprite carries note userData so its visible glow is hoverable, not just the tiny core" 'halo.userData = {kind:"note", node:nd};' "$(cat "$NVHTML")"
+check "note halo renders as a batched instanced layer (hover stays screen-space via pickNoteAt)" 'noteHalo = makeNoteLayer(HALO_TEX, nodes.length, true)' "$(cat "$NVHTML")"
 check "hoverTest()'s note group raycasts the halo (visible glow), not the small core sprite" "if(nd._halo) noteTargets.push(nd._halo);" "$(cat "$NVHTML")"
 # #88: click-to-inspect (hitTest) raycast the tiny core sprite (nd._core,
 # nd.r*2) while hover raycasts the visible halo (nd._halo, nd.r*6) -- a note
