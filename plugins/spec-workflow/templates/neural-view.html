@@ -104,10 +104,9 @@ canvas.grabbing{cursor:grabbing}
 #search-filters-panel::-webkit-scrollbar-thumb{background:rgba(90,190,255,.4);border-radius:5px}
 #search-filters-panel::-webkit-scrollbar-thumb:hover{background:rgba(90,190,255,.6)}
 
-/* search results — opens attached to #searchbar's bottom edge (see #search-wrap above), inset
-   slightly narrower than the bar itself so the seam still reads as one attached unit but the
-   panel doesn't look like a plain continuation of the same box. */
-#search-results{position:static;width:calc(100% - 22px);margin:0 auto;border-radius:0 0 12px 12px;
+/* search results — opens attached to #searchbar's bottom edge (see #search-wrap above), same
+   width as the bar so the seam reads as one continuous attached panel. */
+#search-results{position:static;width:100%;border-radius:0 0 12px 12px;
   border-top:1px solid rgba(90,190,255,.18);
   max-height:min(50vh,360px);display:flex;flex-direction:column;overflow:hidden}
 #search-results[hidden]{display:none}
@@ -1828,7 +1827,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // dev repo / marketplace clone / plugin cache — and "why does it look old"
 // has burned real debugging time). Bump the PATCH on every template change
 // within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.27.1";
+const NV_VERSION = "0.27.2";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
