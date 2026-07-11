@@ -598,11 +598,15 @@ echo "== board.sh flush durability + lock liveness (#104) =="
 # --- (v) crash AFTER the aside-move but BEFORE the first mutation applies:
 # every originally-queued entry must be recoverable on disk (still in the
 # aside file -- _flush_sync's existing pause point is exactly this window)
-# so a follow-up flush eventually applies all of them, none lost. ---
+# so a follow-up flush eventually applies all of them, none lost. Both
+# entries target the SAME issue# (with different op kinds, so #92's dedupe
+# doesn't collapse them) -- the fixture fake gh's item-list only ever makes
+# ONE issue# (FAKE_GH_ISSUE_NUM) visible, so a second distinct issue# would
+# never resolve regardless of durability. ---
 _qsetup
 mkdir -p "$BQ/.claude"
 printf '{"op":"prio","issue":"920","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
-printf '{"op":"prio","issue":"921","priority":"P2","ts":"2020-01-01T00:00:01Z"}\n' >>"$BQ/.claude/board-queue.jsonl"
+printf '{"op":"est","issue":"920","points":"3","ts":"2020-01-01T00:00:01Z"}\n' >>"$BQ/.claude/board-queue.jsonl"
 SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"; OUT="$(mktemp)"
 
@@ -629,8 +633,8 @@ fi
 asideglob=("$BQ"/.claude/.flush.*)
 if [[ -e "${asideglob[0]}" ]]; then
     asidecontent="$(cat "${asideglob[@]}" 2>/dev/null)"
-    check "(v) crash-before-first-apply: entry #920 survives on disk (aside)" '"issue":"920"' "$asidecontent"
-    check "(v) crash-before-first-apply: entry #921 survives on disk (aside)" '"issue":"921"' "$asidecontent"
+    check "(v) crash-before-first-apply: entry #920 (prio) survives on disk (aside)" '"op":"prio","issue":"920"' "$asidecontent"
+    check "(v) crash-before-first-apply: entry #920 (est) survives on disk (aside)" '"op":"est","issue":"920"' "$asidecontent"
 else
     echo "FAIL (v) crash-before-first-apply: no aside file found -- entries lost"
     fails=$((fails + 2))
@@ -647,8 +651,8 @@ LOG2="$(mktemp)"; EDITCC2="$(mktemp)"
 out2="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG2" FAKE_GH_LIST_CALLCOUNT="$(mktemp)" FAKE_GH_EDIT_CALLCOUNT="$EDITCC2" \
     FAKE_GH_ISSUE_NUM=920 FAKE_GH_ITEM_VISIBLE=1 FAKE_GH_ITEM_STATUS="Backlog" \
     bash "$PLUGIN/scripts/board.sh" flush 2>&1; echo "rc=$?")"
-check "(v) recovery flush: entry #920 applied" "prio #920 -> P1" "$out2"
-check "(v) recovery flush: entry #921 applied" "prio #921 -> P2" "$out2"
+check "(v) recovery flush: the prio entry applied" "prio #920 -> P1" "$out2"
+check "(v) recovery flush: the est entry applied" "est #920 -> 3" "$out2"
 rm -rf "$BQ" "$FGH" "$SYNC" "$LOG" "$LISTCC" "$EDITCC" "$OUT" "$LOG2" "$EDITCC2"
 
 # --- (w) crash AFTER the last mutation applies but BEFORE the aside file's
@@ -666,11 +670,19 @@ LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"; OUT="$(mktemp)"
     cd "$BQ" || exit 1
     exec env PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
         FAKE_GH_ISSUE_NUM=922 FAKE_GH_ITEM_VISIBLE=1 FAKE_GH_ITEM_STATUS="Backlog" \
-        BOARD_QUEUE_TEST_SYNC="$SYNC" BOARD_QUEUE_TEST_TAG=crashpost-done \
+        BOARD_QUEUE_TEST_SYNC="$SYNC" BOARD_QUEUE_TEST_TAG=crashpost \
         bash "$PLUGIN/scripts/board.sh" flush
 ) >"$OUT" 2>&1 &
 PID=$!
 
+# Release the FIRST sync point (right after the aside-move -- test (v)'s
+# window) immediately so the flush proceeds through to the mutation, then
+# wait for the SECOND ("<tag>-done", right before the now-cosmetic aside
+# cleanup) before crashing, so the crash lands after the mutation is
+# confirmed applied.
+_i=0
+while [[ ! -f "$SYNC/crashpost.ready" && $_i -lt 150 ]]; do sleep 0.02; _i=$((_i + 1)); done
+: >"$SYNC/crashpost.go"
 _i=0
 while [[ ! -f "$SYNC/crashpost-done.ready" && $_i -lt 150 ]]; do sleep 0.02; _i=$((_i + 1)); done
 kill -9 "$PID" 2>/dev/null
@@ -708,11 +720,13 @@ rm -rf "$BQ" "$FGH" "$SYNC" "$LOG" "$LISTCC" "$EDITCC" "$OUT" "$LOG2" "$EDITCC2"
 
 # --- (x) a REAL (non-rate-limit) apply failure must not silently vanish the
 # entry: it survives on disk in the live queue file, and the flush still
-# processes the OTHER lines in the same batch. ---
+# processes the OTHER lines in the same batch. Both entries target the SAME
+# issue# (different op kinds, so #92's dedupe doesn't collapse them) -- the
+# fixture fake gh only ever makes ONE issue# visible (see test (v)). ---
 _qsetup
 mkdir -p "$BQ/.claude"
 printf '{"op":"prio","issue":"930","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
-printf '{"op":"prio","issue":"931","priority":"P2","ts":"2020-01-01T00:00:01Z"}\n' >>"$BQ/.claude/board-queue.jsonl"
+printf '{"op":"est","issue":"930","points":"5","ts":"2020-01-01T00:00:01Z"}\n' >>"$BQ/.claude/board-queue.jsonl"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
 out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
     FAKE_GH_ISSUE_NUM=930 FAKE_GH_ITEM_VISIBLE=1 FAKE_GH_ITEM_STATUS="Backlog" \
@@ -721,9 +735,10 @@ out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="
 check "(x) real apply failure: the underlying error is surfaced, not swallowed" "field value does not match schema" "$out"
 check "(x) real apply failure: exits 0 (the loop keeps going for other tasks)" "rc=0" "$out"
 check_absent "(x) real apply failure: never misreported as QUEUED/rate-limited" "QUEUED" "$out"
+check "(x) real apply failure: the OTHER (successful, est) entry still applies" "est #930 -> 5" "$out"
 remainder="$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
-check "(x) real apply failure: the failed entry survives on disk in the live queue file" '"op":"prio","issue":"930"' "$remainder"
-check_absent "(x) real apply failure: the OTHER (successful) entry is not left behind too" '"issue":"931"' "$remainder"
+check "(x) real apply failure: the failed (prio) entry survives on disk in the live queue file" '"op":"prio","issue":"930"' "$remainder"
+check_absent "(x) real apply failure: the OTHER (successful, est) entry is not left behind too" '"op":"est"' "$remainder"
 rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC"
 
 # --- (y) liveness probe: a lockdir whose pidfile names a definitively-dead
