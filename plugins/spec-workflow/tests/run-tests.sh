@@ -93,6 +93,7 @@ SECTIONS=(
     section-neural-view-lifecycle.sh
     section-neural-view-projects.sh
     section-neural-view-sessions.sh
+    section-neural-view-render-body.sh
     section-lifecycle-retry.sh
     section-gate-core.sh
     section-gate-fingerprint.sh

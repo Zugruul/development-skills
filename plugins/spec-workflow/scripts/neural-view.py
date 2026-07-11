@@ -554,8 +554,24 @@ def decode_cursor(token):
     return None
 
 
+_TABLE_SEP_RE = re.compile(r"^\s*:?-{3,}:?\s*$")
+
+
+def _table_row_cells(line):
+    """Split a GFM pipe-table row into its cell texts. Leading/trailing pipes
+    are optional in GFM (`a | b` and `| a | b |` both parse), so strip one of
+    each before splitting rather than assuming the leading/trailing form."""
+    line = line.strip()
+    if line.startswith("|"):
+        line = line[1:]
+    if line.endswith("|"):
+        line = line[:-1]
+    return [c.strip() for c in line.split("|")]
+
+
 def render_body(body):
-    """Tiny markdown → HTML: headings, paragraphs, [[wikilinks]], **bold**.
+    """Tiny markdown → HTML: headings, paragraphs, [[wikilinks]], **bold**,
+    *italic*/_italic_, `code`, GFM pipe tables.
     Deliberately minimal — stdlib only, and it preserves plain prose verbatim."""
     def inline(s):
         # escape wikilink labels exactly once (operate on raw text, escape each
@@ -569,21 +585,40 @@ def render_body(body):
         out.append(escape(s[last:]))
         r = "".join(out)
         r = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", r)
+        # italic after bold, so a stray "**" pair is already consumed and
+        # can't be misread as two "*" italic markers.
+        r = re.sub(r"\*([^*]+)\*", r"<em>\1</em>", r)
+        r = re.sub(r"_([^_]+)_", r"<em>\1</em>", r)
         r = re.sub(r"`([^`]+)`", r"<code>\1</code>", r)
         return r
+
+    def is_table(lines):
+        return (len(lines) >= 2 and "|" in lines[0]
+                and all(_TABLE_SEP_RE.match(c) for c in _table_row_cells(lines[1])))
+
+    def render_table(lines):
+        header = "".join(f"<th>{inline(c)}</th>" for c in _table_row_cells(lines[0]))
+        rows = "".join(
+            "<tr>" + "".join(f"<td>{inline(c)}</td>" for c in _table_row_cells(ln)) + "</tr>"
+            for ln in lines[2:]
+        )
+        return f"<table><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>"
 
     out = []
     for block in re.split(r"\n\s*\n", body.strip()):
         block = block.strip("\n")
         if not block:
             continue
+        lines = block.splitlines()
         h = re.match(r"^(#{1,6})\s+(.*)$", block)
         if h:
             lvl = min(len(h.group(1)) + 2, 6)
             out.append(f"<h{lvl}>{inline(h.group(2).strip())}</h{lvl}>")
-        elif all(ln.lstrip().startswith(("- ", "* ")) for ln in block.splitlines()):
-            items = "".join(f"<li>{inline(ln.lstrip()[2:])}</li>" for ln in block.splitlines())
+        elif all(ln.lstrip().startswith(("- ", "* ")) for ln in lines):
+            items = "".join(f"<li>{inline(ln.lstrip()[2:])}</li>" for ln in lines)
             out.append(f"<ul>{items}</ul>")
+        elif is_table(lines):
+            out.append(render_table(lines))
         else:
             out.append(f"<p>{inline(block)}</p>")
     return "\n".join(out)
