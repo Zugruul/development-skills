@@ -1646,7 +1646,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // dev repo / marketplace clone / plugin cache — and "why does it look old"
 // has burned real debugging time). Bump the PATCH on every template change
 // within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.25.18";
+const NV_VERSION = "0.25.19";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -1729,7 +1729,12 @@ function frame(){
       simStepMs = Math.max(1000/60, performance.now() - tSim0);
     } else {
       step(false);
-      if(nodes.length > 20000) simStepMs = Math.min(200, Math.max(1000/60, lastGridStepMs * 1.6));
+      // progress-paced big scenes: keep the sim to ~1/4 of wall-clock so the
+      // page stays interactive WHILE organizing. (The old 200ms cap meant a
+      // 150ms step every 200ms at 180k notes — 2fps until the freeze. Settle
+      // takes proportionally longer at a fraction of the budget, and the
+      // freeze ends it either way.)
+      if(nodes.length > 20000) simStepMs = Math.max(1000/60, lastGridStepMs * 4);
     }
   }
   const tSim1 = performance.now();
