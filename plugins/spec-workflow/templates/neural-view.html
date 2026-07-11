@@ -1646,7 +1646,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // dev repo / marketplace clone / plugin cache — and "why does it look old"
 // has burned real debugging time). Bump the PATCH on every template change
 // within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.25.17";
+const NV_VERSION = "0.25.18";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -2667,13 +2667,23 @@ const PROBE = location.search.includes("hoverprobe");
 (async function(){
   window.__viewer = null;   // which external viewer POST /open would use (labels the panel button)
   fetch("/viewer").then(r=>r.json()).then(d=>{ window.__viewer = (d && d.viewer) || null; }).catch(()=>{});
-  await loadGraph(); poll();
+  poll();
   await loadSessions();
   if(uiState.liveBoard) startBoardPolling();  // off by default — enable via the ⚙ Settings popover
   const st=document.getElementById("status-txt");
   if(!webglOK) st.innerHTML = chipHtml([CHIP_LIVE, CHIP_VER,
     ["3D unavailable", "this browser/GPU can't create a WebGL context — the sidebar and boards still work, the 3D scene doesn't render"]]);   // webglOK: fps is written by frame() once per second
-  setInterval(loadGraph, 15000);     // pick up new notes/links periodically
+  // graph poll: adaptive — a huge corpus can take tens of seconds to scan
+  // and tens of MB to parse; re-polling such a graph every 15s would keep
+  // both server and tab permanently busy. The interval stretches to 8x the
+  // measured load time (floor 15s).
+  (function schedGraph(){
+    const t0 = performance.now();
+    loadGraph().finally(()=>{
+      const cost = performance.now() - t0;
+      setTimeout(schedGraph, Math.max(15000, cost*8));
+    });
+  })();
   setInterval(loadSessions, 20000);  // best-effort local session discovery
 })();
 </script>

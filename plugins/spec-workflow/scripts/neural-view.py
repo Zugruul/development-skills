@@ -161,6 +161,7 @@ BOOT_ID = f"{os.getpid()}-{int(time.time() * 1000)}"
 # frame rate without screenshots. Keyed by a per-tab id; entries expire.
 METRICS: dict = {}
 METRICS_TTL = 30.0
+GRAPH_CACHE = None   # {"at", "cost", "body"} — see the /graph handler
 DEV_MODE = os.environ.get("NEURAL_VIEW_DEV") == "1"
 
 # GET /projects: per-repo board state, cached (see project_state()) so a slow/
@@ -928,7 +929,20 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, f.read_bytes(), ctype)
             return self._send(404, {"error": "not found"})
         if path == "/graph":
-            return self._send(200, build_graph(REPOS))
+            # Big corpora make build_graph expensive (measured: 39s scan /
+            # 86MB payload at 180k notes) while every open tab re-polls —
+            # serve a cached payload within a TTL so overlapping polls don't
+            # keep the server scanning at 100% CPU. TTL scales with how long
+            # the build actually took (min 15s, or 6x build time).
+            global GRAPH_CACHE
+            now = time.time()
+            cached = GRAPH_CACHE
+            if cached and now - cached["at"] < max(15.0, cached["cost"] * 6):
+                return self._send(200, cached["body"], "application/json")
+            t0 = time.time()
+            body = json.dumps(build_graph(REPOS)).encode()
+            GRAPH_CACHE = {"at": time.time(), "cost": time.time() - t0, "body": body}
+            return self._send(200, body, "application/json")
         if path == "/events":
             token = ""
             q = self.path.split("?", 1)[1] if "?" in self.path else ""
