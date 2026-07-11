@@ -1039,6 +1039,7 @@ function refreshSearchHighlight(){
 }
 
 let lastRawGraph = null;
+let lastNodeIdSet = null;   // wakeSim() gate — see applyGraph()
 async function loadGraph(){
   let g; try { g = await (await fetch("/graph")).json(); } catch { return; }
   lastRawGraph = g;
@@ -1095,7 +1096,21 @@ function applyGraph(g){
   window.__consultEdges = (g.edges||[]).filter(e=>e.type==="consult" && !isBrainHidden(e.source.split("/")[0], e.source.split("/")[1]) && !isBrainHidden(e.target.split("/")[0], e.target.split("/")[1]));
   layoutClusters();
   rebuildScene();
-  wakeSim();   // nodes/links/cluster targets may have changed — resume integrating (no-op if already awake)
+  // Only wake the sim when the set of VISIBLE notes actually changed (added,
+  // removed, or a hide/show toggle) — not on every routine 15s poll of an
+  // unchanged graph. Existing notes keep their settled x/y/z (old.x reuse
+  // above), so an unconditional wake here bought nothing but cost twice
+  // over at the thousands-of-notes scale this now runs at: (1) a real perf
+  // hit — a full physics burst (~90 frames) every single poll, forever; (2)
+  // each of those unnecessary wakes gave repulsion (strong at close range)
+  // another chance to nudge notes apart before the much weaker cluster
+  // gravity (0.015) could fully pull them back within the ~1.5s settle
+  // window, and refreezing there — repeated over hours, this is what
+  // "dispersed" a brain that used to sit in a tight cluster.
+  const idSet = new Set(nodes.map(n=>n.id));
+  const idsChanged = !lastNodeIdSet || idSet.size !== lastNodeIdSet.size || [...idSet].some(id=>!lastNodeIdSet.has(id));
+  lastNodeIdSet = idSet;
+  if(idsChanged) wakeSim();
   // The FIRST graph with content always fits, even if userMoved — /graph can
   // take a while (it scans every repo's notes), and a stray wheel tick or
   // drag in that window would otherwise cancel the initial framing forever,
