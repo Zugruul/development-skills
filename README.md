@@ -84,3 +84,17 @@ Spec-driven autonomous build workflow. A repo declares its boards, specs, epics,
 | `sync-project-configs` | Discover every anchored repo and bring its `.claude/project.yaml` up to the plugin's current config surface via versioned sync rules; dry-run by default |
 
 Humans steer the loop by commenting on task issues: `next-task`/`implement-task` read every comment before starting, fold accepted changes into the issue's acceptance criteria, and reply on the issue.
+
+### scaffold-project
+
+Scaffolds a new greenfield project's minikube dev-workflow scripts
+(start/stop/dev/build/port-forward/bootstrap) into a `scripts/` folder, with
+`package.json` wired to run them.
+
+| Skill | Purpose |
+|---|---|
+| `scaffold-project` | Generate a project's minikube dev-workflow scripts from templates, every profile bound explicitly (`MK_PROFILE`, never minikube's shared default) so scaffolded projects never collide with each other |
+
+```bash
+claude plugin install scaffold-project@development-skills
+```

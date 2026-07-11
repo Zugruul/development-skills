@@ -22,6 +22,22 @@
                 "spec-driven",
                 "build-loop"
             ]
+        },
+        {
+            "name": "scaffold-project",
+            "source": "./plugins/scaffold-project",
+            "description": "Scaffolds a new greenfield project's minikube dev-workflow (start/stop/dev/build/port-forward scripts + package.json wiring), with every profile bound explicitly from day one so scaffolded projects never collide on minikube's shared default profile.",
+            "version": "0.1.0",
+            "author": {
+                "name": "event-sorcerer"
+            },
+            "keywords": [
+                "scaffold",
+                "minikube",
+                "kubernetes",
+                "dev-workflow",
+                "greenfield"
+            ]
         }
     ]
 }
