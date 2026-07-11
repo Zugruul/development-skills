@@ -52,17 +52,27 @@ case "$1 $2" in
         python3 -c 'import json,sys; print(json.dumps({"items": json.loads(sys.argv[1])}))' "$items"
         ;;
     "api rate_limit")
-        # board.sh's board-queue.sh asks this REST endpoint for the authoritative
-        # reset time (works even when GraphQL itself is what's exhausted). NORESET
-        # simulates that endpoint being unavailable too, so board.sh falls back to
-        # "unknown" -- which the classifier below renders as "(resets soon)".
+        # board.sh's board-queue.sh asks this REST endpoint for two things: the
+        # graphql resource's `remaining` (0 => a MASKED rate limit, #90) and the
+        # authoritative GRAPHQL reset time. Real `gh api rate_limit` ALWAYS carries
+        # resources.graphql, and the reset must be read from THERE -- not the
+        # top-level `rate` key, which ALIASES resources.core and can report a
+        # different reset (#101). This fake mirrors that shape: graphql carries the
+        # authoritative reset, `rate` a deliberately different (later) one, so a
+        # regression to the `rate` fallback would surface the wrong time.
+        # `remaining` is 0 ONLY in the rate-limit scenario (FAKE_GH_RATELIMIT_FAIL);
+        # under a plain gh failure the probe must see graphql NOT exhausted, so the
+        # error stays a plain error and isn't misclassified as a masked rate limit.
+        # NORESET simulates the endpoint being unavailable too, so board.sh falls
+        # back to "unknown" -- rendered below as "(resets soon)".
         if [[ "${FAKE_GH_RATELIMIT_NORESET:-0}" == "1" ]]; then
             echo "fake gh: api rate_limit unavailable" >&2
             exit 1
         fi
         epoch="$(python3 -c 'import calendar, datetime, sys
 print(calendar.timegm(datetime.datetime.strptime(sys.argv[1], "%Y-%m-%dT%H:%M:%SZ").timetuple()))' "${FAKE_GH_RATELIMIT_RESET:-2026-07-08T04:11:00Z}")"
-        echo "{\"rate\":{\"limit\":5000,\"remaining\":0,\"reset\":$epoch}}"
+        gqremaining=$([[ "${FAKE_GH_RATELIMIT_FAIL:-0}" == "1" ]] && echo 0 || echo 5000)
+        echo "{\"resources\":{\"graphql\":{\"limit\":5000,\"remaining\":$gqremaining,\"reset\":$epoch}},\"rate\":{\"limit\":5000,\"remaining\":$gqremaining,\"reset\":$((epoch + 720))}}"
         ;;
     *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
 esac
@@ -154,6 +164,7 @@ body="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/projects")"
 check "projects: rate-limit failure reported as ok:false" '"ok": false' "$body"
 check "projects: rate-limit failure names GitHub API rate limit" 'board unavailable: GitHub API rate limit' "$body"
 check "projects: rate-limit failure includes the reset time" '04:11' "$body"
+check_absent "projects: reset is graphql's, not the core-aliasing 'rate' key (#101)" '04:23' "$body"
 check_absent "projects: rate-limit failure does not leak the trailing traceback" 'JSONDecodeError' "$body"
 python3 "$NV" stop >/dev/null
 

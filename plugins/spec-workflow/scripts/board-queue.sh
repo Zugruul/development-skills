@@ -61,23 +61,22 @@ except Exception:
     [[ "$remaining" == "0" ]]
 }
 
-# _rate_limit_reset_human -> ISO-8601 UTC reset time from the REST rate_limit
-# endpoint. Prefers the graphql resource's reset (the counter that's
-# actually exhausted when GraphQL masks its own errors), falling back to
-# the top-level `rate` alias if `resources.graphql` is absent -- both are
-# real shapes of gh's response.
+# _rate_limit_reset_human -> ISO-8601 UTC reset time of the GRAPHQL resource
+# from the REST rate_limit endpoint (the counter that's actually exhausted when
+# GraphQL masks its own errors). If `resources.graphql` is absent from the
+# payload, report "unknown" rather than falling back to the top-level `rate`
+# key: in real gh responses `rate` ALIASES resources.core, whose reset can differ
+# from graphql's by ~12min (see fixtures/gh-failures/rate-limit-endpoint-sample.json,
+# issue #101). This string is interpolated into "rate-limited until X" messages,
+# where a confident-but-wrong core-based timestamp is worse than an honest unknown.
 _rate_limit_reset_human() {
     local raw
     raw="$(gh api rate_limit 2>/dev/null)" || { echo "unknown"; return; }
     python3 -c '
 import json, sys, datetime
 try:
-    d = json.loads(sys.argv[1])
-    try:
-        ts = d["resources"]["graphql"]["reset"]
-    except Exception:
-        ts = d["rate"]["reset"]
-    print(datetime.datetime.utcfromtimestamp(ts).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    ts = json.loads(sys.argv[1])["resources"]["graphql"]["reset"]
+    print(datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
 except Exception:
     print("unknown")
 ' "$raw"
