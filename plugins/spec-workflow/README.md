@@ -142,6 +142,14 @@ create a new `section-<area>.sh` (with the standard sourced-not-standalone heade
 and register it in `run-tests.sh`'s `SECTIONS` array. This split keeps parallel build-loop
 lanes from all appending to one file (a guaranteed rebase conflict on every merge).
 
+Every `section-*.sh` also carries a one-line standalone-run guard as its first executable
+statement (`declare -F check … || { echo "section files are sourced by run-tests.sh; run: …"; exit 2; }`):
+run a section file directly and it prints a pointer to the runner and exits 2, instead of a
+wall of `check: command not found` / empty-`$PLUGIN` path noise (#94). `section-section-guard.sh`
+is the meta-test that pins this — a glob asserting every section file carries the guard, plus a
+behavioral check that running one directly actually exits 2 with the pointer. When you add a new
+section file, include the guard line (copy it from any existing section) or that meta-test fails.
+
 Fake-`gh` fixtures that simulate a `gh` failure (masked rate limits, honest rate limits,
 etc.) source their trigger text from `tests/fixtures/gh-failures/` — a corpus of REAL
 captured `gh` outputs with provenance — rather than inlining invented strings beside the
