@@ -62,3 +62,23 @@ check "build-next SKILL.md report step gives the requirements report token" "req
 check "build-next SKILL.md report step gives the local-route report token" "route: local-route" "$BNBODY"
 echo "== build-next SKILL.md: autonomous-decision operating rule (SW-085) =="
 check "build-next SKILL.md operating rule: no AskUserQuestion in auto mode absent a hard denial" "does not use AskUserQuestion unless a hard permission denial or an explicit instruction requires human direction" "$BNBODY"
+
+echo "== queue SKILL.md contract (#154) =="
+QSKILL="$PLUGIN/skills/queue/SKILL.md"
+if [[ -f "$QSKILL" ]]; then echo "ok   queue/SKILL.md exists"; else echo "FAIL queue/SKILL.md missing"; fails=$((fails + 1)); fi
+QBODY="$(cat "$QSKILL" 2>/dev/null)"
+check "queue SKILL.md has name frontmatter" "name: queue" "$QBODY"
+check "queue SKILL.md has allowed-tools frontmatter" "allowed-tools: Bash" "$QBODY"
+check "queue SKILL.md has the preflight pre-start check line" 'Pre-start check: !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh"' "$QBODY"
+check "queue SKILL.md instructs to STOP on PREFLIGHT FAIL" "PREFLIGHT FAIL" "$QBODY"
+check "queue SKILL.md wires board.sh next" "board.sh\" next" "$QBODY"
+check "queue SKILL.md wires board.sh show to enrich candidates" "board.sh\" show" "$QBODY"
+check "queue SKILL.md states it is read-only" "READ-ONLY" "$QBODY"
+check "queue SKILL.md states no board mutation is ever made" "no board mutation" "$QBODY"
+check "queue SKILL.md explains the PICK/RESUME decision meaning" "RESUME" "$QBODY"
+check "queue SKILL.md documents the WIP-limit meaning of RESUME" "WIP limit" "$QBODY"
+check "queue SKILL.md tells the human they can steer via comments or Priority" "commenting on an issue" "$QBODY"
+
+echo "== plugin README documents the queue skill =="
+QREADME="$(cat "$PLUGIN/README.md" 2>/dev/null)"
+check "plugin README lists the queue skill in the skills table" "| \`queue\` |" "$QREADME"
