@@ -402,3 +402,206 @@ YAML
 out="$(td_ emit "$DUPREC" || true)"
 check "duplicate-ts rejection holds across the string/datetime boundary" "already exists" "$out"
 rm -rf "$TD"
+
+# --- archive (MEM-001) ------------------------------------------------------
+# `archive` moves every feed document whose items are ALL routed into
+# .claude/feedbacks/archive/<YYYY-MM>.yaml (month from the document's ts),
+# leaving partially/un-routed documents in the feed untouched. Moved bytes
+# must be byte-identical to how they sat in the feed (no yaml.dump round-trip).
+
+# case 1: mixed feed (fully-routed + partially-routed + unrouted) -> only the
+# fully-routed doc moves; survivors stay byte-identical; archive is exact.
+AR="$(mktemp -d)"; mkdir -p "$AR/.claude/feedbacks"
+cp "$FIX/valid.project.yaml" "$AR/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$AR" set methodology.feedback true >/dev/null
+ar_() { (cd "$AR" && python3 "$PLUGIN/scripts/feedback.py" "$AR" "$@"); }
+cat >"$AR/.claude/feedbacks/feed.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-07-01T00:00:00Z"
+iteration: {task: FX-100, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "fully routed", generalized: "fully routed", routing: {action: ignore, ref: "n/a"}}
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-07-02T00:00:00Z"
+iteration: {task: FX-101, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "routed item", generalized: "routed item", routing: {action: ignore, ref: "n/a"}}
+  - {category: friction, area: board, severity: low, summary: "unrouted item", generalized: "unrouted item"}
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-07-03T00:00:00Z"
+iteration: {task: FX-102, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "wholly unrouted", generalized: "wholly unrouted"}
+YAML
+cp "$AR/.claude/feedbacks/feed.yaml" "$AR/feed-before.yaml"
+out="$(ar_ archive)"
+check "archive: reports success" "OK" "$out"
+post_feed="$(cat "$AR/.claude/feedbacks/feed.yaml")"
+check "archive: survivor doc (partially routed) stays in feed" "FX-101" "$post_feed"
+check "archive: survivor doc (wholly unrouted) stays in feed" "FX-102" "$post_feed"
+check_absent "archive: fully-routed doc leaves the feed" "FX-100" "$post_feed"
+check "archive: month archive file created" "FX-100" "$(cat "$AR/.claude/feedbacks/archive/2026-07.yaml" 2>/dev/null)"
+check "archive: moved doc bytes preserved (routing intact)" "action: ignore" "$(cat "$AR/.claude/feedbacks/archive/2026-07.yaml")"
+rm -f "$AR/feed-before.yaml"
+rm -rf "$AR"
+
+# case 2: month bucketing -- two routed docs in different months land in two
+# distinct archive files.
+AM="$(mktemp -d)"; mkdir -p "$AM/.claude/feedbacks"
+cp "$FIX/valid.project.yaml" "$AM/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$AM" set methodology.feedback true >/dev/null
+am_() { (cd "$AM" && python3 "$PLUGIN/scripts/feedback.py" "$AM" "$@"); }
+cat >"$AM/.claude/feedbacks/feed.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-05-15T00:00:00Z"
+iteration: {task: FX-200, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "may item", generalized: "may item", routing: {action: ignore, ref: "n/a"}}
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-06-20T00:00:00Z"
+iteration: {task: FX-201, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "june item", generalized: "june item", routing: {action: ignore, ref: "n/a"}}
+YAML
+out="$(am_ archive)"
+check "archive: month bucketing reports success" "OK" "$out"
+check "archive: may doc in 2026-05.yaml" "may item" "$(cat "$AM/.claude/feedbacks/archive/2026-05.yaml" 2>/dev/null)"
+check "archive: june doc in 2026-06.yaml" "june item" "$(cat "$AM/.claude/feedbacks/archive/2026-06.yaml" 2>/dev/null)"
+check "archive: feed emptied after both docs moved" "" "$(cat "$AM/.claude/feedbacks/feed.yaml" 2>/dev/null)"
+rm -rf "$AM"
+
+# case 3: idempotent second run -- exit 0, no-op, files unchanged.
+AI="$(mktemp -d)"; mkdir -p "$AI/.claude/feedbacks"
+cp "$FIX/valid.project.yaml" "$AI/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$AI" set methodology.feedback true >/dev/null
+ai_() { (cd "$AI" && python3 "$PLUGIN/scripts/feedback.py" "$AI" "$@"); }
+cat >"$AI/.claude/feedbacks/feed.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-07-10T00:00:00Z"
+iteration: {task: FX-300, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "idempotent test", generalized: "idempotent test", routing: {action: ignore, ref: "n/a"}}
+YAML
+ai_ archive >/dev/null
+feed_after_first="$(cat "$AI/.claude/feedbacks/feed.yaml" 2>/dev/null)"
+archive_after_first="$(cat "$AI/.claude/feedbacks/archive/2026-07.yaml")"
+out="$(ai_ archive; echo "rc=$?")"
+check "archive: idempotent second run exits 0" "rc=0" "$out"
+check "archive: idempotent second run is a no-op (message)" "no changes" "$out"
+feed_after_second="$(cat "$AI/.claude/feedbacks/feed.yaml" 2>/dev/null)"
+archive_after_second="$(cat "$AI/.claude/feedbacks/archive/2026-07.yaml")"
+check "archive: idempotent -- feed unchanged" "$feed_after_first" "$feed_after_second"
+check "archive: idempotent -- archive file unchanged" "$archive_after_first" "$archive_after_second"
+rm -rf "$AI"
+
+# case 3b: no feed file / empty feed -> no-op exit 0.
+AN="$(mktemp -d)"; mkdir -p "$AN/.claude"
+cp "$FIX/valid.project.yaml" "$AN/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$AN" set methodology.feedback true >/dev/null
+out="$(cd "$AN" && python3 "$PLUGIN/scripts/feedback.py" "$AN" archive; echo "rc=$?")"
+check "archive: no feed file is a no-op" "rc=0" "$out"
+mkdir -p "$AN/.claude/feedbacks"
+: >"$AN/.claude/feedbacks/feed.yaml"
+out="$(cd "$AN" && python3 "$PLUGIN/scripts/feedback.py" "$AN" archive; echo "rc=$?")"
+check "archive: empty feed file is a no-op" "rc=0" "$out"
+rm -rf "$AN"
+
+# case 4: corrupt document anywhere in the feed -> nonzero exit, byte offset
+# printed, feed AND archive dir left completely untouched.
+AC="$(mktemp -d)"; mkdir -p "$AC/.claude/feedbacks"
+cp "$FIX/valid.project.yaml" "$AC/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$AC" set methodology.feedback true >/dev/null
+cat >"$AC/.claude/feedbacks/feed.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-07-11T00:00:00Z"
+iteration: {task: FX-400, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "routed ok", generalized: "routed ok", routing: {action: ignore, ref: "n/a"}}
+---
+this is: not: valid: yaml: [unterminated
+YAML
+cp "$AC/.claude/feedbacks/feed.yaml" "$AC/feed-before.yaml"
+out="$(cd "$AC" && python3 "$PLUGIN/scripts/feedback.py" "$AC" archive 2>&1; echo "rc=$?")"
+check "archive: corrupt doc -- nonzero exit" "rc=1" "$out"
+check "archive: corrupt doc -- reports a byte offset" "byte offset" "$out"
+post="$(cat "$AC/.claude/feedbacks/feed.yaml")"
+before="$(cat "$AC/feed-before.yaml")"
+check "archive: corrupt doc -- feed left byte-identical" "$before" "$post"
+check "archive: corrupt doc -- archive dir not created" "MISSING" "$([[ -d "$AC/.claude/feedbacks/archive" ]] && echo FOUND || echo MISSING)"
+rm -f "$AC/feed-before.yaml"
+rm -rf "$AC"
+
+# case 5: atomicity -- a write failure (read-only archive/ dir) must leave the
+# feed completely unmodified.
+AA="$(mktemp -d)"; mkdir -p "$AA/.claude/feedbacks/archive"
+cp "$FIX/valid.project.yaml" "$AA/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$AA" set methodology.feedback true >/dev/null
+cat >"$AA/.claude/feedbacks/feed.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-07-12T00:00:00Z"
+iteration: {task: FX-500, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "blocked by readonly archive dir", generalized: "blocked by readonly archive dir", routing: {action: ignore, ref: "n/a"}}
+YAML
+cp "$AA/.claude/feedbacks/feed.yaml" "$AA/feed-before.yaml"
+chmod 555 "$AA/.claude/feedbacks/archive"
+out="$(cd "$AA" && python3 "$PLUGIN/scripts/feedback.py" "$AA" archive 2>&1; echo "rc=$?")"
+chmod 755 "$AA/.claude/feedbacks/archive"
+check "archive: atomicity -- readonly archive dir causes nonzero exit" "rc=1" "$out"
+post="$(cat "$AA/.claude/feedbacks/feed.yaml")"
+before="$(cat "$AA/feed-before.yaml")"
+check "archive: atomicity -- feed left untouched on write failure" "$before" "$post"
+rm -f "$AA/feed-before.yaml"
+rm -rf "$AA"
+
+# case 6: regression -- pending never scans archive/, and emit/route still work.
+AG="$(mktemp -d)"; mkdir -p "$AG/.claude/feedbacks/archive"
+cp "$FIX/valid.project.yaml" "$AG/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$AG" set methodology.feedback true >/dev/null
+ag_() { (cd "$AG" && python3 "$PLUGIN/scripts/feedback.py" "$AG" "$@"); }
+cat >"$AG/.claude/feedbacks/archive/2026-01.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-01-01T00:00:00Z"
+iteration: {task: FX-600, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "archived item should not resurface", generalized: "archived item should not resurface", routing: {action: ignore, ref: "n/a"}}
+YAML
+out="$(ag_ pending)"
+check "archive: pending never reads archive/ (empty feed stays pending=0)" "" "$out"
+ag_ emit "$FIX/feedback-valid.yaml" >/dev/null
+out="$(ag_ pending)"
+check "archive: emit/pending still work with an archive dir present" "Front-load the human merge check-in" "$out"
+check_absent "archive: pending does not surface archived items" "archived item should not resurface" "$out"
+ag_ route "2026-07-01T10:00:00Z" 0 brain-note "x" >/dev/null
+ag_ route "2026-07-01T10:00:00Z" 1 backlog "y" >/dev/null
+check "archive: status unaffected by archive dir presence" "pending=0" "$(ag_ status)"
+rm -rf "$AG"
+
+# README's feedback.py scripts-list entry enumerates the CLI verbs explicitly
+# (emit/pending/route/status/migrate-qualify) -- it must name `archive` too,
+# or the doc silently goes stale the moment a new verb ships.
+readme="$PLUGIN/README.md"
+readme_verbs_line="$(grep -F 'emit/pending/route/status/migrate-qualify' "$readme")"
+check "README documents feedback.py's archive verb" "emit/pending/route/status/migrate-qualify/archive" "$readme_verbs_line"
+check "README describes what archive does" "archive/<YYYY-MM>.yaml" "$readme_verbs_line"
