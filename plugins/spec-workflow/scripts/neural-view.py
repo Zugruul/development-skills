@@ -162,6 +162,7 @@ BOOT_ID = f"{os.getpid()}-{int(time.time() * 1000)}"
 METRICS: dict = {}
 METRICS_TTL = 30.0
 GRAPH_CACHE = None   # {"at", "cost", "body"} — see the /graph handler
+BODY_CACHE = None    # {"at", "cost", "bodies": {id: lowercased body text}} — see /search-body
 DEV_MODE = os.environ.get("NEURAL_VIEW_DEV") == "1"
 
 # GET /projects: per-repo board state, cached (see project_state()) so a slow/
@@ -312,6 +313,13 @@ def build_graph(repos):
                         "strength": int(fm.get("strength", 1) or 1),
                         "graduated": bool(fm.get("graduated", False)),
                         "tags": [str(t) for t in _as_list(fm.get("tags"))],
+                        # Cheap, already-parsed frontmatter fields for the client's
+                        # "Frontmatter" search scope — paths/source are short
+                        # strings, unlike the note BODY (see GET /search-body for
+                        # that; shipping bodies in /graph would bloat it badly at
+                        # thousands-of-notes scale).
+                        "paths": [str(p) for p in _as_list(fm.get("paths"))],
+                        "source": str(fm.get("source", "") or ""),
                     })
             links = brain / "links.json"
             if links.is_file():
@@ -356,6 +364,26 @@ def build_graph(repos):
     roots = {name: str(root) for name, root in repos}
     return {"nodes": nodes, "edges": edges, "repos": [name for name, _ in repos], "repoRoles": repo_roles,
             "roleColors": role_colors, "displayNames": display_names, "roots": roots}
+
+
+def build_body_index(repos):
+    """{note id: lowercased body text} across every repo/role — the note
+    BODY, deliberately never shipped in /graph (would bloat that payload
+    badly at thousands-of-notes scale). Only used by GET /search-body,
+    which returns matching ids, never the bodies themselves."""
+    bodies = {}
+    for name, root in repos:
+        for role, brain in iter_brains(root):
+            notes_dir = brain / "notes"
+            if not notes_dir.is_dir():
+                continue
+            for f in notes_dir.glob("*.md"):
+                try:
+                    _, body = parse_note(f.read_text(errors="replace"))
+                except OSError:
+                    continue
+                bodies[f"{name}/{role}/{f.stem}"] = body.lower()
+    return bodies
 
 
 def repo_role_colors(root):
@@ -943,6 +971,28 @@ class Handler(BaseHTTPRequestHandler):
             body = json.dumps(build_graph(REPOS)).encode()
             GRAPH_CACHE = {"at": time.time(), "cost": time.time() - t0, "body": body}
             return self._send(200, body, "application/json")
+        if path == "/search-body":
+            # Full-text note-body search — the client's "Full text" search
+            # scope. Body text is never shipped in /graph (payload-size
+            # reasons, see build_graph's docstring), so a real body query
+            # needs its own round trip. Same TTL-cache shape as /graph:
+            # scanning is opt-in (only fires when the human enables the
+            # "Full text" checkbox and searches), but re-reading every note
+            # body on every keystroke/poll would still be wasteful.
+            qs = urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
+            q = (qs.get("q", [""])[0] or "").strip().lower()
+            if not q:
+                return self._send(200, {"ids": []})
+            global BODY_CACHE
+            now = time.time()
+            cached = BODY_CACHE
+            if not cached or now - cached["at"] > max(20.0, cached["cost"] * 6):
+                t0 = time.time()
+                bodies = build_body_index(REPOS)
+                BODY_CACHE = {"at": time.time(), "cost": time.time() - t0, "bodies": bodies}
+                cached = BODY_CACHE
+            ids = [nid for nid, text in cached["bodies"].items() if q in text]
+            return self._send(200, {"ids": ids})
         if path == "/events":
             token = ""
             q = self.path.split("?", 1)[1] if "?" in self.path else ""
