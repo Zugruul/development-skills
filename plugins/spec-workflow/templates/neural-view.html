@@ -218,6 +218,26 @@ canvas.grabbing{cursor:grabbing}
 .sf-tristate[data-state="include"]::before{content:"+"}
 .sf-tristate[data-state="exclude"]{background:var(--amber);border-color:var(--amber);color:var(--bg)}
 .sf-tristate[data-state="exclude"]::before{content:"−"}
+/* Every remaining native <input type="checkbox"> in the filters popover
+   (Search-in's 4, the master/per-repo/per-facet "select all" toggles, and
+   each individual brain-role checkbox) reskinned to the SAME visual language
+   as .sf-tristate above — rounded box, cyan "+" when checked, amber "−" when
+   indeterminate — instead of a native white/blue OS checkbox. Paint only:
+   checked/indeterminate stay real native checkbox state (indeterminate is
+   still set via the .indeterminate JS property elsewhere), nothing about
+   behavior changes here. */
+#search-filters-panel input[type="checkbox"]{
+  appearance:none; -webkit-appearance:none; margin:0; flex:none;
+  width:13px; height:13px; border-radius:4px;
+  border:1.5px solid rgba(143,166,189,.4); background:rgba(255,255,255,.04);
+  display:inline-flex; align-items:center; justify-content:center;
+  cursor:pointer; transition:background .1s,border-color .1s}
+#search-filters-panel input[type="checkbox"]:hover{border-color:var(--cyan-dim)}
+#search-filters-panel input[type="checkbox"]:focus-visible{outline:1px solid var(--cyan-dim);outline-offset:1px}
+#search-filters-panel input[type="checkbox"]:checked{background:var(--cyan);border-color:var(--cyan)}
+#search-filters-panel input[type="checkbox"]:checked::before{content:"+";color:var(--bg);font-size:10px;font-weight:700;line-height:1}
+#search-filters-panel input[type="checkbox"]:indeterminate{background:var(--amber);border-color:var(--amber)}
+#search-filters-panel input[type="checkbox"]:indeterminate::before{content:"−";color:var(--bg);font-size:10px;font-weight:700;line-height:1}
 /* collapsible sections/groups — same ▾/▸ glyph as the left sidebar's own
    .secthead section headers (#sect-brains etc.), just sized for these
    smaller sub-headers. Hiding the body: everything in a collapsed
@@ -2927,6 +2947,69 @@ async function updateFacetSchema(boxes){
   renderFacetSchema(schema);
 }
 const NUM_OPS_LABEL = ["=", ">", "<", ">=", "<="];
+// Curated compound presets (schema.shortcuts, e.g. "Attack Action" = Type:Action
+// AND Subtype:Attack) — a single row rendered inside the facet named by
+// appearsIn. 2-state (unselected/include) rather than the normal tri-state:
+// "exclude Attack Action" would mean NOT(action AND attack), which isn't the
+// same as "not action AND not attack" (De Morgan), so exclude on a compound
+// preset would silently do the wrong thing — left out rather than guessed.
+// Toggling it sets/clears the SAME underlying include Sets a manual click on
+// each target facet's own value row would, so it's visually just a shortcut
+// for a few clicks, not a separate mechanism the rest of the UI has to know
+// about — facetsToQueryTerms() etc. see the same include/exclude state either way.
+function renderShortcutRow(shortcut, group){
+  const row = document.createElement("div"); row.className = "sf-facetrow";
+  row.tabIndex = 0; row.setAttribute("role", "button");
+  row.dataset.shortcut = shortcut.key;
+  row.dataset.shortcutSets = JSON.stringify(shortcut.sets);
+  row.dataset.state = "";
+  row.innerHTML = `<span class="sf-tristate" data-state=""></span><span>${escapeHtml(shortcut.label)}</span>`;
+  const toggle = ()=>{
+    const active = row.dataset.state === "include";
+    for(const [field, tags] of Object.entries(shortcut.sets)){
+      if(!searchFilters.facets[field]) searchFilters.facets[field] = {include: new Set(), exclude: new Set()};
+      const sel = searchFilters.facets[field];
+      tags.forEach(t => active ? sel.include.delete(t) : sel.include.add(t));
+    }
+    resyncFacetRowsForFields(Object.keys(shortcut.sets));
+    refreshAllShortcutRows();
+    if(!active) expandAncestors(row);
+    searchFilters.queryTerms = facetsToQueryTerms();
+    syncSearchInputFromQuery();
+    refreshSearchHighlight();
+  };
+  row.onclick = toggle;
+  row.onkeydown = ev=>{ if(ev.key==="Enter"||ev.key===" "){ ev.preventDefault(); toggle(); } };
+  group.appendChild(row);
+}
+// Re-paints normal value rows (and that facet's group toggle) for whichever
+// facet keys a shortcut just changed, so e.g. clicking "Attack Action" shows
+// Action lit up under Type AND Attack lit up under Subtype immediately.
+function resyncFacetRowsForFields(fields){
+  document.querySelectorAll("#sf-facets .sf-repo").forEach(g=>{
+    const key = g.dataset.facetKey;
+    if(!fields.includes(key)) return;
+    const sel = searchFilters.facets[key];
+    if(!sel) return;
+    g.querySelectorAll(".sf-facetrow[data-tag]").forEach(r=>{
+      setTristate(r, sel.include.has(r.dataset.tag) ? "include" : sel.exclude.has(r.dataset.tag) ? "exclude" : "");
+    });
+    updateFacetToggleState(g);
+  });
+}
+// Re-derives every shortcut row's displayed state from current facet state
+// (not a stored flag) — so it also reflects a manual click on the underlying
+// values, or a typed query, not just its own toggle.
+function refreshAllShortcutRows(){
+  document.querySelectorAll(".sf-facetrow[data-shortcut]").forEach(row=>{
+    let sets; try{ sets = JSON.parse(row.dataset.shortcutSets); }catch{ return; }
+    const active = Object.entries(sets).every(([field, tags])=>{
+      const sel = searchFilters.facets[field];
+      return sel && tags.every(t => sel.include.has(t));
+    });
+    setTristate(row, active ? "include" : "");
+  });
+}
 function renderFacetSchema(schema){
   const wrap = document.getElementById("sf-facets");
   const section = document.getElementById("sf-facets-section");
@@ -2963,7 +3046,7 @@ function renderFacetSchema(schema){
     const toggleCb = toggle.querySelector("input");
     toggleCb.onchange = ()=>{
       const next = toggleCb.checked ? "include" : "";
-      group.querySelectorAll(".sf-facetrow").forEach(r=>setTristate(r, next));
+      group.querySelectorAll(".sf-facetrow[data-tag]").forEach(r=>setTristate(r, next));
       if(toggleCb.checked) setCollapsed(group, false);
       syncFacetFilter(facet.key, group);
     };
@@ -2972,6 +3055,7 @@ function renderFacetSchema(schema){
     h.appendChild(label);
     addCollapseToggle(h, group);
     group.appendChild(h);
+    for(const sc of (schema.shortcuts || []).filter(s => s.appearsIn === facet.key)) renderShortcutRow(sc, group);
     for(const v of facet.values){
       const row = document.createElement("div"); row.className = "sf-facetrow";
       row.tabIndex = 0; row.setAttribute("role", "button"); row.dataset.tag = v.tag; row.dataset.state = "";
@@ -2988,6 +3072,7 @@ function renderFacetSchema(schema){
     }
     wrap.appendChild(group);
   }
+  refreshAllShortcutRows();
   section.hidden = false;
 }
 // Value rows cycle unselected -> include -> exclude -> unselected on click (or
@@ -3002,8 +3087,11 @@ function setTristate(row, state){
   row.querySelector(".sf-tristate").dataset.state = state;
   row.setAttribute("aria-label", `${row.querySelector("span:last-child").textContent}: ${TRI_ARIA[state]}`);
 }
+// [data-tag] excludes shortcut rows (see renderShortcutRow) — those set OTHER
+// facets' values by tag, they have no tag of their own in THIS facet, so they
+// must never be counted as one of this facet's real values.
 function updateFacetToggleState(group){
-  const rows = [...group.querySelectorAll(".sf-facetrow")];
+  const rows = [...group.querySelectorAll(".sf-facetrow[data-tag]")];
   const toggleCb = group.querySelector(".sf-repo-h .sf-toggle input");
   if(!toggleCb || !rows.length) return;
   const allInclude = rows.every(r => r.dataset.state === "include");
@@ -3012,7 +3100,7 @@ function updateFacetToggleState(group){
   toggleCb.indeterminate = anySet && !allInclude;
 }
 function syncFacetFilter(facetKey, group){
-  const rows = group.querySelectorAll(".sf-facetrow");
+  const rows = group.querySelectorAll(".sf-facetrow[data-tag]");
   const include = new Set(), exclude = new Set();
   rows.forEach(r=>{
     if(r.dataset.state === "include") include.add(r.dataset.tag);
@@ -3020,6 +3108,7 @@ function syncFacetFilter(facetKey, group){
   });
   searchFilters.facets[facetKey] = {include, exclude};
   updateFacetToggleState(group);
+  refreshAllShortcutRows();
   searchFilters.queryTerms = facetsToQueryTerms();
   syncSearchInputFromQuery();
   refreshSearchHighlight();
@@ -3154,7 +3243,7 @@ function applyQueryTermsFromText(q){
     }
     const sel = nextFacets[key] || {include: new Set(), exclude: new Set()};
     let anySet = false;
-    group.querySelectorAll(".sf-facetrow").forEach(r=>{
+    group.querySelectorAll(".sf-facetrow[data-tag]").forEach(r=>{
       const tag = r.dataset.tag;
       const state = sel.include.has(tag) ? "include" : sel.exclude.has(tag) ? "exclude" : "";
       setTristate(r, state);
@@ -3163,6 +3252,7 @@ function applyQueryTermsFromText(q){
     if(anySet){ setCollapsed(group, false); anyFacetSet = true; }
     updateFacetToggleState(group);
   });
+  refreshAllShortcutRows();
   if(anyFacetSet){ const s = document.getElementById("sf-facets-section"); if(s) setCollapsed(s, false); }
   refreshSearchHighlight();
 }
