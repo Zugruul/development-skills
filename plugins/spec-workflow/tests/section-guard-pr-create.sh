@@ -12,6 +12,7 @@
 # match project.branchPattern. Same parsing discipline as guard-board-move.sh
 # (SW-011): parse the real argv of a `gh pr create` invocation, never
 # substring-match the whole command line.
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== guard-pr-create.sh (#76) =="
 
 GT="$(mktemp -d)"

@@ -4,6 +4,7 @@
 # _lib.sh (check/check_rc/check_absent/lifecycle_start/_rand_port) and set
 # HERE/PLUGIN/FIX/fails/flaky before sourcing this file. This file assumes
 # those are already in scope.
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== find-task SKILL.md contract =="
 FTSKILL="$PLUGIN/skills/find-task/SKILL.md"
 if [[ -f "$FTSKILL" ]]; then echo "ok   find-task/SKILL.md exists"; else echo "FAIL find-task/SKILL.md missing"; fails=$((fails + 1)); fi

@@ -13,6 +13,7 @@
 # script against a hermetic temp git repo (never a canned diff string) so
 # the NEW-file-content read path (disk in stdin mode, `git show` in --range
 # mode) is genuinely exercised.
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== diff-symbols.py (#86) =="
 
 DS="$PLUGIN/scripts/diff-symbols.py"

@@ -7,6 +7,7 @@
 # + work.sync (board-sync batching policy) — config accessors, validator,
 # schema lint, work-mode.sh's should-sync matrix, and skill-doc wiring.
 
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== config.py: work.type / work.sync.mode accessors (defaults) =="
 WT="$(mktemp -d)"; mkdir -p "$WT/.claude"
 cp "$FIX/valid.project.yaml" "$WT/.claude/project.yaml"

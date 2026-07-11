@@ -6,6 +6,7 @@
 # those are already in scope.
 # shellcheck disable=SC2016  # lifecycle_start command-strings are single-quoted on
 # purpose -- they're expanded when eval'd inside the function, not at call site.
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== neural-view /projects (per-repo board state via THIS plugin's board.sh, cached) =="
 NVP_REPO="$(mktemp -d)"
 mkdir -p "$NVP_REPO/.claude"

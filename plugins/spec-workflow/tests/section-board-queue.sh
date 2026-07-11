@@ -22,6 +22,7 @@
 # #91) instead of being inlined here -- see that directory's README for the
 # provenance of each captured/reconstructed string, so this fixture can't
 # silently drift from what real gh actually emits.
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== board.sh rate-limit queue (#77) + adopt (#84): fake gh =="
 
 _qsetup() { # -> sets BQ (fixture repo dir) and FGH (fake-gh dir on PATH)

@@ -12,6 +12,7 @@
 # never folded into shared setup, so a failure in one case can't leave
 # state that corrupts another.
 
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 SYNCCFG="$PLUGIN/scripts/sync-configs.py"
 
 # _sc_base_yaml <feedback:true|false> -- a full, VALID (per validate-config.py)

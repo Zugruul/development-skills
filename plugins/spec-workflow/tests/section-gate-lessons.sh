@@ -4,6 +4,7 @@
 # _lib.sh (check/check_rc/check_absent/lifecycle_start/_rand_port) and set
 # HERE/PLUGIN/FIX/fails/flaky before sourcing this file. This file assumes
 # those are already in scope.
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== gate.sh sequencing: lessons append happens before the pass marker is cleared =="
 # SPEC §8.1 requires capture-before-clear (a process killed between the two
 # steps must still leave the failure signal persisted). There is no reliable

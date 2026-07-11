@@ -9,6 +9,7 @@
 # used to carry a work.*-only hand-rolled copy of this same idea; it now
 # points here instead of duplicating it.
 
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 SCHEMA="$PLUGIN/schemas/project-config.schema.json"
 
 echo "== schema-lint.py: whole schema is hover-complete =="

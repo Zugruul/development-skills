@@ -23,6 +23,7 @@
 # its own test fixtures. fixtures/snippet-lint/ is a subdirectory, which the
 # linter's flat `tests/*.sh` glob does not descend into, so copying from
 # there sidesteps the self-match entirely.
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 LINT="$PLUGIN/scripts/snippet-lint.py"
 SNIPFIX="$FIX/snippet-lint"
 

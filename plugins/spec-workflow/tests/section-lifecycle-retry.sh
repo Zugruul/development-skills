@@ -4,6 +4,7 @@
 # _lib.sh (check/check_rc/check_absent/lifecycle_start/_rand_port) and set
 # HERE/PLUGIN/FIX/fails/flaky before sourcing this file. This file assumes
 # those are already in scope.
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== server-lifecycle retry-once (SW-014, SPEC 7.5) =="
 # Meta-test: a deliberately-flaky command (fails once, then succeeds) proves
 # lifecycle_start()'s 3-state logic -- ok / FLAKY (passed on retry) / FAIL --

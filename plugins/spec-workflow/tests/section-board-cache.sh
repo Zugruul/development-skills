@@ -12,6 +12,7 @@
 # GraphQL points via full-board re-pagination per op on a 95-item board --
 # these tests assert an actual gh-invocation COUNT, not just behavior, so a
 # regression back to "one full list per mutation" fails loudly here.
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== board.sh item-id cache (#78): gh call-count guarantees =="
 
 _cgh() { # -> sets BC (fixture repo dir) and CGH (fake-gh dir on PATH); fake gh understands

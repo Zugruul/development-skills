@@ -4,6 +4,7 @@
 # _lib.sh (check/check_rc/check_absent/lifecycle_start/_rand_port) and set
 # HERE/PLUGIN/FIX/fails/flaky before sourcing this file. This file assumes
 # those are already in scope.
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== neural-view boot crash + favicon + 3D template contract =="
 NVHTML="$PLUGIN/templates/neural-view.html"
 NVVENDOR_SHA="86bcee248b64f44bcfc23c331ae74619061957d59cab040171dcb6fb5900beb6"

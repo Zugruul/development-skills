@@ -12,6 +12,7 @@
 # must carry a provenance header (so nobody can silently add an invented
 # string), and every corpus entry must actually be sourced by some fixture
 # (a corpus nobody reads is dead weight, not evidence).
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== gh-failures corpus (#91): provenance headers + no dead entries =="
 
 _GHF="$FIX/gh-failures"

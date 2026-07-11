@@ -13,6 +13,7 @@
 # process-commit classes (retro(, spec(, feedback(, config:) -- which are
 # still enumerated (counted), never silently hidden. Fake gh understands
 # `project item-list` and `pr list` only.
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== board.sh audit (#76) =="
 
 _asetup() { # -> sets AQ (fixture repo dir) and FGH (fake-gh dir on PATH)

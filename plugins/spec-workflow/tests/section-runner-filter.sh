@@ -13,6 +13,7 @@
 # (and on a pre-filter tree, where --section is ignored, each child runs the
 # WHOLE suite). Every spawn below is prefixed _RUNNER_FILTER_META=1; when that
 # is set we return immediately so the child skips this section.
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 if [[ -n "${_RUNNER_FILTER_META:-}" ]]; then
     return 0
 fi
