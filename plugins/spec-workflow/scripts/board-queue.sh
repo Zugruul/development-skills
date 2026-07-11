@@ -550,19 +550,44 @@ _flush_queue() {
     _queue_lock_release
 }
 
-# _aside_write_remaining <aside-file> <line>... : overwrites <aside-file>
-# with exactly the given lines (one per arg), one per line. Factored out of
-# _flush_queue_locked (#104) so the durability invariant it exists to
-# maintain -- an entry's bytes exist on disk (aside or queue) until its
-# mutation is CONFIRMED applied, never a delete-then-apply window -- has one
-# tested chokepoint instead of being inlined at every call site.
+# _aside_write_remaining <aside-file> <line>... : atomically REPLACES
+# <aside-file> with exactly the given lines (one per arg), one per line.
+# Factored out of _flush_queue_locked (#104) so the durability invariant it
+# exists to maintain -- an entry's bytes exist on disk (aside or queue)
+# until its mutation is CONFIRMED applied, never a delete-then-apply window
+# -- has one tested chokepoint instead of being inlined at every call site.
+# Review finding (#104, round 1): an earlier version truncated <aside-file>
+# in place (`: >"$file"` then appended line-by-line) -- a kill -9 between
+# the truncate and the last append left the aside file empty or partially
+# written, i.e. an entry mid-rewrite in neither the aside file nor
+# $QUEUE_FILE, exactly the invariant this function exists to close. Fixed
+# by writing the new content to a sibling temp file first, then a single
+# atomic `mv` over the aside path (same filesystem, one rename syscall --
+# the same mv-based atomicity _flush_queue_locked already relies on for the
+# queue file itself, just applied here too): the aside path always shows
+# either its old (pre-rewrite) content or its new (post-rewrite) content in
+# full, never a partial write.
+#
+# BOARD_QUEUE_TEST_ASIDE_SYNC=1 (test-only, opt-in SEPARATELY from the
+# general BOARD_QUEUE_TEST_SYNC gate _flush_sync itself checks) pauses right
+# before the `mv`, tagged "<BOARD_QUEUE_TEST_TAG>-aside-write" -- lets a test
+# pin exactly this window and assert the aside path still shows its OLD,
+# untruncated content while the new content sits only in the sibling temp
+# file. Gated behind its own flag (not just _flush_sync's existing dir+
+# sentinel check) because this call happens once per queued line, not once
+# per flush -- an unconditional pause here would silently cost every OTHER
+# test that already sets BOARD_QUEUE_TEST_SYNC (v/w/x/m/n/r/s) up to
+# BOARD_QUEUE_TEST_SYNC_MAX_WAIT_ITERS' worth of wall-clock time per line,
+# since none of them know about this tag and would never supply its .go file.
 _aside_write_remaining() {
     local file="$1"; shift
-    : >"$file"
-    local l
+    local tmp l
+    tmp="$(mktemp "$(dirname "$file")/.flush-remaining.XXXXXX")"
     for l in "$@"; do
-        printf '%s\n' "$l" >>"$file"
+        printf '%s\n' "$l" >>"$tmp"
     done
+    [[ "${BOARD_QUEUE_TEST_ASIDE_SYNC:-0}" == "1" ]] && _flush_sync "${BOARD_QUEUE_TEST_TAG:-flush}-aside-write"
+    mv "$tmp" "$file"
 }
 
 # _flush_queue_locked: the actual replay, called with the lock already held.
