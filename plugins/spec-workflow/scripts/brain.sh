@@ -4,6 +4,8 @@
 # so the engine writes into the consumer repo's .claude/identities/ regardless of cwd.
 #
 #   brain.sh recall <role> --paths "a/b.sh,c/**" --keywords "yaml,merge" [--budget 600]
+#   brain.sh recall <role> --query "types:Action -subtypes:Attack classes:Warrior" [--limit N]
+#                                                              # precise boolean filter, not fuzzy recall
 #   brain.sh mint <role> <slug> --tags a,b --paths "x/**" --source "..." [--learned-from R --source-note S]  # body on stdin
 #   brain.sh directory
 #   brain.sh consult <consumer-role> <owner-role> <slug>

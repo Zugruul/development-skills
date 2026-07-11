@@ -14,6 +14,7 @@ role read another role's brain implicitly — the orchestrator drives every call
 Python 3 standard library only (no pyyaml). Usage:
 
     brain.py <root> recall <role> --paths "a/b.sh,c/**" --keywords "yaml,merge" [--budget 600]
+    brain.py <root> recall <role> --query "types:Action -subtypes:Attack classes:Warrior" [--limit N]
     brain.py <root> mint <role> <slug> --tags a,b --paths "x/**" --source "..." [--learned-from R --source-note S]
     brain.py <root> directory
     brain.py <root> consult <consumer-role> <owner-role> <slug>
@@ -278,8 +279,74 @@ def _split(csv):
     return [x.strip() for x in csv.split(",") if x.strip()]
 
 
+# ------------------------------------------------------------- query (precise)
+def _fm_field_values(fm, field):
+    """Lowercased value set for a frontmatter field — treats list and scalar
+    fields uniformly so a query term works the same whether the note stores
+    e.g. `subtypes: [Attack, Axe]` or `subtypes: Axe`. `tags` is always the
+    note's tag list regardless of any other meaning `field` might have."""
+    if field == "tags":
+        return set(t.lower() for t in (fm.get("tags", []) or []))
+    v = fm.get(field)
+    if v is None:
+        return set()
+    if isinstance(v, list):
+        return set(str(x).lower() for x in v if str(x).strip())
+    return {str(v).lower()} if str(v).strip() else set()
+
+
+def _query_term_matches(fm, term):
+    """One query term against one note's frontmatter.
+    `word`            — `word` is one of the note's tags
+    `field:value`     — `value` is present in frontmatter field `field`
+    `field:v1,v2`     — OR within the field: v1 present OR v2 present
+    A leading `-` on either form negates the whole term."""
+    neg = term.startswith("-")
+    if neg:
+        term = term[1:]
+    if not term:
+        return True
+    if ":" in term:
+        field, _, valpart = term.partition(":")
+        field = field.strip().lower()
+        wants = set(v.strip().lower() for v in valpart.split(",") if v.strip())
+        ok = bool(_fm_field_values(fm, field) & wants) if wants else True
+    else:
+        ok = term.lower() in _fm_field_values(fm, "tags")
+    return (not ok) if neg else ok
+
+
+def cmd_query(identities, args):
+    """Precise boolean filter over frontmatter fields — the counterpart to
+    `recall`'s fuzzy OR-activation. Terms are ANDed; `-term` negates a term;
+    `field:v1,v2` ORs within one field. No link spreading, no token budget,
+    no activation logging — this is exact search, not associative recall.
+    Example: `--query "types:Action -subtypes:Attack classes:Warrior
+    rarity:Majestic interacts-with:Axe"` — every AND'd term must hold; the
+    comma-separated values inside one term are OR'd."""
+    role = args.role
+    notes = load_notes(identities, role)
+    terms = (args.query or "").split()
+    matches = []
+    for slug in sorted(notes):
+        fm = notes[slug]["fm"]
+        if fm.get("graduated"):
+            continue
+        if all(_query_term_matches(fm, t) for t in terms):
+            matches.append(slug)
+    limit = args.limit if args.limit else len(matches)
+    shown = matches[:limit]
+    for slug in shown:
+        fm = notes[slug]["fm"]
+        label = fm.get("full-name") or fm.get("name") or slug
+        print("%s — %s" % (slug, label))
+    print("(%d match(es)%s)" % (len(matches), "" if len(matches) <= len(shown) else ", showing %d" % len(shown)))
+
+
 # ----------------------------------------------------------------------- recall
 def cmd_recall(identities, args):
+    if getattr(args, "query", None):
+        return cmd_query(identities, args)
     role = args.role
     notes = load_notes(identities, role)
     links = load_links(identities, role)
@@ -567,6 +634,12 @@ def main(argv):
     sp.add_argument("--paths", default="")
     sp.add_argument("--keywords", default="")
     sp.add_argument("--budget", type=int, default=600)
+    sp.add_argument("--query", default="",
+                     help="precise boolean filter (AND terms, '-' negates, "
+                          "'field:v1,v2' ORs within a field) instead of fuzzy "
+                          "activation recall — see cmd_query docstring")
+    sp.add_argument("--limit", type=int, default=0,
+                     help="cap --query results (0 = unlimited)")
     sp.set_defaults(fn=cmd_recall)
 
     sp = sub.add_parser("mint")

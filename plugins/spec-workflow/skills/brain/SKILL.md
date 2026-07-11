@@ -19,6 +19,9 @@ for d in .claude/identities/*/brain/notes; do echo "$(dirname "$(dirname "$d")" 
 ```
 recall <role> --paths "a/b.sh,c/**" --keywords "yaml,merge" [--budget 600]
                                    # spreading-activation retrieval → paste into a brief
+recall <role> --query "TERM ..." [--limit N]
+                                   # PRECISE boolean filter over frontmatter fields — not
+                                   # fuzzy recall. See "Precise queries" below.
 mint <role> <slug> --tags a,b --paths "x/**" --source "PR#N ..." [--learned-from R --source-note S]
                                    # body on stdin; re-mint bumps strength; auto-links [[wikilinks]]
 directory                          # regenerate DIRECTORY.md (titles + tags only)
@@ -33,8 +36,34 @@ graduate-check [role] [--threshold N]
                                    # test-or-lint); never mutates a note — graduate stays the call
 ```
 
+## Precise queries (`recall --query`)
+Plain `recall` is fuzzy: any tag/path overlap seeds it, then activation spreads along
+`[[wikilinks]]` and everything within budget gets injected — good for "what's relevant
+here," wrong for "give me exactly the notes matching X and not Y." `--query` is the
+precise counterpart: no activation spreading, no token budget, no link-touching — it's a
+straight boolean filter over each note's frontmatter, returning every match (or `--limit N`
+of them) as `slug — label` lines.
+
+Grammar — space-separated terms, ALL must hold (AND):
+- `word` — `word` is one of the note's `tags`
+- `field:value` — `value` is present in frontmatter field `field` (works whether that
+  field is a scalar or a list in the note)
+- `field:v1,v2` — OR *within* one field: v1 present OR v2 present
+- a leading `-` on either form negates that term
+
+Example — "non-attack Action cards for Warrior at Majestic rarity that interact with Axe"
+(a compound AND/NOT/OR query no amount of fuzzy `--keywords` overlap can express):
+```bash
+recall card-vault --query "types:Action -subtypes:Attack classes:Warrior rarity:Majestic interacts-with:Axe"
+```
+This only works as well as the frontmatter a role's generator writes — it queries whatever
+fields exist (`tags` always; anything else is role-specific, e.g. card-vault's `types`/
+`subtypes`/`classes`/`rarity`/`interacts-with`). Use it when you need an exact filtered
+list; use plain `recall` when you want associative "what's relevant" retrieval.
+
 ## When to use
 - **Recall** — assembling a dev/reviewer brief: run `recall <role>` with the task's expected paths + keywords and paste the output under `## LESSONS (recalled)`.
+- **Precise lookup** — answering a compound "which notes match X and not Y" question: use `recall <role> --query "..."` instead of guessing at `--keywords` overlap.
 - **Retro** (at each PR close) — `mint` new notes in your own wording, `prune`, `graduate` proven ones, `retro-mark`, `directory`, then commit as the orchestrator identity (`identity.sh orchestrator`).
 - **Consult** — a report asked `CONSULT <role>: <slug>`: run `consult` and paste the body once; a 2nd hit prints a RECURRENCE reminder to mint it into the consumer's own brain.
 
