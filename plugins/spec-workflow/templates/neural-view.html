@@ -548,6 +548,33 @@ function fibSphere(i, n, radius){
 // within a few units of the old layout.
 const BALL_K = 55;
 const ballR = n => BALL_K * Math.cbrt(Math.max(1, n));
+// Places `items` on a fibonacci sphere sized off their MEDIAN radius — not
+// their sum or their max — so a typical set stays tight even when one item
+// is a huge outlier (e.g. one role/repo with thousands of notes next to
+// others with a few dozen: summing or maxing let that single outlier blow
+// the whole sphere out, dragging every OTHER small item far apart from each
+// other too, not just from the giant one). Anything substantially bigger
+// than the median gets pushed further out along its own already-assigned
+// direction individually instead. Shared by the repo constellation and the
+// role-cluster ring within each repo — both hit the same failure mode.
+function packByRadius(items, radiusOf, minOuter, outerMul){
+  const n = items.length || 1;
+  const sorted = items.map(radiusOf).sort((a,b)=>a-b);
+  const typical = sorted[Math.floor(sorted.length/2)] || 0;
+  const outerR = n>1 ? Math.max(minOuter, typical*outerMul) : 0;
+  const offsets = new Map();
+  items.forEach((item,i)=>{
+    let c = n>1 ? fibSphere(i, n, outerR) : {x:0,y:0,z:0};
+    const r = radiusOf(item);
+    if(r > typical*1.8){
+      const len = Math.hypot(c.x,c.y,c.z) || 1;
+      const s = (len + (r - typical)) / len;
+      c = {x:c.x*s, y:c.y*s, z:c.z*s};
+    }
+    offsets.set(item, c);
+  });
+  return offsets;
+}
 function layoutClusters(){
   clusters.clear(); repoCenters.clear(); repoRadius.clear();
   const noteCount = new Map(), roleCount = new Map();
@@ -556,48 +583,34 @@ function layoutClusters(){
     const ck = clusterKey(nd.repo, nd.role);
     roleCount.set(ck, (roleCount.get(ck)||0)+1);
   }
-  // per repo: place role clusters on a fibSphere spaced by the LARGEST role
-  // ball, and size the repo region to contain them.
-  const roleRing = new Map();   // repo -> ring radius for its role clusters
+  // Per repo: pack role clusters (packByRadius, above) and size the repo
+  // region to actually contain them — including any role that got pushed
+  // out as an outlier, which the OLD "ring + maxBall" formula didn't
+  // account for (it assumed every role sat at exactly `ring`, never
+  // further).
+  const roleInfo = new Map();   // repo -> {rolesInRepo, offsets}
   for(const repo of repoList){
     const rolesInRepo = [...new Set(nodes.filter(n=>n.repo===repo).map(n=>n.role))].sort();
-    let maxBall = 0;
-    for(const role of rolesInRepo) maxBall = Math.max(maxBall, ballR(roleCount.get(clusterKey(repo,role))||0));
-    const ring = rolesInRepo.length>1 ? Math.max(BASE_REGION*0.6, maxBall*1.7) : 0;
-    roleRing.set(repo, {ring, rolesInRepo, maxBall});
-    repoRadius.set(repo, Math.max(MIN_REGION, ring + maxBall + 30));
+    const ballOf = role => ballR(roleCount.get(clusterKey(repo,role))||0);
+    const offsets = packByRadius(rolesInRepo, ballOf, BASE_REGION*0.6, 1.7);
+    roleInfo.set(repo, {rolesInRepo, offsets});
+    let farthest = 0;
+    for(const role of rolesInRepo){
+      const off = offsets.get(role);
+      farthest = Math.max(farthest, Math.hypot(off.x,off.y,off.z) + ballOf(role));
+    }
+    repoRadius.set(repo, Math.max(MIN_REGION, farthest + 30));
   }
   const nRepos = repoList.length || 1;
-  // Sphere sized off the MEDIAN repo radius, not the sum (or the max) of
-  // every repo's radius — either of those let one outsized brain (e.g. a
-  // card-vault at thousands of notes vs. neighbors at a few dozen) blow the
-  // whole constellation out, dragging every small repo far apart from every
-  // OTHER small repo too, even though only the giant one actually needed
-  // the room. Sizing off the median keeps the typical case tight; any repo
-  // that's substantially bigger than that gets pushed further out along its
-  // own already-assigned fibSphere direction below, individually, instead
-  // of inflating everyone's spacing to accommodate it.
-  const radii = [...repoRadius.values()].sort((a,b)=>a-b);
-  const typicalR = radii[Math.floor(radii.length/2)] || MIN_REGION;
-  const outerR = nRepos>1 ? Math.max(BASE_REGION*2.2, typicalR*2.5) : 0;
-  repoList.forEach((repo,i)=>{
-    let c = nRepos>1 ? fibSphere(i, nRepos, outerR) : {x:0,y:0,z:0};
-    const r = repoRadius.get(repo);
-    if(r > typicalR*1.8){
-      const len = Math.hypot(c.x,c.y,c.z) || 1;
-      const s = (len + (r - typicalR)) / len;
-      c = {x:c.x*s, y:c.y*s, z:c.z*s};
-    }
-    repoCenters.set(repo, c);
-  });
+  const repoOffsets = packByRadius(repoList, repo=>repoRadius.get(repo)||MIN_REGION, BASE_REGION*2.2, 2.5);
+  repoList.forEach(repo=>repoCenters.set(repo, repoOffsets.get(repo)));
   for(const repo of repoList){
     const rc = repoCenters.get(repo);
-    const {ring, rolesInRepo} = roleRing.get(repo);
-    const n = rolesInRepo.length || 1;
-    rolesInRepo.forEach((role,i)=>{
-      const off = n>1 ? fibSphere(i, n, ring) : {x:0,y:0,z:0};
+    const {rolesInRepo, offsets} = roleInfo.get(repo);
+    for(const role of rolesInRepo){
+      const off = offsets.get(role);
       clusters.set(clusterKey(repo,role), {x: rc.x+off.x, y: rc.y+off.y, z: rc.z+off.z, hue: comboHue(repo,role), n:0, repo, role});
-    });
+    }
   }
   nodes.forEach(nd=>{ const c = clusters.get(clusterKey(nd.repo,nd.role)); if(c) c.n++; });
   // container radius for big brains' gravity (see the integrate loop)
