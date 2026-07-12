@@ -34,7 +34,10 @@ discovery; default `~/Development`) — every immediate child of the scan base w
 scan base, falls back to the git root of cwd (single-repo behavior) — and that repo's
 own `.claude/.neural-network` marker is created if it doesn't already have one, so a
 bare `start` from inside a repo opts it into every future multi-repo scan too, not just
-this session.
+this session. `--rescan SECS` (default 60; `0` disables) — the running server re-runs
+discovery on this interval and registers any repo anchored (marker file added) after it
+started, no restart needed; newly-found repos are only ever appended, never removed or
+reordered, so a marker deleted later doesn't drop that repo mid-session.
 
 The page renders in 3D (three.js, vendored same-origin — no CDN, no build step, zero
 external requests): drag to orbit, wheel/pinch to zoom, right-drag or shift-drag to pan,

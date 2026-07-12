@@ -10,11 +10,11 @@ recalls happen, lights the neurons up and pulses the synapses in real time.
 Repos are laid out as "constellations": each repo is a labeled region on the
 canvas containing its own role-clusters (dev/reviewer/orchestrator/...).
 
-  neural-view.py start [--port N] [--dir ROOT] [--scan BASE]   # start (idempotent)
+  neural-view.py start [--port N] [--dir ROOT] [--scan BASE] [--rescan SECS]  # start (idempotent)
   neural-view.py status                # RUNNING <url> notes=N brains=N repos=N | STOPPED | STALE: ...
   neural-view.py stop [--force]        # --force also kills a zombie holding the port (see below)
-  neural-view.py serve [--port N] [--dir ROOT] [--scan BASE]   # run in the foreground (internal)
-  neural-view.py dev [--port N] [--dir ROOT] [--scan BASE]     # foreground + auto-restart on script
+  neural-view.py serve [--port N] [--dir ROOT] [--scan BASE] [--rescan SECS] # run in the foreground (internal)
+  neural-view.py dev [--port N] [--dir ROOT] [--scan BASE] [--rescan SECS]   # foreground + auto-restart on script
                                        # change; the page live-reloads via GET /version (dev only)
 
 Stale-server detection: if the pidfile is missing/stale but the configured
@@ -42,6 +42,17 @@ Repo discovery (both apply; results are deduped and sorted by repo name):
   A discovered repo with no `.claude/identities/` brains yet still appears as
   an empty, labeled region on the canvas (nodes/edges: none) rather than being
   dropped — it shows the constellation is there, just not yet populated.
+
+Periodic rescan (serve/dev only): every $NEURAL_VIEW_RESCAN / --rescan seconds
+(default 60; 0 disables), a background daemon thread re-runs the same
+discovery above and APPENDS any newly-discovered (name, root) not already
+registered — e.g. a repo anchored with the marker file after this server
+booted. Existing entries are NEVER removed or reordered mid-flight (a marker
+deleted after boot leaves that repo registered until the next restart;
+removal is boot-only); repos.json is rewritten with the union and one
+"rescan: +<name>" line is logged per addition. Registration only — the
+rescan thread never rebuilds graphs or reads brain contents; clients pick up
+a newly-registered repo on their normal polls.
 
 Brains live at <root>/.claude/identities/<role>/brain/ — notes/<slug>.md
 (YAML-ish frontmatter + body + [[slug]] wikilinks), links.json, and
@@ -1307,6 +1318,18 @@ def raw_arg_scan(args):
     return arg_val(args, "--scan", None) or os.environ.get("NEURAL_VIEW_SCAN")
 
 
+def raw_arg_rescan(args):
+    """--rescan/$NEURAL_VIEW_RESCAN if explicitly given, else None (the 60s
+    default is applied by arg_rescan; kept separate so start/dev can forward
+    only an explicitly-set value to the serve child, same as --dir/--scan)."""
+    return arg_val(args, "--rescan", None) or os.environ.get("NEURAL_VIEW_RESCAN")
+
+
+def arg_rescan(args):
+    """Rescan interval in seconds for `serve` — 60 by default, 0 disables."""
+    return float(raw_arg_rescan(args) or 60)
+
+
 def discover_repos(args):
     """Every repo to aggregate, as (name, root) sorted by name:
     - the explicit --dir/$NEURAL_VIEW_DIR root, if given — ALWAYS included,
@@ -1344,6 +1367,60 @@ def discover_repos(args):
         found[str(p)] = p
         ensure_marker(p)  # the single-repo fallback opts this repo into every future scan too
     return sorted(((p.name, p) for p in found.values()), key=lambda t: t[0])
+
+
+def rescan_once(current_repos, args):
+    """Re-run discover_repos() with the same args discovery used at boot and
+    return (new_repos, added):
+    - added: the (name, root) pairs found by discover_repos() that aren't
+      already in current_repos, matched by resolved root path (the same
+      de-dup key discover_repos uses internally) — so a repo already
+      registered under a given path is never re-added even if a marker was
+      later removed and its name would now sort differently.
+    - new_repos: current_repos with `added` APPENDED at the end. Existing
+      entries are never removed, reordered, or replaced — a repo whose
+      marker disappeared after boot simply isn't re-discovered, but it
+      stays registered (removal is boot-only). When added is empty,
+      new_repos IS current_repos (no new list, no-op for the caller).
+
+    Pure and side-effect-free on current_repos/REPOS — callers decide
+    whether/how to publish the result (see rescan_loop)."""
+    existing_paths = {str(Path(root).resolve()) for _, root in current_repos}
+    discovered = discover_repos(args)
+    added = [(name, root) for name, root in discovered
+             if str(Path(root).resolve()) not in existing_paths]
+    if not added:
+        return current_repos, []
+    return list(current_repos) + added, added
+
+
+def rescan_loop(args, interval):
+    """Background daemon thread started by `serve` when the rescan interval
+    is > 0: every `interval` seconds, call rescan_once() against the current
+    REPOS and, if it found anything new, publish the result — one atomic
+    reassignment of the module-level REPOS name to a freshly-built list (never
+    mutated in place), so a request handler running on another thread always
+    sees either the old list or the new one in full, never a half-built one.
+    Rewrites REPOSFILE with the union and logs one "rescan: +<name>" line per
+    addition. A scan error (e.g. a transient permission issue) is swallowed —
+    one bad tick must never kill the thread or the server; the next tick
+    tries again."""
+    global REPOS
+    while True:
+        time.sleep(interval)
+        try:
+            new_repos, added = rescan_once(REPOS, args)
+        except Exception:  # noqa: BLE001 — a bad tick must never kill this thread
+            continue
+        if not added:
+            continue
+        REPOS = new_repos
+        try:
+            REPOSFILE.write_text(json.dumps([[name, str(root)] for name, root in REPOS]))
+        except OSError:
+            pass
+        for name, _ in added:
+            print(f"rescan: +{name}", file=sys.stderr)
 
 
 def load_repos_file():
@@ -1384,6 +1461,9 @@ def main():
         PORTFILE.write_text(str(port))
         REPOSFILE.write_text(json.dumps([[name, str(root)] for name, root in REPOS]))
         PIDFILE.write_text(str(os.getpid()))
+        rescan_interval = arg_rescan(args)
+        if rescan_interval > 0:
+            threading.Thread(target=rescan_loop, args=(args, rescan_interval), daemon=True).start()
         httpd.serve_forever()
 
     elif cmd == "start":
@@ -1398,6 +1478,9 @@ def main():
         explicit_scan = raw_arg_scan(args)
         if explicit_scan:
             child += ["--scan", os.path.abspath(explicit_scan)]
+        explicit_rescan = raw_arg_rescan(args)
+        if explicit_rescan is not None:
+            child += ["--rescan", str(explicit_rescan)]
         log = open(S / "server.log", "ab")
         subprocess.Popen(child, stdout=log, stderr=log, start_new_session=True, env=os.environ)
         came_up = False
@@ -1500,6 +1583,9 @@ def main():
         explicit_scan = raw_arg_scan(args)
         if explicit_scan:
             child_cmd += ["--scan", os.path.abspath(explicit_scan)]
+        explicit_rescan = raw_arg_rescan(args)
+        if explicit_rescan is not None:
+            child_cmd += ["--rescan", str(explicit_rescan)]
         env = dict(os.environ, NEURAL_VIEW_DEV="1")
 
         def spawn():
