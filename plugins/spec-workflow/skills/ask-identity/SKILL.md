@@ -1,7 +1,7 @@
 ---
 name: ask-identity
 description: Ask one identity's brain (dev/reviewer/orchestrator, or any custom role with a .claude/identities/<role>/brain/ dir) a question grounded in what it has learned, without running a build iteration or touching the board. Use for '/spec-workflow:ask-identity <identity> <question>' — e.g. clicked from a neural-view "Talk" deep link, or any time you want a quick answer informed by one role's accumulated lessons instead of a full build-loop pass.
-allowed-tools: Bash, Read
+allowed-tools: Bash, Read, Write, Edit, AskUserQuestion
 ---
 
 # Ask one identity's brain
@@ -40,6 +40,37 @@ instead of just doing it here.
    asking a specific identity is its accumulated, repo-specific experience,
    not general knowledge dressed up as if it came from the brain.
 
-Never write to a brain from here — minting/pruning/graduating is
+   **Cached notes are knowledge, not the answer.** Match the answer's scope
+   to the QUESTION's scope, not to whatever note happens to exist:
+   - Broad/open-ended question (e.g. "enumerate the weird interactions of
+     X") → research the full scope the question implies (run the identity's
+     own verification protocol across everything relevant); a cached note
+     about one similar case informs the work but must not narrow the answer
+     to just that case.
+   - Specific question with exact preconditions → answer exactly those
+     preconditions, even if a cached note covers a slightly different setup.
+   Never surface a cached note verbatim as if it were the user's answer when
+   its scope doesn't match what was asked.
+5. **Human validation loop** — when the answer is a ruling or verifiable
+   claim (any brain-grounded adjudication, not just card rulings), finish by
+   calling AskUserQuestion: "Is this ruling correct?" with exactly three
+   options: "It is" / "It is not" / "I'm unsure". Then:
+   - **It is** → mint (or re-mint) the identity's cached note for this
+     answer with `CONFIDENCE: human-confirmed <date>` (bump strength on
+     repeat confirmations).
+   - **It is not** → mark any existing note `CONFIDENCE: disputed — do not
+     answer from this note`, then re-run the identity's verification
+     protocol from scratch against the primary sources; only re-mint once
+     the correction is confirmed.
+   - **I'm unsure** → mint/update with `CONFIDENCE:
+     unsure-pending-confirmation` and note what external confirmation is
+     needed; never graduate unconfirmed notes.
+   If the identity defines its own validation protocol (e.g. the judge's
+   `card-interaction-protocol`), follow that note's wording — it wins over
+   this generic loop.
+
+Writes to a brain from here are limited to the validation loop above
+(confidence-stamped mints/updates of the note backing the answer just
+given). Everything else — pruning, graduating, retro minting — remains
 orchestrator-only tooling reserved for actual retros (see the `brain`
-skill). This skill only reads.
+skill). No board writes, no commits.
