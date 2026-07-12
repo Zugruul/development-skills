@@ -63,3 +63,13 @@ check "graduationThreshold float rejected (not a valid integer)" "methodology.gr
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/templates/project.example.yaml" || true)"
 check "template rejected (placeholders)" "template placeholder" "$out"
 
+echo "== validate-config: methodology.entityKinds / neuralView.entityEdgeColor (#163) =="
+check "valid yaml (no entityKinds/neuralView keys) still passes -- additive-only" "VALID: " \
+    "$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/valid.project.yaml")"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/entity-kinds-bad.project.yaml" || true)"
+check "entityKinds must be an object mapping kind -> role string" "methodology.entityKinds" "$out"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/entity-edge-color-bad.project.yaml" || true)"
+check "neuralView.entityEdgeColor must be a string" "neuralView.entityEdgeColor" "$out"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/entity-kinds-good.project.yaml")"
+check "entityKinds + entityEdgeColor together still validate" "VALID: " "$out"
+

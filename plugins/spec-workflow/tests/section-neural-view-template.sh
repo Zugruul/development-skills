@@ -1014,3 +1014,54 @@ NODEJS
     rm -f "$_nvflycancel"
 fi
 
+echo "== neural-view template: entity edges (#163) — cross-role note correlation arcs =="
+check "entity edges are excluded from degree computation, like consult" 'if(e.type==="consult"||e.type==="entity") continue;' "$(cat "$NVHTML")"
+check "entity edges are excluded from the same-brain synapse physics/link layer, exactly like consult" 'links = (g.edges||[]).filter(e=>e.type!=="consult"&&e.type!=="entity")' "$(cat "$NVHTML")"
+check "entity edges are collected into their own array, hidden-brain filtered like consult" 'entityLinks = (g.edges||[]).filter(e=>e.type==="entity"' "$(cat "$NVHTML")"
+check "entityEdgeColor payload is stored client-side" 'window.__entityEdgeColor = g.entityEdgeColor || {};' "$(cat "$NVHTML")"
+check "entityEdgeColorFor() resolves the per-repo color override" "function entityEdgeColorFor(repo){" "$(cat "$NVHTML")"
+check "entityEdgeColorFor() treats an absent/'gradient' value as the gradient default" 'v.trim().toLowerCase() !== "gradient") ? v.trim() : null;' "$(cat "$NVHTML")"
+check "entity edge batch uses vertexColors for the gradient (2-vertex per-vertex color, like synapses)" 'new THREE.LineBasicMaterial({vertexColors:true, transparent:true, opacity:0.14,' "$(cat "$NVHTML")"
+check "entity edge batch is tagged distinctly for raycast/debug purposes" 'emesh.userData = {kind:"entityEdgeBatch"};' "$(cat "$NVHTML")"
+check "entity edge line positions follow live note positions every stepped frame" "entLines.geo.attributes.position.needsUpdate = true;" "$(cat "$NVHTML")"
+check "source vertex takes the source note's own brain color unless a flat override is set (gradient endpoint)" "const ca = flat ? new THREE.Color(flat) : threeColor(comboHue(l.a.repo, l.a.role), 62);" "$(cat "$NVHTML")"
+check "target vertex takes the target note's own brain color unless a flat override is set (gradient endpoint)" "const cb = flat ? new THREE.Color(flat) : threeColor(comboHue(l.b.repo, l.b.role), 62);" "$(cat "$NVHTML")"
+
+# HARD requirement (human, PR review): entity edges must have ZERO effect on
+# the force simulation -- render-only decoration, exactly like consult arcs.
+# Not just "the filter line looks right": brace-match the ACTUAL body of
+# step() (the force-integration function -- spring/repel forces, the loop
+# `for(const l of links)` lives inside it) out of the live template and
+# assert neither entityLinks nor entLines is referenced anywhere inside it.
+# links itself already excludes type:"entity" (checked above), so this is
+# the behavioral half of that guarantee: even if some other code path fed
+# entityLinks into a physics-looking loop, this catches it, because it
+# doesn't trust the filter line in isolation -- it inspects what step()
+# actually touches.
+out="$(python3 - "$NVHTML" <<'PY'
+import sys
+text = open(sys.argv[1]).read()
+start = text.index("function step(calibrate){")
+depth = 0
+end = None
+for i in range(start, len(text)):
+    c = text[i]
+    if c == "{":
+        depth += 1
+    elif c == "}":
+        depth -= 1
+        if depth == 0:
+            end = i + 1
+            break
+if end is None:
+    print("BRACE_MATCH_FAILED")
+else:
+    body = text[start:end]
+    touches_links = "for(const l of links)" in body   # sanity: this IS the physics function
+    clean = "entityLinks" not in body and "entLines" not in body
+    print("STEP_TOUCHES_LINKS=%s STEP_CLEAN_OF_ENTITY=%s" % (touches_links, clean))
+PY
+)"
+check "sanity: step() is the function containing the link-spring force loop" "STEP_TOUCHES_LINKS=True" "$out"
+check "step() (the physics/force-integration function) never references entityLinks or entLines -- entity edges apply zero simulation force" "STEP_CLEAN_OF_ENTITY=True" "$out"
+

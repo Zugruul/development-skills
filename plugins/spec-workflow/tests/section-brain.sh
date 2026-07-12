@@ -200,6 +200,33 @@ check_absent "CLI --threshold overrides config (gc-at strength 3 excluded at thr
 check "CLI --threshold overrides config (gc-above strength 5 still included)" "gc-above" "$out"
 rm -f "$BT/.claude/project.yaml"
 
+# entities: optional frontmatter list, round-trips through mint/parse/render,
+# and does not perturb recall for notes that carry it (#163).
+before_recall="$(brain recall dev --paths "scripts/foo.sh" --keywords "")"
+printf 'A card fact note.\n' \
+    | brain mint dev entity-note --tags card --paths "cards/**" --source "gen" --entities "card:gone-in-a-flash,card:fleeing-starbreeze"
+check "mint --entities round-trips into frontmatter" 'entities: [card:gone-in-a-flash, card:fleeing-starbreeze]' \
+    "$(cat "$BT/.claude/identities/dev/brain/notes/entity-note.md")"
+after_recall="$(brain recall dev --paths "scripts/foo.sh" --keywords "")"
+check "recall output unchanged for unrelated notes once another note carries entities (#163)" "$before_recall" "$after_recall"
+
+# a note with no --entities never gets an entities: line at all (optional field)
+printf 'No entities here.\n' | brain mint dev no-entity-note --tags misc --paths "x/**" --source g
+check_absent "note minted without --entities has no entities: line" "entities:" \
+    "$(cat "$BT/.claude/identities/dev/brain/notes/no-entity-note.md")"
+
+# re-mint WITH entities again survives (like tags/paths, must be re-passed to persist)
+printf 'A card fact note, v2.\n' \
+    | brain mint dev entity-note --tags card --paths "cards/**" --source "gen" --entities "card:gone-in-a-flash"
+check "re-mint with --entities keeps the field" 'entities: [card:gone-in-a-flash]' \
+    "$(cat "$BT/.claude/identities/dev/brain/notes/entity-note.md")"
+
+# re-mint WITHOUT --entities drops it, same as tags/paths would if omitted
+printf 'A card fact note, v3.\n' \
+    | brain mint dev entity-note --tags card --paths "cards/**" --source "gen"
+check_absent "re-mint without --entities drops the field (matches tags/paths behavior)" "entities:" \
+    "$(cat "$BT/.claude/identities/dev/brain/notes/entity-note.md")"
+
 rm -rf "$BT"
 
 echo "== brain.sh wrapper (flag-less default path, set -u) =="

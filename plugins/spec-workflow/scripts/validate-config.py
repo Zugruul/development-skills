@@ -205,6 +205,24 @@ def main(path):
             elif val < 1:
                 errs.append(f"methodology.{key}: must be >= 1 (got {val})")
 
+    # methodology.entityKinds: object mapping kind -> role, both strings (#163).
+    if isinstance(methodology, dict) and "entityKinds" in methodology:
+        ek = methodology["entityKinds"]
+        if not isinstance(ek, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in ek.items()):
+            errs.append("methodology.entityKinds must be an object mapping kind (string) -> role (string)")
+
+    # neuralView: visualization-only knobs (#163). Absent == today's defaults.
+    neural_view = cfg.get("neuralView")
+    if neural_view is not None:
+        if not isinstance(neural_view, dict):
+            errs.append("neuralView: must be a mapping")
+        else:
+            for k in neural_view:
+                if k != "entityEdgeColor":
+                    errs.append(f"neuralView.{k}: unknown key (allowed: ['entityEdgeColor'])")
+            if "entityEdgeColor" in neural_view and not isinstance(neural_view["entityEdgeColor"], str):
+                errs.append("neuralView.entityEdgeColor must be a string (\"gradient\" or a CSS color)")
+
     # work: PR-less local delivery (type) + board-sync batching policy (sync).
     # Absent == {type: pr}; sync is only meaningful (and only accepted) under
     # type: local -- see schemas/project-config.schema.json's `work` object.

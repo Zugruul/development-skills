@@ -333,6 +333,159 @@ def read_note(brain, slug):
 CANONICAL_ROLES = ("dev", "orchestrator", "reviewer")  # mirrors identity_lib.DEFAULTS keys
 
 
+# ------------------------------------------------------------- entity index (#163)
+# Cross-identity correlation layer: metadata about which notes (across roles)
+# are ABOUT the same real-world entity, never note content. Per-role recall
+# never reads this -- only build_graph (visualization) and, outside this
+# script, ask-brain. See docs/design/cross-identity-correlation.md.
+def _repo_methodology(root):
+    cfgp = _repo_config_path(root)
+    if cfgp is None:
+        return {}
+    try:
+        import config as _config
+        cfg = _config.load_config(path=str(cfgp), warn=False)
+    except Exception:  # noqa: BLE001
+        return {}
+    m = cfg.get("methodology")
+    return m if isinstance(m, dict) else {}
+
+
+def entity_kinds_map(root):
+    """{kind: home-role} from methodology.entityKinds -- optional; absent ==
+    every entity has anchor: null (no home role declared for its kind)."""
+    ek = _repo_methodology(root).get("entityKinds")
+    return ek if isinstance(ek, dict) else {}
+
+
+def entity_edge_color(root):
+    """neuralView.entityEdgeColor -- "gradient" (default, also when the key
+    or the whole neuralView section is absent) or a forced flat CSS color."""
+    cfgp = _repo_config_path(root)
+    if cfgp is None:
+        return "gradient"
+    try:
+        import config as _config
+        cfg = _config.load_config(path=str(cfgp), warn=False)
+    except Exception:  # noqa: BLE001
+        return "gradient"
+    nv = cfg.get("neuralView")
+    val = nv.get("entityEdgeColor") if isinstance(nv, dict) else None
+    return val.strip() if isinstance(val, str) and val.strip() else "gradient"
+
+
+def load_entity_index(root):
+    """Parsed `.claude/identities/entity-index.json` for `root`, or None if
+    absent/unreadable -- callers fall back to derive_entity_map() so the view
+    never requires a regen. {key: {"anchor": role/slug|None, "notes": [[role,
+    slug], ...]}}."""
+    p = identities_dir(root) / "entity-index.json"
+    if not p.is_file():
+        return None
+    try:
+        data = json.loads(p.read_text(errors="replace"))
+    except Exception:  # noqa: BLE001
+        return None
+    ents = data.get("entities") if isinstance(data, dict) else None
+    return ents if isinstance(ents, dict) else None
+
+
+def derive_entity_map(root):
+    """Live equivalent of brain.py entity-index, derived from note frontmatter
+    with no committed file needed. Symlinked notes (kw-* mirrors) attribute to
+    their physical home role only, mirroring brain.py's os.path.islink guard."""
+    entities = {}
+    for role, brain in iter_brains(root):
+        nd = brain / "notes"
+        if not nd.is_dir():
+            continue
+        for f in sorted(nd.glob("*.md")):
+            if f.is_symlink():
+                continue
+            fm, _ = parse_note(f.read_text(errors="replace"))
+            for key in _as_list(fm.get("entities")):
+                key = str(key).strip()
+                if key:
+                    entities.setdefault(key, []).append((role, f.stem))
+    kinds = entity_kinds_map(root)
+    out = {}
+    for key, notes in entities.items():
+        # set(): mirrors brain.py entity-index's own dedup -- a note declaring
+        # the same entity key twice in its own frontmatter list must not
+        # double-count as two separate notes (#163 review round 1).
+        notes_sorted = sorted(set(notes))
+        kind = key.split(":", 1)[0]
+        home_role = kinds.get(kind)
+        anchor = None
+        if home_role:
+            homes = [slug for (r, slug) in notes_sorted if r == home_role]
+            if len(homes) == 1:
+                anchor = "%s/%s" % (home_role, homes[0])
+        out[key] = {"anchor": anchor, "notes": [list(n) for n in notes_sorted]}
+    return out
+
+
+def merged_entity_map(root):
+    """The committed entity-index.json UNIONed with a live frontmatter scan
+    (#163 review round 1, BLOCKING): a committed index is trusted whenever it
+    parses, but a correlation minted AFTER the last `entity-index` regen would
+    otherwise be invisible until someone remembers to regen it -- contradicting
+    the design doc's "the view never requires a regen" promise (§3.3). The live
+    scan is cheap (same cost as the absent-index fallback) and ALWAYS runs, so
+    a note added on disk is picked up on the very next /graph build regardless
+    of index staleness. Per entity key: notes[] is the union of both sources
+    (a live-only note surfaces even though the committed file has never heard
+    of it); anchor comes from the COMMITTED entry when the key is known to
+    both (the generated index is the authoritative anchor resolution -- the
+    live scan doesn't re-decide it), and from the live entry only when the key
+    is entirely new to the committed file."""
+    committed = load_entity_index(root)
+    live = derive_entity_map(root)
+    if committed is None:
+        return live
+    merged = {}
+    for key in set(committed) | set(live):
+        c, l = committed.get(key), live.get(key)
+        if c is None:
+            merged[key] = l
+        elif l is None:
+            merged[key] = c
+        else:
+            notes = sorted(set(tuple(n) for n in (c.get("notes") or [])) |
+                            set(tuple(n) for n in (l.get("notes") or [])))
+            merged[key] = {"anchor": c.get("anchor"), "notes": [list(n) for n in notes]}
+    return merged
+
+
+def repo_entity_edges(name, root):
+    """Cross-role note-level "entity" edges for one repo: an anchor<->member
+    star per entity (never all-pairs -- bounded fan-out). If the entity has a
+    resolved anchor, edges radiate FROM it; else the first-listed note (by the
+    same sort order entity-index.json uses) is the hub. Same-role pairs are
+    NEVER emitted -- that's links.json's business, not this cross-brain layer."""
+    ent_map = merged_entity_map(root)
+    edges = []
+    for key, info in (ent_map or {}).items():
+        notes = info.get("notes") or []
+        if len(notes) < 2:
+            continue
+        anchor = info.get("anchor")
+        if anchor and "/" in str(anchor):
+            hub_role, hub_slug = str(anchor).split("/", 1)
+        else:
+            hub_role, hub_slug = notes[0][0], notes[0][1]
+        for role, slug in notes:
+            if role == hub_role:
+                continue  # never same-role pairs (also skips the hub itself)
+            edges.append({
+                "type": "entity", "entity": key,
+                "source": f"{name}/{hub_role}/{hub_slug}",
+                "target": f"{name}/{role}/{slug}",
+                "repo": name,
+            })
+    return edges
+
+
 def build_graph(repos):
     """nodes = every note across every repo's brains; edges = each repo's
     links.json entries plus cross-brain consult edges derived from that repo's
@@ -381,6 +534,11 @@ def build_graph(repos):
                         # thousands-of-notes scale).
                         "paths": [str(p) for p in _as_list(fm.get("paths"))],
                         "source": str(fm.get("source", "") or ""),
+                        # entities: the cross-identity correlation keys this note
+                        # declares (kind:slug), if any (#163) -- client-inspectable,
+                        # like tags/paths; the actual cross-role EDGES are derived
+                        # separately below (repo_entity_edges), not from this list.
+                        "entities": [str(e) for e in _as_list(fm.get("entities"))],
                     }
                     if numeric_fields:
                         num = {k: v for k, v in ((k, numeric_field_values(fm, k)) for k in numeric_fields) if v}
@@ -421,6 +579,10 @@ def build_graph(repos):
             seen.add(key)
             edges.append({"source": f"{name}/{consumer}", "target": f"{name}/{role}",
                            "type": "consult", "weight": 0.4, "repo": name})
+        # cross-brain entity edges (#163): note-level correlation, derived from
+        # entity-index.json if committed, else live from frontmatter. Also
+        # confined to WITHIN this repo, like consult edges above.
+        edges.extend(repo_entity_edges(name, root))
         repo_roles[name] = sorted(roles_here)
     role_colors = {name: repo_role_colors(root) for name, root in repos}
     display_names = {name: repo_display_name(root, name) for name, root in repos}
@@ -428,12 +590,16 @@ def build_graph(repos):
     # (claude-cli://open?cwd=...) — the only thing that reliably resolves a
     # new session's working directory regardless of GitHub state.
     roots = {name: str(root) for name, root in repos}
+    entity_edge_colors = {name: entity_edge_color(root) for name, root in repos}
     return {"nodes": nodes, "edges": edges, "repos": [name for name, _ in repos], "repoRoles": repo_roles,
             "roleColors": role_colors, "displayNames": display_names, "roots": roots,
             # {repo: [role, ...]} for roles whose brain has a SCHEMA.json (see
             # schema_payload()) — lets the client show a "has filters" icon
             # next to those brains without a round trip per brain.
-            "schemaRoles": schema_roles}
+            "schemaRoles": schema_roles,
+            # {repo: "gradient" | cssColor} -- neuralView.entityEdgeColor per repo
+            # (#163), following how roleColors is shipped per repo above.
+            "entityEdgeColor": entity_edge_colors}
 
 
 def build_body_index(repos):

@@ -69,8 +69,25 @@ instead of just doing it here.
    `card-interaction-protocol`), follow that note's wording — it wins over
    this generic loop.
 
-Writes to a brain from here are limited to the validation loop above
+6. **Cross-identity awareness, never auto-consult** (#163, human decision —
+   see `docs/design/cross-identity-correlation.md` §6.2, hard rule). If the
+   recalled note(s) carry `entities:` and
+   `.claude/identities/entity-index.json` shows another role holds notes
+   correlated to the same entity, you may STATE that fact — "the `<role>`
+   brain holds N note(s) about `<entity>`" — and point the user at
+   `/spec-workflow:ask-identity <that-role> ...` or an explicit `consult`.
+   You must NEVER pull that other brain's content into THIS answer yourself.
+   Identities answer from their own notes only; they learn about another
+   identity's knowledge only by the user (or the orchestrator) explicitly
+   asking that identity, or via a logged `consult` followed by a
+   provenance-stamped mint (`learned-from`/`source-note`) — never implicitly,
+   never inside a single ask-identity turn. This boundary is intentionally
+   stricter than `ask-brain`, which is whole-brain and may consult across
+   roles on your behalf; `ask-identity` speaks for exactly one identity.
+
+Writes to a brain from here are limited to the validation loop in step 5
 (confidence-stamped mints/updates of the note backing the answer just
-given). Everything else — pruning, graduating, retro minting — remains
-orchestrator-only tooling reserved for actual retros (see the `brain`
-skill). No board writes, no commits.
+given). Everything else — pruning, graduating, retro minting, and any
+cross-role consult — remains orchestrator-only tooling reserved for actual
+retros or explicit user-directed consults (see the `brain` skill). No board
+writes, no commits.

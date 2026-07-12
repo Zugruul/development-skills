@@ -15,8 +15,9 @@ Python 3 standard library only (no pyyaml). Usage:
 
     brain.py <root> recall <role> --paths "a/b.sh,c/**" --keywords "yaml,merge" [--budget 600]
     brain.py <root> recall <role> --query "types:Action -subtypes:Attack classes:Warrior" [--limit N]
-    brain.py <root> mint <role> <slug> --tags a,b --paths "x/**" --source "..." [--learned-from R --source-note S]
+    brain.py <root> mint <role> <slug> --tags a,b --paths "x/**" --source "..." [--learned-from R --source-note S] [--entities "card:x,card:y"]
     brain.py <root> directory
+    brain.py <root> entity-index
     brain.py <root> consult <consumer-role> <owner-role> <slug>
     brain.py <root> prune <role> [--apply]
     brain.py <root> retro-mark
@@ -45,7 +46,7 @@ MAX_HOPS = 2
 CHARS_PER_TOKEN = 4
 DEFAULT_GRADUATION_THRESHOLD = 3  # methodology.graduationThreshold override in project.yaml
 # frontmatter keys in deterministic write order
-KEY_ORDER = ["tags", "paths", "strength", "source", "learned-from", "source-note", "graduated", "created"]
+KEY_ORDER = ["tags", "paths", "entities", "strength", "source", "learned-from", "source-note", "graduated", "created"]
 
 
 # ---------------------------------------------------------------- small helpers
@@ -173,6 +174,8 @@ def render_note(fm, body):
             lines.append("tags: [" + ", ".join(('"%s"' % t if "," in t else t) for t in v) + "]")
         elif key == "paths":
             lines.append("paths: [" + ", ".join('"%s"' % p for p in v) + "]")
+        elif key == "entities":
+            lines.append("entities: [" + ", ".join(('"%s"' % e if "," in e else e) for e in v) + "]")
         elif key in ("strength",):
             lines.append("%s: %d" % (key, v))
         elif isinstance(v, bool):
@@ -253,6 +256,9 @@ def cmd_mint(identities, args):
         "graduated": False,
         "created": created,
     }
+    entities = _split(args.entities)
+    if entities:
+        fm["entities"] = entities
     if args.learned_from:
         fm["learned-from"] = args.learned_from
     if args.source_note:
@@ -542,6 +548,91 @@ def cmd_directory(identities, _args):
     print("wrote %s (%d role(s))" % (out, len(roles)))
 
 
+# ----------------------------------------------------------------- entity-index
+def cmd_entity_index(identities, args):
+    """Regenerate `<identities>/entity-index.json` -- a derived, whole-repo
+    correlation index built purely from note frontmatter (SPEC: cross-identity
+    correlation layer, #163). Never read by recall/query (role privacy is
+    untouched); a query-time join for whole-brain consumers (ask-brain,
+    neural-view) only. Symlinked notes (kw-* mirrors) attribute to their
+    PHYSICAL home role only, so a mirrored note never double-counts."""
+    roles = []
+    if os.path.isdir(identities):
+        for r in sorted(os.listdir(identities)):
+            if os.path.isdir(notes_dir(identities, r)):
+                roles.append(r)
+
+    entities = {}  # key -> [(role, slug), ...]
+    for role in roles:
+        d = notes_dir(identities, role)
+        for fn in sorted(os.listdir(d)):
+            if not fn.endswith(".md"):
+                continue
+            path = os.path.join(d, fn)
+            if os.path.islink(path):
+                continue
+            slug = fn[:-3]
+            fm, _ = parse_note(open(path, encoding="utf-8").read())
+            for key in fm.get("entities", []) or []:
+                key = str(key).strip()
+                if key:
+                    entities.setdefault(key, []).append((role, slug))
+
+    cfg = C.load_config(root=args.root, warn=False) or {}
+    entity_kinds = (cfg.get("methodology") or {}).get("entityKinds") or {}
+
+    out_entities = {}
+    for key in sorted(entities):
+        # set(): a note declaring the same entity key twice in its own
+        # --entities list (e.g. "card:x,card:x") must contribute exactly one
+        # (role, slug) entry, not two -- a duplicate here would both inflate
+        # the notes[] count and make a genuinely-unambiguous home role look
+        # ambiguous to the anchor check below (#163 review round 1).
+        notes = sorted(set(entities[key]))
+        kind = key.split(":", 1)[0]
+        home_role = entity_kinds.get(kind) if isinstance(entity_kinds, dict) else None
+        anchor = None
+        if home_role:
+            home_notes = [slug for (role, slug) in notes if role == home_role]
+            if len(home_notes) == 1:
+                anchor = "%s/%s" % (home_role, home_notes[0])
+        out_entities[key] = {"anchor": anchor, "notes": [list(n) for n in notes]}
+
+    os.makedirs(identities, exist_ok=True)
+    out = os.path.join(identities, "entity-index.json")
+    open(out, "w", encoding="utf-8").write(_render_entity_index(out_entities))
+    print("wrote %s (%d entit%s)" % (out, len(out_entities), "y" if len(out_entities) == 1 else "ies"))
+
+
+def _render_entity_index(out_entities):
+    """Hand-formatted (not a plain json.dump indent=2): each [role, slug] pair
+    stays on ONE line so the committed file reads like the design doc's
+    example and diffs cleanly note-by-note. Deterministic: keys and note
+    lists are both sorted by the caller before this runs."""
+    keys = sorted(out_entities)
+    if not keys:
+        return '{\n  "generated-by": "brain.py entity-index",\n  "entities": {}\n}\n'
+    lines = ["{", '  "generated-by": "brain.py entity-index",', '  "entities": {']
+    for i, key in enumerate(keys):
+        info = out_entities[key]
+        end = "," if i < len(keys) - 1 else ""
+        lines.append("    %s: {" % json.dumps(key))
+        lines.append('      "anchor": %s,' % json.dumps(info["anchor"]))
+        notes = info["notes"]
+        if not notes:
+            lines.append('      "notes": []')
+        else:
+            lines.append('      "notes": [')
+            for j, n in enumerate(notes):
+                nend = "," if j < len(notes) - 1 else ""
+                lines.append("        %s%s" % (json.dumps(n), nend))
+            lines.append("      ]")
+        lines.append("    }%s" % end)
+    lines.append("  }")
+    lines.append("}")
+    return "\n".join(lines) + "\n"
+
+
 # ---------------------------------------------------------------------- consult
 def cmd_consult(identities, args):
     consumer, owner, slug = args.consumer, args.owner, args.slug
@@ -647,6 +738,9 @@ def main(argv):
     sp.add_argument("slug")
     sp.add_argument("--tags", default="")
     sp.add_argument("--paths", default="")
+    sp.add_argument("--entities", default="",
+                     help="comma-separated kind:slug real-world entity keys this note is about "
+                          "(e.g. card:gone-in-a-flash) -- consumed by entity-index, never by recall")
     sp.add_argument("--source", default="")
     sp.add_argument("--learned-from", dest="learned_from", default="")
     sp.add_argument("--source-note", dest="source_note", default="")
@@ -654,6 +748,9 @@ def main(argv):
 
     sp = sub.add_parser("directory")
     sp.set_defaults(fn=cmd_directory)
+
+    sp = sub.add_parser("entity-index")
+    sp.set_defaults(fn=cmd_entity_index)
 
     sp = sub.add_parser("consult")
     sp.add_argument("consumer")

@@ -640,6 +640,13 @@ function comboHue(repo, role){
   return roleHue(role);
 }
 function threeColor(h,l){ const c = new THREE.Color(); c.setHSL((h%360)/360, 0.95, l/100); return c; }
+// entityEdgeColorFor(repo): neuralView.entityEdgeColor override for one repo
+// (#163) -- null means "use the gradient" (the default, and also what an
+// absent key or the literal "gradient" resolve to).
+function entityEdgeColorFor(repo){
+  const v = (window.__entityEdgeColor||{})[repo];
+  return (typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "gradient") ? v.trim() : null;
+}
 function cssColor(h,l,a){ return `hsla(${h},95%,${l}%,${a})`; }
 
 // ---- graph state ----
@@ -650,7 +657,7 @@ function cssColor(h,l,a){ return `hsla(${h},95%,${l}%,${a})`; }
 // (sqrt, so area scales with count), with a floor (MIN_REGION) so an
 // empty/brainless repo still gets a small labeled placeholder.
 const MIN_REGION = 46, BASE_REGION = 110;
-let nodes = [], nodeById = new Map(), links = [], roles = [], repoList = [], clusters = new Map();
+let nodes = [], nodeById = new Map(), links = [], entityLinks = [], roles = [], repoList = [], clusters = new Map();
 let repoCenters = new Map(), repoRadius = new Map();   // world coords/radius, incl. brainless repos
 let liveRepoCenters = new Map();   // live note centroids per repo (updateVisuals) — where the region is DRAWN
 let liveClusterCenters = new Map();   // live centroids per repo|role — where role labels are DRAWN (and picked)
@@ -1142,7 +1149,7 @@ function makePulseLayer(tex, count){
   L.mesh = mesh; L.geo = geo;
   return L;
 }
-let noteCore = null, noteHalo = null, synLines = null, synPulses = null;   // rebuilt with the scene
+let noteCore = null, noteHalo = null, synLines = null, synPulses = null, entLines = null;   // rebuilt with the scene
 let simMovedFrame = true;        // set by step()/applyGraph; updateVisuals uploads positions only then
 let hlActive = new Set();        // nodes with a fading recall highlight — the only per-frame attr writes
 let visSearchEpoch = 0, visSeenSearchEpoch = -1, lastHoveredLink = null;   // search/hover dirt tracking
@@ -1278,6 +1285,38 @@ function rebuildScene(){
     const mat = new THREE.LineBasicMaterial({color: threeColor(cb.hue,60), transparent:true, opacity:0.12,
       blending:THREE.AdditiveBlending, fog:true});
     sceneGroup.add(new THREE.Line(geo, mat));
+  }
+
+  // entity edges: cross-role note-to-note correlation arcs (#163). One
+  // LineSegments batch, positions follow live note positions every frame
+  // (see updateVisuals) exactly like synapses -- but entityLinks is never
+  // read by the physics/force step, only here and in updateVisuals, so
+  // these arcs never pull correlated notes together. Default color is a
+  // gradient between the two endpoints' own brain colors (vertexColors:true,
+  // the same trick synapses use); neuralView.entityEdgeColor can force a
+  // flat CSS color instead (entityEdgeColorFor()).
+  {
+    const egeo = new THREE.BufferGeometry();
+    const epos = new Float32Array(entityLinks.length*2*3), ecol = new Float32Array(entityLinks.length*2*3);
+    egeo.setAttribute("position", new THREE.BufferAttribute(epos, 3));
+    egeo.setAttribute("color", new THREE.BufferAttribute(ecol, 3));
+    const emat = new THREE.LineBasicMaterial({vertexColors:true, transparent:true, opacity:0.14,
+      blending:THREE.AdditiveBlending, fog:true});
+    const emesh = new THREE.LineSegments(egeo, emat);
+    emesh.frustumCulled = false;
+    emesh.userData = {kind:"entityEdgeBatch"};
+    sceneGroup.add(emesh);
+    entLines = {mesh:emesh, geo:egeo, pos:epos, col:ecol};
+    for(let i=0;i<entityLinks.length;i++){
+      const l = entityLinks[i];
+      const flat = entityEdgeColorFor(l.repo);
+      const ca = flat ? new THREE.Color(flat) : threeColor(comboHue(l.a.repo, l.a.role), 62);
+      const cb = flat ? new THREE.Color(flat) : threeColor(comboHue(l.b.repo, l.b.role), 62);
+      const o = i*6;
+      ecol[o]=ca.r; ecol[o+1]=ca.g; ecol[o+2]=ca.b;
+      ecol[o+3]=cb.r; ecol[o+4]=cb.g; ecol[o+5]=cb.b;
+    }
+    egeo.attributes.color.needsUpdate = true;
   }
 
   // neurons: core (bright, sharp) + halo (soft, pulses/highlights) — one
@@ -1569,7 +1608,7 @@ function applyGraph(g){
   // the graph.
   const degree = {};
   for(const e of (g.edges||[])){
-    if(e.type==="consult") continue;
+    if(e.type==="consult"||e.type==="entity") continue;
     degree[e.source] = (degree[e.source]||0)+1;
     degree[e.target] = (degree[e.target]||0)+1;
   }
@@ -1595,10 +1634,18 @@ function applyGraph(g){
   const freshSpawns = nodes.reduce((s,n)=>s + (prev.get(n.id) ? 0 : 1), 0);
   if(freshSpawns > 200) simFastForward = 300;
   refreshSearchHighlight();   // new node objects each reload — searchMatch must be recomputed, not just carried over
-  links = (g.edges||[]).filter(e=>e.type!=="consult").map(e=>({
+  window.__entityEdgeColor = g.entityEdgeColor || {};
+  links = (g.edges||[]).filter(e=>e.type!=="consult"&&e.type!=="entity").map(e=>({
     a: nodeById.get(e.source), b: nodeById.get(e.target), w: e.weight ?? .5, fires: e.fires ?? 0, key: e.source+"->"+e.target
   })).filter(l=>l.a && l.b);
   window.__consultEdges = (g.edges||[]).filter(e=>e.type==="consult" && !isBrainHidden(e.source.split("/")[0], e.source.split("/")[1]) && !isBrainHidden(e.target.split("/")[0], e.target.split("/")[1]));
+  // entity edges: cross-role note-to-note correlation arcs (#163) -- excluded
+  // from the same-brain synapse physics/link layer exactly like consult
+  // edges above, drawn as their own low-opacity additive batch in
+  // rebuildScene()/updateVisuals() (entLines), never feeding the sim.
+  entityLinks = (g.edges||[]).filter(e=>e.type==="entity" && !isBrainHidden(e.source.split("/")[0], e.source.split("/")[1]) && !isBrainHidden(e.target.split("/")[0], e.target.split("/")[1]))
+    .map(e=>({a: nodeById.get(e.source), b: nodeById.get(e.target), entity: e.entity, repo: e.repo}))
+    .filter(l=>l.a && l.b);
   // wake the sim ONLY when the graph actually changed shape (fresh nodes or
   // a different count) — an unconditional wake on every 15s poll resets the
   // calm counter forever and the settle-freeze can never engage.
@@ -2009,6 +2056,18 @@ function updateVisuals(){
       synLines.geo.attributes.color.needsUpdate = true;
       if(synPulses) synPulses.geo.attributes.aDim.needsUpdate = true;
     }
+  }
+  // entity edge positions follow live note positions every stepped frame,
+  // exactly like synapses (#163) -- colors are static gradients set once at
+  // rebuildScene() time, so only position needs a per-frame write here.
+  if(entLines && stepped){
+    for(let i=0;i<entityLinks.length;i++){
+      const l = entityLinks[i];
+      const o = i*6;
+      entLines.pos[o]   = l.a.x; entLines.pos[o+1] = l.a.y; entLines.pos[o+2] = l.a.z;
+      entLines.pos[o+3] = l.b.x; entLines.pos[o+4] = l.b.y; entLines.pos[o+5] = l.b.z;
+    }
+    entLines.geo.attributes.position.needsUpdate = true;
   }
   visSeenSearchEpoch = visSearchEpoch;
   lastHoveredLink = hoveredLink;

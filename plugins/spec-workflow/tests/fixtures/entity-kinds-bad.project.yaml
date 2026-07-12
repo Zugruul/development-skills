@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Zugruul/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json
+schemaVersion: 2
+project:
+    name: fixture-project
+    description: hermetic test fixture
+    mainBranch: main
+    branchPattern: fx/<id>-<slug>
+boards:
+  - id: main
+    provider: github-project
+    owner: fixture-owner
+    repo: fixture-owner/fixture-project
+    projectNumber: 1
+    projectId: PVT_fixture0000000
+    fields:
+        status:
+            fieldId: PVTSSF_fixtureStatus0
+            options:
+                Backlog: aaaa0001
+                In progress: aaaa0002
+                In review: aaaa0003
+                QA: aaaa0004
+                Ready: aaaa0005
+                Deployed: aaaa0006
+        priority:
+            fieldId: PVTSSF_fixturePrio00
+            options:
+                P0: bbbb0001
+                P1: bbbb0002
+                P2: bbbb0003
+        estimate:
+            fieldId: PVTF_fixtureEst000
+    statusFlow: [Backlog, In progress, In review, QA, Ready, Deployed]
+    labels:
+        bug: type:bug
+        feature: type:feature
+specs:
+  - id: core
+    title: Core fixture spec
+    board: main
+    specPath: SPEC.md
+    backlogPath: docs/BACKLOG.md
+    taskPrefix: FX
+    epics:
+      - id: EI
+        title: Infra
+        taskRanges: [[90, 99]]
+      - id: E0
+        title: Foundations
+        taskRanges: [[1, 9]]
+      - id: E1
+        title: Features
+        taskRanges: [[10, 19]]
+        blockedBy:
+          - epic: E0
+            untilStatus: Deployed
+    invariants:
+      - "Fixture invariant: never violate the fixture."
+commands:
+    gate: "true"
+    test: "true"
+# --- delegation: agent roster (who codes/reviews, as whom, on which models) ---
+delegation:
+    identities:
+        dev:
+          - name: "Core Dev - {name}"
+            email: "{local}+dev_core@{domain}"
+            models: ["claude-sonnet-5"]
+            covers: ["packages/core/**"]
+          - name: "Dev Agent - {name}"
+            email: "{local}+dev_agent@{domain}"
+            models: ["claude-sonnet-5", "claude-haiku-4-5"]
+        reviewer:
+            name: "Reviewer Agent - {name}"
+            email: "{local}+reviewer_agent@{domain}"
+            models: ["claude-sonnet-5", "claude-sonnet-5[1m]"]
+        orchestrator:
+            name: "Orchestrator Agent - {name}"
+            email: "{local}+orchestrator_agent@{domain}"
+    # reviewerTokenEnv: GH_TOKEN_REVIEWER   # second account so auto-merge approvals are non-self
+paths:
+    handoffDir: docs/handoffs
+    checkpointFile: .claude/CHECKPOINT
+methodology:
+    tdd: true
+    isolationSuite: ""
+    maxInProgress: 1
+    entityKinds: ["card", "dev"]

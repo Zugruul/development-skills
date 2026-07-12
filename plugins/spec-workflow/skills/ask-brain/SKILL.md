@@ -30,5 +30,23 @@ iteration: no board writes, no tests, no implementation work, no commits.
    into one voice — that context is often the useful part of the answer.
 4. If nothing in any brain bears on the question, say so rather than
    answering from general knowledge as if it were repo-grounded.
+5. **Cross-identity correlation** (#163): collect the `entities:` frontmatter
+   of every note recalled in step 2. If any are present, look each up in
+   `.claude/identities/entity-index.json` (regenerate it first via
+   `bash "${CLAUDE_PLUGIN_ROOT}/scripts/brain.sh" entity-index` if the file is
+   missing or looks stale — it's cheap and derived, never hand-edited). For
+   an entity correlated into a role you haven't already recalled from,
+   **consult** that role explicitly — the consumer is whichever role's
+   recalled note triggered the correlation (that role is "asking" the
+   owner):
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/brain.sh" consult <consumer-role> <owner-role> <slug>
+   ```
+   Fold the consulted note into the answer, attributed to its owner role like
+   any other cross-role material (step 3) — `consult`'s own logging is the
+   one sanctioned exception to "never write to a brain from here" (it writes
+   a log line to the owner and a recurrence counter to the consumer, never
+   note content).
 
-Never write to a brain from here — this skill only reads.
+Never write to a brain from here beyond that one sanctioned exception — this
+skill otherwise only reads.

@@ -6,8 +6,9 @@
 #   brain.sh recall <role> --paths "a/b.sh,c/**" --keywords "yaml,merge" [--budget 600]
 #   brain.sh recall <role> --query "types:Action -subtypes:Attack classes:Warrior" [--limit N]
 #                                                              # precise boolean filter, not fuzzy recall
-#   brain.sh mint <role> <slug> --tags a,b --paths "x/**" --source "..." [--learned-from R --source-note S]  # body on stdin
+#   brain.sh mint <role> <slug> --tags a,b --paths "x/**" --source "..." [--learned-from R --source-note S] [--entities "card:x,card:y"]  # body on stdin
 #   brain.sh directory
+#   brain.sh entity-index                                     # regenerate .claude/identities/entity-index.json
 #   brain.sh consult <consumer-role> <owner-role> <slug>
 #   brain.sh prune <role> [--apply]
 #   brain.sh retro-mark

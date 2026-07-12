@@ -289,6 +289,22 @@
                             }
                         }
                     ]
+                },
+                "entityKinds": {
+                    "type": "object",
+                    "additionalProperties": { "type": "string" },
+                    "description": "Cross-identity correlation layer (#163): kind -> home-role map (e.g. {card: card-vault}) used by `brain.py entity-index` and neural-view's live entity-edge derivation to resolve an entity's ANCHOR note -- the note in its kind's home role, when that role has exactly one note declaring the entity. Absent or a kind missing from this map just means entities of that kind always get anchor: null (still correlated, just without a canonical hub); this never affects per-role recall/query."
+                }
+            }
+        },
+        "neuralView": {
+            "type": "object",
+            "description": "Visualization-only knobs for the neural-view HUD. Absent == today's defaults exactly (additive-only); nothing here affects recall, minting, or any brain-mutating command.",
+            "properties": {
+                "entityEdgeColor": {
+                    "type": "string",
+                    "default": "gradient",
+                    "description": "How neural-view colors cross-role entity-correlation edges (#163): the literal \"gradient\" (default, also used when this key or the whole neuralView section is absent) blends the two endpoint notes' own brain colors along the edge (vertexColors, source end -> source brain's color, target end -> target brain's color); any other value is treated as a CSS color string and forces every entity edge in this repo to that flat color instead."
                 }
             }
         }

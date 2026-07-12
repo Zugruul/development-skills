@@ -107,6 +107,8 @@ SECTIONS=(
     section-merge-mode.sh
     section-concurrency.sh
     section-brain.sh
+    section-entity-index.sh
+    section-neural-view-entities.sh
     section-feedback.sh
     section-telemetry.sh
     section-find-task.sh

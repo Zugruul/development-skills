@@ -22,9 +22,17 @@ recall <role> --paths "a/b.sh,c/**" --keywords "yaml,merge" [--budget 600]
 recall <role> --query "TERM ..." [--limit N]
                                    # PRECISE boolean filter over frontmatter fields — not
                                    # fuzzy recall. See "Precise queries" below.
-mint <role> <slug> --tags a,b --paths "x/**" --source "PR#N ..." [--learned-from R --source-note S]
-                                   # body on stdin; re-mint bumps strength; auto-links [[wikilinks]]
+mint <role> <slug> --tags a,b --paths "x/**" --source "PR#N ..." [--learned-from R --source-note S] [--entities "card:x,card:y"]
+                                   # body on stdin; re-mint bumps strength; auto-links [[wikilinks]];
+                                   # --entities declares real-world entities (kind:slug) this note is
+                                   # ABOUT, for the cross-identity correlation index below — like
+                                   # tags/paths, must be re-passed on every re-mint to persist
 directory                          # regenerate DIRECTORY.md (titles + tags only)
+entity-index                       # regenerate .claude/identities/entity-index.json from every role's
+                                   # entities: frontmatter (frontmatter-only, derived, commit it like
+                                   # DIRECTORY.md); symlinked notes attribute to their physical home role
+                                   # only. Never read by recall/query — a whole-brain/visualization join
+                                   # only (ask-brain, neural-view). Run at retro time alongside directory.
 consult <consumer> <owner> <slug>  # print owner's note for a one-time paste; logs to owner; recurs on 2nd
 prune <role> [--apply]             # flag stale links (never-fired+aged, target graduated/missing)
 retro-mark                         # bump the retro counter that ages notes for pruning
