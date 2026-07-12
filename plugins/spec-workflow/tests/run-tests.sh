@@ -91,6 +91,7 @@ SECTIONS=(
     section-ui-hub.sh
     section-neural-view-template.sh
     section-neural-view-lifecycle.sh
+    section-neural-view-rescan.sh
     section-neural-view-projects.sh
     section-neural-view-sessions.sh
     section-neural-view-render-body.sh
