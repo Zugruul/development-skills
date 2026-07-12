@@ -65,6 +65,7 @@ Spec-driven autonomous build workflow. A repo declares its boards, specs, epics,
 | `seed-board` | Create issues + board items from a spec's backlog (idempotent) |
 | `board` | All board reads/writes (single script, no hardcoded ids) |
 | `next-task` | Prioritized + sequenced + guarded pick; reads human comments |
+| `queue` | Read-only view of the upcoming build-next picks, priority-first, with blocked reasons |
 | `find-task` | Ranked search of existing board issues by title/body similarity (dedup) |
 | `create-inbound` | Search-first, dedup-gated capture of ad-hoc ideas/bugs/requests onto the board |
 | `implement-task` | One task via TDD, delegated to a dev subagent with a what/how/why brief |

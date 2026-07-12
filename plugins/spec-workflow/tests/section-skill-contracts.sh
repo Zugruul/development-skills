@@ -69,6 +69,7 @@ if [[ -f "$QSKILL" ]]; then echo "ok   queue/SKILL.md exists"; else echo "FAIL q
 QBODY="$(cat "$QSKILL" 2>/dev/null)"
 check "queue SKILL.md has name frontmatter" "name: queue" "$QBODY"
 check "queue SKILL.md has allowed-tools frontmatter" "allowed-tools: Bash" "$QBODY"
+# shellcheck disable=SC2016  # single quotes are intentional: literal grep pattern, not shell expansion
 check "queue SKILL.md has the preflight pre-start check line" 'Pre-start check: !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh"' "$QBODY"
 check "queue SKILL.md instructs to STOP on PREFLIGHT FAIL" "PREFLIGHT FAIL" "$QBODY"
 check "queue SKILL.md wires board.sh next" "board.sh\" next" "$QBODY"

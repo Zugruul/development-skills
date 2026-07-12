@@ -15,6 +15,7 @@ Everything project-specific lives in the consumer repo's **`.claude/project.yaml
 | `seed-board` | Issues + board items from the backlog (idempotent) |
 | `board` | All board reads/writes via `board.sh` (no hardcoded ids); comments are the human steering channel |
 | `next-task` | `PICK` / `RESUME` / `BLOCKED` decision from priority, epic order, guards, and the WIP limit |
+| `queue` | Read-only: renders the upcoming build-next picks (priority-first, with blocked reasons) — never mutates the board |
 | `find-task` | Ranked search of existing board issues (open + closed) by title/body similarity — the read side of dedup |
 | `create-inbound` | Search-first, dedup-gated capture of ad-hoc ideas/bugs/requests — the write side of dedup |
 | `implement-task` | One task: brief a dev subagent (what/how/why), verify, drive the board |
