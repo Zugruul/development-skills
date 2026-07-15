@@ -10,6 +10,8 @@
 # explicitly controls both override env vars, so no assertion here can pass
 # or fail because of the caller's real CWD or ambient environment (SPEC
 # §12: plugin-root resolution never reads CWD).
+# shellcheck disable=SC2016  # the bash -c '...' probe bodies below are single-quoted on
+# purpose -- they're expanded inside the spawned bash -c, not at this call site.
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== plugin-root resolver (CDX-001) =="
 
