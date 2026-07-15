@@ -100,5 +100,33 @@ check "schema: --output-schema flag passed" "--output-schema" "$(cat "$ARGLOG")"
 check "schema: schema file path passed" "peer-review-findings.json" "$(cat "$ARGLOG")"
 rm -f "$ARGLOG"
 
+# --- label override: default, --label flag, PEER_REVIEW_LABEL env var, and flag-wins-over-env ---
+ARGLOG="$(mktemp)"
+out="$(CODEX_FIXTURE=valid CODEX_ARGLOG="$ARGLOG" PATH="$FAKECODEX_DIR:$NOBIN" bash "$SCRIPT" "$DIFFFILE" 2>&1; echo "rc=$?")"
+check "label default: uses the default label" "External review — codex" "$out"
+rm -f "$ARGLOG"
+
+ARGLOG="$(mktemp)"
+out="$(CODEX_FIXTURE=valid CODEX_ARGLOG="$ARGLOG" PATH="$FAKECODEX_DIR:$NOBIN" bash "$SCRIPT" --label "External review — Peer Reviewer (codex)" "$DIFFFILE" 2>&1; echo "rc=$?")"
+check "label --label flag: uses the given label" "External review — Peer Reviewer (codex)" "$out"
+rm -f "$ARGLOG"
+
+ARGLOG="$(mktemp)"
+out="$(CODEX_FIXTURE=valid CODEX_ARGLOG="$ARGLOG" PEER_REVIEW_LABEL="External review — Peer Reviewer (codex)" PATH="$FAKECODEX_DIR:$NOBIN" bash "$SCRIPT" "$DIFFFILE" 2>&1; echo "rc=$?")"
+check "label PEER_REVIEW_LABEL env: uses the env label" "External review — Peer Reviewer (codex)" "$out"
+rm -f "$ARGLOG"
+
+ARGLOG="$(mktemp)"
+out="$(CODEX_FIXTURE=valid CODEX_ARGLOG="$ARGLOG" PEER_REVIEW_LABEL="External review — from env" PATH="$FAKECODEX_DIR:$NOBIN" bash "$SCRIPT" --label "External review — from flag" "$DIFFFILE" 2>&1; echo "rc=$?")"
+check "label both set: --label flag wins over PEER_REVIEW_LABEL" "External review — from flag" "$out"
+check_absent "label both set: env label not used" "External review — from env" "$out"
+rm -f "$ARGLOG"
+
+# --- label override also applies to the raw-fallback rendering path (malformed JSON) ---
+ARGLOG="$(mktemp)"
+out="$(CODEX_FIXTURE=malformed CODEX_ARGLOG="$ARGLOG" PATH="$FAKECODEX_DIR:$NOBIN" bash "$SCRIPT" --label "External review — Peer Reviewer (codex)" "$DIFFFILE" 2>&1; echo "rc=$?")"
+check "label on raw fallback: overridden label used" "External review — Peer Reviewer (codex)" "$out"
+rm -f "$ARGLOG"
+
 rm -f "$DIFFFILE"
 rm -rf "$FAKECODEX_DIR"
