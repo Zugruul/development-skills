@@ -18,8 +18,8 @@
 #   {local}  -> git config user.email local part      (before the last @)
 #   {domain} -> git config user.email domain part     (after the last @)
 # Values without placeholders are used literally. Defaults are ON for
-# dev/reviewer/orchestrator; a role set to null — or delegation.identities
-# set to false — means OFF: that role commits as the human.
+# dev/reviewer/orchestrator/peer-reviewer; a role set to null — or
+# delegation.identities set to false — means OFF: that role commits as the human.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"

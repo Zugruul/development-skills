@@ -1,12 +1,14 @@
 ---
 name: agent-identities
-description: Shows or configures the git author identities agent roles (dev/reviewer/orchestrator) commit with — name/email templates resolved per-clone ({name}, {local}+suffix@{domain}). Use when the user asks who agent commits are attributed to, wants to rename an agent, use their own plus-addressed email, or turn attribution off. With no argument, show current resolution and ask what to change.
+description: Shows or configures the git author identities agent roles (dev/reviewer/orchestrator/peer-reviewer) commit with — name/email templates resolved per-clone ({name}, {local}+suffix@{domain}). Use when the user asks who agent commits are attributed to, wants to rename an agent, use their own plus-addressed email, or turn attribution off. With no argument, show current resolution and ask what to change.
 allowed-tools: Bash, AskUserQuestion, Edit, Read
 ---
 
 # Agent identities — show / set / disable
 
-`identity.sh` = `bash "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh"`. Each role lives in `delegation.identities.<role>` of `.claude/project.yaml` (versioned — commit changes) as ONE identity or an ARRAY of them. An identity carries `name`/`email` templates (placeholders resolve per-clone: `{name}` ← `git config user.name`, `{local}`/`{domain}` ← `git config user.email`), an optional `models` allowed set (FULL ids only, e.g. `claude-sonnet-5[1m]`), and optional `covers` path globs (monorepo routing — `identity.sh <role> <path>` returns the covering identity). Defaults are ON: `Dev Agent - {name}` / `{local}+dev_agent@{domain}`, models dev `[claude-sonnet-5]`, reviewer `[claude-sonnet-5, claude-sonnet-5[1m]]` (and orchestrator name/email, no models).
+`identity.sh` = `bash "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh"`. Each role lives in `delegation.identities.<role>` of `.claude/project.yaml` (versioned — commit changes) as ONE identity or an ARRAY of them. An identity carries `name`/`email` templates (placeholders resolve per-clone: `{name}` ← `git config user.name`, `{local}`/`{domain}` ← `git config user.email`), an optional `models` allowed set (FULL ids only, e.g. `claude-sonnet-5[1m]`), and optional `covers` path globs (monorepo routing — `identity.sh <role> <path>` returns the covering identity). Defaults are ON: `Dev Agent - {name}` / `{local}+dev_agent@{domain}`, models dev `[claude-sonnet-5]`, reviewer `[claude-sonnet-5, claude-sonnet-5[1m]]` (orchestrator name/email, no models), and `peer-reviewer` (codex, driven by `/peer-review`) `Peer Reviewer (codex) - {name}` / `{local}+peer_reviewer@{domain}`, no models default.
+
+**Consumer contract (peer-reviewer):** `plugins/peer-review/scripts/peer-review.sh` accepts an optional `--label <name>` flag / `PEER_REVIEW_LABEL` env var that overrides its default findings-label string; this repo's own tooling threads the resolved `peer-reviewer` identity name through that override so findings are labeled with a stable identity instead of a generic "codex" string.
 
 **"show" or a specific ask** — run `identity.sh` (all roles) or `identity.sh <role>` and report the resolved name/email verbatim; a WARN means `git config user.name/email` is unset on this clone.
 
