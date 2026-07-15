@@ -35,3 +35,17 @@ final `AGGREGATE` line.
   edited.
 - A repo skipped as `no-op` needed no rule -- do not re-run with `--apply` expecting a
   different result until the plugin's sync rules change.
+
+## Sync rules currently applied
+- `strip-schema-data-key` -- drops a legacy top-level `$schema:` data key (the modeline comment
+  is the supported form).
+- `ensure-feedback-key` -- adds `methodology.feedback` if missing (`--feedback-value` controls
+  the written value, default `true`).
+- `sw062-feedbacks-migration` -- moves `.claude/feedback/` to `.claude/feedbacks/` and drops the
+  old `.gitignore` line.
+- `ensure-peer-reviewer-identity` -- adds `delegation.identities.peer-reviewer` (the same
+  default name/email templates as `agent-identities`' built-in default) ONLY when the target
+  repo's own `.claude/settings.json` `enabledPlugins` map shows a truthy
+  `peer-review@<marketplace>` key -- never forces the identity on a repo that doesn't have the
+  plugin enabled. Inserts into an existing `delegation.identities` block if the repo already
+  customizes one, else appends a fresh `delegation.identities` block.
