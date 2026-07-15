@@ -30,7 +30,7 @@ review); `1` on a git/gh failure resolving the diff itself.
 ### `peer-review.sh` usage
 
 ```
-peer-review.sh <diff-text-file>
+peer-review.sh [--label <name>] <diff-text-file>
 ```
 
 Takes the diff as a file argument (e.g. the output of `diff-source.sh`, redirected to a file)
@@ -40,7 +40,7 @@ schema/peer-review-findings.json <prompt>` — no argument or environment variab
 this script can change the sandbox mode (SPEC-PEER-REVIEW.md §6.2).
 
 - On success with schema-conforming JSON: renders findings (file, line, severity, summary,
-  failure scenario) and an overall verdict under the heading `## External review — codex`.
+  failure scenario) and an overall verdict under the heading `## <label>`.
 - On success with non-conforming/malformed JSON (a known `--output-schema` rough edge in the
   `codex` CLI): prints a parse-failure note followed by codex's raw stdout verbatim, under the
   same heading. Still exits `0` — a review happened, just unstructured.
@@ -48,9 +48,15 @@ this script can change the sandbox mode (SPEC-PEER-REVIEW.md §6.2).
   exits with codex's own exit code. Never attempts to parse stdout, never prompts for
   credentials in-conversation.
 
+`<label>` defaults to `External review — codex` and can be overridden with `--label <name>` or
+the `PEER_REVIEW_LABEL` environment variable (`--label` wins if both are given). This script has
+no notion of agent identities — it just renders under whatever string the caller passes; the
+override exists so another part of the repo (e.g. a resolved `peer-reviewer` agent identity) can
+supply a more specific label without `peer-review.sh` depending on that identity system.
+
 Exit codes: `0` on a completed review (structured or raw-fallback); `2` if the diff-text file
-is missing or `codex` is not on `PATH`; codex's own nonzero exit code on an auth/invocation
-failure.
+is missing, `--label` is given without a value, or `codex` is not on `PATH`; codex's own
+nonzero exit code on an auth/invocation failure.
 
 ## Tests
 

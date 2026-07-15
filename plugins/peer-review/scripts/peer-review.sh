@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-# peer-review.sh <diff-text-file> -- invokes codex to review a diff and
-# renders its findings under "External review — codex" (SPEC-PEER-REVIEW.md
-# §6.2, §6.5, §6.6, §6.8). Pure/testable: given a diff-text file, embeds it
-# in a prompt and shells out to `codex exec --sandbox read-only
-# --output-schema <schema>`. No flag or code path here ever adds anything
-# other than "read-only" to --sandbox (§6.2, §9 invariant: a peer review
-# NEVER writes).
+# peer-review.sh [--label <name>] <diff-text-file> -- invokes codex to
+# review a diff and renders its findings under a label, "External review —
+# codex" by default (SPEC-PEER-REVIEW.md §6.2, §6.5, §6.6, §6.8).
+# Pure/testable: given a diff-text file, embeds it in a prompt and shells
+# out to `codex exec --sandbox read-only --output-schema <schema>`. No flag
+# or code path here ever adds anything other than "read-only" to --sandbox
+# (§6.2, §9 invariant: a peer review NEVER writes).
+#
+# The rendered label defaults to "External review — codex" and can be
+# overridden with --label <name> or the PEER_REVIEW_LABEL env var (--label
+# wins if both are given); this script has no notion of agent identities --
+# it just accepts a caller-supplied string, keeping this plugin decoupled
+# from spec-workflow's identity system (see docs/design/peer-E0.md).
 #
 # On success: parses codex's stdout against the findings schema. Valid ->
 # rendered findings table. Invalid/malformed -> raw stdout verbatim plus a
@@ -20,15 +26,34 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCHEMA="$HERE/../schema/peer-review-findings.json"
 
 usage() {
-    echo "usage: peer-review.sh <diff-text-file>" >&2
+    echo "usage: peer-review.sh [--label <name>] <diff-text-file>" >&2
 }
 
-if [[ $# -ne 1 ]]; then
+LABEL="${PEER_REVIEW_LABEL:-External review — codex}"
+DIFF_FILE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --label)
+            [[ $# -ge 2 ]] || { echo "ERROR: --label requires a <name> argument" >&2; usage; exit 2; }
+            LABEL="$2"
+            shift 2
+            ;;
+        *)
+            if [[ -n "$DIFF_FILE" ]]; then
+                usage
+                exit 2
+            fi
+            DIFF_FILE="$1"
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$DIFF_FILE" ]]; then
     usage
     exit 2
 fi
-
-DIFF_FILE="$1"
 
 if [[ ! -f "$DIFF_FILE" ]]; then
     echo "ERROR: diff file not found: $DIFF_FILE" >&2
@@ -74,10 +99,12 @@ fi
 
 codex_stdout="$(cat "$stdout_file")"
 
-rendered="$(printf '%s' "$codex_stdout" | python3 -c '
+rendered="$(printf '%s' "$codex_stdout" | PEER_REVIEW_RENDER_LABEL="$LABEL" python3 -c '
 import json
+import os
 import sys
 
+label = os.environ["PEER_REVIEW_RENDER_LABEL"]
 raw = sys.stdin.read()
 try:
     data = json.loads(raw)
@@ -109,7 +136,7 @@ for f in findings:
     if not isinstance(f["failure_scenario"], str):
         sys.exit(1)
 
-print("## External review — codex")
+print("## {}".format(label))
 print()
 if findings:
     for f in findings:
@@ -127,7 +154,7 @@ render_rc=$?
 if [[ $render_rc -eq 0 ]]; then
     printf '%s\n' "$rendered"
 else
-    echo "## External review — codex"
+    echo "## $LABEL"
     echo
     echo "(structured parsing failed -- codex's --output-schema output did not match"
     echo "the expected shape; showing raw codex output below verbatim)"
