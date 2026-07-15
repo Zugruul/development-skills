@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # identity.sh — resolve per-role git author identities + allowed models from config.
 #   identity.sh                  # all roles
-#   identity.sh <role>           # one role (dev|reviewer|orchestrator or any configured key)
+#   identity.sh <role>           # one role (dev|reviewer|orchestrator|peer-reviewer or any configured key)
 #   identity.sh <role> <path>    # resolve the covering identity for a changed path (monorepo routing)
 #   identity.sh --check          # preflight mode: one ok/WARN line, always exit 0
 #   identity.sh on-behalf <author-role> [--committer <role=orchestrator>] [--co <role>]...

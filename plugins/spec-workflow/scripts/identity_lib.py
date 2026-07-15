@@ -9,9 +9,10 @@ import fnmatch
 import config as C
 
 DEFAULTS = {
-    "dev":          {"name": "Dev Agent - {name}",          "email": "{local}+dev_agent@{domain}",          "models": ["claude-sonnet-5"]},
-    "reviewer":     {"name": "Reviewer Agent - {name}",     "email": "{local}+reviewer_agent@{domain}",     "models": ["claude-sonnet-5", "claude-sonnet-5[1m]"]},
-    "orchestrator": {"name": "Orchestrator Agent - {name}", "email": "{local}+orchestrator_agent@{domain}"},
+    "dev":           {"name": "Dev Agent - {name}",          "email": "{local}+dev_agent@{domain}",          "models": ["claude-sonnet-5"]},
+    "reviewer":      {"name": "Reviewer Agent - {name}",     "email": "{local}+reviewer_agent@{domain}",     "models": ["claude-sonnet-5", "claude-sonnet-5[1m]"]},
+    "orchestrator":  {"name": "Orchestrator Agent - {name}", "email": "{local}+orchestrator_agent@{domain}"},
+    "peer-reviewer": {"name": "Peer Reviewer (codex) - {name}", "email": "{local}+peer_reviewer@{domain}"},
 }
 
 
