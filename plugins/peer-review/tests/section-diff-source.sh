@@ -140,4 +140,31 @@ check "missing codex: mentions codex" "codex" "$out"
 check "missing codex: prints install instructions" "Install the codex CLI" "$out"
 rm -rf "$D8"
 
+# --- stderr on a successful (zero-exit) git diff must never pollute the
+# printed diff text (PRV-002 follow-up: stray advice/hint lines on stderr
+# used to be captured via 2>&1 even on success). A fake `git` shim wraps the
+# real binary and, on `diff`, injects a deterministic stderr-only advice
+# line after a real success, so this is reproducible without relying on any
+# particular git version's own warnings. ---
+REALGIT="$(command -v git)"
+FAKEGIT="$(mktemp -d)"
+cat >"$FAKEGIT/git" <<EOF
+#!/usr/bin/env bash
+set -uo pipefail
+if [[ "\$1" == "diff" ]]; then
+    "$REALGIT" "\$@"
+    rc=\$?
+    echo "hint: this is a fake stderr advice line on a successful diff" >&2
+    exit "\$rc"
+fi
+exec "$REALGIT" "\$@"
+EOF
+chmod +x "$FAKEGIT/git"
+D9="$(mkrepo)"
+out="$(cd "$D9" && PATH="$FAKEGIT:$FAKECODEX:$NOBIN" bash "$SCRIPT" 2>&1; echo "rc=$?")"
+check "stderr-on-success: exits 0" "rc=0" "$out"
+check "stderr-on-success: diff still contains the feature-branch change" "feature.txt" "$out"
+check_absent "stderr-on-success: stray stderr advice line never pollutes the diff" "fake stderr advice line" "$out"
+rm -rf "$D9" "$FAKEGIT"
+
 rm -rf "$FAKECODEX"

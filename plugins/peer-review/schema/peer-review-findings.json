@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "peer-review-findings",
+  "description": "Shape requested from `codex exec --output-schema` for /peer-review (SPEC-PEER-REVIEW.md §6.5).",
+  "type": "object",
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": ["integer", "null"]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["info", "warn", "error"]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "failure_scenario": {
+            "type": "string"
+          }
+        },
+        "required": ["file", "line", "severity", "summary", "failure_scenario"],
+        "additionalProperties": false
+      }
+    },
+    "verdict": {
+      "type": "string"
+    }
+  },
+  "required": ["findings", "verdict"],
+  "additionalProperties": false
+}

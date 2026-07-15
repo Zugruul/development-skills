@@ -46,20 +46,28 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# stderr is captured to a temp file, not merged into $diff, so an
+# advice/hint line git or gh might emit on stderr on an otherwise-successful
+# (zero-exit) run never pollutes the diff text that gets embedded in the
+# codex prompt (PRV-002 follow-up). It's only read back for the error
+# message on an actual (nonzero-exit) failure.
+err_file="$(mktemp)"
+trap 'rm -f "$err_file"' EXIT
+
 case "$mode" in
     default)
         main_branch="$(git config --get peer-review.mainBranch 2>/dev/null || true)"
         main_branch="${main_branch:-main}"
-        diff="$(git diff "$main_branch...HEAD" 2>&1)" || { echo "ERROR: git diff against '$main_branch' failed: $diff" >&2; exit 1; }
+        diff="$(git diff "$main_branch...HEAD" 2>"$err_file")" || { echo "ERROR: git diff against '$main_branch' failed: $(cat "$err_file")" >&2; exit 1; }
         ;;
     base)
-        diff="$(git diff "$ref...HEAD" 2>&1)" || { echo "ERROR: git diff against '$ref' failed: $diff" >&2; exit 1; }
+        diff="$(git diff "$ref...HEAD" 2>"$err_file")" || { echo "ERROR: git diff against '$ref' failed: $(cat "$err_file")" >&2; exit 1; }
         ;;
     staged)
-        diff="$(git diff --staged 2>&1)" || { echo "ERROR: git diff --staged failed: $diff" >&2; exit 1; }
+        diff="$(git diff --staged 2>"$err_file")" || { echo "ERROR: git diff --staged failed: $(cat "$err_file")" >&2; exit 1; }
         ;;
     pr)
-        diff="$(gh pr diff "$pr" 2>&1)" || { echo "ERROR: gh pr diff $pr failed: $diff" >&2; exit 1; }
+        diff="$(gh pr diff "$pr" 2>"$err_file")" || { echo "ERROR: gh pr diff $pr failed: $(cat "$err_file")" >&2; exit 1; }
         ;;
 esac
 
