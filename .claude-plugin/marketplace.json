@@ -38,6 +38,20 @@
                 "dev-workflow",
                 "greenfield"
             ]
+        },
+        {
+            "name": "peer-review",
+            "source": "./plugins/peer-review",
+            "description": "Independent, cross-vendor code review of the current diff via OpenAI's codex CLI -- deliberately never Claude reviewing its own diff, since that shares Claude's own blind spots.",
+            "version": "0.1.0",
+            "author": {
+                "name": "event-sorcerer"
+            },
+            "keywords": [
+                "code-review",
+                "codex",
+                "peer-review"
+            ]
         }
     ]
 }
