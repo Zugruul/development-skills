@@ -1,0 +1,217 @@
+# Peer review + remote LLM dispatch — spec
+
+Status: APPROVED — registered in `.claude/project.yaml` as spec `peer` (taskPrefix `PRV`).
+Source design: [docs/design/compute-registry-plan-v3.md](docs/design/compute-registry-plan-v3.md),
+drafted by a Fable 5 agent, reviewed inline, with OQ-1/OQ-2/OQ-3/OQ-4 decided below.
+**Decision (per v3 §5, item 1): Spec A and Spec B are folded into this single spec** — B
+shrank to a YAML file, one status command, and one HTTP helper, which is a follow-up epic,
+not a document. E0 = `/peer-review`, E1 = remote dispatch.
+
+## §1 Overview
+
+Two small, independent capabilities for getting a second LLM's opinion on code. First, a
+`/peer-review` skill that pipes a diff to the locally installed `codex exec` CLI (read-only
+sandbox) and reports its findings as clearly external review. Second, a minimal remote-compute
+layer for the owner's llama.cpp notebook: a git-tracked YAML naming the machine, a status
+command that curls it, and a synchronous dispatch helper — no service, no daemon, no queue.
+Single owner, two machines; that scale is a design input, not a temporary limitation.
+
+## §2 Goals
+
+- **G1** — From any repo, one command produces an external codex review of the current
+  branch's diff, with structured findings, without ever modifying the working tree (§6).
+- **G2** — The llama.cpp notebook is reachable as a declared provider: `status` reports
+  whether it is up and why not, and a helper function can send it a prompt and get text back
+  within a bounded timeout (§7, §8).
+- **G3** — Zero persistent processes are added anywhere: everything runs at the moment of
+  use and leaves nothing running (§9 invariants).
+
+## §3 Non-goals
+
+- No registry service, heartbeat agent, TTL/staleness model, or capability-ceiling model
+  (deleted in v3 §3.5 — do not rebuild them speculatively).
+- No async job-queue interface (`submit`/`collect`/`cancel`) — llama.cpp is blocking
+  request/response; the interface is one synchronous function.
+- No provider-selection layer — one provider per capability at this scale; the caller names
+  the provider it wants.
+- No `remove`/`enable`/`disable`/`token rotate`/`serve`/`ping`/`doctor`/`logs` subcommands —
+  all reduce to hand-editing a ~10-line YAML (v3 §3.5).
+- No `/compute-registry add` interview skill. **Decision:** cut (v3 §5 flagged it as a close
+  call); its one automatable value — printing the exact `llama-server` launch command — moves
+  into the skill's reference doc as a copyable block next to the YAML template.
+- No auto-fix in `/peer-review` (consistent with this repo's `/code-review`; `--fix` is a
+  possible later opt-in, not v1).
+- ComfyUI / image/video/3D generation — explicitly out of scope. Hard requirement carried
+  forward verbatim for whatever future spec adds it: *only ever dispatch pre-authored,
+  repo-committed workflow templates, never dynamically constructed graphs* (v3 §3.6). A
+  "just curl it" design is wrong for ComfyUI; it is a deliberately heavier future spec, not
+  a third provider here. Tracked as board issue #166 (spike).
+- No wiring of the remote provider into `/peer-review` in v1 (decided, see §12 OQ-4).
+
+## §4 Glossary
+
+- **Peer review** — a review produced by a non-Claude model, presented as external findings,
+  never silently merged into Claude's own judgment.
+- **codex** — the OpenAI `codex` CLI; `codex exec --sandbox read-only` is the only
+  invocation form used (its default sandbox).
+- **Provider** — one machine+endpoint entry in the registry YAML (1:N — one file, many
+  providers; v1 ships with exactly one: the llama.cpp notebook).
+- **Registry** — the git-tracked file `.claude/compute-registry.yaml`; the sole source of
+  endpoints and token references. Hand-edited.
+- **Dispatch** — one synchronous HTTP POST to a provider's `chat/completions` with a bearer
+  token and a timeout, returning text.
+- **Status check** — `GET <endpoint>/models` with the bearer token; 200 = reachable.
+
+## §5 Architecture
+
+Two independent verticals; neither depends on the other (E0 ships first and alone).
+
+**E0 — `/peer-review`**: skill (SKILL.md) + one tested script. The script computes the diff
+(`git diff <mainBranch>...HEAD` default; `--base`, `--staged`, or `gh pr diff` for a PR
+number), embeds it in the prompt, and shells out to `codex exec --sandbox read-only
+--output-schema <findings schema>`. Findings shape mirrors ReportFindings: file, line,
+severity, summary, failure scenario, overall verdict. Why codex directly and not via the
+registry: it is local, needs no endpoint/token, and hardcoding removes a whole config surface
+(v3 Spec A). **Plugin placement (OQ-1, decided): standalone `plugins/peer-review`.**
+
+**E1 — remote dispatch**: three artifacts, no processes. (1) `.claude/compute-registry.yaml`
+(schema below) — durable, git-tracked, hand-edited. (2) `/compute-registry status` — reads
+the YAML, curls each provider's `/models`, reports reachable/unreachable + why. (3) a dispatch
+helper — `dispatch(provider_id, prompt, timeout_s) -> text` — usable by any future skill. Why
+synchronous-at-use instead of heartbeat: strictly fresher than any TTL window and requires
+nothing running when idle (v3 §3.5). Lives in the same `plugins/peer-review` plugin as E0
+(OQ-1) — both skills, no board dependency.
+
+Registry schema (v1, `schemaVersion: 1` literal):
+
+```yaml
+schemaVersion: 1
+providers:
+  - id: notebook-llama
+    endpoint: http://192.168.1.42:8080/v1   # llama-server OpenAI-compatible endpoint
+    token: ${LLAMA_NOTEBOOK_TOKEN}           # env-var reference, never an inline literal
+```
+
+**Decision:** the v3 `capabilities:` list is dropped from the schema — it existed to feed
+the deleted capability-ceiling/selection model and nothing consumes it now; the provider `id`
+is the whole addressing story. (Re-add as a plain informational field if a consumer appears.)
+
+Notebook-side setup is one documented command, no custom process:
+`llama-server --host 0.0.0.0 --port 8080 --api-key "$LLAMA_NOTEBOOK_TOKEN"` (plus the
+one-time Windows Defender inbound-LAN allow rule for the port).
+
+House constraints apply: bash 3.2-compatible / stdlib-python scripts, scripts decide — the
+model obeys.
+
+## §6 `/peer-review` skill (E0)
+
+- **§6.1** WHEN `/peer-review` is invoked with no arguments THE SYSTEM SHALL review the diff
+  `git diff <mainBranch>...HEAD`, where `<mainBranch>` comes from repo config when available
+  and falls back to `main`.
+- **§6.2** THE SYSTEM SHALL invoke codex exclusively as `codex exec` with `--sandbox
+  read-only`; no flag or argument path SHALL produce a write-capable sandbox.
+- **§6.3** WHEN `--base <ref>`, `--staged`, or a PR number is given THE SYSTEM SHALL take the
+  diff from `git diff <ref>...HEAD`, `git diff --staged`, or `gh pr diff <n>` respectively.
+- **§6.4** IF the computed diff is empty THEN THE SYSTEM SHALL report "nothing to review"
+  and exit 0 without invoking codex.
+- **§6.5** THE SYSTEM SHALL request findings via `--output-schema` in the shape {file, line,
+  severity, summary, failure scenario} plus an overall verdict, and render them under the
+  label "External review — codex".
+- **§6.6** IF the codex output fails to parse against the schema THEN THE SYSTEM SHALL print
+  the raw output verbatim with a note that structured parsing failed, and SHALL NOT crash
+  (known codex `--output-schema` rough edge, v3 Spec A).
+- **§6.7** IF `codex` is not on `PATH` THEN THE SYSTEM SHALL fail with a nonzero exit and
+  printed install instructions.
+- **§6.8** IF codex authentication fails THEN THE SYSTEM SHALL surface codex's own stderr
+  and SHALL NOT prompt for an API key in-conversation.
+- **§6.9** THE SYSTEM SHALL NOT modify any file as part of a review (no auto-fix path
+  exists in v1).
+- **§6.10** THE SYSTEM SHALL state in the skill's user-facing doc that reviewing a diff via
+  `codex exec` sends that diff to OpenAI's cloud.
+
+## §7 Compute registry file + status (E1)
+
+- **§7.1** THE SYSTEM SHALL read providers exclusively from `.claude/compute-registry.yaml`;
+  IF `schemaVersion` is not the literal `1` THEN THE SYSTEM SHALL fail with an actionable
+  error (no migration machinery in v1).
+- **§7.2** IF a provider's `token` field is not an `${ENV_VAR}` reference (i.e. it looks
+  like an inline literal secret) THEN THE SYSTEM SHALL refuse to use that provider and say
+  why — tokens never live in the git-tracked file.
+- **§7.3** IF a referenced token env var is unset at run time THEN THE SYSTEM SHALL fail
+  with an error naming the missing variable.
+- **§7.4** WHEN `/compute-registry status` is invoked THE SYSTEM SHALL, for each provider,
+  `GET <endpoint>/models` with `Authorization: Bearer <token>` and a per-provider timeout,
+  and report reachable (200) or unreachable with the reason (timeout, connection refused,
+  401/403, non-200). **Decision:** the status check sends the bearer token because
+  `llama-server --api-key` protects `/models` too; an unauthenticated probe would
+  false-negative.
+- **§7.5** WHEN `status` reports a provider unreachable THE SYSTEM SHALL point at the
+  reference doc containing the YAML template and the exact `llama-server` launch command
+  (the surviving value of the cut `add` flow).
+
+## §8 Dispatch helper (E1)
+
+- **§8.1** WHEN `dispatch(provider_id, prompt, timeout_s)` is called THE SYSTEM SHALL POST
+  to `<endpoint>/chat/completions` with `Authorization: Bearer <token>` and return the
+  response text. No pre-flight health check — the POST's own failure is the freshest signal.
+- **§8.2** IF `provider_id` is not in the registry THEN THE SYSTEM SHALL fail with the list
+  of known provider ids.
+- **§8.3** IF the request exceeds `timeout_s` THEN THE SYSTEM SHALL fail with a nonzero
+  exit and a timeout message naming the provider; THE SYSTEM SHALL NOT retry automatically
+  in v1.
+- **§8.4** IF the provider returns a non-200 status THEN THE SYSTEM SHALL surface the HTTP
+  status and a bounded tail of the response body.
+- **§8.5** THE SYSTEM SHALL never include the resolved token value in any output, log, or
+  error message (redact if it would appear, e.g. in echoed curl commands).
+
+## §9 Invariants
+
+- A peer review NEVER writes: every codex invocation uses `--sandbox read-only`; the review
+  path contains no file-modifying code.
+- Secrets never enter git: registry token fields are env-var references only; any inline
+  literal is a refusal, not a warning.
+- Resolved token values never appear in stdout, stderr, logs, or error messages.
+- No persistent process, daemon, heartbeat, or background agent is installed on any machine
+  by this work; everything runs synchronously at the moment of use.
+- Content leaves the machine only to endpoints explicitly declared in
+  `.claude/compute-registry.yaml`, or to OpenAI via the user-installed `codex` CLI — and the
+  latter is disclosed in the skill doc.
+- External-model findings are always labeled with their source and never presented as, or
+  silently merged into, Claude's own judgment.
+- Scripts are bash 3.2-compatible / stdlib-only Python, `set -uo pipefail`,
+  shellcheck-clean (house rule, SPEC.md §9).
+
+## §10 Non-functional
+
+- `/compute-registry status` with one provider completes in under ~10 s worst case
+  (per-provider health-check timeout, default 5 s — §12 OQ-3, decided).
+- Dispatch timeout default 120 s (§12 OQ-2, decided); always finite — no unbounded waits.
+- No new runtime dependencies beyond `curl`, `git`, `gh`, and the user-installed `codex`.
+- `/peer-review` adds negligible overhead beyond the codex call itself (diff computation +
+  one subprocess).
+
+## §11 Testing strategy
+
+Merge gate = the repo's hermetic suite (`tests/run-tests.sh` conventions) + `shellcheck -x`.
+All merge-gating tests are deterministic and offline:
+
+- **E0** — a fake `codex` binary on `PATH` (fixture stdout: valid findings JSON, malformed
+  JSON, auth-failure stderr, missing binary) exercises §6.2 and §6.4–§6.8; diff-source
+  selection (§6.1/§6.3) tested against a fixture git repo; PR path via the existing fake-gh
+  harness.
+- **E1** — fixture YAML files (valid, bad schemaVersion, inline-literal token, unknown id)
+  cover §7.1–§7.3 and §8.2; HTTP paths (§7.4, §8.1, §8.3–§8.5) run against a local stub
+  server on a per-run randomized port — 200, 401, 500, and a hang for the timeout case;
+  token-redaction asserted on every error output.
+- Real-codex and real-notebook runs are manual/advisory only, never merge-gating (network +
+  model nondeterminism).
+
+## §12 Open questions
+
+| id | question | owner | default if unanswered | status |
+|---|---|---|---|---|
+| OQ-1 | Plugin placement: new `plugins/peer-review` plugin vs skills inside `plugins/spec-workflow`? | user | new standalone plugin `plugins/peer-review` housing both skills — neither depends on the board workflow, and spec-workflow's scope stays clean | **decided: standalone `plugins/peer-review`** |
+| OQ-2 | Dispatch call default timeout (v3 §5) | user | 120 s (long enough for a big diff on notebook-class hardware, short enough to fail a hung session) | **decided: 120s (default applied)** |
+| OQ-3 | Status health-check per-provider timeout | user | 5 s | **decided: 5s (default applied)** |
+| OQ-4 | Wire the remote provider into `/peer-review` as an opt-in backend flag? | user | not in v1 — dispatch helper is validated by its own tests + a documented manual invocation; revisit once the notebook proves useful | **decided: not in v1** |
+| OQ-5 | Where does the ComfyUI hard requirement (§3 non-goals) get recorded so a future spec inherits it? (v3 §5) | orchestrator | it is recorded verbatim in this spec's §3; any future generation spec must cite it in its seed context | **decided: recorded in §3, plus board issue #166** |
