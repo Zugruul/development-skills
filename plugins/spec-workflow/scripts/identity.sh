@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # identity.sh — resolve per-role git author identities + allowed models from config.
 #   identity.sh                  # all roles
-#   identity.sh <role>           # one role (dev|reviewer|orchestrator or any configured key)
+#   identity.sh <role>           # one role (dev|reviewer|orchestrator|peer-reviewer or any configured key)
 #   identity.sh <role> <path>    # resolve the covering identity for a changed path (monorepo routing)
 #   identity.sh --check          # preflight mode: one ok/WARN line, always exit 0
 #   identity.sh on-behalf <author-role> [--committer <role=orchestrator>] [--co <role>]...
@@ -18,8 +18,8 @@
 #   {local}  -> git config user.email local part      (before the last @)
 #   {domain} -> git config user.email domain part     (after the last @)
 # Values without placeholders are used literally. Defaults are ON for
-# dev/reviewer/orchestrator; a role set to null — or delegation.identities
-# set to false — means OFF: that role commits as the human.
+# dev/reviewer/orchestrator/peer-reviewer; a role set to null — or
+# delegation.identities set to false — means OFF: that role commits as the human.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"

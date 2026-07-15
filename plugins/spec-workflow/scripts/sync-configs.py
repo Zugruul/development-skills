@@ -30,6 +30,7 @@ inside that repo's working copy (per-clone resolution — a plugin-repo
 identity roster.py answers for THAT repo, not for this script's own).
 """
 import argparse
+import json
 import os
 import re
 import shlex
@@ -97,6 +98,94 @@ def rule_ensure_feedback_key(value=True):
 
 
 TEXT_RULES = [rule_strip_schema_data_key]  # ensure-feedback-key added with the configured value in main()
+
+
+# ensure-peer-reviewer-identity is not a pure TextRule -- its detect step
+# needs filesystem access (the target repo's .claude/settings.json) to know
+# whether the peer-review plugin is enabled there, so it is threaded through
+# process_repo() directly rather than via TEXT_RULES/apply_text_rules().
+PEER_REVIEWER_NAME_TEMPLATE = "Peer Reviewer (codex) - {name}"
+PEER_REVIEWER_EMAIL_TEMPLATE = "{local}+peer_reviewer@{domain}"
+
+_identities_line_pat = re.compile(r"(?m)^([ \t]+)identities:[ \t]*\n")
+# Intentionally unscoped to the identities: block -- a "peer-reviewer:" key
+# anywhere in project.yaml is not valid YAML shape for anything else this
+# schema defines, so a false-positive match is not a realistic risk here.
+_peer_reviewer_key_pat = re.compile(r"(?m)^[ \t]+peer-reviewer:\s*$")
+
+
+def peer_review_plugin_enabled(repo_root):
+    """True when repo_root/.claude/settings.json's enabledPlugins map has a
+    truthy '<marketplace-agnostic> peer-review@<marketplace>' key."""
+    settings_path = Path(repo_root) / ".claude" / "settings.json"
+    if not settings_path.is_file():
+        return False
+    try:
+        data = json.loads(settings_path.read_text())
+    except (OSError, ValueError):
+        return False
+    enabled = data.get("enabledPlugins")
+    if not isinstance(enabled, dict):
+        return False
+    return any(key.split("@", 1)[0] == "peer-review" and val for key, val in enabled.items())
+
+
+def _find_identities_block(text):
+    """Locate the delegation.identities: block -> (insert_offset, child_indent),
+    or None if no identities: key is present anywhere in the text. Children are
+    lines indented deeper than the identities: line itself; child_indent is the
+    indent of the first child found, else the identities: indent plus 4 spaces."""
+    m = _identities_line_pat.search(text)
+    if not m:
+        return None
+    base_len = len(m.group(1))
+    pos = m.end()
+    child_indent = None
+    while pos < len(text):
+        nl = text.find("\n", pos)
+        line_end = nl + 1 if nl != -1 else len(text)
+        line = text[pos:line_end]
+        if line.strip() == "":
+            pos = line_end
+            continue
+        indent_len = len(line) - len(line.lstrip(" \t"))
+        if indent_len <= base_len:
+            break
+        if child_indent is None:
+            child_indent = line[:indent_len]
+        pos = line_end
+    if child_indent is None:
+        child_indent = m.group(1) + "    "
+    return pos, child_indent
+
+
+def rule_ensure_peer_reviewer_identity(text, repo_root):
+    """-> (new_text, applied: bool). Adds delegation.identities.peer-reviewer
+    (default name/email templates, no models -- matching identity_lib.py's
+    DEFAULTS) only when the target repo has peer-review enabled AND doesn't
+    already declare a peer-reviewer role."""
+    if not peer_review_plugin_enabled(repo_root):
+        return text, False
+    if _peer_reviewer_key_pat.search(text):
+        return text, False
+    block = _find_identities_block(text)
+    if block is not None:
+        insert_at, child_indent = block
+        entry = (
+            f"{child_indent}peer-reviewer:\n"
+            f"{child_indent}    name: {PEER_REVIEWER_NAME_TEMPLATE}\n"
+            f"{child_indent}    email: '{PEER_REVIEWER_EMAIL_TEMPLATE}'\n"
+        )
+        return text[:insert_at] + entry + text[insert_at:], True
+    sep = "" if text.endswith("\n") else "\n"
+    block_text = (
+        f"{sep}delegation:\n"
+        f"    identities:\n"
+        f"        peer-reviewer:\n"
+        f"            name: {PEER_REVIEWER_NAME_TEMPLATE}\n"
+        f"            email: '{PEER_REVIEWER_EMAIL_TEMPLATE}'\n"
+    )
+    return text + block_text, True
 
 
 def sw062_detect(repo_root):
@@ -254,6 +343,9 @@ def process_repo(repo_root, args):
 
     original_text = config_path.read_text()
     new_text, applied = apply_text_rules(original_text, args.feedback_value)
+    new_text, pr_applied = rule_ensure_peer_reviewer_identity(new_text, repo_root)
+    if pr_applied:
+        applied.append("ensure-peer-reviewer-identity")
     sw062_applies = sw062_detect(repo_root)
     if sw062_applies:
         applied.append("sw062-feedbacks-migration")
@@ -291,6 +383,7 @@ def process_repo(repo_root, args):
         work_config_path = work_dir / config_path.relative_to(repo_root)
         work_text = work_config_path.read_text()
         work_new_text, _ = apply_text_rules(work_text, args.feedback_value)
+        work_new_text, _ = rule_ensure_peer_reviewer_identity(work_new_text, work_dir)
         if work_new_text != work_text:
             work_config_path.write_text(work_new_text)
         changed_files = set()
