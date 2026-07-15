@@ -81,6 +81,7 @@ done
 # This array's order is otherwise just the original file's top-to-bottom
 # order, but that one pair is load-bearing -- don't reorder it blindly.
 SECTIONS=(
+    section-plugin-root.sh
     section-syntax.sh
     section-snippet-lint.sh
     section-config.sh
