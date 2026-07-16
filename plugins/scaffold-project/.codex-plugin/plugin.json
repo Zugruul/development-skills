@@ -1,0 +1,36 @@
+{
+    "name": "scaffold-project",
+    "version": "0.1.0",
+    "description": "Scaffolds a new greenfield project's minikube dev-workflow (start/stop/dev/build/port-forward/bootstrap scripts + package.json wiring), with every minikube profile bound explicitly from day one so scaffolded projects never collide on minikube's shared default profile.",
+    "author": {
+        "name": "event-sorcerer",
+        "url": "https://github.com/event-sorcerer"
+    },
+    "skills": "skills",
+    "keywords": [
+        "scaffold",
+        "minikube",
+        "kubernetes",
+        "dev-workflow",
+        "greenfield",
+        "bootstrap"
+    ],
+    "interface": {
+        "displayName": "Scaffold Project",
+        "shortDescription": "Generate a greenfield project's minikube dev-workflow scripts with explicit profile binding.",
+        "longDescription": "Scaffold Project generates a new project's local minikube dev-workflow — start, stop, dev, build, port-forward, and bootstrap scripts plus package.json wiring — from vetted templates. Its central guarantee is that every minikube and kubectl invocation is bound to an explicit per-project profile sourced from a single common.sh variable, fixing a profile-collision bug where scripts silently operated on minikube's shared default profile instead of one tied to the project. The result is a fresh repo whose dev scripts never interfere with an unrelated project's minikube state.",
+        "developerName": "event-sorcerer",
+        "category": "Developer Tools",
+        "capabilities": [
+            "Interactive",
+            "Read files",
+            "Write files",
+            "Run shell scripts"
+        ],
+        "defaultPrompt": [
+            "Scaffold a new project's minikube dev-workflow scripts.",
+            "Set up minikube start/stop/dev/build scripts for this project.",
+            "Bootstrap a fresh repo's local dev-workflow with an explicit minikube profile."
+        ]
+    }
+}

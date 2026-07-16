@@ -1,0 +1,37 @@
+{
+    "name": "spec-workflow",
+    "version": "0.25.0",
+    "description": "Spec-driven autonomous build workflow: a GitHub Project board is the source of truth, tasks are implemented TDD-first by delegated dev agents, a single quality gate decides advancement, and humans steer asynchronously. Per-repo config in .claude/project.yaml (schemaVersion 2).",
+    "author": {
+        "name": "event-sorcerer",
+        "url": "https://github.com/event-sorcerer"
+    },
+    "skills": "skills",
+    "keywords": [
+        "spec-driven",
+        "tdd",
+        "github-projects",
+        "autonomous-agents",
+        "code-review",
+        "workflow"
+    ],
+    "interface": {
+        "displayName": "Spec Workflow",
+        "shortDescription": "Board-driven autonomous TDD build loop with delegated dev and reviewer agents.",
+        "longDescription": "Spec Workflow turns a GitHub Project board into the single source of truth for building software. It picks the next task honoring priority, epic sequencing, dependency guards, and a WIP limit; implements it test-first through delegated dev subagents; enforces a mandatory quality gate; and runs a two-pass review (spec compliance then code quality) before opening a PR or merging. Humans steer asynchronously through issue comments and UI-option pages, while checkpoint/handoff support pauses and resumes the loop at safe boundaries. Everything project-specific lives in the consumer repo's .claude/project.yaml.",
+        "developerName": "event-sorcerer",
+        "category": "Developer Tools",
+        "capabilities": [
+            "Interactive",
+            "Read files",
+            "Write files",
+            "Run shell scripts",
+            "GitHub Projects integration"
+        ],
+        "defaultPrompt": [
+            "Set up this repository for the spec-workflow and seed the board from the spec.",
+            "Work the backlog: pick the next task and implement it test-first to a green gate.",
+            "What should I work on next on the board?"
+        ]
+    }
+}
