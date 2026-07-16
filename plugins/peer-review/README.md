@@ -1,19 +1,39 @@
 # peer-review
 
-Independent, cross-vendor code review of the current diff via OpenAI's `codex` CLI —
-deliberately never Claude reviewing its own diff, since that shares Claude's own blind spots.
-Reviewing a diff sends it to OpenAI's cloud via the user-installed `codex` CLI.
+Independent, cross-vendor code review of the current diff — you pick which provider reviews it
+(OpenAI Codex today, more later), deliberately never letting the orchestrating model review its
+own diff, since that shares its own blind spots. Which model is orchestrating the session never
+determines the reviewer; `/peer-review` always asks. Reviewing a diff sends it to that
+provider's cloud (for OpenAI Codex: via the user-installed `codex` CLI).
 
 ## Skills
 
 | Skill | Purpose |
 |---|---|
-| `peer-review` | The user-facing `/peer-review` command. Wires `diff-source.sh` + `peer-review.sh` together via `run.sh`, states the OpenAI-cloud disclosure plainly, and renders the result. |
+| `peer-review` | The user-facing `/peer-review` command. Asks which provider to review with (`providers.sh` + `AskUserQuestion`), then wires `diff-source.sh` + that provider's model-discovery/review scripts together via `provider-dispatch.sh`, states the cloud disclosure plainly, and renders the result. |
+
+## Provider registry (CDX-053)
+
+`scripts/providers.tsv` is the registry of review providers: one line per provider,
+tab-separated `id`, `display_name`, `list_models_script`, `run_script` — the last two are
+filenames resolved relative to `scripts/`, left empty when that provider's backend isn't built
+yet. It is genuinely data: `providers.sh` and `provider-dispatch.sh` contain zero per-provider
+branching, so adding a provider is a one-line registry edit, never a code change. `PEER_REVIEW_PROVIDERS_FILE`
+overrides the registry path (used by tests to point at fixture registries).
+
+v1 ships two providers:
+
+| id | display name | status |
+|---|---|---|
+| `codex` | OpenAI Codex | fully implemented (`list-models.sh` → `run.sh`) |
+| `claude` | Claude (Anthropic) | registered, backend not yet built (CDX-054) — `provider-dispatch.sh` degrades gracefully: a clear "backend not yet available" message and exit 1, never a crash on a missing script |
 
 ## Scripts
 
 | Script | Purpose |
 |---|---|
+| `scripts/providers.sh` | Reads `providers.tsv` and emits `{"providers":[{"id","display_name","available"}, ...]}` on stdout — the catalog `AskUserQuestion` builds its provider-picker options from. `available` is `false` when a provider's `run_script` column is empty. |
+| `scripts/provider-dispatch.sh` | `provider-dispatch.sh <provider-id> <list-models\|run> [-- <args>]` — looks up `<provider-id>` in the registry and execs its `list_models_script`/`run_script` (by `<stage>`), forwarding args after `--` verbatim. If that column is empty, prints "`<display name>` backend not yet available." and exits 1 instead of executing a missing file. |
 | `scripts/diff-source.sh` | Resolves the diff to review and preflights the `codex` binary. Pure/testable: given repo state + args, prints the diff to stdout, or "nothing to review" + exit 0 on an empty diff (codex is never even checked on that path), or exits 2 with install instructions on stderr if `codex` is missing from `PATH`. |
 | `scripts/peer-review.sh` | Takes a diff-text file, embeds it in a prompt, and invokes `codex exec --sandbox read-only --output-schema schema/peer-review-findings.json`, optionally with `-m <slug>` if `--model <slug>` is given. Renders structured findings under "External review — codex", or falls back to codex's raw stdout verbatim on a schema-parse failure. On a codex auth failure, surfaces codex's stderr verbatim and exits nonzero. |
 | `scripts/list-models.sh` | Discovers codex models available right now (`codex debug models`, filtered to `visibility: list` + `supported_in_api: true`, sorted by `priority` ascending) and emits `{"models": [...], "recommended": "<slug>"}` as JSON. `recommended` is codex's own top-priority model. Exits nonzero (codex missing, discovery failed, or nothing eligible) as a signal to skip model selection entirely, never to block a review. |
@@ -104,3 +124,8 @@ layer (PRV-001); `peer-review.sh` is the `codex exec` invocation + findings-pars
 result. `list-models.sh` + the `--model` flag on `peer-review.sh`/`run.sh` (PRV-004) add
 interactive model selection: the skill discovers available models, presents them via
 `AskUserQuestion` recommending codex's own top-priority pick, and threads the choice through.
+`providers.sh` + `provider-dispatch.sh` (CDX-053) add a provider-selection step *before* model
+selection: the skill now always asks which provider reviews the diff, via a data-only registry
+extensible without touching any script's branching logic. The Codex path is unchanged and still
+reachable end-to-end through the new step. A Claude-backed provider is registered but its
+review backend (CDX-054) is not yet built.

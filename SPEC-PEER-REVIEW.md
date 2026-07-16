@@ -192,6 +192,44 @@ model obeys.
   SYSTEM SHALL skip model selection entirely and invoke `codex exec` with no `-m` flag (the
   pre-PRV-004 default behavior). A discovery failure SHALL NOT block or fail the review.
 
+## §6.12 Provider selection (CDX-053)
+
+- **§6.12.0** THE SYSTEM SHALL NOT auto-detect which model is orchestrating the session to
+  decide the review provider. `/peer-review` SHALL always ask via `AskUserQuestion`, decided by
+  a human, because `/peer-review`'s value proposition (a genuinely independent second opinion)
+  only holds if the reviewer is a different vendor than whoever is orchestrating — a fact that
+  inverts depending on which CLI is driving the session and cannot be reliably inferred from the
+  environment.
+- **§6.12.1** THE SYSTEM SHALL maintain the set of reviewable providers as data (a registry:
+  `plugins/peer-review/scripts/providers.tsv`, one row per provider — id, display name,
+  model-discovery script, review script), never as a hardcoded if/else across skill prose or
+  scripts. Adding a provider SHALL require exactly one new registry row; no script in the
+  `peer-review` plugin may branch on a provider id.
+- **§6.12.2** THE SYSTEM SHALL run provider selection BEFORE diff resolution (§6.1) and before
+  any model discovery (§6.11.0). Provider selection is a registry read only — no external CLI
+  is touched to enumerate providers — so it is strictly cheaper than the diff-emptiness check
+  it precedes, and lets a human signal a provider preference before any other work happens.
+- **§6.12.3** IF exactly one provider is registered THEN THE SYSTEM SHALL use it directly
+  without asking. IF two or more are registered THEN THE SYSTEM SHALL present at most the first
+  4 (registry order) via `AskUserQuestion` — one option per provider, `preview` the display
+  name — regardless of each provider's availability (§6.12.4); an unavailable provider is still
+  a valid, informative choice. This mirrors §6.11.2's model-picker capping/skip-if-1 pattern
+  exactly, so a third provider needs no new selection logic.
+- **§6.12.4** A provider registered with an empty review-script column SHALL be reported as
+  unavailable (`"available": false` in `providers.sh`'s JSON) rather than omitted from the
+  catalog. IF the human selects an unavailable provider THEN THE SYSTEM SHALL stop immediately
+  — before diff resolution, before any model discovery — and show a message naming that
+  provider's display name and stating its backend is not yet available, exiting nonzero. THE
+  SYSTEM SHALL NOT attempt to execute a missing/absent script file.
+- **§6.12.5** `provider-dispatch.sh <provider-id> <list-models|run> [-- <args>]` SHALL resolve a
+  provider's registered script path relative to the registry file's own directory (not the
+  dispatch script's), and SHALL exec it with `<args>` forwarded verbatim, with no
+  provider-specific logic beyond the registry lookup itself.
+- **§6.12.6** Selecting the `codex` provider SHALL reach the exact same `list-models.sh` →
+  `AskUserQuestion` → `run.sh --model` flow already specified by §6.11, with zero behavior
+  change from the pre-CDX-053 direct-invocation form — this is a regression gate, not merely a
+  design goal.
+
 ## §9 Invariants
 
 - A peer review NEVER writes: every codex invocation uses `--sandbox read-only`; the review
