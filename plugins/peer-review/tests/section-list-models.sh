@@ -59,6 +59,15 @@ JSON
 JSON
             exit 0
             ;;
+        empty-slug)
+            cat <<'JSON'
+{"models":[
+  {"slug":"gpt-5.6-sol","display_name":"GPT-5.6-Sol","description":"real","visibility":"list","supported_in_api":true,"priority":2},
+  {"slug":"","display_name":"Bad Entry","description":"empty slug","visibility":"list","supported_in_api":true,"priority":1}
+]}
+JSON
+            exit 0
+            ;;
         boolean-priority)
             cat <<'JSON'
 {"models":[
@@ -108,6 +117,12 @@ out="$(CODEX_DEBUG_MODELS_FIXTURE=missing-description PATH="$FAKECODEX_DIR:$NOBI
 check "missing-description: exits 0 (model still eligible)" "rc=0" "$out"
 check "missing-description: recommended is still the slug" '"recommended": "gpt-5.6-sol"' "$out"
 check "missing-description: slug present in models array" "gpt-5.6-sol" "$out"
+
+# --- an empty slug is rejected, even though it survives priority 1 (recommended) ---
+out="$(CODEX_DEBUG_MODELS_FIXTURE=empty-slug PATH="$FAKECODEX_DIR:$NOBIN" bash "$SCRIPT" 2>&1; echo "rc=$?")"
+check "empty-slug: exits 0 (the valid entry is still eligible)" "rc=0" "$out"
+check "empty-slug: recommended is the entry with a real slug, not the empty one" '"recommended": "gpt-5.6-sol"' "$out"
+check_absent "empty-slug: no empty-string slug entry in the output" '"slug": ""' "$out"
 
 # --- a boolean priority (Python: isinstance(True, int) is True) is rejected, not treated as 0/1 ---
 out="$(CODEX_DEBUG_MODELS_FIXTURE=boolean-priority PATH="$FAKECODEX_DIR:$NOBIN" bash "$SCRIPT" 2>&1; echo "rc=$?")"
