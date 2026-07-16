@@ -201,7 +201,7 @@ specs:
     - No unrelated pre-existing working-tree changes are reverted, overwritten, staged, or committed by this work.
     - Degraded features are documented explicitly; none are silently faked or hidden.
 commands:
-    gate: bash plugins/spec-workflow/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/tests/*.sh && claude plugin validate plugins/spec-workflow
+    gate: bash plugins/spec-workflow/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/scripts/lib/*.sh plugins/spec-workflow/tests/*.sh && claude plugin validate plugins/spec-workflow
 docs:
 -   id: root
     path: README.md
