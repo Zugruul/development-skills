@@ -313,15 +313,19 @@ def cmd_mint(identities, args):
 
     # auto-add links.json entries for [[wikilinks]] in the body (never reset existing)
     links = load_links(identities, args.role)
-    added = 0
+    formed = []
     for target in WIKILINK.findall(body):
         key = "%s->%s" % (args.slug, target.strip())
         if key not in links:
             links[key] = {"weight": DEFAULT_WEIGHT, "fires": 0, "last": None}
-            added += 1
+            formed.append(key)
     save_links(identities, args.role, links)
 
-    print("minted %s/%s (strength %d, %d new link(s))" % (args.role, args.slug, strength, added))
+    emit_event(args.root, {"role": args.role, "type": "NoteMinted", "slug": args.slug, "strength": strength})
+    for key in formed:
+        emit_event(args.root, {"role": args.role, "type": "LinkFormed", "key": key})
+
+    print("minted %s/%s (strength %d, %d new link(s))" % (args.role, args.slug, strength, len(formed)))
 
 
 def _split(csv):
@@ -468,6 +472,13 @@ def cmd_recall(identities, args):
         ev["role"] = role
         log_event(identities, role, ev)
 
+    seeds = sum(1 for e in events if e["event"] == "seed")
+    injected = sum(1 for e in events if e["event"] == "inject")
+    emit_event(args.root, {"role": role, "type": "RecallPerformed",
+                           "seeds": seeds, "injected": injected, "links_fired": len(traversed)})
+    for key in sorted(traversed):
+        emit_event(args.root, {"role": role, "type": "LinkFired", "key": key})
+
     text = "\n".join(out)
     print(text if text else "(no lessons recalled)")
 
@@ -500,6 +511,7 @@ def cmd_graduate(identities, args):
     fm, body = parse_note(open(path, encoding="utf-8").read())
     fm["graduated"] = True
     open(path, "w", encoding="utf-8").write(render_note(fm, body))
+    emit_event(args.root, {"role": args.role, "type": "NoteGraduated", "slug": args.slug})
     print("graduated %s/%s" % (args.role, args.slug))
 
 
@@ -701,6 +713,9 @@ def cmd_consult(identities, args):
     log_event(identities, owner, {"ts": now_iso(), "role": owner, "event": "consult",
                                   "note": slug, "consumer": consumer})
 
+    emit_event(args.root, {"role": owner, "type": "ConsultPerformed",
+                           "slug": slug, "consumer": consumer, "count": count})
+
     print(body.rstrip())
     if count >= 2:
         print("\nRECURRENCE: consider minting into %s's brain (learned-from: %s)" % (consumer, owner))
@@ -755,6 +770,8 @@ def cmd_prune(identities, args):
         for key, _why in candidates:
             links.pop(key, None)
         save_links(identities, role, links)
+        for key, why in candidates:
+            emit_event(args.root, {"role": role, "type": "LinkPruned", "key": key, "reason": why})
         print("removed %d link(s)" % len(candidates))
 
 

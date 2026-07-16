@@ -166,3 +166,182 @@ check "concurrency: line count == N processes"   "LINES=$BE_N"  "$out"
 check "concurrency: every line is valid JSON"    "VALID=$BE_N"  "$out"
 check "concurrency: no lost writes (N unique idx)" "UNIQ=$BE_N" "$out"
 rm -rf "$BE"
+
+echo "== brain-event command wiring (MEM-021: emit from all brain.py commands) =="
+BW_BRAIN="$PLUGIN/scripts/brain.py"
+
+# bw_summary <feed> — print per-type counts + sorted unique key/slug/reason
+# fields so tests can assert the event SEQUENCE (types + counts) a command emits.
+bw_summary() {
+    python3 - "$1" <<'PY'
+import collections, json, os, sys
+feed = sys.argv[1]
+c = collections.Counter()
+keys, slugs, reasons = [], [], []
+if os.path.exists(feed):
+    for ln in open(feed, encoding="utf-8"):
+        ln = ln.strip()
+        if not ln:
+            continue
+        e = json.loads(ln)   # raises on any torn line
+        c[e.get("type")] += 1
+        if "key" in e:
+            keys.append(e["key"])
+        if "slug" in e:
+            slugs.append(e["slug"])
+        if "reason" in e:
+            reasons.append(e["reason"])
+for t in ("NoteMinted", "LinkFormed", "RecallPerformed", "LinkFired",
+          "ConsultPerformed", "NoteGraduated", "LinkPruned"):
+    print("%s=%d" % (t, c.get(t, 0)))
+print("KEYS=" + ",".join(sorted(set(keys))))
+print("SLUGS=" + ",".join(sorted(set(slugs))))
+print("REASONS=" + ",".join(sorted(set(reasons))))
+PY
+}
+
+# ------------------------------------------------------------- mint: NoteMinted + LinkFormed
+# minting a note with 2 genuinely-new wikilinks => exactly 1 NoteMinted + 2 LinkFormed.
+BW="$(mktemp -d)"
+bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
+printf 'alpha body\n\nrel: [[foo]] and [[bar]]\n' \
+    | bw mint dev alpha --tags t --paths "p/**" --source "PR#1" >/dev/null
+out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+check "mint emits exactly one NoteMinted"        "NoteMinted=1"        "$out"
+check "mint emits one LinkFormed per new wikilink" "LinkFormed=2"      "$out"
+check "mint NoteMinted carries the slug"          "SLUGS=alpha"        "$out"
+check "mint LinkFormed carries the new link keys" "KEYS=alpha->bar,alpha->foo" "$out"
+# re-mint the SAME body: no genuinely-new wikilink => +1 NoteMinted, +0 LinkFormed.
+printf 'alpha body\n\nrel: [[foo]] and [[bar]]\n' \
+    | bw mint dev alpha --tags t --paths "p/**" --source "PR#1" >/dev/null
+out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+check "re-mint adds a NoteMinted"                 "NoteMinted=2"       "$out"
+check "re-mint forms no new links (existing keys)" "LinkFormed=2"      "$out"
+rm -rf "$BW"
+
+# ------------------------------------------------------------- recall: RecallPerformed + LinkFired
+# a seeds by path and links to b; recall traverses a->b once => 1 RecallPerformed + 1 LinkFired.
+BW="$(mktemp -d)"
+bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
+printf 'a body\n\nrel: [[b]]\n' | bw mint dev a --tags x --paths "p/**" >/dev/null
+printf 'b body\n'               | bw mint dev b --tags y --paths "q/**" >/dev/null
+: >"$BW/.claude/brain-events.jsonl"   # isolate recall events from the mint events above
+bw recall dev --paths "p/foo" --keywords "" >/dev/null
+out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+check "recall emits exactly one RecallPerformed"  "RecallPerformed=1"  "$out"
+check "recall emits one LinkFired per traversed link" "LinkFired=1"    "$out"
+check "recall LinkFired carries the traversed key" "KEYS=a->b"         "$out"
+# a second recall call fires the same link again (traversed is per-call) => +1 LinkFired.
+: >"$BW/.claude/brain-events.jsonl"
+bw recall dev --paths "p/foo" --keywords "" >/dev/null
+out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+check "2nd recall fires the link again (per-call)" "LinkFired=1"       "$out"
+check "2nd recall emits one RecallPerformed"       "RecallPerformed=1" "$out"
+rm -rf "$BW"
+
+# ------------------------------------------------------------- consult: ConsultPerformed
+BW="$(mktemp -d)"
+bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
+printf 'reviewer rule body\n' | bw mint reviewer verify-tests --tags review --paths "**" >/dev/null
+: >"$BW/.claude/brain-events.jsonl"
+bw consult dev reviewer verify-tests >/dev/null
+out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+check "consult emits exactly one ConsultPerformed" "ConsultPerformed=1" "$out"
+check "consult ConsultPerformed carries the slug"  "SLUGS=verify-tests" "$out"
+rm -rf "$BW"
+
+# ------------------------------------------------------------- graduate: NoteGraduated
+BW="$(mktemp -d)"
+bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
+printf 'gradbody\n' | bw mint dev gradme --tags g --paths "g/**" >/dev/null
+: >"$BW/.claude/brain-events.jsonl"
+bw graduate dev gradme >/dev/null
+out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+check "graduate emits exactly one NoteGraduated"  "NoteGraduated=1"    "$out"
+check "graduate NoteGraduated carries the slug"   "SLUGS=gradme"       "$out"
+# read-only failure: graduating a nonexistent slug must emit NOTHING.
+: >"$BW/.claude/brain-events.jsonl"
+bw graduate dev nope 2>/dev/null || true
+out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+check "graduate on missing slug emits no event"   "NoteGraduated=0"    "$out"
+rm -rf "$BW"
+
+# ------------------------------------------------------------- prune --apply: LinkPruned per removed link
+BW="$(mktemp -d)"
+bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
+# two links whose targets never exist => both are prune candidates (target missing).
+printf 'src body\n\nrel: [[ghost-one]] and [[ghost-two]]\n' \
+    | bw mint dev src --tags s --paths "s/**" >/dev/null
+: >"$BW/.claude/brain-events.jsonl"
+# read-only: prune WITHOUT --apply must emit nothing.
+bw prune dev >/dev/null
+out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+check "prune without --apply emits no LinkPruned" "LinkPruned=0"       "$out"
+# --apply removes both candidate links => exactly 2 LinkPruned.
+: >"$BW/.claude/brain-events.jsonl"
+bw prune dev --apply >/dev/null
+out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+check "prune --apply emits one LinkPruned per removed link" "LinkPruned=2" "$out"
+check "prune LinkPruned carries the removed keys"  "KEYS=src->ghost-one,src->ghost-two" "$out"
+check "prune LinkPruned carries a reason"          "target missing"     "$out"
+rm -rf "$BW"
+
+# ------------------------------------------------------------- byte-identity of legacy outputs (frozen §8.3)
+# The new emit_event calls must NOT alter .activation.jsonl or links.json. Run the
+# SAME sequence twice under frozen time: once with emit_event stubbed to a no-op
+# (== pre-wiring), once real. The two legacy files must be byte-for-byte identical.
+BW_OFF="$(mktemp -d)"; BW_ON="$(mktemp -d)"
+out="$(PLUGIN_SCRIPTS="$PLUGIN/scripts" python3 - "$BW_OFF" "$BW_ON" <<'PY' 2>&1
+import io, os, sys
+sys.path.insert(0, os.environ["PLUGIN_SCRIPTS"])
+import brain
+brain.now_iso = lambda: "2020-01-01T00:00:00Z"
+brain.today = lambda: "2020-01-01"
+real_emit = brain.emit_event
+
+def drive(root):
+    def mint(slug, body, tags, paths):
+        old = sys.stdin
+        sys.stdin = io.StringIO(body)
+        try:
+            brain.main([root, "mint", "dev", slug, "--tags", tags, "--paths", paths])
+        finally:
+            sys.stdin = old
+    mint("a", "a body\n\nrel: [[b]]\n", "x", "p/**")
+    mint("b", "b body\n", "y", "q/**")
+    brain.main([root, "recall", "dev", "--paths", "p/foo", "--keywords", ""])
+
+off, on = sys.argv[1], sys.argv[2]
+brain.emit_event = lambda *a, **k: False   # pre-wiring behaviour
+drive(off)
+brain.emit_event = real_emit               # post-wiring behaviour
+drive(on)
+
+def rd(root, rel):
+    p = os.path.join(root, rel)
+    return open(p, "rb").read() if os.path.exists(p) else b""
+
+al = os.path.join(".claude", "identities", "dev", "brain", ".activation.jsonl")
+lj = os.path.join(".claude", "identities", "dev", "brain", "links.json")
+print("ACTIVATION_IDENTICAL=%s" % (rd(off, al) == rd(on, al)))
+print("LINKS_IDENTICAL=%s" % (rd(off, lj) == rd(on, lj)))
+PY
+)"
+check "byte-identity: .activation.jsonl unchanged by emit" "ACTIVATION_IDENTICAL=True" "$out"
+check "byte-identity: links.json unchanged by emit"        "LINKS_IDENTICAL=True"      "$out"
+rm -rf "$BW_OFF" "$BW_ON"
+
+# ------------------------------------------------------------- feed unavailable breaks nothing (DoD)
+# Make the feed path a DIRECTORY so the append is doomed, while .claude/identities
+# stays writable. The command's real work (note + links.json) must complete, exit 0,
+# and only a warning is printed.
+BW="$(mktemp -d)"
+bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
+mkdir -p "$BW/.claude/brain-events.jsonl"   # feed target unwritable
+out="$(printf 'body\n\nrel: [[x]]\n' | bw mint dev survivor --tags t --paths "p/**" 2>&1)"; rc=$?
+check_rc "feed-unwritable: mint still exits 0"     0 "$rc"
+check "feed-unwritable: mint still reports minted" "minted dev/survivor" "$out"
+check "feed-unwritable: a warning is printed"      "warning"             "$out"
+check_absent "feed-unwritable: no traceback"       "Traceback"           "$out"
+check "feed-unwritable: links.json still written"  "survivor->x" "$(cat "$BW/.claude/identities/dev/brain/links.json")"
+rm -rf "$BW"
