@@ -112,5 +112,14 @@ out="$(PATH="/usr/bin:/bin" bash "$SCRIPT" codex list-models 2>&1; echo "rc=$?")
 check_absent "real registry codex: does not report success without codex on PATH" "rc=0" "$out"
 check "real registry codex: surfaces list-models.sh's own error" "codex not found" "$out"
 
+# --- the real, shipped registry: claude now resolves to the real
+# list-claude-models.sh (CDX-054) -- a STATIC catalog with no CLI
+# dependency, so unlike codex's list-models.sh this succeeds even with
+# neither provider's binary on PATH, proving the wiring reaches the actual
+# CDX-054 script unchanged.
+out="$(PATH="/usr/bin:/bin" bash "$SCRIPT" claude list-models 2>&1; echo "rc=$?")"
+check "real registry claude: exits 0 (static catalog, no CLI needed)" "rc=0" "$out"
+check "real registry claude: recommended model present" "claude-sonnet-5[1m]" "$out"
+
 rm -f "$LOG"
 rm -rf "$FIXDIR"

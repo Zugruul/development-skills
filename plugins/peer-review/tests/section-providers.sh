@@ -9,14 +9,15 @@ echo "== providers.sh (CDX-053) =="
 SCRIPT="$PLUGIN/scripts/providers.sh"
 FIXDIR="$(mktemp -d)"
 
-# --- default (shipped) registry: both v1 providers present, codex available, claude not ---
+# --- default (shipped) registry: both v1 providers present and available (CDX-054 built claude's backend) ---
 out="$(bash "$SCRIPT" 2>&1; echo "rc=$?")"
 check "default registry: exits 0" "rc=0" "$out"
 check "default registry: codex present" '"id": "codex"' "$out"
 check "default registry: codex display name" '"display_name": "OpenAI Codex"' "$out"
 check "default registry: codex marked available" '"id": "codex", "display_name": "OpenAI Codex", "available": true' "$out"
 check "default registry: claude present" '"id": "claude"' "$out"
-check "default registry: claude marked not yet available" '"available": false' "$out"
+check "default registry: claude marked available (CDX-054 backend now built)" \
+    '"id": "claude", "display_name": "Claude (Anthropic)", "available": true' "$out"
 
 # --- fixture registry: a THIRD provider proves the registry, not this script's logic, drives the list ---
 cat >"$FIXDIR/three.tsv" <<'EOF'

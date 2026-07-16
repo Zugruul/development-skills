@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
-# diff-source.sh [--base <ref>|--staged|--pr <n>] -- resolves the diff to
-# review and preflights the `codex` binary (SPEC-PEER-REVIEW.md §6.1-6.4,
-# §6.7). Pure/testable: given repo state + args, prints the diff to stdout
-# and exits 0, or prints "nothing to review" + exits 0 on an empty diff
-# (codex is never even preflighted on that path -- PRV-002 must never be
-# reachable for a no-op review), or exits 2 with an install message on
-# stderr if `codex` is missing from PATH.
+# diff-source.sh [--preflight-bin <name>] [--base <ref>|--staged|--pr <n>]
+# -- resolves the diff to review and preflights a provider's CLI binary
+# (SPEC-PEER-REVIEW.md §6.1-6.4, §6.7; --preflight-bin added CDX-054, the
+# #202/#203 addendum -- this diff-resolution logic is genuinely
+# provider-neutral, only the preflight binary itself varies by provider, so
+# it is a flag here rather than a forked second copy of this script per
+# provider). Pure/testable: given repo state + args, prints the diff to
+# stdout and exits 0, or prints "nothing to review" + exits 0 on an empty
+# diff (the preflight binary is never even checked on that path -- a
+# review script must never be reachable for a no-op review), or exits 2
+# with an install message on stderr if the preflight binary is missing
+# from PATH.
+#
+# --preflight-bin <name> defaults to "codex" (the only provider that
+# existed before CDX-054), preserving every prior caller's behavior
+# unchanged. Callers pass their own provider's CLI binary name -- by
+# convention (see providers.tsv) a provider's registry id IS its CLI
+# binary name on PATH, so callers can pass <provider_id> directly with no
+# separate lookup.
 #
 # Default source: `git diff <mainBranch>...HEAD`, where <mainBranch> comes
 # from the repo-local `git config peer-review.mainBranch` when set, else
@@ -13,15 +25,21 @@
 set -uo pipefail
 
 usage() {
-    echo "usage: diff-source.sh [--base <ref> | --staged | --pr <n>]" >&2
+    echo "usage: diff-source.sh [--preflight-bin <name>] [--base <ref> | --staged | --pr <n>]" >&2
 }
 
 mode="default"
 ref=""
 pr=""
+preflight_bin="codex"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --preflight-bin)
+            [[ $# -ge 2 ]] || { echo "ERROR: --preflight-bin requires a <name> argument" >&2; usage; exit 2; }
+            preflight_bin="$2"
+            shift 2
+            ;;
         --base)
             [[ $# -ge 2 ]] || { echo "ERROR: --base requires a <ref> argument" >&2; usage; exit 2; }
             mode="base"
@@ -76,10 +94,10 @@ if [[ -z "$diff" ]]; then
     exit 0
 fi
 
-if ! command -v codex >/dev/null 2>&1; then
+if ! command -v "$preflight_bin" >/dev/null 2>&1; then
     {
-        echo "ERROR: codex not found on PATH."
-        echo "Install the codex CLI (https://github.com/openai/codex) and ensure it is on PATH, then retry."
+        echo "ERROR: $preflight_bin not found on PATH."
+        echo "Install the $preflight_bin CLI and ensure it is on PATH, then retry."
     } >&2
     exit 2
 fi

@@ -12,4 +12,4 @@
 #
 # Blank lines and lines starting with # are ignored.
 codex	OpenAI Codex	list-models.sh	run.sh
-claude	Claude (Anthropic)
+claude	Claude (Anthropic)	list-claude-models.sh	claude-run.sh

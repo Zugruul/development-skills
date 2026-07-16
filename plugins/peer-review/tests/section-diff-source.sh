@@ -167,4 +167,48 @@ check "stderr-on-success: diff still contains the feature-branch change" "featur
 check_absent "stderr-on-success: stray stderr advice line never pollutes the diff" "fake stderr advice line" "$out"
 rm -rf "$D9" "$FAKEGIT"
 
+# --- --preflight-bin <name>: generalizes the preflight check away from a
+# hardcoded "codex" (CDX-054 addendum) -- default (no flag) still preflights
+# codex, unchanged from every test above; these cover the new flag itself.
+FAKECLAUDE="$(mktemp -d)"
+cat >"$FAKECLAUDE/claude" <<'EOF'
+#!/usr/bin/env bash
+echo "fake claude: should never be invoked by diff-source.sh" >&2
+exit 1
+EOF
+chmod +x "$FAKECLAUDE/claude"
+
+# --preflight-bin claude, claude present (codex absent) -> succeeds, no "codex not found"
+D10="$(mkrepo)"
+out="$(cd "$D10" && PATH="$FAKECLAUDE:$NOBIN" bash "$SCRIPT" --preflight-bin claude 2>&1; echo "rc=$?")"
+check "--preflight-bin claude (present): exits 0" "rc=0" "$out"
+check "--preflight-bin claude (present): diff contains the feature-branch change" "feature.txt" "$out"
+check_absent "--preflight-bin claude (present): never complains about codex" "codex not found" "$out"
+rm -rf "$D10"
+
+# --preflight-bin claude, claude ALSO absent -> nonzero exit, error names claude, not codex
+D11="$(mkrepo)"
+out="$(cd "$D11" && PATH="$NOBIN" bash "$SCRIPT" --preflight-bin claude 2>&1; echo "rc=$?")"
+check_absent "--preflight-bin claude (missing): nonzero exit (not rc=0)" "rc=0" "$out"
+check "--preflight-bin claude (missing): mentions claude" "claude" "$out"
+check "--preflight-bin claude (missing): install instructions mention claude" "Install the claude CLI" "$out"
+check_absent "--preflight-bin claude (missing): does not claim codex is missing" "codex not found" "$out"
+rm -rf "$D11"
+
+# --preflight-bin claude, empty diff -> still short-circuits before any preflight (neither bin present)
+D12="$(mkrepo)"
+git -C "$D12" -c user.name=t -c user.email=t@t.t checkout -q main
+out="$(cd "$D12" && PATH="$NOBIN" bash "$SCRIPT" --preflight-bin claude 2>&1; echo "rc=$?")"
+check "--preflight-bin claude, empty diff: exits 0" "rc=0" "$out"
+check "--preflight-bin claude, empty diff: reports nothing to review" "nothing to review" "$out"
+rm -rf "$D12"
+
+# default (no --preflight-bin): still preflights codex, unchanged behavior
+D13="$(mkrepo)"
+out="$(cd "$D13" && PATH="$FAKECLAUDE:$NOBIN" bash "$SCRIPT" 2>&1; echo "rc=$?")"
+check_absent "default preflight (no flag): still requires codex, not satisfied by claude alone" "rc=0" "$out"
+check "default preflight (no flag): mentions codex" "codex" "$out"
+rm -rf "$D13"
+
+rm -rf "$FAKECLAUDE"
 rm -rf "$FAKECODEX"
