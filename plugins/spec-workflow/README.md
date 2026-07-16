@@ -109,6 +109,31 @@ on the loop itself), not a bug; it isn't deduped against step 8's emission.
 - **Iterative UI mode** (default ON) — UI decisions go to the human via `docs/ui-options/<task-id>.html` (favorite selector + likeable aspect keywords + notes; "Copy selection" produces the comment to paste). Disable per-clone with `touch .claude/ITERATIVE_UI_OFF` or permanently with `methodology.iterativeUI: false`.
 - **Checkpoint flag** — `touch .claude/CHECKPOINT` pauses the loop at the next safe boundary with a handoff.
 
+## Local-state manifest
+
+`scripts/local-state.manifest` is the single source of truth (SPEC-MEMORY.md §7.1/§7.4/§9.2) for every path the plugin writes at runtime, each tagged `ignore` (local state — gitignored, never committed) or `track` (shared memory — committed alongside code). Read it — never re-hardcode these paths — via `scripts/lib/local-state.sh` (bash 3.2: `spec_workflow_local_state_paths ignore|track`, `spec_workflow_local_state_policy <path>`) or `scripts/lib/local_state.py` (python stdlib: `paths()`, `policy_of()`). `setup-project`'s Phase 5 gitignore step reads its list straight from here. The table below is kept in sync with the manifest by a test (`section-local-state-manifest.sh`) — edit the manifest, not this table.
+
+| Policy | Path |
+| --- | --- |
+| ignore | `.claude/CHECKPOINT` |
+| ignore | `.claude/ITERATIVE_UI_OFF` |
+| ignore | `.claude/ui-hub/` |
+| ignore | `.claude/gate-pass` |
+| ignore | `.claude/telemetry.jsonl` |
+| ignore | `.claude/lessons.jsonl` |
+| ignore | `.claude/board-queue.jsonl` |
+| ignore | `.claude/board-cache.json` |
+| ignore | `.claude/neural-view/` |
+| ignore | `.claude/merge-requirements.json` |
+| ignore | `.claude/.flush*` |
+| ignore | `.claude/worktrees/` |
+| ignore | `.claude/identities/*/brain/index.sqlite3` |
+| track | `.claude/feedbacks/` |
+| track | `.claude/identities/` |
+| track | `.claude/brain-events.jsonl` |
+| track | `.claude/.neural-network` |
+| track | `.claude/project.yaml` |
+
 ## Telemetry
 
 `.claude/telemetry.jsonl` (gitignored) is the loop's own performance record — SPEC §8.4. `board.sh move` and `gate.sh` append events automatically (best-effort: a write failure, e.g. a read-only `.claude`, never fails the move or the gate); `build-next` records `review-round`/`task-close` events at the orchestrator level (see its SKILL.md). Four record kinds, one JSON object per line: `transition` (`task`/`from`/`to`/`ts` — `from` is not tracked by `board.sh`, so metrics only uses `to`+`ts`), `gate` (`task`/`ok`/`ts` — `task` is the current branch name, since `gate.sh` has no task id in scope), `review-round` (`task`/`round`/`verdict`/`ts`), `task-close` (`task`/`estimate`/`ts`). `board.sh metrics` (→ `telemetry.py <root> metrics`) reports cycle time per status, first-try gate rate, rework (multi-round review) rate, and a per-task estimate-vs-actual listing; malformed lines are skipped and counted, never fatal. See `scripts/telemetry.py`'s module docstring for the exact schema.

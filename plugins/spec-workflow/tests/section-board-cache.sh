@@ -155,7 +155,7 @@ rm -rf "$BC" "$CGH" "$LOG" "$LISTCC" "$EDITCC"
 
 echo "== .gitignore + setup-project cover .claude/board-cache.json (#78) =="
 check "repo .gitignore covers .claude/board-cache.json" ".claude/board-cache.json" "$(cat "$(dirname "$(dirname "$PLUGIN")")/.gitignore")"
-check "setup-project SKILL.md gitignores .claude/board-cache.json" ".claude/board-cache.json" "$(cat "$PLUGIN/skills/setup-project/SKILL.md")"
+check "local-state manifest ignores .claude/board-cache.json" ".claude/board-cache.json" "$(bash "$PLUGIN/scripts/lib/local-state.sh" ignore)"
 
 echo "== plugin README documents the item-id cache (#78) =="
 README="$(cat "$PLUGIN/README.md" 2>/dev/null)"

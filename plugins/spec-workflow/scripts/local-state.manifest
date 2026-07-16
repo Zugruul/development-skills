@@ -1,0 +1,29 @@
+# spec-workflow local-state manifest — the single canonical list of every path
+# the plugin writes at runtime, with a policy. SOURCE OF TRUTH; do not copy this
+# list anywhere else (SPEC-MEMORY.md §7.1, §7.4, §9.2).
+#
+# Format: one record per line, "<policy><TAB><path>" (a single literal tab).
+#   ignore = local state — gitignored, never committed.
+#   track  = shared memory — committed alongside code.
+# Lines beginning with '#' and blank lines are ignored.
+#
+# Readers (never re-hardcode these paths): scripts/lib/local-state.sh (bash 3.2)
+# and scripts/lib/local_state.py (python stdlib).
+ignore	.claude/CHECKPOINT
+ignore	.claude/ITERATIVE_UI_OFF
+ignore	.claude/ui-hub/
+ignore	.claude/gate-pass
+ignore	.claude/telemetry.jsonl
+ignore	.claude/lessons.jsonl
+ignore	.claude/board-queue.jsonl
+ignore	.claude/board-cache.json
+ignore	.claude/neural-view/
+ignore	.claude/merge-requirements.json
+ignore	.claude/.flush*
+ignore	.claude/worktrees/
+ignore	.claude/identities/*/brain/index.sqlite3
+track	.claude/feedbacks/
+track	.claude/identities/
+track	.claude/brain-events.jsonl
+track	.claude/.neural-network
+track	.claude/project.yaml

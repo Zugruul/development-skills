@@ -87,6 +87,6 @@ check "lessons-fingerprint: move allowed with a pre-existing, untouched lessons 
 rm -rf "$T3P"
 
 echo "== setup-project: .gitignore covers the lessons feed =="
-check "setup-project SKILL.md gitignores .claude/lessons.jsonl" '.claude/lessons.jsonl' "$(cat "$PLUGIN/skills/setup-project/SKILL.md")"
+check "local-state manifest ignores .claude/lessons.jsonl" '.claude/lessons.jsonl' "$(bash "$PLUGIN/scripts/lib/local-state.sh" ignore)"
 check "repo .gitignore covers .claude/lessons.jsonl" '.claude/lessons.jsonl' "$(cat "$(dirname "$(dirname "$PLUGIN")")/.gitignore")"
 

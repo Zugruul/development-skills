@@ -905,7 +905,7 @@ fi
 rm -rf "$BQ" "$FGH" "$SYNC" "$LOG" "$LISTCC" "$EDITCC" "$OUT" "$LOG2" "$EDITCC2"
 
 echo "== setup-project: .gitignore covers the board-queue feed =="
-check "setup-project SKILL.md gitignores .claude/board-queue.jsonl" '.claude/board-queue.jsonl' "$(cat "$PLUGIN/skills/setup-project/SKILL.md")"
+check "local-state manifest ignores .claude/board-queue.jsonl" '.claude/board-queue.jsonl' "$(bash "$PLUGIN/scripts/lib/local-state.sh" ignore)"
 check "repo .gitignore covers .claude/board-queue.jsonl" '.claude/board-queue.jsonl' "$(cat "$(dirname "$(dirname "$PLUGIN")")/.gitignore")"
 
 echo "== build-next SKILL.md: rate-limited board is not a stop condition (#77) =="

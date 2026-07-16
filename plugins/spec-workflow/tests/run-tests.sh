@@ -128,6 +128,7 @@ SECTIONS=(
     section-gh-failures-corpus.sh
     section-runner-filter.sh
     section-section-guard.sh
+    section-local-state-manifest.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then
