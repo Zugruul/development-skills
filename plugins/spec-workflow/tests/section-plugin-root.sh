@@ -152,5 +152,54 @@ print(resolve_plugin_root())
 check_rc "python: invalid SPEC_WORKFLOW_PLUGIN_ROOT (nonexistent dir) raises" 1 "$rc"
 check "python: invalid-override error names the bad path" "$_PR_INVALID" "$out"
 
-rm -rf "$_PR_ELSEWHERE" "$_PR_INSTALLED_BASE" "$_PR_SPACED_BASE" \
+rc=0
+out="$(cd "$_PR_ELSEWHERE" && SPEC_WORKFLOW_PLUGIN_ROOT="$_PR_ELSEWHERE" python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+from plugin_root import resolve_plugin_root
+print(resolve_plugin_root())
+' "$RESOLVER_PY_DIR" 2>&1)" || rc=$?
+check_rc "python: override pointing at an existing dir WITHOUT the sentinel raises" 1 "$rc"
+
+# --- scenario f (review round 1, code-quality finding #1): a symlink CYCLE
+# in the resolver's own on-disk location must fail loudly, not hang. The
+# manual single-hop symlink walk in _spec_workflow_pr_resolver_dir uses
+# `[[ -L ]]`/`readlink` (lstat + one-shot readlink, NOT a kernel open()/stat()
+# that follows the full chain), so it gets none of the kernel's own ELOOP
+# protection -- an unbounded version of that loop spins forever on a genuine
+# a.sh<->b.sh cycle. A real `source` of such a file can never itself succeed
+# (the kernel WOULD ELOOP on open()), so the only way to exercise the buggy
+# walk is to hand the helper a path into the cycle directly -- exactly what a
+# BASH_SOURCE[0] value would look like if the resolver script's own location
+# were ever reached through such a cycle. `_pr_bounded` runs the probe in a
+# background subshell with an independent watcher that SIGKILLs it if it
+# outlives the wall-clock cap, so a regression here fails this test instead
+# of hanging the whole suite (no `timeout`/`gtimeout` binary is assumed).
+_pr_bounded() { # secs cmd...
+    local secs="$1"; shift
+    "$@" &
+    local pid=$!
+    ( sleep "$secs"; kill -9 "$pid" 2>/dev/null ) &
+    local watcher=$!
+    wait "$pid" 2>/dev/null; local rc=$?
+    kill "$watcher" 2>/dev/null; wait "$watcher" 2>/dev/null
+    return $rc
+}
+
+_PR_CYCLE="$(_pr_realdir "$(mktemp -d)")"
+ln -s b.sh "$_PR_CYCLE/a.sh"
+ln -s a.sh "$_PR_CYCLE/b.sh"
+
+_PR_CYCLE_OUT="$(mktemp)"
+_pr_bounded 5 bash -c '
+    source "$1"
+    _spec_workflow_pr_resolver_dir "$2"
+' _ "$RESOLVER_SH" "$_PR_CYCLE/a.sh" >"$_PR_CYCLE_OUT" 2>&1
+cyc_rc=$?
+cyc_out="$(cat "$_PR_CYCLE_OUT")"
+rm -f "$_PR_CYCLE_OUT"
+check_rc "bash: symlink cycle fails loud within the wall-clock cap (not SIGKILLed)" 1 "$cyc_rc"
+check "bash: symlink cycle error mentions a symlink loop/limit" "symlink" "$cyc_out"
+
+rm -rf "$_PR_ELSEWHERE" "$_PR_INSTALLED_BASE" "$_PR_SPACED_BASE" "$_PR_CYCLE" \
     "$(dirname "$_PR_FAKE_ROOT")" "$(dirname "$_PR_FAKE_ROOT2")"
