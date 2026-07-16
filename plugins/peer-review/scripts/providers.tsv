@@ -1,0 +1,15 @@
+# providers.tsv -- the /peer-review provider registry (CDX-053,
+# SPEC-PEER-REVIEW.md §6.12). One provider per line, tab-separated:
+#   id \t display_name \t list_models_script \t run_script
+# list_models_script/run_script are filenames resolved relative to this
+# file's own directory (plugins/peer-review/scripts/). Leave a script column
+# empty if that provider's backend isn't implemented yet -- providers.sh
+# reports it as unavailable, provider-dispatch.sh degrades gracefully
+# instead of executing a missing file.
+#
+# Adding a provider is exactly one line here -- no script in this plugin
+# branches on a provider id.
+#
+# Blank lines and lines starting with # are ignored.
+codex	OpenAI Codex	list-models.sh	run.sh
+claude	Claude (Anthropic)
