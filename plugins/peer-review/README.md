@@ -4,12 +4,19 @@ Independent, cross-vendor code review of the current diff via OpenAI's `codex` C
 deliberately never Claude reviewing its own diff, since that shares Claude's own blind spots.
 Reviewing a diff sends it to OpenAI's cloud via the user-installed `codex` CLI.
 
+## Skills
+
+| Skill | Purpose |
+|---|---|
+| `peer-review` | The user-facing `/peer-review` command. Wires `diff-source.sh` + `peer-review.sh` together via `run.sh`, states the OpenAI-cloud disclosure plainly, and renders the result. |
+
 ## Scripts
 
 | Script | Purpose |
 |---|---|
 | `scripts/diff-source.sh` | Resolves the diff to review and preflights the `codex` binary. Pure/testable: given repo state + args, prints the diff to stdout, or "nothing to review" + exit 0 on an empty diff (codex is never even checked on that path), or exits 2 with install instructions on stderr if `codex` is missing from `PATH`. |
 | `scripts/peer-review.sh` | Takes a diff-text file, embeds it in a prompt, and invokes `codex exec --sandbox read-only --output-schema schema/peer-review-findings.json`. Renders structured findings under "External review — codex", or falls back to codex's raw stdout verbatim on a schema-parse failure. On a codex auth failure, surfaces codex's stderr verbatim and exits nonzero. |
+| `scripts/run.sh` | The orchestration layer the `peer-review` skill invokes: translates `[--base <ref> \| --staged \| <pr-number>]` into `diff-source.sh`'s flags, and — only when it produced actual diff text rather than the "nothing to review" sentinel — hands that diff to `peer-review.sh` and prints its output. Propagates both scripts' exit codes and stderr verbatim. |
 
 ### `diff-source.sh` usage
 
@@ -66,7 +73,8 @@ bash plugins/peer-review/tests/run-tests.sh
 
 ## Status
 
-Epic 0 (`/peer-review` skill) is in progress. `diff-source.sh` is the diff-resolution +
-preflight layer (PRV-001); `peer-review.sh` is the `codex exec` invocation + findings-parsing
-layer (PRV-002). The user-facing `/peer-review` skill that wires the two together (argument
-parsing, the OpenAI-cloud disclosure) is a follow-up task (PRV-003) not yet built.
+Epic 0 (`/peer-review` skill) is complete. `diff-source.sh` is the diff-resolution + preflight
+layer (PRV-001); `peer-review.sh` is the `codex exec` invocation + findings-parsing layer
+(PRV-002); `run.sh` + `skills/peer-review/SKILL.md` are the user-facing `/peer-review` command
+(PRV-003) that wires the two together, states the OpenAI-cloud disclosure, and renders the
+result.

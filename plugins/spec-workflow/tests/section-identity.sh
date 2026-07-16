@@ -12,7 +12,9 @@ run_id() { (cd "$T3" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null 
 check "default reviewer email plus-addressed" "test.user+reviewer_agent@example.com" "$(run_id reviewer)"
 check "default reviewer name templated" "Reviewer Agent - Test User" "$(run_id reviewer)"
 check "flags line quoted" '-c user.name="Reviewer Agent - Test User"' "$(run_id reviewer)"
-check "check mode resolvable" "identities ok: 3 role(s)" "$(run_id --check)"
+check "default peer-reviewer email plus-addressed" "test.user+peer_reviewer@example.com" "$(run_id peer-reviewer)"
+check "default peer-reviewer name templated" "Peer Reviewer (codex) - Test User" "$(run_id peer-reviewer)"
+check "check mode resolvable" "identities ok: 4 role(s)" "$(run_id --check)"
 mkdir -p "$T3/.claude"
 echo '{"delegation":{"identities":{"dev":null,"reviewer":{"name":"{name} - reviewer"}}}}' >"$T3/.claude/project.json"
 check "null role reports OFF" "OFF (identities.dev is null" "$(run_id dev)"
@@ -48,6 +50,7 @@ rid2() { (cd "$IT2" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null b
 check "default dev models" "models: claude-sonnet-5" "$(rid2 dev)"
 check "default reviewer models" "models: claude-sonnet-5, claude-sonnet-5[1m]" "$(rid2 reviewer)"
 check_absent "orchestrator has no models default" "models:" "$(rid2 orchestrator)"
+check_absent "peer-reviewer has no models default" "models:" "$(rid2 peer-reviewer)"
 rm -rf "$IT2"
 
 echo "== identity: on-behalf recipe =="

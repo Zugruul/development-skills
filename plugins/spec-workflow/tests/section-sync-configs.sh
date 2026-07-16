@@ -99,6 +99,39 @@ $schema: https://raw.githubusercontent.com/event-sorcerer/development-skills/mai
     git -C "$dir/work" push -q origin main
 }
 
+# _sc_write_settings <dir> <enabled:yes|no> -- writes .claude/settings.json
+# with enabledPlugins.peer-review@development-skills true (yes) or omitted (no).
+_sc_write_settings() {
+    local dir="$1" enabled="$2"
+    if [[ "$enabled" == "yes" ]]; then
+        cat <<'EOF' > "$dir/.claude/settings.json"
+{"enabledPlugins": {"peer-review@development-skills": true}}
+EOF
+    else
+        cat <<'EOF' > "$dir/.claude/settings.json"
+{"enabledPlugins": {"frontend-design@development-skills": true}}
+EOF
+    fi
+}
+
+# _sc_base_yaml_with_delegation <feedback:true|false> -- _sc_base_yaml() plus
+# a delegation.identities block (dev + reviewer, no peer-reviewer) matching
+# this repo's own project.yaml shape.
+_sc_base_yaml_with_delegation() {
+    local feedback="$1"
+    _sc_base_yaml "$feedback"
+    cat <<'EOF'
+delegation:
+    identities:
+        dev:
+            name: Dev Agent - {name}
+            email: '{local}+dev_agent@{domain}'
+        reviewer:
+            name: Reviewer Agent - {name}
+            email: '{local}+reviewer_agent@{domain}'
+EOF
+}
+
 _sc_head() { git -C "$1" rev-parse HEAD; }
 _sc_origin_project_yaml() { # dir -> project.yaml content as pushed to origin's main
     local tmp
@@ -264,3 +297,110 @@ print(0 if m.sw062_detect(Path(repo_arg)) else 1)
 PY
 )"
 rm -rf "$SCG"
+
+echo "== sync-configs.py: ensure-peer-reviewer-identity, plugin disabled -> no-op (case h) =="
+SCH="$(mktemp -d)"
+_sc_mkrepo "$SCH/r" true no
+_sc_write_settings "$SCH/r/work" no
+git -C "$SCH/r/work" add -A
+git -C "$SCH/r/work" commit -q -m "add settings.json (peer-review not enabled)"
+git -C "$SCH/r/work" push -q origin main
+out="$(python3 "$SYNCCFG" --repo "$SCH/r/work" --apply 2>&1)"
+check "case h: reports no-op" "route: no-op" "$out"
+check_absent "case h: rule not applied" "ensure-peer-reviewer-identity" "$out"
+check_absent "case h: peer-reviewer not written" "peer-reviewer:" "$(cat "$SCH/r/work/.claude/project.yaml")"
+rm -rf "$SCH"
+
+echo "== sync-configs.py: ensure-peer-reviewer-identity, plugin enabled -> adds role to existing identities block (case i) =="
+SCI="$(mktemp -d)"
+mkdir -p "$SCI/r"
+git init -q --bare "$SCI/r/origin.git"
+git init -q -b main "$SCI/r/work"
+git -C "$SCI/r/work" config user.name "Fixture Human"
+git -C "$SCI/r/work" config user.email "fixture@example.com"
+git -C "$SCI/r/work" remote add origin "$SCI/r/origin.git"
+mkdir -p "$SCI/r/work/.claude"
+: > "$SCI/r/work/.claude/.neural-network"
+_sc_base_yaml_with_delegation true > "$SCI/r/work/.claude/project.yaml"
+_sc_write_settings "$SCI/r/work" yes
+git -C "$SCI/r/work" add -A
+git -C "$SCI/r/work" commit -q -m init
+git -C "$SCI/r/work" push -q origin main
+out="$(python3 "$SYNCCFG" --repo "$SCI/r/work" --apply 2>&1)"
+check "case i: rule applied" "ensure-peer-reviewer-identity" "$out"
+check "case i: post-validate ran" "validate post: VALID" "$out"
+check "case i: reports push ok" "push: ok" "$out"
+origin_yaml="$(_sc_origin_project_yaml "$SCI/r")"
+check "case i: origin's main now has peer-reviewer role" "peer-reviewer:" "$origin_yaml"
+check "case i: origin's main has the templated name" "Peer Reviewer (codex) - {name}" "$origin_yaml"
+check "case i: origin's main has the templated email" "{local}+peer_reviewer@{domain}" "$origin_yaml"
+check "case i: existing dev role untouched" "Dev Agent - {name}" "$origin_yaml"
+rm -rf "$SCI"
+
+echo "== sync-configs.py: ensure-peer-reviewer-identity, no delegation block at all -> appends a fresh one (case j) =="
+SCJ="$(mktemp -d)"
+mkdir -p "$SCJ/r"
+git init -q --bare "$SCJ/r/origin.git"
+git init -q -b main "$SCJ/r/work"
+git -C "$SCJ/r/work" config user.name "Fixture Human"
+git -C "$SCJ/r/work" config user.email "fixture@example.com"
+git -C "$SCJ/r/work" remote add origin "$SCJ/r/origin.git"
+mkdir -p "$SCJ/r/work/.claude"
+: > "$SCJ/r/work/.claude/.neural-network"
+_sc_base_yaml true > "$SCJ/r/work/.claude/project.yaml"
+_sc_write_settings "$SCJ/r/work" yes
+git -C "$SCJ/r/work" add -A
+git -C "$SCJ/r/work" commit -q -m init
+git -C "$SCJ/r/work" push -q origin main
+out="$(python3 "$SYNCCFG" --repo "$SCJ/r/work" --apply 2>&1)"
+check "case j: rule applied" "ensure-peer-reviewer-identity" "$out"
+check "case j: post-validate ran" "validate post: VALID" "$out"
+origin_yaml="$(_sc_origin_project_yaml "$SCJ/r")"
+check "case j: fresh delegation.identities.peer-reviewer written" "peer-reviewer:" "$origin_yaml"
+rm -rf "$SCJ"
+
+echo "== sync-configs.py: ensure-peer-reviewer-identity, already synced -> no-op (case k) =="
+SCK="$(mktemp -d)"
+mkdir -p "$SCK/r"
+git init -q --bare "$SCK/r/origin.git"
+git init -q -b main "$SCK/r/work"
+git -C "$SCK/r/work" config user.name "Fixture Human"
+git -C "$SCK/r/work" config user.email "fixture@example.com"
+git -C "$SCK/r/work" remote add origin "$SCK/r/origin.git"
+mkdir -p "$SCK/r/work/.claude"
+: > "$SCK/r/work/.claude/.neural-network"
+_sc_base_yaml_with_delegation true > "$SCK/r/work/.claude/project.yaml"
+printf '        peer-reviewer:\n            name: Peer Reviewer (codex) - {name}\n            email: '"'"'{local}+peer_reviewer@{domain}'"'"'\n' >> "$SCK/r/work/.claude/project.yaml"
+_sc_write_settings "$SCK/r/work" yes
+git -C "$SCK/r/work" add -A
+git -C "$SCK/r/work" commit -q -m init
+git -C "$SCK/r/work" push -q origin main
+before_head="$(_sc_head "$SCK/r/work")"
+out="$(python3 "$SYNCCFG" --repo "$SCK/r/work" --apply 2>&1)"
+check "case k: reports no-op" "route: no-op" "$out"
+after_head="$(_sc_head "$SCK/r/work")"
+check_rc "case k: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
+rm -rf "$SCK"
+
+echo "== sync-configs.py: ensure-peer-reviewer-identity, dry-run does not write (case l) =="
+SCL="$(mktemp -d)"
+mkdir -p "$SCL/r"
+git init -q --bare "$SCL/r/origin.git"
+git init -q -b main "$SCL/r/work"
+git -C "$SCL/r/work" config user.name "Fixture Human"
+git -C "$SCL/r/work" config user.email "fixture@example.com"
+git -C "$SCL/r/work" remote add origin "$SCL/r/origin.git"
+mkdir -p "$SCL/r/work/.claude"
+: > "$SCL/r/work/.claude/.neural-network"
+_sc_base_yaml_with_delegation true > "$SCL/r/work/.claude/project.yaml"
+_sc_write_settings "$SCL/r/work" yes
+git -C "$SCL/r/work" add -A
+git -C "$SCL/r/work" commit -q -m init
+git -C "$SCL/r/work" push -q origin main
+before="$(cat "$SCL/r/work/.claude/project.yaml")"
+out="$(python3 "$SYNCCFG" --repo "$SCL/r/work" 2>&1)"
+check "case l: reports dry-run" "dry-run" "$out"
+check "case l: names the rule that would apply" "ensure-peer-reviewer-identity" "$out"
+after="$(cat "$SCL/r/work/.claude/project.yaml")"
+check_rc "case l: file untouched" 0 "$([[ "$before" == "$after" ]] && echo 0 || echo 1)"
+rm -rf "$SCL"
