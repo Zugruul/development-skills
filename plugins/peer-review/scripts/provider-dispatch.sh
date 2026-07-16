@@ -53,26 +53,45 @@ fi
 
 REGDIR="$(cd "$(dirname "$REGISTRY")" && pwd)"
 
-found=0
-display_name=""
-script=""
-while IFS=$'\t' read -r id dname list_script run_script || [[ -n "$id" ]]; do
-    [[ -n "$id" && "$id" != \#* ]] || continue
-    if [[ "$id" == "$PROVIDER_ID" ]]; then
-        found=1
-        display_name="${dname:-$id}"
-        if [[ "$STAGE" == "list-models" ]]; then
-            script="$list_script"
-        else
-            script="$run_script"
-        fi
-        break
-    fi
-done <"$REGISTRY"
+# Row lookup is done in Python, not bash's `IFS=$'\t' read`: bash treats tab
+# as "IFS whitespace" even when it's the sole IFS character, so adjacent
+# tabs (an empty middle column, e.g. a row with an empty list_models_script
+# but a populated run_script) get collapsed instead of producing an empty
+# field -- silently shifting run_script's value into the list_script slot.
+# \x1f (unit separator) is not IFS whitespace, so splitting the single-line
+# result on it below preserves empty fields exactly.
+row="$(python3 -c '
+import sys
 
-if [[ "$found" -ne 1 ]]; then
+path, target = sys.argv[1], sys.argv[2]
+with open(path, "r", encoding="utf-8") as f:
+    for line in f:
+        line = line.rstrip("\n")
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        fields = line.split("\t")
+        provider_id = fields[0].strip() if fields else ""
+        if not provider_id or provider_id != target:
+            continue
+        display_name = fields[1].strip() if len(fields) > 1 and fields[1].strip() else provider_id
+        list_script = fields[2].strip() if len(fields) > 2 else ""
+        run_script = fields[3].strip() if len(fields) > 3 else ""
+        sys.stdout.write("\x1f".join([display_name, list_script, run_script]))
+        sys.exit(0)
+sys.exit(1)
+' "$REGISTRY" "$PROVIDER_ID")"
+lookup_rc=$?
+
+if [[ "$lookup_rc" -ne 0 ]]; then
     echo "ERROR: unknown provider: $PROVIDER_ID" >&2
     exit 2
+fi
+
+IFS=$'\x1f' read -r display_name list_script run_script <<<"$row"
+if [[ "$STAGE" == "list-models" ]]; then
+    script="$list_script"
+else
+    script="$run_script"
 fi
 
 if [[ -z "$script" ]]; then
