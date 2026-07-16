@@ -218,6 +218,29 @@ to reflect merged reality.
 `/peer-review` under either host, without reading source.
 **DoD:** suite green.
 
+### CDX-056 · `/peer-review` auto-mode provider+model selection — P1 · 3 pts · §11.2 (new,
+2026-07-16 amendment to CDX-053)
+**Sequencing: do not start until CDX-054 (#203) and CDX-055 (#204) are both merged** — this
+task edits the same `SKILL.md` sections CDX-054 actively touches.
+CDX-053's shipped design ("never auto-detected, always ask via `AskUserQuestion`") breaks down
+in autonomous/auto mode, where stopping to ask defeats the point of running unattended — this
+repo's own `build-next` already has the matching convention ("Decide, don't ask. In
+autonomous/auto mode the orchestrator decides itself..."). No bash-detectable signal exists for
+"am I in auto mode" — it's purely a `SKILL.md` prose amendment (the orchestrating agent notices
+it from its own session context, same as `build-next` already does). Adds an auto-mode
+carve-out at both `AskUserQuestion` points (provider pick, model pick): the orchestrator
+decides fresh every call (no persisted preference), picking a provider whose vendor differs
+from its own (self-knowledge, not env-var sniffing) and a model matched to the diff's actual
+size/complexity (reusing `implement-task`'s existing "never reflexively the most powerful"
+judgment language) — never both silently, never a fixed default.
+**Acceptance:** `SKILL.md` states the carve-out with concrete judgment guidance at both
+decision points; the interactive `AskUserQuestion` path is completely unchanged (additive
+only); single-provider-per-review stays unchanged (explicitly not building multi-provider
+dispatch); no persisted/remembered preference across invocations (explicitly rejected — decide
+fresh each call).
+**DoD:** suite green (likely no new tests — this is prose/judgment, not testable bash logic,
+but don't force-skip real testable logic if any genuinely emerges during implementation).
+
 ### CDX-052 · Standing dual-host compliance checklist — P2 · 2 pts · §11.3
 Add a short, linkable checklist (e.g. a `references/` doc or a section in `craft-spec`/`seed-board`) that any future new skill or plugin gets checked against §7–§9 before being considered dual-host complete, so this isn't a one-time sweep.
 **Acceptance:** checklist exists, is referenced from at least one skill in the seed/creation path (e.g. `craft-spec` or `seed-board`), and explicitly states that CI (§10.1) already covers the lint-able portion so the checklist only needs to cover judgment-requiring items.
