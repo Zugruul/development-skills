@@ -146,7 +146,11 @@ canvas.grabbing{cursor:grabbing}
 #search-results-empty{padding:.5rem 0;color:var(--muted);font-size:.64rem}
 #search-filters-panel::-webkit-scrollbar-thumb:hover{background:rgba(90,190,255,.6)}
 .sf-h{font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:.3rem}
-.sf-section label{display:flex;align-items:center;gap:.45rem;font-size:.66rem;color:var(--fg);
+/* Direct children only (SEARCH IN's own checkboxes) — a plain ".sf-section
+   label" would also win, by specificity, over .sf-brainrow's own padding
+   (one class each, but this one also matches the `label` type selector),
+   silently zeroing that nested row's horizontal padding. */
+.sf-section > label{display:flex;align-items:center;gap:.45rem;font-size:.66rem;color:var(--fg);
   padding:.15rem 0;cursor:pointer}
 .sf-hint{color:var(--muted);font-size:.58rem}
 /* multi-column so a long BRAINS list (many repos × roles) reads across instead
