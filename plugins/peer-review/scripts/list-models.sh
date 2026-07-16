@@ -51,13 +51,18 @@ for m in models:
     if m.get("supported_in_api") is not True:
         continue
     slug = m.get("slug")
-    display_name = m.get("display_name")
-    description = m.get("description")
     priority = m.get("priority")
-    if not isinstance(slug, str) or not isinstance(display_name, str):
+    # slug + priority are load-bearing (identification, sort/recommendation)
+    # and required. display_name/description are cosmetic -- their absence
+    # must not silently drop an otherwise-eligible model from the catalog.
+    if not isinstance(slug, str) or not isinstance(priority, int):
         continue
-    if not isinstance(description, str) or not isinstance(priority, int):
-        continue
+    display_name = m.get("display_name")
+    if not isinstance(display_name, str):
+        display_name = slug
+    description = m.get("description")
+    if not isinstance(description, str):
+        description = ""
     eligible.append((priority, slug, display_name, description))
 
 if not eligible:
