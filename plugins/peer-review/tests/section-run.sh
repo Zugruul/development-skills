@@ -173,5 +173,11 @@ out="$(DS_FIXTURE=diff PR_FIXTURE=ok DSLOG="$DSLOG" PRLOG="$PRLOG" PEER_REVIEW_S
 check_rc "--model missing arg: exit code 2" 2 "${out##*rc=}"
 check_absent "--model missing arg: diff-source.sh never invoked" "ARGC" "$(cat "$DSLOG")"
 
+# --- --model swallowing a following flag as its value -> usage error, exit 2 ---
+reset_logs
+out="$(DS_FIXTURE=diff PR_FIXTURE=ok DSLOG="$DSLOG" PRLOG="$PRLOG" PEER_REVIEW_STUBS="$STUBDIR" bash "$SCRIPT" --model --staged 2>&1; echo "rc=$?")"
+check_rc "--model followed by --staged: exit code 2" 2 "${out##*rc=}"
+check_absent "--model followed by --staged: diff-source.sh never invoked" "ARGC" "$(cat "$DSLOG")"
+
 rm -f "$DSLOG" "$PRLOG"
 rm -rf "$STUBDIR"

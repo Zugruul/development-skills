@@ -160,5 +160,10 @@ out="$(bash "$SCRIPT" --model 2>&1; echo "rc=$?")"
 check "--model missing arg: exits 2" "rc=2" "$out"
 check "--model missing arg: usage error shown" "requires a" "$out"
 
+# --- --model swallowing a following flag as its value -> usage error, exit 2 ---
+out="$(bash "$SCRIPT" --model --label custom "$DIFFFILE" 2>&1; echo "rc=$?")"
+check "--model followed by --label: exits 2" "rc=2" "$out"
+check "--model followed by --label: usage error shown" "requires a" "$out"
+
 rm -f "$DIFFFILE"
 rm -rf "$FAKECODEX_DIR"
