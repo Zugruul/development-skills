@@ -6,18 +6,18 @@ allowed-tools: Bash
 
 # Pick the next task
 
-Pre-start check: !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh" --spec`
+Pre-start check: !`bash "../../scripts/preflight.sh" --spec`
 If the line above says `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" next          # or: next <spec-id> to restrict to one spec
+bash "../../scripts/board.sh" next          # or: next <spec-id> to restrict to one spec
 ```
 The script already applies priority order, epic sequencing, `blockedBy` guards, and the work-in-progress limit from `.claude/project.yaml`. It prints one of:
 - `=> PICK: #N` (+ any `BLOCKED` items with the reason) — proceed with #N;
 - `=> RESUME: #N` — work is already in progress at the WIP limit: do NOT start anything new; resume #N (its branch exists) and finish it to at least *In review* first.
 
 ## Then, before committing to the pick (mandatory)
-1. `bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" show N` — read the body **and every comment**. Humans post steering, scope changes, and answers there.
+1. `bash "../../scripts/board.sh" show N` — read the body **and every comment**. Humans post steering, scope changes, and answers there.
 2. If comments change acceptance criteria or implementation details:
    - Write the updated body to a temp file and apply it: `board.sh edit-body N <file>` (keep the original structure; fold the comment's decisions into the criteria).
    - Reply so the human knows it was seen: `printf '%s' "Applied: <one-line summary of what changed>" | board.sh comment N`.

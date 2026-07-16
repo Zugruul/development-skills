@@ -6,15 +6,15 @@ allowed-tools: Bash
 
 # Implement one task — orchestrate a dev agent
 
-Pre-start check: !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh" --spec`
+Pre-start check: !`bash "../../scripts/preflight.sh" --spec`
 If the line above says `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
-You (the orchestrator) do **not** write the implementation. You brief a subagent, verify its result, and keep the board honest. Read `.claude/project.yaml` first — it supplies every `<cfg:...>` value below. `board.sh` = `bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh"`.
+You (the orchestrator) do **not** write the implementation. You brief a subagent, verify its result, and keep the board honest. Read `.claude/project.yaml` first — it supplies every `<cfg:...>` value below. `board.sh` = `bash "../../scripts/board.sh"`.
 
 ## 0. Prep
 1. `board.sh show N` — read body **and all comments** (human steering lives there). If comments change scope: fold them into the body via `board.sh edit-body`, then acknowledge via `board.sh comment` (see `next-task`).
 2. Read the task's acceptance criteria in `<cfg:specs[].backlogPath>` and the referenced sections of `<cfg:specs[].specPath>`. **Stale-criteria check**: criteria are written at seed time and the spec moves on — any criterion that contradicts the CURRENT spec/design doc (renamed concepts, dropped features, superseded contracts) gets flagged on the issue (`board.sh comment`) and resolved (spec wins) BEFORE the brief; implementing a stale criterion is a wasted PR.
-3. **Design-doc guard**: the task's epic must have `<cfg:paths.designDir|docs/design>/<spec-id>-<epic-id>.md`. Missing → YOU write it now from the spec §s (format: `${CLAUDE_PLUGIN_ROOT}/skills/implement-task/references/design-and-deltas.md` §1) and commit it before briefing anyone. Existing → read it; it constrains the brief.
+3. **Design-doc guard**: the task's epic must have `<cfg:paths.designDir|docs/design>/<spec-id>-<epic-id>.md`. Missing → YOU write it now from the spec §s (format: `../../skills/implement-task/references/design-and-deltas.md` §1) and commit it before briefing anyone. Existing → read it; it constrains the brief.
 4. Branch + board (same step, real time):
    ```bash
    git switch -c <branch from cfg:project.branchPattern, e.g. cp/012-error-model>
@@ -22,9 +22,9 @@ You (the orchestrator) do **not** write the implementation. You brief a subagent
    ```
 
 ## 1. Spawn the dev agent
-Resolve the dev identity for THIS task's paths first: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh" dev <a representative changed/expected path>`. In a monorepo the `covers` globs route to the right per-package dev agent; with a single dev identity it just returns that one. The resolved `models:` line is that agent's ALLOWED set — pick the most SUITABLE one for this task (cheaper/smaller for a simple change, a larger-context `[1m]` variant for a big diff), never reflexively the most powerful. Spawn with the Agent tool, `subagent_type: general-purpose`, `model: <the id you chose from that allowed set>`, and `name: dev-<task-id>` (role-prefix FIRST, then the scope it serves — e.g. `dev-cp012`; a re-brief on the same task appends a letter, `dev-cp012-b`; never a bare counter — see build-next `references/concurrency.md` §Naming). One agent = one task. Fill EVERY section of the brief — specific WHAT/WHY beats generic. The subagent sees ONLY the brief: paste actual text (criteria, spec excerpts, invariants, error output), never write "as discussed" or "see above".
+Resolve the dev identity for THIS task's paths first: `bash "../../scripts/identity.sh" dev <a representative changed/expected path>`. In a monorepo the `covers` globs route to the right per-package dev agent; with a single dev identity it just returns that one. The resolved `models:` line is that agent's ALLOWED set — pick the most SUITABLE one for this task (cheaper/smaller for a simple change, a larger-context `[1m]` variant for a big diff), never reflexively the most powerful. Spawn with the Agent tool, `subagent_type: general-purpose`, `model: <the id you chose from that allowed set>`, and `name: dev-<task-id>` (role-prefix FIRST, then the scope it serves — e.g. `dev-cp012`; a re-brief on the same task appends a letter, `dev-cp012-b`; never a bare counter — see build-next `references/concurrency.md` §Naming). One agent = one task. Fill EVERY section of the brief — specific WHAT/WHY beats generic. The subagent sees ONLY the brief: paste actual text (criteria, spec excerpts, invariants, error output), never write "as discussed" or "see above".
 
-If per-identity brains exist (`.claude/identities/`), prepend the dev role's `ROLE.md` and a `## LESSONS (recalled)` block from `brain.sh recall dev` to the brief — protocol in `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/brains.md`.
+If per-identity brains exist (`.claude/identities/`), prepend the dev role's `ROLE.md` and a `## LESSONS (recalled)` block from `brain.sh recall dev` to the brief — protocol in `../../skills/build-next/references/brains.md`.
 
 ```
 You are a senior engineer implementing ONE task of <cfg:project.name> (<cfg:project.description>).
@@ -57,7 +57,7 @@ Branch already checked out: <branch>.
    the task's expected paths — id, path, notes>. If your diff changes behavior/config/usage a
    set documents, update it in the same PR; if none needed, say why in the PR body.
 6. Author every commit with these exact flags (per-commit -c flags only — never git config writes):
-   git <paste the `flags:` line from `bash "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh" dev <this task's path>` — same covers-selected identity as the spawn> commit ...
+   git <paste the `flags:` line from `bash "../../scripts/identity.sh" dev <this task's path>` — same covers-selected identity as the spawn> commit ...
    <omit this section if identity.sh reports the dev role OFF or UNRESOLVED>
 
 ## WHY
@@ -81,7 +81,7 @@ Large task? Split into sequential briefs (e.g. tests+core, then edge cases), eac
 ```bash
 board.sh move N "In review"     # a hook blocks this unless gate.sh recorded a pass for the current tree
 ```
-Review in **two passes**, each by a review agent (`model:` a suitable id from the reviewer identity's allowed set — `bash "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh" reviewer` prints its `models:` line): (1) **spec compliance** — does the diff satisfy each acceptance criterion and cited spec §, nothing more, nothing less; (2) **code quality** — correctness, style, tests. Relay findings to a dev agent; re-gate. A single combined pass reliably misses "passes tests but isn't what the spec said."
+Review in **two passes**, each by a review agent (`model:` a suitable id from the reviewer identity's allowed set — `bash "../../scripts/identity.sh" reviewer` prints its `models:` line): (1) **spec compliance** — does the diff satisfy each acceptance criterion and cited spec §, nothing more, nothing less; (2) **code quality** — correctness, style, tests. Relay findings to a dev agent; re-gate. A single combined pass reliably misses "passes tests but isn't what the spec said."
 
 If per-identity brains exist, prepend the reviewer role's `ROLE.md` and a `## LESSONS (recalled)` block from `brain.sh recall reviewer --paths "<the diff's paths>" --keywords "<task keywords>"` to EACH review-pass brief — same protocol as the dev brief (brains.md mandates recall for dev AND reviewer briefs; a reviewer brain that is minted at retro but never recalled never fires its links and its lessons never reach a review).
 
@@ -89,14 +89,14 @@ The orchestrator's OWN artifacts (design docs it wrote, release notes) use the `
 
 work.type governs delivery (absent == `pr`): `pr` — push the branch, `gh pr create` (body "Closes #N"), review the PR, `gh pr merge` (current text above stands). `local` — the branch stays local; review is `git diff <cfg:project.mainBranch>..<branch>` instead of a PR diff; approval recorded as an ISSUE comment (not a PR review); the orchestrator squash-merges locally with role attribution (same Applied-by/Reviewed-by/Co-authored-by recipe as the PR path — `auto-review.md` §Commit identities) and pushes `<cfg:project.mainBranch>` (skip the push if the repo has no remote, and say so in the report); board announce carries the merge SHA, not a PR link. `autoMerge: false` + `work.type: local` → leave the branch unmerged at *In review* for the human (mirrors today's human-approves-a-PR path, just without the PR). Full protocol: `auto-review.md` §5 (LOCAL-ROUTE).
 
-**Auto-merge** (`methodology.autoMerge: true`): after both passes are clean, do NOT wait for a human — run the PR-review/approve/merge protocol in `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/auto-review.md` (independent reviewer agent on a suitable model from the reviewer identity's allowed list, ≤3 fix rounds, approval recorded on the PR, `gh pr merge`, merge announced on the issue + to live teammates).
+**Auto-merge** (`methodology.autoMerge: true`): after both passes are clean, do NOT wait for a human — run the PR-review/approve/merge protocol in `../../skills/build-next/references/auto-review.md` (independent reviewer agent on a suitable model from the reviewer identity's allowed list, ≤3 fix rounds, approval recorded on the PR, `gh pr merge`, merge announced on the issue + to live teammates).
 
 ## 4. Retro + feedback — MANDATORY at PR close, standalone or via `build-next`
 This step applies every time this skill closes a task (merge OR abandon), including a direct, standalone invocation of this skill. Do not assume a wrapping `build-next` loop will run it for you — if nothing else ran it this session, you own it.
 
 **Telemetry**: after each review round in step 3, `telemetry.py <root> record '{"kind":"review-round","task":"N","round":R,"verdict":"...","ts":"<now, UTC ISO 8601>"}'`; once the task closes (merge/QA), `telemetry.py <root> record '{"kind":"task-close","task":"N","estimate":<points>,"ts":"<now>"}'` (estimate from `board.sh show N` / the issue).
 
-**Retro**: interview the dev and reviewer agents, mint/prune/graduate brain notes, regenerate the directory, commit as the orchestrator — full protocol, including `.claude/lessons.jsonl` (SW-020) as retro input, in `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/brains.md`. `.claude/identities/` not existing yet is NOT a skip reason — minting is self-bootstrapping (`brain.py mint` creates the directory); treat a missing dir the same as an empty one and mint into it. The only valid skips are `delegation.identities` being absent/fully disabled for this repo, or a genuine blocker (e.g. no orchestrator identity configured to author the commit) — either way, state it via `retro: SKIPPED — <reason>` in your final report, AND `telemetry.py <root> record '{"kind":"retro-skip","reason":"...","ts":"<now>"}'` — a silent skip is never acceptable.
+**Retro**: interview the dev and reviewer agents, mint/prune/graduate brain notes, regenerate the directory, commit as the orchestrator — full protocol, including `.claude/lessons.jsonl` (SW-020) as retro input, in `../../skills/build-next/references/brains.md`. `.claude/identities/` not existing yet is NOT a skip reason — minting is self-bootstrapping (`brain.py mint` creates the directory); treat a missing dir the same as an empty one and mint into it. The only valid skips are `delegation.identities` being absent/fully disabled for this repo, or a genuine blocker (e.g. no orchestrator identity configured to author the commit) — either way, state it via `retro: SKIPPED — <reason>` in your final report, AND `telemetry.py <root> record '{"kind":"retro-skip","reason":"...","ts":"<now>"}'` — a silent skip is never acceptable.
 
 **Feedback** (if `methodology.feedback` enabled, distinct from and in addition to retro — feedback emits/triages a per-task process signal, retro mints brain notes; neither replaces the other): invoke the `feedback` skill to record this task's process signal. Then, as the ORCHESTRATOR — never a dev agent — triage `feedback.py <root> pending`: dedupe each item's `generalized` text via `python3 scripts/similar.py <root> "<generalized text>"` against existing issues, then `feedback.py <root> route <ts> <idx> <action> <ref>` per item — `backlog`, `brain-note` (folds into this step's minting — never a second minting path), `graduate`, `upstream`, or `ignore` (state why). `methodology.feedback.autoTriage` (default false) gates `backlog` routing on explicit human consent.
 

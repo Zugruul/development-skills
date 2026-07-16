@@ -18,7 +18,7 @@ iteration: no board writes, no tests, no implementation work, no commits.
 2. For each one, recall relevant notes using keywords pulled from the
    question:
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/brain.sh" recall <role> --keywords "<keyword1,keyword2,...>"
+   bash "../../scripts/brain.sh" recall <role> --keywords "<keyword1,keyword2,...>"
    ```
    (`recall` matches tags/paths, not free text — see the `brain` skill.) If a
    role's recall comes back empty, skim its
@@ -33,14 +33,14 @@ iteration: no board writes, no tests, no implementation work, no commits.
 5. **Cross-identity correlation** (#163): collect the `entities:` frontmatter
    of every note recalled in step 2. If any are present, look each up in
    `.claude/identities/entity-index.json` (regenerate it first via
-   `bash "${CLAUDE_PLUGIN_ROOT}/scripts/brain.sh" entity-index` if the file is
+   `bash "../../scripts/brain.sh" entity-index` if the file is
    missing or looks stale — it's cheap and derived, never hand-edited). For
    an entity correlated into a role you haven't already recalled from,
    **consult** that role explicitly — the consumer is whichever role's
    recalled note triggered the correlation (that role is "asking" the
    owner):
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/brain.sh" consult <consumer-role> <owner-role> <slug>
+   bash "../../scripts/brain.sh" consult <consumer-role> <owner-role> <slug>
    ```
    Fold the consulted note into the answer, attributed to its owner role like
    any other cross-role material (step 3) — `consult`'s own logging is the

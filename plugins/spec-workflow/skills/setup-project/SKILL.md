@@ -27,15 +27,15 @@ Each spec is a design document plus a backlog of numbered tasks. One repo can ha
 1. **Choose the board source — NEVER create a Project implicitly.** Creating a new Project is allowed only when the user explicitly chose it (here or in their original request). Unless the request already named an existing Project or explicitly asked for a new one, list the candidates (`gh project list --owner <owner> --format json`) and AskUserQuestion (header "Board"):
    - **Use an existing Project (Recommended when any exist)** — offer the discovered Projects as options (title + number). Setup then only WIRES it: adds missing fields/options per the reference, confirms before altering any existing field.
    - **Create a new Project** — the only path that runs `gh project create`; requires this explicit selection.
-2. Exact commands: read `${CLAUDE_PLUGIN_ROOT}/skills/setup-project/references/github-project-setup.md` **now** and follow it (its §1 creation step only on the explicit create path). It covers Status options, Priority and Estimate fields.
+2. Exact commands: read `../../skills/setup-project/references/github-project-setup.md` **now** and follow it (its §1 creation step only on the explicit create path). It covers Status options, Priority and Estimate fields.
 
 ## Phase 4 — write .claude/project.yaml
 1. Auto-fill the board ids (creates the config from the template if none exists, else updates `boards[0]` in place):
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/init-config.sh" <owner> <owner/repo> <project-number>
+   bash "../../scripts/init-config.sh" <owner> <owner/repo> <project-number>
    ```
    Review its output: reorder `statusFlow` / priority options if the board returned them in a different order than the intended pipeline/rank.
-2. Fill every field. The full schema with descriptions is `${CLAUDE_PLUGIN_ROOT}/schemas/project-config.schema.json`; keep the template's first-line `# yaml-language-server: $schema=...` modeline — the Red Hat YAML extension downloads modeline schemas without the JSON-language-server trust wall, so hover + autocomplete work. Key decisions:
+2. Fill every field. The full schema with descriptions is `../../schemas/project-config.schema.json`; keep the template's first-line `# yaml-language-server: $schema=...` modeline — the Red Hat YAML extension downloads modeline schemas without the JSON-language-server trust wall, so hover + autocomplete work. Key decisions:
    - `project.branchPattern` — e.g. `<prefix>/<id>-<slug>` → branches like `cp/012-error-model`.
    - `boards[]` — ids from Phase 3. `statusFlow` order **is** the pipeline; priority `options` order **is** the priority order (highest first).
    - `specs[]` — one entry per spec: unique `taskPrefix`, `epics` in build order with `taskRanges`, and `blockedBy` guards for hard dependencies (e.g. nothing from E1 until E0 is fully Deployed).
@@ -54,11 +54,11 @@ Each spec is a design document plus a backlog of numbered tasks. One repo can ha
      If accepted, write `methodology.feedback: true` into the config (the `feedback` skill and its config surface are documented in the plugin README).
 3. Validate — must print `VALID`:
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" config
+   bash "../../scripts/board.sh" config
    ```
 4. Ensure every configured label (`labels.bug`/`labels.feature`/`labels.inbound`) exists on the repo — declaring a label name in config does not create it, and any runtime path that applies a missing label (e.g. `board.sh add --type inbound`) fails until it does. Idempotent, safe to re-run:
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" ensure-labels
+   bash "../../scripts/board.sh" ensure-labels
    ```
 
 ## Phase 5 — repo hygiene + editor wiring

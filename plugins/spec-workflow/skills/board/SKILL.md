@@ -8,7 +8,7 @@ description: Reads and updates the GitHub Project board configured in .claude/pr
 All board operations go through one script (never ad-hoc `gh project` calls — field ids live in `.claude/project.yaml`):
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" <subcommand>
+bash "../../scripts/board.sh" <subcommand>
 ```
 
 ## Subcommands

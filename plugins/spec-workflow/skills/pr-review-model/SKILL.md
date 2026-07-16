@@ -6,7 +6,7 @@ allowed-tools: Bash, AskUserQuestion
 
 # PR reviewer models — show / set
 
-`merge-mode.sh` = `bash "${CLAUDE_PLUGIN_ROOT}/scripts/merge-mode.sh"`.
+`merge-mode.sh` = `bash "../../scripts/merge-mode.sh"`.
 
 The reviewer identity's `models` are the ALLOWED set the orchestrator picks from per review — a suitable model for the review size (larger context for big diffs, cheaper for small ones), never "always the most powerful". The same reviewer identity serves both the two-pass implement-task review and the auto-merge PR gate. Full model ids only (never shorthand like `sonnet`).
 

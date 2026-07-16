@@ -9,7 +9,7 @@ allowed-tools: Bash
 **This skill is READ-ONLY.** It never touches the GitHub project board, and the only file it can write to is one you explicitly name via `--write` — no other git history mutation ever happens here.
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/changelog.sh" [--from <ref>] [--to <ref>] [--write <file>]
+bash "../../scripts/changelog.sh" [--from <ref>] [--to <ref>] [--write <file>]
 ```
 
 - `--from <ref>` defaults to the most recent tag matching `spec-workflow--v*` (`git describe --tags --match 'spec-workflow--v*' --abbrev=0`); if no such tag exists yet, it falls back to the repo's first commit.

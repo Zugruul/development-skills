@@ -8,8 +8,8 @@ description: Writes a handoff document — board snapshot, work done this sessio
 Write to `<cfg:paths.handoffDir>/<YYYY-MM-DD-HHMM>.md` (default `docs/handoffs/`; convert relative dates to absolute). Gather state first:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" list | sort
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" list "In progress"
+bash "../../scripts/board.sh" list | sort
+bash "../../scripts/board.sh" list "In progress"
 ```
 
 ## Contents (all six, in order)

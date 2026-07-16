@@ -11,7 +11,7 @@ before and after, and drives the git-safety protocol; this skill never edits YAM
 state itself:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync-configs.py" [--scan BASE] [--repo PATH] [--apply] [--feedback-value true|false]
+python3 "../../scripts/sync-configs.py" [--scan BASE] [--repo PATH] [--apply] [--feedback-value true|false]
 ```
 
 - **Dry-run is the default.** Without `--apply`, the script prints per-repo rule decisions

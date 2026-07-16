@@ -11,7 +11,7 @@ The human, not the agent, picks UI direction when iterative UI mode is ON. You p
 
 ## Mode check (do this first)
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/ui-mode.sh" status    # prints ON, or OFF with the reason
+bash "../../scripts/ui-mode.sh" status    # prints ON, or OFF with the reason
 ```
 `off` / `on` toggle it for this clone (local gitignored flag); `methodology.iterativeUI=false` in project.yaml is the project-wide kill switch.
 OFF → decide the UI yourself following the spec and existing conventions; skip this skill.
@@ -20,7 +20,7 @@ If the human says they are going AFK, won't be watching, or sounds annoyed by UI
 ## 1. Build the page
 1. Design **2–4 genuinely different options** (not one option with color tweaks): different layout/navigation/density/visual language. Each option must be a self-contained inline HTML+CSS mockup of the actual screen/component the task needs.
    **Render every mockup inside the target's REAL canvas, at true scale.** Establish the actual viewport before designing (from the spec/docs/hardware: screen resolution AND shape, browser/app window size, mobile viewport) and make the mockup's buildable area exactly that — e.g. a 466×466 round display is a 466px CSS circle (`border-radius:50%; overflow:hidden`, 1 CSS px = 1 device px) whose content is clipped by the circle and scrolls the way the real UI scrolls; a phone screen is that phone's CSS viewport; a desktop app is its default window size. Never sketch into an arbitrary rounded rectangle or an unconstrained div: the human is choosing between layouts, and a layout that only fits because the mockup was wider/taller/squarer than the real screen invalidates the whole round.
-2. `cp "${CLAUDE_PLUGIN_ROOT}/templates/ui-options.html" docs/ui-options/<task-id>.html` (create the dir), then edit it following the comments in the template: fill `__TASK_ID__`/`__TASK_TITLE__`/`__ISSUE_URL__`, and `__SESSION_ID__` with the value of `echo "$CLAUDE_CODE_SESSION_ID"` (gives the human a `claude --resume` way back into this session; if empty, replace the whole resume sentence with nothing — the issue comment channel always works). Options are tabs, not a scrolling grid: duplicate the OPTION `<section class="option panel">` per option, put each mockup in `.preview`, give each option **4–8 aspect chips** — short trait keywords a non-designer can react to (e.g. `dense layout`, `sidebar nav`, `rounded cards`, `muted palette`, `inline editing`) — **and** add a matching `<button class="tab" data-tab="__OPTION_ID__">` in `.tabbar`, right before the fixed `Review` tab button. The Review tab (last, never duplicated) summarizes every option's favorite/aspect/note picks live and holds Send/Copy — no separate bottom bar. Keep the "Iterative UI mode is ON / how to turn it off" hint intact, and keep the theme toggle (top right) intact.
+2. `cp "../../templates/ui-options.html" docs/ui-options/<task-id>.html` (create the dir), then edit it following the comments in the template: fill `__TASK_ID__`/`__TASK_TITLE__`/`__ISSUE_URL__`, and `__SESSION_ID__` with the value of `echo "$CLAUDE_CODE_SESSION_ID"` (gives the human a `claude --resume` way back into this session; if empty, replace the whole resume sentence with nothing — the issue comment channel always works). Options are tabs, not a scrolling grid: duplicate the OPTION `<section class="option panel">` per option, put each mockup in `.preview`, give each option **4–8 aspect chips** — short trait keywords a non-designer can react to (e.g. `dense layout`, `sidebar nav`, `rounded cards`, `muted palette`, `inline editing`) — **and** add a matching `<button class="tab" data-tab="__OPTION_ID__">` in `.tabbar`, right before the fixed `Review` tab button. The Review tab (last, never duplicated) summarizes every option's favorite/aspect/note picks live and holds Send/Copy — no separate bottom bar. Keep the "Iterative UI mode is ON / how to turn it off" hint intact, and keep the theme toggle (top right) intact.
 3. **Both themes, contrast + a11y — machine-enforced.** The page has a light/dark toggle and the human may view either theme. Style every mockup from the template's theme vars (`var(--card)`, `var(--fg)`, `var(--muted)`, `var(--surface)`, `var(--accent)`, `var(--border)`) — never the `Canvas` keyword, never a hardcoded background with inherited text color. A deliberately single-theme mockup must hardcode both its background AND all its text colors, set `color-scheme` on its form controls, and style its `::placeholder`s explicitly (placeholder color otherwise follows the page theme and blends). Any text over a gradient/image background needs `data-bg="#rrggbb"` (approximate base color) on the element or an ancestor, or the audit flags it as unverifiable.
    Mockups must use REAL semantics, not lookalike divs: `<button>`/`<a href>` for anything clickable (or `role="button" tabindex="0"`), an accessible name on every form control (`<label for>`, `aria-label`, or `title` — placeholder alone fails), `alt` on every `<img>`.
    **Testability + input standards (also audited):** every interactive mockup element carries a stable `data-testid` (these become the real implementation's e2e hooks — name them like `a-email`, `b-submit`); email/password inputs declare `type` and `autocomplete` (`email` / `current-password` — WCAG 1.3.5); interactive targets measure ≥ 24×24 CSS px (WCAG 2.5.8, measured per option even on inactive tabs).
@@ -30,7 +30,7 @@ If the human says they are going AFK, won't be watching, or sounds annoyed by UI
 5. Commit the page on the task branch.
 
 ## 2. Ask the human — decision hub first
-The hub is one long-lived local page the human keeps open; cards appear there, answers come back automatically (no copy/paste). `HUB` = `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/ui-hub.py"`.
+The hub is one long-lived local page the human keeps open; cards appear there, answers come back automatically (no copy/paste). `HUB` = `python3 "../../scripts/ui-hub.py"`.
 ```bash
 $HUB start                       # idempotent; prints RUNNING http://127.0.0.1:4747
 $HUB ask <task-id>-r1 "<task-id>: <short question>" docs/ui-options/<task-id>.html
@@ -42,7 +42,7 @@ Also post a short issue comment (`board.sh comment N`) pointing at the hub — t
 Continue every part of the task that does not commit to a UI option: domain logic, API, state, tests, plumbing, UI-agnostic scaffolding. Before UI-specific work (and at each iteration start), collect answers from both channels:
 ```bash
 $HUB answers --consume           # JSON lines: {id, title, selection, ...}
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" show N   # '### UI selection' comment
+bash "../../scripts/board.sh" show N   # '### UI selection' comment
 ```
 Answers whose selection starts with `### A11y fixes requested` are partial feedback, not a decision: the human ticked specific audit failures (plus an optional note) in the red bar and the card **stays pending** on the hub. Fix exactly those issues, re-run the gate, and re-`ask` the same id (the open card hot-reloads) — do not treat it as the UI selection and do not wait for it to be consumed as one.
 

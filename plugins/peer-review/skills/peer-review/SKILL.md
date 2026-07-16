@@ -24,7 +24,7 @@ environment.
 ## 1. Pick a provider
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/providers.sh"
+bash "../../scripts/providers.sh"
 ```
 Prints `{"providers":[{"id","display_name","available"}, ...]}` — every registered provider
 (`plugins/peer-review/scripts/providers.tsv`; CDX-053, SPEC-PEER-REVIEW.md §6.12). This is a
@@ -53,7 +53,7 @@ shipped registry): stop and show the error; there is nothing to fall back to.
 ## 2. Check whether there's anything to review first
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/diff-source.sh" --preflight-bin <provider_id> [--base <ref> | --staged | --pr <pr-number>]
+bash "../../scripts/diff-source.sh" --preflight-bin <provider_id> [--base <ref> | --staged | --pr <pr-number>]
 ```
 `--preflight-bin <provider_id>` tells `diff-source.sh` which CLI to check for once a real diff
 exists — by convention a provider's registry `id` (from step 1) IS its CLI binary name on PATH
@@ -72,7 +72,7 @@ provider was picked, only which binary it preflights (CDX-054).
 ## 3. Pick a model
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/provider-dispatch.sh" <provider_id> list-models
+bash "../../scripts/provider-dispatch.sh" <provider_id> list-models
 ```
 Dispatches to the chosen provider's model-discovery script (for `codex`: `list-models.sh`).
 Prints `{"models":[{"slug","display_name","description"}, ...], "recommended":"<slug>"}` —
@@ -93,7 +93,7 @@ block a review on a discovery hiccup.
 ## 4. Run the review
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/provider-dispatch.sh" <provider_id> run -- [--model <slug>] [--base <ref> | --staged | <pr-number>]
+bash "../../scripts/provider-dispatch.sh" <provider_id> run -- [--model <slug>] [--base <ref> | --staged | <pr-number>]
 ```
 Dispatches to the chosen provider's review script (for `codex`: `run.sh`; for `claude`:
 `claude-run.sh`). Use the same `--base`/`--staged`/`<pr-number>` argument you used in step 2, if

@@ -11,7 +11,7 @@ The feed lives at `.claude/feedbacks/` (adjacent to `project.yaml`) — a tracke
 `methodology.feedback` (`true` shorthand or `{enabled, feed, roles, autoTriage}`) gates this skill. Check first:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.py" "$(git rev-parse --show-toplevel)" status
+python3 "../../scripts/feedback.py" "$(git rev-parse --show-toplevel)" status
 ```
 
 If it reports `feedback: disabled`, say so and stop — do nothing else.
@@ -22,7 +22,7 @@ If it reports `feedback: disabled`, say so and stop — do nothing else.
 2. **Write the record to a temp file** matching the schema documented in `scripts/feedback.py`'s module docstring (`schemaVersion`, `kind`, `ts`, `iteration`, `source`, `items[]`). For every item, fill `generalized` with a restatement that could apply to ANY project using this plugin — no task ids, no issue/PR references bare OR qualified (neither `#N` nor `some-repo#N`), no repo-specific names. If an item is genuinely local-only, leave `generalized: ""` (it will only ever be routable as `ignore`). `evidence[]` and `routing.ref`, in contrast, are exactly where a task ref belongs — you may write it bare (`#71`) and `emit` will qualify it to `<project.name>#71` for you.
 3. **Emit it:**
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.py" "$(git rev-parse --show-toplevel)" emit /path/to/record.yaml
+   python3 "../../scripts/feedback.py" "$(git rev-parse --show-toplevel)" emit /path/to/record.yaml
    ```
    A rejection (`INVALID: ...`) means the generalization contract failed (a task id or an issue/PR ref, bare or qualified, leaked into `summary`/`generalized`) or the record is malformed — fix the file and re-emit; never weaken the item to force it through.
 4. **Report** the emit result and the current pending count (`feedback.py <root> status`).
@@ -34,7 +34,7 @@ A multi-project archive makes a bare `#71` ambiguous — is it this repo's issue
 An existing feed predating this contract can be brought into line with a one-shot, surgical migration that touches only bare refs in `evidence[]`/`routing.ref` and leaves every other byte (comments, quoting, `summary`/`generalized`/`detail` text) alone:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.py" "$(git rev-parse --show-toplevel)" migrate-qualify
+python3 "../../scripts/feedback.py" "$(git rev-parse --show-toplevel)" migrate-qualify
 ```
 
 Idempotent — safe to re-run; a clean feed reports `OK: no changes`.

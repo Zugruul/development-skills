@@ -13,9 +13,9 @@ READ-ONLY; keep the tab open and watch retrieval happen.
 Run the action the user asked for (`status` if unspecified):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/neural-view.py" start    # background server (idempotent)
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/neural-view.py" status   # RUNNING <url> notes=N brains=N repos=N | STOPPED | STALE: ...
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/neural-view.py" stop [--force]
+python3 "../../scripts/neural-view.py" start    # background server (idempotent)
+python3 "../../scripts/neural-view.py" status   # RUNNING <url> notes=N brains=N repos=N | STOPPED | STALE: ...
+python3 "../../scripts/neural-view.py" stop [--force]
 ```
 
 If `status`/`start` report **STALE** instead of STOPPED, a lost/stale pidfile is

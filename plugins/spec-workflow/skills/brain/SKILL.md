@@ -6,7 +6,7 @@ allowed-tools: Bash
 
 # Identity brains — status / recall / tend
 
-`brain.sh` = `bash "${CLAUDE_PLUGIN_ROOT}/scripts/brain.sh"`. **Only the orchestrator touches brains** — each role's brain is private; subagents receive recall output as pasted text and never read a brain path. Full protocol: `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/brains.md`.
+`brain.sh` = `bash "../../scripts/brain.sh"`. **Only the orchestrator touches brains** — each role's brain is private; subagents receive recall output as pasted text and never read a brain path. Full protocol: `../../skills/build-next/references/brains.md`.
 
 ## Bare invocation (status)
 Regenerate and show the map, plus how many notes each role holds:

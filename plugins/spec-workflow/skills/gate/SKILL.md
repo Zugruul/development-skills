@@ -8,7 +8,7 @@ description: Runs the project quality gate via gate.sh, which records the pass a
 Run the gate through the wrapper — it executes `commands.gate` from `.claude/project.yaml` AND records the pass:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/gate.sh"
+bash "../../scripts/gate.sh"
 ```
 
 ## Rules

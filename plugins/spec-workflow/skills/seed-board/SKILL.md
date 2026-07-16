@@ -6,7 +6,7 @@ allowed-tools: Bash
 
 # Seed the board from the backlog
 
-Pre-start check: !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh" --spec`
+Pre-start check: !`bash "../../scripts/preflight.sh" --spec`
 If the line above says `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
 ## 1. Build the task file
@@ -28,13 +28,13 @@ For every 8+ task: split it into 2–4 tasks inside the same epic's number range
 
 ## 3. Run the seeder
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/seed-board.sh" /path/to/tasks.txt
+bash "../../scripts/seed-board.sh" /path/to/tasks.txt
 ```
 Idempotent: existing issues (matched by exact `"<task-id>: <title>"`) are skipped; fields are (re)applied. Watch for `!!`/`!` lines — each names the task and the failing step; fix and re-run.
 
 ## 4. Verify
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" list | sort
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" next
+bash "../../scripts/board.sh" list | sort
+bash "../../scripts/board.sh" next
 ```
 Every seeded task should appear in the first status with its priority, and `next` should pick the expected first task.

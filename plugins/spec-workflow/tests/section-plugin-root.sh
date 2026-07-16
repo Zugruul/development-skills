@@ -203,3 +203,66 @@ check "bash: symlink cycle error mentions a symlink loop/limit" "symlink" "$cyc_
 
 rm -rf "$_PR_ELSEWHERE" "$_PR_INSTALLED_BASE" "$_PR_SPACED_BASE" "$_PR_CYCLE" \
     "$(dirname "$_PR_FAKE_ROOT")" "$(dirname "$_PR_FAKE_ROOT2")"
+
+# --- CDX-002 (SPEC-CODEX-COMPAT §6.7 / §6.3 / §12): every SKILL.md references a
+# companion script or reference file by a path relative to the skill's own
+# root, never a direct ${CLAUDE_PLUGIN_ROOT}/... interpolation -- Codex never
+# sets CLAUDE_PLUGIN_ROOT, so a visible interpolation there resolves to the
+# empty string and points at a bogus absolute path. Two assertions:
+#   (a) repo-wide: zero remaining ${CLAUDE_PLUGIN_ROOT} across every
+#       plugins/*/skills/*/SKILL.md (both plugins), and
+#   (b) the ../../scripts/... pattern the migration introduces actually
+#       resolves and RUNS from a skill's own dir with BOTH root-override env
+#       vars unset (relative/sentinel fallback only, i.e. the Codex context).
+#   (c) per-file: EVERY ../-rooted companion reference in EVERY SKILL.md
+#       resolves to a file that exists on disk relative to that SKILL.md's own
+#       directory -- so a wrong-depth typo (../scripts vs ../../scripts) in any
+#       one of the 26 files fails, not just the three with pinned exact-string
+#       checks in section-skill-contracts.sh / section-board-bug-add.sh.
+echo "== SKILL.md plugin-root migration (CDX-002) =="
+
+# $PLUGIN is .../plugins/spec-workflow; the repo root is two dirs up. The glob
+# below enumerates every SKILL.md under plugins/*/skills/*/ in the live tree.
+_PR_REPO_ROOT="$(cd "$PLUGIN/../.." && pwd)"
+_pr_skill_hits="$(grep -rn 'CLAUDE_PLUGIN_ROOT' "$_PR_REPO_ROOT"/plugins/*/skills/*/SKILL.md 2>/dev/null || true)"
+check_absent "SKILL.md: no direct \${CLAUDE_PLUGIN_ROOT} interpolation remains (any plugin)" 'CLAUDE_PLUGIN_ROOT' "$_pr_skill_hits"
+
+# (b) A skill lives at plugins/<plugin>/skills/<name>/; its scripts at
+# plugins/<plugin>/scripts/. So a script reference from the skill's own dir is
+# ../../scripts/<script> (up through skills/<name> -> skills -> plugin root).
+# Build that exact two-level layout in a temp fixture, cd into the skill dir,
+# drop BOTH root-override env vars, and invoke the script through the relative
+# path: it must run and print its sentinel with no CLAUDE_PLUGIN_ROOT at all.
+_PR_RELFIX="$(_pr_realdir "$(mktemp -d)")"
+mkdir -p "$_PR_RELFIX/plugins/p/skills/s" "$_PR_RELFIX/plugins/p/scripts"
+printf '#!/usr/bin/env bash\necho PR_REL_OK\n' > "$_PR_RELFIX/plugins/p/scripts/probe.sh"
+out="$(cd "$_PR_RELFIX/plugins/p/skills/s" && env -u SPEC_WORKFLOW_PLUGIN_ROOT -u CLAUDE_PLUGIN_ROOT bash ../../scripts/probe.sh 2>&1)"
+check "SKILL.md relative script path (../../scripts/…) runs with CLAUDE_PLUGIN_ROOT unset" "PR_REL_OK" "$out"
+
+rm -rf "$_PR_RELFIX"
+
+# (c) Per-file existence check. For each SKILL.md, pull out every ../-rooted
+# path token (grep -oE; the char class includes '.' and '/', so a leading
+# `../` is extended through the rest of the path and stops at the first
+# space/quote/backtick/paren) and assert it resolves relative to that
+# SKILL.md's own directory. A wrong-depth reference (e.g. ../scripts/board.sh
+# instead of ../../scripts/board.sh) points at a nonexistent path from the
+# skill dir and fails here. _pr_ref_checked guards against a vacuous pass if
+# the extraction ever silently matches nothing.
+_pr_ref_missing=""
+_pr_ref_checked=0
+while IFS= read -r _pr_skillmd; do
+    _pr_skilldir="$(dirname "$_pr_skillmd")"
+    while IFS= read -r _pr_ref; do
+        [[ -n "$_pr_ref" ]] || continue
+        _pr_ref_checked=$((_pr_ref_checked + 1))
+        [[ -e "$_pr_skilldir/$_pr_ref" ]] || \
+            _pr_ref_missing="${_pr_ref_missing}${_pr_skillmd}: ${_pr_ref}"$'\n'
+    done < <(grep -oE '\.\./[A-Za-z0-9._/-]+' "$_pr_skillmd" | sort -u)
+done < <(find "$_PR_REPO_ROOT"/plugins -path '*/skills/*/SKILL.md')
+
+check_absent "SKILL.md: every ../-rooted companion reference resolves on disk (per file)" '../' "$_pr_ref_missing"
+# Guard: the extraction really visited a meaningful number of references (one
+# per migrated occurrence, ~75); a floor of 26 (>= one per file) catches a
+# broken regex/find that would otherwise make the check above vacuously green.
+check_rc "SKILL.md: reference extraction is non-vacuous (>=26 refs checked)" 0 "$([[ $_pr_ref_checked -ge 26 ]] && echo 0 || echo 1)"

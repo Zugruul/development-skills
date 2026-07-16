@@ -6,9 +6,9 @@ allowed-tools: Bash, AskUserQuestion
 
 # Concurrency — show / set
 
-`concurrency.sh` = `bash "${CLAUDE_PLUGIN_ROOT}/scripts/concurrency.sh"`.
+`concurrency.sh` = `bash "../../scripts/concurrency.sh"`.
 
-`methodology.maxInProgress` is THE concurrency knob: the board WIP limit AND the number of parallel implementation **lanes** (each lane = its own git worktree + branch + dev agent). `1` (default) = strictly sequential. Lane rules: `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/concurrency.md`.
+`methodology.maxInProgress` is THE concurrency knob: the board WIP limit AND the number of parallel implementation **lanes** (each lane = its own git worktree + branch + dev agent). `1` (default) = strictly sequential. Lane rules: `../../skills/build-next/references/concurrency.md`.
 
 **Invoked with an argument** (`status` / `set <n>`): run `concurrency.sh <args>` and report the output verbatim.
 

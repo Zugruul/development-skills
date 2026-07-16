@@ -10,9 +10,9 @@ FTSKILL="$PLUGIN/skills/find-task/SKILL.md"
 if [[ -f "$FTSKILL" ]]; then echo "ok   find-task/SKILL.md exists"; else echo "FAIL find-task/SKILL.md missing"; fails=$((fails + 1)); fi
 check "find-task SKILL.md has allowed-tools frontmatter" "allowed-tools: Bash" "$(cat "$FTSKILL" 2>/dev/null)"
 check "find-task SKILL.md wires board.sh issues" "board.sh\" issues" "$(cat "$FTSKILL" 2>/dev/null)"
-check "find-task SKILL.md invokes similar.py via python3" "python3 \"\${CLAUDE_PLUGIN_ROOT}/scripts/similar.py\"" "$(cat "$FTSKILL" 2>/dev/null)"
+check "find-task SKILL.md invokes similar.py via python3" 'python3 "../../scripts/similar.py"' "$(cat "$FTSKILL" 2>/dev/null)"
 # shellcheck disable=SC2016  # single quotes are intentional: literal grep pattern, not shell expansion
-check_absent "find-task SKILL.md never invokes similar.py via bash" 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/similar.py"' "$(cat "$FTSKILL" 2>/dev/null)"
+check_absent "find-task SKILL.md never invokes similar.py via bash" 'bash "../../scripts/similar.py"' "$(cat "$FTSKILL" 2>/dev/null)"
 
 echo "== build-next SKILL.md: mandatory retro at PR close (SW-021, SPEC 8.2) =="
 BNSKILL="$PLUGIN/skills/build-next/SKILL.md"
@@ -70,7 +70,7 @@ QBODY="$(cat "$QSKILL" 2>/dev/null)"
 check "queue SKILL.md has name frontmatter" "name: queue" "$QBODY"
 check "queue SKILL.md has allowed-tools frontmatter" "allowed-tools: Bash" "$QBODY"
 # shellcheck disable=SC2016  # single quotes are intentional: literal grep pattern, not shell expansion
-check "queue SKILL.md has the preflight pre-start check line" 'Pre-start check: !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh"' "$QBODY"
+check "queue SKILL.md has the preflight pre-start check line" 'Pre-start check: !`bash "../../scripts/preflight.sh"' "$QBODY"
 check "queue SKILL.md instructs to STOP on PREFLIGHT FAIL" "PREFLIGHT FAIL" "$QBODY"
 check "queue SKILL.md wires board.sh next" "board.sh\" next" "$QBODY"
 check "queue SKILL.md wires board.sh show to enrich candidates" "board.sh\" show" "$QBODY"

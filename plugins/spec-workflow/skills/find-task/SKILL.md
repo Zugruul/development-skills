@@ -12,13 +12,13 @@ allowed-tools: Bash
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
 TMP="$(mktemp)"
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" issues > "$TMP" || { echo "board.sh issues failed"; rm -f "$TMP"; exit 1; }
-SIMILAR_ISSUES_FILE="$TMP" python3 "${CLAUDE_PLUGIN_ROOT}/scripts/similar.py" "$ROOT" "<query>"
+bash "../../scripts/board.sh" issues > "$TMP" || { echo "board.sh issues failed"; rm -f "$TMP"; exit 1; }
+SIMILAR_ISSUES_FILE="$TMP" python3 "../../scripts/similar.py" "$ROOT" "<query>"
 rm -f "$TMP"
 ```
 Always invoke similar.py with python3, never bash -- it is a stdlib Python script, not a shell script, and bash on it dies parsing the module docstring.
 
-Output is one line per match, ranked: `<tier>\t<score>\t#<number>\t<status>\t<title>`. Print the top 8 as a readable table (rank, `#number`, status, score, tier, title), each with its issue URL -- `https://github.com/<repo>/issues/<number>`, where `<repo>` is `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config.py" "$ROOT" get boards.0.repo`. No matches at all: say so plainly, do not fabricate results.
+Output is one line per match, ranked: `<tier>\t<score>\t#<number>\t<status>\t<title>`. Print the top 8 as a readable table (rank, `#number`, status, score, tier, title), each with its issue URL -- `https://github.com/<repo>/issues/<number>`, where `<repo>` is `python3 "../../scripts/config.py" "$ROOT" get boards.0.repo`. No matches at all: say so plainly, do not fabricate results.
 
 ## Rules
 - Read-only, always -- find-task never creates, comments on, or repositions anything on the board.

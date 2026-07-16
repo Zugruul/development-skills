@@ -257,7 +257,7 @@ CISKILL="$PLUGIN/skills/create-inbound/SKILL.md"
 if [[ -f "$CISKILL" ]]; then echo "ok   create-inbound/SKILL.md exists"; else echo "FAIL create-inbound/SKILL.md missing"; fails=$((fails + 1)); fi
 check "create-inbound SKILL.md has allowed-tools frontmatter" "allowed-tools: Bash" "$(cat "$CISKILL" 2>/dev/null)"
 check "create-inbound SKILL.md wires board.sh issues (search first)" "board.sh\" issues" "$(cat "$CISKILL" 2>/dev/null)"
-check "create-inbound SKILL.md invokes similar.py via python3" "python3 \"\${CLAUDE_PLUGIN_ROOT}/scripts/similar.py\"" "$(cat "$CISKILL" 2>/dev/null)"
+check "create-inbound SKILL.md invokes similar.py via python3" 'python3 "../../scripts/similar.py"' "$(cat "$CISKILL" 2>/dev/null)"
 check "create-inbound SKILL.md creates via board.sh add --type inbound" "board.sh\" add --type inbound" "$(cat "$CISKILL" 2>/dev/null)"
 check "create-inbound SKILL.md: high tier default is comment, not create" "do NOT create a new issue" "$(cat "$CISKILL" 2>/dev/null)"
 check "create-inbound SKILL.md: high tier default action is comment on the existing issue" "comment the description onto the existing issue instead" "$(cat "$CISKILL" 2>/dev/null)"

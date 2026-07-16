@@ -75,9 +75,10 @@ gate-wide floors, over every `scripts/*.sh` and `tests/*.sh` file:
 
 Scope: markdown-embedded snippets in skills/ were surveyed (SW-045) and found
 to only ever invoke standalone .py scripts (e.g. `python3
-"${CLAUDE_PLUGIN_ROOT}/scripts/foo.py"`), never inline bodies -- py_compile
-already covers those files, so markdown extraction is not implemented (no
-inline snippet exists there to miss).
+"../../scripts/foo.py"`, a path relative to the skill's own root per
+SPEC-CODEX-COMPAT §6.7), never inline bodies -- py_compile already covers
+those files, so markdown extraction is not implemented (no inline snippet
+exists there to miss).
 
 Usage: snippet-lint.py <plugin-dir>
 Exit 0, no output, when clean. Otherwise one `path:line: message` finding per

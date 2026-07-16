@@ -6,7 +6,7 @@ allowed-tools: Bash, AskUserQuestion
 
 # Auto-merge mode — status / on / off
 
-`merge-mode.sh` = `bash "${CLAUDE_PLUGIN_ROOT}/scripts/merge-mode.sh"`.
+`merge-mode.sh` = `bash "../../scripts/merge-mode.sh"`.
 
 **Invoked with an argument** (`status` / `on` / `off`): run it directly and report the output verbatim.
 
@@ -33,4 +33,4 @@ After turning **on**:
 - Check the status line for `reviewerTokenEnv`: if unset, warn that approvals will be review comments only — branch protection that *requires* an approving review needs a second account's token (`delegation.reviewerTokenEnv`). Offer the `pr-review-model` skill if they also want to pick the reviewer model.
 - Run `merge-mode.sh preauth`. If it reports `preauth: ok`, nothing else to do. If it reports `preauth: missing <rules>`, the harness's permission classifier will deny the loop's own `gh pr merge`/`gh pr review` calls every time (a per-PR human round-trip) unless pre-authorized — use AskUserQuestion (header "Pre-authorize merges?") to offer adding the rules now: preview `merge-mode.sh preauth-snippet` verbatim, options **Add these permission rules** (merge the printed block into `.claude/settings.json`'s `permissions.allow`, don't clobber other entries, remind the user to commit it) or **Skip** (each merge will ask first instead — see auto-review.md §3).
 
-Protocol details: `${CLAUDE_PLUGIN_ROOT}/skills/build-next/references/auto-review.md`.
+Protocol details: `../../skills/build-next/references/auto-review.md`.

@@ -12,8 +12,8 @@ allowed-tools: Bash
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
 TMP="$(mktemp)"
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" issues > "$TMP" || { echo "board.sh issues failed"; rm -f "$TMP"; exit 1; }
-SIMILAR_ISSUES_FILE="$TMP" python3 "${CLAUDE_PLUGIN_ROOT}/scripts/similar.py" "$ROOT" "<description>"
+bash "../../scripts/board.sh" issues > "$TMP" || { echo "board.sh issues failed"; rm -f "$TMP"; exit 1; }
+SIMILAR_ISSUES_FILE="$TMP" python3 "../../scripts/similar.py" "$ROOT" "<description>"
 rm -f "$TMP"
 ```
 Always invoke similar.py with python3, never bash -- it is a stdlib Python script, not a shell script.
@@ -29,7 +29,7 @@ Present the candidate(s) and ask the human, via AskUserQuestion, whether this is
 ## low or no match -- create
 Ask for a priority if not given (default P2), then create it as inbound work:
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" add --type inbound "<title>" "<prio>"
+bash "../../scripts/board.sh" add --type inbound "<title>" "<prio>"
 ```
 This labels the issue `inbound`, adds it to the board, and sets Backlog + priority. Report the new issue's URL (`https://github.com/<repo>/issues/<number>`) and that `find-task`/`next-task` can now see and pick it up from Backlog.
 

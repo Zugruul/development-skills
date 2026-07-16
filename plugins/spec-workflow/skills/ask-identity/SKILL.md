@@ -23,7 +23,7 @@ instead of just doing it here.
    general reasoning if useful, clearly labeled as not brain-grounded.
 2. Recall relevant notes, using keywords pulled from the question:
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/brain.sh" recall <identity> --keywords "<keyword1,keyword2,...>"
+   bash "../../scripts/brain.sh" recall <identity> --keywords "<keyword1,keyword2,...>"
    ```
    `recall` matches note tags/paths against what you pass — it is not full-text
    search, so pick a handful of concrete nouns from the question, not the

@@ -18,9 +18,11 @@ for p in config.py identity_lib.py validate-config.py next.py similar.py ui-hub.
         echo "FAIL py_compile $p"; fails=$((fails + 1))
     fi
 done
-# anti-pattern: a .py script invoked via `bash` in a skill doc — dies parsing the docstring
+# anti-pattern: a .py script invoked via `bash` in a skill doc — dies parsing the docstring.
+# Skills now reference companion scripts by a path relative to the skill's own
+# root (../../scripts/…, SPEC-CODEX-COMPAT §6.7), so match that form.
 # shellcheck disable=SC2016  # single quotes are intentional: this is a grep pattern, not a shell expansion
-bad_invocations="$(grep -rn 'bash "\${CLAUDE_PLUGIN_ROOT}/scripts/[^"]*\.py"' "$PLUGIN"/skills/ 2>/dev/null || true)"
+bad_invocations="$(grep -rn 'bash "\.\./\.\./scripts/[^"]*\.py"' "$PLUGIN"/skills/ 2>/dev/null || true)"
 if [[ -z "$bad_invocations" ]]; then
     echo "ok   no skill invokes a .py script via bash"
 else

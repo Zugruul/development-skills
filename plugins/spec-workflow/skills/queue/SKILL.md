@@ -8,19 +8,19 @@ allowed-tools: Bash
 
 **This skill is READ-ONLY.** Like `next-task`, no board mutation is ever made here — no `move`, `prio`, `edit-body`, `comment`, or any other write to the board. The `=> PICK`/`=> RESUME` line below is informational here, not a decision to start work; committing to a task is `next-task`'s job.
 
-Pre-start check: !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh" --spec`
+Pre-start check: !`bash "../../scripts/preflight.sh" --spec`
 If the line above says `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
 ## 1. Get the prioritized + sequenced candidate list
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" next          # or: next <spec-id> to restrict to one spec
+bash "../../scripts/board.sh" next          # or: next <spec-id> to restrict to one spec
 ```
 This prints, in pick order, up to 5 candidates, any `BLOCKED` items with their reason, and the `=> PICK: #N` / `=> RESUME: #N` decision line — the same priority order, epic sequencing, `blockedBy` guards, and WIP-limit logic `next-task` uses.
 
 ## 2. Enrich the top candidates
 For each of the top ~5 candidates, run:
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" show N
+bash "../../scripts/board.sh" show N
 ```
 to pull the issue body (for a one-line gist of what the task is — pull from the acceptance/description line) alongside what `next` already gave you (priority, title). Estimate and epic come from the same `show`/`next` output; if the board tracks estimate as a field, include it, otherwise omit that column rather than guessing.
 
