@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
-# run.sh [--base <ref> | --staged | <pr-number>] -- the /peer-review skill's
-# orchestration layer (PRV-003, SPEC-PEER-REVIEW.md §6.10). Pure wiring, no
-# review logic of its own: translates its own args into diff-source.sh's
-# flags, runs it, and -- only when it produced actual diff text rather than
-# the "nothing to review" sentinel -- hands that diff to peer-review.sh and
-# prints its rendered findings. Never modifies any file (§6.9): the only
-# write is the diff to a private tempfile, cleaned up on exit.
+# run.sh [--model <slug>] [--base <ref> | --staged | <pr-number>] -- the
+# /peer-review skill's orchestration layer (PRV-003, SPEC-PEER-REVIEW.md
+# §6.10; --model added in PRV-004, §6.11). Pure wiring, no review logic of
+# its own: translates its own args into diff-source.sh's flags, runs it,
+# and -- only when it produced actual diff text rather than the "nothing to
+# review" sentinel -- hands that diff (plus --model, if given) to
+# peer-review.sh and prints its rendered findings. Never modifies any file
+# (§6.9): the only write is the diff to a private tempfile, cleaned up on
+# exit.
+#
+# --model may appear anywhere in argv (before or after --base/--staged/the
+# PR number) -- it is extracted first, independent of position, then the
+# remaining single positional argument is parsed exactly as before.
 set -uo pipefail
 
 usage() {
-    echo "usage: run.sh [--base <ref> | --staged | <pr-number>]" >&2
+    echo "usage: run.sh [--model <slug>] [--base <ref> | --staged | <pr-number>]" >&2
 }
 
 # PEER_REVIEW_STUBS lets tests point this at stub diff-source.sh/
@@ -20,30 +26,52 @@ HERE="${PEER_REVIEW_STUBS:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 DIFF_SOURCE="$HERE/diff-source.sh"
 PEER_REVIEW="$HERE/peer-review.sh"
 
+model=""
+rest=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --model)
+            [[ $# -ge 2 ]] || { echo "ERROR: --model requires a <slug> argument" >&2; usage; exit 2; }
+            model="$2"
+            shift 2
+            ;;
+        *)
+            rest+=("$1")
+            shift
+            ;;
+    esac
+done
+
 ds_args=()
-case "${1:-}" in
+case "${rest[0]:-}" in
     --base)
-        [[ $# -ge 2 ]] || { echo "ERROR: --base requires a <ref> argument" >&2; usage; exit 2; }
-        ds_args=(--base "$2")
-        shift 2
+        [[ ${#rest[@]} -ge 2 ]] || { echo "ERROR: --base requires a <ref> argument" >&2; usage; exit 2; }
+        ds_args=(--base "${rest[1]}")
+        if [[ ${#rest[@]} -gt 2 ]]; then
+            echo "ERROR: unrecognized extra argument: ${rest[2]}" >&2
+            usage
+            exit 2
+        fi
         ;;
     --staged)
         ds_args=(--staged)
-        shift
+        if [[ ${#rest[@]} -gt 1 ]]; then
+            echo "ERROR: unrecognized extra argument: ${rest[1]}" >&2
+            usage
+            exit 2
+        fi
         ;;
     "")
         ;;
     *)
-        ds_args=(--pr "$1")
-        shift
+        ds_args=(--pr "${rest[0]}")
+        if [[ ${#rest[@]} -gt 1 ]]; then
+            echo "ERROR: unrecognized extra argument: ${rest[1]}" >&2
+            usage
+            exit 2
+        fi
         ;;
 esac
-
-if [[ $# -gt 0 ]]; then
-    echo "ERROR: unrecognized extra argument: $1" >&2
-    usage
-    exit 2
-fi
 
 diff_text="$(bash "$DIFF_SOURCE" ${ds_args[@]+"${ds_args[@]}"})"
 ds_rc=$?
@@ -61,5 +89,10 @@ diff_file="$(mktemp)"
 trap 'rm -f "$diff_file"' EXIT
 printf '%s\n' "$diff_text" >"$diff_file"
 
-bash "$PEER_REVIEW" "$diff_file"
+pr_args=()
+if [[ -n "$model" ]]; then
+    pr_args=(--model "$model")
+fi
+
+bash "$PEER_REVIEW" ${pr_args[@]+"${pr_args[@]}"} "$diff_file"
 exit $?

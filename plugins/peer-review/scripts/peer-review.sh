@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# peer-review.sh [--label <name>] <diff-text-file> -- invokes codex to
-# review a diff and renders its findings under a label, "External review —
-# codex" by default (SPEC-PEER-REVIEW.md §6.2, §6.5, §6.6, §6.8).
-# Pure/testable: given a diff-text file, embeds it in a prompt and shells
-# out to `codex exec --sandbox read-only --output-schema <schema>`. No flag
-# or code path here ever adds anything other than "read-only" to --sandbox
-# (§6.2, §9 invariant: a peer review NEVER writes).
+# peer-review.sh [--label <name>] [--model <slug>] <diff-text-file> --
+# invokes codex to review a diff and renders its findings under a label,
+# "External review — codex" by default (SPEC-PEER-REVIEW.md §6.2, §6.5,
+# §6.6, §6.8). Pure/testable: given a diff-text file, embeds it in a prompt
+# and shells out to `codex exec --sandbox read-only --output-schema
+# <schema>`. No flag or code path here ever adds anything other than
+# "read-only" to --sandbox (§6.2, §9 invariant: a peer review NEVER writes).
+#
+# --model <slug> (PRV-004, §6.11) passes -m <slug> to codex, selecting which
+# model reviews the diff; omitted -> no -m flag, codex uses its own default.
+# --sandbox read-only is always the first flag added, before any model
+# selection is applied, so model choice has no way to touch it.
 #
 # The rendered label defaults to "External review — codex" and can be
 # overridden with --label <name> or the PEER_REVIEW_LABEL env var (--label
@@ -26,10 +31,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCHEMA="$HERE/../schema/peer-review-findings.json"
 
 usage() {
-    echo "usage: peer-review.sh [--label <name>] <diff-text-file>" >&2
+    echo "usage: peer-review.sh [--label <name>] [--model <slug>] <diff-text-file>" >&2
 }
 
 LABEL="${PEER_REVIEW_LABEL:-External review — codex}"
+MODEL=""
 DIFF_FILE=""
 
 while [[ $# -gt 0 ]]; do
@@ -37,6 +43,11 @@ while [[ $# -gt 0 ]]; do
         --label)
             [[ $# -ge 2 ]] || { echo "ERROR: --label requires a <name> argument" >&2; usage; exit 2; }
             LABEL="$2"
+            shift 2
+            ;;
+        --model)
+            [[ $# -ge 2 ]] || { echo "ERROR: --model requires a <slug> argument" >&2; usage; exit 2; }
+            MODEL="$2"
             shift 2
             ;;
         *)
@@ -86,9 +97,16 @@ stderr_file="$(mktemp)"
 trap 'rm -f "$stdout_file" "$stderr_file"' EXIT
 
 # --sandbox read-only is non-negotiable and hardcoded: no argument or
-# environment variable accepted by this script can change it (§6.2).
-codex exec --sandbox read-only --output-schema "$SCHEMA" "$prompt" \
-    >"$stdout_file" 2>"$stderr_file"
+# environment variable accepted by this script can change it (§6.2). It is
+# always the first flag added, before any model selection, so -m/--model
+# (PRV-004) has no way to influence it.
+codex_cmd=(codex exec --sandbox read-only --output-schema "$SCHEMA")
+if [[ -n "$MODEL" ]]; then
+    codex_cmd+=(-m "$MODEL")
+fi
+codex_cmd+=("$prompt")
+
+"${codex_cmd[@]}" >"$stdout_file" 2>"$stderr_file"
 codex_rc=$?
 
 if [[ $codex_rc -ne 0 ]]; then

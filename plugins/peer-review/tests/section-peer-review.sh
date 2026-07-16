@@ -128,5 +128,37 @@ out="$(CODEX_FIXTURE=malformed CODEX_ARGLOG="$ARGLOG" PATH="$FAKECODEX_DIR:$NOBI
 check "label on raw fallback: overridden label used" "External review — Peer Reviewer (codex)" "$out"
 rm -f "$ARGLOG"
 
+# --- --model: no --model given -> no -m flag passed (preserves default codex-chosen model) ---
+ARGLOG="$(mktemp)"
+out="$(CODEX_FIXTURE=valid CODEX_ARGLOG="$ARGLOG" PATH="$FAKECODEX_DIR:$NOBIN" bash "$SCRIPT" "$DIFFFILE" 2>&1; echo "rc=$?")"
+check "no --model: exits 0" "rc=0" "$out"
+check_absent "no --model: no -m flag passed to codex" "ARG<<<-m>>>" "$(cat "$ARGLOG")"
+rm -f "$ARGLOG"
+
+# --- --model <slug>: -m <slug> passed to codex, --sandbox read-only still unconditional ---
+ARGLOG="$(mktemp)"
+out="$(CODEX_FIXTURE=valid CODEX_ARGLOG="$ARGLOG" PATH="$FAKECODEX_DIR:$NOBIN" bash "$SCRIPT" --model gpt-5.6-terra "$DIFFFILE" 2>&1; echo "rc=$?")"
+check "--model: exits 0" "rc=0" "$out"
+check "--model: -m flag passed to codex" "ARG<<<-m>>>" "$(cat "$ARGLOG")"
+check "--model: chosen slug passed to codex" "ARG<<<gpt-5.6-terra>>>" "$(cat "$ARGLOG")"
+check "--model: invocation still used --sandbox read-only" "--sandbox" "$(cat "$ARGLOG")"
+check "--model: invocation still used read-only" "read-only" "$(cat "$ARGLOG")"
+check_absent "--model: sandbox is never workspace-write" "workspace-write" "$(cat "$ARGLOG")"
+check_absent "--model: sandbox is never danger-full-access" "danger-full-access" "$(cat "$ARGLOG")"
+rm -f "$ARGLOG"
+
+# --- --model combined with --label: both apply independently ---
+ARGLOG="$(mktemp)"
+out="$(CODEX_FIXTURE=valid CODEX_ARGLOG="$ARGLOG" PATH="$FAKECODEX_DIR:$NOBIN" bash "$SCRIPT" --model gpt-5.6-luna --label "External review — Peer Reviewer (codex)" "$DIFFFILE" 2>&1; echo "rc=$?")"
+check "--model + --label: exits 0" "rc=0" "$out"
+check "--model + --label: model slug passed to codex" "ARG<<<gpt-5.6-luna>>>" "$(cat "$ARGLOG")"
+check "--model + --label: label applied" "External review — Peer Reviewer (codex)" "$out"
+rm -f "$ARGLOG"
+
+# --- --model missing its argument -> usage error, exit 2 ---
+out="$(bash "$SCRIPT" --model 2>&1; echo "rc=$?")"
+check "--model missing arg: exits 2" "rc=2" "$out"
+check "--model missing arg: usage error shown" "requires a" "$out"
+
 rm -f "$DIFFFILE"
 rm -rf "$FAKECODEX_DIR"

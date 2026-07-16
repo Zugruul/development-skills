@@ -1,5 +1,6 @@
 # Design — peer/E0: `/peer-review` skill
-Grounded in: SPEC-PEER-REVIEW.md §5, §6, §9, §11.
+Grounded in: SPEC-PEER-REVIEW.md §5, §6, §9, §11. Amended for PRV-004 (§6.11, dynamic model
+selection) — see the new Component/Interface/Decision entries below, marked "(PRV-004)".
 
 ## Components
 - `scripts/diff-source.sh` — resolves the diff to review from the four sources (§6.1, §6.3)
@@ -15,7 +16,14 @@ Grounded in: SPEC-PEER-REVIEW.md §5, §6, §9, §11.
   shape (§6.5).
 - `skills/peer-review/SKILL.md` — the user-facing skill: argument parsing (`--base`,
   `--staged`, a PR number), wires the two scripts, renders output under "External review —
-  codex" (§6.5), states the OpenAI-cloud disclosure (§6.10).
+  codex" (§6.5), states the OpenAI-cloud disclosure (§6.10). (PRV-004) Also runs
+  `list-models.sh`, presents its output via `AskUserQuestion`, and threads the pick through
+  `run.sh --model <slug>`.
+- `scripts/list-models.sh` (PRV-004) — discovers available codex models (`codex debug
+  models`), filters to `visibility: list` + `supported_in_api: true`, sorts by `priority`
+  ascending, emits `{"models":[...], "recommended":"<slug>"}` (§6.11). Nonzero exit (codex
+  missing, discovery failed, zero eligible) is a "skip selection, don't block the review"
+  signal to its caller, never a hard failure.
 
 ## Data models
 - **Finding**: `{file: string, line: int|null, severity: enum(info|warn|error), summary:
@@ -31,7 +39,12 @@ Grounded in: SPEC-PEER-REVIEW.md §5, §6, §9, §11.
 - `peer-review.sh <diff-text-file>` → stdout: rendered findings (structured or raw-fallback);
   exit 0 on a completed review (even with findings), nonzero only on preflight/auth failure.
 - Every `codex exec` invocation MUST include `--sandbox read-only` — no code path constructs
-  the command without it (§6.2, and SPEC §9 invariant: "a peer review NEVER writes").
+  the command without it (§6.2, and SPEC §9 invariant: "a peer review NEVER writes"). (PRV-004)
+  `-m <slug>` (model selection) is always added strictly after `--sandbox read-only` is fixed,
+  so no model choice can influence the sandbox flag.
+- (PRV-004) `list-models.sh` → stdout JSON (see above) + exit 0, or exit nonzero with nothing
+  meaningful on stdout — the latter is a fallback signal, not an error the caller must surface
+  to the human.
 
 ## Key sequences
 1. `SKILL.md` parses args → calls `diff-source.sh` → gets diff text (or exits early on empty

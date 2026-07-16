@@ -133,5 +133,45 @@ out="$(DS_FIXTURE=diff PR_FIXTURE=ok DSLOG="$DSLOG" PRLOG="$PRLOG" PEER_REVIEW_S
 check_rc "conflicting args: exit code 2" 2 "${out##*rc=}"
 check_absent "conflicting args: diff-source.sh never invoked" "ARGC" "$(cat "$DSLOG")"
 
+# --- --model <slug> alone: forwarded to peer-review.sh, diff-source.sh unaffected ---
+reset_logs
+out="$(DS_FIXTURE=diff PR_FIXTURE=ok DSLOG="$DSLOG" PRLOG="$PRLOG" PEER_REVIEW_STUBS="$STUBDIR" bash "$SCRIPT" --model gpt-5.6-terra 2>&1; echo "rc=$?")"
+check "--model alone: exits 0" "rc=0" "$out"
+check "--model alone: diff-source.sh received no extra args" "ARGC=0" "$(cat "$DSLOG")"
+check "--model alone: peer-review.sh received --model" "ARG<<<--model>>>" "$(cat "$PRLOG")"
+check "--model alone: peer-review.sh received the slug" "ARG<<<gpt-5.6-terra>>>" "$(cat "$PRLOG")"
+
+# --- --model combined with --staged, model before the diff-source flag ---
+reset_logs
+out="$(DS_FIXTURE=diff PR_FIXTURE=ok DSLOG="$DSLOG" PRLOG="$PRLOG" PEER_REVIEW_STUBS="$STUBDIR" bash "$SCRIPT" --model gpt-5.6-sol --staged 2>&1; echo "rc=$?")"
+check "--model + --staged: exits 0" "rc=0" "$out"
+check "--model + --staged: diff-source.sh received --staged" "ARG<<<--staged>>>" "$(cat "$DSLOG")"
+check "--model + --staged: peer-review.sh received the slug" "ARG<<<gpt-5.6-sol>>>" "$(cat "$PRLOG")"
+
+# --- --model combined with a bare PR number, model after (order-independent) ---
+reset_logs
+out="$(DS_FIXTURE=diff PR_FIXTURE=ok DSLOG="$DSLOG" PRLOG="$PRLOG" PEER_REVIEW_STUBS="$STUBDIR" bash "$SCRIPT" 42 --model gpt-5.6-luna 2>&1; echo "rc=$?")"
+check "PR + --model (order-independent): exits 0" "rc=0" "$out"
+check "PR + --model: diff-source.sh received --pr 42" "ARG<<<42>>>" "$(cat "$DSLOG")"
+check "PR + --model: peer-review.sh received the slug" "ARG<<<gpt-5.6-luna>>>" "$(cat "$PRLOG")"
+
+# --- no --model: peer-review.sh receives no --model flag (preserves default behavior) ---
+reset_logs
+out="$(DS_FIXTURE=diff PR_FIXTURE=ok DSLOG="$DSLOG" PRLOG="$PRLOG" PEER_REVIEW_STUBS="$STUBDIR" bash "$SCRIPT" 2>&1; echo "rc=$?")"
+check "no --model: exits 0" "rc=0" "$out"
+check_absent "no --model: peer-review.sh receives no --model flag" "ARG<<<--model>>>" "$(cat "$PRLOG")"
+
+# --- nothing to review: --model given, but peer-review.sh still never invoked ---
+reset_logs
+out="$(DS_FIXTURE=nothing PR_FIXTURE=ok DSLOG="$DSLOG" PRLOG="$PRLOG" PEER_REVIEW_STUBS="$STUBDIR" bash "$SCRIPT" --model gpt-5.6-sol 2>&1; echo "rc=$?")"
+check "nothing to review + --model: exits 0" "rc=0" "$out"
+check_absent "nothing to review + --model: peer-review.sh never invoked" "ARGC" "$(cat "$PRLOG")"
+
+# --- --model missing its argument -> usage error, exit 2 ---
+reset_logs
+out="$(DS_FIXTURE=diff PR_FIXTURE=ok DSLOG="$DSLOG" PRLOG="$PRLOG" PEER_REVIEW_STUBS="$STUBDIR" bash "$SCRIPT" --model 2>&1; echo "rc=$?")"
+check_rc "--model missing arg: exit code 2" 2 "${out##*rc=}"
+check_absent "--model missing arg: diff-source.sh never invoked" "ARGC" "$(cat "$DSLOG")"
+
 rm -f "$DSLOG" "$PRLOG"
 rm -rf "$STUBDIR"
