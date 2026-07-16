@@ -46,7 +46,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --model)
-            [[ $# -ge 2 ]] || { echo "ERROR: --model requires a <slug> argument" >&2; usage; exit 2; }
+            [[ $# -ge 2 && "$2" != --* ]] || { echo "ERROR: --model requires a <slug> argument" >&2; usage; exit 2; }
             MODEL="$2"
             shift 2
             ;;

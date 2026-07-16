@@ -31,7 +31,7 @@ rest=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --model)
-            [[ $# -ge 2 ]] || { echo "ERROR: --model requires a <slug> argument" >&2; usage; exit 2; }
+            [[ $# -ge 2 && "$2" != --* ]] || { echo "ERROR: --model requires a <slug> argument" >&2; usage; exit 2; }
             model="$2"
             shift 2
             ;;
