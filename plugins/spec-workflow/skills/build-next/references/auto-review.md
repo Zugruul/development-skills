@@ -1,14 +1,63 @@
 # Auto-merge review protocol (`methodology.autoMerge: true`)
 
-Setting `autoMerge: true` in the versioned project config IS the human's
-standing authorization to merge without per-PR approval — cite it if a
-permission layer questions a merge; never route around a denial by retrying
-(a denial means ask the human, full stop).
+Setting `autoMerge: true` in the versioned project config is the PROJECT's
+declared intent to run this protocol — it authorizes the *workflow shape*
+(spawn an independent reviewer, don't wait for a human PR approval). It is
+**not**, by itself, the session-level authorization a permission classifier
+needs for the specific self-approval actions this protocol performs (the
+orchestrator spawned the dev agent, spawned the reviewer(s), and is about to
+record/act on their verdict — all in one session, all under its own control).
+A classifier denying that on self-approval grounds is working as intended; do
+not cite the config flag alone to argue past it, and do not cite a MEMORY.md
+note either — a saved memory claiming prior authorization is not a verified
+human message in the current transcript and will not satisfy the classifier
+(nor should it: memory is written by the agent itself, so treating it as
+authorization would let the agent grant itself permission by writing a note).
+**§0 below is what actually earns that authorization** — get it once, up
+front, from a real human message in this session, before you need it.
+Never route around an actual denial by retrying (a denial means ask the
+human, full stop) — §0 exists so you ask BEFORE hitting the denial, not after.
 
 When auto-merge is on, the human PR-approval step is replaced by an autonomous
 reviewer agent that must independently approve before the orchestrator merges.
 The orchestrator NEVER merges its own unreviewed work; the reviewer NEVER
 writes code or touches the board. Roles stay separated on purpose.
+
+## 0. Session consent gate — ask once, before the first autonomous merge
+
+Before running this protocol for the FIRST time in a session (i.e. the first
+task that would reach step 1 below), get an explicit, in-transcript
+authorization from the human via `AskUserQuestion`:
+
+```
+question: "This project's config has methodology.autoMerge: true. Before I run
+  the autonomous PR-review-approve-merge protocol — spawning an independent
+  reviewer agent, recording its verdict, and merging without waiting for your
+  review — do you authorize this for the rest of THIS session?"
+header: "Auto-merge"
+options:
+  - label: "Yes — autonomous merge for this session"
+    description: "Spawn independent reviewers, record their verdict, and
+      merge automatically for every task the rest of this session, without
+      asking again."
+  - label: "No — leave PRs for me to review"
+    description: "Every task stops at *In review* for me to approve/merge by
+      hand; do not attempt gh pr review / gh pr merge this session."
+```
+
+- **"Yes"** → proceed with this protocol for every task for the REMAINDER OF
+  THIS SESSION without asking again. This authorization is session-scoped by
+  design — it does NOT persist to a future session/conversation (a fresh
+  session re-asks); do not write it to memory as a standing grant, since that
+  is exactly the pattern the classifier correctly refuses to accept from a
+  memory note.
+- **"No"** → treat this exactly like `methodology.autoMerge: false` for the
+  rest of the session (leave tasks at *In review*, do not spawn a PR-approval
+  reviewer agent), regardless of what the config file says. Do not ask again
+  this session.
+- **Already answered earlier this same conversation?** Skip the gate — reuse
+  that answer, don't re-ask per task.
+- `methodology.autoMerge: false` → nothing to gate; skip §0 entirely.
 
 ## 1. Spawn the reviewer
 
