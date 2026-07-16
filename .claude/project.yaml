@@ -154,8 +154,54 @@ specs:
     - Content leaves the machine only to endpoints explicitly declared in .claude/compute-registry.yaml, or to OpenAI via the user-installed codex CLI -- and the latter is disclosed in the skill doc.
     - External-model findings are always labeled with their source and never presented as, or silently merged into, Claude's own judgment.
     - Scripts are bash 3.2-compatible / stdlib-only Python, set -uo pipefail, shellcheck-clean.
+-   id: cdx
+    title: Dual-host compatibility — Claude Code + Codex (SPEC-CODEX-COMPAT.md)
+    board: main
+    specPath: SPEC-CODEX-COMPAT.md
+    backlogPath: docs/BACKLOG-CODEX-COMPAT.md
+    taskPrefix: CDX
+    epics:
+    -   id: E0
+        title: Codex packaging & plugin-root resolution
+        taskRanges:
+        -   - 1
+            - 9
+    -   id: E1
+        title: Portable interaction & invocation semantics
+        taskRanges:
+        -   - 10
+            - 19
+    -   id: E2
+        title: Host-aware delegation & model resolution
+        taskRanges:
+        -   - 20
+            - 29
+    -   id: E3
+        title: Build-loop & enforcement parity
+        taskRanges:
+        -   - 30
+            - 39
+    -   id: E4
+        title: CI, documentation & compatibility matrix
+        taskRanges:
+        -   - 40
+            - 49
+    -   id: E5
+        title: Compatibility sweep for new/in-flight work
+        taskRanges:
+        -   - 50
+            - 59
+    invariants:
+    - One shared script/schema/template/test engine; no skill, script, or schema is forked into separate per-host copies.
+    - '`name` and `description` are the only frontmatter fields either host is assumed to enforce; `allowed-tools` remains a Claude-only enhancement, never the cross-host security boundary.'
+    - Plugin-root resolution never reads the current working directory.
+    - Critical safety enforcement (gate-before-review, checkpoint, truthful board state) is implemented in deterministic scripts/preflight checks, with hooks as defense in depth only — never the sole enforcement mechanism.
+    - Existing `.claude/project.yaml` consumers on schemaVersion 2 remain valid with zero required changes; any new field is additive and optional.
+    - Claude Code's existing installation, manifests, hooks, and slash-command invocation remain unchanged and functioning throughout.
+    - No unrelated pre-existing working-tree changes are reverted, overwritten, staged, or committed by this work.
+    - Degraded features are documented explicitly; none are silently faked or hidden.
 commands:
-    gate: bash plugins/spec-workflow/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/tests/*.sh && claude plugin validate plugins/spec-workflow
+    gate: bash plugins/spec-workflow/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/scripts/lib/*.sh plugins/spec-workflow/tests/*.sh && claude plugin validate plugins/spec-workflow
 docs:
 -   id: root
     path: README.md
