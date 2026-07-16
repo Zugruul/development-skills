@@ -22,6 +22,7 @@ Everything project-specific lives in the consumer repo's **`.claude/project.yaml
 | `create-inbound` | Search-first, dedup-gated capture of ad-hoc ideas/bugs/requests — the write side of dedup |
 | `implement-task` | One task: brief a dev subagent (what/how/why), verify, drive the board |
 | `ui-options` | Iterative UI mode: options page with favorite + aspect selection for the human |
+| `refine-task-ui` | Run/resume a task's UI decision to completion, then capture the finalized design as real screenshots folded into the task's issue body with resolved acceptance criteria |
 | `gate` | The single green-before-advance quality command |
 | `auto-merge` | Status/on/off for autonomous PR review+merge (`methodology.autoMerge`); asks with flow previews when called bare |
 | `pr-review-model` | Show/set the autonomous PR reviewer's allowed models (`delegation.identities.reviewer.models`); asks with options when called bare |
