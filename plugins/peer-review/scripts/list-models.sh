@@ -55,7 +55,12 @@ for m in models:
     # slug + priority are load-bearing (identification, sort/recommendation)
     # and required. display_name/description are cosmetic -- their absence
     # must not silently drop an otherwise-eligible model from the catalog.
-    if not isinstance(slug, str) or not isinstance(priority, int):
+    # bool is a subclass of int in Python (isinstance(True, int) is True),
+    # so it must be excluded explicitly or a malformed "priority": true/false
+    # would silently sort/recommend as if it were 1/0.
+    if not isinstance(slug, str):
+        continue
+    if not isinstance(priority, int) or isinstance(priority, bool):
         continue
     display_name = m.get("display_name")
     if not isinstance(display_name, str):
