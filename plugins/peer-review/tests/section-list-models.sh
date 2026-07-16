@@ -77,7 +77,8 @@ check "normal: recommended is the lowest-priority slug" '"recommended": "gpt-5.6
 firstpos=$(grep -bo '"gpt-5.6-sol"' <<<"$out" | head -1 | cut -d: -f1)
 secondpos=$(grep -bo '"gpt-5.6-terra"' <<<"$out" | head -1 | cut -d: -f1)
 thirdpos=$(grep -bo '"gpt-5.6-luna"' <<<"$out" | head -1 | cut -d: -f1)
-check_rc "normal: models array sorted by priority ascending (sol before terra before luna)" 0 "$([[ "$firstpos" -lt "$secondpos" && "$secondpos" -lt "$thirdpos" ]]; echo $?)"
+if [[ "$firstpos" -lt "$secondpos" && "$secondpos" -lt "$thirdpos" ]]; then sort_rc=0; else sort_rc=1; fi
+check_rc "normal: models array sorted by priority ascending (sol before terra before luna)" 0 "$sort_rc"
 
 # --- a visibility:hide entry is excluded ---
 out="$(CODEX_DEBUG_MODELS_FIXTURE=with-hidden PATH="$FAKECODEX_DIR:$NOBIN" bash "$SCRIPT" 2>&1; echo "rc=$?")"
