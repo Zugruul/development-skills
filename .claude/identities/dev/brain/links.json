@@ -299,6 +299,11 @@
     "last": "2026-07-12",
     "weight": 0.5
   },
+  "skip-not-crash-on-missing-external-tool-dependency->-f \"$VALIDATOR\"": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "stderr-suppression-hides-evidence->circular-fixture-detector": {
     "fires": 3,
     "last": "2026-07-12",
