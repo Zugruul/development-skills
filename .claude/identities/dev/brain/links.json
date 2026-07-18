@@ -164,6 +164,11 @@
     "last": "2026-07-18",
     "weight": 0.5
   },
+  "multiline-body-stdin-contract-gap->sanity-check-fix-against-broken-code": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "naive-counters-need-quotes-first->exclude-before-scan": {
     "fires": 3,
     "last": "2026-07-18",
