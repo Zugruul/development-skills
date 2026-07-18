@@ -9,6 +9,11 @@
     "last": null,
     "weight": 0.5
   },
+  "parallel-independent-review-passes->concurrent-gate-runs-collide": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "worktree-isolation-when-multitasking->concurrent-gate-runs-collide": {
     "fires": 0,
     "last": null,
