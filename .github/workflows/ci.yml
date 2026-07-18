@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: shellcheck
-        run: shellcheck plugins/*/scripts/*.sh plugins/*/tests/*.sh
+        run: shellcheck -x plugins/*/scripts/*.sh plugins/*/scripts/lib/*.sh plugins/*/tests/*.sh
 
       - name: install PyYAML (config loader + eval checks need it)
         run: pip install --quiet pyyaml
@@ -40,3 +40,10 @@ jobs:
         run: |
           claude plugin validate .
           for p in plugins/*/; do claude plugin validate "$p"; done
+
+  validate-codex:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: codex plugin/skill validation (SKIPs if Codex CLI not installed)
+        run: bash plugins/spec-workflow/tests/run-tests.sh --section codex-plugin-json,codex-skill-lint
