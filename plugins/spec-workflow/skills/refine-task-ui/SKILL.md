@@ -1,6 +1,6 @@
 ---
 name: refine-task-ui
-description: Refine an existing board task's UI through the iterative-UI decision hub, then capture the finalized design as real screenshots and fold them + the resolved acceptance criteria back into the task's issue body. Use for '/refine-task-ui <task-id>' — when a task's UI direction is still being iterated (or hasn't started) and the human wants concrete visual artifacts attached to the task, not just a hub link.
+description: Refine an existing board task's UI through the iterative-UI decision hub, then capture the finalized design as real screenshots and fold them + the resolved acceptance criteria back into the task's issue body. Use for the /refine-task-ui command with a task id — when a task's UI direction is still being iterated (or hasn't started) and the human wants concrete visual artifacts attached to the task, not just a hub link.
 ---
 
 # Refine a task's UI, then attach the finalized design to the task
