@@ -14,6 +14,16 @@
     "last": "2026-07-12",
     "weight": 0.5
   },
+  "audit-new-path-parity-before-writing->parity-check-new-vs-existing-path": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "audit-new-path-parity-before-writing->verify-fixture-isolates-intended-path": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "bash32-empty-array-set-u->budget-count-join-separators": {
     "fires": 5,
     "last": "2026-07-18",
@@ -357,6 +367,21 @@
   "vendored-split-build-import-guard->red-static-vs-wiring-checks": {
     "fires": 1,
     "last": "2026-07-08",
+    "weight": 0.5
+  },
+  "verify-fixture-isolates-intended-path->audit-new-path-parity-before-writing": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "verify-fixture-isolates-intended-path->vocab-dict-fake-embedder": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "vocab-dict-fake-embedder->verify-fixture-isolates-intended-path": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "worktree-loss-recovery->deterministic-repro-fast": {

@@ -1,2 +1,17 @@
 {"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "independent-harness-covers-every-legacy-artifact", "strength": 1, "ts": "2026-07-16T19:59:47+00:00", "type": "NoteMinted", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "dev", "slug": "reuse-existing-scope-before-threading-new-param", "strength": 1, "ts": "2026-07-16T20:00:27+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "parity-check-new-vs-existing-path", "strength": 1, "ts": "2026-07-18T21:12:17+00:00", "type": "NoteMinted", "v": 1}
+{"key": "parity-check-new-vs-existing-path->golden-identical-covers-absent-not-present", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-18T21:12:17+00:00", "type": "LinkFormed", "v": 1}
+{"key": "parity-check-new-vs-existing-path->audit-new-path-parity-before-writing", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-18T21:12:17+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "golden-identical-covers-absent-not-present", "strength": 1, "ts": "2026-07-18T21:12:26+00:00", "type": "NoteMinted", "v": 1}
+{"key": "golden-identical-covers-absent-not-present->parity-check-new-vs-existing-path", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-18T21:12:26+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "trace-test-setup-vs-comment", "strength": 1, "ts": "2026-07-18T21:12:35+00:00", "type": "NoteMinted", "v": 1}
+{"key": "trace-test-setup-vs-comment->verify-guard-regex-on-real-artifact", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-18T21:12:35+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "verify-fixture-isolates-intended-path", "strength": 1, "ts": "2026-07-18T21:12:43+00:00", "type": "NoteMinted", "v": 1}
+{"key": "verify-fixture-isolates-intended-path->vocab-dict-fake-embedder", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-18T21:12:43+00:00", "type": "LinkFormed", "v": 1}
+{"key": "verify-fixture-isolates-intended-path->audit-new-path-parity-before-writing", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-18T21:12:43+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "vocab-dict-fake-embedder", "strength": 1, "ts": "2026-07-18T21:12:51+00:00", "type": "NoteMinted", "v": 1}
+{"key": "vocab-dict-fake-embedder->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-18T21:12:51+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "audit-new-path-parity-before-writing", "strength": 1, "ts": "2026-07-18T21:13:00+00:00", "type": "NoteMinted", "v": 1}
+{"key": "audit-new-path-parity-before-writing->parity-check-new-vs-existing-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-18T21:13:00+00:00", "type": "LinkFormed", "v": 1}
+{"key": "audit-new-path-parity-before-writing->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-18T21:13:00+00:00", "type": "LinkFormed", "v": 1}

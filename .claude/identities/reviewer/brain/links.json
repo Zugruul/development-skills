@@ -1,1 +1,22 @@
-{}
+{
+  "golden-identical-covers-absent-not-present->parity-check-new-vs-existing-path": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "parity-check-new-vs-existing-path->audit-new-path-parity-before-writing": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "parity-check-new-vs-existing-path->golden-identical-covers-absent-not-present": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "trace-test-setup-vs-comment->verify-guard-regex-on-real-artifact": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  }
+}
