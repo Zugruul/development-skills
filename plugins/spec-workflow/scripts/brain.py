@@ -427,6 +427,27 @@ def cmd_recall(identities, args):
                 activation[slug] = act
             events.append({"event": "seed", "note": slug, "activation": round(act, 4)})
 
+    # (1b) hybrid seeding (MEM-032, SPEC-MEMORY §9.3): union in the top-K
+    # embedding neighbors of the query text, when the role's index.sqlite3
+    # sidecar exists. Absence of the sidecar falls through unchanged -- the
+    # exact same code that ran before this feature existed -- so the
+    # golden-identical-when-absent guarantee holds by construction.
+    db_path = index_db_path(identities, role)
+    if os.path.exists(db_path):
+        query_text = " ".join(_split(args.keywords))
+        if query_text:
+            vectors = _embed_texts([query_text])
+            if vectors is not None:
+                for slug, _sim in _top_k_neighbors(db_path, vectors[0], args.k):
+                    if slug not in notes:
+                        continue
+                    fm = notes[slug]["fm"]
+                    act = 1.0 * (1 + int(fm.get("strength", DEFAULT_STRENGTH)) / 10)
+                    if act > activation.get(slug, 0):
+                        activation[slug] = act
+                        events.append({"event": "seed", "note": slug,
+                                       "activation": round(act, 4), "source": "embedding"})
+
     # (2) spread along outgoing links, up to MAX_HOPS, keeping the max per note
     frontier = [(s, activation[s]) for s in sorted(activation)]
     traversed = set()
@@ -824,6 +845,28 @@ def _embed_texts(texts):
         return None
 
 
+def _cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(x * x for x in b) ** 0.5
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
+
+
+def _top_k_neighbors(db_path, query_vector, k):
+    """Read-only scan of `notes` for the top-`k` (slug, similarity) pairs by
+    cosine similarity, sorted desc then slug asc for deterministic tie-breaks."""
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute("SELECT slug, vector FROM notes").fetchall()
+    finally:
+        conn.close()
+    scored = [(slug, _cosine(query_vector, json.loads(vector))) for slug, vector in rows]
+    scored.sort(key=lambda sv: (-sv[1], sv[0]))
+    return scored[:k]
+
+
 def cmd_index(identities, args):
     role = args.role
     notes = load_notes(identities, role)
@@ -886,6 +929,9 @@ def main(argv):
     sp.add_argument("--paths", default="")
     sp.add_argument("--keywords", default="")
     sp.add_argument("--budget", type=int, default=600)
+    sp.add_argument("--k", type=int, default=8,
+                     help="top-K embedding neighbors to union into the seed set "
+                          "when the role's index.sqlite3 sidecar exists (MEM-032)")
     sp.add_argument("--query", default="",
                      help="precise boolean filter (AND terms, '-' negates, "
                           "'field:v1,v2' ORs within a field) instead of fuzzy "
