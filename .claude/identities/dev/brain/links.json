@@ -209,11 +209,6 @@
     "last": "2026-07-12",
     "weight": 0.5
   },
-  "pin-exit-code-not-just-output-in-helper-tests->-n \\\"$x\\\"": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "poll-own-children->second-order-after-concurrency-fix": {
     "fires": 3,
     "last": "2026-07-12",
@@ -302,11 +297,6 @@
   "single-cause-fixtures->hermetic-tmpdir-per-guard-case": {
     "fires": 3,
     "last": "2026-07-12",
-    "weight": 0.5
-  },
-  "skip-not-crash-on-missing-external-tool-dependency->-f \"$VALIDATOR\"": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "stderr-suppression-hides-evidence->circular-fixture-detector": {

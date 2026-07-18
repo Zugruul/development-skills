@@ -1,1 +1,12 @@
-{}
+{
+  "bisect-before-blaming-tracked-flakiness->fix-root-cause-not-retry-around-flake": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "board-comment-body-only-via-stdin->board-comment-bodies-via-file": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  }
+}
