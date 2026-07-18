@@ -35,7 +35,12 @@ chmod +x "$T3PGH/gh"
 rm -f "$MUTATION_MARKER"
 out="$(cd "$T3P" && PATH="$T3PGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 7 "In review" 2>&1)"; rc=$?
 check "preflight: board.sh move directly blocked without recorded pass" "BLOCKED" "$out"
-[[ "$rc" -ne 0 ]] && echo "ok   preflight: board.sh move directly blocked -- nonzero exit" || { echo "FAIL preflight: board.sh move directly blocked -- nonzero exit (got rc=$rc)"; fails=$((fails+1)); }
+if [[ "$rc" -ne 0 ]]; then
+    echo "ok   preflight: board.sh move directly blocked -- nonzero exit"
+else
+    echo "FAIL preflight: board.sh move directly blocked -- nonzero exit (got rc=$rc)"
+    fails=$((fails+1))
+fi
 if [[ -f "$MUTATION_MARKER" ]]; then
     echo "FAIL preflight: blocked move must not reach gh project item-edit"
     fails=$((fails+1))
@@ -47,12 +52,17 @@ fi
 # guard-board-move.sh's own case-insensitive norm()).
 out="$(cd "$T3P" && PATH="$T3PGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 7 "in review" 2>&1)"; rc=$?
 check "preflight: lowercase 'in review' also blocked without recorded pass" "BLOCKED" "$out"
-[[ "$rc" -ne 0 ]] && echo "ok   preflight: lowercase 'in review' nonzero exit" || { echo "FAIL preflight: lowercase 'in review' nonzero exit (got rc=$rc)"; fails=$((fails+1)); }
+if [[ "$rc" -ne 0 ]]; then
+    echo "ok   preflight: lowercase 'in review' nonzero exit"
+else
+    echo "FAIL preflight: lowercase 'in review' nonzero exit (got rc=$rc)"
+    fails=$((fails+1))
+fi
 
 # Non-review moves are never gated by the preflight.
 out="$(cd "$T3P" && PATH="$T3PGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 7 Backlog 2>&1)"; rc=$?
 check "preflight: non-review move unaffected by missing pass" "moved #7 -> Backlog" "$out"
-[[ "$rc" -eq 0 ]] && echo "ok   preflight: non-review move exit 0" || { echo "FAIL preflight: non-review move exit 0 (got rc=$rc)"; fails=$((fails+1)); }
+check_rc "preflight: non-review move exit 0" 0 "$rc"
 
 # --- 2. Record a valid pass, then the same direct (no-hook) move succeeds.
 out="$(cd "$T3P" && bash "$PLUGIN/scripts/gate.sh" 2>&1)"
@@ -60,7 +70,7 @@ check "preflight: gate pass recorded" "GATE PASS recorded" "$out"
 rm -f "$MUTATION_MARKER"
 out="$(cd "$T3P" && PATH="$T3PGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 7 "In review" 2>&1)"; rc=$?
 check "preflight: move succeeds directly with a fresh recorded pass" "moved #7 -> In review" "$out"
-[[ "$rc" -eq 0 ]] && echo "ok   preflight: move with fresh pass exit 0" || { echo "FAIL preflight: move with fresh pass exit 0 (got rc=$rc)"; fails=$((fails+1)); }
+check_rc "preflight: move with fresh pass exit 0" 0 "$rc"
 if [[ -f "$MUTATION_MARKER" ]]; then
     echo "ok   preflight: allowed move reached gh project item-edit"
 else
@@ -74,7 +84,12 @@ echo dirty > "$T3P/file.txt" && (cd "$T3P" && git add file.txt)
 rm -f "$MUTATION_MARKER"
 out="$(cd "$T3P" && PATH="$T3PGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 7 "In review" 2>&1)"; rc=$?
 check "preflight: stale pass re-blocked directly by board.sh" "BLOCKED" "$out"
-[[ "$rc" -ne 0 ]] && echo "ok   preflight: stale pass nonzero exit" || { echo "FAIL preflight: stale pass nonzero exit (got rc=$rc)"; fails=$((fails+1)); }
+if [[ "$rc" -ne 0 ]]; then
+    echo "ok   preflight: stale pass nonzero exit"
+else
+    echo "FAIL preflight: stale pass nonzero exit (got rc=$rc)"
+    fails=$((fails+1))
+fi
 if [[ -f "$MUTATION_MARKER" ]]; then
     echo "FAIL preflight: stale-pass blocked move must not reach gh project item-edit"
     fails=$((fails+1))

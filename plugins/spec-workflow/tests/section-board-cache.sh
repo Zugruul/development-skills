@@ -61,6 +61,10 @@ run() { PATH="$CGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_CALLCOUNT="$TOTALCC" FAKE_G
     FAKE_GH_ISSUE_NUM=777 FAKE_GH_NEW_ISSUE_NUM=778 "$@"; }
 out1="$(cd "$BC" && run bash "$PLUGIN/scripts/board.sh" list 2>&1; echo "rc=$?")"
 out2="$(cd "$BC" && run bash "$PLUGIN/scripts/board.sh" move 777 "In progress" 2>&1; echo "rc=$?")"
+# CDX-030: board.sh's own preflight now blocks a move to "In review" without
+# a recorded gate pass, even with no hook in the loop -- record one first
+# (fixture's commands.gate is the trivial "true", see valid.project.yaml).
+cd "$BC" && bash "$PLUGIN/scripts/gate.sh" >/dev/null 2>&1
 out3="$(cd "$BC" && run bash "$PLUGIN/scripts/board.sh" move 777 "In review" 2>&1; echo "rc=$?")"
 out4="$(cd "$BC" && run bash "$PLUGIN/scripts/board.sh" move 777 "QA" 2>&1; echo "rc=$?")"
 out5="$(cd "$BC" && run bash "$PLUGIN/scripts/board.sh" add --type feature "found during QA" P2 2>&1; echo "rc=$?")"
