@@ -364,9 +364,23 @@ canvas.grabbing{cursor:grabbing}
 /* ticker (bottom) */
 /* activation log — right sidebar, mirroring the left panel's collapse UX */
 #rightbar{top:70px;right:14px;width:300px;max-height:calc(100vh - 100px);overflow:auto;
-  padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease}
+  padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease;
+  scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:rgba(90,190,255,.4) rgba(255,255,255,.05)}
 #rightbar.collapsed{transform:translateX(calc(100% + 24px));opacity:0;pointer-events:none}
-#rightbar-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem}
+/* explicit (non-overlay) scrollbar, same convention as #search-filters-panel/
+   #search-results-list — a bare overflow:auto defers to the OS's auto-hide
+   overlay scrollbar (invisible until you scroll on macOS), which read as "no
+   scroll" on a panel that's clearly cut off. */
+#rightbar::-webkit-scrollbar{width:9px}
+#rightbar::-webkit-scrollbar-track{background:rgba(255,255,255,.05);border-radius:5px}
+#rightbar::-webkit-scrollbar-thumb{background:rgba(90,190,255,.4);border-radius:5px}
+#rightbar::-webkit-scrollbar-thumb:hover{background:rgba(90,190,255,.6)}
+/* sticky header: pulled flush to the scrolling container's edges via negative
+   margins that cancel #rightbar's own padding, then re-padded internally so
+   it still lines up with the log entries below once scrolled under it. */
+#rightbar-head{position:sticky;top:0;z-index:2;background:var(--panel-solid);
+  display:flex;justify-content:space-between;align-items:center;gap:.5rem;
+  margin:-.7rem -1rem 0;padding:.7rem 1rem .5rem}
 #rightbar-tab{position:fixed;top:70px;right:0;z-index:20;border-right:0;border-radius:8px 0 0 8px;
   padding:.55rem .4rem;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:.8rem}
 #rightbar-tab:hover{color:var(--cyan)}
@@ -585,7 +599,10 @@ canvas.grabbing{cursor:grabbing}
 <div class="hud" id="rightbar">
   <div id="rightbar-head">
     <button class="secthead" id="sect-log" aria-expanded="true">Activation log</button>
-    <button class="iconbtn" id="rightbar-collapse" title="Hide log" aria-label="Hide log">⟩</button>
+    <div style="display:flex;gap:.3rem">
+      <button class="iconbtn" id="rightbar-clear" title="Clear log" aria-label="Clear log">⨯</button>
+      <button class="iconbtn" id="rightbar-collapse" title="Hide log" aria-label="Hide log">⟩</button>
+    </div>
   </div>
   <div id="tickerlog" aria-live="polite"></div>
 </div>
@@ -2858,6 +2875,7 @@ document.getElementById("gauges-collapse").onclick = ()=>{ uiState.panel = true;
 gaugesTab.onclick = ()=>{ uiState.panel = false; saveUiState(); applyUiState(); };
 document.getElementById("rightbar-collapse").onclick = ()=>{ uiState.rpanel = true; saveUiState(); applyUiState(); };
 document.getElementById("rightbar-tab").onclick = ()=>{ uiState.rpanel = false; saveUiState(); applyUiState(); };
+document.getElementById("rightbar-clear").onclick = ()=>{ LOG.innerHTML = ""; };
 applyUiState();
 
 // ---- search bar: wire the button/input/clear + the filters popover ----

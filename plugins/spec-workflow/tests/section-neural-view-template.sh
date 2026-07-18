@@ -1065,3 +1065,10 @@ PY
 check "sanity: step() is the function containing the link-spring force loop" "STEP_TOUCHES_LINKS=True" "$out"
 check "step() (the physics/force-integration function) never references entityLinks or entLines -- entity edges apply zero simulation force" "STEP_CLEAN_OF_ENTITY=True" "$out"
 
+echo "== activation log panel: clear button, sticky header, always-visible scrollbar (#211/#212) =="
+check "activation log header has a clear button" 'id="rightbar-clear"' "$(cat "$NVHTML")"
+check "clear button wires an onclick handler that empties the log" 'document.getElementById("rightbar-clear").onclick = ()=>{ LOG.innerHTML = ""; };' "$(cat "$NVHTML")"
+check "activation log header is pinned via position:sticky while the log scrolls beneath it" "#rightbar-head{position:sticky;top:0" "$(cat "$NVHTML")"
+check "activation log scrollbar is explicitly styled (not a bare overflow:auto that defers to an OS auto-hide overlay)" "#rightbar::-webkit-scrollbar{width:9px}" "$(cat "$NVHTML")"
+check "activation log scrollbar thumb/track colors match the rest of the HUD's scrollbar convention" "#rightbar::-webkit-scrollbar-thumb{background:rgba(90,190,255,.4);border-radius:5px}" "$(cat "$NVHTML")"
+

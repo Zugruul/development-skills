@@ -24,6 +24,13 @@ check "build-next SKILL.md report step carries a retro-status line" "retro: done
 check "build-next SKILL.md report step's skip form states a reason" "retro: SKIPPED — <reason>" "$BNBODY"
 check "build-next SKILL.md cross-references brains.md for retro mechanics" "references/brains.md" "$BNBODY"
 
+echo "== build-next SKILL.md: pickup/resume announces a task summary (#213) =="
+check "build-next SKILL.md's pickup step announces the summary before other action" "Announce the pickup/resume" "$BNBODY"
+check "build-next SKILL.md summary includes the task id and title" "the task id and title" "$BNBODY"
+check "build-next SKILL.md summary includes a plain-language brief" "brief plain-language summary" "$BNBODY"
+check "build-next SKILL.md summary includes an unordered list of remaining work" "an unordered list of what still needs to be done" "$BNBODY"
+check "build-next SKILL.md summary fires on resume, not just a fresh pick" "whether the task is freshly picked or being resumed mid-flight" "$BNBODY"
+
 echo "== auto-review.md: no-interactive-branch decision table (SW-085) =="
 ARMD="$PLUGIN/skills/build-next/references/auto-review.md"
 if [[ -f "$ARMD" ]]; then echo "ok   auto-review.md exists"; else echo "FAIL auto-review.md missing"; fails=$((fails + 1)); fi

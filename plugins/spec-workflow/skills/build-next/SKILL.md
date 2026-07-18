@@ -17,7 +17,7 @@ You are an autonomous engineer building `<cfg:project.name>`. Read `.claude/proj
 3. `git switch <cfg:project.mainBranch> && git pull --ff-only` — start clean.
 
 ## Iteration
-1. **`next-task` skill** — `board.sh next`, then `board.sh show N` to read the body and **all human comments**; fold comment-driven changes into the issue body (`edit-body`) and acknowledge (`comment`) before starting.
+1. **`next-task` skill** — `board.sh next`, then `board.sh show N` to read the body and **all human comments**; fold comment-driven changes into the issue body (`edit-body`) and acknowledge (`comment`) before starting. **Announce the pickup/resume**: before any other action, print a short summary — the task id and title, then a brief plain-language summary (a sentence or two, no jargon dump), then an unordered list of what still needs to be done (derived from the issue body's unchecked acceptance criteria / DoD items, or the RESUME context if this is a continuation). Do this on every iteration, whether the task is freshly picked or being resumed mid-flight.
 2. **`implement-task` skill** on #N — you create the branch + `board.sh move N "In progress"`, then spawn a dev subagent (identity + allowed models come from `identity.sh dev <task path>`; pick a suitable model from that set) with the full what/how/why brief; it develops TDD to a green gate, pushes, opens the PR.
 3. **Verify** — re-run the gate yourself; confirm tests-first, invariants, isolation coverage. Then `board.sh move N "In review"`.
 4. **Review** — review agent on the diff; relay findings to a dev agent; re-gate.
