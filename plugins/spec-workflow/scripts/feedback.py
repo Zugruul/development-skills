@@ -120,6 +120,12 @@ CLI:
                                                             # documents to
                                                             # .claude/feedbacks/
                                                             # archive/<YYYY-MM>.yaml
+    feedback.py <root> archived [--since YYYY-MM]          # list archived
+                                                            # items (same
+                                                            # rendering as
+                                                            # pending), filtered
+                                                            # by month when
+                                                            # --since is given
 """
 import datetime
 import os
@@ -688,6 +694,34 @@ def cmd_archive(root):
     return 0
 
 
+def cmd_archived(root, since=None):
+    cfg = C.load_config(root, warn=False)
+    fcfg, feed_overridden = parse_feedback_cfg(cfg)
+    guard_err = _legacy_guard_error(root, fcfg, feed_overridden)
+    if guard_err:
+        print(guard_err)
+        return 1
+    feed_path = _feed_path(root, fcfg)
+    if feed_path is None:
+        print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
+        return 1
+    archive_dir = os.path.join(os.path.dirname(feed_path), "archive")
+    if not os.path.isdir(archive_dir):
+        return 0
+    for name in sorted(os.listdir(archive_dir)):
+        if not name.endswith(".yaml"):
+            continue
+        for rec in _load_feed(os.path.join(archive_dir, name)):
+            ts = rec.get("ts", "")
+            ts_norm = _normalize_ts(ts)
+            month_match = _MONTH_RE.match(ts_norm) if isinstance(ts_norm, str) else None
+            if since is not None and (month_match is None or month_match.group(1) < since):
+                continue
+            for i, item in enumerate(rec.get("items", [])):
+                print(f"{ts}\t{i}\t{item.get('category', '')}\t{item.get('severity', '')}\t{item.get('summary', '')}")
+    return 0
+
+
 def cmd_status(root):
     cfg = C.load_config(root, warn=False)
     fcfg, feed_overridden = parse_feedback_cfg(cfg)
@@ -709,7 +743,7 @@ def _cli(argv):
     if len(argv) < 2:
         sys.stderr.write(
             "usage: feedback.py <root> {emit <record.yaml>|pending|route <ts> <idx> <action> <ref>"
-            "|status|migrate-qualify|archive}\n"
+            "|status|migrate-qualify|archive|archived [--since YYYY-MM]}\n"
         )
         return 2
     root, verb = argv[0], argv[1]
@@ -731,6 +765,15 @@ def _cli(argv):
         return cmd_migrate_qualify(root)
     if verb == "archive":
         return cmd_archive(root)
+    if verb == "archived":
+        since = None
+        rest = argv[2:]
+        if rest:
+            if len(rest) != 2 or rest[0] != "--since":
+                sys.stderr.write("usage: feedback.py <root> archived [--since YYYY-MM]\n")
+                return 2
+            since = rest[1]
+        return cmd_archived(root, since=since)
     sys.stderr.write(f"feedback.py: unknown verb {verb!r}\n")
     return 2
 

@@ -598,10 +598,107 @@ ag_ route "2026-07-01T10:00:00Z" 1 backlog "y" >/dev/null
 check "archive: status unaffected by archive dir presence" "pending=0" "$(ag_ status)"
 rm -rf "$AG"
 
+# --- archived (MEM-002) -----------------------------------------------------
+# `archived [--since YYYY-MM]` lists items already moved to archive/, using
+# the exact same tab-separated rendering as `pending`, but over ALL items
+# (archived docs are, by construction, fully routed -- no unrouted filter).
+
+# case 1: no archive dir at all -> prints nothing, exit 0.
+AD1="$(mktemp -d)"; mkdir -p "$AD1/.claude/feedbacks"
+cp "$FIX/valid.project.yaml" "$AD1/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$AD1" set methodology.feedback true >/dev/null
+ad1_() { (cd "$AD1" && python3 "$PLUGIN/scripts/feedback.py" "$AD1" "$@"); }
+out="$(ad1_ archived)"; rc=$?
+check "archived: no archive dir -> empty output" "" "$out"
+check_rc "archived: no archive dir -> exit 0" 0 "$rc"
+rm -rf "$AD1"
+
+# case 2: archive dir exists but is empty -> prints nothing, exit 0.
+AD2="$(mktemp -d)"; mkdir -p "$AD2/.claude/feedbacks/archive"
+cp "$FIX/valid.project.yaml" "$AD2/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$AD2" set methodology.feedback true >/dev/null
+ad2_() { (cd "$AD2" && python3 "$PLUGIN/scripts/feedback.py" "$AD2" "$@"); }
+out="$(ad2_ archived)"; rc=$?
+check "archived: empty archive dir -> empty output" "" "$out"
+check_rc "archived: empty archive dir -> exit 0" 0 "$rc"
+rm -rf "$AD2"
+
+# case 3: multi-month -- items from all months are listed, in month order,
+# using pending's exact tab-separated rendering.
+AD3="$(mktemp -d)"; mkdir -p "$AD3/.claude/feedbacks/archive"
+cp "$FIX/valid.project.yaml" "$AD3/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$AD3" set methodology.feedback true >/dev/null
+ad3_() { (cd "$AD3" && python3 "$PLUGIN/scripts/feedback.py" "$AD3" "$@"); }
+cat >"$AD3/.claude/feedbacks/archive/2026-03.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-03-05T00:00:00Z"
+iteration: {task: FX-700, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "march item", generalized: "march item", routing: {action: ignore, ref: "n/a"}}
+YAML
+cat >"$AD3/.claude/feedbacks/archive/2026-05.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-05-10T00:00:00Z"
+iteration: {task: FX-701, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: incident, area: merge, severity: high, summary: "may item", generalized: "may item", routing: {action: ignore, ref: "n/a"}}
+YAML
+out="$(ad3_ archived)"
+check "archived: multi-month lists march item" "march item" "$out"
+check "archived: multi-month lists may item" "may item" "$out"
+check "archived: month order (march before may)" "march item"$'\n'"2026-05-10T00:00:00Z	0	incident	high	may item" "$out"
+check "archived: rendering matches pending's tab-separated format" "$(printf '2026-05-10T00:00:00Z\t0\tincident\thigh\tmay item')" "$out"
+rm -rf "$AD3"
+
+# case 4: --since boundary -- the boundary month is included, earlier months
+# are excluded.
+AD4="$(mktemp -d)"; mkdir -p "$AD4/.claude/feedbacks/archive"
+cp "$FIX/valid.project.yaml" "$AD4/.claude/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$AD4" set methodology.feedback true >/dev/null
+ad4_() { (cd "$AD4" && python3 "$PLUGIN/scripts/feedback.py" "$AD4" "$@"); }
+cat >"$AD4/.claude/feedbacks/archive/2026-01.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-01-01T00:00:00Z"
+iteration: {task: FX-710, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "january item", generalized: "january item", routing: {action: ignore, ref: "n/a"}}
+YAML
+cat >"$AD4/.claude/feedbacks/archive/2026-02.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-02-01T00:00:00Z"
+iteration: {task: FX-711, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "february item (boundary)", generalized: "february item (boundary)", routing: {action: ignore, ref: "n/a"}}
+YAML
+cat >"$AD4/.claude/feedbacks/archive/2026-03.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-03-01T00:00:00Z"
+iteration: {task: FX-712, outcome: merged, reviewRounds: 1}
+source: {role: dev, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "march item", generalized: "march item", routing: {action: ignore, ref: "n/a"}}
+YAML
+out="$(ad4_ archived --since 2026-02)"
+check_absent "archived --since: excludes earlier month" "january item" "$out"
+check "archived --since: includes the exact boundary month" "february item (boundary)" "$out"
+check "archived --since: includes a later month" "march item" "$out"
+rm -rf "$AD4"
+
 # README's feedback.py scripts-list entry enumerates the CLI verbs explicitly
 # (emit/pending/route/status/migrate-qualify) -- it must name `archive` too,
 # or the doc silently goes stale the moment a new verb ships.
 readme="$PLUGIN/README.md"
 readme_verbs_line="$(grep -F 'emit/pending/route/status/migrate-qualify' "$readme")"
 check "README documents feedback.py's archive verb" "emit/pending/route/status/migrate-qualify/archive" "$readme_verbs_line"
+check "README documents feedback.py's archived verb" "archived" "$readme_verbs_line"
+check "README describes archived's --since filter" "--since" "$readme_verbs_line"
 check "README describes what archive does" "archive/<YYYY-MM>.yaml" "$readme_verbs_line"
