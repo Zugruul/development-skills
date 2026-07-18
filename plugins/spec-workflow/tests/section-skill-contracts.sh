@@ -103,3 +103,46 @@ echo "== plugin + root README document the changelog-generate skill (#165) =="
 RROOTREADME="$(cat "$HERE/../../../README.md" 2>/dev/null)"
 check "plugin README lists the changelog-generate skill in the skills table" "| \`changelog-generate\` |" "$QREADME"
 check "root README lists the changelog-generate skill in the skills table" "| \`changelog-generate\` |" "$RROOTREADME"
+
+echo "== retrospective/build-next/implement-task: archive at close (MEM-003, SPEC-MEMORY.md 6.4) =="
+RETROSKILL="$PLUGIN/skills/retrospective/SKILL.md"
+if [[ -f "$RETROSKILL" ]]; then echo "ok   retrospective/SKILL.md exists"; else echo "FAIL retrospective/SKILL.md missing"; fails=$((fails + 1)); fi
+RETROBODY="$(cat "$RETROSKILL" 2>/dev/null)"
+check "retrospective SKILL.md runs archive as a feed step" "feedback.py <root> archive" "$RETROBODY"
+check "retrospective SKILL.md commit step covers feed, archives, and brain changes" "the routed feed, archives, and any brain changes together" "$RETROBODY"
+retro_route_before="${RETROBODY%%feedback.py route <ts>*}"
+retro_archive_before="${RETROBODY%%feedback.py <root> archive*}"
+if [[ "${#retro_route_before}" -lt "${#RETROBODY}" && "${#retro_archive_before}" -lt "${#RETROBODY}" && "${#retro_archive_before}" -gt "${#retro_route_before}" ]]; then
+    echo "ok   retrospective SKILL.md archives AFTER routing (ordering)"
+else
+    echo "FAIL retrospective SKILL.md archive step must come after the routing step"
+    fails=$((fails + 1))
+fi
+
+check "build-next SKILL.md step 8 runs archive as its final feed action" "feedback.py <root> archive" "$BNBODY"
+check "build-next SKILL.md step 8 commits the routed feed + archives separately from step 7" "commit the routed feed + archives together" "$BNBODY"
+bn_route_before="${BNBODY%%feedback.py <root> route <ts>*}"
+bn_archive_before="${BNBODY%%feedback.py <root> archive*}"
+if [[ "${#bn_route_before}" -lt "${#BNBODY}" && "${#bn_archive_before}" -lt "${#BNBODY}" && "${#bn_archive_before}" -gt "${#bn_route_before}" ]]; then
+    echo "ok   build-next SKILL.md step 8 archives AFTER routing (ordering)"
+else
+    echo "FAIL build-next SKILL.md step 8 archive action must come after routing"
+    fails=$((fails + 1))
+fi
+
+ITSKILL="$PLUGIN/skills/implement-task/SKILL.md"
+if [[ -f "$ITSKILL" ]]; then echo "ok   implement-task/SKILL.md exists"; else echo "FAIL implement-task/SKILL.md missing"; fails=$((fails + 1)); fi
+ITBODY="$(cat "$ITSKILL" 2>/dev/null)"
+check "implement-task SKILL.md step 4 runs archive as its final feed action" "feedback.py <root> archive" "$ITBODY"
+check "implement-task SKILL.md step 4 commits the routed feed + archives" "commit the routed feed + archives together" "$ITBODY"
+it_route_before="${ITBODY%%feedback.py <root> route <ts>*}"
+it_archive_before="${ITBODY%%feedback.py <root> archive*}"
+if [[ "${#it_route_before}" -lt "${#ITBODY}" && "${#it_archive_before}" -lt "${#ITBODY}" && "${#it_archive_before}" -gt "${#it_route_before}" ]]; then
+    echo "ok   implement-task SKILL.md step 4 archives AFTER routing (ordering)"
+else
+    echo "FAIL implement-task SKILL.md step 4 archive action must come after routing"
+    fails=$((fails + 1))
+fi
+
+echo "== plugin README: retro-protocol summary mentions archive-at-close (MEM-003) =="
+check "plugin README's identity-brain evolution summary mentions archive as the final feed step" "run \`archive\` as the final feed step" "$QREADME"

@@ -43,12 +43,16 @@ skill is just the entry point when nothing else is going to trigger it.
    its own file). Re-minting an existing slug just bumps its strength.
 4. **Prune + graduate.** `brain.sh prune <role>` (review flagged links; `--apply` to
    remove); `brain.sh graduate <role> <slug>` for any lesson proven durable enough to
-   become an invariant/`ROLE.md` rule instead of a standing note.
+   become an invariant/`ROLE.md` rule instead of a standing note; `brain.sh retro-mark`
+   bumps the retro counter that ages notes for pruning.
 5. **Directory.** `brain.sh directory` to regenerate `DIRECTORY.md`.
-6. **Commit** the routed feed and any brain changes together, as the orchestrator
-   identity (`identity.sh orchestrator` for the `-c user.name=... -c user.email=...`
-   flags — never a persistent `git config` write, see the note below).
-7. **Report**: items triaged (counts by action), notes minted/pruned/graduated,
+6. **Archive.** `feedback.py <root> archive` — moves every fully-routed feed document
+   into `.claude/feedbacks/archive/<YYYY-MM>.yaml`, as the LAST feed action of this
+   protocol, after routing (step 2) and mint/prune/retro-mark (steps 3-4).
+7. **Commit** the routed feed, archives, and any brain changes together, as the
+   orchestrator identity (`identity.sh orchestrator` for the `-c user.name=... -c
+   user.email=...` flags — never a persistent `git config` write, see the note below).
+8. **Report**: items triaged (counts by action), notes minted/pruned/graduated,
    `brain.sh retro-mark` bumped, and whether an interview happened or this ran from
    recorded text alone.
 
