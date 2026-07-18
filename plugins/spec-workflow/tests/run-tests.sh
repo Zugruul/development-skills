@@ -99,6 +99,7 @@ SECTIONS=(
     section-lifecycle-retry.sh
     section-gate-core.sh
     section-gate-fingerprint.sh
+    section-gate-preflight.sh
     section-gate-lessons.sh
     section-session-init.sh
     section-board-bug-add.sh

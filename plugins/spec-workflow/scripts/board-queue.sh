@@ -277,8 +277,21 @@ _mutate_field() {
 # factored out so both the live command AND flush replay share one
 # implementation. Return 0 = applied, 1 = real (non-rate-limit) failure,
 # 2 = rate-limited (caller decides: queue live, or re-queue-and-stop in flush).
+#
+# CDX-030 (SPEC-CODEX-COMPAT.md §9.1/§12): a move to "In review" runs
+# gate-preflight.sh BEFORE any mutation, regardless of entrypoint (direct
+# call, flush replay, a future non-hook wrapper) -- this is the actual
+# gate-before-review enforcement point; the Claude PreToolUse hook
+# (guard-board-move.sh) is defense in depth on top of it, not the sole
+# mechanism (Codex has no hook-equivalent lifecycle event at all). Status
+# comparison is normalized the same way guard-board-move.sh's norm() does
+# (collapse whitespace, lowercase) so "In review"/"in review"/etc. all match.
 _do_move() {
-    local num="$1" status="$2" opt rc
+    local num="$1" status="$2" opt rc norm_status
+    norm_status="$(python3 -c 'import re,sys; print(re.sub(r"\s+"," ",sys.argv[1].strip()).lower())' "$status")"
+    if [[ "$norm_status" == "in review" ]]; then
+        bash "$HERE/gate-preflight.sh" || return 1
+    fi
     opt="$(opt_id status "$status")"
     if [[ -z "$opt" ]]; then
         echo "ERROR: bad issue# or status '$status' (must match statusFlow)" >&2

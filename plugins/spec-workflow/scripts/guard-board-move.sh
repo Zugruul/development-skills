@@ -89,16 +89,11 @@ case "$RESULT" in
         ;;
 esac
 
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-MARKER="$ROOT/.claude/gate-pass"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [[ ! -f "$MARKER" ]]; then
-    echo "BLOCKED: no recorded gate pass. Run \`bash \"$HERE/gate.sh\"\` to green (it records the pass), then retry the move to 'In review'." >&2
-    exit 2
-fi
-if [[ "$(cat "$MARKER")" != "$(bash "$HERE/tree-state.sh")" ]]; then
-    echo "BLOCKED: the tree changed since the last recorded gate pass. Re-run \`bash \"$HERE/gate.sh\"\`, then retry the move to 'In review'." >&2
-    exit 2
-fi
-exit 0
+# CDX-030: delegate to the shared, hook-independent preflight -- single
+# source of truth for "is the gate green for this tree" (docs/design/cdx-E3.md
+# Decisions). Defense in depth: this hook still intercepts before board.sh
+# even starts, but the actual marker+fingerprint check lives in one place.
+bash "$HERE/gate-preflight.sh"
+exit $?
