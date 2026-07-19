@@ -186,3 +186,15 @@ else
 fi
 check "auto-review.md: reviewer naming rule preserved (pr-reviewer-<pr-number>)" "\`name: pr-reviewer-<pr-number>\`" "$ARBODY"
 check "auto-review.md: SendMessage continuity instruction preserved (out of scope for this task)" "Keep this SAME agent for" "$ARBODY"
+
+echo "== ui-options resume-link graceful omission (CDX-014, #184, SPEC-CODEX-COMPAT.md §7.6) =="
+
+# §7.6: "WHEN CLAUDE_CODE_SESSION_ID is unset THE SYSTEM SHALL render
+# ui-options decision pages with the resume link omitted, never fabricated."
+# There is no render script for templates/ui-options.html -- the whole
+# page-build step is prose-driven (the acting agent hand-edits the copied
+# template per SKILL.md step 1.2), so this is a pinning test against that
+# prose instruction, not a runtime behavior test.
+UOBODY="$(stripfm "$PLUGIN/skills/ui-options/SKILL.md")"
+check "ui-options SKILL.md instructs filling __SESSION_ID__ from CLAUDE_CODE_SESSION_ID" '__SESSION_ID__` with the value of `echo "$CLAUDE_CODE_SESSION_ID"`' "$UOBODY"
+check "ui-options SKILL.md instructs omitting (not fabricating) the resume sentence when the session id is empty" "if empty, replace the whole resume sentence with nothing" "$UOBODY"

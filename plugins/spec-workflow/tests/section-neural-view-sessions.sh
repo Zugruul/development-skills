@@ -39,6 +39,12 @@ check_absent "sessions: stale done job excluded" '"old-task"' "$body"
 check "sessions: job cwd matched to the discovered repo" "\"repo\": \"$_nvsrepo\"" "$body"
 check "sessions: job outside any discovered repo still reported (repo: null)" '"repo": null' "$body"
 check "sessions: unmatched job still carries its description" '"lonely"' "$body"
+# CDX-014 (#184, SPEC-CODEX-COMPAT.md §7.6): "SHALL label session counts by
+# host once both are surfaced" -- discover_sessions() only ever reads
+# ~/.claude/jobs, so every session it finds IS a Claude Code session; it
+# tags each one with a hardcoded "host":"claude" literal, the seed point a
+# future Codex-side discovery function would tag its own results against.
+check "sessions: every entry carries host:claude" '"host": "claude"' "$body"
 python3 "$NV" stop >/dev/null
 unset NEURAL_VIEW_CLAUDE_DIR NEURAL_VIEW_SCAN
 
@@ -52,4 +58,57 @@ check "sessions: absent jobs dir yields empty array" "[]" "$body"
 python3 "$NV" stop >/dev/null
 unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_CLAUDE_DIR NEURAL_VIEW_SCAN
 rm -rf "$NVS_CLAUDE" "$NVS_REPO" "$_nvsstate" "$_nvsscan_empty" "$_nvsempty" "$_nvs_noclaude"
+
+# CDX-014 (#184, SPEC-CODEX-COMPAT.md §7.6) frontend: sessionHostsFor(repo)
+# groups a repo's sessions by host, and the two consumption sites (repo-label
+# text, hover tooltip) must render byte-identical to today when only one
+# host is present, and append a "(N host, M host)" parenthetical only when
+# more than one host is surfaced. No live path seeds a real second host yet
+# (no Codex-side discovery exists), so this drives sessionHostsFor() directly
+# against a synthetic multi-host window.__sessions fixture -- extract() works
+# here (these are named `function` declarations, not anonymous listeners) so
+# the anonymous-listener-slice-eval technique isn't needed for this pair.
+if command -v node >/dev/null 2>&1; then
+    NVHTML="$PLUGIN/templates/neural-view.html"
+    check "neural-view.html: repo-label site appends the host breakdown" 'sessN ? ` · ${sessN} LIVE${sessionHostBreakdown(sessionHostsFor(repo))}` : ""' "$(cat "$NVHTML")"
+    check "neural-view.html: tooltip site appends the host breakdown" '`${sess} active session(s)${sessionHostBreakdown(sessionHostsFor(repo))}`' "$(cat "$NVHTML")"
+    _nvhosts="$(mktemp).cjs"
+    cat >"$_nvhosts" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+function extractOneLine(name) {
+    const re = new RegExp("function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\}\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find function " + name + "() in template");
+    return m[0];
+}
+const window = {__sessions: []};
+eval(extractOneLine("sessionCountFor"));
+eval(extractOneLine("sessionHostsFor"));
+eval(extractOneLine("sessionHostBreakdown"));
+
+// single host (today's overwhelmingly common case) -> byte-identical, no parenthetical
+window.__sessions = [{repo:"r", host:"claude"}, {repo:"r", host:"claude"}];
+let hosts = sessionHostsFor("r");
+let suffix = sessionHostBreakdown(hosts);
+if (suffix !== "") throw new Error("single-host breakdown must be empty (no visible change), got: " + JSON.stringify(suffix));
+if (sessionCountFor("r") !== 2) throw new Error("sessionCountFor must still count 2 sessions for repo r");
+
+// multi-host -> parenthetical breakdown, only then
+window.__sessions = [{repo:"r", host:"claude"}, {repo:"r", host:"claude"}, {repo:"r", host:"codex"}];
+hosts = sessionHostsFor("r");
+suffix = sessionHostBreakdown(hosts);
+if (suffix !== " (2 claude, 1 codex)") throw new Error("multi-host breakdown mismatch, got: " + JSON.stringify(suffix));
+
+// a repo with sessions on only one host among a multi-host dataset still gets no parenthetical
+window.__sessions = [{repo:"r", host:"claude"}, {repo:"other", host:"codex"}];
+suffix = sessionHostBreakdown(sessionHostsFor("r"));
+if (suffix !== "") throw new Error("repo r has only one host present -- breakdown must stay empty, got: " + JSON.stringify(suffix));
+
+console.log("SESSIONHOSTS_OK");
+NODEJS
+    hosts_out="$(node "$_nvhosts" "$NVHTML" 2>&1)"
+    check "sessionHostsFor()/sessionHostBreakdown(): single-host stays byte-identical, multi-host appends breakdown, unrelated repos unaffected" "SESSIONHOSTS_OK" "$hosts_out"
+    rm -f "$_nvhosts"
+fi
 
