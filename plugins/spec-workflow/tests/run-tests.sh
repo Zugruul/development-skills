@@ -135,6 +135,7 @@ SECTIONS=(
     section-section-guard.sh
     section-local-state-manifest.sh
     section-gitignore-sync.sh
+    section-setup-project-gitignore.sh
     section-repo-hygiene.sh
     section-agents-claude.sh
 )
