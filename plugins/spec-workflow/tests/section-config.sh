@@ -73,3 +73,12 @@ check "neuralView.entityEdgeColor must be a string" "neuralView.entityEdgeColor"
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/entity-kinds-good.project.yaml")"
 check "entityKinds + entityEdgeColor together still validate" "VALID: " "$out"
 
+echo "== validate-config: models.codex.capability (additive, CDX-020, #185) =="
+check "this repo's own .claude/project.yaml (flat models arrays) still validates unmodified -- additivity proof" "VALID: " \
+    "$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/../../.claude/project.yaml")"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/codex-capability-good.project.yaml")"
+check "models object form {claude, codex.capability: balanced} is VALID" "VALID: " "$out"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/codex-capability-bad.project.yaml" || true)"
+check "unrecognized models.codex.capability is INVALID" "INVALID" "$out"
+check "unrecognized capability error names the offending value" "'super-fast'" "$out"
+

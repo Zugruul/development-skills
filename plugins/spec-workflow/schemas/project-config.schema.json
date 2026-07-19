@@ -330,9 +330,42 @@
                 "name": { "type": "string", "description": "Template or literal; {name} = git config user.name. Omit to keep the role's default." },
                 "email": { "type": "string", "description": "Template or literal; {local}/{domain} = git config user.email parts. Omit to keep the role's default." },
                 "models": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": "The ONLY models this identity may run on — FULL nomenclature ids only (e.g. 'claude-sonnet-5[1m]', 'claude-sonnet-5', 'claude-haiku-4-5'), never shorthand like 'sonnet'. The orchestrator picks the most SUITABLE allowed model per task (cheaper/smaller for simple changes, larger-context [1m] for big diffs) — never 'always the most powerful'. The reviewer identity's models serve BOTH the two-pass implement-task review AND the auto-merge PR gate. Omit to use the role's default set."
+                    "description": "The ONLY models this identity may run on. Either the legacy flat array form (FULL nomenclature ids only, e.g. 'claude-sonnet-5[1m]', 'claude-sonnet-5', 'claude-haiku-4-5', never shorthand like 'sonnet') — the orchestrator picks the most SUITABLE allowed model per task (cheaper/smaller for simple changes, larger-context [1m] for big diffs), never 'always the most powerful'; the reviewer identity's models serve BOTH the two-pass implement-task review AND the auto-merge PR gate — or an object form `{claude: [...], codex: {capability: ...}}` that additionally declares a Codex capability tier (`fast`|`balanced`|`deep-review`|`large-context`), read only by the Codex adapter and never required — omitting `codex` (or using the flat array form) never changes Claude behavior. Omit `models` entirely to use the role's default set.",
+                    "oneOf": [
+                        {
+                            "type": "array",
+                            "items": { "type": "string" }
+                        },
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "claude": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "description": "Same FULL-nomenclature Claude model-id list as the flat array form (e.g. 'claude-sonnet-5[1m]', 'claude-sonnet-5'), just nested under this key so `codex` can sit alongside it."
+                                },
+                                "codex": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "description": "Codex-adapter-only settings for this identity; ignored entirely by Claude.",
+                                    "properties": {
+                                        "capability": {
+                                            "type": "string",
+                                            "enum": ["fast", "balanced", "deep-review", "large-context"],
+                                            "enumDescriptions": [
+                                                "Cheapest/fastest tier — small, low-risk changes.",
+                                                "Default general-purpose tier.",
+                                                "Stronger reasoning tier for deep or high-stakes review.",
+                                                "Large-context tier for big diffs or large codebases."
+                                            ],
+                                            "description": "Which Codex capability tier this identity may run on."
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
                 },
                 "covers": {
                     "type": "array",

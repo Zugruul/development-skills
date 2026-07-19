@@ -95,3 +95,33 @@ JSON
 out="$(python3 "$PLUGIN/scripts/schema-lint.py" "$BAD4" || true)"
 check "an enum inside 'items' without enumDescriptions is caught" "\$.foo[]: enumDescriptions missing" "$out"
 rm -f "$BAD4"
+
+echo "== schema: models.codex.capability additive oneOf widening (CDX-020, #185) =="
+out="$(python3 - "$SCHEMA" <<'PY'
+import json, sys
+with open(sys.argv[1]) as f:
+    s = json.load(f)
+m = s["definitions"]["identity"]["properties"]["models"]
+one_of = m.get("oneOf")
+if not one_of or len(one_of) != 2:
+    print(f"FAIL: models is not a 2-branch oneOf (got {one_of!r})")
+    sys.exit(0)
+arr, obj = one_of
+if arr.get("type") != "array" or arr.get("items", {}).get("type") != "string":
+    print("FAIL: array branch (legacy flat models list) changed shape")
+    sys.exit(0)
+if obj.get("type") != "object":
+    print("FAIL: object branch missing or not type object")
+    sys.exit(0)
+if not obj.get("properties", {}).get("claude"):
+    print("FAIL: object branch missing a claude property")
+    sys.exit(0)
+cap = obj.get("properties", {}).get("codex", {}).get("properties", {}).get("capability", {})
+want = ["fast", "balanced", "deep-review", "large-context"]
+if cap.get("enum") != want:
+    print(f"FAIL: capability enum {cap.get('enum')!r} != {want!r}")
+    sys.exit(0)
+print("OK")
+PY
+)"
+check "models: oneOf [legacy array (unchanged), object {claude, codex.capability enum}]" "OK" "$out"

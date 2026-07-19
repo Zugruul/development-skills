@@ -17,6 +17,8 @@ import config as C  # noqa: E402  (shared loader — reuse its shorthand-model d
 
 errs = []
 
+CODEX_CAPABILITIES = {"fast", "balanced", "deep-review", "large-context"}
+
 
 def need(obj, key, typ, where):
     if key not in obj:
@@ -152,8 +154,30 @@ def main(path):
                         errs.append(f"{w}: each identity must be a mapping (name/email/models/covers)")
                         continue
                     models = v.get("models")
-                    if models is not None and not (isinstance(models, list) and all(isinstance(m, str) for m in models)):
-                        errs.append(f"{w}[{i}].models must be a list of full model-id strings")
+                    if isinstance(models, dict):
+                        claude = models.get("claude")
+                        if claude is not None and not (isinstance(claude, list) and all(isinstance(m, str) for m in claude)):
+                            errs.append(f"{w}[{i}].models.claude must be a list of full model-id strings")
+                        elif claude and not legacy:
+                            for m in claude:
+                                if C._shorthand(m):
+                                    errs.append(f"{w}[{i}].models.claude: '{m}' is shorthand — v2 requires a full model-id (e.g. claude-sonnet-5, claude-sonnet-5[1m])")
+                        codex = models.get("codex")
+                        if codex is not None:
+                            if not isinstance(codex, dict):
+                                errs.append(f"{w}[{i}].models.codex must be a mapping")
+                            else:
+                                cap = codex.get("capability")
+                                if cap is not None and cap not in CODEX_CAPABILITIES:
+                                    errs.append(
+                                        f"{w}[{i}].models.codex.capability: {cap!r} is not a recognized capability "
+                                        f"(valid: {', '.join(sorted(CODEX_CAPABILITIES))})"
+                                    )
+                        unknown = set(models) - {"claude", "codex"}
+                        if unknown:
+                            errs.append(f"{w}[{i}].models: unknown key(s) {sorted(unknown)} (allowed: claude, codex)")
+                    elif models is not None and not (isinstance(models, list) and all(isinstance(m, str) for m in models)):
+                        errs.append(f"{w}[{i}].models must be a list of full model-id strings, or an object {{claude: [...], codex: {{capability: ...}}}}")
                     elif models and not legacy:
                         for m in models:
                             if C._shorthand(m):
