@@ -132,6 +132,18 @@ delegation:
 EOF
 }
 
+# _sc_sync_gitignore <workdir> -- pre-syncs the fixture's .gitignore managed
+# block to the CURRENT manifest and commits/pushes it, so a case asserting
+# no-op behavior for OTHER rules isn't tripped up by mem013-gitignore-managed-block
+# firing on a fixture that never had a .gitignore at all.
+_sc_sync_gitignore() {
+    local dir="$1"
+    bash "$PLUGIN/scripts/gitignore-sync.sh" "$dir/.gitignore"
+    git -C "$dir" add -A
+    git -C "$dir" commit -q -m "pre-sync gitignore"
+    git -C "$dir" push -q origin main
+}
+
 _sc_head() { git -C "$1" rev-parse HEAD; }
 _sc_origin_project_yaml() { # dir -> project.yaml content as pushed to origin's main
     local tmp
@@ -200,6 +212,7 @@ rm -rf "$SCC"
 echo "== sync-configs.py: already-synced repo -> no-op (case d) =="
 SCD="$(mktemp -d)"
 _sc_mkrepo "$SCD/r" true no
+_sc_sync_gitignore "$SCD/r/work"
 before_head="$(_sc_head "$SCD/r/work")"
 out="$(python3 "$SYNCCFG" --repo "$SCD/r/work" --apply 2>&1)"
 check "case d: reports no-op" "route: no-op" "$out"
@@ -303,6 +316,7 @@ rm -rf "$SCG"
 echo "== sync-configs.py: ensure-peer-reviewer-identity, plugin disabled -> no-op (case h) =="
 SCH="$(mktemp -d)"
 _sc_mkrepo "$SCH/r" true no
+_sc_sync_gitignore "$SCH/r/work"
 _sc_write_settings "$SCH/r/work" no
 git -C "$SCH/r/work" add -A
 git -C "$SCH/r/work" commit -q -m "add settings.json (peer-review not enabled)"
@@ -374,6 +388,7 @@ mkdir -p "$SCK/r/work/.claude"
 _sc_base_yaml_with_delegation true > "$SCK/r/work/.claude/project.yaml"
 printf '        peer-reviewer:\n            name: Peer Reviewer (codex) - {name}\n            email: '"'"'{local}+peer_reviewer@{domain}'"'"'\n' >> "$SCK/r/work/.claude/project.yaml"
 _sc_write_settings "$SCK/r/work" yes
+bash "$PLUGIN/scripts/gitignore-sync.sh" "$SCK/r/work/.gitignore"
 git -C "$SCK/r/work" add -A
 git -C "$SCK/r/work" commit -q -m init
 git -C "$SCK/r/work" push -q origin main
@@ -477,10 +492,7 @@ rm -rf "$SCO"
 echo "== sync-configs.py: mem013 gitignore rule, already-synced -> no-op (case p) =="
 SCP="$(mktemp -d)"
 _sc_mkrepo "$SCP/r" true no
-bash "$PLUGIN/scripts/gitignore-sync.sh" "$SCP/r/work/.gitignore"
-git -C "$SCP/r/work" add -A
-git -C "$SCP/r/work" commit -q -m "pre-sync gitignore"
-git -C "$SCP/r/work" push -q origin main
+_sc_sync_gitignore "$SCP/r/work"
 before_head="$(_sc_head "$SCP/r/work")"
 out="$(python3 "$SYNCCFG" --repo "$SCP/r/work" --apply 2>&1)"
 check "case p: reports no-op" "route: no-op" "$out"
