@@ -150,3 +150,25 @@ check 'executed recipe: hostile quoted name lands intact as author' 'author=Weir
 rm -f "$OBX/.claude/project.json"
 rm -rf "$OBX"
 
+echo "== identity_lib.normalize_models (CDX-020, #185) -- standalone, not yet wired into resolve_role =="
+out="$(python3 - "$PLUGIN/scripts" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import identity_lib as IL
+
+assert IL.normalize_models(None) == ([], None, None), IL.normalize_models(None)
+assert IL.normalize_models(["claude-sonnet-5", "claude-sonnet-5[1m]"]) == (
+    ["claude-sonnet-5", "claude-sonnet-5[1m]"], None, None
+), IL.normalize_models(["claude-sonnet-5", "claude-sonnet-5[1m]"])
+assert IL.normalize_models({"claude": ["claude-sonnet-5"], "codex": {"capability": "balanced"}}) == (
+    ["claude-sonnet-5"], "balanced", None
+), IL.normalize_models({"claude": ["claude-sonnet-5"], "codex": {"capability": "balanced"}})
+claude, cap, err = IL.normalize_models({"claude": ["claude-sonnet-5"], "codex": {"capability": "super-fast"}})
+assert not claude and cap is None, (claude, cap, err)
+assert err, "expected a non-empty error for an unrecognized capability value, not a silent default"
+assert "super-fast" in err, err
+print("OK")
+PY
+)"
+check "normalize_models: None / legacy list / dict-with-capability / bad-capability contract" "OK" "$out"
+
