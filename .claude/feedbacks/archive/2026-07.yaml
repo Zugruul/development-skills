@@ -2428,3 +2428,44 @@ items:
   routing:
     action: brain-note
     ref: Zugruul/development-skills#183
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-19T00:00:00Z'
+iteration:
+  task: '184'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-sonnet-5
+items:
+- category: worked-well
+  area: briefing
+  component: build-next / implement-task
+  severity: low
+  summary: Writing the design doc's investigation section (what's already correct
+    vs what's genuinely missing) before briefing the implementer avoided wasted work
+    reimplementing already-correct behavior and kept the resulting PR's scope honest.
+  generalized: When a spec requirement has multiple sub-parts, investigating and documenting
+    which sub-parts the codebase already satisfies (before briefing an implementer)
+    prevents wasted reimplementation and produces a PR whose diff accurately reflects
+    what's genuinely new versus confirmed-and-pinned.
+  routing:
+    action: brain-note
+    ref: Zugruul/development-skills#184
+- category: friction
+  area: testing
+  component: plugins/spec-workflow/tests/run-tests.sh
+  severity: low
+  summary: The test suite's --section filter can skip an earlier section's shared
+    setup that a later section depends on, producing a spurious unbound-variable failure
+    that looks like a real regression.
+  generalized: A test runner's file/section filter that only matches by name can silently
+    skip setup code a later matched section depends on, if that setup lives in an
+    earlier, now-excluded file — producing a misleading failure. Widening the filter
+    to include dependency-providing files, or running unfiltered, avoids the false
+    signal.
+  routing:
+    action: brain-note
+    ref: Zugruul/development-skills#184
