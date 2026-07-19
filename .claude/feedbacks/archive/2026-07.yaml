@@ -2207,3 +2207,81 @@ items:
   routing:
     action: brain-note
     ref: stamp-qa-even-after-a-fix-round
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-19T05:05:00Z'
+iteration:
+  task: session-2026-07-18-19
+  outcome: merged
+  reviewRounds: 8
+source:
+  role: orchestrator
+  model: claude-sonnet-5
+items:
+- category: friction
+  area: briefing
+  severity: high
+  summary: Subagents (dev and reviewer alike) going idle without proactively sending
+    their promised final report was the single most persistent friction across the
+    entire session, recurring dozens of times despite explicit brief instructions
+    and existing brain notes flagging the exact same pattern.
+  detail: Happened on nearly every task this session -- MEM-032, CDX-040 (twice),
+    MEM-002, MEM-003, MEM-004, CDX-006, CDX-010 (multiple times, including during
+    the post-merge fix round), CDX-011. A backlog item (from an earlier task's feedback
+    triage) already proposes baking the report-before-idle instruction into the brief
+    templates as boilerplate -- this session's recurrence, even for agents whose briefs
+    DID include the instruction explicitly, suggests the fix may need to go beyond
+    brief text alone (e.g. a harness-level nudge/timeout, or a different phrasing
+    that agents reliably act on).
+  generalized: A brain note describing a briefing gap, even repeatedly strength-bumped
+    across multiple recurrences, does not by itself change subagent behavior -- the
+    SAME instruction, present in the brief text every time, was insufficient across
+    many independent subagent instances in a single session. Worth escalating from
+    'add it to the brief template' to 'investigate whether brief text is the right
+    intervention point at all,' since the evidence from this session is that text
+    alone has a low hit rate even when present.
+  routing:
+    action: upstream
+    ref: already-filed Zugruul/development-skills#220 (bake report-before-idle into
+      brief templates) may be insufficient given this recurred even when briefs included
+      the instruction explicitly; surfacing to the human for a call on whether a harness-level
+      or different-phrasing intervention is warranted
+- category: worked-well
+  area: review
+  severity: medium
+  summary: The 'verify the actual live CI run, not just local gate green' discipline
+    (established mid-session after a first incident) directly prevented repeat incidents
+    and caught one real bug before it was wrongly declared done.
+  detail: 'After CDX-040 revealed that local-gate-green doesn''t imply CI-green for
+    infra-adjacent changes, every subsequent task''s close-out included an explicit
+    live CI check via a Monitor. This directly caught CDX-010''s real GNU/BSD sed
+    portability bug at the QA step (order: merge, then QA check, THEN Ready) rather
+    than after the fact, and every other task confirmed clean quickly.'
+  generalized: A single well-scoped process fix (verify the live external system a
+    task's acceptance criteria actually reference, not just its local proxies) generalizes
+    cleanly and pays for itself repeatedly once established -- worth treating 'what
+    external system does this task's DoD actually reference' as a standing question
+    at task pickup, not just for CI specifically.
+  routing:
+    action: brain-note
+    ref: verify-live-system-not-just-local-artifacts
+- category: worked-well
+  area: briefing
+  severity: medium
+  summary: Extending one shared 'epic' design doc across multiple related tasks in
+    the same epic (mem-E0.md across MEM-002/003/004, cdx-E1.md across CDX-010/011),
+    rather than a fresh one-off design doc per task, let each task's design section
+    build on and reference prior sections.
+  detail: Each new epic-doc section could say 'per the earlier section's decision'
+    or 'this task's adapter already exists from an earlier task in this epic' rather
+    than re-deriving context -- reviewers explicitly cited this cross-referencing
+    as speeding up their review (e.g. confirming an adapter file was extended, not
+    duplicated, by reading the design doc's own account of which task created it).
+  generalized: For a backlog with explicit epics, default to one growing design doc
+    per epic (with a clearly delimited section per task) rather than one file per
+    task, whenever tasks in the same epic are likely to share components, adapters,
+    or terminology -- the cross-referencing benefit compounds as the epic progresses.
+  routing:
+    action: brain-note
+    ref: one-design-doc-per-epic-not-per-task

@@ -29,6 +29,16 @@
     "last": null,
     "weight": 0.5
   },
+  "one-design-doc-per-epic-not-per-task->front-load-exact-mechanics-in-design-docs": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "one-design-doc-per-epic-not-per-task->name-reusable-infra-for-followups-explicitly": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "parallel-independent-review-passes->concurrent-gate-runs-collide": {
     "fires": 0,
     "last": null,
