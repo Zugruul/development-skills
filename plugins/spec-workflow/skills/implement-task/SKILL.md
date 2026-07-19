@@ -6,8 +6,7 @@ allowed-tools: Bash
 
 # Implement one task — orchestrate a dev agent
 
-Pre-start check: !`bash "../../scripts/preflight.sh" --spec`
-If the line above says `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
+Pre-start check — run this now, before anything else: `bash "../../scripts/preflight.sh" --spec`. If it prints `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
 You (the orchestrator) do **not** write the implementation. You brief a subagent, verify its result, and keep the board honest. Read `.claude/project.yaml` first — it supplies every `<cfg:...>` value below. `board.sh` = `bash "../../scripts/board.sh"`.
 

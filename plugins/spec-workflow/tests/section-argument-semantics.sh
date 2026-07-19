@@ -38,7 +38,16 @@ PRESTART_SKILLS="build-next implement-task next-task queue seed-board"
 for skill in $PRESTART_SKILLS; do
     f="$PLUGIN/skills/$skill/SKILL.md"
     body="$(stripfm "$f")"
-    check_absent "$skill SKILL.md body never has a !\`...\` command-substitution span" '!`' "$body"
+    # Match real Claude-CLI command substitution ("!`" immediately followed
+    # by a command word, e.g. "!`bash ..."), not the seed-board:33 false
+    # positive ("`!!`/`!`" -- a literal "!`" substring where the backtick
+    # is immediately followed by "/" or whitespace, never a letter).
+    if grep -qE '!`[A-Za-z]' <<<"$body"; then
+        echo "FAIL $skill SKILL.md body still has a !\`...\` command-substitution span"
+        fails=$((fails + 1))
+    else
+        echo "ok   $skill SKILL.md body never has a !\`...\` command-substitution span"
+    fi
     check "$skill SKILL.md body has the explicit pre-start workflow step" "$PRESTART" "$body"
 done
 
@@ -54,7 +63,7 @@ check "ask-identity SKILL.md body treats arguments as remainder of the request t
 
 echo "-- repo-wide belt-and-suspenders sweep (all plugins, not just spec-workflow) --"
 
-BANG_HITS="$(grep -rln '!`' "$HERE"/../../*/skills/*/SKILL.md 2>/dev/null || true)"
+BANG_HITS="$(grep -rlE '!`[A-Za-z]' "$HERE"/../../*/skills/*/SKILL.md 2>/dev/null || true)"
 if [[ -z "$BANG_HITS" ]]; then
     echo "ok   repo-wide sweep: no !\`...\` command-substitution spans remain in any SKILL.md"
 else

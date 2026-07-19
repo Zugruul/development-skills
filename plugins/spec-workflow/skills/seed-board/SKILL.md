@@ -6,8 +6,7 @@ allowed-tools: Bash
 
 # Seed the board from the backlog
 
-Pre-start check: !`bash "../../scripts/preflight.sh" --spec`
-If the line above says `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
+Pre-start check — run this now, before anything else: `bash "../../scripts/preflight.sh" --spec`. If it prints `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
 ## 1. Build the task file
 From the spec's backlog doc (`specs[].backlogPath` in `.claude/project.yaml`), write one line per task to a temp file (`#` comments and blank lines allowed):

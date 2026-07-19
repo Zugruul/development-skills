@@ -6,8 +6,7 @@ allowed-tools: Bash
 
 # Pick the next task
 
-Pre-start check: !`bash "../../scripts/preflight.sh" --spec`
-If the line above says `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
+Pre-start check — run this now, before anything else: `bash "../../scripts/preflight.sh" --spec`. If it prints `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
 ```bash
 bash "../../scripts/board.sh" next          # or: next <spec-id> to restrict to one spec

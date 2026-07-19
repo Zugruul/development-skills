@@ -8,8 +8,7 @@ allowed-tools: Bash
 
 **This skill is READ-ONLY.** Like `next-task`, no board mutation is ever made here — no `move`, `prio`, `edit-body`, `comment`, or any other write to the board. The `=> PICK`/`=> RESUME` line below is informational here, not a decision to start work; committing to a task is `next-task`'s job.
 
-Pre-start check: !`bash "../../scripts/preflight.sh" --spec`
-If the line above says `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
+Pre-start check — run this now, before anything else: `bash "../../scripts/preflight.sh" --spec`. If it prints `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
 ## 1. Get the prioritized + sequenced candidate list
 ```bash

@@ -6,7 +6,7 @@ allowed-tools: Bash, Read
 
 # Ask the whole repo's brains
 
-ARGUMENTS: `<question...>` — the question, verbatim.
+Treat the remainder of the user's request (after the command name) as the question, verbatim.
 
 Read-only consult across every identity in this repo, not a build-loop
 iteration: no board writes, no tests, no implementation work, no commits.

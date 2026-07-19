@@ -6,9 +6,7 @@ allowed-tools: Bash, Read, Write, Edit, AskUserQuestion
 
 # Ask one identity's brain
 
-ARGUMENTS: `<identity> <question...>` — the first token names the role
-(`dev`, `reviewer`, `orchestrator`, or a repo-specific custom role like
-`judge`/`player`), everything after it is the question, verbatim.
+Treat the remainder of the user's request (after the command name) as `<identity> <question...>`: the first token names the role (`dev`, `reviewer`, `orchestrator`, or a repo-specific custom role like `judge`/`player`), everything after it is the question, verbatim.
 
 This is a **read-only consult**, not a build-loop iteration: no board writes,
 no tests, no implementation work, no commits. If the question actually asks
