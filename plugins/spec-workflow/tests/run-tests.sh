@@ -119,6 +119,7 @@ SECTIONS=(
     section-find-task.sh
     section-pagination.sh
     section-skill-contracts.sh
+    section-capability-language.sh
     section-codex-plugin-json.sh
     section-codex-marketplace.sh
     section-codex-skill-lint.sh

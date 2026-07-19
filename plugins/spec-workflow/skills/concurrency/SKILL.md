@@ -12,7 +12,7 @@ allowed-tools: Bash, AskUserQuestion
 
 **Invoked with an argument** (`status` / `set <n>`): run `concurrency.sh <args>` and report the output verbatim.
 
-**Invoked with NO argument**: run `concurrency.sh status` for the current value, then AskUserQuestion (single question, header "Concurrency", current value noted in the question). Options:
+**Invoked with NO argument**: run `concurrency.sh status` for the current value, then ask through the host's structured-input facility (single question, header "Concurrency", current value noted in the question). (On Claude Code, this is the AskUserQuestion tool.) Options:
 
 - **1 — sequential (Recommended)** — description: "One task at a time. Simplest and safest; no lane coordination. The default."
 - **2** — description: "Up to 2 tasks in parallel lanes — only worthwhile when ready tasks don't overlap (different epics/packages)."

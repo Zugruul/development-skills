@@ -12,7 +12,7 @@ The reviewer identity's `models` are the ALLOWED set the orchestrator picks from
 
 **Invoked with a model argument** (one id or a comma-separated allowed set): `merge-mode.sh model <ids>` and report the output verbatim.
 
-**Invoked with NO argument**: run `merge-mode.sh status` for the current allowed set, then AskUserQuestion (single question, header "PR reviewer", current value noted in the question). Options — no previews (a plain preference):
+**Invoked with NO argument**: run `merge-mode.sh status` for the current allowed set, then ask through the host's structured-input facility (single question, header "PR reviewer", current value noted in the question). (On Claude Code, this is the AskUserQuestion tool.) Options — no previews (a plain preference):
 
 - **claude-sonnet-5[1m] (Recommended)** — description: "Sonnet 5 with the 1M-token context window: holds the full diff + spec + design doc in one reviewer; the plugin default."
 - **claude-sonnet-5** — description: "Standard-context Sonnet: cheaper; fine for small, focused PRs."

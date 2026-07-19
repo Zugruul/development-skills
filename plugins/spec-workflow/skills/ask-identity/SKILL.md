@@ -53,8 +53,9 @@ instead of just doing it here.
    its scope doesn't match what was asked.
 5. **Human validation loop** — when the answer is a ruling or verifiable
    claim (any brain-grounded adjudication, not just card rulings), finish by
-   calling AskUserQuestion: "Is this ruling correct?" with exactly three
-   options: "It is" / "It is not" / "I'm unsure". Then:
+   asking through the host's structured-input facility: "Is this ruling
+   correct?" with exactly three options: "It is" / "It is not" / "I'm unsure".
+   (On Claude Code, this is the AskUserQuestion tool.) Then:
    - **It is** → mint (or re-mint) the identity's cached note for this
      answer with `CONFIDENCE: human-confirmed <date>` (bump strength on
      repeat confirmations).

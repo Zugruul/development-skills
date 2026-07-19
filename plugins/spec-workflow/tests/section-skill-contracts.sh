@@ -68,7 +68,7 @@ check "build-next SKILL.md report step states the merge route" "merge route" "$B
 check "build-next SKILL.md report step gives the requirements report token" "requirements: <verdict from merge-mode.sh requirements>" "$BNBODY"
 check "build-next SKILL.md report step gives the local-route report token" "route: local-route" "$BNBODY"
 echo "== build-next SKILL.md: autonomous-decision operating rule (SW-085) =="
-check "build-next SKILL.md operating rule: no AskUserQuestion in auto mode absent a hard denial" "does not use AskUserQuestion unless a hard permission denial or an explicit instruction requires human direction" "$BNBODY"
+check "build-next SKILL.md operating rule: no structured-input facility use in auto mode absent a hard denial" "does not use the host's structured-input facility unless a hard permission denial or an explicit instruction requires human direction" "$BNBODY"
 
 echo "== queue SKILL.md contract (#154) =="
 QSKILL="$PLUGIN/skills/queue/SKILL.md"

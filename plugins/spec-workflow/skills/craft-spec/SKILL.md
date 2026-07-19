@@ -7,7 +7,7 @@ description: Assisted spec creation — interviews the user (plan mode + structu
 
 Deliverables: a spec document (e.g. `SPEC.md`), a backlog document (e.g. `docs/BACKLOG.md`) with epics + numbered, story-pointed, acceptance-criteria'd tasks, and (if `.claude/project.yaml` exists) a registered `specs[]` entry. The spec is the contract every future task is built and judged against — invest accordingly.
 
-Read `../../skills/craft-spec/references/spec-guide.md` **before Phase 2** — it has the document structure, the interview question bank, and the review checklist.
+Read `../../skills/craft-spec/references/spec-guide.md` **before Phase 2** — it has the document structure, the interview question bank, and the review checklist. On Claude Code, see `references/host-claude.md` for the exact structured-input tool calls this skill's two interview loops use.
 
 ## Phase 0 — orient
 - Check what exists: `.claude/project.yaml` (registered specs?), any `SPEC*.md` / `docs/` design docs, and the codebase itself. Adding a spec to an existing project? Read the existing spec's conventions and reuse them.
@@ -15,7 +15,7 @@ Read `../../skills/craft-spec/references/spec-guide.md` **before Phase 2** — i
 
 ## Phase 1 — discover (plan mode + interview)
 1. Enter plan mode (EnterPlanMode) if available: this phase is research + design, no file writes yet.
-2. Interview with AskUserQuestion, in rounds of at most 4 questions, using the question bank in the reference. Cover, in order: problem & users → goals and explicit NON-goals → domain concepts & invariants → constraints (stack, compliance, performance, budget) → integrations/compatibility surface → quality attributes & testing expectations → delivery order and milestones.
+2. Interview through the host's structured-input facility, in rounds of at most 4 questions, using the question bank in the reference. Cover, in order: problem & users → goals and explicit NON-goals → domain concepts & invariants → constraints (stack, compliance, performance, budget) → integrations/compatibility surface → quality attributes & testing expectations → delivery order and milestones.
 3. Rules: offer concrete options (the user can always pick Other); state your inferences as defaults to confirm rather than open questions; stop interviewing when new answers stop changing the design — 2–4 rounds is typical.
 
 ## Phase 2 — draft
@@ -26,7 +26,7 @@ Derive from the spec: epics in build order (foundations → features → polish)
 
 ## Phase 4 — review (do not skip)
 1. Self-review against the checklist in the reference; fix what fails.
-2. Present to the user: a compact summary (goals, non-goals, epic sequence, riskiest decisions, open questions) — via plan approval (ExitPlanMode) if in plan mode, else directly. Use AskUserQuestion to resolve each open question and to get explicit sign-off on scope and epic order. Iterate until approved.
+2. Present to the user: a compact summary (goals, non-goals, epic sequence, riskiest decisions, open questions) — via plan approval (ExitPlanMode) if in plan mode, else directly. Ask through the host's structured-input facility to resolve each open question and to get explicit sign-off on scope and epic order. Iterate until approved.
 
 ## Phase 5 — wire up
 - `.claude/project.yaml` exists → add the `specs[]` entry (unique `taskPrefix`, epics with `taskRanges` + `blockedBy`, `invariants` copied from the spec), then validate: `bash "../../scripts/board.sh" config`. Suggest `seed-board` next.

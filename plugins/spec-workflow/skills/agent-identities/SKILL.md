@@ -14,7 +14,7 @@ allowed-tools: Bash, AskUserQuestion, Edit, Read
 
 **On-behalf commits** — when one process records another role's work, `identity.sh on-behalf <author-role> [--committer <role>] [--co <role>]...` prints a ready commit recipe: a `flags:` line (committer `-c` options, go before `commit`), a `commit-flags:` line (`--author=`, goes after `commit`), and Co-authored-by trailers — so author/committer/contributors are all credited. When to use it: `../../skills/build-next/references/auto-review.md` §Commit identities.
 
-**Invoked with NO argument**: run `identity.sh`, show the current resolution, then AskUserQuestion (single question, header "Identities"):
+**Invoked with NO argument**: run `identity.sh`, show the current resolution, then ask through the host's structured-input facility (single question, header "Identities"). (On Claude Code, this is the AskUserQuestion tool.)
 
 - **Keep defaults** — description: "Per-person plus-addressed attribution, zero config (what you have now unless overridden)."
 - **Customize a role** — description: "Change a role's name/email template, its allowed `models`, or (monorepo) split it into an array of per-package identities with `covers` globs." Follow up by asking which role and the change (free text via Other is fine), then edit `delegation.identities.<role>` in `.claude/project.yaml`. For `models`, use full ids only.

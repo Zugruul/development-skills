@@ -21,10 +21,10 @@ Always invoke similar.py with python3, never bash -- it is a stdlib Python scrip
 Present the ranked candidates (rank, `#number`, status, score, tier, title, issue URL -- same table shape as find-task), then branch on the TOP match's tier:
 
 ## high -- do NOT create a new issue
-Default: comment the description onto the existing issue instead (`board.sh comment <issue#>`), and tell the user which issue absorbed it. Creating a new issue anyway requires the human explicitly overriding this default -- ask via AskUserQuestion before creating.
+Default: comment the description onto the existing issue instead (`board.sh comment <issue#>`), and tell the user which issue absorbed it. Creating a new issue anyway requires the human explicitly overriding this default -- ask through the host's structured-input facility before creating. (On Claude Code, this is the AskUserQuestion tool.)
 
 ## medium -- ask the human (OQ-4)
-Present the candidate(s) and ask the human, via AskUserQuestion, whether this is the same work or genuinely new. If the human is absent or does not answer, do NOT create -- print the ranked candidates and the pending description, and stop.
+Present the candidate(s) and ask the human, through the host's structured-input facility, whether this is the same work or genuinely new. If the human is absent or does not answer, do NOT create -- print the ranked candidates and the pending description, and stop.
 
 ## low or no match -- create
 Ask for a priority if not given (default P2), then create it as inbound work:
