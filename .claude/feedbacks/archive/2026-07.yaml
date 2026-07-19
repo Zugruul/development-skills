@@ -2376,3 +2376,29 @@ items:
   routing:
     action: brain-note
     ref: Zugruul/development-skills#182
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-19T00:00:00Z'
+iteration:
+  task: '132'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-sonnet-5
+items:
+- category: worked-well
+  area: briefing
+  component: build-next / implement-task
+  severity: low
+  summary: Briefing a dev subagent to explicitly mirror an existing, already-reviewed
+    pattern in the same file (rather than designing a new one from scratch) produced
+    a clean single-round-approval PR with no back-and-forth.
+  generalized: When a task is structurally similar to an already-shipped piece of
+    code in the same codebase, briefing the implementer to explicitly mirror that
+    existing pattern (naming the exact functions/call sites to copy the shape of)
+    tends to produce a cleaner, faster-approved result than leaving the design open-ended.
+  routing:
+    action: ignore
+    ref: Zugruul/development-skills#132
