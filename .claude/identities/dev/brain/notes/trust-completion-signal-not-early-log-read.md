@@ -1,8 +1,8 @@
 ---
 tags: [testing, background-tasks]
 paths: ["**"]
-strength: 1
-source: "PR#224 (CDX-012, #182) -- misread an empty/buffering log as a dead process, reported a false failure"
+strength: 2
+source: "PR#225 (MEM-013, #132) -- applied successfully this time (dev-mem013 waited properly), no false-failure report"
 graduated: false
 created: 2026-07-19
 ---

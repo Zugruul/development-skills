@@ -110,3 +110,6 @@
 {"key": "session-close-protocol->orchestrator-cd-prefix-own-commands", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-19T07:40:24+00:00", "type": "LinkFormed", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "use-repo-scripts-not-stale-marketplace-cache", "strength": 1, "ts": "2026-07-19T19:22:05+00:00", "type": "NoteMinted", "v": 1}
 {"key": "use-repo-scripts-not-stale-marketplace-cache->trust-completion-signal-not-early-log-read", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-19T19:22:05+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "new-rule-can-break-existing-noop-fixtures", "strength": 1, "ts": "2026-07-19T20:15:10+00:00", "type": "NoteMinted", "v": 1}
+{"key": "new-rule-can-break-existing-noop-fixtures->old-path-repo-wide-sweep", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-19T20:15:10+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "trust-completion-signal-not-early-log-read", "strength": 2, "ts": "2026-07-19T20:15:21+00:00", "type": "NoteMinted", "v": 1}
