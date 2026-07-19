@@ -120,6 +120,7 @@ SECTIONS=(
     section-pagination.sh
     section-skill-contracts.sh
     section-capability-language.sh
+    section-argument-semantics.sh
     section-codex-plugin-json.sh
     section-codex-marketplace.sh
     section-codex-skill-lint.sh
