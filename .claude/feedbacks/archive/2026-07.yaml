@@ -2327,3 +2327,52 @@ items:
   routing:
     action: ignore
     ref: Zugruul/development-skills#131
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-19T00:00:00Z'
+iteration:
+  task: '182'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-sonnet-5
+items:
+- category: incident
+  area: concurrency
+  component: n/a (invocation habit, not a script bug)
+  severity: medium
+  summary: Running an installed plugin's scripts from the marketplace cache directory
+    instead of a locally checked-out repo that IS the plugin's own source can silently
+    execute a stale, older release with missing features.
+  detail: This session ran every script (board.sh, brain.sh, telemetry.py, identity.sh,
+    feedback.py) from the cached marketplace install path (~/.claude/plugins/cache/<name>/<plugin>/<version>/scripts/)
+    out of habit, even while working inside the plugin's own source checkout. The
+    cached brain.py (0.25.0) predated a brain-events emitter already merged to the
+    repo's main branch, so every mint/recall this session silently emitted zero events
+    until the mismatch was noticed and fixed by switching to the repo's own scripts/
+    path. No error or warning surfaced the drift -- it looked identical from the caller's
+    side.
+  generalized: When working inside a locally checked-out repository that is itself
+    the source of an installed plugin, invoking that plugin's scripts from the installed/cached
+    copy instead of the local checkout can silently run a stale version with missing
+    features and no error surfaced.
+  routing:
+    action: brain-note
+    ref: Zugruul/development-skills#182
+- category: friction
+  area: briefing
+  component: build-next / implement-task
+  severity: low
+  summary: A subagent running a slow command in the background can misread its own
+    not-yet-fully-flushed output file as a dead/hung process and report a false failure,
+    costing a round trip -- happened independently to two different subagents in the
+    same iteration.
+  generalized: A subagent instructed to background a slow command should be told explicitly
+    to wait for the actual completion signal (exit code / notification) before concluding
+    failure, rather than reading a possibly-still-buffering log file early -- otherwise
+    it can misreport a healthy but slow process as dead.
+  routing:
+    action: brain-note
+    ref: Zugruul/development-skills#182
