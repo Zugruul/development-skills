@@ -19,6 +19,11 @@
     "last": null,
     "weight": 0.5
   },
+  "check-stray-worktrees-before-branch-ops->worktree-loss-recovery": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "dual-independent-review-raises-confidence->independent-review-catches-self-test-blindspots": {
     "fires": 0,
     "last": null,

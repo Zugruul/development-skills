@@ -79,6 +79,16 @@
     "last": null,
     "weight": 0.5
   },
+  "reproduce-claimed-bug-fix-before-and-after->verify-backcompat-claims-algebraically": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "reproduce-claimed-bug-fix-before-and-after->verify-tdd-empirically-when-log-is-thin": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "spot-check-large-data-files-at-boundaries->verify-guard-regex-on-real-artifact": {
     "fires": 0,
     "last": null,
