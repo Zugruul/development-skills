@@ -94,6 +94,11 @@
     "last": null,
     "weight": 0.5
   },
+  "verify-backcompat-claims-algebraically->verify-tdd-empirically-when-log-is-thin": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "verify-doc-links-and-quotes-against-live-source->confirm-named-scope-exclusions-respected": {
     "fires": 0,
     "last": null,

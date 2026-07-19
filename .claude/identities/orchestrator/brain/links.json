@@ -34,6 +34,11 @@
     "last": null,
     "weight": 0.5
   },
+  "investigate-existing-behavior-before-assuming-new-work->old-path-repo-wide-sweep": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "invoke-python-scripts-with-python3-not-bash->sanity-check-computed-paths-with-ls": {
     "fires": 0,
     "last": null,
@@ -55,6 +60,11 @@
     "weight": 0.5
   },
   "research-agent-before-implementation-brief->parity-check-new-vs-existing-path": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "section-filter-can-skip-shared-setup->trust-completion-signal-not-early-log-read": {
     "fires": 0,
     "last": null,
     "weight": 0.5
