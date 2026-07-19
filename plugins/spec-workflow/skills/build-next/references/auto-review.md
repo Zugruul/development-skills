@@ -61,11 +61,10 @@ options:
 
 ## 1. Spawn the reviewer
 
-After the task reaches *In review* (gate recorded green), spawn ONE reviewer
-agent — Agent tool, `subagent_type: general-purpose`, `model:` a suitable id
-from the reviewer identity's allowed set (`bash
+After the task reaches *In review* (gate recorded green), delegate to ONE fresh reviewer agent when the host supports delegation, with `model:` a
+suitable id from the reviewer identity's allowed set (`bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh" reviewer` prints its `models:`
-line; default set `claude-sonnet-5[1m]`, `claude-sonnet-5`). For a large diff
+line; default set `claude-sonnet-5[1m]`, `claude-sonnet-5`). (On Claude Code, this is the Agent tool with `subagent_type: general-purpose`.) For a large diff
 prefer the `[1m]` context so one agent holds the full diff + spec sections +
 design doc at once; a small focused PR can use the cheaper standard-context id.
 `name: pr-reviewer-<pr-number>` (role-prefix FIRST — e.g. `pr-reviewer-pr5`;
