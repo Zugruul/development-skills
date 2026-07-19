@@ -71,7 +71,7 @@ rm -rf "$NVS_CLAUDE" "$NVS_REPO" "$_nvsstate" "$_nvsscan_empty" "$_nvsempty" "$_
 if command -v node >/dev/null 2>&1; then
     NVHTML="$PLUGIN/templates/neural-view.html"
     check "neural-view.html: repo-label site appends the host breakdown" 'sessN ? ` · ${sessN} LIVE${sessionHostBreakdown(sessionHostsFor(repo))}` : ""' "$(cat "$NVHTML")"
-    check "neural-view.html: tooltip site appends the host breakdown" '`${sess} active session(s)${sessionHostBreakdown(sessionHostsFor(repo))}`' "$(cat "$NVHTML")"
+    check "neural-view.html: tooltip site appends the host breakdown" '${sess} active session(s)${sessionHostBreakdown(sessionHostsFor(repo))}</div>' "$(cat "$NVHTML")"
     _nvhosts="$(mktemp).cjs"
     cat >"$_nvhosts" <<'NODEJS'
 const fs = require("fs");

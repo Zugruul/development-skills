@@ -196,5 +196,8 @@ echo "== ui-options resume-link graceful omission (CDX-014, #184, SPEC-CODEX-COM
 # template per SKILL.md step 1.2), so this is a pinning test against that
 # prose instruction, not a runtime behavior test.
 UOBODY="$(stripfm "$PLUGIN/skills/ui-options/SKILL.md")"
+# shellcheck disable=SC2016  # single-quoted on purpose -- pinning the literal
+# SKILL.md prose (including its own literal $CLAUDE_CODE_SESSION_ID text),
+# not a shell expansion.
 check "ui-options SKILL.md instructs filling __SESSION_ID__ from CLAUDE_CODE_SESSION_ID" '__SESSION_ID__` with the value of `echo "$CLAUDE_CODE_SESSION_ID"`' "$UOBODY"
 check "ui-options SKILL.md instructs omitting (not fabricating) the resume sentence when the session id is empty" "if empty, replace the whole resume sentence with nothing" "$UOBODY"
