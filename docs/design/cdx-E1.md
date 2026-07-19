@@ -31,6 +31,20 @@ Grounded in: SPEC-CODEX-COMPAT.md §7.1-§7.3, §4 Glossary (Capability language
 
 **New tests**: for the 2 complex skills, assert their new `references/host-claude.md` file exists and contains the preserved constraint (e.g. craft-spec's "4 questions" number, the exact tool name `AskUserQuestion` — the adapter file is exactly where that literal name is SUPPOSED to still live). For all 9 skills' `SKILL.md` bodies, assert the literal string `AskUserQuestion` is ABSENT (this is the core acceptance criterion, directly testable) while the capability-language phrase IS present.
 
+## CDX-011 — plan-mode / no-write phase as capability language (§7.2)
+
+**§7.2 exact text**: "WHERE a skill has a no-write research/design phase (e.g. `craft-spec`'s Phase 1) THE SYSTEM SHALL express it as an explicit behavioral constraint ('no file writes during discovery') rather than solely as a call to a Claude-specific plan-mode tool."
+
+**Inventory — only `craft-spec/SKILL.md` mentions `EnterPlanMode`/`ExitPlanMode`** (confirmed: `grep -rl "EnterPlanMode\|ExitPlanMode" plugins/spec-workflow/skills/` returns exactly one file). Two occurrences:
+- Line 17 (Phase 1 — discover): "Enter plan mode (EnterPlanMode) if available: this phase is research + design, no file writes yet." — the behavioral constraint ("no file writes yet") is ALREADY stated in the same sentence, just conjoined with the Claude-specific tool call rather than led by it.
+- Line 29 (Phase 4 — review sign-off): "...via plan approval (ExitPlanMode) if in plan mode, else directly." — this is the exit/approval action, already largely capability-language (the actual sign-off ask already uses "the host's structured-input facility" per CDX-010's rewrite) with only the `(ExitPlanMode)` parenthetical needing adapter treatment.
+
+**Rewrite plan**: lead each sentence with the BEHAVIORAL CONSTRAINT ("no file writes during discovery/design" for line 17; "present a summary and get sign-off" for line 29), with the Claude-specific tool name moved into the EXISTING `references/host-claude.md` adapter (already created by CDX-010 for this same skill's structured-input mechanics — this task extends that same file with a new "Phase 1 / no-write phase" section, and a note on Phase 4's approval mechanics) rather than inline in the shared body, since this skill already has a dedicated adapter file and craft-spec was independently classified "complex" enough for one in CDX-010.
+
+**Constraint to preserve**: "no file writes during discovery/design" (Phase 1's substance) must survive as an explicit, host-agnostic, independently-testable behavioral statement — not just implied by a tool-call instruction. craft-spec's actual Claude behavior (entering/exiting plan mode) must be unchanged — the adapter still instructs a Claude-side agent to call `EnterPlanMode`/`ExitPlanMode`.
+
+**New tests**: assert `craft-spec/SKILL.md`'s body states the "no file writes" constraint in prose not gated on a tool name (a `check` for a host-agnostic phrase like "no file writes" or "no-write phase"); assert the body does NOT require the literal strings `EnterPlanMode`/`ExitPlanMode` to understand the instruction (mirror CDX-010's absent-from-body pattern); assert `references/host-claude.md` contains both literal tool names and documents when to call them.
+
 ## Out of scope for CDX-010
 CDX-011 (plan-mode/no-write phase capability language, §7.2) and CDX-012 (delegation-spawn capability language, §7.3) — separate, later tasks in this same epic, sharing the "capability language" pattern this task establishes but touching different Claude-specific mechanisms (`EnterPlanMode`/`ExitPlanMode`, `Agent`/`subagent_type`).
 `allowed-tools` frontmatter changes — explicitly out of scope per §12's invariant, see above.
