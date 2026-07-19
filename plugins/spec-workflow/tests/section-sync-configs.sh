@@ -132,6 +132,18 @@ delegation:
 EOF
 }
 
+# _sc_sync_gitignore <workdir> -- pre-syncs the fixture's .gitignore managed
+# block to the CURRENT manifest and commits/pushes it, so a case asserting
+# no-op behavior for OTHER rules isn't tripped up by mem013-gitignore-managed-block
+# firing on a fixture that never had a .gitignore at all.
+_sc_sync_gitignore() {
+    local dir="$1"
+    bash "$PLUGIN/scripts/gitignore-sync.sh" "$dir/.gitignore"
+    git -C "$dir" add -A
+    git -C "$dir" commit -q -m "pre-sync gitignore"
+    git -C "$dir" push -q origin main
+}
+
 _sc_head() { git -C "$1" rev-parse HEAD; }
 _sc_origin_project_yaml() { # dir -> project.yaml content as pushed to origin's main
     local tmp
@@ -200,6 +212,7 @@ rm -rf "$SCC"
 echo "== sync-configs.py: already-synced repo -> no-op (case d) =="
 SCD="$(mktemp -d)"
 _sc_mkrepo "$SCD/r" true no
+_sc_sync_gitignore "$SCD/r/work"
 before_head="$(_sc_head "$SCD/r/work")"
 out="$(python3 "$SYNCCFG" --repo "$SCD/r/work" --apply 2>&1)"
 check "case d: reports no-op" "route: no-op" "$out"
@@ -303,6 +316,7 @@ rm -rf "$SCG"
 echo "== sync-configs.py: ensure-peer-reviewer-identity, plugin disabled -> no-op (case h) =="
 SCH="$(mktemp -d)"
 _sc_mkrepo "$SCH/r" true no
+_sc_sync_gitignore "$SCH/r/work"
 _sc_write_settings "$SCH/r/work" no
 git -C "$SCH/r/work" add -A
 git -C "$SCH/r/work" commit -q -m "add settings.json (peer-review not enabled)"
@@ -374,6 +388,7 @@ mkdir -p "$SCK/r/work/.claude"
 _sc_base_yaml_with_delegation true > "$SCK/r/work/.claude/project.yaml"
 printf '        peer-reviewer:\n            name: Peer Reviewer (codex) - {name}\n            email: '"'"'{local}+peer_reviewer@{domain}'"'"'\n' >> "$SCK/r/work/.claude/project.yaml"
 _sc_write_settings "$SCK/r/work" yes
+bash "$PLUGIN/scripts/gitignore-sync.sh" "$SCK/r/work/.gitignore"
 git -C "$SCK/r/work" add -A
 git -C "$SCK/r/work" commit -q -m init
 git -C "$SCK/r/work" push -q origin main
@@ -406,3 +421,82 @@ check "case l: names the rule that would apply" "ensure-peer-reviewer-identity" 
 after="$(cat "$SCL/r/work/.claude/project.yaml")"
 check_rc "case l: file untouched" 0 "$([[ "$before" == "$after" ]] && echo 0 || echo 1)"
 rm -rf "$SCL"
+
+# mem013-gitignore-managed-block -- sync-project-configs also reconciles each
+# anchored repo's .gitignore managed block to the CURRENT manifest, via
+# gitignore-sync.sh, mirroring the sw062 directory-level-rule pattern.
+SC_GS_START="# >>> spec-workflow managed"
+SC_GS_END="# <<< spec-workflow managed"
+
+echo "== sync-configs.py: mem013 gitignore rule, dry-run shows diff and writes nothing (case m) =="
+SCM="$(mktemp -d)"
+_sc_mkrepo "$SCM/r" true no
+{
+    echo "node_modules/"
+} > "$SCM/r/work/.gitignore"
+git -C "$SCM/r/work" add -A
+git -C "$SCM/r/work" commit -q -m "add divergent gitignore"
+git -C "$SCM/r/work" push -q origin main
+before="$(cat "$SCM/r/work/.gitignore")"
+before_head="$(_sc_head "$SCM/r/work")"
+out="$(python3 "$SYNCCFG" --repo "$SCM/r/work" 2>&1)"
+check "case m: reports dry-run" "dry-run" "$out"
+check "case m: mem013 rule named as applicable" "mem013-gitignore-managed-block" "$out"
+check "case m: diff message shown" "[diff] .gitignore managed block (+" "$out"
+after="$(cat "$SCM/r/work/.gitignore")"
+check_rc "case m: gitignore file untouched" 0 "$([[ "$before" == "$after" ]] && echo 0 || echo 1)"
+after_head="$(_sc_head "$SCM/r/work")"
+check_rc "case m: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
+rm -rf "$SCM"
+
+echo "== sync-configs.py: mem013 gitignore rule, apply syncs a stale managed block, preserving user lines (case n) =="
+SCN="$(mktemp -d)"
+_sc_mkrepo "$SCN/r" true no
+{
+    echo "node_modules/"
+    echo "$SC_GS_START"
+    echo ".claude/OBSOLETE-PATH"
+    echo "$SC_GS_END"
+    echo "*.log"
+} > "$SCN/r/work/.gitignore"
+git -C "$SCN/r/work" add -A
+git -C "$SCN/r/work" commit -q -m "add stale managed block"
+git -C "$SCN/r/work" push -q origin main
+out="$(python3 "$SYNCCFG" --repo "$SCN/r/work" --apply 2>&1)"
+check "case n: mem013 rule applied" "mem013-gitignore-managed-block" "$out"
+check "case n: reports a commit sha" "commit:" "$out"
+check "case n: reports push ok" "push: ok" "$out"
+gi_content="$(cat "$SCN/r/work/.gitignore" 2>/dev/null)"
+check "case n: user line node_modules preserved" "node_modules/" "$gi_content"
+check "case n: user line *.log preserved" "*.log" "$gi_content"
+check "case n: start marker present" "$SC_GS_START" "$gi_content"
+check "case n: end marker present" "$SC_GS_END" "$gi_content"
+check "case n: fresh manifest ignore path written" ".claude/CHECKPOINT" "$gi_content"
+check_absent "case n: stale block content removed" ".claude/OBSOLETE-PATH" "$gi_content"
+origin_yaml_dummy="$(_sc_origin_project_yaml "$SCN/r")"
+check "case n: origin still has valid project.yaml (unrelated content untouched)" "sc-fixture" "$origin_yaml_dummy"
+rm -rf "$SCN"
+
+echo "== sync-configs.py: mem013 gitignore rule, apply on a repo with no .gitignore at all (case o) =="
+SCO="$(mktemp -d)"
+_sc_mkrepo "$SCO/r" true no
+out="$(python3 "$SYNCCFG" --repo "$SCO/r/work" --apply 2>&1)"
+check "case o: mem013 rule applied" "mem013-gitignore-managed-block" "$out"
+check "case o: reports push ok" "push: ok" "$out"
+check_rc "case o: .gitignore created" 0 "$([[ -f "$SCO/r/work/.gitignore" ]] && echo 0 || echo 1)"
+gi_content="$(cat "$SCO/r/work/.gitignore" 2>/dev/null)"
+check "case o: start marker present" "$SC_GS_START" "$gi_content"
+check "case o: fresh manifest ignore path written" ".claude/CHECKPOINT" "$gi_content"
+rm -rf "$SCO"
+
+echo "== sync-configs.py: mem013 gitignore rule, already-synced -> no-op (case p) =="
+SCP="$(mktemp -d)"
+_sc_mkrepo "$SCP/r" true no
+_sc_sync_gitignore "$SCP/r/work"
+before_head="$(_sc_head "$SCP/r/work")"
+out="$(python3 "$SYNCCFG" --repo "$SCP/r/work" --apply 2>&1)"
+check "case p: reports no-op" "route: no-op" "$out"
+check_absent "case p: mem013 rule not named" "mem013-gitignore-managed-block" "$out"
+after_head="$(_sc_head "$SCP/r/work")"
+check_rc "case p: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
+rm -rf "$SCP"

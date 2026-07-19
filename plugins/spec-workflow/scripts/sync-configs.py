@@ -212,6 +212,24 @@ def sw062_apply(repo_root):
     return changed
 
 
+def mem013_gitignore_detect(repo_root):
+    """Returns (applies: bool, diff_text: str). Runs gitignore-sync.sh
+    --dry-run against repo_root/.gitignore; any non-empty diff means the
+    managed block is out of sync with the current manifest."""
+    p = run(["bash", str(HERE / "gitignore-sync.sh"), "--dry-run",
+             str(Path(repo_root) / ".gitignore")])
+    diff_text = p.stdout
+    return bool(diff_text.strip()), diff_text
+
+
+def mem013_gitignore_apply(work_dir):
+    """Writes the managed block into work_dir/.gitignore via
+    gitignore-sync.sh. Returns the list of repo-relative paths that
+    changed/need staging."""
+    run(["bash", str(HERE / "gitignore-sync.sh"), str(Path(work_dir) / ".gitignore")])
+    return [".gitignore"]
+
+
 def sw062_rollback(repo_root):
     """Undo sw062_apply()'s filesystem move so a post-edit INVALID never
     strands a half-migrated repo. `git checkout -- .` only restores tracked
@@ -350,6 +368,9 @@ def process_repo(repo_root, args):
     sw062_applies = sw062_detect(repo_root)
     if sw062_applies:
         applied.append("sw062-feedbacks-migration")
+    mem013_applies, mem013_diff = mem013_gitignore_detect(repo_root)
+    if mem013_applies:
+        applied.append("mem013-gitignore-managed-block")
 
     if not applied:
         result.add("route: no-op")
@@ -366,6 +387,12 @@ def process_repo(repo_root, args):
             result.add(f"[diff] {config_path.relative_to(repo_root)} (+{added}/-{removed} lines)")
         if sw062_applies:
             result.add("[diff] .claude/feedback/ would move to .claude/feedbacks/; its .gitignore line would be dropped")
+        if mem013_applies:
+            added = sum(1 for line in mem013_diff.splitlines()
+                        if line.startswith("+") and not line.startswith("+++"))
+            removed = sum(1 for line in mem013_diff.splitlines()
+                          if line.startswith("-") and not line.startswith("---"))
+            result.add(f"[diff] .gitignore managed block (+{added}/-{removed} lines)")
         return result, False
 
     worktree_dir = None
@@ -395,6 +422,8 @@ def process_repo(repo_root, args):
             changed_files.add(str(work_config_path.relative_to(work_dir)))
         if sw062_applies:
             changed_files.update(sw062_apply(work_dir))
+        if mem013_applies:
+            changed_files.update(mem013_gitignore_apply(work_dir))
 
         post_ok, post_out = validate(work_config_path)
         result.add(f"validate post: {'VALID' if post_ok else 'INVALID'}")
