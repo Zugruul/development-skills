@@ -1,4 +1,9 @@
 {
+  "confirm-named-scope-exclusions-respected->note-dont-gate-on-unrelated-findings": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "golden-identical-covers-absent-not-present->parity-check-new-vs-existing-path": {
     "fires": 0,
     "last": null,
@@ -35,6 +40,21 @@
     "weight": 0.5
   },
   "probe-spec-silent-input-categories->trace-boundary-operators-by-hand": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "red-commit-worktree-verify->recompute-hashes-never-eyeball": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "red-commit-worktree-verify->reports-are-not-the-code": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "spot-check-large-data-files-at-boundaries->verify-guard-regex-on-real-artifact": {
     "fires": 0,
     "last": null,
     "weight": 0.5

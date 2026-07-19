@@ -61,3 +61,14 @@
 {"repo": "Zugruul/development-skills", "role": "dev", "slug": "verify-design-doc-quotes-against-live-file", "strength": 1, "ts": "2026-07-19T00:01:37+00:00", "type": "NoteMinted", "v": 1}
 {"key": "verify-design-doc-quotes-against-live-file->boundary-test-needs-exact-value-plus-absence-check", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-19T00:01:37+00:00", "type": "LinkFormed", "v": 1}
 {"key": "verify-design-doc-quotes-against-live-file->verify-ordering-assertions-at-two-levels", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-19T00:01:37+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "red-commit-worktree-verify", "strength": 3, "ts": "2026-07-19T00:42:37+00:00", "type": "NoteMinted", "v": 1}
+{"key": "red-commit-worktree-verify->recompute-hashes-never-eyeball", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-19T00:42:37+00:00", "type": "LinkFormed", "v": 1}
+{"key": "red-commit-worktree-verify->reports-are-not-the-code", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-19T00:42:37+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "spot-check-large-data-files-at-boundaries", "strength": 1, "ts": "2026-07-19T00:42:47+00:00", "type": "NoteMinted", "v": 1}
+{"key": "spot-check-large-data-files-at-boundaries->verify-guard-regex-on-real-artifact", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-19T00:42:47+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "confirm-named-scope-exclusions-respected", "strength": 1, "ts": "2026-07-19T00:43:00+00:00", "type": "NoteMinted", "v": 1}
+{"key": "confirm-named-scope-exclusions-respected->note-dont-gate-on-unrelated-findings", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-19T00:43:00+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "respect-named-scope-boundaries", "strength": 1, "ts": "2026-07-19T00:43:09+00:00", "type": "NoteMinted", "v": 1}
+{"key": "respect-named-scope-boundaries->audit-new-path-parity-before-writing", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-19T00:43:09+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "separate-live-repo-state-tests-from-fixtures", "strength": 1, "ts": "2026-07-19T00:43:20+00:00", "type": "NoteMinted", "v": 1}
+{"key": "separate-live-repo-state-tests-from-fixtures->write-fixtures-direct-for-read-path-tests", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-19T00:43:20+00:00", "type": "LinkFormed", "v": 1}

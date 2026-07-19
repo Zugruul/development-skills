@@ -304,6 +304,11 @@
     "last": "2026-07-18",
     "weight": 0.5
   },
+  "respect-named-scope-boundaries->audit-new-path-parity-before-writing": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "second-order-after-concurrency-fix->normalize-after-load-identity-fields": {
     "fires": 3,
     "last": "2026-07-18",
@@ -322,6 +327,11 @@
   "self-scan-first-class->exclude-before-scan": {
     "fires": 4,
     "last": "2026-07-18",
+    "weight": 0.5
+  },
+  "separate-live-repo-state-tests-from-fixtures->write-fixtures-direct-for-read-path-tests": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "shared-quota-not-for-fixtures->capture-dont-transcribe": {

@@ -2093,3 +2093,32 @@ items:
   routing:
     action: backlog
     ref: Zugruul/development-skills#222
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-19T00:45:00Z'
+iteration:
+  task: MEM-004
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-sonnet-5
+items:
+- category: worked-well
+  area: review
+  severity: low
+  summary: A design doc that explicitly names an adjacent, tempting scope-creep move
+    and the specific future task that owns it removed the live temptation entirely
+    -- the dev agent treated it as a checklist item to confirm, not a judgment call,
+    and the reviewer explicitly confirmed the boundary was respected rather than only
+    checking the in-scope change.
+  evidence:
+  - Zugruul/development-skills#128
+  generalized: When a task's design doc names an adjacent piece of messiness as explicitly
+    out of scope AND names which future task owns it, that framing measurably reduces
+    scope-creep risk compared to a bare 'don't touch this' -- worth doing deliberately
+    whenever a task touches a file with known, deferred cleanup nearby.
+  routing:
+    action: brain-note
+    ref: respect-named-scope-boundaries
