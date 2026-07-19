@@ -14,5 +14,4 @@ evals/results/
 .claude/.flush*
 .claude/telemetry.jsonl
 .claude/board-cache.json
-.claude/feedbacks/
 docs/handoffs/
