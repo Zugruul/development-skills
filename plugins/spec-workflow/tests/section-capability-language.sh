@@ -133,3 +133,11 @@ check "setup-project: Feedback header preserved" "header \"Feedback\"" "$SPBODY"
 SP_ADAPTER="$(cat "$PLUGIN/skills/setup-project/references/host-claude.md" 2>/dev/null)"
 check "setup-project adapter: Board/Merging/Feedback moments documented" "Board" "$SP_ADAPTER"
 check "setup-project adapter: merge-policy sub-question documented" "mergeMethod" "$SP_ADAPTER"
+
+echo "== plan-mode / no-write phase as capability language (CDX-011, #181, SPEC-CODEX-COMPAT.md §7.2) =="
+
+check "craft-spec: no-file-writes constraint stated host-agnostically" "no file writes during discovery/design" "$CSBODY"
+check_absent "craft-spec SKILL.md body never names EnterPlanMode (isolated to the adapter)" "EnterPlanMode" "$CSBODY"
+check_absent "craft-spec SKILL.md body never names ExitPlanMode (isolated to the adapter)" "ExitPlanMode" "$CSBODY"
+check "craft-spec adapter: names EnterPlanMode and when to call it" "EnterPlanMode" "$CS_ADAPTER"
+check "craft-spec adapter: names ExitPlanMode and when to call it" "ExitPlanMode" "$CS_ADAPTER"

@@ -14,7 +14,7 @@ Read `../../skills/craft-spec/references/spec-guide.md` **before Phase 2** — i
 - If the user gave a written brief, mine it first — never ask what it already answers.
 
 ## Phase 1 — discover (plan mode + interview)
-1. Enter plan mode (EnterPlanMode) if available: this phase is research + design, no file writes yet.
+1. Enforce no file writes during discovery/design: this phase is research + design only. On a host with a plan-mode facility, use it to enforce this (see `references/host-claude.md` on Claude Code).
 2. Interview through the host's structured-input facility, in rounds of at most 4 questions, using the question bank in the reference. Cover, in order: problem & users → goals and explicit NON-goals → domain concepts & invariants → constraints (stack, compliance, performance, budget) → integrations/compatibility surface → quality attributes & testing expectations → delivery order and milestones.
 3. Rules: offer concrete options (the user can always pick Other); state your inferences as defaults to confirm rather than open questions; stop interviewing when new answers stop changing the design — 2–4 rounds is typical.
 
@@ -26,7 +26,7 @@ Derive from the spec: epics in build order (foundations → features → polish)
 
 ## Phase 4 — review (do not skip)
 1. Self-review against the checklist in the reference; fix what fails.
-2. Present to the user: a compact summary (goals, non-goals, epic sequence, riskiest decisions, open questions) — via plan approval (ExitPlanMode) if in plan mode, else directly. Ask through the host's structured-input facility to resolve each open question and to get explicit sign-off on scope and epic order. Iterate until approved.
+2. Present to the user: a compact summary (goals, non-goals, epic sequence, riskiest decisions, open questions), through the host's plan-approval facility if the discovery phase used one, else directly. Ask through the host's structured-input facility to resolve each open question and to get explicit sign-off on scope and epic order. Iterate until approved.
 
 ## Phase 5 — wire up
 - `.claude/project.yaml` exists → add the `specs[]` entry (unique `taskPrefix`, epics with `taskRanges` + `blockedBy`, `invariants` copied from the spec), then validate: `bash "../../scripts/board.sh" config`. Suggest `seed-board` next.
