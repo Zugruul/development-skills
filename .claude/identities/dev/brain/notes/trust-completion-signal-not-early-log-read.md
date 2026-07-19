@@ -1,9 +1,9 @@
 ---
 tags: [testing, background-tasks]
 paths: ["**"]
-strength: 2
-source: "PR#225 (MEM-013, #132) -- applied successfully this time (dev-mem013 waited properly), no false-failure report"
-graduated: false
+strength: 3
+source: "PR#226 (CDX-013, #183) -- applied correctly by both dev-cdx013 and pr-reviewer-pr226 (both explicitly cited the lesson when going idle to wait on a slow gate run)"
+graduated: true
 created: 2026-07-19
 ---
 
