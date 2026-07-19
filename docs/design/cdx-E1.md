@@ -45,6 +45,26 @@ Grounded in: SPEC-CODEX-COMPAT.md §7.1-§7.3, §4 Glossary (Capability language
 
 **New tests**: assert `craft-spec/SKILL.md`'s body states the "no file writes" constraint in prose not gated on a tool name (a `check` for a host-agnostic phrase like "no file writes" or "no-write phase"); assert the body does NOT require the literal strings `EnterPlanMode`/`ExitPlanMode` to understand the instruction (mirror CDX-010's absent-from-body pattern); assert `references/host-claude.md` contains both literal tool names and documents when to call them.
 
+## CDX-012 — delegation-spawn capability language (§7.3)
+
+**§7.3 exact text**: "WHERE a skill delegates bounded work to a subagent THE SYSTEM SHALL describe the delegation in capability language ('delegate to a fresh implementation agent when the host supports delegation') with exact spawn parameters (tool name, `subagent_type`) isolated to a host adapter."
+
+**Inventory — exactly 2 sites repo-wide** (confirmed via `grep -rn "Agent tool\|subagent_type" plugins/spec-workflow/`, the full plugin tree, not just `skills/*/SKILL.md`):
+- `implement-task/SKILL.md:25` — dev-agent spawn instruction: "Spawn with the Agent tool, `subagent_type: general-purpose`, `model: <...>`, and `name: dev-<task-id>` (...)".
+- `build-next/references/auto-review.md:65` — reviewer-agent spawn instruction: "spawn ONE reviewer agent — Agent tool, `subagent_type: general-purpose`, `model:` a suitable id from the reviewer identity's allowed set (...)".
+
+No other skill or reference file names `Agent tool` or `subagent_type`. `build-next/SKILL.md`'s own body (step 2: "spawn a dev subagent...") already uses host-neutral phrasing with no literal tool name — it needs no rewrite; the acceptance criterion's mention of "build-next" refers to its reference doc, `auto-review.md`, where the actual spawn-parameter prose lives.
+
+**Out of scope (feeds CDX-02x instead)**: model SELECTION (`identity.sh dev`'s allowed-model set, choosing a suitable id) is unchanged — §7.3 only governs the SPAWN mechanism's tool/parameter naming, not which model is picked. `name: dev-<task-id>` / `name: pr-reviewer-<pr-number>` naming conventions are host-neutral already (just a label) and are preserved verbatim.
+
+**Adapter strategy — both sites are simple (exactly one literal mention each)**, matching CDX-010's own classification rule ("simple cases may inline a one-line Claude note"): no new `references/host-claude.md` file for either skill. Instead, inline a one-line Claude note immediately after the (now capability-language) spawn sentence, mirroring CDX-010's exact inline-note pattern:
+- `implement-task/SKILL.md:25` — replace "Spawn with the Agent tool, `subagent_type: general-purpose`, `model: <the id you chose from that allowed set>`, and `name: dev-<task-id>` (...)" with "Delegate to a fresh implementation agent when the host supports delegation, with `model: <the id you chose from that allowed set>` and `name: dev-<task-id>` (...)" followed by "(On Claude Code, this is the Agent tool with `subagent_type: general-purpose`.)".
+- `build-next/references/auto-review.md:65` — replace "spawn ONE reviewer agent — Agent tool, `subagent_type: general-purpose`, `model:` a suitable id from the reviewer identity's allowed set (...)" with "delegate to ONE fresh reviewer agent when the host supports delegation, with `model:` a suitable id from the reviewer identity's allowed set (...)" followed by the same inline Claude note.
+
+**Constraints to preserve verbatim**: `implement-task`'s naming rule (`dev-<task-id>`, role-prefix first, re-brief appends a letter, never a bare counter) and its "one agent = one task" rule; `auto-review.md`'s naming rule (`pr-reviewer-<pr-number>`) and "keep this SAME agent for every round... via SendMessage" continuity rule (`SendMessage` itself is out of scope for this task — §7.3 governs the SPAWN action only, not the follow-up dialogue mechanism; a future task may extend capability language to it).
+
+**New tests**: extend `section-capability-language.sh` with a CDX-012 block mirroring the existing simple-skill pattern — for each of the 2 files, assert the capability-language phrase ("delegate to a fresh implementation agent when the host supports delegation" / "delegate to ONE fresh reviewer agent when the host supports delegation") is present, `Agent tool`/`subagent_type` appears exactly once each (the inline Claude note), the inline-note text itself is present, and every preserved constraint (naming rules, one-agent-per-task, SendMessage continuity) survives verbatim.
+
 ## Out of scope for CDX-010
 CDX-011 (plan-mode/no-write phase capability language, §7.2) and CDX-012 (delegation-spawn capability language, §7.3) — separate, later tasks in this same epic, sharing the "capability language" pattern this task establishes but touching different Claude-specific mechanisms (`EnterPlanMode`/`ExitPlanMode`, `Agent`/`subagent_type`).
 `allowed-tools` frontmatter changes — explicitly out of scope per §12's invariant, see above.
