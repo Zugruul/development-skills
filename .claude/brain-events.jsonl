@@ -72,3 +72,13 @@
 {"key": "respect-named-scope-boundaries->audit-new-path-parity-before-writing", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-19T00:43:09+00:00", "type": "LinkFormed", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "dev", "slug": "separate-live-repo-state-tests-from-fixtures", "strength": 1, "ts": "2026-07-19T00:43:20+00:00", "type": "NoteMinted", "v": 1}
 {"key": "separate-live-repo-state-tests-from-fixtures->write-fixtures-direct-for-read-path-tests", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-19T00:43:20+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "check-helper-is-substring-not-equality", "strength": 1, "ts": "2026-07-19T01:20:07+00:00", "type": "NoteMinted", "v": 1}
+{"key": "check-helper-is-substring-not-equality->verify-guard-regex-on-real-artifact", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-19T01:20:07+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "verify-doc-links-and-quotes-against-live-source", "strength": 1, "ts": "2026-07-19T01:20:19+00:00", "type": "NoteMinted", "v": 1}
+{"key": "verify-doc-links-and-quotes-against-live-source->verify-guard-regex-on-real-artifact", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-19T01:20:19+00:00", "type": "LinkFormed", "v": 1}
+{"key": "verify-doc-links-and-quotes-against-live-source->confirm-named-scope-exclusions-respected", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-19T01:20:19+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "read-config-live-not-hardcoded-in-tests", "strength": 1, "ts": "2026-07-19T01:20:30+00:00", "type": "NoteMinted", "v": 1}
+{"key": "read-config-live-not-hardcoded-in-tests->verify-design-doc-quotes-against-live-file", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-19T01:20:30+00:00", "type": "LinkFormed", "v": 1}
+{"key": "read-config-live-not-hardcoded-in-tests->verify-doc-links-and-quotes-against-live-source", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-19T01:20:30+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "verify-brief-characterizations-independently", "strength": 1, "ts": "2026-07-19T01:20:41+00:00", "type": "NoteMinted", "v": 1}
+{"key": "verify-brief-characterizations-independently->respect-named-scope-boundaries", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-19T01:20:41+00:00", "type": "LinkFormed", "v": 1}

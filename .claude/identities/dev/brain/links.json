@@ -279,6 +279,16 @@
     "last": "2026-07-18",
     "weight": 0.5
   },
+  "read-config-live-not-hardcoded-in-tests->verify-design-doc-quotes-against-live-file": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "read-config-live-not-hardcoded-in-tests->verify-doc-links-and-quotes-against-live-source": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "red-commit-as-you-go->batch-red-across-surfaces": {
     "fires": 4,
     "last": "2026-07-18",
@@ -402,6 +412,11 @@
   "vendored-split-build-import-guard->red-static-vs-wiring-checks": {
     "fires": 1,
     "last": "2026-07-08",
+    "weight": 0.5
+  },
+  "verify-brief-characterizations-independently->respect-named-scope-boundaries": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "verify-design-doc-quotes-against-live-file->boundary-test-needs-exact-value-plus-absence-check": {

@@ -1,4 +1,9 @@
 {
+  "check-helper-is-substring-not-equality->verify-guard-regex-on-real-artifact": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "confirm-named-scope-exclusions-respected->note-dont-gate-on-unrelated-findings": {
     "fires": 0,
     "last": null,
@@ -65,6 +70,16 @@
     "weight": 0.5
   },
   "trace-test-setup-vs-comment->verify-guard-regex-on-real-artifact": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "verify-doc-links-and-quotes-against-live-source->confirm-named-scope-exclusions-respected": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "verify-doc-links-and-quotes-against-live-source->verify-guard-regex-on-real-artifact": {
     "fires": 0,
     "last": null,
     "weight": 0.5

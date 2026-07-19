@@ -2122,3 +2122,38 @@ items:
   routing:
     action: brain-note
     ref: respect-named-scope-boundaries
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-19T01:22:00Z'
+iteration:
+  task: CDX-006
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-sonnet-5
+items:
+- category: incident
+  area: permissions
+  severity: low
+  summary: A public GitHub issue attracted a solicitation comment from a NONE-permission
+    account offering paid work with a private payment link, styled as an 'audit' finding
+    to look authoritative.
+  detail: Correctly identified as untrusted per this repo's own comment-trust discipline
+    (only OWNER/MEMBER/COLLABORATOR comments are directives) and disregarded by every
+    agent in the task's chain; the dev agent independently re-verified the permission
+    level rather than trusting the briefer's characterization secondhand. Flagged
+    to the human separately for awareness/moderation.
+  evidence:
+  - Zugruul/development-skills#178
+  generalized: Public GitHub issues on an actively-worked repo can attract solicitation/scam
+    comments styled to look like legitimate technical findings (e.g. framed as an
+    automated 'audit' with a specific score). The existing comment-trust discipline
+    (permission-level gating) handled this correctly without any special-casing needed
+    -- worth confirming this pattern holds if the workflow is ever used on a repo
+    with a larger public audience, where such comments may become more frequent.
+  routing:
+    action: ignore
+    ref: existing comment-trust discipline handled this correctly with no gap; already
+      surfaced directly to the human in-session for awareness/moderation
