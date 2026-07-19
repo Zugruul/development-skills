@@ -1175,7 +1175,13 @@ def discover_sessions(repos):
     matched against a discovered repo by path prefix so the UI can badge the
     right region; a job whose cwd doesn't fall under any discovered repo
     still surfaces with repo=None rather than being dropped. If ~/.claude (or
-    $NEURAL_VIEW_CLAUDE_DIR) has no jobs/ directory at all, returns []."""
+    $NEURAL_VIEW_CLAUDE_DIR) has no jobs/ directory at all, returns [].
+
+    Every session is tagged "host": "claude" -- this function only ever reads
+    ~/.claude/jobs, so every session it finds IS a Claude Code session. This
+    is the seed point for future host expansion: a Codex-side discovery
+    function, if one is ever written, would tag its own results "codex" and
+    merge into the same list before GET /sessions responds."""
     jobs_dir = claude_dir() / "jobs"
     out = []
     try:
@@ -1210,6 +1216,7 @@ def discover_sessions(repos):
             "description": str(data.get("name") or ""),
             "state": state,
             "startedAt": str(data.get("createdAt") or ""),
+            "host": "claude",
         })
     return out
 

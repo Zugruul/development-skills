@@ -1223,7 +1223,7 @@ function rebuildScene(){
       sceneGroup.add(mesh);
       const sessN = sessionCountFor(repo);
       const loopN = loopSessionsFor(repo).length;
-      const labelText = dispName(repo).toUpperCase() + (sessN ? ` · ${sessN} LIVE` : "") + (loopN ? " · ↻ LOOP" : "");
+      const labelText = dispName(repo).toUpperCase() + (sessN ? ` · ${sessN} LIVE${sessionHostBreakdown(sessionHostsFor(repo))}` : "") + (loopN ? " · ↻ LOOP" : "");
       const label = makeLabelSprite(labelText, sessN ? 45 : 190, 22);
       label.position.set(rc.x, rc.y+rad+26, rc.z);
       label.userData = {kind:"repoLabel", repo};
@@ -2500,6 +2500,14 @@ function arc(frac, hue, label){
 window.__projects = {};
 window.__sessions = [];
 function sessionCountFor(repo){ return (window.__sessions||[]).filter(s=>s.repo===repo).length; }
+// CDX-014 (SPEC-CODEX-COMPAT.md §7.6): "label session counts by host once
+// both are surfaced" -- groups a repo's sessions by host (e.g. {claude:2}
+// or {claude:2, codex:1}). sessionHostBreakdown() renders that as a
+// parenthetical, but ONLY when more than one host is present, so the
+// overwhelmingly common single-host case stays byte-identical to before
+// this field existed.
+function sessionHostsFor(repo){ const out={}; for(const s of (window.__sessions||[])) if(s.repo===repo){ const h=s.host||"claude"; out[h]=(out[h]||0)+1; } return out; }
+function sessionHostBreakdown(hosts){ const keys=Object.keys(hosts); if(keys.length<=1) return ""; return " (" + keys.map(k=>`${hosts[k]} ${k}`).join(", ") + ")"; }
 // Best-effort "a /loop or /build-next iteration is running" badge. There is
 // no real heartbeat — GET /sessions deliberately only exposes a job's
 // name/state/cwd (never transcript/detail content, see discover_sessions()
@@ -2621,7 +2629,7 @@ function tooltipHtml(ud){
     const hiddenN = hiddenBrainCountFor(repo);
     return `<div class="tt-kind">repo</div><div class="tt-title">${escapeHtml(dispName(repo))}</div>`+
       `<div class="tt-sub">${inRepo.length} note(s) · ${brains} brain(s)${hiddenN ? ` · ${hiddenN} hidden` : ""}</div>${projHtml}`+
-      (sess ? `<div class="tt-sub">${sess} active session(s)</div>` : "")+
+      (sess ? `<div class="tt-sub">${sess} active session(s)${sessionHostBreakdown(sessionHostsFor(repo))}</div>` : "")+
       (loopN ? `<div class="tt-sub tt-loop">↻ ${loopN} loop/build session(s) (best-effort — name match)</div>` : "");
   }
   if(ud.kind==="synapse" || ud.kind==="synapsePulse"){
