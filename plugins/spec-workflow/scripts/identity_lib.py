@@ -30,6 +30,34 @@ def shellquote(s):
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("`", "\\`") + '"'
 
 
+CODEX_CAPABILITIES = ("fast", "balanced", "deep-review", "large-context")
+
+
+def normalize_models(spec):
+    """One identity's `models` value (None | flat Claude list | {claude, codex.capability}
+    object) -> (claude_models: list[str], codex_capability: str|None, error: str|None).
+
+    Standalone and not yet called from resolve_role()/identity.sh -- CDX-021 wires
+    it into the live briefing path. See docs/design/cdx-E2.md CDX-020 for the
+    full contract (including why a bad capability is a sentinel error, never a
+    silent default).
+    """
+    if spec is None:
+        return [], None, None
+    if isinstance(spec, list):
+        return list(spec), None, None
+    if isinstance(spec, dict):
+        claude = spec.get("claude")
+        claude = claude if isinstance(claude, list) else []
+        cap = (spec.get("codex") or {}).get("capability")
+        if cap is not None and cap not in CODEX_CAPABILITIES:
+            return None, None, (
+                f"unrecognized models.codex.capability {cap!r} (valid: {', '.join(CODEX_CAPABILITIES)})"
+            )
+        return claude, cap, None
+    return [], None, None
+
+
 def as_list(spec):
     """A role spec is one identity dict or a list of them -> always a list of dicts."""
     if isinstance(spec, list):
