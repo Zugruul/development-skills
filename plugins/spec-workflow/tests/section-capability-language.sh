@@ -141,3 +141,48 @@ check_absent "craft-spec SKILL.md body never names EnterPlanMode (isolated to th
 check_absent "craft-spec SKILL.md body never names ExitPlanMode (isolated to the adapter)" "ExitPlanMode" "$CSBODY"
 check "craft-spec adapter: names EnterPlanMode and when to call it" "EnterPlanMode" "$CS_ADAPTER"
 check "craft-spec adapter: names ExitPlanMode and when to call it" "ExitPlanMode" "$CS_ADAPTER"
+
+echo "== delegation-spawn capability language (CDX-012, #182, SPEC-CODEX-COMPAT.md §7.3) =="
+
+CLAUDE_NOTE="On Claude Code, this is the Agent tool with \`subagent_type: general-purpose\`."
+
+ITBODY="$(stripfm "$PLUGIN/skills/implement-task/SKILL.md")"
+check "implement-task: dev-agent spawn uses capability language" "Delegate to a fresh implementation agent when the host supports delegation" "$ITBODY"
+check "implement-task: inline Claude-note pattern present" "$CLAUDE_NOTE" "$ITBODY"
+n="$(grep -oF 'Agent tool' <<<"$ITBODY" | wc -l | tr -d ' ')"
+if [[ "$n" -eq 1 ]]; then
+    echo "ok   implement-task SKILL.md body names 'Agent tool' exactly once (the inline Claude note)"
+else
+    echo "FAIL implement-task SKILL.md body should name 'Agent tool' exactly once (inline note), found $n"
+    fails=$((fails + 1))
+fi
+n="$(grep -oF 'subagent_type' <<<"$ITBODY" | wc -l | tr -d ' ')"
+if [[ "$n" -eq 1 ]]; then
+    echo "ok   implement-task SKILL.md body names 'subagent_type' exactly once (the inline Claude note)"
+else
+    echo "FAIL implement-task SKILL.md body should name 'subagent_type' exactly once (inline note), found $n"
+    fails=$((fails + 1))
+fi
+check "implement-task: dev naming rule preserved (dev-<task-id>, role-prefix first)" "role-prefix FIRST, then the scope it serves" "$ITBODY"
+check "implement-task: re-brief letter-suffix rule preserved" "a re-brief on the same task appends a letter, \`dev-cp012-b\`; never a bare counter" "$ITBODY"
+check "implement-task: one-agent-one-task rule preserved" "One agent = one task" "$ITBODY"
+
+ARBODY="$(cat "$PLUGIN/skills/build-next/references/auto-review.md" 2>/dev/null)"
+check "auto-review.md: reviewer-agent spawn uses capability language" "delegate to ONE fresh reviewer agent when the host supports delegation" "$ARBODY"
+check "auto-review.md: inline Claude-note pattern present" "$CLAUDE_NOTE" "$ARBODY"
+n="$(grep -oF 'Agent tool' <<<"$ARBODY" | wc -l | tr -d ' ')"
+if [[ "$n" -eq 1 ]]; then
+    echo "ok   auto-review.md body names 'Agent tool' exactly once (the inline Claude note)"
+else
+    echo "FAIL auto-review.md body should name 'Agent tool' exactly once (inline note), found $n"
+    fails=$((fails + 1))
+fi
+n="$(grep -oF 'subagent_type' <<<"$ARBODY" | wc -l | tr -d ' ')"
+if [[ "$n" -eq 1 ]]; then
+    echo "ok   auto-review.md body names 'subagent_type' exactly once (the inline Claude note)"
+else
+    echo "FAIL auto-review.md body should name 'subagent_type' exactly once (inline note), found $n"
+    fails=$((fails + 1))
+fi
+check "auto-review.md: reviewer naming rule preserved (pr-reviewer-<pr-number>)" "\`name: pr-reviewer-<pr-number>\`" "$ARBODY"
+check "auto-review.md: SendMessage continuity instruction preserved (out of scope for this task)" "Keep this SAME agent for" "$ARBODY"
