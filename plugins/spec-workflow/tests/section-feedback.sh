@@ -750,7 +750,7 @@ check_absent "emit: no generalized text leaked into the events feed" "Front-load
 ev_ route "2026-07-01T10:00:00Z" 0 brain-note "friction-self-approval" >/dev/null
 out="$(fb_events "$EV" FeedbackRouted)"
 check "route: exactly 1 FeedbackRouted line" "1" "$(printf '%s\n' "$out" | grep -c .)"
-check "route: event carries ts/idx/action" "$(printf 'dev\t2026-07-01T10:00:00Z\t0\t\tbrain-note')" "$out"
+check "route: event carries ts/idx/action" "$(printf 'dev\t2026-07-01T10:00:00Z\t0\tbrain-note\t')" "$out"
 rm -rf "$EV"
 
 # archive: one FeedbackArchived PER DOCUMENT moved, not per item -- a
