@@ -2496,3 +2496,30 @@ items:
   routing:
     action: ignore
     ref: Zugruul/development-skills#185
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-19T00:00:00Z'
+iteration:
+  task: '186'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-sonnet-5
+items:
+- category: friction
+  area: merge
+  component: git worktrees
+  severity: low
+  summary: A reviewer's temporary baseline worktree checked out on the merge target
+    branch name silently blocked the merge tool's own branch-cleanup step, producing
+    a confusing error that looked like the merge itself had failed when it had actually
+    already succeeded remotely.
+  generalized: A subagent that creates a temporary git worktree for comparison/baseline
+    purposes should remove it when done, or a later git operation targeting the same
+    branch name (a merge, a delete) can fail with a worktree-lock error that's easy
+    to misread as a real operation failure rather than stray cleanup debt.
+  routing:
+    action: brain-note
+    ref: Zugruul/development-skills#186
