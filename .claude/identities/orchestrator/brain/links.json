@@ -49,6 +49,11 @@
     "last": null,
     "weight": 0.5
   },
+  "session-close-protocol->orchestrator-cd-prefix-own-commands": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "verify-live-system-not-just-local-artifacts->local-gate-green-doesnt-imply-ci-green-for-infra": {
     "fires": 0,
     "last": null,
