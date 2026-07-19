@@ -23,7 +23,25 @@ PHRASE="the host's structured-input facility"
 # ...AskUserQuestion...` frontmatter line 5 of these skills carry. Verified
 # against a real file below (auto-merge/SKILL.md) before being trusted for
 # the assertions that follow.
-stripfm() { sed '1,/^---$/d; 1,/^---$/d' "$1" 2>/dev/null; }
+#
+# Deliberately awk+tail, not a sed line-range: `1,/^---$/d` is a
+# numeric-start/regex-end range whose start line ALSO matches the end
+# regex (frontmatter's line 1 IS `---`), and GNU sed vs BSD/macOS sed
+# disagree on whether the end-check applies on the range's own start
+# line -- BSD sed continues to the frontmatter's closing `---` (what this
+# was written and tested against), GNU sed (this repo's CI runner) closes
+# the range immediately and produces an empty body instead. awk's line
+# counter and `tail -n +N` have no such same-line start/end ambiguity and
+# behave identically on GNU and BSD.
+stripfm() {
+    local file="$1" end
+    end="$(awk '/^---$/{c++; if (c==2) {print NR; exit}}' "$file" 2>/dev/null)"
+    if [[ -n "$end" ]]; then
+        tail -n +"$((end + 1))" "$file" 2>/dev/null
+    else
+        cat "$file" 2>/dev/null
+    fi
+}
 
 echo "== capability-language rewrite: 9 AskUserQuestion skills (CDX-010, #180, SPEC-CODEX-COMPAT.md §7.1) =="
 
