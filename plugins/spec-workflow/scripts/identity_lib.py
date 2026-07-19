@@ -98,8 +98,8 @@ def merged_roles(root):
 
 def resolve_role(roles, role, gitname, gitemail, path=""):
     """Resolve ONE role to a single identity.
-    Returns (info, status, error): status in {ok, off, unresolved, unknown};
-    info = {'name', 'email', 'models'} when status == 'ok', else None."""
+    Returns (info, status, error): status in {ok, off, unresolved, unknown, invalid};
+    info = {'name', 'email', 'models', 'codexCapability'} when status == 'ok', else None."""
     if role not in roles:
         return None, "unknown", f"unknown role '{role}' (known: {', '.join(sorted(roles))})"
     spec = roles[role]
@@ -112,4 +112,8 @@ def resolve_role(roles, role, gitname, gitemail, path=""):
     email, ee = resolve_template(it.get("email") or dflt.get("email") or "{local}@{domain}", gitname, gitemail)
     if en or ee:
         return None, "unresolved", (en or ee)
-    return {"name": name, "email": email, "models": it.get("models") or dflt.get("models") or []}, "ok", None
+    models_spec = it["models"] if "models" in it else dflt.get("models")
+    claude_models, codex_capability, err = normalize_models(models_spec)
+    if err:
+        return None, "invalid", err
+    return {"name": name, "email": email, "models": claude_models, "codexCapability": codex_capability}, "ok", None

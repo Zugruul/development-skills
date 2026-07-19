@@ -64,7 +64,7 @@ options:
 After the task reaches *In review* (gate recorded green), delegate to ONE fresh reviewer agent when the host supports delegation, with `model:` a
 suitable id from the reviewer identity's allowed set (`bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh" reviewer` prints its `models:`
-line; default set `claude-sonnet-5[1m]`, `claude-sonnet-5`). (On Claude Code, this is the Agent tool with `subagent_type: general-purpose`.) For a large diff
+line; default set `claude-sonnet-5[1m]`, `claude-sonnet-5`). Under Codex, resolve with `identity.sh --host codex reviewer` and pick the model from its `codex-capability:` line (or the host's own default if it reads `(unset — host default)`) — never a Claude-only model id. Under Claude Code, resolve normally (no `--host` flag) and pick from `models:`, as today. (On Claude Code, this is the Agent tool with `subagent_type: general-purpose`.) For a large diff
 prefer the `[1m]` context so one agent holds the full diff + spec sections +
 design doc at once; a small focused PR can use the cheaper standard-context id.
 `name: pr-reviewer-<pr-number>` (role-prefix FIRST — e.g. `pr-reviewer-pr5`;

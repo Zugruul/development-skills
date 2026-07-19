@@ -58,7 +58,8 @@ def need(role):
         return info
     reason = {"unknown": err,
               "off": f"role '{role}' is OFF (identities.{role} is null or disabled)",
-              "unresolved": f"role '{role}' UNRESOLVED ({err})"}[status]
+              "unresolved": f"role '{role}' UNRESOLVED ({err})",
+              "invalid": f"role '{role}' has an invalid models config ({err})"}[status]
     print(f"ERROR: cannot commit on behalf — {reason}.", file=sys.stderr)
     sys.exit(1)
 
@@ -99,14 +100,21 @@ PY
     exit $?
 fi
 
-python3 - "$ROOT" "${1:-}" "${2:-}" "$GITNAME" "$GITEMAIL" <<'PY'
+host="claude"
+if [[ "${1:-}" == "--host" ]]; then
+    host="${2:-}"
+    shift 2 || { echo "usage: identity.sh --host <claude|codex> [<role>] [<path>]" >&2; exit 1; }
+fi
+
+python3 - "$ROOT" "${1:-}" "${2:-}" "$GITNAME" "$GITEMAIL" "$host" <<'PY'
 import sys
 
 import identity_lib as I
 
-root, arg, path_arg, gitname, gitemail = sys.argv[1:6]
+root, arg, path_arg, gitname, gitemail, host = sys.argv[1:7]
 check = arg == "--check"
 role_filter = "" if check else arg
+codex_host = host == "codex"
 
 roles = I.merged_roles(root)
 if roles is False:
@@ -121,14 +129,19 @@ def render(role, ident):
     email, err_e = I.resolve_template(ident.get("email") or dflt.get("email") or "{local}@{domain}", gitname, gitemail)
     if err_n or err_e:
         return None, (err_n or err_e), None
-    models = ident.get("models") or dflt.get("models") or []
+    models_spec = ident["models"] if "models" in ident else dflt.get("models")
+    claude_models, codex_capability, models_err = I.normalize_models(models_spec)
+    if models_err:
+        return None, models_err, None
     lines = [
         f"name: {name}",
         f"email: {email}",
         f"flags: -c user.name={I.shellquote(name)} -c user.email={I.shellquote(email)}",
     ]
-    if models:
-        lines.append("models: " + ", ".join(models))
+    if codex_host:
+        lines.append("codex-capability: " + (codex_capability or "(unset — host default)"))
+    elif claude_models:
+        lines.append("models: " + ", ".join(claude_models))
     return lines, None, name
 
 
