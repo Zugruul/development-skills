@@ -172,3 +172,48 @@ PY
 )"
 check "normalize_models: None / legacy list / dict-with-capability / bad-capability contract" "OK" "$out"
 
+echo "== identity: --host codex model selection (CDX-021, #186) =="
+CDX="$(mktemp -d)"
+( cd "$CDX" && git init -q . && git config user.name "Test User" && git config user.email "test.user@example.com" )
+mkdir -p "$CDX/.claude"
+cat > "$CDX/.claude/project.json" <<'EOF'
+{"delegation":{"identities":{"dev":{"models":{"claude":["claude-sonnet-5","claude-sonnet-5[1m]"],"codex":{"capability":"balanced"}}}}}}
+EOF
+rcx() { (cd "$CDX" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null bash "$PLUGIN/scripts/identity.sh" "$@"); }
+out="$(rcx --host codex dev)"
+check "host codex shows codex-capability line" "codex-capability: balanced" "$out"
+check_absent "host codex output has zero Claude model id (bare)" "claude-sonnet-5" "$out"
+check_absent "host codex output has zero Claude model id ([1m])" "claude-sonnet-5[1m]" "$out"
+check_absent "host codex never prints a models: line" "models:" "$out"
+out="$(rcx dev)"
+check "omitted --host is byte-identical to pre-CDX-021: models line present" "models: claude-sonnet-5, claude-sonnet-5[1m]" "$out"
+check_absent "omitted --host never shows codex-capability" "codex-capability:" "$out"
+
+rm -f "$CDX/.claude/project.json"
+cat > "$CDX/.claude/project.json" <<'EOF'
+{"delegation":{"identities":{"dev":{"models":["claude-sonnet-5"]}}}}
+EOF
+out="$(rcx --host codex dev)"
+check "host codex with legacy array models: unset host default" "codex-capability: (unset — host default)" "$out"
+check_absent "host codex with legacy array models: zero Claude id leak" "claude-sonnet-5" "$out"
+
+rm -f "$CDX/.claude/project.json"
+cat > "$CDX/.claude/project.json" <<'EOF'
+{"delegation":{"identities":{"dev":{"models":{"claude":["claude-sonnet-5"],"codex":{"capability":"super-fast"}}}}}}
+EOF
+out="$(rcx --host codex dev 2>&1 || true)"
+check "host codex bad capability surfaces normalizer error" "UNRESOLVED" "$out"
+check "host codex bad capability error names the bad value" "super-fast" "$out"
+rm -rf "$CDX"
+
+echo "== identity: --host codex regression -- covers/on-behalf/naming unaffected =="
+IT3="$(mktemp -d)"
+( cd "$IT3" && git init -q . && git config user.name "Test User" && git config user.email "test.user@example.com" )
+mkdir -p "$IT3/.claude"; cp "$FIX/valid.project.yaml" "$IT3/.claude/project.yaml"
+rid3() { (cd "$IT3" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null bash "$PLUGIN/scripts/identity.sh" "$@"); }
+check "host codex: covers routing unchanged (core path)" "Core Dev - Test User" "$(rid3 --host codex dev packages/core/index.ts)"
+check "host codex: covers routing unchanged (email)" "test.user+dev_core@example.com" "$(rid3 --host codex dev packages/core/index.ts)"
+check "host codex: fallback routing unchanged (non-core path)" "Dev Agent - Test User" "$(rid3 --host codex dev packages/web/app.ts)"
+check "host codex: multi-identity listing unchanged" "id: Core Dev - Test User" "$(rid3 --host codex dev)"
+rm -rf "$IT3"
+
