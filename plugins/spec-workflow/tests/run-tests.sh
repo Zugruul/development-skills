@@ -101,6 +101,7 @@ SECTIONS=(
     section-gate-fingerprint.sh
     section-gate-preflight.sh
     section-comment-steering.sh
+    section-red-first-preflight.sh
     section-gate-lessons.sh
     section-session-init.sh
     section-board-bug-add.sh
