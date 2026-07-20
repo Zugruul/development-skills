@@ -297,6 +297,15 @@ _do_move() {
         # red-first-preflight.sh's own header comment for the full rationale.
         bash "$HERE/red-first-preflight.sh" || return 1
     fi
+    # #236 (CDX-031 gap #4): a move to "QA" requires both documented review
+    # passes (spec-compliance, code-quality) to be recorded in telemetry for
+    # this task -- independent of, and a DIFFERENT transition than, the
+    # "in review" checks above (two-pass review happens AFTER "In review" in
+    # this workflow's actual sequencing; see two-pass-review-preflight.sh's
+    # own header comment and docs/design/cdx-E3.md's "Follow-up: #236").
+    if [[ "$norm_status" == "qa" ]]; then
+        bash "$HERE/two-pass-review-preflight.sh" --root "$ROOT" --task "$num" || return 1
+    fi
     # #234 (CDX-031 gap #2): a move to "In progress" requires that this
     # issue's comments were actually read via `board.sh show` first --
     # existence-only marker (see board.sh's show) case), not staleness-aware
