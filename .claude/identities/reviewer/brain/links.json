@@ -1,4 +1,9 @@
 {
+  "avoid-git-checkout-in-shared-working-directory->verify-branch-state-before-acting-in-shared-checkout": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "check-helper-is-substring-not-equality->verify-guard-regex-on-real-artifact": {
     "fires": 0,
     "last": null,

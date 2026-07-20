@@ -1,9 +1,9 @@
 ---
 tags: [config, migration, debugging]
 paths: ["**"]
-strength: 2
-source: "#88 retro — recurrence (buggy-pattern sweep)"
-graduated: false
+strength: 3
+source: "PR#242 (#234) -- adding a new precondition to a widely-used mutation (board.sh move to In progress) required sweeping the whole tests/ dir for every prior caller; found 4 pre-existing fixture files needing the same fix"
+graduated: true
 created: 2026-07-07
 ---
 
