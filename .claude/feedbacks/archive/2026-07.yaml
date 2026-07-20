@@ -2623,3 +2623,49 @@ items:
   routing:
     action: ignore
     ref: Zugruul/development-skills#188
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-20T00:00:00Z'
+iteration:
+  task: '234'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-sonnet-5
+items:
+- category: incident
+  area: concurrency
+  component: subagent lifecycle
+  severity: medium
+  summary: A subagent from a much earlier task woke up long after its work was finished
+    by the orchestrator and found the shared working directory had been repointed
+    to a different task's branch mid-session.
+  detail: The subagent correctly investigated (git branch --show-current, git log)
+    before acting, discovered its original task was already merged, and stood down
+    without touching the shared checkout's in-progress state for a different task.
+    No damage occurred, but it could have if the subagent had committed/pushed blind.
+  generalized: In a workflow where subagents share a single working directory across
+    sequential tasks (no per-lane worktree isolation), a subagent that resumes after
+    a long gap should verify its branch/task state is still current before taking
+    any write action -- the orchestrator may have moved the shared checkout onto other
+    work in the meantime.
+  routing:
+    action: brain-note
+    ref: Zugruul/development-skills#234
+- category: worked-well
+  area: testing
+  component: build-next / implement-task
+  severity: low
+  summary: A reviewer verifying TDD in a shared working directory deliberately avoided
+    git checkout (which would repoint the whole shared tree) in favor of in-place
+    file swaps and a temporary worktree, so its verification never risked disrupting
+    other active lanes.
+  generalized: When multiple agents share one working directory, a verification step
+    that needs to temporarily revert files should scope its changes to individual
+    files or an isolated worktree rather than a branch-level checkout, which affects
+    everything in the shared tree at once.
+  routing:
+    action: brain-note
+    ref: Zugruul/development-skills#234
