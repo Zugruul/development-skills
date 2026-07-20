@@ -72,7 +72,9 @@ After a PR merges (or is set aside), the orchestrator runs a retro:
    an existing slug bumps its `strength`.
 3. `brain.sh prune <role>` — review flagged links (never-fired + aged, or target
    graduated/missing); `--apply` to remove. `brain.sh retro-mark` bumps the retro counter that
-   ages notes for pruning.
+   ages notes for pruning. `brain.sh verify-feed <role>` is a recommended sanity check here too —
+   it folds the role's LinkFormed/LinkFired/LinkPruned events and diffs the result against
+   `links.json`, catching a desynced feed early.
 4. `brain.sh graduate <role> <slug>` — a lesson proven durable graduates; enforcement then
    moves to `ROLE.md`, an invariant, or a lint rule (the caller decides where). Graduated notes
    stop being injected but still bridge links.

@@ -345,3 +345,102 @@ check "feed-unwritable: a warning is printed"      "warning"             "$out"
 check_absent "feed-unwritable: no traceback"       "Traceback"           "$out"
 check "feed-unwritable: links.json still written"  "survivor->x" "$(cat "$BW/.claude/identities/dev/brain/links.json")"
 rm -rf "$BW"
+
+echo "== verify-feed (MEM-023: fold LinkFormed/LinkFired/LinkPruned, diff against links.json) =="
+
+# vf_seed_feed <root> <line...> -- write one brain-events.jsonl line per arg
+vf_seed_feed() {
+    local root="$1"; shift
+    mkdir -p "$root/.claude"
+    : >"$root/.claude/brain-events.jsonl"
+    for ln in "$@"; do
+        printf '%s\n' "$ln" >>"$root/.claude/brain-events.jsonl"
+    done
+}
+
+# vf_seed_links <root> <role> <json> -- write links.json verbatim for a role
+vf_seed_links() {
+    local root="$1" role="$2" json="$3"
+    mkdir -p "$root/.claude/identities/$role/brain"
+    printf '%s' "$json" >"$root/.claude/identities/$role/brain/links.json"
+}
+
+# ------------------------------------------------------- clean fold: exit 0
+VF="$(mktemp -d)"
+vf() { python3 "$BW_BRAIN" "$VF" "$@"; }
+vf_seed_feed "$VF" \
+    '{"v":1,"ts":"t","repo":"r","role":"dev","type":"LinkFormed","key":"a->b"}' \
+    '{"v":1,"ts":"t","repo":"r","role":"dev","type":"LinkFired","key":"a->b"}' \
+    '{"v":1,"ts":"t","repo":"r","role":"dev","type":"LinkFired","key":"a->b"}'
+vf_seed_links "$VF" dev '{"a->b": {"weight": 0.5, "fires": 2, "last": "2026-01-01"}}'
+out="$(vf verify-feed dev 2>&1)"; rc=$?
+check_rc "verify-feed: clean fold exits 0"            0 "$rc"
+check "verify-feed: clean fold prints a clean summary" "verify-feed: dev clean" "$out"
+check_absent "verify-feed: clean fold reports no divergence" "DIVERGENCE" "$out"
+rm -rf "$VF"
+
+# ------------------------------------------------- missing-key divergence: exit 1
+VF="$(mktemp -d)"
+vf() { python3 "$BW_BRAIN" "$VF" "$@"; }
+vf_seed_feed "$VF" \
+    '{"v":1,"ts":"t","repo":"r","role":"dev","type":"LinkFormed","key":"a->b"}'
+vf_seed_links "$VF" dev '{}'
+out="$(vf verify-feed dev 2>&1)"; rc=$?
+check_rc "verify-feed: missing key exits 1"                    1 "$rc"
+check "verify-feed: missing key names the key"                 "a->b" "$out"
+check "verify-feed: missing key divergence is reported"        "DIVERGENCE" "$out"
+rm -rf "$VF"
+
+# --------------------------------------------- fire-count-drift divergence: exit 1
+VF="$(mktemp -d)"
+vf() { python3 "$BW_BRAIN" "$VF" "$@"; }
+vf_seed_feed "$VF" \
+    '{"v":1,"ts":"t","repo":"r","role":"dev","type":"LinkFormed","key":"a->b"}' \
+    '{"v":1,"ts":"t","repo":"r","role":"dev","type":"LinkFired","key":"a->b"}' \
+    '{"v":1,"ts":"t","repo":"r","role":"dev","type":"LinkFired","key":"a->b"}'
+vf_seed_links "$VF" dev '{"a->b": {"weight": 0.5, "fires": 1, "last": "2026-01-01"}}'
+out="$(vf verify-feed dev 2>&1)"; rc=$?
+check_rc "verify-feed: fire-count drift exits 1"                1 "$rc"
+check "verify-feed: fire-count drift names the key"             "a->b" "$out"
+check "verify-feed: fire-count drift reports fold count"        "fold=2" "$out"
+check "verify-feed: fire-count drift reports links.json count"  "links.json=1" "$out"
+rm -rf "$VF"
+
+# ------------------------------------------------- empty feed: trivially green
+VF="$(mktemp -d)"
+vf() { python3 "$BW_BRAIN" "$VF" "$@"; }
+vf_seed_links "$VF" dev '{"x->y": {"weight": 0.5, "fires": 99, "last": null}}'
+out="$(vf verify-feed dev 2>&1)"; rc=$?
+check_rc "verify-feed: no feed file exits 0"    0 "$rc"
+check "verify-feed: no feed file is clean"      "verify-feed: dev clean" "$out"
+
+: >"$VF/.claude/brain-events.jsonl"   # exists but empty
+out="$(vf verify-feed dev 2>&1)"; rc=$?
+check_rc "verify-feed: empty feed file exits 0" 0 "$rc"
+check "verify-feed: empty feed file is clean"   "verify-feed: dev clean" "$out"
+rm -rf "$VF"
+
+# --------------------------------- links.json-only key is NOT a divergence
+VF="$(mktemp -d)"
+vf() { python3 "$BW_BRAIN" "$VF" "$@"; }
+vf_seed_feed "$VF" \
+    '{"v":1,"ts":"t","repo":"r","role":"dev","type":"LinkFormed","key":"a->b"}'
+vf_seed_links "$VF" dev '{"a->b": {"weight": 0.5, "fires": 0, "last": null}, "pre-existing->link": {"weight": 0.5, "fires": 7, "last": "2020-01-01"}}'
+out="$(vf verify-feed dev 2>&1)"; rc=$?
+check_rc "verify-feed: pre-feed-history key exits 0"          0 "$rc"
+check "verify-feed: pre-feed-history key is clean"            "verify-feed: dev clean" "$out"
+check_absent "verify-feed: pre-feed-history key not flagged"  "pre-existing->link" "$out"
+rm -rf "$VF"
+
+# ------------------------------------------------- LinkPruned folds key away
+VF="$(mktemp -d)"
+vf() { python3 "$BW_BRAIN" "$VF" "$@"; }
+vf_seed_feed "$VF" \
+    '{"v":1,"ts":"t","repo":"r","role":"dev","type":"LinkFormed","key":"a->ghost"}' \
+    '{"v":1,"ts":"t","repo":"r","role":"dev","type":"LinkPruned","key":"a->ghost","reason":"target missing"}'
+vf_seed_links "$VF" dev '{}'
+out="$(vf verify-feed dev 2>&1)"; rc=$?
+check_rc "verify-feed: pruned-then-absent key exits 0"        0 "$rc"
+check "verify-feed: pruned-then-absent key is clean"          "verify-feed: dev clean" "$out"
+check_absent "verify-feed: pruned key not flagged as missing" "a->ghost" "$out"
+rm -rf "$VF"

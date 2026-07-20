@@ -24,6 +24,7 @@ Python 3 standard library only (no pyyaml). Usage:
     brain.py <root> retro-mark
     brain.py <root> graduate <role> <slug>
     brain.py <root> graduate-check [role] [--threshold N]
+    brain.py <root> verify-feed <role>
 
 `<root>` is the consumer repo root; identities live under `--dir` (default
 `.claude/identities`).
@@ -746,6 +747,63 @@ def cmd_consult(identities, args):
         print("\nRECURRENCE: consider minting into %s's brain (learned-from: %s)" % (consumer, owner))
 
 
+# ------------------------------------------------------------------- verify-feed
+FOLD_EVENT_TYPES = {"LinkFormed", "LinkFired", "LinkPruned"}
+
+
+def cmd_verify_feed(identities, args):
+    """Fold LinkFormed/LinkFired/LinkPruned events for `role` and diff the
+    result against the real `links.json` (§8.4). Only keys the fold has an
+    opinion about are compared -- pre-feed-history links.json entries are
+    expected drift, not a divergence. Only `fires` is diffed: no event type
+    currently carries `weight`, so there is nothing to compare it against --
+    if a future event payload adds `weight`, this function needs a matching
+    comparison added explicitly, it will not start comparing it on its own."""
+    role = args.role
+    p = os.path.join(args.root, ".claude", BRAIN_EVENTS_FILENAME)
+    folded = {}
+    if os.path.isfile(p):
+        for line in open(p, encoding="utf-8"):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if ev.get("role") != role or ev.get("type") not in FOLD_EVENT_TYPES:
+                continue
+            key = ev.get("key")
+            if not key:
+                continue
+            etype = ev["type"]
+            if etype == "LinkFormed":
+                folded.setdefault(key, {"fires": 0})
+            elif etype == "LinkFired":
+                folded.setdefault(key, {"fires": 0})
+                folded[key]["fires"] += 1
+            elif etype == "LinkPruned":
+                folded.pop(key, None)
+
+    links = load_links(identities, role)
+    divergences = []
+    for key in sorted(folded):
+        if key not in links:
+            divergences.append("DIVERGENCE: key '%s' present in event fold, missing from links.json" % key)
+            continue
+        fold_fires = folded[key]["fires"]
+        real_fires = int(links[key].get("fires", 0))
+        if fold_fires != real_fires:
+            divergences.append(
+                "DIVERGENCE: key '%s' fires drift -- fold=%d links.json=%d" % (key, fold_fires, real_fires))
+
+    if divergences:
+        for line in divergences:
+            print(line)
+        sys.exit(1)
+    print("verify-feed: %s clean (%d key(s) checked)" % (role, len(folded)))
+
+
 # ------------------------------------------------------------------------ prune
 def cmd_retro_mark(identities, _args):
     p = os.path.join(identities, "retros.log")
@@ -987,6 +1045,10 @@ def main(argv):
     sp.add_argument("role", nargs="?", default=None)
     sp.add_argument("--threshold", type=int, default=None)
     sp.set_defaults(fn=cmd_graduate_check)
+
+    sp = sub.add_parser("verify-feed")
+    sp.add_argument("role")
+    sp.set_defaults(fn=cmd_verify_feed)
 
     args = p.parse_args(argv)
     identities = os.path.join(args.root, args.dir)
