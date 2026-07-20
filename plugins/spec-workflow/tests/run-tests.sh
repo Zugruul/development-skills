@@ -139,6 +139,7 @@ SECTIONS=(
     section-setup-project-gitignore.sh
     section-repo-hygiene.sh
     section-agents-claude.sh
+    section-codex-parity-walkthrough.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then
