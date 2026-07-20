@@ -287,10 +287,32 @@ _mutate_field() {
 # comparison is normalized the same way guard-board-move.sh's norm() does
 # (collapse whitespace, lowercase) so "In review"/"in review"/etc. all match.
 _do_move() {
-    local num="$1" status="$2" opt rc norm_status
+    local num="$1" status="$2" opt rc norm_status _seen
     norm_status="$(python3 -c 'import re,sys; print(re.sub(r"\s+"," ",sys.argv[1].strip()).lower())' "$status")"
     if [[ "$norm_status" == "in review" ]]; then
         bash "$HERE/gate-preflight.sh" || return 1
+    fi
+    # #234 (CDX-031 gap #2): a move to "In progress" requires that this
+    # issue's comments were actually read via `board.sh show` first --
+    # existence-only marker (see board.sh's show) case), not staleness-aware
+    # by design: a comment posted after show but before this move is a real
+    # but deliberately out-of-scope gap (would need a new live gh call in
+    # this hot path, which flush replay also runs through).
+    if [[ "$norm_status" == "in progress" ]]; then
+        _seen="$(python3 -c '
+import json, sys
+path, num = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except (OSError, ValueError):
+    data = {}
+print("yes" if data.get(num) is True else "no")
+' "$ROOT/.claude/board-comments-seen.json" "$num" 2>/dev/null)"
+        if [[ "$_seen" != "yes" ]]; then
+            echo "BLOCKED: issue #$num's comments have not been read this session -- run \`bash \"$HERE/board.sh\" show $num\` first, its comments must be read before implementation starts, then retry the move to 'In progress'." >&2
+            return 1
+        fi
     fi
     opt="$(opt_id status "$status")"
     if [[ -z "$opt" ]]; then

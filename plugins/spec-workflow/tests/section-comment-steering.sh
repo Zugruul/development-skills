@@ -43,7 +43,7 @@ chmod +x "$T4PGH/gh"
 # reach gh's mutation call.
 rm -f "$MUTATION_MARKER"
 out="$(cd "$T4P" && PATH="$T4PGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 9 "In progress" 2>&1)"; rc=$?
-check "comment-steering: move directly blocked without prior show" "board.sh show 9" "$out"
+check "comment-steering: move directly blocked without prior show" "comments have not been read" "$out"
 if [[ "$rc" -ne 0 ]]; then
     echo "ok   comment-steering: blocked move -- nonzero exit"
 else
@@ -60,7 +60,7 @@ fi
 # Lowercase status spelling must trip the same guard (consistent with the
 # gate-preflight check's own case-insensitive normalization).
 out="$(cd "$T4P" && PATH="$T4PGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 9 "in progress" 2>&1)"; rc=$?
-check "comment-steering: lowercase 'in progress' also blocked without prior show" "board.sh show 9" "$out"
+check "comment-steering: lowercase 'in progress' also blocked without prior show" "comments have not been read" "$out"
 if [[ "$rc" -ne 0 ]]; then
     echo "ok   comment-steering: lowercase 'in progress' nonzero exit"
 else

@@ -142,6 +142,7 @@ on the loop itself), not a bug; it isn't deduped against step 8's emission.
 | ignore | `.claude/lessons.jsonl` |
 | ignore | `.claude/board-queue.jsonl` |
 | ignore | `.claude/board-cache.json` |
+| ignore | `.claude/board-comments-seen.json` |
 | ignore | `.claude/neural-view/` |
 | ignore | `.claude/merge-requirements.json` |
 | ignore | `.claude/.flush*` |

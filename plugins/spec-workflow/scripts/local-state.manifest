@@ -17,6 +17,7 @@ ignore	.claude/telemetry.jsonl
 ignore	.claude/lessons.jsonl
 ignore	.claude/board-queue.jsonl
 ignore	.claude/board-cache.json
+ignore	.claude/board-comments-seen.json
 ignore	.claude/neural-view/
 ignore	.claude/merge-requirements.json
 ignore	.claude/.flush*
