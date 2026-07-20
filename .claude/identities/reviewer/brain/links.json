@@ -49,6 +49,16 @@
     "last": null,
     "weight": 0.5
   },
+  "mutation-test-verify-suite-discriminates->reproduce-claimed-bug-fix-before-and-after": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "mutation-test-verify-suite-discriminates->verify-proximity-checks-dont-bleed-into-next-record": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "name-reusable-infra-for-followups-explicitly->front-load-exact-mechanics-in-design-docs": {
     "fires": 0,
     "last": null,
