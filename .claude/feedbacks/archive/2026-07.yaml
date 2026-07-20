@@ -2576,3 +2576,50 @@ items:
   routing:
     action: brain-note
     ref: Zugruul/development-skills#136
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-20T00:00:00Z'
+iteration:
+  task: '188'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-sonnet-5
+items:
+- category: incident
+  area: briefing
+  component: build-next / implement-task
+  severity: medium
+  summary: An audit task uncovered that 8 of 9 documented build-loop safety invariants
+    have zero technical enforcement -- they hold only because agents have consistently
+    chosen to follow written protocol, with no fallback if one doesn't.
+  detail: 'The riskiest: nothing anywhere in the codebase checks the checkpoint pause
+    flag before starting new work, and nothing enforces the WIP concurrency limit
+    at the actual board-mutation point (only at the advisory pick-recommendation step).
+    Filed as 8 separate follow-up backlog items rather than fixed inline, per the
+    task''s own scope.'
+  generalized: A workflow whose safety invariants are documented as mandatory protocol
+    steps, but never mechanically verified, is only as reliable as the acting agent's
+    compliance -- an audit that inventories which invariants are script-enforced versus
+    prose-only (with a verdict and citation for each) surfaces real risk that would
+    otherwise stay invisible until an actual violation occurred.
+  routing:
+    action: upstream
+    ref: Zugruul/development-skills#188
+- category: worked-well
+  area: review
+  component: build-next / implement-task
+  severity: low
+  summary: A reviewer independently reproducing a flagged test-quality bug (stripping
+    the target value and confirming the check now fails, both before and after the
+    fix) caught a check that would have silently passed while claiming to guard against
+    a real regression.
+  generalized: For a 'proximity window' or similar structural test, verifying it genuinely
+    discriminates (by deliberately breaking the thing it claims to catch and confirming
+    the test fails) is worth the extra round, especially when the check's whole purpose
+    is to prevent future silent drift.
+  routing:
+    action: ignore
+    ref: Zugruul/development-skills#188
