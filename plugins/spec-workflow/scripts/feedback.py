@@ -133,6 +133,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import brain  # noqa: E402
 import config as C  # noqa: E402
 
 CATEGORIES = {"worked-well", "friction", "incident", "recommendation"}
@@ -412,6 +413,9 @@ def cmd_emit(root, record_path):
         if exists:
             fh.write(_SEP)
         fh.write(doc_text)
+    role = (rec.get("source") or {}).get("role") or "orchestrator"
+    for i in range(len(rec.get("items", []))):
+        brain.emit_event(root, {"role": role, "type": "FeedbackEmitted", "itemTs": rec.get("ts"), "idx": i})
     print(f"OK: emitted {len(rec.get('items', []))} item(s) -> {feed_path}")
     return 0
 
@@ -474,6 +478,8 @@ def cmd_route(root, ts, idx_str, action, ref):
     items[idx]["routing"] = {"action": action, "ref": ref}
     with open(feed_path, "w") as fh:
         fh.write(_dump_all(docs))
+    role = (rec.get("source") or {}).get("role") or "orchestrator"
+    brain.emit_event(root, {"role": role, "type": "FeedbackRouted", "itemTs": _normalize_ts(rec.get("ts")), "idx": idx, "action": action})
     suffix = f" (was: {prior})" if prior else ""
     print(f"OK: routed {ts} item {idx} -> {action} {ref}{suffix}")
     return 0
@@ -659,7 +665,8 @@ def cmd_archive(root):
                 "fully routed but ts is missing or malformed, aborting, no files modified"
             )
             return 1
-        to_move.append((raw_doc, month_match.group(1)))
+        role = (rec.get("source") or {}).get("role") or "orchestrator"
+        to_move.append((raw_doc, month_match.group(1), ts_norm, role, len(items)))
 
     if not to_move:
         print(f"OK: no changes — nothing fully routed to archive in {feed_path}")
@@ -667,7 +674,7 @@ def cmd_archive(root):
 
     archive_dir = os.path.join(os.path.dirname(feed_path), "archive")
     by_month = {}
-    for raw_doc, month in to_move:
+    for raw_doc, month, _ts_norm, _role, _item_count in to_move:
         by_month.setdefault(month, []).append(raw_doc)
 
     try:
@@ -688,7 +695,10 @@ def cmd_archive(root):
     new_feed = _SEP.encode().join(survivors)
     _atomic_write_bytes(feed_path, new_feed)
 
-    total_items = sum(len(yaml.safe_load(d).get("items", [])) for d, _ in to_move)
+    for _raw_doc, _month, ts_norm, role, item_count in to_move:
+        brain.emit_event(root, {"role": role, "type": "FeedbackArchived", "itemTs": ts_norm, "itemCount": item_count})
+
+    total_items = sum(item_count for _raw_doc, _month, _ts_norm, _role, item_count in to_move)
     months = sorted(by_month)
     print(f"OK: archived {len(to_move)} document(s), {total_items} item(s) -> {archive_dir} ({', '.join(months)})")
     return 0
