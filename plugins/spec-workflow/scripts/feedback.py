@@ -415,7 +415,7 @@ def cmd_emit(root, record_path):
         fh.write(doc_text)
     role = (rec.get("source") or {}).get("role") or "orchestrator"
     for i in range(len(rec.get("items", []))):
-        brain.emit_event(root, {"role": role, "type": "FeedbackEmitted", "ts": rec.get("ts"), "idx": i})
+        brain.emit_event(root, {"role": role, "type": "FeedbackEmitted", "itemTs": rec.get("ts"), "idx": i})
     print(f"OK: emitted {len(rec.get('items', []))} item(s) -> {feed_path}")
     return 0
 
@@ -479,7 +479,7 @@ def cmd_route(root, ts, idx_str, action, ref):
     with open(feed_path, "w") as fh:
         fh.write(_dump_all(docs))
     role = (rec.get("source") or {}).get("role") or "orchestrator"
-    brain.emit_event(root, {"role": role, "type": "FeedbackRouted", "ts": _normalize_ts(rec.get("ts")), "idx": idx, "action": action})
+    brain.emit_event(root, {"role": role, "type": "FeedbackRouted", "itemTs": _normalize_ts(rec.get("ts")), "idx": idx, "action": action})
     suffix = f" (was: {prior})" if prior else ""
     print(f"OK: routed {ts} item {idx} -> {action} {ref}{suffix}")
     return 0
@@ -696,7 +696,7 @@ def cmd_archive(root):
     _atomic_write_bytes(feed_path, new_feed)
 
     for _raw_doc, _month, ts_norm, role, item_count in to_move:
-        brain.emit_event(root, {"role": role, "type": "FeedbackArchived", "ts": ts_norm, "itemCount": item_count})
+        brain.emit_event(root, {"role": role, "type": "FeedbackArchived", "itemTs": ts_norm, "itemCount": item_count})
 
     total_items = sum(item_count for _raw_doc, _month, _ts_norm, _role, item_count in to_move)
     months = sorted(by_month)

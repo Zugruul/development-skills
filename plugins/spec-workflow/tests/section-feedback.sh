@@ -707,11 +707,16 @@ check "README describes what archive does" "archive/<YYYY-MM>.yaml" "$readme_ver
 # emit -> FeedbackEmitted (one per item), route -> FeedbackRouted (one per
 # call), archive -> FeedbackArchived (one per document, not per item), all
 # via brain.py's existing emit_event(root, obj) into
-# <root>/.claude/brain-events.jsonl (§8.1/§8.2). Payloads carry ts/idx/action/
-# itemCount refs only -- never an item's summary/detail/generalized text.
+# <root>/.claude/brain-events.jsonl (§8.1/§8.2). Payloads carry itemTs/idx/
+# action/itemCount refs only -- never an item's summary/detail/generalized
+# text. The domain timestamp is carried as `itemTs`, NEVER as `ts` -- emit_event
+# already sets its own baseline `ts` (emission time) via `event.update(obj)`,
+# so a payload `ts` key would silently clobber that baseline field, same as
+# every other emitter (NoteMinted, RecallPerformed, ...) must never do.
 
 # fb_events <root> <type> -- print one line per matching event, tab-separated
-# ts/idx/action/itemCount fields (blank when absent), for `check` assertions.
+# role/ts(baseline)/itemTs/idx/action/itemCount fields (blank when absent),
+# for `check` assertions.
 fb_events() {
     python3 - "$1" "$2" <<'PY'
 import json, os, sys
@@ -725,13 +730,15 @@ if os.path.exists(p):
         e = json.loads(ln)
         if e.get("type") != want_type:
             continue
-        print("%s\t%s\t%s\t%s\t%s" % (
-            e.get("role", ""), e.get("ts", ""), e.get("idx", ""),
-            e.get("action", ""), e.get("itemCount", "")))
+        print("%s\t%s\t%s\t%s\t%s\t%s" % (
+            e.get("role", ""), e.get("ts", ""), e.get("itemTs", ""),
+            e.get("idx", ""), e.get("action", ""), e.get("itemCount", "")))
 PY
 }
 
-# emit: one FeedbackEmitted per item, correct ts/idx, no item body text leaked.
+# emit: one FeedbackEmitted per item, correct itemTs+idx, no item body text
+# leaked, and the event's own baseline `ts` (emission time) is untouched --
+# NOT clobbered by the item's domain timestamp.
 EV="$(mktemp -d)"; mkdir -p "$EV/.claude"
 cp "$FIX/valid.project.yaml" "$EV/.claude/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$EV" set methodology.feedback true >/dev/null
@@ -739,18 +746,41 @@ ev_() { (cd "$EV" && python3 "$PLUGIN/scripts/feedback.py" "$EV" "$@"); }
 ev_ emit "$FIX/feedback-valid.yaml" >/dev/null
 out="$(fb_events "$EV" FeedbackEmitted)"
 check "emit: exactly 2 FeedbackEmitted lines" "2" "$(printf '%s\n' "$out" | grep -c .)"
-check "emit: item 0 event carries ts+idx" "$(printf 'dev\t2026-07-01T10:00:00Z\t0\t\t')" "$(printf '%s\n' "$out" | sed -n '1p')"
-check "emit: item 1 event carries ts+idx" "$(printf 'dev\t2026-07-01T10:00:00Z\t1\t\t')" "$(printf '%s\n' "$out" | sed -n '2p')"
+check "emit: item 0 event carries itemTs+idx" "$(printf 'dev\t')" "$(printf '%s\n' "$out" | sed -n '1p')"
+check "emit: item 0 event carries itemTs+idx (value)" "$(printf '2026-07-01T10:00:00Z\t0\t\t')" "$(printf '%s\n' "$out" | sed -n '1p')"
+check "emit: item 1 event carries itemTs+idx (value)" "$(printf '2026-07-01T10:00:00Z\t1\t\t')" "$(printf '%s\n' "$out" | sed -n '2p')"
 raw="$(cat "$EV/.claude/brain-events.jsonl")"
 check_absent "emit: no summary text leaked into the events feed" "Self-approval safety classifier" "$raw"
 check_absent "emit: no detail text leaked into the events feed" "Happened twice in this repo" "$raw"
 check_absent "emit: no generalized text leaked into the events feed" "Front-load the human merge check-in" "$raw"
 
-# route: exactly one FeedbackRouted per call, correct ts/idx/action.
+# regression guard for the ts/itemTs clash: the event's own baseline `ts`
+# (emission time, set inside emit_event) must be PRESENT and DIFFERENT from
+# the fixture's old domain `itemTs` ("2026-07-01T10:00:00Z") -- if the old
+# code's payload `ts` key had clobbered the baseline, these would be equal.
+tsdiff="$(python3 - "$EV" <<'PY'
+import json, os, sys
+root = sys.argv[1]
+p = os.path.join(root, ".claude", "brain-events.jsonl")
+for ln in open(p, encoding="utf-8"):
+    e = json.loads(ln)
+    if e.get("type") == "FeedbackEmitted":
+        baseline_ts = e.get("ts")
+        item_ts = e.get("itemTs")
+        print("BASELINE_PRESENT=%s" % bool(baseline_ts))
+        print("DIFFERENT=%s" % (baseline_ts != item_ts))
+        break
+PY
+)"
+check "emit: event's own baseline ts is present" "BASELINE_PRESENT=True" "$tsdiff"
+check "emit: baseline ts is NOT clobbered by the item's itemTs (no key clash)" "DIFFERENT=True" "$tsdiff"
+
+# route: exactly one FeedbackRouted per call, correct itemTs/idx/action.
 ev_ route "2026-07-01T10:00:00Z" 0 brain-note "friction-self-approval" >/dev/null
 out="$(fb_events "$EV" FeedbackRouted)"
 check "route: exactly 1 FeedbackRouted line" "1" "$(printf '%s\n' "$out" | grep -c .)"
-check "route: event carries ts/idx/action" "$(printf 'dev\t2026-07-01T10:00:00Z\t0\tbrain-note\t')" "$out"
+check "route: event carries itemTs/idx/action" "$(printf 'dev\t')" "$out"
+check "route: event carries itemTs/idx/action (value)" "$(printf '2026-07-01T10:00:00Z\t0\tbrain-note\t')" "$out"
 rm -rf "$EV"
 
 # archive: one FeedbackArchived PER DOCUMENT moved, not per item -- a
@@ -781,8 +811,8 @@ YAML
 ea_ archive >/dev/null
 out="$(fb_events "$EA" FeedbackArchived)"
 check "archive: exactly 2 FeedbackArchived lines (one per document)" "2" "$(printf '%s\n' "$out" | grep -c .)"
-check "archive: 3-item document carries itemCount=3, not 3 events" "$(printf 'dev\t2026-07-01T00:00:00Z\t\t\t3')" "$(printf '%s\n' "$out" | sed -n '1p')"
-check "archive: 1-item document carries itemCount=1" "$(printf 'dev\t2026-07-02T00:00:00Z\t\t\t1')" "$(printf '%s\n' "$out" | sed -n '2p')"
+check "archive: 3-item document carries itemCount=3, not 3 events" "$(printf '2026-07-01T00:00:00Z\t\t\t3')" "$(printf '%s\n' "$out" | sed -n '1p')"
+check "archive: 1-item document carries itemCount=1" "$(printf '2026-07-02T00:00:00Z\t\t\t1')" "$(printf '%s\n' "$out" | sed -n '2p')"
 raw="$(cat "$EA/.claude/brain-events.jsonl")"
 check_absent "archive: no item summary text leaked into the events feed" '"summary"' "$raw"
 rm -rf "$EA"
