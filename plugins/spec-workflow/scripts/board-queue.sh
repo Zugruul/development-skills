@@ -291,6 +291,11 @@ _do_move() {
     norm_status="$(python3 -c 'import re,sys; print(re.sub(r"\s+"," ",sys.argv[1].strip()).lower())' "$status")"
     if [[ "$norm_status" == "in review" ]]; then
         bash "$HERE/gate-preflight.sh" || return 1
+        # #235 (CDX-031 gap #3): red-first TDD commit-ordering check, same
+        # precondition point/failure contract as gate-preflight.sh above --
+        # a structural heuristic (commit order only, no test execution), see
+        # red-first-preflight.sh's own header comment for the full rationale.
+        bash "$HERE/red-first-preflight.sh" || return 1
     fi
     # #234 (CDX-031 gap #2): a move to "In progress" requires that this
     # issue's comments were actually read via `board.sh show` first --

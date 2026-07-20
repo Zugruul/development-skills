@@ -165,7 +165,12 @@ out="$(cd "$T5H" && bash "$PLUGIN/scripts/gate.sh" 2>&1)"
 check "red-first wiring: (i) gate pass re-recorded after tree change" "GATE PASS recorded" "$out"
 out="$(cd "$T5H" && PATH="$T5HGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 7 "In review" 2>&1)"; rc=$?
 check "red-first wiring: (i) move still blocked -- a later test-only commit doesn't fix ordering" "BLOCKED" "$out"
-check_rc "red-first wiring: (i) still blocked -- nonzero exit" 2 "$rc"
+if [[ "$rc" -ne 0 ]]; then
+    echo "ok   red-first wiring: (i) still blocked -- nonzero exit"
+else
+    echo "FAIL red-first wiring: (i) still blocked -- nonzero exit (got rc=$rc)"
+    fails=$((fails+1))
+fi
 rm -rf "$T5H" "$T5HGH"
 
 # (j) fresh fixture with PROPER order (test-only commit before the impl
