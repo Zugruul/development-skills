@@ -2713,3 +2713,64 @@ items:
   routing:
     action: ignore
     ref: Zugruul/development-skills#235
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-20T00:00:00Z'
+iteration:
+  task: '236'
+  outcome: in-review
+  reviewRounds: 0
+source:
+  role: orchestrator
+  model: claude-sonnet-5
+items:
+- category: recommendation
+  area: concurrency
+  component: dev subagents
+  severity: medium
+  summary: Across this long session, dev subagents repeatedly went silent for extended
+    stretches after starting a full gate run, requiring multiple status pings and
+    sometimes the orchestrator finishing/committing their already-complete work on
+    their behalf.
+  detail: 'This happened at least 3 times (CDX-031/#188, #234, #236). Each time the
+    underlying work was actually correct and complete in the working tree -- the silence
+    was a reporting gap, not a work-quality gap.'
+  generalized: A subagent instructed to wait for a slow background command's real
+    completion signal should also be given an explicit maximum silent-wait budget
+    after which it proactively pings the orchestrator with a status update, rather
+    than only reporting once the gate finishes -- this preserves the 'don't trust
+    a possibly-buffering log' discipline while avoiding long silent gaps indistinguishable
+    from a stuck agent.
+  routing:
+    action: upstream
+    ref: Zugruul/development-skills#236
+- category: incident
+  area: testing
+  component: gate.sh verification
+  severity: low
+  summary: 'The orchestrator repeated an earlier-documented mistake mid-session: piping
+    a full gate.sh run through ''tail -30'' in the same background command, truncating
+    away individual FAIL lines while the summary ''N test(s) FAILED'' line survived,
+    making a red gate look clean until an untruncated re-run was done deliberately.'
+  generalized: A lesson learned once in a session can still recur later under time
+    pressure -- redirecting full output to a file and grepping it afterward, rather
+    than piping through tail in the launch command, is the safer default to make a
+    fixed habit.
+  routing:
+    action: brain-note
+    ref: Zugruul/development-skills#236
+- category: worked-well
+  area: merge
+  component: build-next / implement-task
+  severity: low
+  summary: This session progressively built out real safety-gap enforcement (CDX-031's
+    audit found 8 of 9 build-loop invariants were prose-only; 3 were closed this session
+    -- comment-steering, red-first TDD, two-pass review) with each fix honestly disclosing
+    its own limitations rather than overclaiming coverage.
+  generalized: For enforcement/compliance fixes, stating what a check does NOT verify
+    alongside what it does, in both code comments and the PR body, keeps future maintainers
+    from assuming stronger guarantees than actually exist.
+  routing:
+    action: upstream
+    ref: Zugruul/development-skills#236
