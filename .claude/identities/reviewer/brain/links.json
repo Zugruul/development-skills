@@ -159,6 +159,16 @@
     "last": null,
     "weight": 0.5
   },
+  "verify-proximity-checks-dont-bleed-into-next-record->reproduce-claimed-bug-fix-before-and-after": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "verify-proximity-checks-dont-bleed-into-next-record->trace-dict-merge-for-key-collisions": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "verify-tdd-empirically-when-log-is-thin->verify-red-test-genuinely-discriminates": {
     "fires": 0,
     "last": null,
