@@ -34,6 +34,11 @@
     "last": null,
     "weight": 0.5
   },
+  "fix-trivial-review-nits-directly-on-behalf->check-stray-worktrees-before-branch-ops": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "front-load-exact-mechanics-in-design-docs->audit-new-path-parity-before-writing": {
     "fires": 0,
     "last": null,

@@ -1,8 +1,8 @@
 ---
 tags: [git, worktrees, merge]
 paths: ["**"]
-strength: 1
-source: "PR#229 (CDX-021, #186) merge -- reviewer's /private/tmp/main-baseline worktree blocked gh pr merge's branch cleanup step"
+strength: 2
+source: "PR#232 (MEM-023, #136) -- checked before merging, reviewer had already cleaned up its own worktree this time, no stray"
 graduated: false
 created: 2026-07-19
 ---

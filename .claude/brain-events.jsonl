@@ -589,3 +589,6 @@
 {"key": "name-reserved-baseline-keys-when-briefing-shared-emitter->check-stray-worktrees-before-branch-ops", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-20T00:15:14+00:00", "type": "LinkFormed", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "trace-dict-merge-for-key-collisions", "strength": 1, "ts": "2026-07-20T00:15:30+00:00", "type": "NoteMinted", "v": 1}
 {"key": "trace-dict-merge-for-key-collisions->verify-backcompat-claims-algebraically", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-20T00:15:30+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "fix-trivial-review-nits-directly-on-behalf", "strength": 1, "ts": "2026-07-20T01:07:29+00:00", "type": "NoteMinted", "v": 1}
+{"key": "fix-trivial-review-nits-directly-on-behalf->check-stray-worktrees-before-branch-ops", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-20T01:07:29+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "check-stray-worktrees-before-branch-ops", "strength": 2, "ts": "2026-07-20T01:07:37+00:00", "type": "NoteMinted", "v": 1}
