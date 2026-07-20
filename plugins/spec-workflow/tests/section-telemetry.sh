@@ -68,6 +68,9 @@ esac
 FAKE
 chmod +x "$BMGH/gh"
 
+# #234: pre-seed the comment-steering marker for #1 -- this file tests
+# telemetry writes, unrelated to #234.
+printf '{"1": true}' >"$BM/.claude/board-comments-seen.json"
 out="$(cd "$BM" && PATH="$BMGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 1 "In progress" 2>&1; echo "rc=$?")"
 check "move telemetry: move still reports success" "moved #1 -> In progress" "$out"
 check "move telemetry: exits 0" "rc=0" "$out"
@@ -77,6 +80,8 @@ check "move telemetry: task field set" '"task": "1"' "$(cat "$BM/.claude/telemet
 
 BM2="$(mktemp -d)"; mkdir -p "$BM2/.claude"
 cp "$FIX/valid.project.yaml" "$BM2/.claude/project.yaml"
+# marker must exist BEFORE .claude goes read-only below (the check only reads it)
+printf '{"1": true}' >"$BM2/.claude/board-comments-seen.json"
 chmod 555 "$BM2/.claude"
 out2="$(cd "$BM2" && PATH="$BMGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 1 "In progress" 2>&1; echo "rc=$?")"
 chmod 755 "$BM2/.claude"

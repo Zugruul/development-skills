@@ -119,8 +119,15 @@ FAKE
     chmod +x "$FGH/gh"
 }
 
+# _seed_seen <issue#> -- pre-seed the #234 comment-steering marker so these
+# pre-existing rate-limit/queue/flush mechanics tests (unrelated to #234) can
+# still move an issue to "In progress" without each one calling `board.sh
+# show` first; mirrors a caller that already ran `show` for real.
+_seed_seen() { printf '{"%s": true}' "$1" >"$BQ/.claude/board-comments-seen.json"; }
+
 # --- (a) rate-limited GraphQL mutation (move) -> queued, exit 0, QUEUED message ---
 _qsetup
+_seed_seen 801
 LOG="$(mktemp)"; EDITCC="$(mktemp)"
 out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" FAKE_GH_LIST_CALLCOUNT="$(mktemp)" \
     FAKE_GH_ISSUE_NUM=801 FAKE_GH_ITEM_VISIBLE=1 \
@@ -138,6 +145,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC"
 # --- (b) flush replays queued ops in order against a recovered fake gh ---
 _qsetup
 mkdir -p "$BQ/.claude"
+_seed_seen 802
 printf '{"op":"prio","issue":"802","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 printf '{"op":"move","issue":"802","status":"In progress","ts":"2020-01-01T00:00:00Z"}\n' >>"$BQ/.claude/board-queue.jsonl"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
@@ -166,6 +174,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC"
 # --- (c) flush idempotence: move whose target status already holds is skipped ---
 _qsetup
 mkdir -p "$BQ/.claude"
+_seed_seen 803
 printf '{"op":"move","issue":"803","status":"In progress","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
 out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
@@ -185,6 +194,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC"
 # --- (d) flush re-queues the remainder when the limit re-trips mid-replay ---
 _qsetup
 mkdir -p "$BQ/.claude"
+_seed_seen 804
 printf '{"op":"prio","issue":"804","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 printf '{"op":"move","issue":"804","status":"In progress","ts":"2020-01-01T00:00:00Z"}\n' >>"$BQ/.claude/board-queue.jsonl"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
@@ -291,6 +301,7 @@ rm -rf "$BQ" "$FGH" "$LISTCC" "$LOG3"
 
 # --- (i) #90: masked rate-limit on a mutation (item-edit) + probe remaining==0 -> QUEUED, exit 0 ---
 _qsetup
+_seed_seen 810
 LOG="$(mktemp)"; EDITCC="$(mktemp)"
 out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" FAKE_GH_LIST_CALLCOUNT="$(mktemp)" \
     FAKE_GH_ISSUE_NUM=810 FAKE_GH_ITEM_VISIBLE=1 \
@@ -305,6 +316,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC"
 
 # --- (j) #90: same masked error but probe remaining>0 -> a REAL error, surfaced verbatim, not queued ---
 _qsetup
+_seed_seen 811
 LOG="$(mktemp)"; EDITCC="$(mktemp)"
 out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" FAKE_GH_LIST_CALLCOUNT="$(mktemp)" \
     FAKE_GH_ISSUE_NUM=811 FAKE_GH_ITEM_VISIBLE=1 \
@@ -324,6 +336,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC"
 
 # --- (k) #90: move's item-id LOOKUP (item-list) fails masked-rate-limited -> QUEUED, not "bad issue# or status" ---
 _qsetup
+_seed_seen 812
 LOG="$(mktemp)"; LISTCC="$(mktemp)"
 out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" \
     FAKE_GH_ISSUE_NUM=812 FAKE_GH_ITEM_LIST_MASKED_RATE_LIMIT=1 FAKE_GH_GRAPHQL_REMAINING=0 FAKE_GH_RESET_EPOCH=1735689600 \
@@ -355,6 +368,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC"
 # error, not queued: exercises the exact boundary the classifier depends on
 # against genuine API responses instead of hand-built stand-ins.
 _qsetup
+_seed_seen 813
 LOG="$(mktemp)"; EDITCC="$(mktemp)"
 out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" FAKE_GH_LIST_CALLCOUNT="$(mktemp)" \
     FAKE_GH_ISSUE_NUM=813 FAKE_GH_ITEM_VISIBLE=1 \
@@ -366,6 +380,7 @@ check_absent "(t) real rate_limit sample (remaining=41): not treated as QUEUED" 
 rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC"
 
 _qsetup
+_seed_seen 814
 LOG="$(mktemp)"; EDITCC="$(mktemp)"
 out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" FAKE_GH_LIST_CALLCOUNT="$(mktemp)" \
     FAKE_GH_ISSUE_NUM=814 FAKE_GH_ITEM_VISIBLE=1 \
@@ -388,6 +403,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC"
 # unknown), and the helper must not leak a datetime.utcfromtimestamp
 # DeprecationWarning (Python 3.13) into that message.
 _qsetup
+_seed_seen 815
 LOG="$(mktemp)"; EDITCC="$(mktemp)"; ERR="$(mktemp)"
 out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" FAKE_GH_LIST_CALLCOUNT="$(mktemp)" \
     FAKE_GH_ISSUE_NUM=815 FAKE_GH_ITEM_VISIBLE=1 \

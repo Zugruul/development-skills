@@ -56,6 +56,10 @@ FAKE
 # (issue #78 criterion 6: pick-context list + move In progress + move In
 # review + move QA + one add, in a single digit total of gh invocations)
 _cgh
+# #234: pre-seed the comment-steering marker for #777 -- this file tests gh
+# call-count economy, unrelated to #234, and a real caller would have run
+# `show` before moving to "In progress" anyway.
+printf '{"777": true}' >"$BC/.claude/board-comments-seen.json"
 LOG="$(mktemp)"; TOTALCC="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
 run() { PATH="$CGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_CALLCOUNT="$TOTALCC" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
     FAKE_GH_ISSUE_NUM=777 FAKE_GH_NEW_ISSUE_NUM=778 "$@"; }
@@ -91,6 +95,7 @@ rm -rf "$BC" "$CGH" "$LOG" "$TOTALCC" "$LISTCC" "$EDITCC"
 
 # --- (b) two consecutive moves on the same issue: 1 lookup + 2 mutations (cache hit on the 2nd) ---
 _cgh
+printf '{"779": true}' >"$BC/.claude/board-comments-seen.json"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
 out1="$(cd "$BC" && PATH="$CGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
     FAKE_GH_ISSUE_NUM=779 bash "$PLUGIN/scripts/board.sh" move 779 "In progress" 2>&1; echo "rc=$?")"

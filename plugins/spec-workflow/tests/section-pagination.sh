@@ -93,6 +93,9 @@ check "next: picks the page-2 item that a fixed 400-limit would have hidden" "=>
 # This is the key regression: before pagination, item_id() silently returned empty for
 # any item beyond the --limit ceiling and move failed with a generic bad-issue# error.
 LOGP3="$(mktemp)"
+# #234: pre-seed the comment-steering marker for #420 -- this scenario tests
+# pagination's item_id() resolution, unrelated to #234.
+printf '{"420": true}' >"$PG/.claude/board-comments-seen.json"
 out="$(cd "$PG" && PATH="$PGH:$PATH" FAKE_GH_LOG="$LOGP3" bash "$PLUGIN/scripts/board.sh" move 420 "In progress" 2>&1; echo "rc=$?")"
 check "move: resolves + edits a page-2 item id" "moved #420 -> In progress" "$out"
 check "move: rc=0 resolving a page-2 item" "rc=0" "$out"
