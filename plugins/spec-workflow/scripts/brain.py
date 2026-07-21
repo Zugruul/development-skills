@@ -52,8 +52,10 @@ MAX_HOPS = 2
 CHARS_PER_TOKEN = 4
 DEFAULT_GRADUATION_THRESHOLD = 3  # methodology.graduationThreshold override in project.yaml
 # frontmatter keys in deterministic write order
-KEY_ORDER = ["tags", "paths", "entities", "strength", "source", "learned-from", "source-note", "graduated",
-             "created", "last-touched"]
+KEY_ORDER = ["tags", "paths", "entities", "strength", "source", "confidence", "learned-from", "source-note",
+             "graduated", "created", "last-touched"]
+CONFIDENCE_VALUES = ("direct", "inferred")
+DEFAULT_CONFIDENCE = "inferred"
 
 
 # ---------------------------------------------------------------- small helpers
@@ -828,10 +830,27 @@ def cmd_mint(identities, args):
 
     strength = DEFAULT_STRENGTH
     created = today()
+    old_confidence = None
     if os.path.isfile(path):
         old_fm, _ = parse_note(open(path, encoding="utf-8").read())
         strength = int(old_fm.get("strength", DEFAULT_STRENGTH)) + 1
         created = old_fm.get("created", created)
+        old_confidence = old_fm.get("confidence", DEFAULT_CONFIDENCE)
+
+    # GL-012: confidence is additive and two-valued only (argparse `choices`
+    # rejects anything else before we ever get here, exit 2, nothing
+    # written). Omitting --confidence on a re-mint PRESERVES the existing
+    # note's confidence (never a silent direct -> inferred downgrade); only
+    # an explicit `--confidence inferred` on a currently-direct note performs
+    # that downgrade, and it prints a notice when it does. A first-time mint
+    # (or any note that resolves to inferred) writes no key at all -- missing
+    # key IS the inferred default (AC1/AC2).
+    if args.confidence is not None:
+        new_confidence = args.confidence
+        if old_confidence == "direct" and new_confidence == "inferred":
+            sys.stderr.write("notice: downgrading %s/%s confidence direct -> inferred\n" % (args.role, args.slug))
+    else:
+        new_confidence = old_confidence if old_confidence is not None else DEFAULT_CONFIDENCE
 
     fm = {
         "tags": _split(args.tags),
@@ -844,6 +863,8 @@ def cmd_mint(identities, args):
         # touches the note, resetting its recency-decay clock.
         "last-touched": today(),
     }
+    if new_confidence == "direct":
+        fm["confidence"] = "direct"
     entities = _split(args.entities)
     if entities:
         fm["entities"] = entities
@@ -1687,6 +1708,9 @@ def main(argv):
     sp.add_argument("--source", default="")
     sp.add_argument("--learned-from", dest="learned_from", default="")
     sp.add_argument("--source-note", dest="source_note", default="")
+    sp.add_argument("--confidence", choices=CONFIDENCE_VALUES, default=None,
+                     help="direct (single concrete incident) or inferred (cross-item "
+                          "generalization, the default when omitted)")
     sp.set_defaults(fn=cmd_mint)
 
     sp = sub.add_parser("directory")

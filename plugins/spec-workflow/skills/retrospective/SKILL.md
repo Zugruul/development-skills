@@ -40,7 +40,11 @@ skill is just the entry point when nothing else is going to trigger it.
    --source "..."` — one idea per note, **in your own wording** (never paste the
    feedback item's text verbatim), wikilinking related slugs within the same role's
    brain only (cross-role `[[slug]]` links don't resolve — each role's links.json is
-   its own file). Re-minting an existing slug just bumps its strength. Also treat any
+   its own file). Add `--confidence direct` when the note is minted from a single
+   concrete incident/feedback item; leave it off (default `inferred`) when it's a
+   generalization drawn across multiple items — the flag never accepts a third value,
+   and re-minting without it never silently downgrades an existing `direct` note.
+   Re-minting an existing slug just bumps its strength. Also treat any
    `corrected` outcomes recorded since the last retro as re-mint material: `brain.sh
    status <role>` surfaces each note's `⚠` tally count (GL-004, SPEC-GRAPHIFY §7
    R7.6) to tell you WHICH notes were EVER corrected — the tally is full-history, so
