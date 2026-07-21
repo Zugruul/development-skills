@@ -70,7 +70,9 @@ After a PR merges (or is set aside), the orchestrator runs a retro:
 2. `brain.sh mint <role> <slug> --tags ... --paths ... --source "PR#N ..."` — mint notes in
    **your own wording** (body on stdin), one idea each, wikilinking related slugs. Re-minting
    an existing slug bumps its `strength`.
-3. `brain.sh prune <role>` — review flagged links (never-fired + aged, or target
+3. `brain.sh status <role>` — per-note `✓/✗/⚠` (useful/dead_end/corrected) outcome tallies;
+   a note with repeated `✗` and no `✓` also surfaces in `prune`'s candidate list (SPEC-GRAPHIFY
+   §7 R7.6). `brain.sh prune <role>` — review flagged links (never-fired + aged, or target
    graduated/missing); `--apply` to remove. `brain.sh retro-mark` bumps the retro counter that
    ages notes for pruning. `brain.sh verify-feed <role>` is a recommended sanity check here too —
    it folds the role's LinkFormed/LinkFired/LinkPruned events and diffs the result against

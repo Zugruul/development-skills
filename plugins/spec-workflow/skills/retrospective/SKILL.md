@@ -41,8 +41,11 @@ skill is just the entry point when nothing else is going to trigger it.
    feedback item's text verbatim), wikilinking related slugs within the same role's
    brain only (cross-role `[[slug]]` links don't resolve — each role's links.json is
    its own file). Re-minting an existing slug just bumps its strength.
-4. **Prune + graduate.** `brain.sh prune <role>` (review flagged links; `--apply` to
-   remove); `brain.sh graduate <role> <slug>` for any lesson proven durable enough to
+4. **Prune + graduate.** `brain.sh status <role>` first — the per-note `✓/✗/⚠` outcome
+   tally flags notes worth pruning or re-minting before you even open `prune`, and a
+   note with repeated `✗` and no `✓` will surface in `brain.sh prune <role>`'s output
+   too (SPEC-GRAPHIFY §7 R7.6). `brain.sh prune <role>` (review flagged links; `--apply`
+   to remove); `brain.sh graduate <role> <slug>` for any lesson proven durable enough to
    become an invariant/`ROLE.md` rule instead of a standing note; `brain.sh retro-mark`
    bumps the retro counter that ages notes for pruning.
 5. **Directory.** `brain.sh directory` to regenerate `DIRECTORY.md`.

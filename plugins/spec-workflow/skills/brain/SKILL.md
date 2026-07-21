@@ -28,6 +28,10 @@ mint <role> <slug> --tags a,b --paths "x/**" --source "PR#N ..." [--learned-from
                                    # ABOUT, for the cross-identity correlation index below — like
                                    # tags/paths, must be re-passed on every re-mint to persist
 directory                          # regenerate DIRECTORY.md (titles + tags only)
+status <role>                      # per-role note listing (same lines as directory) plus a
+                                   # compact outcome tally per note (`3✓ 1✗ 1⚠`) when it has
+                                   # recorded outcomes; a note with no outcomes renders
+                                   # identically to directory's line for it
 entity-index                       # regenerate .claude/identities/entity-index.json from every role's
                                    # entities: frontmatter (frontmatter-only, derived, commit it like
                                    # DIRECTORY.md); symlinked notes attribute to their physical home role
