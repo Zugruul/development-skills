@@ -589,6 +589,13 @@ rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC" "$SYNC"
 # must dedupe by (op, issue), keeping the most-recently-enqueued entry. ---
 _qsetup
 mkdir -p "$BQ/.claude"
+# #236 (CDX-031 gap #4): moving to QA now requires both review passes
+# recorded in telemetry (two-pass-review-preflight.sh, wired into _do_move()
+# alongside the pre-existing checks) -- seed them here so this scenario
+# still exercises the rate-limit/dedupe interleaving it targets, not the
+# (separately covered, see section-two-pass-review-preflight.sh) two-pass
+# gate itself.
+printf '{"kind":"review-round","task":"900","round":1,"verdict":"approved","pass":"spec-compliance","ts":"2020-01-01T00:00:00Z"}\n{"kind":"review-round","task":"900","round":2,"verdict":"approved","pass":"code-quality","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/telemetry.jsonl"
 printf '{"op":"move","issue":"900","status":"QA","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
 LOG1="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"; OUT1="$(mktemp)"

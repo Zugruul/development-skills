@@ -16,11 +16,17 @@ check "record: gate ok" "OK: recorded gate" "$(rec '{"kind":"gate","task":"1","o
 check "record: gate.ok must be boolean" "INVALID" "$(rec '{"kind":"gate","task":"1","ok":"yes","ts":"2026-01-01T01:00:00Z"}')"
 check "record: review-round ok" "OK: recorded review-round" "$(rec '{"kind":"review-round","task":"1","round":1,"verdict":"approved","ts":"2026-01-01T02:00:00Z"}')"
 check "record: review-round.round must be an int" "INVALID" "$(rec '{"kind":"review-round","task":"1","round":"one","verdict":"approved","ts":"2026-01-01T02:00:00Z"}')"
+# #236 (CDX-031 gap #4): review-round gains an OPTIONAL `pass` field --
+# absent is valid (legacy shape / auto-merge's separate dialogue rounds),
+# a valid literal is valid, anything else is rejected. Purely additive.
+check "record: review-round.pass=spec-compliance ok" "OK: recorded review-round" "$(rec '{"kind":"review-round","task":"1","round":1,"verdict":"approved","pass":"spec-compliance","ts":"2026-01-01T02:00:00Z"}')"
+check "record: review-round.pass=code-quality ok" "OK: recorded review-round" "$(rec '{"kind":"review-round","task":"1","round":1,"verdict":"approved","pass":"code-quality","ts":"2026-01-01T02:00:00Z"}')"
+check "record: review-round.pass invalid literal rejected" "INVALID" "$(rec '{"kind":"review-round","task":"1","round":1,"verdict":"approved","pass":"bogus","ts":"2026-01-01T02:00:00Z"}')"
 check "record: task-close ok" "OK: recorded task-close" "$(rec '{"kind":"task-close","task":"1","estimate":3,"ts":"2026-01-01T03:00:00Z"}')"
 check "record: task-close.estimate must be a number" "INVALID" "$(rec '{"kind":"task-close","task":"1","estimate":"big","ts":"2026-01-01T03:00:00Z"}')"
 n="$(wc -l < "$TT/.claude/telemetry.jsonl" | tr -d ' ')"
-if [[ "$n" == "4" ]]; then echo "ok   record: 4 valid records appended, invalid ones did not land"
-else echo "FAIL record: expected 4 lines in telemetry.jsonl, got $n"; fails=$((fails + 1)); fi
+if [[ "$n" == "6" ]]; then echo "ok   record: 6 valid records appended, invalid ones did not land"
+else echo "FAIL record: expected 6 lines in telemetry.jsonl, got $n"; fails=$((fails + 1)); fi
 rm -rf "$TT"
 
 echo "== telemetry.py metrics (missing / garbage log) =="

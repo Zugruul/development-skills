@@ -15,7 +15,15 @@ board.sh/gate.sh stamp real wall-clock time when they record):
                   does not affect any computed number).
     gate          {"kind": "gate", "task": <id>, "ok": <bool>, "ts": <iso8601>}
     review-round  {"kind": "review-round", "task": <id>, "round": <int>,
-                   "verdict": <str>, "ts": <iso8601>}
+                   "verdict": <str>, "ts": <iso8601>,
+                   "pass": <"spec-compliance"|"code-quality">?}
+                  `pass` is OPTIONAL (#236, CDX-031 gap #4): identifies which
+                  of implement-task's two independent review passes this
+                  round belongs to. Omitted for auto-merge's separate
+                  ≤3-round reviewer-approval dialogue (invariant #9, a
+                  different concern) -- both are "a review round happened"
+                  events sharing this kind, distinguished by `pass`'s
+                  presence/absence, not a parallel schema.
     task-close    {"kind": "task-close", "task": <id>, "estimate": <number>,
                    "ts": <iso8601>}
 
@@ -64,6 +72,8 @@ def validate_event(rec):
             errs.append("review-round.round must be an integer")
         if not rec.get("verdict"):
             errs.append("review-round.verdict is required")
+        if "pass" in rec and rec.get("pass") not in ("spec-compliance", "code-quality"):
+            errs.append('review-round.pass must be "spec-compliance" or "code-quality" if present')
     elif kind == "task-close":
         est = rec.get("estimate")
         if not isinstance(est, (int, float)) or isinstance(est, bool):

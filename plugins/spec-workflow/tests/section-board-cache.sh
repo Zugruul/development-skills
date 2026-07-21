@@ -70,6 +70,11 @@ out2="$(cd "$BC" && run bash "$PLUGIN/scripts/board.sh" move 777 "In progress" 2
 # (fixture's commands.gate is the trivial "true", see valid.project.yaml).
 (cd "$BC" && bash "$PLUGIN/scripts/gate.sh" >/dev/null 2>&1)
 out3="$(cd "$BC" && run bash "$PLUGIN/scripts/board.sh" move 777 "In review" 2>&1; echo "rc=$?")"
+# #236 (CDX-031 gap #4): a move to "QA" now requires both review passes
+# recorded in telemetry -- seed them here so this call-count test still
+# exercises gh-call economy, not the (separately covered, see
+# section-two-pass-review-preflight.sh) two-pass gate itself.
+printf '{"kind":"review-round","task":"777","round":1,"verdict":"approved","pass":"spec-compliance","ts":"2020-01-01T00:00:00Z"}\n{"kind":"review-round","task":"777","round":2,"verdict":"approved","pass":"code-quality","ts":"2020-01-01T00:00:01Z"}\n' >"$BC/.claude/telemetry.jsonl"
 out4="$(cd "$BC" && run bash "$PLUGIN/scripts/board.sh" move 777 "QA" 2>&1; echo "rc=$?")"
 out5="$(cd "$BC" && run bash "$PLUGIN/scripts/board.sh" add --type feature "found during QA" P2 2>&1; echo "rc=$?")"
 check "(a) list succeeds" "Backlog" "$out1"
@@ -99,6 +104,9 @@ printf '{"779": true}' >"$BC/.claude/board-comments-seen.json"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
 out1="$(cd "$BC" && PATH="$CGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
     FAKE_GH_ISSUE_NUM=779 bash "$PLUGIN/scripts/board.sh" move 779 "In progress" 2>&1; echo "rc=$?")"
+# #236 (CDX-031 gap #4): seed both review passes for 779 before its QA move
+# -- see the matching comment in case (a) above for why.
+printf '{"kind":"review-round","task":"779","round":1,"verdict":"approved","pass":"spec-compliance","ts":"2020-01-01T00:00:00Z"}\n{"kind":"review-round","task":"779","round":2,"verdict":"approved","pass":"code-quality","ts":"2020-01-01T00:00:01Z"}\n' >"$BC/.claude/telemetry.jsonl"
 out2="$(cd "$BC" && PATH="$CGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
     FAKE_GH_ISSUE_NUM=779 bash "$PLUGIN/scripts/board.sh" move 779 "QA" 2>&1; echo "rc=$?")"
 check "(b) first move (cache miss) succeeds" "moved #779 -> In progress" "$out1"
@@ -145,6 +153,9 @@ esac
 FAKE
 chmod +x "$CGH/gh"
 printf '{"780": {"itemId": "ITEM_STALE", "status": "Backlog"}}' >"$BC/.claude/board-cache.json"
+# #236 (CDX-031 gap #4): seed both review passes for 780 before its QA move
+# -- see the matching comment in case (a) above for why.
+printf '{"kind":"review-round","task":"780","round":1,"verdict":"approved","pass":"spec-compliance","ts":"2020-01-01T00:00:00Z"}\n{"kind":"review-round","task":"780","round":2,"verdict":"approved","pass":"code-quality","ts":"2020-01-01T00:00:01Z"}\n' >"$BC/.claude/telemetry.jsonl"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
 out="$(cd "$BC" && PATH="$CGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
     bash "$PLUGIN/scripts/board.sh" move 780 "QA" 2>&1; echo "rc=$?")"
