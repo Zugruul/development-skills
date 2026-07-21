@@ -20,7 +20,7 @@ Python 3 standard library only (no pyyaml). Usage:
     brain.py <root> entity-index
     brain.py <root> consult <consumer-role> <owner-role> <slug>
     brain.py <root> index <role> [--rebuild]
-    brain.py <root> prune <role> [--apply]
+    brain.py <root> prune <role> [--apply] [--force]
     brain.py <root> retro-mark
     brain.py <root> graduate <role> <slug>
     brain.py <root> graduate-check [role] [--threshold N]
@@ -1034,6 +1034,47 @@ def cmd_verify_feed(identities, args):
     print("verify-feed: %s clean (%d key(s) checked)" % (role, len(folded)))
 
 
+# ------------------------------------------------------------------- shrink guard
+DEFAULT_SHRINK_GUARD_FRACTION = 0.3  # methodology.shrinkGuardFraction override in project.yaml
+SHRINK_GUARD_FLOOR = 5  # absolute floor (#249): guard only engages when removing MORE than this many items
+SHRINK_GUARD_SAMPLE = 10
+
+
+def _shrink_guard_fraction(args):
+    cfg = C.load_config(root=args.root, warn=False) or {}
+    frac = C.dig(cfg, "methodology.shrinkGuardFraction")
+    return float(frac) if frac is not None else DEFAULT_SHRINK_GUARD_FRACTION
+
+
+def _shrink_guard(kind, remove_keys, total_count, force, fraction):
+    """Shared destructive-operation guard (SPEC-GRAPHIFY §13; lesson from
+    graphify #2053/#2056/#2012): a single invocation of a brain-mutating
+    command must never silently discard a disproportionate share of a
+    brain's notes/links. Every destructive verb routes through this before
+    writing anything. Returns True if the caller may proceed, False if the
+    caller must abort having written nothing."""
+    remove_count = len(remove_keys)
+    if remove_count <= SHRINK_GUARD_FLOOR or total_count <= 0:
+        return True
+    if (remove_count / float(total_count)) <= fraction:
+        return True
+    pct = 100.0 * remove_count / total_count
+    sample = list(remove_keys)[:SHRINK_GUARD_SAMPLE]
+    if force:
+        print("SHRINK GUARD OVERRIDDEN (--force): removing %d/%d %s (%.0f%%)" %
+              (remove_count, total_count, kind, pct))
+        for s in sample:
+            print("  - %s" % s)
+        return True
+    print("SHRINK GUARD: refusing to remove %d/%d %s (%.0f%% > %.0f%% threshold, floor %d)" %
+          (remove_count, total_count, kind, pct, 100.0 * fraction, SHRINK_GUARD_FLOOR))
+    print("Would remove:")
+    for s in sample:
+        print("  - %s" % s)
+    print("Nothing written. Re-run with --force to proceed anyway.")
+    return False
+
+
 # ------------------------------------------------------------------------ prune
 def cmd_retro_mark(identities, _args):
     p = os.path.join(identities, "retros.log")
@@ -1080,6 +1121,10 @@ def cmd_prune(identities, args):
     for key, why in candidates:
         print("%s  (%s)" % (key, why))
     if args.apply:
+        fraction = _shrink_guard_fraction(args)
+        keys = [key for key, _why in candidates]
+        if not _shrink_guard("link(s)", keys, len(links), args.force, fraction):
+            sys.exit(1)
         for key, _why in candidates:
             links.pop(key, None)
         save_links(identities, role, links)
@@ -1261,6 +1306,7 @@ def main(argv):
     sp = sub.add_parser("prune")
     sp.add_argument("role")
     sp.add_argument("--apply", action="store_true")
+    sp.add_argument("--force", action="store_true")
     sp.set_defaults(fn=cmd_prune)
 
     sp = sub.add_parser("retro-mark")

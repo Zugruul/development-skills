@@ -34,7 +34,10 @@ entity-index                       # regenerate .claude/identities/entity-index.
                                    # only. Never read by recall/query — a whole-brain/visualization join
                                    # only (ask-brain, neural-view). Run at retro time alongside directory.
 consult <consumer> <owner> <slug>  # print owner's note for a one-time paste; logs to owner; recurs on 2nd
-prune <role> [--apply]             # flag stale links (never-fired+aged, target graduated/missing)
+prune <role> [--apply] [--force]   # flag stale links (never-fired+aged, target graduated/missing);
+                                   # --apply removing >methodology.shrinkGuardFraction (default 30%)
+                                   # of the brain's links refuses unless --force is given (shrink
+                                   # guard, SPEC-GRAPHIFY §13; a small-brain floor exempts tiny prunes)
 retro-mark                         # bump the retro counter that ages notes for pruning
 graduate <role> <slug>            # mark a proven lesson graduated (no longer injected; still bridges)
 graduate-check [role] [--threshold N]

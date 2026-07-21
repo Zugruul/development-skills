@@ -265,6 +265,13 @@
                     "minimum": 0,
                     "description": "Per-net-outcome-point adjustment (SPEC-GRAPHIFY \u00a77 R7.4) applied to a note's seed activation in brain.py recall: multiplier = 1.0 + step \u00d7 (usefulCount \u2212 deadEndCount \u2212 correctedCount) within the outcomeWindow, floored at 0.1. A note with zero recorded outcomes, or a net-zero tally, gets EXACTLY 1.0 \u2014 byte-identical ranking to a brain with no outcomes.jsonl (G6)."
                 },
+                "shrinkGuardFraction": {
+                    "type": "number",
+                    "default": 0.3,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "SPEC-GRAPHIFY \u00a713 shrink guard (lesson from graphify #2053/#2056/#2012): the fraction of a brain's notes/links a single brain.py invocation may remove before it must refuse without --force. Every destructive verb routes through the shared _shrink_guard helper (currently wired into `prune --apply`, its link removal path). The guard only engages when the removal ALSO exceeds an absolute floor (5 items, a code constant) \u2014 so e.g. pruning 2 of 3 links in a tiny brain never needs --force. Over threshold without --force: refuses non-zero, prints counts + a sample of the keys that would be removed, writes nothing. Over threshold with --force: proceeds and prints a loud removal summary; LinkPruned events are still emitted either way removal happens."
+                },
                 "iterativeUI": {
                     "type": "boolean",
                     "default": true,
