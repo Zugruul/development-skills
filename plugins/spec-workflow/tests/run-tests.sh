@@ -123,6 +123,7 @@ SECTIONS=(
     section-brain-shrink-guard.sh
     section-brain-outcome-tallies.sh
     section-brain-confidence.sh
+    section-brain-recall-header.sh
     section-entity-index.sh
     section-neural-view-entities.sh
     section-feedback.sh

@@ -1081,10 +1081,13 @@ def cmd_recall(identities, args):
             continue
         act = activation[slug]
         sep = 1 if out else 0  # the "\n" that will join this block to the previous one
-        contested = _is_contested(tallies.get(slug, {}))
+        tally = tallies.get(slug, {})
+        contested = _is_contested(tally)
         stale = stale_map.get(slug, False)
+        confidence = notes[slug]["fm"].get("confidence", DEFAULT_CONFIDENCE)
         block = _render_block(slug, notes[slug], act, budget_chars - used - sep,
-                               contested=contested, stale=stale)
+                               contested=contested, stale=stale,
+                               confidence=confidence, useful_count=tally.get("useful", 0))
         if block is None:
             break
         out.append(block)
@@ -1107,7 +1110,38 @@ def cmd_recall(identities, args):
     print(text if text else "(no lessons recalled)")
 
 
-def _render_block(slug, note, act, remaining, contested=False, stale=False):
+def _format_header_line(slug, strength, confidence, useful_count, contested, stale):
+    """Compose the self-describing full-tier recall header (GL-013 /
+    SPEC-GRAPHIFY §8 R8.4): an optional `[confidence · tally]` bracket ahead
+    of the slug, the existing `[strength N]` tag, then the existing
+    contested/stale flags -- in this FIXED order, always. Each part is
+    independently optional:
+      - the confidence sub-part appears only when `confidence == "direct"`
+        (key-absence/"inferred" is the silent default -- GL-012 -- so it
+        never earns bracket space);
+      - the tally sub-part appears only when `useful_count > 0`;
+      - the whole bracket is omitted (not `"[]"`) when both sub-parts are
+        empty.
+    A call with confidence="inferred", useful_count=0, contested=False,
+    stale=False reduces to EXACTLY the pre-GL-013 "slug  [strength N]"
+    string -- byte-identical-when-quiet (G6). Extracted as one reusable
+    helper (rather than inlined in `_render_block`) so GL-020's explain
+    card can compose the same header without duplicating the glyph order."""
+    bracket_parts = []
+    if confidence == "direct":
+        bracket_parts.append("direct")
+    if useful_count:
+        bracket_parts.append("%d× useful" % useful_count)
+    prefix = "[%s] " % " · ".join(bracket_parts) if bracket_parts else ""
+
+    marker = "  ⚠ contested" if contested else ""
+    marker += "  ⟳ stale — re-verify" if stale else ""
+
+    return "%s%s  [strength %d]%s" % (prefix, slug, strength, marker)
+
+
+def _render_block(slug, note, act, remaining, contested=False, stale=False,
+                   confidence=DEFAULT_CONFIDENCE, useful_count=0):
     """Choose a tier by activation, downgrade until it fits; None if even a
     title won't fit. Blocks carry NO trailing newline — the caller joins with
     "\\n" and budgets that separator, so total output stays within the budget.
@@ -1115,12 +1149,17 @@ def _render_block(slug, note, act, remaining, contested=False, stale=False):
     one-liner tiers only; when False the marker is an empty string, so
     non-contested output is byte-identical to pre-GL-003 rendering (G6).
     `stale` (GL-011 / R8.2) renders a "⟳ stale — re-verify" marker in the
-    same two tiers, same byte-identical-when-False guarantee."""
+    same two tiers, same byte-identical-when-False guarantee.
+    `confidence`/`useful_count` (GL-013 / R8.4) feed the FULL tier's header
+    only, via `_format_header_line` -- the one-liner tier keeps flags-only
+    (tags/paths already crowd that line) and the title tier is untouched, per
+    the issue's tiering rule."""
     fm = note["fm"]
     strength = int(fm.get("strength", DEFAULT_STRENGTH))
     marker = "  ⚠ contested" if contested else ""
     marker += "  ⟳ stale — re-verify" if stale else ""
-    full = "### %s  [strength %d]%s\n%s" % (slug, strength, marker, note["body"].strip())
+    header_line = _format_header_line(slug, strength, confidence, useful_count, contested, stale)
+    full = "### %s\n%s" % (header_line, note["body"].strip())
     oneliner = "### %s%s\ntags: [%s] · paths: [%s]" % (
         slug, marker, ", ".join(fm.get("tags", []) or []), ", ".join(fm.get("paths", []) or []))
     title = "- %s" % slug

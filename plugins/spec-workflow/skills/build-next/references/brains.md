@@ -63,6 +63,19 @@ file changed by a git commit after its `created`/`last-touched` date renders a
 `⟳ stale — re-verify` marker (GL-011) — treat it as unverified until you re-check the code;
 re-minting the note (which bumps `last-touched`) clears the flag.
 
+A full-body block is self-describing (GL-013): its header combines the note's confidence tag
+and outcome tally with the staleness/contested markers, in one fixed-order line —
+```
+### [direct · 3× useful] some-note-slug  [strength 4]  ⚠ contested  ⟳ stale — re-verify
+Body text of the lesson...
+```
+Weigh `[direct · 3× useful] some-note-slug` differently than `some-note-slug  [strength 1]
+⚠ contested` — you can't query the brain to tell them apart otherwise. Each part is
+independently optional: the `[confidence · tally]` bracket appears only when there's a
+`direct` tag or a nonzero useful count to show (a note minted without `--confidence direct`
+and with no recorded useful outcomes gets no bracket at all); the `⚠ contested`/`⟳ stale`
+markers are always trailing flags after `[strength N]`, never inside the bracket.
+
 ### Closing the loop: record an outcome for every injected note (SPEC-GRAPHIFY §7 R7.1)
 Recall without outcomes is dead weight — the whole point of §7 is that consumption results
 feed back into ranking. At task close, for **every** note the brief injected (full-body or
