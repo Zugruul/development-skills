@@ -503,6 +503,9 @@ canvas.grabbing{cursor:grabbing}
 .note-window.dragging .close.grip{cursor:grabbing}
 .note-window [data-drag]{cursor:grab}
 .note-window.dragging [data-drag]{cursor:grabbing}
+/* detached note windows: the ⠿ handle sits LEFT of the role/name line (the
+   media window's bar already leads with it); ✕/⌖/◎ stay top-right */
+.note-window > .close.grip{float:left;margin:.05rem .45rem 0 0}
 /* media viewer window: opened by clicking an inline note image — same
    detached-window chrome plus New tab / Download / fullscreen actions;
    ⛶ fullscreens the window itself (element fullscreen, stays in the page) */
@@ -516,14 +519,20 @@ canvas.grabbing{cursor:grabbing}
 .media-window .mw-name{font-size:.6rem;color:var(--muted);letter-spacing:.08em;flex:1;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .media-window .mw-img{max-width:100%;border-radius:8px;display:block;margin:0 auto}
-/* New tab / Download live INSIDE the image, top right, revealed only while
-   hovering that corner region (top ~35% × right ~50% of the image) */
+/* hover action zone (shared by media-viewer images and inline 3D blocks):
+   actions live INSIDE the media, top right, revealed only while hovering
+   that corner region (top ~35% × right ~50%) */
 .media-window .mw-imgwrap{position:relative}
-.media-window .mw-zone{position:absolute;top:0;right:0;width:50%;height:35%;
+.mw-zone{position:absolute;top:0;right:0;width:50%;height:35%;
   display:flex;justify-content:flex-end;align-items:flex-start;padding:.45rem}
-.media-window .mw-actions{display:flex;gap:.3rem;opacity:0;transition:opacity .15s ease}
-.media-window .mw-zone:hover .mw-actions{opacity:1}
-.media-window .mw-actions .iconbtn{background:rgba(10,20,34,.85);font-size:.56rem;padding:.2rem .4rem}
+.mw-actions{display:flex;gap:.3rem;opacity:0;transition:opacity .15s ease}
+.mw-zone:hover .mw-actions{opacity:1}
+.mw-actions .iconbtn{background:rgba(10,20,34,.85);font-size:.56rem;padding:.2rem .4rem}
+/* a 3D block promoted into its own window gets a taller canvas */
+.media-window .n3d{margin:0}
+.media-window .n3d canvas{height:min(58vh,480px)}
+.media-window:fullscreen .n3d{flex:1;min-height:0;display:flex;flex-direction:column}
+.media-window:fullscreen .n3d canvas{flex:1;height:auto;min-height:0}
 .media-window:fullscreen{display:flex;flex-direction:column;background:var(--bg);
   border:0;border-radius:0;max-height:none;resize:none;padding:1rem 1.2rem}
 .media-window:fullscreen .mw-imgwrap{flex:1;min-height:0;display:flex;flex-direction:column}
@@ -542,8 +551,10 @@ canvas.grabbing{cursor:grabbing}
 #body video.nm{max-width:100%;border-radius:8px;display:block;margin:.4rem 0}
 #body a.fl{color:var(--amber);text-decoration:none;border-bottom:1px dotted rgba(255,179,71,.5)}
 #body a.ext{color:var(--cyan)}
-.n3d{position:relative;margin:.4rem 0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:rgba(4,7,13,.5)}
+.n3d{position:relative;min-height:190px;margin:.4rem 0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:rgba(4,7,13,.5)}
 .n3d canvas{display:block;width:100%;height:190px}
+.n3d .n3d-err{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  padding:.6rem;font-size:.62rem;color:var(--amber);text-align:center;overflow-wrap:anywhere}
 .n3d .n3d-label{position:absolute;left:.5rem;top:.35rem;font-size:.56rem;letter-spacing:.12em;
   text-transform:uppercase;color:var(--muted);pointer-events:none}
 #links{margin-top:.6rem;font-size:.66rem;color:var(--muted)}
@@ -4092,7 +4103,20 @@ function make3dBlock(name, url){
   const lab = document.createElement("span");
   lab.className = "n3d-label"; lab.textContent = "3D · " + name.split("/").pop();
   box.appendChild(document.createElement("canvas")); box.appendChild(lab);
-  boot3dViewer(box).catch(()=>{ lab.textContent = "3D · failed: " + name.split("/").pop(); });
+  // hover-revealed detach action, mirroring the image experience
+  const zone = document.createElement("div");
+  zone.className = "mw-zone";
+  zone.innerHTML = '<div class="mw-actions"><button class="iconbtn n3d-pop" type="button">Detach</button></div>';
+  zone.querySelector(".n3d-pop").onclick = ()=>open3dWindow(name, url);
+  box.appendChild(zone);
+  boot3dViewer(box).catch(err=>{
+    // surface the real reason IN the block — a silent flat strip is undebuggable
+    lab.textContent = "3D · failed: " + name.split("/").pop();
+    const msg = document.createElement("div");
+    msg.className = "n3d-err";
+    msg.textContent = String(err && (err.message || err));
+    box.appendChild(msg);
+  });
   return box;
 }
 function meshFromPositions(pos){
@@ -4200,6 +4224,8 @@ function detachNote(fromRect){
   win.querySelectorAll("img.nm").forEach(img=>{ img.onclick = ()=>openMediaViewer(img.src, img.alt || mediaName(img.src)); });
   win.querySelectorAll(".n3d").forEach(box=>{
     box.querySelector("canvas").replaceWith(document.createElement("canvas"));
+    const pop = box.querySelector(".n3d-pop");   // cloned handler is dead — rebind
+    if(pop) pop.onclick = ()=>open3dWindow(box.dataset.name, box.dataset.url);
     boot3dViewer(box).catch(()=>{});
   });
   // capture phase: the drag surfaces stopPropagation on pointerdown, so a
@@ -4316,6 +4342,33 @@ function openMediaViewer(src, name){
   return win;
 }
 function mediaName(src){ try{ return decodeURIComponent(src.split("/").pop().split("?")[0]) || "image"; }catch{ return "image"; } }
+// a 3D block's Detach action: the model in its own window (⛶ fullscreen, ✕)
+function open3dWindow(name, url){
+  const win = document.createElement("aside");
+  win.className = "hud note-window media-window";
+  win.style.left = "26vw"; win.style.top = "14vh";
+  win.style.width = "min(640px,70vw)";
+  win.style.zIndex = ++noteWinZ;
+  win.innerHTML =
+    '<div class="mw-bar" data-drag>' +
+      '<button class="close grip" title="Drag to move window" aria-label="Drag to move window">⠿</button>' +
+      '<span class="mw-name"></span>' +
+      '<button class="iconbtn mw-fs" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>' +
+      '<button class="close mw-x" aria-label="Close 3D window">✕</button></div>';
+  win.querySelector(".mw-name").textContent = "3D · " + name.split("/").pop();
+  const box = make3dBlock(name, url);
+  box.querySelector(".mw-zone").remove();   // no detach-from-detached recursion
+  win.appendChild(box);
+  win.querySelector(".mw-fs").onclick = ()=>{
+    if(document.fullscreenElement === win) document.exitFullscreen();
+    else win.requestFullscreen().catch(()=>{});
+  };
+  win.querySelector(".mw-x").onclick = ()=>win.remove();
+  win.addEventListener("pointerdown", ()=>{ win.style.zIndex = ++noteWinZ; }, true);
+  document.body.appendChild(win);
+  wireWinDrag(win);
+  return win;
+}
 {
   // grabbing the docked grip detaches immediately and the new window rides
   // the same pointer until release (the docked grip keeps pointer capture)
