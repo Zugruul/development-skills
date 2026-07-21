@@ -99,7 +99,17 @@
     "last": null,
     "weight": 0.5
   },
+  "serial-delivery-prevents-stack-debt->stacked-prs-retarget-before-delete": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "session-close-protocol->orchestrator-cd-prefix-own-commands": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "stacked-prs-retarget-before-delete->serial-delivery-prevents-stack-debt": {
     "fires": 0,
     "last": null,
     "weight": 0.5

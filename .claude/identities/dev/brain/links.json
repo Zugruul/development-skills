@@ -29,6 +29,11 @@
     "last": "2026-07-20",
     "weight": 0.5
   },
+  "apply-blocks-guard-empty-candidates->type-validate-jsonl-reads": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "audit-new-path-parity-before-writing->parity-check-new-vs-existing-path": {
     "fires": 11,
     "last": "2026-07-20",
@@ -439,6 +444,16 @@
     "last": "2026-07-20",
     "weight": 0.5
   },
+  "strict-identity-assertions->batch-red-across-surfaces": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "strict-identity-assertions->single-cause-fixtures": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "surgical-yaml-edits->budget-count-join-separators": {
     "fires": 16,
     "last": "2026-07-20",
@@ -462,6 +477,11 @@
   "trust-completion-signal-not-early-log-read->deterministic-repro-fast": {
     "fires": 11,
     "last": "2026-07-20",
+    "weight": 0.5
+  },
+  "type-validate-jsonl-reads->strict-identity-assertions": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "ui-bug-may-be-upstream-data-loss->trace-state-mutation-not-named-trigger": {

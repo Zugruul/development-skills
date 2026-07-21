@@ -114,6 +114,16 @@
     "last": "2026-07-20",
     "weight": 0.5
   },
+  "reproduce-then-verify-fix->rerun-the-red-empirically": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "rerun-the-red-empirically->reproduce-then-verify-fix": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "spot-check-large-data-files-at-boundaries->verify-guard-regex-on-real-artifact": {
     "fires": 1,
     "last": "2026-07-20",
