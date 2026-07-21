@@ -1,0 +1,82 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-21T16:35:00Z'
+iteration:
+  task: Zugruul/development-skills#251
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: low
+  summary: Mutation testing during review empirically proved ranking tests non-tautological
+    in seconds
+  detail: Reviewer commented out the decay call sites, reran the section, confirmed
+    3 tests flip to FAIL, restored cleanly.
+  evidence:
+  - Zugruul/development-skills#251
+  generalized: 'Reviewers verifying diffs that add numeric/ranking effects should
+    mutation-test them: disable the effect, rerun the section, confirm expected assertions
+    flip to FAIL, restore and verify the tree matches base. Fast and decisive versus
+    reading assertions for plausibility.'
+  routing:
+    action: brain-note
+    ref: reviewer/mutation-test-ranking-diffs
+- category: friction
+  area: merge
+  component: plugins/spec-workflow/scripts/gate.sh
+  severity: medium
+  summary: Gate-pass recording is invalidated by a commit that changes no file contents,
+    forcing a redundant full gate re-run
+  detail: The recorded tree hash changed when the already-gated working-tree changes
+    were committed, so the In-review move hook demanded a second ~10-minute gate run
+    over byte-identical content.
+  evidence:
+  - Zugruul/development-skills#251
+  generalized: The recorded gate-pass hash should cover tracked file contents only,
+    so that committing already-gated changes (no content delta) does not invalidate
+    the pass and force a redundant full gate re-run before a board move.
+  proposal:
+    target: plugins/spec-workflow/scripts/gate.sh
+    change: Hash tracked content (e.g. git-based content hash independent of HEAD/index
+      state) instead of a hash that shifts on commit.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#284
+- category: friction
+  area: permissions
+  severity: medium
+  summary: Auto-mode permission classifier blocked role-attributed git commits until
+    a mid-session human approval
+  detail: The -c user.name/user.email agent-identity commit was denied; work stalled
+    until the human answered an AskUserQuestion approving agent-identity commits for
+    the session.
+  evidence:
+  - Zugruul/development-skills#251
+  generalized: Role-attributed commits (per-identity -c user.name/email flags) can
+    trip the harness permission classifier in auto mode; a per-session or settings-level
+    allowance for identity-attributed git commits would avoid a human interrupt on
+    every first commit.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#286
+- category: incident
+  area: concurrency
+  severity: medium
+  summary: Shared working tree with another live session forced a human-imposed git
+    hold mid-task
+  detail: Another session's uncommitted changes sat in the same clone; the human ordered
+    a freeze on all git operations until that work moved to a worktree. No damage,
+    but the task stalled and the dev agent had to hold its green commit.
+  evidence:
+  - Zugruul/development-skills#251
+  generalized: When multiple live sessions share one clone, the build loop should
+    detect foreign uncommitted changes at iteration start and either isolate its task
+    into a worktree lane or pause for a human decision, rather than discovering the
+    collision mid-task at commit time.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#285
