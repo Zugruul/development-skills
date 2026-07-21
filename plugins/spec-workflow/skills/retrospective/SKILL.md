@@ -40,7 +40,15 @@ skill is just the entry point when nothing else is going to trigger it.
    --source "..."` — one idea per note, **in your own wording** (never paste the
    feedback item's text verbatim), wikilinking related slugs within the same role's
    brain only (cross-role `[[slug]]` links don't resolve — each role's links.json is
-   its own file). Re-minting an existing slug just bumps its strength.
+   its own file). Re-minting an existing slug just bumps its strength. Also treat any
+   `corrected` outcomes recorded since the last retro as re-mint material: `brain.sh
+   status <role>` surfaces each note's `⚠` tally count (GL-004, SPEC-GRAPHIFY §7
+   R7.6) to tell you WHICH notes were corrected; for the WHAT, read the corresponding
+   `--note "<what was wrong>"` payloads straight out of `<brain>/outcomes.jsonl`
+   (recorded at close-out per `build-next/references/brains.md` §"Closing the loop" —
+   no `explain` command yet, SPEC-GRAPHIFY §9, out of scope here) and use that text as
+   the fix to re-mint from — either correct the existing note's wording or mint a
+   successor.
 4. **Prune + graduate.** `brain.sh status <role>` first — the per-note `✓/✗/⚠` outcome
    tally flags notes worth pruning or re-minting before you even open `prune`, and a
    note with repeated `✗` and no `✓` will surface in `brain.sh prune <role>`'s output

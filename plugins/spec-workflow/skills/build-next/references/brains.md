@@ -60,6 +60,20 @@ stopping at the token budget. Graduated notes are excluded from injection but st
 links. Every recall appends `seed`/`hop`/`inject` events to `.activation.jsonl` and bumps
 `fires`/`last` on traversed links.
 
+### Closing the loop: record an outcome for every injected note (SPEC-GRAPHIFY §7 R7.1)
+Recall without outcomes is dead weight — the whole point of §7 is that consumption results
+feed back into ranking. At task close, for **every** note the brief injected (full-body or
+one-liner — track the slugs you pasted), record exactly one outcome, skipping nothing:
+`brain.sh outcome <role> <slug> useful|dead_end|corrected [--task <ref>] [--note "<what was
+wrong>"]` — `useful` if it informed the work, `dead_end` if it turned out irrelevant,
+`corrected --note "<what was wrong>"` if it was wrong (the `--note` is required for
+`corrected`, per R7.3 — the retro reads it as re-mint material). Pass `--task <ref>` (e.g.
+the issue number) so the outcome is traceable back to the task that produced it. Do this as
+part of the same close-out where you mint/prune/graduate (step 3 below), not as a separate
+pass. *Future hardening (not built here):* the orchestrator already knows which slugs it
+pasted into each brief — a script could auto-list them instead of relying on the orchestrator
+to have tracked the list by hand.
+
 ## Retro at each PR close
 After a PR merges (or is set aside), the orchestrator runs a retro:
 
