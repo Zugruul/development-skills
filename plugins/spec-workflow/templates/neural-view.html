@@ -23,6 +23,20 @@
   --amber:#ffb347; --slate:#8fa6bd;
   --fg:#dff2fb; --muted:#a9c6d8;
   --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  /* right column quarter: the right sidebar area (below the 70px top chrome,
+     14px bottom margin) splits 1/4 voice · 2/4 note inspect · 1/4 log */
+  --colq:calc((100vh - 100px)/4);
+  /* one uniform sidebar width — the note inspect panel's width is the base;
+     every sidebar panel (left BRAINS, filters, talk, voice, inspect, log)
+     uses it so the columns read as one aligned system */
+  --colw:min(340px,42vw);
+  /* voice panel runs slimmer than a full quarter (33% shorter); the note
+     inspect panel absorbs the freed space. --voice-below is the panel's LIVE
+     footprint (height + gap) kept current by applyUiState — it shrinks to the
+     bare header when the section is folded and to 0 when collapsed away, so
+     the note/settings panels below always reclaim the space */
+  --voiceh:calc(var(--colq)*.67);
+  --voice-below:calc(var(--voiceh) + 12px);
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
@@ -96,8 +110,8 @@ canvas.grabbing{cursor:grabbing}
 #search-filters-btn{display:inline-flex;align-items:center;justify-content:center;border:0;background:none}
 #search-filters-wrap{position:relative}
 /* position:fixed, anchored at the SAME top-left corner as #gauges (the left
-   BRAINS sidebar: top:70px;left:14px;width:296px) and sized to match it
-   (slightly wider) — while filters are open they replace that sidebar in
+   BRAINS sidebar: top:70px;left:14px;width:var(--colw)) and identically
+   sized — while filters are open they replace that sidebar in
    place rather than float off elsewhere as a separate, disconnected panel.
    HEIGHT (not just max-height): the panel's content is often shorter than
    #gauges (e.g. no brain has a schema selected yet, so no Filters section),
@@ -106,7 +120,7 @@ canvas.grabbing{cursor:grabbing}
    multi-column content (BRAINS/FILTERS groups) auto-collapses to one column
    at this width since column-width:150px can't fit a second one. */
 #search-filters-panel{position:fixed;top:70px;left:14px;
-  width:320px;height:calc(100vh - 100px);overflow-y:scroll;padding:.65rem .75rem;display:none;
+  width:var(--colw);height:calc(100vh - 100px);overflow-y:scroll;padding:.65rem .75rem;display:none;
   flex-direction:column;gap:.6rem;z-index:60;background:var(--panel-solid);backdrop-filter:none;
   -webkit-backdrop-filter:none;scrollbar-gutter:stable;
   scrollbar-width:thin;scrollbar-color:rgba(90,190,255,.4) rgba(255,255,255,.05)}
@@ -270,7 +284,7 @@ canvas.grabbing{cursor:grabbing}
 #settings-panel .hint{font-size:.58rem;color:var(--muted);line-height:1.4}
 
 /* Talk panel (left bar → deep-link a new session, see docs.claude.com/en/deep-links) */
-.hud#talk-panel{top:70px;left:324px;width:320px;max-height:calc(100vh - 100px);overflow:auto;
+.hud#talk-panel{top:70px;left:calc(28px + var(--colw));width:var(--colw);max-height:calc(100vh - 100px);overflow:auto;
   padding:.75rem .85rem;display:none;flex-direction:column;gap:.55rem;z-index:60;
   background:var(--panel-solid);backdrop-filter:none;-webkit-backdrop-filter:none}
 .hud#talk-panel.open{display:flex}
@@ -298,7 +312,7 @@ canvas.grabbing{cursor:grabbing}
 #talk-panel .hint{font-size:.58rem;color:var(--muted);line-height:1.4}
 
 /* gauges (top-left, below topbar) */
-#gauges{top:70px;left:14px;width:296px;max-height:calc(100vh - 130px);overflow:auto;
+#gauges{top:70px;left:14px;width:var(--colw);max-height:calc(100vh - 130px);overflow:auto;
   padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease}
 #gauges.collapsed{transform:translateX(calc(-100% - 24px));opacity:0;pointer-events:none}
 #gauges-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem}
@@ -362,11 +376,14 @@ canvas.grabbing{cursor:grabbing}
 .tt-loop{color:var(--amber)}
 
 /* ticker (bottom) */
-/* activation log — right sidebar, mirroring the left panel's collapse UX */
-#rightbar{top:70px;right:14px;width:300px;max-height:calc(100vh - 100px);overflow:auto;
+/* activation log — bottom quarter of the right column, mirroring the left
+   panel's collapse UX. Always fills its quarter; folding the section (▸)
+   shrinks it to the bare header. */
+#rightbar{bottom:16px;right:14px;width:var(--colw);height:var(--colq);overflow:auto;
   padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease;
   scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:rgba(90,190,255,.4) rgba(255,255,255,.05)}
 #rightbar.collapsed{transform:translateX(calc(100% + 24px));opacity:0;pointer-events:none}
+#rightbar.folded{height:auto}
 /* explicit (non-overlay) scrollbar, same convention as #search-filters-panel/
    #search-results-list — a bare overflow:auto defers to the OS's auto-hide
    overlay scrollbar (invisible until you scroll on macOS), which read as "no
@@ -378,12 +395,66 @@ canvas.grabbing{cursor:grabbing}
 /* sticky header: pulled flush to the scrolling container's edges via negative
    margins that cancel #rightbar's own padding, then re-padded internally so
    it still lines up with the log entries below once scrolled under it. */
-#rightbar-head{position:sticky;top:0;z-index:2;background:var(--panel-solid);
+#rightbar-head{position:sticky;top:0;z-index:2;background:var(--panel);
+  backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
   display:flex;justify-content:space-between;align-items:center;gap:.5rem;
   margin:-.7rem -1rem 0;padding:.7rem 1rem .5rem}
-#rightbar-tab{position:fixed;top:70px;right:0;z-index:20;border-right:0;border-radius:8px 0 0 8px;
+#rightbar-tab{position:fixed;bottom:16px;right:0;z-index:20;border-right:0;border-radius:8px 0 0 8px;
   padding:.55rem .4rem;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:.8rem}
 #rightbar-tab:hover{color:var(--cyan)}
+
+/* voice visualizer — top quarter of the right column. Same collapse UX as the
+   log (edge tab restores); the IN/OUT segmented toggle picks the direction the
+   visualizer represents (outbound TTS is the default). The body is a stub
+   until the visualizer style is decided (iterative UI round in flight). */
+#voicebar{top:70px;right:14px;width:var(--colw);height:var(--voiceh);display:flex;flex-direction:column;
+  padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease}
+#voicebar.collapsed{transform:translateX(calc(100% + 24px));opacity:0;pointer-events:none}
+#voicebar-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
+#voicebar-tab{position:fixed;top:70px;right:0;z-index:20;border-right:0;border-radius:8px 0 0 8px;
+  padding:.55rem .4rem;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:.8rem}
+#voicebar-tab:hover{color:var(--cyan)}
+#voice-dir{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+#voice-dir .iconbtn{border:0;border-radius:0;font-size:.62rem;letter-spacing:.12em;padding:.3rem .5rem}
+/* direction colors: OUT keeps the HUD cyan, IN is amber, BOTH neutral-bright —
+   applied both to the header toggle and its settings-panel duplicate */
+#voice-dir .iconbtn.on-in,#voice-settings-panel .iconbtn.on-in{
+  color:var(--amber);border-color:rgba(255,179,71,.5);background:rgba(255,179,71,.12)}
+#voice-dir .iconbtn.on-out,#voice-settings-panel .iconbtn.on-out{
+  color:var(--cyan);border-color:var(--cyan-dim);background:rgba(70,230,255,.1)}
+#voice-dir .iconbtn.on-both,#voice-settings-panel .iconbtn.on-both{
+  color:var(--fg);border-color:rgba(144,200,255,.5);background:rgba(144,200,255,.14)}
+#voice-viz{flex:1;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+/* the explicit display:flex above would defeat the hidden attribute the
+   section fold sets — restate it; .folded lets the panel shrink to its head */
+#voice-viz[hidden]{display:none}
+#voicebar.folded{height:auto}
+#voice-viz canvas{position:absolute;inset:0;width:100%;height:100%}
+#voice-viz-status{position:relative;font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--amber)}
+/* cog rides directly right of the VOICE heading, sized as a real target */
+#voice-settings{font-size:1rem;line-height:1;padding:.25rem .5rem}
+/* mic-mode dot: press-to-speak = dark red with a slash; always-on = solid red;
+   .talking (Space held / mic hot) lights it regardless of mode */
+#voice-mic{display:inline-flex;align-items:center;justify-content:center}
+#voice-mic .micdot{position:relative;width:9px;height:9px;border-radius:50%;background:#7a2a24;display:block}
+#voice-mic.ptt .micdot::after{content:"";position:absolute;left:-2px;right:-2px;top:50%;height:1.5px;
+  background:#c96a5e;transform:rotate(-45deg)}
+#voice-mic.always .micdot,#voice-mic.talking .micdot{background:#e0453a;box-shadow:0 0 8px rgba(224,69,58,.7)}
+#voice-mic.talking .micdot::after{display:none}
+/* voice settings context panel (cog) — REPLACES the note preview slot: same
+   geometry as #inspect, one z above it; opening it closes the note card.
+   The two settings here duplicate the header controls on purpose — shown in
+   detail, and this panel is where future voice settings accumulate. */
+#voice-settings-panel{position:fixed;top:calc(70px + var(--voice-below));right:14px;width:var(--colw);
+  max-height:calc(100vh - 100px - var(--voice-below) - var(--colq) - 12px);overflow:auto;z-index:66;padding:.8rem .9rem;display:none;
+  flex-direction:column;gap:.65rem}
+#voice-settings-panel.open{display:flex}
+#voice-settings-panel .vs-row{display:flex;flex-direction:column;gap:.3rem}
+#voice-settings-panel .vs-opts{display:flex;gap:.3rem;flex-wrap:wrap}
+#voice-settings-panel .vs-hint{font-size:.58rem;color:var(--muted);line-height:1.4}
+#voice-settings-panel .vs-line{display:flex;justify-content:space-between;align-items:baseline;gap:.5rem}
+#voice-settings-panel .vs-val{font-size:.6rem;color:var(--cyan)}
+#voice-settings-panel input[type=range]{width:100%;accent-color:var(--cyan);background:transparent;margin:.1rem 0}
 #tickerlog{font-size:.62rem;line-height:1.5;color:var(--slate)}
 #tickerlog .ev{padding:.28rem 0;border-top:1px solid rgba(90,190,255,.1)}
 #tickerlog .ev:first-child{border-top:0}
@@ -399,7 +470,8 @@ canvas.grabbing{cursor:grabbing}
 #tickerlog .t{color:#7c92a6}
 
 /* inspect panel (right) */
-#inspect{top:70px;right:14px;width:min(340px,42vw);max-height:calc(100vh - 150px);z-index:65;   /* above #search-filters-panel (60) too — the card detail sidebar always wins */
+#inspect{top:calc(70px + var(--voice-below));right:14px;width:var(--colw);
+  max-height:calc(100vh - 100px - var(--voice-below) - var(--colq) - 12px);z-index:65;   /* middle 2/4 of the right column, below #voicebar; above #search-filters-panel (60) too — the card detail sidebar always wins */
   overflow:auto;padding:.9rem 1rem;transform:translateX(120%);transition:transform .25s ease;
   opacity:0}
 #inspect.open{transform:none;opacity:1}
@@ -594,6 +666,86 @@ canvas.grabbing{cursor:grabbing}
     read-only consults, see the <code>ask-identity</code>/<code>ask-brain</code> skills — then picks
     up the trailing <code>/rename</code> line to name itself. Nothing is sent to Claude until you press
     Enter in that session.</div>
+</div>
+
+<div class="hud" id="voicebar">
+  <div id="voicebar-head">
+    <div style="display:flex;align-items:center;gap:.35rem">
+      <button class="secthead" id="sect-voice" aria-expanded="true">Voice</button>
+      <button class="iconbtn" id="voice-settings" title="Voice settings" aria-label="Voice settings" aria-expanded="false">⚙</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:.3rem">
+      <button class="iconbtn" id="voice-mic" aria-pressed="false"
+        aria-label="Microphone mode: press to speak — click for always on"
+        title="Press to speak (hold Space) — click for mic always on"><span class="micdot"></span></button>
+      <span id="voice-dir" role="group" aria-label="Voice direction">
+        <button class="iconbtn" id="voice-in" aria-pressed="false" title="Inbound — microphone">IN</button>
+        <button class="iconbtn" id="voice-out" aria-pressed="true" title="Outbound — speech synthesis">OUT</button>
+        <button class="iconbtn" id="voice-both" aria-pressed="false" title="Both directions">BOTH</button>
+      </span>
+      <button class="iconbtn" id="voicebar-collapse" title="Hide voice" aria-label="Hide voice">⟩</button>
+    </div>
+  </div>
+  <div id="voice-viz"><canvas id="voice-viz-canvas"></canvas><span id="voice-viz-status" hidden></span></div>
+</div>
+<button class="hud" id="voicebar-tab" title="Show voice" aria-label="Show voice" hidden>⟨</button>
+
+<div class="hud" id="voice-settings-panel" role="dialog" aria-label="Voice settings">
+  <div class="label">Voice settings</div>
+  <div class="vs-row"><span class="label">Direction</span>
+    <div class="vs-opts" role="group" aria-label="Direction, in detail">
+      <button class="iconbtn" id="vs-dir-in" aria-pressed="false">IN — microphone</button>
+      <button class="iconbtn" id="vs-dir-out" aria-pressed="false">OUT — speech</button>
+      <button class="iconbtn" id="vs-dir-both" aria-pressed="false">BOTH</button>
+    </div>
+    <div class="vs-hint">What the visualizer represents: the inbound microphone, outbound speech synthesis, or both at once. Same control as the header toggle.</div>
+  </div>
+  <div class="vs-row"><span class="label">Microphone</span>
+    <div class="vs-opts" role="group" aria-label="Microphone mode">
+      <button class="iconbtn" id="vs-mic-ptt" aria-pressed="false">Press to speak</button>
+      <button class="iconbtn" id="vs-mic-always" aria-pressed="false">Mic always on</button>
+    </div>
+    <div class="vs-hint">Press to speak: hold Space in the 3D view to keep the mic open. Always on: the mic stays live whenever inbound is shown. Shift+Space toggles between the two. Same control as the red dot in the header.</div>
+  </div>
+  <div class="vs-row"><span class="label">Echo guard</span>
+    <div class="vs-opts" role="group" aria-label="Echo guard">
+      <button class="iconbtn" id="vs-echo-on" aria-pressed="false">Duck mic while speaking</button>
+      <button class="iconbtn" id="vs-echo-off" aria-pressed="false">Off</button>
+    </div>
+    <div class="vs-hint">Mutes the inbound bars while speech output is playing, so the notebook speaker doesn't feed back into the mic (on top of the stream's echo cancellation).</div>
+  </div>
+  <div class="vs-row">
+    <div class="vs-line"><span class="label">Noise suppression</span><span class="vs-val" id="vs-gate-val"></span></div>
+    <input type="range" id="vs-gate" min="0" max="80" step="1" aria-label="Noise suppression threshold">
+    <div class="vs-hint">Mic energy at or below this floor reads as silence — raise it until idle room noise stops moving the bars, without clipping soft speech.</div>
+  </div>
+  <div class="vs-row">
+    <div class="vs-line"><span class="label">Shimmer</span><span class="vs-val" id="vs-shimmer-val"></span></div>
+    <input type="range" id="vs-shimmer" min="0" max="2" step="0.05" aria-label="Shimmer randomness power">
+    <div class="vs-hint">Power of the per-column randomness riding on the bars. 0% = raw spectrum only.</div>
+  </div>
+  <div class="vs-row">
+    <div class="vs-line"><span class="label">Inbound feedback</span><span class="vs-val" id="vs-gain-in-val"></span></div>
+    <input type="range" id="vs-gain-in" min="0.25" max="3" step="0.05" aria-label="Inbound feedback gain">
+    <div class="vs-hint">How strongly the microphone drives the amber bars.</div>
+  </div>
+  <div class="vs-row">
+    <div class="vs-line"><span class="label">Outbound feedback</span><span class="vs-val" id="vs-gain-out-val"></span></div>
+    <input type="range" id="vs-gain-out" min="0.25" max="3" step="0.05" aria-label="Outbound feedback gain">
+    <div class="vs-hint">How strongly speech output drives the cyan bars.</div>
+  </div>
+  <div class="vs-row"><span class="label">Speech test</span>
+    <div class="vs-opts">
+      <button class="iconbtn" id="vs-say-1">“Neural view online”</button>
+      <button class="iconbtn" id="vs-say-2">“Recall complete”</button>
+      <button class="iconbtn" id="vs-say-3">“All brains nominal”</button>
+    </div>
+    <div class="vs-hint">Speaks the phrase through the active outbound adapter (native system voice) and drives the visualizer's outbound half.</div>
+  </div>
+  <div class="vs-row">
+    <button class="iconbtn" id="vs-reset" aria-live="polite">Reset settings</button>
+    <div class="vs-hint">Back to defaults: direction OUT, press to speak, echo guard on, suppression/shimmer/gains at stock. Asks to confirm first.</div>
+  </div>
 </div>
 
 <div class="hud" id="rightbar">
@@ -2870,8 +3022,18 @@ function applyUiState(){
   gaugesEl.classList.toggle("collapsed", !!uiState.panel);
   gaugesTab.hidden = !uiState.panel;
   document.getElementById("rightbar").classList.toggle("collapsed", !!uiState.rpanel);
+  document.getElementById("rightbar").classList.toggle("folded", !!uiState.log);
   document.getElementById("rightbar-tab").hidden = !uiState.rpanel;
-  for(const [sect, bodyId] of [["brains","gauge-list"], ["boards","project-list"], ["log","tickerlog"]]){
+  const vbar = document.getElementById("voicebar");
+  vbar.classList.toggle("collapsed", !!uiState.vpanel);
+  vbar.classList.toggle("folded", !!uiState.voice);
+  document.getElementById("voicebar-tab").hidden = !uiState.vpanel;
+  // publish the voice panel's live footprint so the note/settings panels
+  // below start right under it — whether full, folded to its header, or gone
+  document.documentElement.style.setProperty("--voice-below",
+    uiState.vpanel ? "0px" : (vbar.offsetHeight + 12) + "px");
+  applyVoiceState();
+  for(const [sect, bodyId] of [["brains","gauge-list"], ["boards","project-list"], ["log","tickerlog"], ["voice","voice-viz"]]){
     document.getElementById("sect-"+sect).setAttribute("aria-expanded", uiState[sect] ? "false" : "true");
     document.getElementById(bodyId).hidden = !!uiState[sect];
   }
@@ -2884,6 +3046,277 @@ gaugesTab.onclick = ()=>{ uiState.panel = false; saveUiState(); applyUiState(); 
 document.getElementById("rightbar-collapse").onclick = ()=>{ uiState.rpanel = true; saveUiState(); applyUiState(); };
 document.getElementById("rightbar-tab").onclick = ()=>{ uiState.rpanel = false; saveUiState(); applyUiState(); };
 document.getElementById("rightbar-clear").onclick = ()=>{ LOG.innerHTML = ""; };
+document.getElementById("sect-voice").onclick = ()=>{ uiState.voice = !uiState.voice; saveUiState(); applyUiState(); };
+document.getElementById("voicebar-collapse").onclick = ()=>{ uiState.vpanel = true; saveUiState(); applyUiState(); };
+document.getElementById("voicebar-tab").onclick = ()=>{ uiState.vpanel = false; saveUiState(); applyUiState(); };
+// voice state: direction (in/out/both, outbound default) + mic mode
+// (press-to-speak default / always-on). Both live in the header AND, in
+// detail, in the settings context panel — deliberately duplicated.
+function applyVoiceState(){
+  const vdir = ["in","out","both"].includes(uiState.vdir) ? uiState.vdir : "out";
+  for(const d of ["in","out","both"]){
+    for(const b of [document.getElementById("voice-"+d), document.getElementById("vs-dir-"+d)]){
+      b.classList.toggle("on-"+d, d===vdir);
+      b.setAttribute("aria-pressed", String(d===vdir));
+    }
+  }
+  const mic = uiState.micMode === "always" ? "always" : "ptt";
+  const micBtn = document.getElementById("voice-mic");
+  micBtn.classList.toggle("always", mic==="always");
+  micBtn.classList.toggle("ptt", mic==="ptt");
+  micBtn.setAttribute("aria-pressed", String(mic==="always"));
+  micBtn.title = mic==="always" ? "Mic always on — click for press to speak"
+                                : "Press to speak (hold Space) — click for mic always on";
+  for(const [id,m] of [["vs-mic-ptt","ptt"],["vs-mic-always","always"]]){
+    const b = document.getElementById(id);
+    b.classList.toggle("active", m===mic);
+    b.setAttribute("aria-pressed", String(m===mic));
+  }
+}
+for(const d of ["in","out","both"]){
+  const set = ()=>{ uiState.vdir = d; saveUiState(); applyUiState(); };
+  document.getElementById("voice-"+d).onclick = set;
+  document.getElementById("vs-dir-"+d).onclick = set;
+}
+document.getElementById("voice-mic").onclick = ()=>{ uiState.micMode = uiState.micMode==="always" ? "ptt" : "always"; saveUiState(); applyUiState(); };
+document.getElementById("vs-mic-ptt").onclick = ()=>{ uiState.micMode = "ptt"; saveUiState(); applyUiState(); };
+document.getElementById("vs-mic-always").onclick = ()=>{ uiState.micMode = "always"; saveUiState(); applyUiState(); };
+// cog: the settings context panel REPLACES the note preview slot while open
+document.getElementById("voice-settings").onclick = ()=>{
+  const p = document.getElementById("voice-settings-panel");
+  const open = !p.classList.contains("open");
+  p.classList.toggle("open", open);
+  document.getElementById("voice-settings").setAttribute("aria-expanded", String(open));
+  if(open) document.getElementById("inspect-close").click();
+};
+// press-to-speak: holding Space in the 3D view keeps the mic open;
+// Shift+Space toggles between press-to-speak and mic-always-on
+window.voicePTT = false;
+addEventListener("keydown", ev=>{
+  if(ev.code!=="Space" || ev.repeat) return;
+  const t = ev.target;
+  if(t && (t.tagName==="INPUT" || t.tagName==="TEXTAREA" || t.tagName==="BUTTON" || t.isContentEditable)) return;
+  if(ev.shiftKey){
+    uiState.micMode = uiState.micMode==="always" ? "ptt" : "always";
+    saveUiState(); applyUiState();
+    return;
+  }
+  window.voicePTT = true;
+  document.getElementById("voice-mic").classList.add("talking");
+});
+addEventListener("keyup", ev=>{
+  if(ev.code!=="Space") return;
+  window.voicePTT = false;
+  document.getElementById("voice-mic").classList.remove("talking");
+});
+
+// ---- voice visualizer: Split Halves — outbound cyan grows up from the axis,
+// inbound amber grows down; a single direction fills the whole mirror in its
+// one color. Audio comes from PLUGGABLE sources: anything implementing
+// {start():Promise, stop(), getBins(Uint8Array)} can be swapped in via
+// window.neuralVoice.setSource("inbound"|"outbound", src). Defaults:
+// MicSource (Web Audio analyser over getUserMedia) and SpeechSynthSource
+// (native system TTS via speechSynthesis — the browser exposes no audio tap
+// for it, so bins carry a synthesized speech-like envelope while an
+// utterance is live; plug a capturable backend for real outbound spectra). ----
+// odd count: with center-out frequency mapping an even count has TWO center
+// columns sharing the lowest band (a visibly twinned pair when speaking)
+const VIZ_BARS = 25;
+class MicSource{
+  async start(){
+    if(this.analyser) return;
+    // echoCancellation is the first line of defense against the notebook
+    // speaker's TTS output re-entering through the mic (plus the half-duplex
+    // duck below, see echo guard)
+    this.stream = await navigator.mediaDevices.getUserMedia(
+      {audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true}});
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.ctx.createMediaStreamSource(this.stream).connect(
+      this.analyser = Object.assign(this.ctx.createAnalyser(), {fftSize:256, smoothingTimeConstant:.6}));
+    this.buf = new Uint8Array(this.analyser.frequencyBinCount);
+  }
+  stop(){
+    if(this.stream) this.stream.getTracks().forEach(t=>t.stop());
+    if(this.ctx) this.ctx.close();
+    this.stream = this.ctx = this.analyser = null;
+  }
+  getBins(out){
+    if(!this.analyser){ out.fill(0); return; }
+    this.analyser.getByteFrequencyData(this.buf);
+    // log-spaced bands over the voice range (skip DC, ignore the dead top
+    // half of the spectrum) with a rising tilt so the quieter high bands
+    // still register — linear mapping left the outer bars flat even when
+    // speaking loudly, since voice energy sits almost entirely down low
+    const lo = 1, hi = Math.floor(this.buf.length*.5);
+    const GATE = voiceTune().gate;   // noise gate: energy below it reads as silence
+    for(let i=0;i<out.length;i++){
+      const f0 = Math.floor(lo*Math.pow(hi/lo, i/out.length));
+      const f1 = Math.max(f0+1, Math.floor(lo*Math.pow(hi/lo, (i+1)/out.length)));
+      let s = 0;
+      for(let k=f0;k<f1;k++) s += this.buf[k];
+      const v = (s/(f1-f0)) * (1 + 1.6*i/out.length);
+      out[i] = v <= GATE ? 0 : Math.min(255, (v-GATE) * 255/(255-GATE));
+    }
+  }
+}
+class SpeechSynthSource{
+  constructor(){ this.speaking = false; this.t = 0; }
+  async start(){}
+  stop(){ speechSynthesis.cancel(); this.speaking = false; }
+  speak(text){
+    const u = new SpeechSynthesisUtterance(text);
+    u.onstart = ()=>{ this.speaking = true; };
+    u.onend = u.onerror = ()=>{ this.speaking = false; };
+    speechSynthesis.speak(u);
+  }
+  getBins(out){
+    if(!this.speaking){ out.fill(0); return; }
+    this.t += .16;
+    const level = .4 + .5*Math.abs(Math.sin(this.t*.9))*(.6+.4*Math.random());
+    for(let i=0;i<out.length;i++){
+      const falloff = Math.exp(-i/(out.length*.55));
+      out[i] = Math.max(0, Math.min(255, 255*level*falloff*(.6+.5*Math.abs(Math.sin(this.t*1.7+i*1.3)))));
+    }
+  }
+}
+const voiceSources = { inbound: new MicSource(), outbound: new SpeechSynthSource() };
+window.neuralVoice = {
+  setSource(dir, src){ const old = voiceSources[dir]; if(old && old.stop) old.stop(); voiceSources[dir] = src; },
+  speak(text){ const s = voiceSources.outbound; if(s && s.speak) s.speak(text); }
+};
+for(const [id, phrase] of [["vs-say-1","Neural view online"],["vs-say-2","Recall complete"],["vs-say-3","All brains nominal"]])
+  document.getElementById(id).onclick = ()=>window.neuralVoice.speak(phrase);
+
+// visualizer tuning — noise gate, shimmer power, in/out feedback gains;
+// persisted in uiState, edited via the sliders in the settings panel
+function voiceTune(){
+  return {
+    gate:    Number.isFinite(uiState.vGate)    ? uiState.vGate    : 34,
+    shimmer: Number.isFinite(uiState.vShimmer) ? uiState.vShimmer : 1,
+    gainIn:  Number.isFinite(uiState.vGainIn)  ? uiState.vGainIn  : 1,
+    gainOut: Number.isFinite(uiState.vGainOut) ? uiState.vGainOut : 1,
+  };
+}
+const TUNE_SLIDERS = [
+  ["vs-gate","vGate","gate", v=>String(Math.round(v))],
+  ["vs-shimmer","vShimmer","shimmer", v=>Math.round(v*100)+"%"],
+  ["vs-gain-in","vGainIn","gainIn", v=>"×"+v.toFixed(2)],
+  ["vs-gain-out","vGainOut","gainOut", v=>"×"+v.toFixed(2)],
+];
+function applyVoiceTuneUi(){
+  const t = voiceTune();
+  for(const [id, , key, fmt] of TUNE_SLIDERS){
+    document.getElementById(id).value = t[key];
+    document.getElementById(id+"-val").textContent = fmt(t[key]);
+  }
+}
+for(const [id, stateKey] of TUNE_SLIDERS)
+  document.getElementById(id).oninput = ev=>{ uiState[stateKey] = +ev.target.value; saveUiState(); applyVoiceTuneUi(); };
+// echo guard (default ON): duck the inbound bars while outbound speech plays
+function echoGuardOn(){ return uiState.vEchoGuard !== false; }
+function applyEchoUi(){
+  for(const [id, on] of [["vs-echo-on", true], ["vs-echo-off", false]]){
+    const b = document.getElementById(id);
+    b.classList.toggle("active", echoGuardOn()===on);
+    b.setAttribute("aria-pressed", String(echoGuardOn()===on));
+  }
+}
+document.getElementById("vs-echo-on").onclick = ()=>{ uiState.vEchoGuard = true; saveUiState(); applyEchoUi(); };
+document.getElementById("vs-echo-off").onclick = ()=>{ uiState.vEchoGuard = false; saveUiState(); applyEchoUi(); };
+applyVoiceTuneUi();
+applyEchoUi();
+// reset (two-step: click arms "Confirm?", second click within 4s resets)
+let resetArmed = null;
+const resetBtn = document.getElementById("vs-reset");
+resetBtn.onclick = ()=>{
+  if(resetArmed === null){
+    resetBtn.textContent = "Confirm?";
+    resetArmed = setTimeout(()=>{ resetArmed = null; resetBtn.textContent = "Reset settings"; }, 4000);
+    return;
+  }
+  clearTimeout(resetArmed); resetArmed = null;
+  resetBtn.textContent = "Reset settings";
+  for(const k of ["vdir","micMode","vEchoGuard","vGate","vShimmer","vGainIn","vGainOut"]) delete uiState[k];
+  saveUiState(); applyUiState(); applyVoiceTuneUi(); applyEchoUi();
+};
+
+const vizCanvas = document.getElementById("voice-viz-canvas");
+const vizCtx2d = vizCanvas.getContext("2d");
+const vizStatus = document.getElementById("voice-viz-status");
+const inBins = new Uint8Array(VIZ_BARS), outBins = new Uint8Array(VIZ_BARS);
+let micWanted = false, micBusy = false;
+function voiceDir(){ return ["in","out","both"].includes(uiState.vdir) ? uiState.vdir : "out"; }
+function micHot(){
+  if(voiceDir()==="out") return false;
+  return uiState.micMode==="always" || window.voicePTT;
+}
+async function syncMic(){
+  const want = micHot();
+  if(want === micWanted || micBusy) return;
+  micBusy = true;
+  try{
+    if(want) await voiceSources.inbound.start(); else voiceSources.inbound.stop();
+    micWanted = want;
+    vizStatus.hidden = true;
+  }catch(e){
+    vizStatus.textContent = "mic unavailable"; vizStatus.hidden = false;
+  }finally{ micBusy = false; }
+}
+function vbar(x, y, bw, bh, fill, glow){
+  vizCtx2d.fillStyle = fill; vizCtx2d.shadowColor = glow; vizCtx2d.shadowBlur = 6;
+  vizCtx2d.fillRect(x, y, bw, Math.max(2, bh));
+  vizCtx2d.shadowBlur = 0;
+}
+const VIZ_CYAN = ["#46e6ff","rgba(70,230,255,.5)"], VIZ_AMBER = ["#ffb347","rgba(255,179,71,.5)"];
+function drawViz(){
+  requestAnimationFrame(drawViz);
+  if(uiState.vpanel || uiState.voice) return;      // panel collapsed / section folded
+  const w = vizCanvas.clientWidth, h = vizCanvas.clientHeight;
+  if(!w || !h) return;
+  const dpr = devicePixelRatio || 1;
+  if(vizCanvas.width !== Math.round(w*dpr) || vizCanvas.height !== Math.round(h*dpr)){
+    vizCanvas.width = Math.round(w*dpr); vizCanvas.height = Math.round(h*dpr);
+  }
+  vizCtx2d.setTransform(dpr,0,0,dpr,0,0);
+  vizCtx2d.clearRect(0,0,w,h);
+  syncMic();
+  voiceSources.inbound.getBins(inBins);
+  voiceSources.outbound.getBins(outBins);
+  // echo guard: while the outbound adapter reports it is speaking, the
+  // inbound half goes quiet so speaker output can't masquerade as voice input
+  if(echoGuardOn() && voiceSources.outbound.speaking) inBins.fill(0);
+  const vdir = voiceDir(), mid = h/2, half = h*.44;
+  const gap = 3, bw = Math.max(2, (w - 28 - gap*(VIZ_BARS-1))/VIZ_BARS);
+  vizCtx2d.fillStyle = "rgba(90,190,255,.25)";
+  vizCtx2d.fillRect(10, mid-.5, w-20, 1);
+  for(let i=0;i<VIZ_BARS;i++){
+    const x = 14 + i*(bw+gap);
+    // center-out frequency mapping: the middle columns carry the low bands
+    // (where voice energy lives) and higher bands fan out toward both edges,
+    // so speech blooms from the center instead of piling up on the left
+    const b = Math.round(Math.abs(i-(VIZ_BARS-1)/2)/((VIZ_BARS-1)/2)*(VIZ_BARS-1));
+    // per-column shimmer: slow phase-offset wave + a pinch of noise so the
+    // two mirrored halves never read as perfectly rigid copies; its power
+    // (and the in/out gains) come from the settings-panel sliders
+    const t = voiceTune();
+    const sh = 1 - .2*t.shimmer + (.16*Math.sin(performance.now()*.006 + b*1.7) + .08*Math.random())*t.shimmer;
+    const inV = Math.min(255, inBins[b]*t.gainIn), outV = Math.min(255, outBins[b]*t.gainOut);
+    if(vdir==="out"){
+      const v = outV/255*half*sh;
+      vbar(x, mid-v, bw, v*2, ...VIZ_CYAN);
+    }else if(vdir==="in"){
+      const v = inV/255*half*sh;
+      vbar(x, mid-v, bw, v*2, ...VIZ_AMBER);
+    }else{
+      const up = outV/255*half*sh, dn = inV/255*half*sh;
+      // 1px standoff on each side of the axis: touching stubs blend their
+      // cyan/amber glows into a green-ish smear at idle
+      vbar(x, mid-1-Math.max(2,up), bw, up, ...VIZ_CYAN);
+      vbar(x, mid+1, bw, dn, ...VIZ_AMBER);
+    }
+  }
+}
+drawViz();
 applyUiState();
 
 // ---- search bar: wire the button/input/clear + the filters popover ----
@@ -3628,6 +4061,13 @@ async function openNote(nd){
     e.preventDefault(); const tgt=nodeById.get(nd.repo+"/"+nd.role+"/"+a.dataset.slug); if(tgt) openNote(tgt);
   });
   panel.classList.add("open"); panel.setAttribute("aria-hidden","false"); panel.removeAttribute("inert");
+  // the note card and the voice settings panel share the same slot — opening
+  // one closes the other (the cog handler does the reverse)
+  const vsp = document.getElementById("voice-settings-panel");
+  if(vsp && vsp.classList.contains("open")){
+    vsp.classList.remove("open");
+    document.getElementById("voice-settings").setAttribute("aria-expanded","false");
+  }
 }
 
 // ---- picking self-check (?hoverprobe) ----
