@@ -1225,16 +1225,25 @@ def cmd_prune(identities, args):
     for slug, why in note_candidates:
         print("%s  (%s)" % (slug, why))
     if args.apply:
-        fraction = _shrink_guard_fraction(args)
-        keys = [key for key, _why in candidates]
-        if not _shrink_guard("link(s)", keys, len(links), args.force, fraction):
-            sys.exit(1)
-        for key, _why in candidates:
-            links.pop(key, None)
-        save_links(identities, role, links)
-        for key, why in candidates:
-            emit_event(args.root, {"role": role, "type": "LinkPruned", "key": key, "reason": why})
-        print("removed %d link(s)" % len(candidates))
+        if not candidates:
+            # review round 1: link candidates is empty (only outcome-rule note
+            # candidates exist, if any) -- skip the link-removal machinery
+            # entirely. Running the shrink guard on an empty list, calling
+            # save_links (which would CREATE links.json in a brain that never
+            # had one), and printing "removed 0 link(s)" are all wrong here:
+            # the outcome rule is propose-only and must never write anything.
+            print("0 link candidate(s); outcome candidates are propose-only (nothing written)")
+        else:
+            fraction = _shrink_guard_fraction(args)
+            keys = [key for key, _why in candidates]
+            if not _shrink_guard("link(s)", keys, len(links), args.force, fraction):
+                sys.exit(1)
+            for key, _why in candidates:
+                links.pop(key, None)
+            save_links(identities, role, links)
+            for key, why in candidates:
+                emit_event(args.root, {"role": role, "type": "LinkPruned", "key": key, "reason": why})
+            print("removed %d link(s)" % len(candidates))
 
 
 # ------------------------------------------------------------------------ index
