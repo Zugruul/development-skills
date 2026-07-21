@@ -478,14 +478,19 @@ canvas.grabbing{cursor:grabbing}
 /* user-dragged position: left/top set inline; the docked slide-in animation
    is relative to the docked spot, so fall back to a small fade instead.
    .dragging suspends the transition so the panel tracks the pointer 1:1. */
-#inspect.custom{right:auto}
-#inspect.custom:not(.open){transform:translateY(-8px)}
-#inspect.dragging{transition:none;user-select:none}
-#inspect .close{float:right;cursor:pointer;color:var(--muted);border:0;background:none;font-size:1rem;font-family:var(--mono)}
-#inspect .close.grip{cursor:grab;touch-action:none}
-#inspect.dragging .close.grip{cursor:grabbing}
-#inspect h3{margin:.1rem 0 .1rem;font-size:.9rem;color:var(--cyan);letter-spacing:.04em;word-break:break-word}
-#inspect .role{font-size:.6rem;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+#inspect .close,.note-window .close{float:right;cursor:pointer;color:var(--muted);border:0;background:none;font-size:1rem;font-family:var(--mono)}
+#inspect .close.grip,.note-window .close.grip{cursor:grab;touch-action:none}
+#inspect h3,.note-window h3{margin:.1rem 0 .1rem;font-size:.9rem;color:var(--cyan);letter-spacing:.04em;word-break:break-word}
+#inspect .role,.note-window .role{font-size:.6rem;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+/* detached note windows: dragging the docked note's grip (⠿) UNLINKS it from
+   the sidebar into its own fixed, resizable window — the sidebar slot frees
+   up, so any number of notes can stay on screen. ⌖ re-attaches the window's
+   note to the sidebar (replacing whatever note it shows), ✕ just closes it.
+   Window content is a snapshot; wikilinks inside open in the sidebar. */
+.note-window{position:fixed;z-index:70;width:var(--colw);max-height:70vh;overflow:auto;
+  padding:.9rem 1rem;resize:both;min-width:250px;min-height:150px}
+.note-window.dragging{user-select:none}
+.note-window.dragging .close.grip{cursor:grabbing}
 .chips{display:flex;flex-wrap:wrap;gap:.3rem;margin:.6rem 0}
 .chip{font-size:.6rem;padding:.15rem .5rem;border:1px solid var(--border);border-radius:999px;color:var(--muted);letter-spacing:.06em}
 .chip.on{color:var(--amber);border-color:rgba(255,179,71,.5)}
@@ -762,8 +767,7 @@ canvas.grabbing{cursor:grabbing}
 
 <aside class="hud" id="inspect" aria-hidden="true" inert>
   <button class="close" id="inspect-close" aria-label="Close note">✕</button>
-  <button class="close" id="inspect-reset" title="Reset panel position" aria-label="Reset panel position" hidden>⌖</button>
-  <button class="close grip" id="inspect-grip" title="Drag to move panel" aria-label="Drag to move panel">⠿</button>
+  <button class="close grip" id="inspect-grip" title="Drag to detach into its own window" aria-label="Drag to detach into its own window">⠿</button>
   <div class="role" id="i-role"></div>
   <h3 id="i-title"></h3>
   <div class="chips" id="i-chips"></div>
@@ -3985,53 +3989,91 @@ document.getElementById("talk-copy").onclick = async ()=>{
 
 const panel=document.getElementById("inspect");
 document.getElementById("inspect-close").onclick=()=>{ panel.classList.remove("open"); panel.setAttribute("aria-hidden","true"); panel.setAttribute("inert",""); };
-// ---- draggable inspect panel (grip ⠿) with remembered position ----
-// uiState.inspectPos = {x, y} in px; absent = docked (top-right CSS default).
-// The reset button (⌖) only shows while a custom position is active.
-const inspectResetBtn = document.getElementById("inspect-reset");
-function applyInspectPos(){
-  const pos = uiState.inspectPos;
-  if(pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)){
-    // clamp into the viewport so a stale position (smaller window, detached
-    // monitor) can never strand the panel off-screen.
-    const x = Math.min(Math.max(pos.x, 0), Math.max(0, innerWidth - 80));
-    const y = Math.min(Math.max(pos.y, 0), Math.max(0, innerHeight - 60));
-    panel.style.left = x + "px"; panel.style.top = y + "px";
-    panel.classList.add("custom"); inspectResetBtn.hidden = false;
-  }else{
-    panel.classList.remove("custom");
-    panel.style.left = ""; panel.style.top = "";
-    inspectResetBtn.hidden = true;
-  }
-}
-inspectResetBtn.onclick = ()=>{ delete uiState.inspectPos; saveUiState(); applyInspectPos(); };
-{
-  const grip = document.getElementById("inspect-grip");
-  let dragOff = null;   // pointer offset inside the panel while dragging
+// ---- detached note windows ----
+// Grabbing the docked note's grip (⠿) DETACHES it: the note becomes its own
+// fixed, resizable window, unlinked from the sidebar, and the sidebar slot is
+// freed — click another note (and detach again) to keep any number open at
+// once. On a window: ⌖ re-attaches its note to the sidebar (replacing the
+// note the sidebar currently shows, if any), ✕ closes it. Content is a
+// snapshot; wikilinks inside a window open in the docked sidebar panel.
+let noteWinZ = 70;
+function detachNote(fromRect){
+  const nd = panel.__nd;
+  const win = document.createElement("aside");
+  win.className = "hud note-window";
+  win.style.left = fromRect.left + "px"; win.style.top = fromRect.top + "px";
+  win.style.width = fromRect.width + "px";
+  win.style.zIndex = ++noteWinZ;
+  win.innerHTML =
+    '<button class="close" aria-label="Close note window">✕</button>' +
+    '<button class="close reattach" title="Re-attach to sidebar" aria-label="Re-attach to sidebar">⌖</button>' +
+    '<button class="close grip" title="Drag to move window" aria-label="Drag to move window">⠿</button>' +
+    ["i-role","i-title","i-chips","i-open","body","links"].map(id=>document.getElementById(id).outerHTML).join("");
+  document.body.appendChild(win);
+  win.addEventListener("pointerdown", ()=>{ win.style.zIndex = ++noteWinZ; });
+  win.querySelector(".close").onclick = ()=>win.remove();
+  win.querySelector(".reattach").onclick = ()=>{ win.remove(); if(nd) openNote(nd); };
+  win.querySelectorAll("a.wl").forEach(a=>a.onclick=e=>{
+    e.preventDefault();
+    if(!nd) return;
+    const tgt = nodeById.get(nd.repo+"/"+nd.role+"/"+a.dataset.slug);
+    if(tgt) openNote(tgt);
+  });
+  const viewBtn = win.querySelector('[id="i-open"] button');
+  if(viewBtn && nd) viewBtn.onclick = ()=>openExternal(nd);
+  // window drag by its own grip
+  const grip = win.querySelector(".grip");
+  let off = null;
   grip.addEventListener("pointerdown", ev=>{
+    const r = win.getBoundingClientRect();
+    off = {dx: ev.clientX - r.left, dy: ev.clientY - r.top};
+    win.classList.add("dragging");
+    grip.setPointerCapture(ev.pointerId);
+    ev.preventDefault(); ev.stopPropagation();
+  });
+  grip.addEventListener("pointermove", ev=>{
+    if(!off) return;
+    win.style.left = Math.max(0, ev.clientX - off.dx) + "px";
+    win.style.top = Math.max(0, ev.clientY - off.dy) + "px";
+  });
+  const end = ev=>{ if(!off) return; off = null; win.classList.remove("dragging"); try{ grip.releasePointerCapture(ev.pointerId); }catch{} };
+  grip.addEventListener("pointerup", end);
+  grip.addEventListener("pointercancel", end);
+  return win;
+}
+{
+  // grabbing the docked grip detaches immediately and the new window rides
+  // the same pointer until release (the docked grip keeps pointer capture)
+  const grip = document.getElementById("inspect-grip");
+  let off = null, win = null;
+  grip.addEventListener("pointerdown", ev=>{
+    if(!panel.classList.contains("open")) return;
     const r = panel.getBoundingClientRect();
-    dragOff = {dx: ev.clientX - r.left, dy: ev.clientY - r.top};
-    panel.classList.add("dragging");
+    win = detachNote(r);
+    document.getElementById("inspect-close").click();
+    off = {dx: ev.clientX - r.left, dy: ev.clientY - r.top};
+    win.classList.add("dragging");
     grip.setPointerCapture(ev.pointerId);
     ev.preventDefault();
   });
   grip.addEventListener("pointermove", ev=>{
-    if(!dragOff) return;
-    uiState.inspectPos = {x: ev.clientX - dragOff.dx, y: ev.clientY - dragOff.dy};
-    applyInspectPos();
+    if(!off || !win) return;
+    win.style.left = Math.max(0, ev.clientX - off.dx) + "px";
+    win.style.top = Math.max(0, ev.clientY - off.dy) + "px";
   });
   const end = ev=>{
-    if(!dragOff) return;
-    dragOff = null; panel.classList.remove("dragging");
+    if(!off) return;
+    off = null;
+    if(win) win.classList.remove("dragging");
+    win = null;
     try{ grip.releasePointerCapture(ev.pointerId); }catch{}
-    saveUiState();
   };
   grip.addEventListener("pointerup", end);
   grip.addEventListener("pointercancel", end);
 }
-applyInspectPos();
 async function openNote(nd){
   let d; try{ d=await (await fetch(`/note/${encodeURIComponent(nd.repo)}/${encodeURIComponent(nd.role)}/${encodeURIComponent(nd.slug)}`)).json(); }catch{ return; }
+  panel.__nd = nd;   // remembered so detachNote/⌖ can re-open this note
   document.getElementById("i-role").textContent = repoList.length>1 ? `${nd.repo} · ${nd.role}` : nd.role;
   document.getElementById("i-title").textContent = nd.slug;
   const chips=document.getElementById("i-chips"); chips.innerHTML="";
