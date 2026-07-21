@@ -49,3 +49,7 @@ final `AGGREGATE` line.
   `peer-review@<marketplace>` key -- never forces the identity on a repo that doesn't have the
   plugin enabled. Inserts into an existing `delegation.identities` block if the repo already
   customizes one, else appends a fresh `delegation.identities` block.
+- `ensure-serial-delivery` -- adds `methodology.serialDelivery: true` ONLY when the key is
+  absent from the target's `methodology:` block. An existing explicit `true` or `false` is a
+  choice the rule respects and leaves untouched -- no configurable value flag, unlike
+  `ensure-feedback-key`.

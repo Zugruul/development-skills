@@ -98,6 +98,35 @@ def rule_ensure_feedback_key(value=True):
     return TextRule("ensure-feedback-key", detect, apply)
 
 
+def rule_ensure_serial_delivery():
+    """Adds methodology.serialDelivery: true ONLY when the key is absent.
+    An existing explicit value (true OR false) is a choice the rule must
+    respect and leave untouched -- mirrors ensure-feedback-key's shape
+    exactly, but with a fixed value (no --serial-delivery-value flag)."""
+    block_pat = re.compile(r"(?m)^methodology:\n((?:[ \t]+\S.*\n?)*)")
+
+    def _block(text):
+        return block_pat.search(text)
+
+    def detect(text):
+        m = _block(text)
+        if not m:
+            return False
+        block = m.group(1)
+        return re.search(r"(?m)^[ \t]+serialDelivery:\s*\S", block) is None
+
+    def apply(text):
+        m = _block(text)
+        block = m.group(1)
+        indent_m = re.search(r"(?m)^([ \t]+)\S", block)
+        indent = indent_m.group(1) if indent_m else "    "
+        insertion = f"{indent}serialDelivery: true\n"
+        end = m.end(1)
+        return text[:end] + insertion + text[end:]
+
+    return TextRule("ensure-serial-delivery", detect, apply)
+
+
 TEXT_RULES = [rule_strip_schema_data_key]  # ensure-feedback-key added with the configured value in main()
 
 
@@ -330,7 +359,7 @@ class RepoResult:
 
 
 def apply_text_rules(text, feedback_value):
-    rules = [rule_strip_schema_data_key(), rule_ensure_feedback_key(feedback_value)]
+    rules = [rule_strip_schema_data_key(), rule_ensure_feedback_key(feedback_value), rule_ensure_serial_delivery()]
     applied = []
     for r in rules:
         if r.detect(text):
