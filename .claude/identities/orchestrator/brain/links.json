@@ -24,6 +24,11 @@
     "last": null,
     "weight": 0.5
   },
+  "design-doc-name-structural-invariant-not-idiom-list->prefer-structural-signal-over-keyword-gate": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "dual-independent-review-raises-confidence->independent-review-catches-self-test-blindspots": {
     "fires": 0,
     "last": null,

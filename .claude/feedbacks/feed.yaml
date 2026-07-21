@@ -1,0 +1,60 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-21T05:00:00Z'
+iteration:
+  task: '237'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-sonnet-5
+items:
+- category: worked-well
+  area: review
+  component: build-next/references/auto-review.md
+  severity: low
+  summary: two independently-spawned review passes each found a distinct real defect
+    in a guard/checker script that its own shipped test suite missed
+  detail: Pass 1 (spec compliance) found an anchored regex that silently failed to
+    match a protected-path literal embedded mid-token inside interpreter source (vs.
+    as its own bare argv token). Pass 2 (code quality), briefed to specifically re-scrutinize
+    the same danger zone given pass 1's finding, found a sibling substring-gate miss
+    in the exact same file. Both were reproduced independently by the orchestrator
+    before being relayed to the dev agent, and both fixes were re-verified independently
+    rather than trusting the dev agent's report.
+  evidence:
+  - Zugruul/development-skills#237
+  generalized: 'When the artifact under review is itself a checker/guard script (regex
+    or substring-matching logic), briefing the second review pass to specifically
+    re-scrutinize sibling gates in the same matching family — not just re-verify the
+    first pass''s fix — catches defects a single combined review pass, or two identical
+    review passes, would likely miss. The two-pass structure earned its cost here:
+    pass 2 would not have looked as hard at the interpreter branch without pass 1''s
+    finding framing it as a suspect area.'
+  routing:
+    action: brain-note
+    ref: reviewer/test-per-branch-structural-shape,reviewer/enumerate-sibling-gates-after-a-fix
+- category: recommendation
+  area: briefing
+  component: build-next/references/design-and-deltas.md
+  severity: low
+  summary: a design doc for a new guard/checker script should call out its own bias
+    (fail-open vs fail-closed) and name the matching STRATEGY explicitly, not just
+    the specific idioms to catch
+  detail: The design doc for this task's fix correctly specified fail-open-on-unparseable
+    (the opposite of the sibling guard-board-move.sh's fail-closed) and named 2 example
+    idioms to detect (open(/readFile) — but a narrower keyword-substring strategy
+    for detecting "any way to read a file" turned out to be exactly the kind of enumeration
+    that misses idioms not yet thought of (pathlib.read_text, and a mid-token regex-anchor
+    mismatch).
+  generalized: When a design doc specifies a new pattern-matching guard/checker, prefer
+    specifying the underlying STRUCTURAL invariant the match is meant to enforce (e.g.
+    "a protected path literal appears anywhere in this scope") over an enumerated
+    list of keyword/verb idioms to match against — an enumerated list is provably
+    incomplete the moment a new idiom appears, while a structural signal degrades
+    gracefully. Where a keyword list is unavoidable, the design doc should say explicitly
+    that it is a known-incomplete enumeration, not a closed set, so review passes
+    know to hunt for missing idioms rather than trusting the shipped list.
+  routing:
+    action: brain-note
+    ref: orchestrator/design-doc-name-structural-invariant-not-idiom-list
