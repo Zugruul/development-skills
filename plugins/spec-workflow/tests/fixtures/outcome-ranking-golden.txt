@@ -1,0 +1,6 @@
+### gold-alpha  [strength 1]
+Golden lesson body for alpha.
+
+Related: [[gold-beta]]
+### gold-beta
+tags: [gold] · paths: [gold-b/**]

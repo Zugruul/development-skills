@@ -372,6 +372,127 @@ def cmd_outcome(identities, args):
         })
 
 
+# ---------------------------------------------------------- outcome weighting
+# SPEC-GRAPHIFY §7 R7.4/R7.5/R7.7. Reusable across GL-003 (recall ranking),
+# GL-004 (status tallies), and GL-033 (report) -- ALL outcome-window reading
+# goes through outcome_window_tallies() so the retro-clock semantics and the
+# malformed-file tolerance live in exactly one place.
+DEFAULT_OUTCOME_WINDOW = 3           # methodology.outcomeWindow
+DEFAULT_OUTCOME_MULTIPLIER_STEP = 0.1  # methodology.outcomeMultiplierStep
+_MIN_OUTCOME_MULTIPLIER = 0.1
+
+
+def _retro_window_cutoff(identities, n):
+    """The retros.log timestamp marking the start of the "last N retros"
+    window (retros.log clock, NOT wall time) -- generalizes cmd_prune's
+    3rd-from-last-retro cutoff to arbitrary N. None means fewer than N
+    retros have EVER been marked, so there is no boundary yet and the whole
+    history counts as within-window (nothing to exclude)."""
+    rp = os.path.join(identities, "retros.log")
+    if not os.path.isfile(rp):
+        return None
+    retros = [ln.strip() for ln in open(rp, encoding="utf-8") if ln.strip()]
+    if len(retros) < n:
+        return None
+    return retros[-n]
+
+
+def _read_outcomes(identities, role):
+    """Parse <brain>/outcomes.jsonl into a list of dicts, tolerating a
+    malformed file (R7.7): a line that isn't valid JSON, isn't an object, has
+    an unknown `outcome` value, is missing `slug`/`ts`/`outcome`, or has the
+    WRONG TYPE for `slug`/`ts` (both must be str -- a non-str `ts` can't be
+    compared against the retros.log cutoff string and a non-hashable `slug`
+    can't key a tally dict; either would raise TypeError deep inside
+    outcome_window_tallies if let through) is dropped and flips `malformed`
+    True -- never raises. Task-ref grammar is NOT validated here: malformed
+    refs exist by design at the write layer (cmd_outcome only qualifies `#N`
+    shorthand, never rejects free text) and must still count toward tallies
+    (GL-001 reviewer note)."""
+    p = outcomes_path(identities, role)
+    records = []
+    malformed = False
+    if not os.path.isfile(p):
+        return records, malformed
+    for line in open(p, encoding="utf-8"):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except ValueError:
+            malformed = True
+            continue
+        if not isinstance(obj, dict) or obj.get("outcome") not in OUTCOME_CHOICES:
+            malformed = True
+            continue
+        if "slug" not in obj or "ts" not in obj:
+            malformed = True
+            continue
+        if not isinstance(obj["slug"], str) or not isinstance(obj["ts"], str):
+            malformed = True
+            continue
+        records.append(obj)
+    return records, malformed
+
+
+def outcome_window_tallies(identities, role, n=None):
+    """Per-slug outcome tallies within the last N retros. Returns
+    (tallies, malformed): tallies maps slug -> {"useful": k, "dead_end": k,
+    "corrected": k} counted ONLY for outcomes at/after the window cutoff;
+    malformed is True iff outcomes.jsonl had at least one bad line, in which
+    case callers MUST disable weighting entirely for the run (R7.7) --
+    treat as if no outcomes existed, warn once, never crash. Reused verbatim
+    by GL-004 (status tallies) and GL-033 (report)."""
+    if n is None:
+        n = DEFAULT_OUTCOME_WINDOW
+    records, malformed = _read_outcomes(identities, role)
+    cutoff = _retro_window_cutoff(identities, n)
+    tallies = {}
+    for obj in records:
+        ts = obj.get("ts") or ""
+        if cutoff is not None and ts < cutoff:
+            continue
+        slug = obj["slug"]
+        outcome = obj["outcome"]
+        t = tallies.setdefault(slug, {"useful": 0, "dead_end": 0, "corrected": 0})
+        t[outcome] += 1
+    return tallies, malformed
+
+
+def _outcome_multiplier(tally, step):
+    """Seed-activation multiplier from one note's outcome tally (R7.4). Zero
+    outcomes (empty tally) or a net-zero tally (equal useful vs. dead_end +
+    corrected, including 0/0) returns EXACTLY 1.0 -- multiplying activation
+    by the float 1.0 is exact, so this is the byte-identical-to-today
+    invariant (G6) by construction, not by a tolerance check."""
+    if not tally:
+        return 1.0
+    net = tally.get("useful", 0) - tally.get("dead_end", 0) - tally.get("corrected", 0)
+    if net == 0:
+        return 1.0
+    return max(_MIN_OUTCOME_MULTIPLIER, 1.0 + step * net)
+
+
+def _is_contested(tally):
+    """R7.5: contested = at least one `useful` AND at least one
+    `corrected`/`dead_end` within the window -- visible disagreement, never
+    silently averaged into a neutral multiplier."""
+    if not tally:
+        return False
+    return tally.get("useful", 0) >= 1 and (tally.get("dead_end", 0) + tally.get("corrected", 0)) >= 1
+
+
+def _outcome_config(args):
+    cfg = C.load_config(root=args.root, warn=False) or {}
+    window = C.dig(cfg, "methodology.outcomeWindow")
+    step = C.dig(cfg, "methodology.outcomeMultiplierStep")
+    return (
+        int(window) if window is not None else DEFAULT_OUTCOME_WINDOW,
+        float(step) if step is not None else DEFAULT_OUTCOME_MULTIPLIER_STEP,
+    )
+
+
 # ------------------------------------------------------------------------- mint
 def cmd_mint(identities, args):
     body = sys.stdin.read().rstrip("\n") + "\n"
@@ -501,6 +622,20 @@ def cmd_recall(identities, args):
     paths = _split(args.paths)
     keywords = set(k.lower() for k in _split(args.keywords))
 
+    # outcome weighting (SPEC-GRAPHIFY §7 R7.4/R7.5/R7.7): parsed ONCE per
+    # invocation (§14 latency budget). A malformed outcomes.jsonl warns once
+    # and disables weighting entirely for this run -- empty tallies means
+    # _outcome_multiplier() returns 1.0 everywhere and _is_contested() is
+    # always False, i.e. exactly today's behavior (never crash, exit 0).
+    window, mult_step = _outcome_config(args)
+    tallies, outcomes_malformed = outcome_window_tallies(identities, role, window)
+    if outcomes_malformed:
+        sys.stderr.write(
+            "warning: %s is malformed — outcome weighting disabled for this recall\n"
+            % outcomes_path(identities, role)
+        )
+        tallies = {}
+
     activation = {}   # slug -> float
     events = []       # collected, written after link bumps
 
@@ -512,6 +647,7 @@ def cmd_recall(identities, args):
         hit = any(glob_match(p, g) for p in paths for g in note_globs) or bool(tags & keywords)
         if hit:
             act = 1.0 * (1 + int(fm.get("strength", DEFAULT_STRENGTH)) / 10)
+            act *= _outcome_multiplier(tallies.get(slug, {}), mult_step)
             if act > activation.get(slug, 0):
                 activation[slug] = act
             events.append({"event": "seed", "note": slug, "activation": round(act, 4)})
@@ -532,6 +668,7 @@ def cmd_recall(identities, args):
                         continue
                     fm = notes[slug]["fm"]
                     act = 1.0 * (1 + int(fm.get("strength", DEFAULT_STRENGTH)) / 10)
+                    act *= _outcome_multiplier(tallies.get(slug, {}), mult_step)
                     if act > activation.get(slug, 0):
                         activation[slug] = act
                         events.append({"event": "seed", "note": slug,
@@ -574,7 +711,8 @@ def cmd_recall(identities, args):
             continue
         act = activation[slug]
         sep = 1 if out else 0  # the "\n" that will join this block to the previous one
-        block = _render_block(slug, notes[slug], act, budget_chars - used - sep)
+        contested = _is_contested(tallies.get(slug, {}))
+        block = _render_block(slug, notes[slug], act, budget_chars - used - sep, contested=contested)
         if block is None:
             break
         out.append(block)
@@ -597,15 +735,19 @@ def cmd_recall(identities, args):
     print(text if text else "(no lessons recalled)")
 
 
-def _render_block(slug, note, act, remaining):
+def _render_block(slug, note, act, remaining, contested=False):
     """Choose a tier by activation, downgrade until it fits; None if even a
     title won't fit. Blocks carry NO trailing newline — the caller joins with
-    "\\n" and budgets that separator, so total output stays within the budget."""
+    "\\n" and budgets that separator, so total output stays within the budget.
+    `contested` (R7.5) renders a "⚠ contested" marker in the full and
+    one-liner tiers only; when False the marker is an empty string, so
+    non-contested output is byte-identical to pre-GL-003 rendering (G6)."""
     fm = note["fm"]
     strength = int(fm.get("strength", DEFAULT_STRENGTH))
-    full = "### %s  [strength %d]\n%s" % (slug, strength, note["body"].strip())
-    oneliner = "### %s\ntags: [%s] · paths: [%s]" % (
-        slug, ", ".join(fm.get("tags", []) or []), ", ".join(fm.get("paths", []) or []))
+    marker = "  ⚠ contested" if contested else ""
+    full = "### %s  [strength %d]%s\n%s" % (slug, strength, marker, note["body"].strip())
+    oneliner = "### %s%s\ntags: [%s] · paths: [%s]" % (
+        slug, marker, ", ".join(fm.get("tags", []) or []), ", ".join(fm.get("paths", []) or []))
     title = "- %s" % slug
 
     if act >= 1.0 and len(full) <= remaining:

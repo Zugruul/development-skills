@@ -253,6 +253,18 @@
                     "minimum": 1,
                     "description": "Note strength (SPEC \u00a78.3) at/above which brain.py graduate-check surfaces a note as a graduation candidate (proposed destination: ROLE.md rule / specs[].invariants entry / test-or-lint). graduate-check is read-only — it proposes; graduation itself stays a human-visible retro action (brain.py graduate)."
                 },
+                "outcomeWindow": {
+                    "type": "integer",
+                    "default": 3,
+                    "minimum": 1,
+                    "description": "Number of most-recent retros (SPEC-GRAPHIFY \u00a77 R7.4/R7.5), counted on the retros.log clock rather than wall time, whose recorded outcomes (brain.py outcome) feed recall's seed-activation multiplier and the \u26a0 contested marker. Fewer than N retros ever marked means no window boundary exists yet, so the whole outcome history counts as within-window."
+                },
+                "outcomeMultiplierStep": {
+                    "type": "number",
+                    "default": 0.1,
+                    "minimum": 0,
+                    "description": "Per-net-outcome-point adjustment (SPEC-GRAPHIFY \u00a77 R7.4) applied to a note's seed activation in brain.py recall: multiplier = 1.0 + step \u00d7 (usefulCount \u2212 deadEndCount \u2212 correctedCount) within the outcomeWindow, floored at 0.1. A note with zero recorded outcomes, or a net-zero tally, gets EXACTLY 1.0 \u2014 byte-identical ranking to a brain with no outcomes.jsonl (G6)."
+                },
                 "iterativeUI": {
                     "type": "boolean",
                     "default": true,
