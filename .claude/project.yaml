@@ -305,6 +305,7 @@ paths:
     specDeltaDir: docs/spec-deltas
 methodology:
     tdd: true
+    serialDelivery: true
     maxInProgress: 5
     autoMerge: true
     mergeMethod: squash
