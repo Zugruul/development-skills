@@ -141,3 +141,47 @@ items:
   routing:
     action: brain-note
     ref: orchestrator/check-in-then-replace-stalled-agents
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-21T20:45:00Z'
+iteration:
+  task: Zugruul/development-skills#253
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: low
+  summary: Minor review findings fixed via a scoped mini-TDD fixup (test-to-red first,
+    one commit, orchestrator runs the single final gate)
+  detail: The stdout-vs-stderr notice finding was fixed in one commit with the test
+    adjusted to red first; the dev skipped the full gate and the orchestrator ran
+    it once, avoiding a duplicate ten-minute run.
+  evidence:
+  - Zugruul/development-skills#253
+  generalized: For minor single-file review findings, instruct the dev to adjust the
+    test to red, fix, verify the section only, and commit once — with the orchestrator
+    running the single full gate afterward. Avoids duplicate full-gate runs on trivial
+    fixups.
+  routing:
+    action: brain-note
+    ref: orchestrator/check-in-then-replace-stalled-agents
+- category: recommendation
+  area: docs
+  severity: low
+  summary: Codebase notice/warning stream convention is implicit and easy to violate
+  detail: brain.py consistently writes notices/warnings to stderr, but nothing documents
+    this; a first-pass implementation reached for print() out of habit and only review
+    caught it.
+  evidence:
+  - Zugruul/development-skills#253
+  generalized: Document implicit output-stream conventions (warnings/notices to stderr,
+    data to stdout) in a contributor-facing comment or role doc so first-pass implementations
+    don't violate them and burn a review round.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#290

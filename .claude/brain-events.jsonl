@@ -1036,3 +1036,9 @@
 {"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "copy-fixture-setup-not-spec-prose", "strength": 1, "ts": "2026-07-21T19:52:18+00:00", "type": "NoteMinted", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "background-flag-not-inline-ampersand", "strength": 1, "ts": "2026-07-21T19:52:18+00:00", "type": "NoteMinted", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "check-in-then-replace-stalled-agents", "strength": 1, "ts": "2026-07-21T19:53:05+00:00", "type": "NoteMinted", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "commit-early-in-shared-clone", "task": "Zugruul/development-skills#253", "ts": "2026-07-21T20:34:47+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "verify-fixture-isolates-intended-path", "task": "Zugruul/development-skills#253", "ts": "2026-07-21T20:34:47+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "await-backgrounded-verification-results", "task": "Zugruul/development-skills#253", "ts": "2026-07-21T20:34:47+00:00", "type": "RecallOutcome", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "absence-default-needs-three-states", "strength": 1, "ts": "2026-07-21T20:35:25+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "baseline-corpus-findings-on-main", "strength": 1, "ts": "2026-07-21T20:35:25+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "git-show-not-stash-for-peeking", "strength": 1, "ts": "2026-07-21T20:35:25+00:00", "type": "NoteMinted", "v": 1}
