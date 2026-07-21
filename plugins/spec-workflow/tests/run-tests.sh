@@ -114,6 +114,7 @@ SECTIONS=(
     section-brain-index.sh
     section-brain-hybrid-recall.sh
     section-brain-events.sh
+    section-brain-outcome.sh
     section-entity-index.sh
     section-neural-view-entities.sh
     section-feedback.sh
