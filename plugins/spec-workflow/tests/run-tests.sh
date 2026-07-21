@@ -118,6 +118,7 @@ SECTIONS=(
     section-brain-outcome.sh
     section-brain-outcome-ranking.sh
     section-brain-shrink-guard.sh
+    section-brain-outcome-tallies.sh
     section-entity-index.sh
     section-neural-view-entities.sh
     section-feedback.sh
