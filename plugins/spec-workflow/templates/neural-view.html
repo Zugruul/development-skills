@@ -4193,7 +4193,9 @@ function detachNote(fromRect){
     box.querySelector("canvas").replaceWith(document.createElement("canvas"));
     boot3dViewer(box).catch(()=>{});
   });
-  win.addEventListener("pointerdown", ()=>{ win.style.zIndex = ++noteWinZ; });
+  // capture phase: the drag surfaces stopPropagation on pointerdown, so a
+  // bubble listener would miss header clicks — raise-to-front must win first
+  win.addEventListener("pointerdown", ()=>{ win.style.zIndex = ++noteWinZ; }, true);
   win.querySelector(".close").onclick = ()=>win.remove();
   win.querySelector(".reattach").onclick = ()=>{ win.remove(); if(nd) openNote(nd); };
   win.querySelectorAll("a.wl").forEach(a=>a.onclick=e=>{
@@ -4245,9 +4247,10 @@ function openMediaViewer(src, name){
   win.style.left = "24vw"; win.style.top = "16vh";
   win.style.zIndex = ++noteWinZ;
   win.innerHTML =
-    '<div class="mw-bar" data-drag><span class="mw-name"></span>' +
-      '<button class="iconbtn mw-fs" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>' +
+    '<div class="mw-bar" data-drag>' +
       '<button class="close grip" title="Drag to move window" aria-label="Drag to move window">⠿</button>' +
+      '<span class="mw-name"></span>' +
+      '<button class="iconbtn mw-fs" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>' +
       '<button class="close mw-x" aria-label="Close media window">✕</button></div>' +
     '<div class="mw-imgwrap"><img class="mw-img">' +
       '<div class="mw-zone"><div class="mw-actions">' +
@@ -4296,7 +4299,9 @@ function openMediaViewer(src, name){
     else win.requestFullscreen().catch(()=>{});
   };
   win.querySelector(".mw-x").onclick = ()=>win.remove();
-  win.addEventListener("pointerdown", ()=>{ win.style.zIndex = ++noteWinZ; });
+  // capture phase: the drag surfaces stopPropagation on pointerdown, so a
+  // bubble listener would miss header clicks — raise-to-front must win first
+  win.addEventListener("pointerdown", ()=>{ win.style.zIndex = ++noteWinZ; }, true);
   document.body.appendChild(win);
   wireWinDrag(win);
   return win;
@@ -4387,7 +4392,9 @@ function spawnDetachedNote(nd, d){
     '<div id="i-open"></div><div id="body"></div><div id="links"></div>';
   document.body.appendChild(win);
   renderNoteInto(win, nd, d);
-  win.addEventListener("pointerdown", ()=>{ win.style.zIndex = ++noteWinZ; });
+  // capture phase: the drag surfaces stopPropagation on pointerdown, so a
+  // bubble listener would miss header clicks — raise-to-front must win first
+  win.addEventListener("pointerdown", ()=>{ win.style.zIndex = ++noteWinZ; }, true);
   win.querySelector(".close").onclick = ()=>win.remove();
   win.querySelector(".reattach").onclick = ()=>{ win.remove(); openNote(nd, {force:true}); };
   win.querySelector(".locate").onclick = ()=>flyToNote(nd);
