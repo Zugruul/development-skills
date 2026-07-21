@@ -22,6 +22,22 @@ Or per-repo (shared with everyone opening the repo) via `.claude/settings.json`:
 }
 ```
 
+## Tooling
+
+### Neural View
+
+![](./docs/neural-view.png)
+
+Visualization of "brains" that help guide development and knowledge base over each project. With help of RAG in addition to semantic search we are able to probe it for information.
+
+### UI Mode
+
+![](./docs/ui-mode-example.png)
+![](./docs/ui-mode-annotate.png)
+![](./docs/ui-mode-accessibility.png)
+
+Allows quick iterations over UI before its implementation. With i18n and theming support. Also supports a11y checks to ensure that you are delivering the best accessibility and testability possible as well. 
+
 ## Update
 
 Pull the latest skills from this repo at any time:
