@@ -436,18 +436,23 @@ def _read_outcomes(identities, role):
     return records, malformed
 
 
-def outcome_window_tallies(identities, role, n=None):
+def outcome_window_tallies(identities, role, n=None, full_history=False):
     """Per-slug outcome tallies within the last N retros. Returns
     (tallies, malformed): tallies maps slug -> {"useful": k, "dead_end": k,
     "corrected": k} counted ONLY for outcomes at/after the window cutoff;
     malformed is True iff outcomes.jsonl had at least one bad line, in which
     case callers MUST disable weighting entirely for the run (R7.7) --
     treat as if no outcomes existed, warn once, never crash. Reused verbatim
-    by GL-004 (status tallies) and GL-033 (report)."""
-    if n is None:
-        n = DEFAULT_OUTCOME_WINDOW
+    by GL-004 (status tallies, prune's dead_end rule) and GL-033 (report).
+
+    full_history=True skips the retro-window cutoff entirely and tallies the
+    ENTIRE outcomes.jsonl -- GL-004's prune rule is deliberately full-history
+    (a note that was net-useful long ago but has since gone stale isn't what
+    this signal is about; #248 explicitly calls for full history, not the
+    window used by recall's ranking multiplier). `n` is ignored when
+    full_history is True."""
     records, malformed = _read_outcomes(identities, role)
-    cutoff = _retro_window_cutoff(identities, n)
+    cutoff = None if full_history else _retro_window_cutoff(identities, n if n is not None else DEFAULT_OUTCOME_WINDOW)
     tallies = {}
     for obj in records:
         ts = obj.get("ts") or ""
@@ -491,6 +496,65 @@ def _outcome_config(args):
         int(window) if window is not None else DEFAULT_OUTCOME_WINDOW,
         float(step) if step is not None else DEFAULT_OUTCOME_MULTIPLIER_STEP,
     )
+
+
+# ---------------------------------------------------- outcome tallies + prune rule
+# SPEC-GRAPHIFY §7 R7.6 (GL-004): status tallies + a full-history dead_end prune
+# signal. K is the minimum full-history dead_end count (with zero useful) at
+# which a note becomes a prune candidate under this rule.
+DEFAULT_OUTCOME_DEADEND_PRUNE_THRESHOLD = 2  # methodology.outcomeDeadEndPruneThreshold
+
+
+def _outcome_deadend_prune_threshold(args):
+    cfg = C.load_config(root=args.root, warn=False) or {}
+    k = C.dig(cfg, "methodology.outcomeDeadEndPruneThreshold")
+    return int(k) if k is not None else DEFAULT_OUTCOME_DEADEND_PRUNE_THRESHOLD
+
+
+def _format_tally(tally):
+    """Compact `3✓ 1✗ 1⚠` (useful/dead_end/corrected) rendering of one note's
+    full-history tally. Zero-count fields are omitted; an empty/None tally
+    (the zero-outcome case) renders as "" so callers append nothing -- the
+    byte-identical-to-today invariant for notes with no recorded outcomes."""
+    if not tally:
+        return ""
+    parts = []
+    if tally.get("useful"):
+        parts.append("%d✓" % tally["useful"])
+    if tally.get("dead_end"):
+        parts.append("%d✗" % tally["dead_end"])
+    if tally.get("corrected"):
+        parts.append("%d⚠" % tally["corrected"])
+    return " ".join(parts)
+
+
+def _note_line(slug, fm, tally=None):
+    """The single per-note bullet line shared by `directory` and `status` --
+    directory always calls this with tally=None so its rendering is
+    untouched by GL-004 (byte-identical by construction, not by a
+    parallel-but-separate format string that could drift)."""
+    tags = ", ".join(fm.get("tags", []) or [])
+    flag = " _(graduated)_" if fm.get("graduated") else ""
+    line = "- **%s**%s — [%s]" % (slug, flag, tags)
+    tally_str = _format_tally(tally)
+    if tally_str:
+        line += " — %s" % tally_str
+    return line
+
+
+def _load_outcome_tallies_or_warn(identities, role, label):
+    """outcome_window_tallies(full_history=True) with the shared R7.7
+    malformed-file handling: warn once to stderr, return {} so the caller's
+    rendering/candidacy logic is identical to a brain with no outcomes.jsonl
+    at all. `label` names the command in the warning (status/prune)."""
+    tallies, malformed = outcome_window_tallies(identities, role, full_history=True)
+    if malformed:
+        sys.stderr.write(
+            "warning: %s is malformed — outcome tallies disabled for this %s\n"
+            % (outcomes_path(identities, role), label)
+        )
+        return {}
+    return tallies
 
 
 # ------------------------------------------------------------------------- mint
@@ -851,14 +915,30 @@ def cmd_directory(identities, _args):
             lines.append("_(no notes)_")
         for slug in sorted(notes):
             fm = notes[slug]["fm"]
-            tags = ", ".join(fm.get("tags", []) or [])
-            flag = " _(graduated)_" if fm.get("graduated") else ""
-            lines.append("- **%s**%s — [%s]" % (slug, flag, tags))
+            lines.append(_note_line(slug, fm))
         lines.append("")
     os.makedirs(identities, exist_ok=True)
     out = os.path.join(identities, "DIRECTORY.md")
     open(out, "w", encoding="utf-8").write("\n".join(lines).rstrip() + "\n")
     print("wrote %s (%d role(s))" % (out, len(roles)))
+
+
+def cmd_status(identities, args):
+    """`status <role>` (SPEC-GRAPHIFY §7 R7.6, GL-004): per-note bullet lines
+    for one role, same renderer as `directory`, each gaining a compact
+    outcome tally when the note has recorded outcomes. A note with zero
+    outcomes, or a role whose outcomes.jsonl is absent/malformed, renders its
+    bullet line identically to `directory` -- see _note_line/_format_tally."""
+    role = args.role
+    notes = load_notes(identities, role)
+    tallies = _load_outcome_tallies_or_warn(identities, role, "status")
+    lines = ["# %s — status" % role, ""]
+    if not notes:
+        lines.append("_(no notes)_")
+    for slug in sorted(notes):
+        fm = notes[slug]["fm"]
+        lines.append(_note_line(slug, fm, tallies.get(slug)))
+    print("\n".join(lines))
 
 
 # ----------------------------------------------------------------- entity-index
@@ -1115,11 +1195,35 @@ def cmd_prune(identities, args):
             if created and created < cutoff:
                 candidates.append((key, "never fired, aged out"))
 
-    if not candidates:
+    # outcome-rule candidates (SPEC-GRAPHIFY §7 R7.6, GL-004): a note that is
+    # repeatedly dead_end and never useful, full history (not the retro
+    # window recall's ranking multiplier uses -- #248 wants the whole
+    # record, since a note this bad doesn't get a second chance to redeem
+    # itself just because the window rolled forward). Note-level, so it's
+    # reported alongside the existing link-level candidates but tracked
+    # separately -- this rule is propose-only (see below), never wired into
+    # --apply's removal path, so it can never trigger the shrink guard by
+    # itself; --apply's existing link-removal path is unaffected.
+    K = _outcome_deadend_prune_threshold(args)
+    tallies = _load_outcome_tallies_or_warn(identities, role, "prune")
+    note_candidates = []
+    for slug in sorted(notes):
+        t = tallies.get(slug)
+        if not t:
+            continue
+        if t.get("dead_end", 0) >= K and t.get("useful", 0) == 0:
+            note_candidates.append(
+                (slug, "outcome rule: %d× dead_end, 0 useful (full history, threshold %d)"
+                 % (t["dead_end"], K))
+            )
+
+    if not candidates and not note_candidates:
         print("no prune candidates")
         return
     for key, why in candidates:
         print("%s  (%s)" % (key, why))
+    for slug, why in note_candidates:
+        print("%s  (%s)" % (slug, why))
     if args.apply:
         fraction = _shrink_guard_fraction(args)
         keys = [key for key, _why in candidates]
@@ -1288,6 +1392,10 @@ def main(argv):
 
     sp = sub.add_parser("directory")
     sp.set_defaults(fn=cmd_directory)
+
+    sp = sub.add_parser("status")
+    sp.add_argument("role")
+    sp.set_defaults(fn=cmd_status)
 
     sp = sub.add_parser("entity-index")
     sp.set_defaults(fn=cmd_entity_index)

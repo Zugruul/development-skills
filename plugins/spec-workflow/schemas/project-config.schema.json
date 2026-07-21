@@ -265,6 +265,12 @@
                     "minimum": 0,
                     "description": "Per-net-outcome-point adjustment (SPEC-GRAPHIFY \u00a77 R7.4) applied to a note's seed activation in brain.py recall: multiplier = 1.0 + step \u00d7 (usefulCount \u2212 deadEndCount \u2212 correctedCount) within the outcomeWindow, floored at 0.1. A note with zero recorded outcomes, or a net-zero tally, gets EXACTLY 1.0 \u2014 byte-identical ranking to a brain with no outcomes.jsonl (G6)."
                 },
+                "outcomeDeadEndPruneThreshold": {
+                    "type": "integer",
+                    "default": 2,
+                    "minimum": 1,
+                    "description": "SPEC-GRAPHIFY §7 R7.6 (GL-004): the minimum FULL-HISTORY (not the outcomeWindow retro window) count of dead_end outcomes, with zero useful outcomes, at which brain.py prune flags a note as a candidate under the outcome rule (reason string names the rule and the count/threshold). Recording a single useful outcome for that note clears the candidacy. Propose-only like every other prune rule — prune --apply never removes note files under this rule, only the pre-existing link-level candidates."
+                },
                 "shrinkGuardFraction": {
                     "type": "number",
                     "default": 0.3,

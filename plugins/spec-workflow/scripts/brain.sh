@@ -8,6 +8,7 @@
 #                                                              # precise boolean filter, not fuzzy recall
 #   brain.sh mint <role> <slug> --tags a,b --paths "x/**" --source "..." [--learned-from R --source-note S] [--entities "card:x,card:y"]  # body on stdin
 #   brain.sh directory
+#   brain.sh status <role>                                      # per-note outcome tallies
 #   brain.sh entity-index                                     # regenerate .claude/identities/entity-index.json
 #   brain.sh consult <consumer-role> <owner-role> <slug>
 #   brain.sh prune <role> [--apply]
