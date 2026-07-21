@@ -15,10 +15,15 @@
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 SYNCCFG="$PLUGIN/scripts/sync-configs.py"
 
-# _sc_base_yaml <feedback:true|false> -- a full, VALID (per validate-config.py)
-# project.yaml body, with or without methodology.feedback already set.
+# _sc_base_yaml <feedback:true|false> [serial:absent|true|false, default true]
+# -- a full, VALID (per validate-config.py) project.yaml body, with or
+# without methodology.feedback / methodology.serialDelivery already set.
+# serial defaults to "true" (already present) so every existing call site
+# that predates the ensure-serial-delivery rule keeps its no-op fixtures
+# no-op without having to be touched.
 _sc_base_yaml() {
     local feedback="$1"
+    local serial="${2:-true}"
     cat <<EOF
 # yaml-language-server: \$schema=https://raw.githubusercontent.com/event-sorcerer/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json
 schemaVersion: 2
@@ -57,7 +62,7 @@ commands:
 methodology:
     tdd: true
     isolationSuite: ""
-    maxInProgress: 1$( [[ "$feedback" == "true" ]] && printf '\n    feedback: true' )
+    maxInProgress: 1$( [[ "$feedback" == "true" ]] && printf '\n    feedback: true' )$( [[ "$serial" != "absent" ]] && printf '\n    serialDelivery: %s' "$serial" )
 EOF
 }
 
@@ -72,11 +77,19 @@ _sc_base_yaml_noeol() {
     printf '%s' "$(_sc_base_yaml false)"
 }
 
-# _sc_mkrepo <dir> <feedback:true|false> <add_schema_dup:yes|no>
+# _sc_base_yaml_noeol_serial_absent -- the same NO-trailing-newline trigger
+# as _sc_base_yaml_noeol, but with feedback already present (so
+# ensure-feedback-key never fires) and serialDelivery absent, isolating the
+# corruption to ensure-serial-delivery's own insertion.
+_sc_base_yaml_noeol_serial_absent() {
+    printf '%s' "$(_sc_base_yaml true absent)"
+}
+
+# _sc_mkrepo <dir> <feedback:true|false> <add_schema_dup:yes|no> [serial:absent|true|false, default true]
 # Creates <dir>/origin.git (bare) + <dir>/work (the "live" clone), commits an
 # initial project.yaml on main, and pushes it to origin.
 _sc_mkrepo() {
-    local dir="$1" feedback="$2" schemadup="$3"
+    local dir="$1" feedback="$2" schemadup="$3" serial="${4:-true}"
     mkdir -p "$dir"
     git init -q --bare "$dir/origin.git"
     git init -q -b main "$dir/work"
@@ -85,7 +98,7 @@ _sc_mkrepo() {
     git -C "$dir/work" remote add origin "$dir/origin.git"
     mkdir -p "$dir/work/.claude"
     : > "$dir/work/.claude/.neural-network"
-    _sc_base_yaml "$feedback" > "$dir/work/.claude/project.yaml"
+    _sc_base_yaml "$feedback" "$serial" > "$dir/work/.claude/project.yaml"
     if [[ "$schemadup" == "yes" ]]; then
         # insert a literal top-level $schema: line right after the comment header
         # shellcheck disable=SC2016  # single-quoted sed script: literal $schema, not shell expansion
@@ -114,12 +127,13 @@ EOF
     fi
 }
 
-# _sc_base_yaml_with_delegation <feedback:true|false> -- _sc_base_yaml() plus
-# a delegation.identities block (dev + reviewer, no peer-reviewer) matching
-# this repo's own project.yaml shape.
+# _sc_base_yaml_with_delegation <feedback:true|false> [serial, default true]
+# -- _sc_base_yaml() plus a delegation.identities block (dev + reviewer, no
+# peer-reviewer) matching this repo's own project.yaml shape.
 _sc_base_yaml_with_delegation() {
     local feedback="$1"
-    _sc_base_yaml "$feedback"
+    local serial="${2:-true}"
+    _sc_base_yaml "$feedback" "$serial"
     cat <<'EOF'
 delegation:
     identities:
@@ -500,3 +514,80 @@ check_absent "case p: mem013 rule not named" "mem013-gitignore-managed-block" "$
 after_head="$(_sc_head "$SCP/r/work")"
 check_rc "case p: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
 rm -rf "$SCP"
+
+echo "== sync-configs.py: ensure-serial-delivery, key absent -> adds true (case q) =="
+SCQ="$(mktemp -d)"
+_sc_mkrepo "$SCQ/r" true no absent
+_sc_sync_gitignore "$SCQ/r/work"
+out="$(python3 "$SYNCCFG" --repo "$SCQ/r/work" --apply 2>&1)"
+check "case q: rule applied" "ensure-serial-delivery" "$out"
+check "case q: post-validate ran" "validate post: VALID" "$out"
+check "case q: reports push ok" "push: ok" "$out"
+origin_yaml="$(_sc_origin_project_yaml "$SCQ/r")"
+check "case q: origin's main now has serialDelivery: true" "serialDelivery: true" "$origin_yaml"
+check "case q: local project.yaml updated too" "serialDelivery: true" "$(cat "$SCQ/r/work/.claude/project.yaml")"
+rm -rf "$SCQ"
+
+echo "== sync-configs.py: ensure-serial-delivery, key already true -> no-op, untouched (case r) =="
+SCR="$(mktemp -d)"
+_sc_mkrepo "$SCR/r" true no true
+_sc_sync_gitignore "$SCR/r/work"
+before_head="$(_sc_head "$SCR/r/work")"
+out="$(python3 "$SYNCCFG" --repo "$SCR/r/work" --apply 2>&1)"
+check "case r: reports no-op" "route: no-op" "$out"
+check_absent "case r: rule not named" "ensure-serial-delivery" "$out"
+after_head="$(_sc_head "$SCR/r/work")"
+check_rc "case r: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
+check "case r: serialDelivery: true still present" "serialDelivery: true" "$(cat "$SCR/r/work/.claude/project.yaml")"
+rm -rf "$SCR"
+
+echo "== sync-configs.py: ensure-serial-delivery, key explicitly false -> no-op, untouched (case s) =="
+SCS="$(mktemp -d)"
+_sc_mkrepo "$SCS/r" true no false
+_sc_sync_gitignore "$SCS/r/work"
+before_head="$(_sc_head "$SCS/r/work")"
+out="$(python3 "$SYNCCFG" --repo "$SCS/r/work" --apply 2>&1)"
+check "case s: reports no-op" "route: no-op" "$out"
+check_absent "case s: rule not named" "ensure-serial-delivery" "$out"
+after_head="$(_sc_head "$SCS/r/work")"
+check_rc "case s: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
+check "case s: serialDelivery: false still present (explicit choice respected)" "serialDelivery: false" "$(cat "$SCS/r/work/.claude/project.yaml")"
+rm -rf "$SCS"
+
+echo "== sync-configs.py: ensure-serial-delivery, dry-run does not write (case t) =="
+SCT="$(mktemp -d)"
+_sc_mkrepo "$SCT/r" true no absent
+_sc_sync_gitignore "$SCT/r/work"
+before="$(cat "$SCT/r/work/.claude/project.yaml")"
+before_head="$(_sc_head "$SCT/r/work")"
+out="$(python3 "$SYNCCFG" --repo "$SCT/r/work" 2>&1)"
+check "case t: reports dry-run" "dry-run" "$out"
+check "case t: names the rule that would apply" "ensure-serial-delivery" "$out"
+after="$(cat "$SCT/r/work/.claude/project.yaml")"
+check_rc "case t: file untouched" 0 "$([[ "$before" == "$after" ]] && echo 0 || echo 1)"
+after_head="$(_sc_head "$SCT/r/work")"
+check_rc "case t: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
+rm -rf "$SCT"
+
+echo "== sync-configs.py: ensure-serial-delivery, post-edit INVALID rolls back (case u) =="
+SCU="$(mktemp -d)"
+mkdir -p "$SCU/r"
+git init -q --bare "$SCU/r/origin.git"
+git init -q -b main "$SCU/r/work"
+git -C "$SCU/r/work" config user.name "Fixture Human"
+git -C "$SCU/r/work" config user.email "fixture@example.com"
+git -C "$SCU/r/work" remote add origin "$SCU/r/origin.git"
+mkdir -p "$SCU/r/work/.claude"
+: > "$SCU/r/work/.claude/.neural-network"
+_sc_base_yaml_noeol_serial_absent > "$SCU/r/work/.claude/project.yaml"
+git -C "$SCU/r/work" add -A
+git -C "$SCU/r/work" commit -q -m init
+git -C "$SCU/r/work" push -q origin main
+before_head="$(_sc_head "$SCU/r/work")"
+out="$(python3 "$SYNCCFG" --repo "$SCU/r/work" --apply 2>&1)"
+check "case u: pre-validate passed (original file was valid)" "validate pre: VALID" "$out"
+check "case u: post-validate caught the corruption" "validate post: INVALID" "$out"
+check "case u: reports rolled back" "rolled-back-invalid" "$out"
+after_head="$(_sc_head "$SCU/r/work")"
+check_rc "case u: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
+rm -rf "$SCU"
