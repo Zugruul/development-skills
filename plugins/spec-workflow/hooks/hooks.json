@@ -18,6 +18,19 @@
                     {
                         "type": "command",
                         "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/guard-board-move.sh\""
+                    },
+                    {
+                        "type": "command",
+                        "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/guard-brain-access.sh\""
+                    }
+                ]
+            },
+            {
+                "matcher": "Read",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/guard-brain-access.sh\""
                     }
                 ]
             }

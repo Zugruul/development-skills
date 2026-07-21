@@ -47,6 +47,13 @@ check_absent() { # name  forbidden-substring  actual-output
 hookjson() { printf '{"tool_input":{"command":"%s"}}' "$1"; }
 hookjsonpy() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]}}))' "$1"; }
 
+# hookjson_named <tool_name> <input-key> <input-value> -- builds the general
+# {"tool_name":..., "tool_input":{<key>:<value>}} shape guard-brain-access.sh
+# reads (Read's file_path, Bash's command, or any other tool_name where the
+# key/value are irrelevant filler). Routed through python's json like
+# hookjsonpy() so arbitrary quoting is safe.
+hookjson_named() { python3 -c 'import json,sys; print(json.dumps({"tool_name":sys.argv[1], "tool_input":{sys.argv[2]:sys.argv[3]}}))' "$1" "$2" "$3"; }
+
 # --- server-lifecycle helpers (SPEC 7.5) ---------------------------------
 # Server-lifecycle sections (neural-view, ui-hub) bind a real TCP port. Under
 # concurrent build-loop lanes, two runs picking the same fixed port race and

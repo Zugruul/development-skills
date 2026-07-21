@@ -98,6 +98,7 @@ SECTIONS=(
     section-neural-view-render-body.sh
     section-lifecycle-retry.sh
     section-gate-core.sh
+    section-guard-brain-access.sh
     section-gate-fingerprint.sh
     section-gate-preflight.sh
     section-comment-steering.sh
