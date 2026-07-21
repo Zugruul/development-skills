@@ -80,3 +80,64 @@ items:
   routing:
     action: backlog
     ref: Zugruul/development-skills#285
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-21T20:05:00Z'
+iteration:
+  task: Zugruul/development-skills#252
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: concurrency
+  severity: high
+  summary: Orchestrator file restore in a shared clone silently discarded a dev agent's
+    uncommitted edit
+  detail: While extracting a human's doc changes to main via a temp worktree, the
+    orchestrator ran checkout -- on a file that also held the dev agent's uncommitted
+    edit; the edit vanished with no error, costing one gate-failure cycle before the
+    dev re-applied it. Root cause confirmed, not a race.
+  evidence:
+  - Zugruul/development-skills#252
+  generalized: When an orchestrator and a dev agent share one working tree, any orchestrator
+    git restore/checkout of a file can silently destroy the dev's uncommitted work.
+    Either isolate lanes in worktrees, or require dev agents to commit early and often
+    so no multi-tool-call edit sits uncommitted.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#285
+- category: worked-well
+  area: review
+  severity: low
+  summary: Reviewer probing the agents' own execution environment caught a silently-disabled
+    feature before merge
+  detail: The review brief asked the reviewer to test from a linked worktree; that
+    surfaced the file-form .git bug that all fixture tests missed.
+  evidence:
+  - Zugruul/development-skills#252
+  generalized: Review briefs should direct reviewers to exercise the code in the build
+    system's own execution environment (e.g. linked git worktrees), not only in textbook
+    fixtures — environment-layout blind spots fail silently under fail-silent contracts.
+  routing:
+    action: brain-note
+    ref: reviewer/fail-silent-hides-valid-layouts
+- category: friction
+  area: other
+  severity: low
+  summary: A stalled reviewer agent went silent through two check-ins and had to be
+    replaced
+  detail: The first reviewer never delivered a record; a replacement produced a full
+    record within one round. Idle notifications alone don't distinguish 'working'
+    from 'wedged'.
+  evidence:
+  - Zugruul/development-skills#252
+  generalized: Subagent idle notifications don't distinguish progress from wedging;
+    orchestrators need a check-in-then-replace protocol with a hard deadline, and
+    agent briefs should explicitly require sending the final report before going idle.
+  routing:
+    action: brain-note
+    ref: orchestrator/check-in-then-replace-stalled-agents
