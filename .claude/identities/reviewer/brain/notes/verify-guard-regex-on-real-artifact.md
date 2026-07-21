@@ -3,7 +3,7 @@ tags: [review, verification, fixtures]
 paths: ["**"]
 strength: 4
 source: "PR#190 CDX-040 retro (scope broadened from MEM-031)"
-graduated: false
+graduated: true
 created: 2026-07-07
 ---
 

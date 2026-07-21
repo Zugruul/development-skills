@@ -1,27 +1,37 @@
 {
   "avoid-git-checkout-in-shared-working-directory->verify-branch-state-before-acting-in-shared-checkout": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "check-helper-is-substring-not-equality->verify-guard-regex-on-real-artifact": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "confirm-named-scope-exclusions-respected->note-dont-gate-on-unrelated-findings": {
+    "fires": 1,
+    "last": "2026-07-20",
+    "weight": 0.5
+  },
+  "distinguish-missed-vs-uncatchable-findings->verify-portability-claims-in-target-environment": {
+    "fires": 1,
+    "last": "2026-07-20",
+    "weight": 0.5
+  },
+  "enumerate-sibling-gates-after-a-fix->test-per-branch-structural-shape": {
     "fires": 0,
     "last": null,
     "weight": 0.5
   },
-  "distinguish-missed-vs-uncatchable-findings->verify-portability-claims-in-target-environment": {
+  "enumerate-sibling-gates-after-a-fix->verify-guard-regex-on-real-artifact": {
     "fires": 0,
     "last": null,
     "weight": 0.5
   },
   "golden-identical-covers-absent-not-present->parity-check-new-vs-existing-path": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "grep-for-duplicated-protocol-text->audit-new-path-parity-before-writing": {
@@ -30,163 +40,168 @@
     "weight": 0.5
   },
   "grep-for-known-bug-class-before-deep-analysis->verify-portability-claims-in-target-environment": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "local-gate-green-doesnt-imply-ci-green-for-infra->confirm-external-asset-before-ci": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "local-gate-green-doesnt-imply-ci-green-for-infra->pin-external-tool-versions-in-ci": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "match-repo-security-baseline->verify-guard-regex-on-real-artifact": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "mutation-test-verify-suite-discriminates->reproduce-claimed-bug-fix-before-and-after": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "mutation-test-verify-suite-discriminates->verify-proximity-checks-dont-bleed-into-next-record": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "name-reusable-infra-for-followups-explicitly->front-load-exact-mechanics-in-design-docs": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "name-reusable-infra-for-followups-explicitly->separate-live-repo-state-tests-from-fixtures": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "parity-check-new-vs-existing-path->audit-new-path-parity-before-writing": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "parity-check-new-vs-existing-path->golden-identical-covers-absent-not-present": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "probe-spec-silent-input-categories->trace-boundary-operators-by-hand": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "red-commit-worktree-verify->recompute-hashes-never-eyeball": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "red-commit-worktree-verify->reports-are-not-the-code": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "reproduce-claimed-bug-fix-before-and-after->verify-backcompat-claims-algebraically": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "reproduce-claimed-bug-fix-before-and-after->verify-tdd-empirically-when-log-is-thin": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "spot-check-large-data-files-at-boundaries->verify-guard-regex-on-real-artifact": {
+    "fires": 1,
+    "last": "2026-07-20",
+    "weight": 0.5
+  },
+  "test-per-branch-structural-shape->enumerate-sibling-gates-after-a-fix": {
     "fires": 0,
     "last": null,
     "weight": 0.5
   },
   "trace-boundary-operators-by-hand->equality-guards-invite-ordering-probes": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "trace-dict-merge-for-key-collisions->verify-backcompat-claims-algebraically": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "trace-test-setup-vs-comment->verify-guard-regex-on-real-artifact": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "verify-backcompat-claims-algebraically->verify-tdd-empirically-when-log-is-thin": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "verify-doc-links-and-quotes-against-live-source->confirm-named-scope-exclusions-respected": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "verify-doc-links-and-quotes-against-live-source->verify-guard-regex-on-real-artifact": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "verify-guard-regex-on-real-artifact->match-repo-security-baseline": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "verify-guard-regex-on-real-artifact->recompute-hashes-never-eyeball": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "verify-guard-regex-on-real-artifact->red-commit-worktree-verify": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "verify-ordering-assertions-at-two-levels->trace-boundary-operators-by-hand": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "verify-ordering-assertions-at-two-levels->verify-guard-regex-on-real-artifact": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "verify-portability-claims-in-target-environment->local-gate-green-doesnt-imply-ci-green-for-infra": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "verify-portability-claims-in-target-environment->verify-guard-regex-on-real-artifact": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "verify-proximity-checks-dont-bleed-into-next-record->reproduce-claimed-bug-fix-before-and-after": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "verify-proximity-checks-dont-bleed-into-next-record->trace-dict-merge-for-key-collisions": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   },
   "verify-tdd-empirically-when-log-is-thin->verify-red-test-genuinely-discriminates": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-07-20",
     "weight": 0.5
   }
 }
