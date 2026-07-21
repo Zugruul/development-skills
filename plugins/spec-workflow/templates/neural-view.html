@@ -484,6 +484,9 @@ canvas.grabbing{cursor:grabbing}
    is relative to the docked spot, so fall back to a small fade instead.
    .dragging suspends the transition so the panel tracks the pointer 1:1. */
 #inspect .close,.note-window .close{float:right;cursor:pointer;color:var(--muted);border:0;background:none;font-size:1rem;font-family:var(--mono)}
+/* pin: dimmed/grayscale until active (emoji glyph ignores color) */
+#inspect-pin{filter:grayscale(1);opacity:.55;font-size:.85rem}
+#inspect-pin.on{filter:none;opacity:1}
 #inspect .close.grip,.note-window .close.grip{cursor:grab;touch-action:none}
 #inspect h3,.note-window h3{margin:.1rem 0 .1rem;font-size:.9rem;color:var(--cyan);letter-spacing:.04em;word-break:break-word}
 #inspect .role,.note-window .role{font-size:.6rem;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
@@ -496,6 +499,8 @@ canvas.grabbing{cursor:grabbing}
   padding:.9rem 1rem;resize:both;min-width:250px;min-height:150px}
 .note-window.dragging{user-select:none}
 .note-window.dragging .close.grip{cursor:grabbing}
+.note-window [data-drag]{cursor:grab}
+.note-window.dragging [data-drag]{cursor:grabbing}
 /* media viewer window: opened by clicking an inline note image — same
    detached-window chrome plus New tab / Download / fullscreen actions;
    ⛶ fullscreens the window itself (element fullscreen, stays in the page) */
@@ -794,6 +799,7 @@ canvas.grabbing{cursor:grabbing}
   <button class="close" id="inspect-close" aria-label="Close note">✕</button>
   <button class="close grip" id="inspect-grip" title="Drag to detach into its own window" aria-label="Drag to detach into its own window">⠿</button>
   <button class="close" id="inspect-locate" title="Fly to this note in the 3D view" aria-label="Fly to this note in the 3D view">◎</button>
+  <button class="close" id="inspect-pin" title="Pin — while pinned, new notes open as detached windows instead of replacing this one" aria-label="Pin sidebar note" aria-pressed="false">📌</button>
   <div class="role" id="i-role"></div>
   <h3 id="i-title"></h3>
   <div class="chips" id="i-chips"></div>
@@ -4020,6 +4026,12 @@ document.getElementById("talk-copy").onclick = async ()=>{
 const panel=document.getElementById("inspect");
 document.getElementById("inspect-close").onclick=()=>{ panel.classList.remove("open"); panel.setAttribute("aria-hidden","true"); panel.setAttribute("inert",""); };
 document.getElementById("inspect-locate").onclick=()=>{ if(panel.__nd) flyToNote(panel.__nd); };
+document.getElementById("inspect-pin").onclick=()=>{
+  panel.__pinned = !panel.__pinned;
+  const b = document.getElementById("inspect-pin");
+  b.classList.toggle("on", panel.__pinned);
+  b.setAttribute("aria-pressed", String(panel.__pinned));
+};
 
 // ---- note media (#289): resolve a note's markdown media against /file/ ----
 // Images/videos render inline; .glb/.gltf/.obj/.stl become live 3D viewers
@@ -4050,7 +4062,7 @@ function hydrateNoteMedia(scope, nd){
     }
   });
 }
-window.neuralNotes = { hydrate: hydrateNoteMedia, fileUrl };   // small public surface (also used by tests)
+window.neuralNotes = { hydrate: hydrateNoteMedia, fileUrl, open: (...a)=>openNote(...a) };   // small public surface (also used by tests)
 function make3dBlock(name, url){
   const box = document.createElement("div");
   box.className = "n3d"; box.dataset.name = name; box.dataset.url = url;
@@ -4178,28 +4190,38 @@ function detachNote(fromRect){
   });
   const viewBtn = win.querySelector('[id="i-open"] button');
   if(viewBtn && nd) viewBtn.onclick = ()=>openExternal(nd);
+  // header strip (role line + title) doubles as the drag surface
+  for(const sel of ['[id="i-role"]', "h3"]){
+    const el = win.querySelector(sel);
+    if(el) el.setAttribute("data-drag", "");
+  }
   wireWinDrag(win);
   return win;
 }
-// shared window-drag: any .note-window moves by its ⠿ grip
+// shared window-drag: a .note-window moves by its ⠿ grip AND by any element
+// marked data-drag (the whole header strip) — pointerdowns on buttons/links
+// inside a surface still click through, everything else starts the drag
 function wireWinDrag(win){
-  const grip = win.querySelector(".grip");
+  const surfaces = [win.querySelector(".grip"), ...win.querySelectorAll("[data-drag]")].filter(Boolean);
   let off = null;
-  grip.addEventListener("pointerdown", ev=>{
-    const r = win.getBoundingClientRect();
-    off = {dx: ev.clientX - r.left, dy: ev.clientY - r.top};
-    win.classList.add("dragging");
-    try{ grip.setPointerCapture(ev.pointerId); }catch{}
-    ev.preventDefault(); ev.stopPropagation();
-  });
-  grip.addEventListener("pointermove", ev=>{
-    if(!off) return;
-    win.style.left = Math.max(0, ev.clientX - off.dx) + "px";
-    win.style.top = Math.max(0, ev.clientY - off.dy) + "px";
-  });
-  const end = ev=>{ if(!off) return; off = null; win.classList.remove("dragging"); try{ grip.releasePointerCapture(ev.pointerId); }catch{} };
-  grip.addEventListener("pointerup", end);
-  grip.addEventListener("pointercancel", end);
+  for(const surf of surfaces){
+    surf.addEventListener("pointerdown", ev=>{
+      if(ev.target !== surf && ev.target.closest("button, a, input, select, textarea") && !ev.target.closest(".grip")) return;
+      const r = win.getBoundingClientRect();
+      off = {dx: ev.clientX - r.left, dy: ev.clientY - r.top};
+      win.classList.add("dragging");
+      try{ surf.setPointerCapture(ev.pointerId); }catch{}
+      ev.preventDefault(); ev.stopPropagation();
+    });
+    surf.addEventListener("pointermove", ev=>{
+      if(!off) return;
+      win.style.left = Math.max(0, ev.clientX - off.dx) + "px";
+      win.style.top = Math.max(0, ev.clientY - off.dy) + "px";
+    });
+    const end = ev=>{ if(!off) return; off = null; win.classList.remove("dragging"); try{ surf.releasePointerCapture(ev.pointerId); }catch{} };
+    surf.addEventListener("pointerup", end);
+    surf.addEventListener("pointercancel", end);
+  }
 }
 // media viewer: clicking an inline note image opens the image as its own
 // detached window with New tab / Download / in-page fullscreen (⛶) actions
@@ -4211,14 +4233,29 @@ function openMediaViewer(src, name){
   win.innerHTML =
     '<button class="close" aria-label="Close media window">✕</button>' +
     '<button class="close grip" title="Drag to move window" aria-label="Drag to move window">⠿</button>' +
-    '<div class="mw-bar"><span class="mw-name"></span>' +
+    '<div class="mw-bar" data-drag><span class="mw-name"></span>' +
       '<button class="iconbtn mw-newtab" type="button">New tab</button>' +
       '<a class="iconbtn mw-dl" download>Download</a>' +
       '<button class="iconbtn mw-fs" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button></div>' +
     '<img class="mw-img">';
   win.querySelector(".mw-name").textContent = name;
-  win.querySelector(".mw-img").src = src;
-  win.querySelector(".mw-img").alt = name;
+  const im = win.querySelector(".mw-img");
+  im.alt = name;
+  // fit the WINDOW to the image's aspect ratio once its size is known: scale
+  // to at most 70vw × (80vh − chrome) so the full image is visible with no
+  // internal scroll/crop, never upscaled past natural size, then nudge the
+  // window back on-screen if the new size pushed it off an edge
+  im.onload = ()=>{
+    if(!im.naturalWidth || !im.naturalHeight) return;
+    const maxW = Math.min(innerWidth*.7, 900), maxH = innerHeight*.8 - 70;
+    const s = Math.min(maxW/im.naturalWidth, maxH/im.naturalHeight, 1);
+    win.style.width = Math.max(260, Math.round(im.naturalWidth*s) + 34) + "px";
+    im.style.maxHeight = Math.round(im.naturalHeight*s) + "px";
+    const r = win.getBoundingClientRect();
+    if(r.right > innerWidth) win.style.left = Math.max(8, innerWidth - r.width - 16) + "px";
+    if(r.bottom > innerHeight) win.style.top = Math.max(8, innerHeight - r.height - 16) + "px";
+  };
+  im.src = src;
   win.querySelector(".mw-newtab").onclick = ()=>window.open(src, "_blank");
   const dl = win.querySelector(".mw-dl"); dl.href = src; dl.setAttribute("download", name);
   win.querySelector(".mw-fs").onclick = ()=>{
@@ -4262,12 +4299,14 @@ function mediaName(src){ try{ return decodeURIComponent(src.split("/").pop().spl
   grip.addEventListener("pointerup", end);
   grip.addEventListener("pointercancel", end);
 }
-async function openNote(nd){
-  let d; try{ d=await (await fetch(`/note/${encodeURIComponent(nd.repo)}/${encodeURIComponent(nd.role)}/${encodeURIComponent(nd.slug)}`)).json(); }catch{ return; }
-  panel.__nd = nd;   // remembered so detachNote/⌖ can re-open this note
-  document.getElementById("i-role").textContent = repoList.length>1 ? `${nd.repo} · ${nd.role}` : nd.role;
-  document.getElementById("i-title").textContent = nd.slug;
-  const chips=document.getElementById("i-chips"); chips.innerHTML="";
+// render a fetched note into `root` — the docked panel, or a detached window
+// carrying the same slot markup (ids duplicate there on purpose: the CSS is
+// id-scoped and JS lookups always resolve the docked panel first in the DOM)
+function renderNoteInto(root, nd, d){
+  const q = id=>root.querySelector('[id="'+id+'"]');
+  q("i-role").textContent = repoList.length>1 ? `${nd.repo} · ${nd.role}` : nd.role;
+  q("i-title").textContent = nd.slug;
+  const chips=q("i-chips"); chips.innerHTML="";
   const fm=d.frontmatter||{};
   const addChip=(txt,on)=>{ const s=document.createElement("span"); s.className="chip"+(on?" on":""); s.textContent=txt; chips.appendChild(s); };
   addChip("strength "+(fm.strength ?? nd.strength ?? "?"));
@@ -4276,7 +4315,7 @@ async function openNote(nd){
   for(const p of (Array.isArray(fm.paths)?fm.paths:[])) addChip(p);
   // "View in ..." — labeled with the viewer the server detected (GET /viewer
   // at boot); external opening is deliberate (this button), never click-implied.
-  const openDiv = document.getElementById("i-open"); openDiv.innerHTML = "";
+  const openDiv = q("i-open"); openDiv.innerHTML = "";
   if(window.__viewer){
     const VIEWER_LABEL = {obsidian:"Obsidian", vscode:"VS Code", terminal:"Terminal"};
     const b = document.createElement("button");
@@ -4284,16 +4323,55 @@ async function openNote(nd){
     b.onclick = ()=>openExternal(nd);
     openDiv.appendChild(b);
   }
-  document.getElementById("body").innerHTML = d.bodyHtml||"<p class='label'>empty note</p>";
-  const lk=document.getElementById("links");
-  lk.innerHTML = (d.links&&d.links.length)
+  q("body").innerHTML = d.bodyHtml||"<p class='label'>empty note</p>";
+  q("links").innerHTML = (d.links&&d.links.length)
     ? '<div class="label">Synapses</div>'+d.links.map(l=>`<div class="ln"><span>${l.dir==="out"?"→":"←"} <b>${escapeHtml(l.target)}</b></span><span>w ${l.weight} · ×${l.fires}</span></div>`).join("")
     : '<div class="label">no synapses</div>';
   // clicking a wikilink jumps to that note in the same brain
-  document.getElementById("body").querySelectorAll("a.wl").forEach(a=>a.onclick=e=>{
+  q("body").querySelectorAll("a.wl").forEach(a=>a.onclick=e=>{
     e.preventDefault(); const tgt=nodeById.get(nd.repo+"/"+nd.role+"/"+a.dataset.slug); if(tgt) openNote(tgt);
   });
-  hydrateNoteMedia(document.getElementById("body"), nd);
+  hydrateNoteMedia(q("body"), nd);
+}
+// pinned sidebar (📌 distinct from detach/unlink): while the docked note is
+// pinned, a note that would REPLACE it opens as a detached window instead
+let detachStagger = 0;
+function spawnDetachedNote(nd, d){
+  const r = panel.getBoundingClientRect();
+  const off = (detachStagger++ % 5) * 28;
+  const win = document.createElement("aside");
+  win.className = "hud note-window";
+  win.style.left = Math.max(8, r.left - 40 - off) + "px";
+  win.style.top = Math.min(innerHeight - 200, r.top + off) + "px";
+  win.style.width = r.width + "px";
+  win.style.zIndex = ++noteWinZ;
+  win.innerHTML =
+    '<button class="close" aria-label="Close note window">✕</button>' +
+    '<button class="close reattach" title="Re-attach to sidebar" aria-label="Re-attach to sidebar">⌖</button>' +
+    '<button class="close grip" title="Drag to move window" aria-label="Drag to move window">⠿</button>' +
+    '<button class="close locate" title="Fly to this note in the 3D view" aria-label="Fly to this note in the 3D view">◎</button>' +
+    '<div class="role" id="i-role" data-drag></div><h3 id="i-title" data-drag></h3><div class="chips" id="i-chips"></div>' +
+    '<div id="i-open"></div><div id="body"></div><div id="links"></div>';
+  document.body.appendChild(win);
+  renderNoteInto(win, nd, d);
+  win.addEventListener("pointerdown", ()=>{ win.style.zIndex = ++noteWinZ; });
+  win.querySelector(".close").onclick = ()=>win.remove();
+  win.querySelector(".reattach").onclick = ()=>{ win.remove(); openNote(nd, {force:true}); };
+  win.querySelector(".locate").onclick = ()=>flyToNote(nd);
+  wireWinDrag(win);
+  return win;
+}
+async function openNote(nd, opts){
+  let d; try{ d=await (await fetch(`/note/${encodeURIComponent(nd.repo)}/${encodeURIComponent(nd.role)}/${encodeURIComponent(nd.slug)}`)).json(); }catch{ return; }
+  // pinned docked note holds its slot: different notes open detached instead
+  // (⌖ re-attach passes force to deliberately take the slot back)
+  if(panel.__pinned && panel.classList.contains("open") && !(opts && opts.force)
+     && panel.__nd && (panel.__nd.repo!==nd.repo || panel.__nd.role!==nd.role || panel.__nd.slug!==nd.slug)){
+    spawnDetachedNote(nd, d);
+    return;
+  }
+  panel.__nd = nd;   // remembered so detachNote/⌖/◎ can re-open this note
+  renderNoteInto(panel, nd, d);
   panel.classList.add("open"); panel.setAttribute("aria-hidden","false"); panel.removeAttribute("inert");
   // the note card and the voice settings panel share the same slot — opening
   // one closes the other (the cog handler does the reverse)
