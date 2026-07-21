@@ -1014,3 +1014,11 @@
 {"action": "brain-note", "idx": 1, "itemTs": "2026-07-20T00:00:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-20T06:00:44+00:00", "type": "FeedbackRouted", "v": 1}
 {"action": "upstream", "idx": 2, "itemTs": "2026-07-20T00:00:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-20T06:00:44+00:00", "type": "FeedbackRouted", "v": 1}
 {"itemCount": 3, "itemTs": "2026-07-20T00:00:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-20T06:01:11+00:00", "type": "FeedbackArchived", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "batch-red-across-surfaces", "task": "Zugruul/development-skills#245", "ts": "2026-07-21T09:56:34+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "deterministic-repro-fast", "task": "Zugruul/development-skills#245", "ts": "2026-07-21T09:56:34+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "capture-dont-transcribe", "task": "Zugruul/development-skills#245", "ts": "2026-07-21T09:56:34+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "dead_end", "repo": "Zugruul/development-skills", "role": "dev", "slug": "bash32-empty-array-set-u", "task": "Zugruul/development-skills#245", "ts": "2026-07-21T09:56:34+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "stderr-suppression-hides-evidence", "task": "Zugruul/development-skills#246", "ts": "2026-07-21T09:56:34+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "single-cause-fixtures", "task": "Zugruul/development-skills#249", "ts": "2026-07-21T09:56:34+00:00", "type": "RecallOutcome", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "gate-sh-records-suite-does-not", "strength": 1, "ts": "2026-07-21T09:57:04+00:00", "type": "NoteMinted", "v": 1}
+{"key": "gate-sh-records-suite-does-not->gate-runs-outlive-agent-turns", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-21T09:57:04+00:00", "type": "LinkFormed", "v": 1}

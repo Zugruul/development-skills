@@ -209,6 +209,11 @@
     "last": "2026-07-20",
     "weight": 0.5
   },
+  "gate-sh-records-suite-does-not->gate-runs-outlive-agent-turns": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "guards-are-not-cache-targets->second-order-after-concurrency-fix": {
     "fires": 12,
     "last": "2026-07-20",
