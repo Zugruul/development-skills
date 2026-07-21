@@ -119,6 +119,11 @@
     "last": null,
     "weight": 0.5
   },
+  "verify-claimed-push-and-scope->gate-runs-outlive-agent-turns": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "verify-live-system-not-just-local-artifacts->local-gate-green-doesnt-imply-ci-green-for-infra": {
     "fires": 0,
     "last": null,

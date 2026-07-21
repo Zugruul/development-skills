@@ -124,6 +124,11 @@
     "last": null,
     "weight": 0.5
   },
+  "review-loop-infra-against-restart->reproduce-then-verify-fix": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "spot-check-large-data-files-at-boundaries->verify-guard-regex-on-real-artifact": {
     "fires": 1,
     "last": "2026-07-20",
