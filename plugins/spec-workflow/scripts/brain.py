@@ -647,6 +647,178 @@ def _recency_decay_multiplier(retros, k, factor, touch_date):
     return factor ** overshoot
 
 
+# ---------------------------------------------------------------- staleness
+# GL-011 / SPEC-GRAPHIFY §8 R8.2, R8.5: a note renders `⟳ stale — re-verify`
+# when any of its `paths` globs match a file changed by a git commit AFTER
+# the note's `created` (or latest re-mint's `last-touched`, GL-010's field --
+# reused as-is rather than adding a second timestamp) date. One batched git
+# subprocess per recall regardless of note count (R8.2's "on-demand at
+# recall time"); the underlying commit list is cached per (role, HEAD) so a
+# second recall at the same HEAD costs zero subprocesses. Any failure -- no
+# git binary, not a repo, a shallow clone missing the needed range -- must
+# degrade to "no flags, exit 0, no warning" (R8.5): every helper below
+# returns None/{} on failure instead of raising.
+def _staleness_since_date(fm):
+    return fm.get("last-touched") or fm.get("created")
+
+
+def _staleness_cache_path(identities, role):
+    return os.path.join(brain_dir(identities, role), ".staleness-cache.json")
+
+
+def _read_staleness_cache(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def _write_staleness_cache(path, head, since, commits):
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"head": head, "since": since, "commits": commits}, f)
+    except OSError:
+        pass
+
+
+def _resolve_git_dirs(root):
+    """Resolve (git_dir, common_dir) for `root` with NO subprocess.
+    `git_dir` is where HEAD lives; `common_dir` is where shared refs/
+    packed-refs live -- the same as `git_dir` for a plain repo (`.git` is a
+    directory), but DIFFERENT for a linked worktree, where `.git` is a FILE
+    containing `gitdir: <path>` (absolute or relative to `root`) pointing at
+    a per-worktree dir under the main repo's `.git/worktrees/<name>/`; that
+    dir's own `commondir` file (absolute or relative to it) names the shared
+    dir holding `refs/`/`packed-refs`. None if `root` isn't a git repo, or
+    `.git` is a form this doesn't recognize -- callers must treat None as
+    "omit staleness" (R8.5), not raise."""
+    git_path = os.path.join(root, ".git")
+    if os.path.isdir(git_path):
+        return git_path, git_path
+    try:
+        with open(git_path, encoding="utf-8") as f:
+            first_line = f.readline()
+    except OSError:
+        return None
+    if not first_line.startswith("gitdir:"):
+        return None
+    git_dir = first_line[len("gitdir:"):].strip()
+    if not os.path.isabs(git_dir):
+        git_dir = os.path.normpath(os.path.join(root, git_dir))
+    common_dir = git_dir
+    try:
+        with open(os.path.join(git_dir, "commondir"), encoding="utf-8") as f:
+            common = f.readline().strip()
+        common_dir = common if os.path.isabs(common) else os.path.normpath(os.path.join(git_dir, common))
+    except OSError:
+        pass
+    return git_dir, common_dir
+
+
+def _git_head_sha(root):
+    """Resolve the current commit sha with NO subprocess -- a plain read of
+    HEAD (and, for a symbolic ref, the ref file it points at -- checked in
+    both the per-worktree and shared common dir, since a worktree's own
+    branch ref is shared, falling back to the shared `packed-refs`).
+    Filesystem-only so a cache-hit recall (same HEAD) truly costs zero
+    subprocesses (AC4). None if `root` isn't a git repo, or for any layout
+    `_resolve_git_dirs` doesn't understand -- callers must treat None as
+    "omit staleness" (R8.5), not raise."""
+    resolved = _resolve_git_dirs(root)
+    if resolved is None:
+        return None
+    git_dir, common_dir = resolved
+    try:
+        head = open(os.path.join(git_dir, "HEAD"), encoding="utf-8").read().strip()
+    except OSError:
+        return None
+    if not head.startswith("ref:"):
+        return head or None
+    ref = head[len("ref:"):].strip()
+    for base in (git_dir, common_dir):
+        try:
+            return open(os.path.join(base, ref), encoding="utf-8").read().strip()
+        except OSError:
+            continue
+    try:
+        with open(os.path.join(common_dir, "packed-refs"), encoding="utf-8") as f:
+            for line in f:
+                if line.strip().endswith(" " + ref):
+                    return line.split()[0]
+    except OSError:
+        pass
+    return None
+
+
+def _git_changed_files_since(root, since_date):
+    """ONE subprocess: every commit at/after `since_date` in `root`'s history,
+    as (date, [changed-path, ...]) tuples oldest-first (`--date=short` so
+    per-note comparisons are plain string compares). None on any failure --
+    no git binary, `root` not a repo, or a non-zero exit for any other
+    reason -- which callers must turn into "omit the flag" (R8.5)."""
+    cmd = ["git", "log", "--since=" + since_date, "--date=short",
+           "--pretty=format:%x00%ad", "--name-only"]
+    try:
+        proc = subprocess.run(cmd, cwd=root, capture_output=True, text=True)
+    except OSError:
+        return None
+    if proc.returncode != 0:
+        return None
+    commits = []
+    for chunk in proc.stdout.split("\x00"):
+        chunk = chunk.strip("\n")
+        if not chunk:
+            continue
+        lines = chunk.split("\n")
+        commits.append([lines[0].strip(), [f for f in lines[1:] if f.strip()]])
+    return commits
+
+
+def _stale_slugs(root, identities, role, notes):
+    """slug -> True/False staleness for every note in `notes` that carries a
+    non-empty `paths`. Computes over the WHOLE corpus (not just the notes a
+    given recall will render) so the (role, HEAD) cache stays valid across
+    recalls that query different path/keyword subsets."""
+    candidates = {slug: notes[slug]["fm"] for slug in notes if notes[slug]["fm"].get("paths")}
+    if not candidates:
+        return {}
+    since_dates = [d for d in (_staleness_since_date(fm) for fm in candidates.values()) if d]
+    if not since_dates:
+        return {}
+    since = min(since_dates)
+
+    head = _git_head_sha(root)
+    if head is None:
+        return {}
+
+    cache_path = _staleness_cache_path(identities, role)
+    cache = _read_staleness_cache(cache_path)
+    commits = None
+    if cache and cache.get("head") == head and cache.get("since", "") <= since:
+        commits = cache.get("commits")
+    if commits is None:
+        commits = _git_changed_files_since(root, since)
+        if commits is None:
+            return {}
+        _write_staleness_cache(cache_path, head, since, commits)
+
+    result = {}
+    for slug, fm in candidates.items():
+        note_date = _staleness_since_date(fm)
+        globs = fm.get("paths", []) or []
+        stale = False
+        if note_date:
+            for date, files in commits:
+                if date <= note_date:
+                    continue
+                if any(glob_match(f, g) for f in files for g in globs):
+                    stale = True
+                    break
+        result[slug] = stale
+    return result
+
+
 # ------------------------------------------------------------------------- mint
 def cmd_mint(identities, args):
     body = sys.stdin.read().rstrip("\n") + "\n"
@@ -801,6 +973,12 @@ def cmd_recall(identities, args):
     decay_k, decay_factor = _recency_decay_config(args)
     useful_dates = {} if outcomes_malformed else _useful_touch_dates(identities, role)[0]
 
+    # staleness (GL-011): parsed ONCE per invocation over the whole corpus,
+    # same latency budget as the two blocks above. Failure of any kind (no
+    # git, non-repo, cache miss that also fails) degrades to {} -- every
+    # note renders exactly as it did before this feature existed (R8.5).
+    stale_map = _stale_slugs(args.root, identities, role, notes)
+
     def _decay(slug, fm):
         touch_date = _note_touch_date(slug, fm, links, useful_dates)
         return _recency_decay_multiplier(retros, decay_k, decay_factor, touch_date)
@@ -883,7 +1061,9 @@ def cmd_recall(identities, args):
         act = activation[slug]
         sep = 1 if out else 0  # the "\n" that will join this block to the previous one
         contested = _is_contested(tallies.get(slug, {}))
-        block = _render_block(slug, notes[slug], act, budget_chars - used - sep, contested=contested)
+        stale = stale_map.get(slug, False)
+        block = _render_block(slug, notes[slug], act, budget_chars - used - sep,
+                               contested=contested, stale=stale)
         if block is None:
             break
         out.append(block)
@@ -906,16 +1086,19 @@ def cmd_recall(identities, args):
     print(text if text else "(no lessons recalled)")
 
 
-def _render_block(slug, note, act, remaining, contested=False):
+def _render_block(slug, note, act, remaining, contested=False, stale=False):
     """Choose a tier by activation, downgrade until it fits; None if even a
     title won't fit. Blocks carry NO trailing newline — the caller joins with
     "\\n" and budgets that separator, so total output stays within the budget.
     `contested` (R7.5) renders a "⚠ contested" marker in the full and
     one-liner tiers only; when False the marker is an empty string, so
-    non-contested output is byte-identical to pre-GL-003 rendering (G6)."""
+    non-contested output is byte-identical to pre-GL-003 rendering (G6).
+    `stale` (GL-011 / R8.2) renders a "⟳ stale — re-verify" marker in the
+    same two tiers, same byte-identical-when-False guarantee."""
     fm = note["fm"]
     strength = int(fm.get("strength", DEFAULT_STRENGTH))
     marker = "  ⚠ contested" if contested else ""
+    marker += "  ⟳ stale — re-verify" if stale else ""
     full = "### %s  [strength %d]%s\n%s" % (slug, strength, marker, note["body"].strip())
     oneliner = "### %s%s\ntags: [%s] · paths: [%s]" % (
         slug, marker, ", ".join(fm.get("tags", []) or []), ", ".join(fm.get("paths", []) or []))

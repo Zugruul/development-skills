@@ -30,7 +30,8 @@ LS_EXP_IGNORE="$(printf '%s\n' \
     '.claude/merge-requirements.json' \
     '.claude/.flush*' \
     '.claude/worktrees/' \
-    '.claude/identities/*/brain/index.sqlite3')"
+    '.claude/identities/*/brain/index.sqlite3' \
+    '.claude/identities/*/brain/.staleness-cache.json')"
 LS_EXP_TRACK="$(printf '%s\n' \
     '.claude/feedbacks/' \
     '.claude/identities/' \

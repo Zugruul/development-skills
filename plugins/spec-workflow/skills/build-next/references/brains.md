@@ -58,7 +58,10 @@ then flows along links (neighbor = source × 0.5 × weight, 2 hops), keeping the
 the strongest notes are emitted full-body, medium ones as a one-liner, weak ones as a title,
 stopping at the token budget. Graduated notes are excluded from injection but still bridge
 links. Every recall appends `seed`/`hop`/`inject` events to `.activation.jsonl` and bumps
-`fires`/`last` on traversed links.
+`fires`/`last` on traversed links. A full-body or one-liner note whose `paths` glob-match a
+file changed by a git commit after its `created`/`last-touched` date renders a
+`⟳ stale — re-verify` marker (GL-011) — treat it as unverified until you re-check the code;
+re-minting the note (which bumps `last-touched`) clears the flag.
 
 ### Closing the loop: record an outcome for every injected note (SPEC-GRAPHIFY §7 R7.1)
 Recall without outcomes is dead weight — the whole point of §7 is that consumption results

@@ -23,6 +23,7 @@ ignore	.claude/merge-requirements.json
 ignore	.claude/.flush*
 ignore	.claude/worktrees/
 ignore	.claude/identities/*/brain/index.sqlite3
+ignore	.claude/identities/*/brain/.staleness-cache.json
 track	.claude/feedbacks/
 track	.claude/identities/
 track	.claude/brain-events.jsonl
