@@ -358,6 +358,19 @@ def cmd_outcome(identities, args):
 
     print("recorded outcome: %s/%s %s" % (role, args.slug, args.outcome))
 
+    # RecallOutcome event (SPEC-GRAPHIFY §7 R7.2) -- only after outcomes.jsonl
+    # has its line. Skip cleanly (no emit_event call, no directory created) when
+    # the repo has no .claude/ root at all; otherwise reuse emit_event as-is,
+    # which is itself never load-bearing (warns and returns on failure).
+    if os.path.isdir(os.path.join(args.root, ".claude")):
+        emit_event(args.root, {
+            "role": role,
+            "type": "RecallOutcome",
+            "slug": args.slug,
+            "outcome": args.outcome,
+            "task": task_ref,
+        })
+
 
 # ------------------------------------------------------------------------- mint
 def cmd_mint(identities, args):

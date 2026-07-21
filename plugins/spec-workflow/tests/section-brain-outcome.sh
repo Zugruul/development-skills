@@ -194,7 +194,9 @@ print("OK")
 ' "$preexisting_line")"
 out="$(oe_summary "$OE_FEED")"
 check "pre-existing lines: new RecallOutcome appended after"    "N=1" "$out"
-check "pre-existing lines: total feed lines is two"             "TOTAL_LINES=2" "$out"
+# feed already carries the mint's own NoteMinted line + the seeded LinkPruned
+# line before the outcome call adds its RecallOutcome -> three lines total.
+check "pre-existing lines: total feed lines is three"           "TOTAL_LINES=3" "$out"
 
 rm -rf "$OE"
 
