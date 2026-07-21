@@ -185,3 +185,49 @@ items:
   routing:
     action: backlog
     ref: Zugruul/development-skills#290
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-21T22:10:00Z'
+iteration:
+  task: Zugruul/development-skills#254
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: briefing
+  severity: low
+  summary: Spec example and issue body disagreed on a format glyph, costing the dev
+    a cross-check
+  detail: The spec's R8.4 example used a comma while the issue and brief used a middot;
+    the dev resolved it via the brief's 'follow THIS task's format exactly' but flagged
+    the divergence. Spec synced to shipped format at close.
+  evidence:
+  - Zugruul/development-skills#254
+  generalized: When a task brief includes an exact output format, seed-time issue
+    bodies and the spec example must agree glyph-for-glyph; on divergence the brief
+    should state which source is authoritative, and the spec gets synced to shipped
+    reality at task close.
+  routing:
+    action: ignore
+    ref: spec synced to shipped middot in the same close-out commit; one-off divergence,
+      no recurring mechanism to fix
+- category: worked-well
+  area: review
+  severity: low
+  summary: Reviewer distrusted a test-file comment's coverage claim and found the
+    gap by reading fixture setups
+  detail: The claimed coverage suites never constructed confidence/outcome state,
+    so they could not exercise the new header lengths; a budget-boundary test was
+    added before merge.
+  evidence:
+  - Zugruul/development-skills#254
+  generalized: Coverage claims in test-file comments must be verified against what
+    the referenced fixtures actually construct — grep the claimed suites for the relevant
+    setup calls before accepting 'covered elsewhere'.
+  routing:
+    action: brain-note
+    ref: reviewer/verify-coverage-claims-in-fixtures

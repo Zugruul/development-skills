@@ -1042,3 +1042,11 @@
 {"repo": "Zugruul/development-skills", "role": "dev", "slug": "absence-default-needs-three-states", "strength": 1, "ts": "2026-07-21T20:35:25+00:00", "type": "NoteMinted", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "baseline-corpus-findings-on-main", "strength": 1, "ts": "2026-07-21T20:35:25+00:00", "type": "NoteMinted", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "git-show-not-stash-for-peeking", "strength": 1, "ts": "2026-07-21T20:35:25+00:00", "type": "NoteMinted", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "commit-early-in-shared-clone", "task": "Zugruul/development-skills#254", "ts": "2026-07-21T21:59:34+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "verify-fixture-isolates-intended-path", "task": "Zugruul/development-skills#254", "ts": "2026-07-21T21:59:34+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "absence-default-needs-three-states", "task": "Zugruul/development-skills#254", "ts": "2026-07-21T21:59:34+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "await-backgrounded-verification-results", "task": "Zugruul/development-skills#254", "ts": "2026-07-21T21:59:34+00:00", "type": "RecallOutcome", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "pure-helper-tests-for-composed-renderers", "strength": 1, "ts": "2026-07-21T21:59:35+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "mutation-verify-boundary-tests", "strength": 1, "ts": "2026-07-21T21:59:35+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "verify-coverage-claims-in-fixtures", "strength": 1, "ts": "2026-07-21T21:59:46+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "section-runs-for-review-full-runs-for-gate", "strength": 1, "ts": "2026-07-21T21:59:46+00:00", "type": "NoteMinted", "v": 1}

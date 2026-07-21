@@ -90,7 +90,7 @@ The missing feedback edge: recall → task → outcome → ranking. All data lan
 - **R8.1** WHEN recall ranks candidates, THE SYSTEM SHALL apply a recency decay derived from the retro clock (`retros.log`), not wall-time: a note untouched (no re-mint, no fired link, no `useful` outcome) for K retros decays by a configured factor; K and factor live in `methodology.*` with defaults that keep current top-1 results stable on the existing corpora (regression-tested).
 - **R8.2** WHEN a note is rendered in recall output, THE SYSTEM SHALL flag it `⟳ stale — re-verify` IF any of its `paths` globs match files with git commits after the note's `created` (or latest re-mint) date. Computation is on-demand at recall time, cached per (note, HEAD) — never a background daemon.
 - **R8.3** WHEN a note is minted, THE SYSTEM SHALL accept an optional `--confidence direct|inferred` (default `inferred`); the retrospective protocol sets `direct` for notes minted verbatim from an incident/feedback item. Stored in frontmatter; existing notes without the field are treated as `inferred`.
-- **R8.4** WHEN recall renders a full-body tier note, THE SYSTEM SHALL include its confidence tag and outcome tally in the one-line header (e.g. `[direct, 3× useful]`), so the consuming subagent can weigh it.
+- **R8.4** WHEN recall renders a full-body tier note, THE SYSTEM SHALL include its confidence tag and outcome tally in the one-line header (e.g. `[direct · 3× useful]`), so the consuming subagent can weigh it.
 - **R8.5** IF staleness computation fails (no git, shallow clone) THEN THE SYSTEM SHALL omit the flag silently and never fail the recall.
 
 ## §9 Graph interrogation: explain and path (impact #5)
