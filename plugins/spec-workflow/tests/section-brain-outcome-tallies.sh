@@ -89,28 +89,121 @@ otp() { python3 "$OT_SCRIPTS/brain.py" "$OT_PRUNE" "$@"; }
 printf 'A note that keeps failing in practice.\n' | otp mint dev flaky-lesson --tags demo --paths "demo/**" --source x >/dev/null
 otp outcome dev flaky-lesson dead_end >/dev/null
 otp outcome dev flaky-lesson dead_end >/dev/null
+
+# --------------------------------------------------- (5) prune without --apply writes nothing
+# Snapshot taken HERE, while flaky-lesson IS an outcome-rule candidate (2x dead_end, 0
+# useful) -- review round 1: the old snapshot point was AFTER (4b) had already cleared
+# the only candidate, so it only proved the trivially-safe no-candidate case. This is a
+# strict cmp per house rule (byte/hash comparison, never a substring grep of multiline
+# output).
+NOTES_BEFORE="$(command find "$OT_PRUNE/.claude/identities/dev/brain/notes" -type f | sort | xargs -I{} shasum {} 2>/dev/null)"
+LINKS_BEFORE="$(cat "$OT_PRUNE/.claude/identities/dev/brain/links.json" 2>/dev/null || true)"
 out="$(otp prune dev)"
 check "prune: dead-end note appears as a candidate" "flaky-lesson" "$out"
 check "prune: reason names the outcome rule" "dead_end" "$out"
+NOTES_AFTER="$(command find "$OT_PRUNE/.claude/identities/dev/brain/notes" -type f | sort | xargs -I{} shasum {} 2>/dev/null)"
+LINKS_AFTER="$(cat "$OT_PRUNE/.claude/identities/dev/brain/links.json" 2>/dev/null || true)"
+if [[ "$NOTES_BEFORE" == "$NOTES_AFTER" && "$LINKS_BEFORE" == "$LINKS_AFTER" ]]; then
+    echo "ok   prune without --apply: writes nothing (notes + links.json unchanged), even with a live outcome-rule candidate"
+else
+    echo "FAIL prune without --apply: writes nothing (notes + links.json unchanged), even with a live outcome-rule candidate"
+    fails=$((fails + 1))
+fi
 
 # (4b) same note +1 useful -> no longer a candidate under this rule
 otp outcome dev flaky-lesson useful >/dev/null
 out2="$(otp prune dev)"
 check_absent "prune: adding 1x useful removes the outcome-rule candidacy" "flaky-lesson" "$out2"
+rm -rf "$OT_PRUNE"
 
-# --------------------------------------------------- (5) prune without --apply writes nothing
-NOTES_BEFORE="$(command find "$OT_PRUNE/.claude/identities/dev/brain/notes" -type f | sort | xargs -I{} shasum {} 2>/dev/null)"
-LINKS_BEFORE="$(cat "$OT_PRUNE/.claude/identities/dev/brain/links.json" 2>/dev/null || true)"
-otp prune dev >/dev/null
-NOTES_AFTER="$(command find "$OT_PRUNE/.claude/identities/dev/brain/notes" -type f | sort | xargs -I{} shasum {} 2>/dev/null)"
-LINKS_AFTER="$(cat "$OT_PRUNE/.claude/identities/dev/brain/links.json" 2>/dev/null || true)"
-if [[ "$NOTES_BEFORE" == "$NOTES_AFTER" && "$LINKS_BEFORE" == "$LINKS_AFTER" ]]; then
-    echo "ok   prune without --apply: writes nothing (notes + links.json unchanged)"
+# ------------------------------------------------- (5b) --apply with ONLY outcome candidates
+# Review round 1 [MUST FIX]: `prune --apply` with zero link candidates (only outcome-rule
+# note candidates) must NOT enter the link-removal machinery at all -- no shrink-guard call
+# on an empty list, no save_links (which would CREATE links.json in a brain that never had
+# one), no misleading "removed 0 link(s)". Two variants: links.json already exists (from an
+# unrelated link) and links.json has never existed at all (absent-stays-absent).
+OT_APPLY_LINKS="$(mktemp -d)"
+otl() { python3 "$OT_SCRIPTS/brain.py" "$OT_APPLY_LINKS" "$@"; }
+printf 'A note that keeps failing.\n\nRelated: [[kept-target]]\n' \
+    | otl mint dev only-outcome --tags demo --paths "demo/**" --source x >/dev/null
+printf 'A kept target note.\n' | otl mint dev kept-target --tags demo --paths "demo/**" --source x >/dev/null
+otl outcome dev only-outcome dead_end >/dev/null
+otl outcome dev only-outcome dead_end >/dev/null
+LINKS_FILE="$OT_APPLY_LINKS/.claude/identities/dev/brain/links.json"
+NOTE_FILE="$OT_APPLY_LINKS/.claude/identities/dev/brain/notes/only-outcome.md"
+LINKS_BEFORE_HASH="$(shasum "$LINKS_FILE" 2>/dev/null)"
+NOTE_BEFORE_HASH="$(shasum "$NOTE_FILE" 2>/dev/null)"
+out_apply="$(otl prune dev --apply)"
+check "apply/outcome-only: still names the note as a candidate" "only-outcome" "$out_apply"
+check "apply/outcome-only: explicit 0-link-candidates message" "0 link candidate" "$out_apply"
+check "apply/outcome-only: message names outcome candidates as propose-only" "propose-only" "$out_apply"
+check_absent "apply/outcome-only: no misleading removed-0-links line" "removed 0 link" "$out_apply"
+LINKS_AFTER_HASH="$(shasum "$LINKS_FILE" 2>/dev/null)"
+NOTE_AFTER_HASH="$(shasum "$NOTE_FILE" 2>/dev/null)"
+if [[ "$LINKS_BEFORE_HASH" == "$LINKS_AFTER_HASH" ]]; then
+    echo "ok   apply/outcome-only: links.json byte-identical (shasum) after --apply"
 else
-    echo "FAIL prune without --apply: writes nothing (notes + links.json unchanged)"
+    echo "FAIL apply/outcome-only: links.json byte-identical (shasum) after --apply"
     fails=$((fails + 1))
 fi
-rm -rf "$OT_PRUNE"
+if [[ "$NOTE_BEFORE_HASH" == "$NOTE_AFTER_HASH" ]]; then
+    echo "ok   apply/outcome-only: note file byte-identical (shasum) after --apply"
+else
+    echo "FAIL apply/outcome-only: note file byte-identical (shasum) after --apply"
+    fails=$((fails + 1))
+fi
+rm -rf "$OT_APPLY_LINKS"
+
+# absent-stays-absent variant: `mint` always touches links.json (even a linkless note
+# gets an empty {} written -- verified against the unmodified code), so "never existed" is
+# simulated by removing it post-mint: the point isn't how it got deleted, it's that
+# --apply's outcome-only path must never be the one to (re)create it.
+OT_APPLY_ABSENT="$(mktemp -d)"
+ota2() { python3 "$OT_SCRIPTS/brain.py" "$OT_APPLY_ABSENT" "$@"; }
+printf 'A linkless note that keeps failing.\n' | ota2 mint dev linkless-flaky --tags demo --paths "demo/**" --source x >/dev/null
+ota2 outcome dev linkless-flaky dead_end >/dev/null
+ota2 outcome dev linkless-flaky dead_end >/dev/null
+LINKS_ABSENT_FILE="$OT_APPLY_ABSENT/.claude/identities/dev/brain/links.json"
+rm -f "$LINKS_ABSENT_FILE"
+if [[ -f "$LINKS_ABSENT_FILE" ]]; then
+    echo "FAIL apply/outcome-only (absent variant): links.json must not exist before --apply (test setup invariant broken)"
+    fails=$((fails + 1))
+fi
+out_apply_absent="$(ota2 prune dev --apply)"
+check "apply/outcome-only (absent variant): names the note as a candidate" "linkless-flaky" "$out_apply_absent"
+check "apply/outcome-only (absent variant): explicit 0-link-candidates message" "0 link candidate" "$out_apply_absent"
+if [[ -f "$LINKS_ABSENT_FILE" ]]; then
+    echo "FAIL apply/outcome-only (absent variant): links.json must stay absent after --apply"
+    fails=$((fails + 1))
+else
+    echo "ok   apply/outcome-only (absent variant): links.json stays absent after --apply (never created)"
+fi
+rm -rf "$OT_APPLY_ABSENT"
+
+# --------------------------------------------------- (5c) full-history vs. window distinction
+# The outcome-rule tally must be FULL history, not the retro-window recall's ranking
+# multiplier uses. Fixture: 4 retros marked (window = last 3, cutoff = retros[-3]), both
+# dead_end outcomes stamped BEFORE that cutoff -- a window-scoped tally would see 0 within
+# the window and never flag the note; full-history must still flag it.
+OT_WINDOW="$(mktemp -d)"
+otw() { python3 "$OT_SCRIPTS/brain.py" "$OT_WINDOW" "$@"; }
+printf 'An old note that failed long ago.\n' | otw mint dev old-flaky --tags demo --paths "demo/**" --source x >/dev/null
+mkdir -p "$OT_WINDOW/.claude/identities"
+cat >"$OT_WINDOW/.claude/identities/retros.log" <<'EOF'
+2026-01-01
+2026-02-01
+2026-03-01
+2026-04-01
+EOF
+OW_JSONL="$OT_WINDOW/.claude/identities/dev/brain/outcomes.jsonl"
+mkdir -p "$(dirname "$OW_JSONL")"
+cat >"$OW_JSONL" <<'EOF'
+{"schemaVersion": 1, "ts": "2026-01-05T00:00:00+00:00", "slug": "old-flaky", "outcome": "dead_end", "task": null, "note": null}
+{"schemaVersion": 1, "ts": "2026-01-10T00:00:00+00:00", "slug": "old-flaky", "outcome": "dead_end", "task": null, "note": null}
+EOF
+out_window="$(otw prune dev)"
+check "full-history prune rule: pre-window-cutoff dead_ends still flag the note" "old-flaky" "$out_window"
+rm -rf "$OT_WINDOW"
 
 # --------------------------------------------------------------- (6) K is configurable
 OT_CFG="$(mktemp -d)"
