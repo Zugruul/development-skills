@@ -400,10 +400,12 @@ canvas.grabbing{cursor:grabbing}
 /* sticky header: pulled flush to the scrolling container's edges via negative
    margins that cancel #rightbar's own padding, then re-padded internally so
    it still lines up with the log entries below once scrolled under it. */
-#rightbar-head{position:sticky;top:0;z-index:2;background:var(--panel);
-  backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+#rightbar-head{position:sticky;top:0;z-index:2;background:none;
   display:flex;justify-content:space-between;align-items:center;gap:.5rem;
   margin:-.7rem -1rem 0;padding:.7rem 1rem .5rem}
+/* the sticky header is transparent at rest (no band over the panel) and only
+   picks up a masking background while entries are actually scrolled under it */
+#rightbar.scrolled #rightbar-head{background:var(--panel-solid)}
 #rightbar-tab{position:fixed;bottom:16px;right:0;z-index:20;border-right:0;border-radius:8px 0 0 8px;
   padding:.55rem .4rem;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:.8rem}
 #rightbar-tab:hover{color:var(--cyan)}
@@ -546,6 +548,9 @@ canvas.grabbing{cursor:grabbing}
   text-transform:uppercase;color:var(--muted);pointer-events:none}
 #links{margin-top:.6rem;font-size:.66rem;color:var(--muted)}
 #links .ln{display:flex;justify-content:space-between;gap:.5rem;padding:.15rem 0}
+#links .ln-click{cursor:pointer;margin:0 -.4rem;padding-left:.4rem;padding-right:.4rem;border-radius:4px}
+#links .ln-click:hover,#links .ln-click:focus-visible{background:rgba(90,190,255,.08);outline:none}
+#links .ln-click:hover b{color:var(--cyan)}
 #links .ln b{color:var(--fg);font-weight:500}
 
 /* hover-inspection tooltip: a positioned DOM element (not canvas text),
@@ -3100,6 +3105,10 @@ gaugesTab.onclick = ()=>{ uiState.panel = false; saveUiState(); applyUiState(); 
 document.getElementById("rightbar-collapse").onclick = ()=>{ uiState.rpanel = true; saveUiState(); applyUiState(); };
 document.getElementById("rightbar-tab").onclick = ()=>{ uiState.rpanel = false; saveUiState(); applyUiState(); };
 document.getElementById("rightbar-clear").onclick = ()=>{ LOG.innerHTML = ""; };
+// sticky log header: masking background only while content is scrolled under it
+document.getElementById("rightbar").addEventListener("scroll", ev=>{
+  ev.currentTarget.classList.toggle("scrolled", ev.currentTarget.scrollTop > 0);
+}, {passive: true});
 document.getElementById("sect-voice").onclick = ()=>{ uiState.voice = !uiState.voice; saveUiState(); applyUiState(); };
 document.getElementById("voicebar-collapse").onclick = ()=>{ uiState.vpanel = true; saveUiState(); applyUiState(); };
 document.getElementById("voicebar-tab").onclick = ()=>{ uiState.vpanel = false; saveUiState(); applyUiState(); };
@@ -4363,8 +4372,19 @@ function renderNoteInto(root, nd, d){
   }
   q("body").innerHTML = d.bodyHtml||"<p class='label'>empty note</p>";
   q("links").innerHTML = (d.links&&d.links.length)
-    ? '<div class="label">Synapses</div>'+d.links.map(l=>`<div class="ln"><span>${l.dir==="out"?"→":"←"} <b>${escapeHtml(l.target)}</b></span><span>w ${l.weight} · ×${l.fires}</span></div>`).join("")
+    ? '<div class="label">Synapses</div>'+d.links.map(l=>`<div class="ln ln-click" role="button" tabindex="0" data-slug="${escapeHtml(l.target)}"><span>${l.dir==="out"?"→":"←"} <b>${escapeHtml(l.target)}</b></span><span>w ${l.weight} · ×${l.fires}</span></div>`).join("")
     : '<div class="label">no synapses</div>';
+  // synapse rows open the linked note — through openNote, so the pin rule
+  // applies (pinned sidebar → detached card, otherwise into the sidebar)
+  q("links").querySelectorAll(".ln-click").forEach(row=>{
+    const go = ()=>{
+      const slug = row.dataset.slug;
+      const tgt = nodeById.get(nd.repo+"/"+nd.role+"/"+slug) || {repo: nd.repo, role: nd.role, slug};
+      openNote(tgt);
+    };
+    row.onclick = go;
+    row.onkeydown = ev=>{ if(ev.key==="Enter" || ev.key===" "){ ev.preventDefault(); go(); } };
+  });
   // clicking a wikilink jumps to that note in the same brain
   q("body").querySelectorAll("a.wl").forEach(a=>a.onclick=e=>{
     e.preventDefault(); const tgt=nodeById.get(nd.repo+"/"+nd.role+"/"+a.dataset.slug); if(tgt) openNote(tgt);
