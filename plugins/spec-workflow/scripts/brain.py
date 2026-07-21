@@ -400,11 +400,15 @@ def _retro_window_cutoff(identities, n):
 def _read_outcomes(identities, role):
     """Parse <brain>/outcomes.jsonl into a list of dicts, tolerating a
     malformed file (R7.7): a line that isn't valid JSON, isn't an object, has
-    an unknown `outcome` value, or is missing `slug`/`ts`/`outcome` is
-    dropped and flips `malformed` True -- never raises. Task-ref grammar is
-    NOT validated here: malformed refs exist by design at the write layer
-    (cmd_outcome only qualifies `#N` shorthand, never rejects free text) and
-    must still count toward tallies (GL-001 reviewer note)."""
+    an unknown `outcome` value, is missing `slug`/`ts`/`outcome`, or has the
+    WRONG TYPE for `slug`/`ts` (both must be str -- a non-str `ts` can't be
+    compared against the retros.log cutoff string and a non-hashable `slug`
+    can't key a tally dict; either would raise TypeError deep inside
+    outcome_window_tallies if let through) is dropped and flips `malformed`
+    True -- never raises. Task-ref grammar is NOT validated here: malformed
+    refs exist by design at the write layer (cmd_outcome only qualifies `#N`
+    shorthand, never rejects free text) and must still count toward tallies
+    (GL-001 reviewer note)."""
     p = outcomes_path(identities, role)
     records = []
     malformed = False
@@ -423,6 +427,9 @@ def _read_outcomes(identities, role):
             malformed = True
             continue
         if "slug" not in obj or "ts" not in obj:
+            malformed = True
+            continue
+        if not isinstance(obj["slug"], str) or not isinstance(obj["ts"], str):
             malformed = True
             continue
         records.append(obj)
