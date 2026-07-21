@@ -25,6 +25,7 @@ Python 3 standard library only (no pyyaml). Usage:
     brain.py <root> graduate <role> <slug>
     brain.py <root> graduate-check [role] [--threshold N]
     brain.py <root> verify-feed <role>
+    brain.py <root> outcome <role> <slug> useful|dead_end|corrected [--task <ref>] [--note "<text>"]
 
 `<root>` is the consumer repo root; identities live under `--dir` (default
 `.claude/identities`).
@@ -282,6 +283,80 @@ def emit_event(root, obj):
     except Exception as e:
         sys.stderr.write("warning: brain-event feed append failed: %s\n" % e)
         return False
+
+
+# ----------------------------------------------------------------------- outcome
+OUTCOME_SCHEMA_VERSION = 1
+OUTCOMES_FILENAME = "outcomes.jsonl"
+OUTCOME_CHOICES = ("useful", "dead_end", "corrected")
+_BARE_TASK_REF_RE = re.compile(r"^#(\d+)$")
+
+
+def outcomes_path(identities, role):
+    return os.path.join(brain_dir(identities, role), OUTCOMES_FILENAME)
+
+
+def _qualify_task_ref(root, ref):
+    """Normalize a bare `#N` task ref to `<project.name>#N` (project.name from
+    THIS repo's .claude/project.yaml, mirroring feedback.py's ref
+    qualification). A ref already qualified by any project (has a prefix
+    before the `#`) passes through unchanged; no-op if project.name is
+    unset -- don't guess."""
+    ref = ref.strip()
+    if not ref:
+        return None
+    m = _BARE_TASK_REF_RE.match(ref)
+    if not m:
+        return ref
+    cfg = C.load_config(root=root, warn=False) or {}
+    name = C.dig(cfg, "project.name")
+    if not name:
+        return ref
+    return "%s#%s" % (name, m.group(1))
+
+
+def cmd_outcome(identities, args):
+    """Record one outcome (useful/dead_end/corrected) for a recalled note,
+    appended to <brain>/outcomes.jsonl (SPEC-GRAPHIFY §7 R7.1/R7.3). Atomic
+    single os.write to an O_APPEND fd, same pattern as emit_event -- concurrent
+    invocations never interleave or lose a line. Validates role and slug
+    BEFORE writing anything; `corrected` additionally requires --note."""
+    role = args.role
+    bdir = brain_dir(identities, role)
+    if not os.path.isdir(bdir):
+        sys.exit("unknown role: %s (no %s)" % (role, bdir))
+
+    note_path = os.path.join(notes_dir(identities, role), args.slug + ".md")
+    if not os.path.isfile(note_path):
+        sys.exit("no such note: %s/%s" % (role, args.slug))
+
+    note_text = (args.note or "").strip() or None
+    if args.outcome == "corrected" and not note_text:
+        sys.exit(
+            "usage: brain.sh outcome %s %s corrected --note \"<what was wrong>\" "
+            "-- corrected requires --note so the retro has material to re-mint from"
+            % (role, args.slug)
+        )
+
+    task_ref = _qualify_task_ref(args.root, args.task) if args.task else None
+
+    obj = {
+        "schemaVersion": OUTCOME_SCHEMA_VERSION,
+        "ts": now_iso(),
+        "slug": args.slug,
+        "outcome": args.outcome,
+        "task": task_ref,
+        "note": note_text,
+    }
+    line = json.dumps(obj, sort_keys=True) + "\n"
+    p = outcomes_path(identities, role)
+    fd = os.open(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    try:
+        os.write(fd, line.encode("utf-8"))
+    finally:
+        os.close(fd)
+
+    print("recorded outcome: %s/%s %s" % (role, args.slug, args.outcome))
 
 
 # ------------------------------------------------------------------------- mint
@@ -1049,6 +1124,14 @@ def main(argv):
     sp = sub.add_parser("verify-feed")
     sp.add_argument("role")
     sp.set_defaults(fn=cmd_verify_feed)
+
+    sp = sub.add_parser("outcome")
+    sp.add_argument("role")
+    sp.add_argument("slug")
+    sp.add_argument("outcome", choices=OUTCOME_CHOICES)
+    sp.add_argument("--task", default="")
+    sp.add_argument("--note", default="")
+    sp.set_defaults(fn=cmd_outcome)
 
     args = p.parse_args(argv)
     identities = os.path.join(args.root, args.dir)

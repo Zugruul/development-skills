@@ -154,6 +154,56 @@ specs:
     - Content leaves the machine only to endpoints explicitly declared in .claude/compute-registry.yaml, or to OpenAI via the user-installed codex CLI -- and the latter is disclosed in the skill doc.
     - External-model findings are always labeled with their source and never presented as, or silently merged into, Claude's own judgment.
     - Scripts are bash 3.2-compatible / stdlib-only Python, set -uo pipefail, shellcheck-clean.
+-   id: gl
+    title: Graphify-inspired improvements — learning loop, recall signals, neural-view (SPEC-GRAPHIFY.md)
+    board: main
+    specPath: SPEC-GRAPHIFY.md
+    backlogPath: docs/BACKLOG-GRAPHIFY.md
+    taskPrefix: GL
+    epics:
+    -   id: E0
+        title: Learning-loop foundations
+        taskRanges:
+        -   - 1
+            - 9
+    -   id: E1
+        title: 'Ranking signals: recency, staleness, confidence'
+        taskRanges:
+        -   - 10
+            - 19
+        blockedBy:
+        -   epic: E0
+            untilStatus: Deployed
+    -   id: E2
+        title: Graph interrogation (explain / path)
+        taskRanges:
+        -   - 20
+            - 29
+        blockedBy:
+        -   epic: E1
+            untilStatus: Deployed
+    -   id: E3
+        title: Neural-view structure
+        taskRanges:
+        -   - 30
+            - 39
+        blockedBy:
+        -   epic: E2
+            untilStatus: Deployed
+    -   id: E4
+        title: Consolidation + retro friction
+        taskRanges:
+        -   - 40
+            - 49
+    invariants:
+    - Brains remain orchestrator-mediated; no role reads another role's brain directory; subagents receive knowledge only as pasted brief text.
+    - No graphify, tree-sitter, embedding, or graph-library dependency is introduced; scripts stay bash 3.2-compatible and Python stdlib-only (PyYAML sole exception).
+    - Every new data file (e.g. outcomes.jsonl) degrades byte-identically — its absence reproduces pre-change behavior exactly, covered by a regression fixture.
+    - .activation.jsonl and brain-events.jsonl schemas are append-extended only; new event types allowed, existing fields never repurposed.
+    - Every brain-mutating command refuses or loudly warns when one invocation would remove more than a configured fraction of notes or links (shrink guard).
+    - No new artifact is written into prompt-cache-visible workspace paths; new outputs live in existing .claude/ locations or stdout.
+    - Red-first TDD — a failing-test commit precedes implementation; the gate is green before In review.
+    - Documentation covered by docs[] is updated in the same PR as the behavior it describes.
 -   id: cdx
     title: Dual-host compatibility — Claude Code + Codex (SPEC-CODEX-COMPAT.md)
     board: main

@@ -14,6 +14,7 @@
 #   brain.sh retro-mark
 #   brain.sh graduate <role> <slug>
 #   brain.sh graduate-check [role] [--threshold N]
+#   brain.sh outcome <role> <slug> useful|dead_end|corrected [--task <ref>] [--note "<text>"]
 #
 # Env: BRAIN_DIR (identities dir override, relative to root; default .claude/identities).
 set -uo pipefail
