@@ -348,9 +348,8 @@ def cmd_outcome(identities, args):
         "task": task_ref,
         "note": note_text,
     }
-    line = json.dumps(obj) + "\n"
+    line = json.dumps(obj, sort_keys=True) + "\n"
     p = outcomes_path(identities, role)
-    os.makedirs(bdir, exist_ok=True)
     fd = os.open(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
     try:
         os.write(fd, line.encode("utf-8"))
