@@ -68,9 +68,10 @@ one-liner — track the slugs you pasted), record exactly one outcome, skipping 
 wrong>"]` — `useful` if it informed the work, `dead_end` if it turned out irrelevant,
 `corrected --note "<what was wrong>"` if it was wrong (the `--note` is required for
 `corrected`, per R7.3 — the retro reads it as re-mint material). Pass `--task <ref>` (e.g.
-the issue number) so the outcome is traceable back to the task that produced it. Do this as
-part of the same close-out where you mint/prune/graduate (step 3 below), not as a separate
-pass. *Future hardening (not built here):* the orchestrator already knows which slugs it
+the issue number) so the outcome is traceable back to the task that produced it. Record
+outcomes FIRST, then mint/prune/graduate (steps 2–4 below) — `corrected` outcomes are
+re-mint material for step 2, so the ordering matters. *Future hardening (not built here):*
+the orchestrator already knows which slugs it
 pasted into each brief — a script could auto-list them instead of relying on the orchestrator
 to have tracked the list by hand.
 
