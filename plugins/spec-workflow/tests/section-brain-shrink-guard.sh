@@ -27,7 +27,9 @@ for i in range(1, 5):
     links["keep%d->real" % i] = {"fires": 1}
 json.dump(links, open(p, "w"), indent=2, sort_keys=True)
 PY
-BEFORE_LINKS="$(cat "$SG1/.claude/identities/dev/brain/links.json")"
+SG1_LINKS="$SG1/.claude/identities/dev/brain/links.json"
+SG1_SNAPSHOT="$SG1/links.snapshot.json"
+cp "$SG1_LINKS" "$SG1_SNAPSHOT"
 : >"$SG1/.claude/brain-events.jsonl"
 
 out="$(sg1 prune dev --apply; echo "rc=$?")"
@@ -36,8 +38,17 @@ check "over-threshold: refusal names the count/total/pct" "6/10 link(s) (60%" "$
 check "over-threshold: refusal names the threshold/floor" "30% threshold, floor 5" "$out"
 check "over-threshold: refusal shows a sample candidate key" "orphan1->missing1" "$out"
 check "over-threshold: refusal offers the --force escape hatch" "Re-run with --force" "$out"
-AFTER_LINKS="$(cat "$SG1/.claude/identities/dev/brain/links.json")"
-check "over-threshold: links.json byte-identical after refusal" "$BEFORE_LINKS" "$AFTER_LINKS"
+# strict byte-for-byte comparison against a pre-run snapshot COPY (not a
+# captured variable -- bash command substitution strips trailing newlines,
+# which would silently swallow a truncation/rewrite that happens to keep
+# every line grep -F would check for). cmp catches ANY difference, including
+# a trailing-newline change from an accidental re-write.
+if cmp -s "$SG1_SNAPSHOT" "$SG1_LINKS"; then
+    echo "ok   over-threshold: links.json byte-identical after refusal (cmp)"
+else
+    echo "FAIL over-threshold: links.json byte-identical after refusal (cmp) — files differ"
+    fails=$((fails + 1))
+fi
 out="$(python3 - "$SG1/.claude/brain-events.jsonl" <<'PY'
 import json, sys
 n = 0
@@ -128,6 +139,29 @@ out="$(sg3 prune dev --apply; echo "rc=$?")"
 check "configured fraction: raised threshold lets it proceed without --force" "rc=0" "$out"
 check "configured fraction: removal message unchanged" "removed 6 link(s)" "$out"
 rm -rf "$SG3"
+
+# --------------------------------------------------------- fixture: threshold boundary
+# 20 links total; 6 candidates (target missing) = exactly 30% (the default fraction),
+# and 6 > the absolute floor (5). remove/total == fraction pins the "<=" semantics --
+# AT the threshold proceeds without --force, only strictly OVER it must refuse.
+SG5="$(mktemp -d)"
+sg5() { python3 "$SG_BRAIN" "$SG5" "$@"; }
+printf 'real note body.\n' | sg5 mint dev real --tags r --paths "r/**" --source x >/dev/null
+python3 - "$SG5" <<'PY'
+import json, os, sys
+root = sys.argv[1]
+p = os.path.join(root, ".claude/identities/dev/brain/links.json")
+links = {}
+for i in range(1, 7):
+    links["orphan%d->missing%d" % (i, i)] = {"fires": 0}
+for i in range(1, 15):
+    links["keep%d->real" % i] = {"fires": 1}
+json.dump(links, open(p, "w"), indent=2, sort_keys=True)
+PY
+out="$(sg5 prune dev --apply; echo "rc=$?")"
+check "threshold boundary: exactly at 30% proceeds without --force (exit 0)" "rc=0" "$out"
+check "threshold boundary: removal message unchanged" "removed 6 link(s)" "$out"
+rm -rf "$SG5"
 
 # ------------------------------------------------------ existing behavior untouched
 # below-threshold prune (2 candidates, well under floor) still runs exactly as today.
