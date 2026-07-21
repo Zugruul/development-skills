@@ -1,0 +1,918 @@
+<!doctype html>
+<html lang="en">
+<!--
+  ui-options.html — template for the spec-workflow Iterative UI mode.
+  The agent copies this file to docs/ui-options/<task-id>.html and:
+    1. replaces voice-visualizer, Voice visualizer round 3 — Split Halves refined (chrome fixed), https://github.com/Zugruul/development-skills
+    2. duplicates the <section class="option panel"> block once per design option,
+       replacing __OPTION_ID__ (A, B, C...), __OPTION_NAME__, __OPTION_SUMMARY__,
+       the mockup inside .preview, and the aspect <label> chips (4–8 per option,
+       each a short keyword describing a UI trait, e.g. "dense layout").
+    3. adds a matching <button class="tab" data-tab="__OPTION_ID__"> to .tabbar,
+       right before the fixed "Review" tab button.
+    4. THEMES ARE MANDATORY: the page has a light/dark toggle (top right) and every
+       mockup must render correctly in BOTH themes. Inside .preview, take colors from
+       the page vars (var(--card), var(--fg), var(--muted), var(--surface), var(--bg),
+       var(--accent), var(--border)) — never the Canvas keyword, never a hardcoded
+       bg without a matching explicit fg. A deliberately single-theme mockup (e.g. a
+       dark immersive hero) must hardcode BOTH its background and all text colors so
+       it is self-contained. Sanity-check contrast: no text may share its background's
+       color in either theme.
+    5. The page ENFORCES a11y: a built-in audit runs on load, on every theme toggle,
+       and on every language switch. It combines (a) a composited contrast checker
+       for all mockup text + placeholders (WCAG 4.5:1, 3:1 large/bold; text over a
+       gradient/image background needs data-bg="#rrggbb" on the element or an
+       ancestor or it is flagged unverifiable), (b) semantic checks (form controls
+       need an accessible name — placeholder alone does not count; <img> needs alt;
+       buttons/links need text or aria-label; anything styled clickable must be a
+       real interactive element or carry role + tabindex), and (c) axe-core — the
+       industry-standard rules engine, vendored in the plugin and served by the hub
+       at /vendor/axe.min.js — swept over every option panel (color-contrast rule
+       off; the data-bg-aware checker owns contrast). Failures show a fixed red
+       banner + window.__a11yIssues. It also enforces testability + input
+       standards: every interactive mockup element needs a stable data-testid
+       (the future e2e hooks), email/password inputs need type + autocomplete
+       (WCAG 1.3.5), and interactive targets must measure >= 24x24 CSS px
+       (WCAG 2.5.8). NEVER serve a page while the banner shows, in any theme or
+       language. ?theme=light|dark and ?lang=xx URL params exist for headless
+       gating.
+    6. i18n: when the task calls for multi-language, fill the I18N dict in the
+       script (en/pt/es and any language the spec names), mark every translatable
+       mockup text with data-i18n="key" (text-only elements) and translatable
+       attributes with data-i18n-placeholder / data-i18n-aria. A language toggle
+       appears next to the theme toggle automatically when 2+ languages are
+       defined, and the audit enforces coverage: hardcoded mockup text,
+       untranslated placeholders, and keys missing from any language all fail.
+  Options are single-panel tabs (toggle, not scroll) — only one option is on
+  screen at a time. "Review" is the last tab: it summarizes every pick across
+  options and holds the send/copy controls (no fixed bottom bar).
+  No external assets — everything inline.
+-->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UI options — voice-visualizer</title>
+<style>
+  /* Theme system: explicit variables, NOT the Canvas keyword (Canvas follows the OS
+     scheme only and desyncs from the page's own toggle). Every color on this page —
+     including inside option mockups — must come from these vars or define an explicit
+     pair for both themes. Light is the default; dark applies via prefers-color-scheme
+     and either wins when the user hits the toggle (data-theme on <html>). */
+  :root { color-scheme: light dark; --accent:#4f6ef7; --accent-strong:#3b5bdb; --border:#8884;
+          --bg:#fdfdfe; --fg:#1b1e28; --card:#ffffff; --surface:#eef0f4; --muted:#5a5f6e; --link:#3947b8; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14161d; --fg:#e8eaf2; --card:#1d2029; --surface:#232733; --muted:#9aa0b0; --link:#a5b4ff; }
+  }
+  :root[data-theme="light"] { color-scheme: light;
+          --bg:#fdfdfe; --fg:#1b1e28; --card:#ffffff; --surface:#eef0f4; --muted:#5a5f6e; --link:#3947b8; }
+  :root[data-theme="dark"] { color-scheme: dark;
+          --bg:#14161d; --fg:#e8eaf2; --card:#1d2029; --surface:#232733; --muted:#9aa0b0; --link:#a5b4ff; }
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 0 auto; max-width: 1100px; padding: 1.5rem 1.4rem 3rem;
+         background: var(--bg); color: var(--fg); }
+  .toggles { position: fixed; top: .75rem; right: .75rem; z-index: 100; display: flex; gap: .5rem; }
+  .seg { display: inline-flex; gap: .15rem; background: var(--card); border: 1px solid var(--border);
+         border-radius: 999px; padding: .18rem; box-shadow: 0 1px 4px #0002; }
+  .seg button { background: none; border: 0; border-radius: 999px; padding: .22rem .7rem; font: inherit;
+                font-size: .8rem; font-weight: 600; color: var(--muted); cursor: pointer; }
+  .seg button.on { background: var(--accent-strong); color: #fff; }
+  .seg.hidden { display: none; }
+  .panel.axe-sweep { display: block; position: absolute; left: -9999px; top: 0; width: 1100px; }
+  header h1 { margin: 0 0 .1rem; font-size: 1.05rem; }
+  header .sub { color: var(--muted); font-size: .8rem; }
+  .hint { color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: .3rem .7rem; margin: .6rem 0; font-size: .75rem; }
+  .hint code { background: #8883; padding: 0 .3em; border-radius: 4px; }
+
+  .tabbar { position: sticky; top: .75rem; z-index: 50; display: inline-flex; gap: .2rem; background: #8882; border: 1px solid var(--border); border-radius: 10px; padding: .25rem; margin: 1.25rem 0; }
+  .tab { background: none; border: 0; border-radius: 7px; padding: .5rem 1rem; font: inherit; font-size: .9rem; font-weight: 600; color: inherit; opacity: .6; cursor: pointer; }
+  .tab:hover { opacity: .85; }
+  .tab.active { background: var(--card); opacity: 1; box-shadow: 0 1px 3px #0003; }
+  .tab.done::after { content: ' \2713'; opacity: .7; }
+  .tab[data-tab="review"] { margin-left: .4rem; border-left: 1px solid var(--border); border-radius: 0 7px 7px 0; padding-left: 1.1rem; }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .option { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .ghost { background: none; border: 1px solid var(--border); color: inherit; border-radius: 999px;
+           padding: .28rem .8rem; font: inherit; font-size: .8rem; cursor: pointer; }
+  .option.annotating .preview { cursor: crosshair; }
+  .option.annotating .preview *:hover { outline: 2px dashed var(--accent); outline-offset: 1px; }
+  .option .tgl-annot.on { border-color: var(--accent); color: var(--accent); }
+  .preview .noted { outline: 2px solid var(--accent) !important; outline-offset: 2px; }
+  .option > .head { display: flex; align-items: center; gap: .75rem; padding: .75rem 1rem; border-bottom: 1px solid var(--border); }
+  .option > .head h2 { margin: 0; font-size: 1.05rem; flex: 1; }
+  .option .fav { background: none; border: 1px solid var(--border); border-radius: 999px; padding: .3rem .9rem;
+                 font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; color: inherit; }
+  .option .fav.on { border-color: #e0a300; color: #e0a300; background: #e0a30014; }
+  .option .use { background: none; border: 1.5px solid var(--accent); color: var(--accent); border-radius: 999px;
+                 padding: .3rem .9rem; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; }
+  .option .use:hover { background: #4f6ef71a; }
+  .preview { padding: 1rem; background: #8881; overflow-x: auto; }
+  .aspects { display: flex; flex-wrap: wrap; gap: .5rem; padding: .75rem 1rem 1rem; }
+  .aspects label { border: 1px solid var(--border); border-radius: 999px; padding: .25rem .75rem; cursor: pointer; user-select: none; font-size: .85rem; }
+  .aspects input { vertical-align: -2px; margin-right: .35rem; }
+  .aspects label:has(input:checked) { background: var(--accent-strong); color: #fff; border-color: var(--accent-strong); }
+
+  #review-panel h2 { margin-top: 0; }
+  #summary { border: 1px solid var(--border); border-radius: 10px; padding: .9rem 1rem; margin-bottom: 1.25rem; }
+  #summary .empty { opacity: .7; }
+  #summary ul { margin: .3rem 0 .8rem; padding-left: 1.2rem; }
+  #summary h3 { margin: 0 0 .2rem; font-size: .95rem; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 4rem; border-radius: 8px; border: 1px solid var(--border); padding: .6rem; font: inherit; margin: .4rem 0 1rem; }
+  .actions { display: flex; gap: 1rem; align-items: center; }
+  button { background: var(--accent-strong); color: #fff; border: 0; border-radius: 8px; padding: .6rem 1.2rem; font: inherit; font-weight: 600; cursor: pointer; }
+  #out { display: none; white-space: pre-wrap; background: #8881; border: 1px dashed var(--border); border-radius: 8px; padding: .75rem; margin-top: 1rem; }
+  .score-wrap { position: relative; }
+  .score-wrap .score.good { border-color: #1a7f37; color: #1a7f37; }
+  .score-wrap .score.bad { border-color: #b3261e; color: #b3261e; }
+  .score-panel { display: none; position: absolute; top: calc(100% + .4rem); right: 0; z-index: 80; width: 270px;
+                 background: var(--card); color: var(--fg); border: 1px solid var(--border); border-radius: 10px;
+                 padding: .7rem .9rem; box-shadow: 0 6px 20px #0003; font-size: .82rem; text-align: left; }
+  .score-wrap:hover .score-panel, .score-wrap:focus-within .score-panel { display: block; }
+  .score-panel h4 { margin: 0 0 .4rem; font-size: .85rem; }
+  .score-panel .row { display: flex; justify-content: space-between; gap: .6rem; padding: .15rem 0; }
+  .score-panel .ok { color: #1a7f37; font-weight: 600; }
+  .score-panel .fail { color: #b3261e; font-weight: 600; }
+  .score-panel .note { color: var(--muted); margin-top: .4rem; font-size: .75rem; }
+  #a11y-report { position: fixed; inset: auto 0 0 0; z-index: 200; background: #b3261e; color: #fff;
+                 font: 13px/1.4 system-ui, sans-serif; }
+  #a11y-toggle { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 0;
+                 color: #fff; font: 600 13px/1.4 system-ui, sans-serif; padding: .45rem 1rem; cursor: pointer; }
+  #a11y-body { max-height: 40vh; overflow: auto; padding: 0 1rem .6rem; }
+  #a11y-report.collapsed #a11y-body { display: none; }
+  #a11y-body details { margin: .2rem 0; }
+  #a11y-body summary { cursor: pointer; font-weight: 600; }
+  #a11y-body ul { margin: .2rem 0 .4rem; padding-left: 1.2rem; }
+  #a11y-body li { list-style: none; }
+  #a11y-body li label { display: flex; gap: .45rem; align-items: baseline; cursor: pointer; font-weight: 400; }
+  .a11y-actions { display: flex; gap: .5rem; align-items: center; padding: .35rem 0 .1rem; }
+  .a11y-actions input { flex: 1; border: 1px solid #ffffff59; background: #ffffff1a; color: #fff; border-radius: 6px; padding: .3rem .55rem; font: inherit; font-size: 13px; }
+  .a11y-actions input::placeholder { color: #ffffffb3; }
+  .a11y-actions button { background: #fff; color: #7a1712; border: 0; border-radius: 6px; padding: .32rem .7rem; font: 600 13px system-ui, sans-serif; cursor: pointer; }
+
+  /* ---- round 3: Split Halves refined, TRUE-SCALE 300x205 sidebar panel.
+     Single-theme (JARVIS dark), bg + all text colors hardcoded.
+     Chrome per feedback: cog rides right of the VOICE heading (bigger);
+     mic dot sits LEFT of the IN/OUT/BOTH toggle. BOTH shown active. ---- */
+  .vvwrap{display:flex;flex-direction:column;align-items:center;gap:.7rem}
+  .vvnote{font-size:.75rem;color:var(--muted);max-width:480px;text-align:center}
+  .vv{width:300px;height:205px;background:#0a1422;border:1px solid rgba(90,190,255,.4);border-radius:12px;
+    box-shadow:0 0 18px rgba(20,120,170,.25),inset 0 0 24px rgba(20,120,170,.08);
+    color:#dff2fb;font-family:"SFMono-Regular",ui-monospace,Menlo,Consolas,monospace;
+    display:flex;flex-direction:column;overflow:hidden}
+  .vv-head{display:flex;align-items:center;gap:.35rem;padding:.3rem .5rem .25rem;border-bottom:1px solid rgba(90,190,255,.15)}
+  .vv-caret{background:none;border:0;color:#a9c6d8;min-width:24px;min-height:24px;cursor:pointer;font:inherit;font-size:.7rem;padding:0}
+  .vv-title{font-size:.62rem;letter-spacing:.24em;text-transform:uppercase;color:#a9c6d8}
+  .vv-cog{background:none;border:0;min-width:26px;min-height:26px;cursor:pointer;color:#a9c6d8;
+    font-size:1rem;line-height:1;display:inline-flex;align-items:center;justify-content:center;padding:0}
+  .vv-right{margin-left:auto;display:inline-flex;align-items:center;gap:.3rem}
+  .vv-mic{background:none;border:0;min-width:24px;min-height:24px;cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;padding:0}
+  .micdot{position:relative;width:9px;height:9px;border-radius:50%;background:#7a2a24;display:block}
+  .micdot::after{content:"";position:absolute;left:-2px;right:-2px;top:50%;height:1.5px;
+    background:#c96a5e;transform:rotate(-45deg)}
+  .vv-seg{display:inline-flex;border:1px solid rgba(90,190,255,.4);border-radius:6px;overflow:hidden}
+  .vv-seg button{background:#0a1422;border:0;color:#a9c6d8;font:inherit;font-size:.6rem;letter-spacing:.12em;
+    min-width:34px;min-height:24px;padding:.2rem .45rem;cursor:pointer}
+  .vv-seg button.on-both{color:#dff2fb;background:#1d2a38}
+  .vv-body{flex:1;position:relative;overflow:hidden}
+  .vv-meta{display:flex;justify-content:space-between;align-items:center;font-size:.58rem;
+    padding:.25rem .6rem .35rem;color:#a9c6d8}
+  .vv-meta .out{color:#46e6ff}
+  .vv-meta .in{color:#ffb347}
+  .vv-axis{position:absolute;left:10px;right:10px;top:50%;height:1px;background:rgba(90,190,255,.25)}
+  .vvS-cols{position:absolute;inset:0;display:flex;justify-content:center;gap:3px;padding:0 14px}
+  .vvS-cols em{flex:1;max-width:8px;position:relative;display:block}
+  .vvS-cols em i{position:absolute;left:0;right:0;border-radius:2px;display:block}
+  .vvS-cols em .up{bottom:50%;background:linear-gradient(180deg,#46e6ff,#1c6f88);
+    box-shadow:0 0 6px rgba(70,230,255,.35);animation:vvS-u .9s ease-in-out infinite alternate}
+  .vvS-cols em .dn{top:50%;background:linear-gradient(180deg,#8a5a1d,#ffb347);
+    box-shadow:0 0 6px rgba(255,179,71,.35);animation:vvS-d .8s ease-in-out infinite alternate}
+  .vvS-cols em .up.vghost{background:linear-gradient(180deg,#ffb347,#8a5a1d);opacity:.32;left:2px;right:2px;
+    box-shadow:none;animation-name:vvS-u}
+  .vvS-cols em .dn.vghost{background:linear-gradient(180deg,#1c6f88,#46e6ff);opacity:.32;left:2px;right:2px;
+    box-shadow:none;animation-name:vvS-d}
+  @keyframes vvS-u{from{height:4px}to{height:var(--h,40px)}}
+  @keyframes vvS-d{from{height:3px}to{height:var(--g,28px)}}
+  .vvO-bars{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:3px;padding:0 14px}
+  .vvO-bars i{flex:1;max-width:8px;height:12px;border-radius:2px;background:linear-gradient(180deg,#46e6ff,#1c6f88);
+    box-shadow:0 0 6px rgba(70,230,255,.35);animation:vvO-p .9s ease-in-out infinite alternate}
+  .vvO-bars.amber i{background:linear-gradient(180deg,#ffb347,#8a5a1d);box-shadow:0 0 6px rgba(255,179,71,.35);
+    opacity:.72;max-width:4px}
+  @keyframes vvO-p{from{height:6px}to{height:var(--h,80px)}}
+</style>
+</head>
+<body>
+<div class="toggles">
+  <div id="lang-toggle" class="seg hidden" role="group" aria-label="Language"></div>
+  <div id="theme-toggle" class="seg" role="group" aria-label="Theme">
+    <button type="button" data-theme-opt="dark">Dark</button>
+    <button type="button" data-theme-opt="light">Light</button>
+  </div>
+</div>
+<header>
+  <h1>UI options — voice-visualizer: Voice visualizer round 3 — Split Halves refined (chrome fixed)</h1>
+  <div>Switch between options with the tabs below — <b>Use this one</b> on an option decides it right away. Or explore: mark a <b>Favorite</b>, tick the aspects you like in any option, use <b>Annotate</b> to pin a note to a specific element inside a mockup (click the element, type the note), then open the <b>Review</b> tab to see your picks and send them.</div>
+</header>
+
+<div class="hint">
+  <b>Iterative UI mode is ON</b> (the agent waits for your pick before committing to a UI, and keeps building everything else meanwhile).
+  Turn it off with <code>touch .claude/ITERATIVE_UI_OFF</code> in the repo — or just tell the agent "turn off iterative UI" / that you'll be AFK, and it will decide UIs itself.
+  <br>Ways back to the agent: comment on <a href="https://github.com/Zugruul/development-skills">the issue</a> (read every iteration, works even after the session ends), or reopen the building session in a terminal: <code>claude --resume 0a489b51-0a1c-4a6e-86c0-483784336961</code>.
+</div>
+
+<div class="tabbar" role="tablist">
+<button class="tab" type="button" data-tab="C1">C1 · Split Halves</button>
+<button class="tab" type="button" data-tab="C2">C2 · Split + Ghost</button>
+<button class="tab" type="button" data-tab="C3">C3 · Overlay Blend</button>
+<button class="tab" type="button" data-tab="review">Review</button>
+</div>
+
+<div class="panels">
+<section class="option panel" data-option="C1" data-name="Split Halves" data-tab="C1">
+  <div class="head">
+    <h2>Option C1 — Split Halves</h2>
+    <button class="ghost tgl-annot" type="button">Annotate</button>
+    <span class="score-wrap"><button class="ghost score" type="button" aria-haspopup="true">Score</button>
+      <div class="score-panel" role="status"></div></span>
+    <button class="fav" type="button">☆ Favorite</button>
+    <button class="use" type="button">Use this one</button>
+  </div>
+  <div class="preview">
+    <div class="vvwrap">
+      <div class="vv">
+        <div class="vv-head">
+          <button class="vv-caret" type="button" data-testid="c1-collapse" aria-label="collapse voice panel">▾</button>
+          <span class="vv-title">Voice</span>
+          <button class="vv-cog" type="button" data-testid="c1-settings" title="Voice settings" aria-label="voice settings">⚙</button>
+          <span class="vv-right">
+            <button class="vv-mic" type="button" data-testid="c1-mic-mode" aria-pressed="false"
+              title="Press to speak (hold Space) — click for mic always on"
+              aria-label="microphone mode: press to speak — click for always on"><span class="micdot"></span></button>
+            <span class="vv-seg" role="group" aria-label="voice direction">
+              <button type="button" data-testid="c1-mode-in" aria-pressed="false">IN</button>
+              <button type="button" data-testid="c1-mode-out" aria-pressed="false">OUT</button>
+              <button type="button" class="on-both" data-testid="c1-mode-both" aria-pressed="true">BOTH</button>
+            </span>
+          </span>
+        </div>
+        <div class="vv-body" data-bg="#0a1422">
+          <div class="vv-axis"></div>
+          <div class="vvS-cols">
+            <em><i class="up" style="--h:14px;animation-delay:-0.14s"></i><i class="dn" style="--g:40px;animation-delay:-0.36s"></i></em>
+            <em><i class="up" style="--h:57px;animation-delay:-0.16s"></i><i class="dn" style="--g:12px;animation-delay:-0.14s"></i></em>
+            <em><i class="up" style="--h:28px;animation-delay:-0.17s"></i><i class="dn" style="--g:18px;animation-delay:-0.64s"></i></em>
+            <em><i class="up" style="--h:56px;animation-delay:-0.16s"></i><i class="dn" style="--g:13px;animation-delay:-0.48s"></i></em>
+            <em><i class="up" style="--h:42px;animation-delay:-0.21s"></i><i class="dn" style="--g:36px;animation-delay:-0.52s"></i></em>
+            <em><i class="up" style="--h:21px;animation-delay:-0.67s"></i><i class="dn" style="--g:11px;animation-delay:-0.76s"></i></em>
+            <em><i class="up" style="--h:35px;animation-delay:-0.21s"></i><i class="dn" style="--g:22px;animation-delay:-0.36s"></i></em>
+            <em><i class="up" style="--h:52px;animation-delay:-0.22s"></i><i class="dn" style="--g:25px;animation-delay:-0.22s"></i></em>
+            <em><i class="up" style="--h:51px;animation-delay:-0.81s"></i><i class="dn" style="--g:13px;animation-delay:-0.72s"></i></em>
+            <em><i class="up" style="--h:36px;animation-delay:-0.21s"></i><i class="dn" style="--g:18px;animation-delay:-0.72s"></i></em>
+            <em><i class="up" style="--h:38px;animation-delay:-0.12s"></i><i class="dn" style="--g:11px;animation-delay:-0.47s"></i></em>
+            <em><i class="up" style="--h:42px;animation-delay:-0.22s"></i><i class="dn" style="--g:23px;animation-delay:-0.4s"></i></em>
+            <em><i class="up" style="--h:37px;animation-delay:-0.31s"></i><i class="dn" style="--g:22px;animation-delay:-0.71s"></i></em>
+            <em><i class="up" style="--h:44px;animation-delay:-0.26s"></i><i class="dn" style="--g:12px;animation-delay:-0.28s"></i></em>
+            <em><i class="up" style="--h:50px;animation-delay:-0.44s"></i><i class="dn" style="--g:35px;animation-delay:-0.57s"></i></em>
+            <em><i class="up" style="--h:34px;animation-delay:-0.83s"></i><i class="dn" style="--g:23px;animation-delay:-0.84s"></i></em>
+            <em><i class="up" style="--h:33px;animation-delay:-0.5s"></i><i class="dn" style="--g:21px;animation-delay:-0.8s"></i></em>
+            <em><i class="up" style="--h:57px;animation-delay:-0.12s"></i><i class="dn" style="--g:28px;animation-delay:-0.2s"></i></em>
+          </div>
+        </div>
+        <div class="vv-meta"><span class="out">tts · speaking</span><span class="in">mic · live</span><span>48 kHz</span></div>
+      </div>
+      <div class="vvnote">Your B2 favorite with the fixed chrome: cog beside the VOICE heading, mic dot left of the IN/OUT/BOTH toggle. BOTH = cyan up / amber down, cleanly split.</div>
+    </div>
+  </div>
+  <div class="aspects">
+    <label><input type="checkbox" value="split halves">split halves</label>
+    <label><input type="checkbox" value="clear separation">clear separation</label>
+    <label><input type="checkbox" value="shared axis">shared axis</label>
+    <label><input type="checkbox" value="fixed chrome">fixed chrome</label>
+    <label><input type="checkbox" value="calm">calm</label>
+  </div>
+</section>
+
+<section class="option panel" data-option="C2" data-name="Split + Ghost Overlay" data-tab="C2">
+  <div class="head">
+    <h2>Option C2 — Split + Ghost Overlay</h2>
+    <button class="ghost tgl-annot" type="button">Annotate</button>
+    <span class="score-wrap"><button class="ghost score" type="button" aria-haspopup="true">Score</button>
+      <div class="score-panel" role="status"></div></span>
+    <button class="fav" type="button">☆ Favorite</button>
+    <button class="use" type="button">Use this one</button>
+  </div>
+  <div class="preview">
+    <div class="vvwrap">
+      <div class="vv">
+        <div class="vv-head">
+          <button class="vv-caret" type="button" data-testid="c2-collapse" aria-label="collapse voice panel">▾</button>
+          <span class="vv-title">Voice</span>
+          <button class="vv-cog" type="button" data-testid="c2-settings" title="Voice settings" aria-label="voice settings">⚙</button>
+          <span class="vv-right">
+            <button class="vv-mic" type="button" data-testid="c2-mic-mode" aria-pressed="false"
+              title="Press to speak (hold Space) — click for mic always on"
+              aria-label="microphone mode: press to speak — click for always on"><span class="micdot"></span></button>
+            <span class="vv-seg" role="group" aria-label="voice direction">
+              <button type="button" data-testid="c2-mode-in" aria-pressed="false">IN</button>
+              <button type="button" data-testid="c2-mode-out" aria-pressed="false">OUT</button>
+              <button type="button" class="on-both" data-testid="c2-mode-both" aria-pressed="true">BOTH</button>
+            </span>
+          </span>
+        </div>
+        <div class="vv-body" data-bg="#0a1422">
+          <div class="vv-axis"></div>
+          <div class="vvS-cols">
+            <em><i class="up" style="--h:52px;animation-delay:-0.61s"></i><i class="dn" style="--g:33px;animation-delay:-0.13s"></i><i class="up vghost" style="--h:18px;animation-delay:-0.28s"></i><i class="dn vghost" style="--g:14px;animation-delay:-0.57s"></i></em>
+            <em><i class="up" style="--h:26px;animation-delay:-0.41s"></i><i class="dn" style="--g:17px;animation-delay:-0.69s"></i><i class="up vghost" style="--h:20px;animation-delay:-0.37s"></i><i class="dn vghost" style="--g:6px;animation-delay:-0.5s"></i></em>
+            <em><i class="up" style="--h:21px;animation-delay:-0.13s"></i><i class="dn" style="--g:27px;animation-delay:-0.84s"></i><i class="up vghost" style="--h:9px;animation-delay:-0.82s"></i><i class="dn vghost" style="--g:11px;animation-delay:-0.32s"></i></em>
+            <em><i class="up" style="--h:59px;animation-delay:-0.43s"></i><i class="dn" style="--g:19px;animation-delay:-0.45s"></i><i class="up vghost" style="--h:22px;animation-delay:-0.27s"></i><i class="dn vghost" style="--g:16px;animation-delay:-0.84s"></i></em>
+            <em><i class="up" style="--h:45px;animation-delay:-0.73s"></i><i class="dn" style="--g:12px;animation-delay:-0.44s"></i><i class="up vghost" style="--h:25px;animation-delay:-0.6s"></i><i class="dn vghost" style="--g:5px;animation-delay:-0.25s"></i></em>
+            <em><i class="up" style="--h:44px;animation-delay:-0.24s"></i><i class="dn" style="--g:32px;animation-delay:-0.13s"></i><i class="up vghost" style="--h:24px;animation-delay:-0.28s"></i><i class="dn vghost" style="--g:10px;animation-delay:-0.84s"></i></em>
+            <em><i class="up" style="--h:22px;animation-delay:-0.5s"></i><i class="dn" style="--g:17px;animation-delay:-0.54s"></i><i class="up vghost" style="--h:25px;animation-delay:-0.76s"></i><i class="dn vghost" style="--g:11px;animation-delay:-0.81s"></i></em>
+            <em><i class="up" style="--h:33px;animation-delay:-0.49s"></i><i class="dn" style="--g:21px;animation-delay:-0.5s"></i><i class="up vghost" style="--h:22px;animation-delay:-0.47s"></i><i class="dn vghost" style="--g:17px;animation-delay:-0.23s"></i></em>
+            <em><i class="up" style="--h:26px;animation-delay:-0.3s"></i><i class="dn" style="--g:39px;animation-delay:-0.71s"></i><i class="up vghost" style="--h:16px;animation-delay:-0.16s"></i><i class="dn vghost" style="--g:8px;animation-delay:-0.47s"></i></em>
+            <em><i class="up" style="--h:36px;animation-delay:-0.8s"></i><i class="dn" style="--g:22px;animation-delay:-0.6s"></i><i class="up vghost" style="--h:24px;animation-delay:-0.67s"></i><i class="dn vghost" style="--g:6px;animation-delay:-0.73s"></i></em>
+            <em><i class="up" style="--h:21px;animation-delay:-0.22s"></i><i class="dn" style="--g:37px;animation-delay:-0.25s"></i><i class="up vghost" style="--h:15px;animation-delay:-0.21s"></i><i class="dn vghost" style="--g:14px;animation-delay:-0.48s"></i></em>
+            <em><i class="up" style="--h:29px;animation-delay:-0.64s"></i><i class="dn" style="--g:27px;animation-delay:-0.71s"></i><i class="up vghost" style="--h:7px;animation-delay:-0.43s"></i><i class="dn vghost" style="--g:13px;animation-delay:-0.26s"></i></em>
+            <em><i class="up" style="--h:26px;animation-delay:-0.7s"></i><i class="dn" style="--g:37px;animation-delay:-0.34s"></i><i class="up vghost" style="--h:18px;animation-delay:-0.08s"></i><i class="dn vghost" style="--g:19px;animation-delay:-0.36s"></i></em>
+            <em><i class="up" style="--h:26px;animation-delay:-0.22s"></i><i class="dn" style="--g:25px;animation-delay:-0.33s"></i><i class="up vghost" style="--h:17px;animation-delay:-0.14s"></i><i class="dn vghost" style="--g:11px;animation-delay:-0.1s"></i></em>
+            <em><i class="up" style="--h:29px;animation-delay:-0.76s"></i><i class="dn" style="--g:40px;animation-delay:-0.41s"></i><i class="up vghost" style="--h:26px;animation-delay:-0.27s"></i><i class="dn vghost" style="--g:10px;animation-delay:-0.38s"></i></em>
+            <em><i class="up" style="--h:18px;animation-delay:-0.17s"></i><i class="dn" style="--g:40px;animation-delay:-0.7s"></i><i class="up vghost" style="--h:6px;animation-delay:-0.83s"></i><i class="dn vghost" style="--g:13px;animation-delay:-0.35s"></i></em>
+            <em><i class="up" style="--h:32px;animation-delay:-0.76s"></i><i class="dn" style="--g:29px;animation-delay:-0.25s"></i><i class="up vghost" style="--h:15px;animation-delay:-0.37s"></i><i class="dn vghost" style="--g:12px;animation-delay:-0.24s"></i></em>
+            <em><i class="up" style="--h:23px;animation-delay:-0.73s"></i><i class="dn" style="--g:30px;animation-delay:-0.59s"></i><i class="up vghost" style="--h:12px;animation-delay:-0.07s"></i><i class="dn vghost" style="--g:20px;animation-delay:-0.8s"></i></em>
+          </div>
+        </div>
+        <div class="vv-meta"><span class="out">tts · speaking</span><span class="in">mic · live</span><span>48 kHz</span></div>
+      </div>
+      <div class="vvnote">Split halves PLUS the overlay trait you liked in B1: each half also carries a faint ghost of the opposite stream, so you can compare directions per column without losing the split.</div>
+    </div>
+  </div>
+  <div class="aspects">
+    <label><input type="checkbox" value="split halves">split halves</label>
+    <label><input type="checkbox" value="ghost overlay">ghost overlay</label>
+    <label><input type="checkbox" value="overlaid streams">overlaid streams</label>
+    <label><input type="checkbox" value="per-column compare">per-column compare</label>
+    <label><input type="checkbox" value="richer motion">richer motion</label>
+    <label><input type="checkbox" value="best of both">best of both</label>
+  </div>
+</section>
+
+<section class="option panel" data-option="C3" data-name="Overlay Blend" data-tab="C3">
+  <div class="head">
+    <h2>Option C3 — Overlay Blend</h2>
+    <button class="ghost tgl-annot" type="button">Annotate</button>
+    <span class="score-wrap"><button class="ghost score" type="button" aria-haspopup="true">Score</button>
+      <div class="score-panel" role="status"></div></span>
+    <button class="fav" type="button">☆ Favorite</button>
+    <button class="use" type="button">Use this one</button>
+  </div>
+  <div class="preview">
+    <div class="vvwrap">
+      <div class="vv">
+        <div class="vv-head">
+          <button class="vv-caret" type="button" data-testid="c3-collapse" aria-label="collapse voice panel">▾</button>
+          <span class="vv-title">Voice</span>
+          <button class="vv-cog" type="button" data-testid="c3-settings" title="Voice settings" aria-label="voice settings">⚙</button>
+          <span class="vv-right">
+            <button class="vv-mic" type="button" data-testid="c3-mic-mode" aria-pressed="false"
+              title="Press to speak (hold Space) — click for mic always on"
+              aria-label="microphone mode: press to speak — click for always on"><span class="micdot"></span></button>
+            <span class="vv-seg" role="group" aria-label="voice direction">
+              <button type="button" data-testid="c3-mode-in" aria-pressed="false">IN</button>
+              <button type="button" data-testid="c3-mode-out" aria-pressed="false">OUT</button>
+              <button type="button" class="on-both" data-testid="c3-mode-both" aria-pressed="true">BOTH</button>
+            </span>
+          </span>
+        </div>
+        <div class="vv-body" data-bg="#0a1422">
+          <div class="vvO-bars">
+            <i style="--h:104px;animation-delay:-0.43s;animation-duration:0.93s"></i>
+            <i style="--h:51px;animation-delay:-0.3s;animation-duration:0.8s"></i>
+            <i style="--h:104px;animation-delay:-0.22s;animation-duration:0.92s"></i>
+            <i style="--h:70px;animation-delay:-0.09s;animation-duration:0.84s"></i>
+            <i style="--h:108px;animation-delay:-0.24s;animation-duration:0.91s"></i>
+            <i style="--h:70px;animation-delay:-0.6s;animation-duration:0.78s"></i>
+            <i style="--h:31px;animation-delay:-0.69s;animation-duration:0.72s"></i>
+            <i style="--h:49px;animation-delay:-0.63s;animation-duration:0.89s"></i>
+            <i style="--h:72px;animation-delay:-0.16s;animation-duration:0.71s"></i>
+            <i style="--h:58px;animation-delay:-0.69s;animation-duration:0.93s"></i>
+            <i style="--h:46px;animation-delay:-0.48s;animation-duration:0.81s"></i>
+            <i style="--h:36px;animation-delay:-0.11s;animation-duration:0.82s"></i>
+            <i style="--h:78px;animation-delay:-0.4s;animation-duration:0.82s"></i>
+            <i style="--h:79px;animation-delay:-0.58s;animation-duration:0.7s"></i>
+            <i style="--h:104px;animation-delay:-0.71s;animation-duration:0.88s"></i>
+            <i style="--h:61px;animation-delay:-0.24s;animation-duration:0.95s"></i>
+            <i style="--h:77px;animation-delay:-0.74s;animation-duration:0.71s"></i>
+            <i style="--h:90px;animation-delay:-0.36s;animation-duration:0.92s"></i>
+          </div>
+          <div class="vvO-bars amber">
+            <i style="--h:57px;animation-delay:-0.36s;animation-duration:0.8s"></i>
+            <i style="--h:21px;animation-delay:-0.6s;animation-duration:0.91s"></i>
+            <i style="--h:20px;animation-delay:-0.76s;animation-duration:0.8s"></i>
+            <i style="--h:66px;animation-delay:-0.37s;animation-duration:0.9s"></i>
+            <i style="--h:65px;animation-delay:-0.68s;animation-duration:0.94s"></i>
+            <i style="--h:51px;animation-delay:-0.78s;animation-duration:0.81s"></i>
+            <i style="--h:53px;animation-delay:-0.26s;animation-duration:0.72s"></i>
+            <i style="--h:21px;animation-delay:-0.16s;animation-duration:0.85s"></i>
+            <i style="--h:73px;animation-delay:-0.62s;animation-duration:0.75s"></i>
+            <i style="--h:59px;animation-delay:-0.35s;animation-duration:0.76s"></i>
+            <i style="--h:39px;animation-delay:-0.32s;animation-duration:0.93s"></i>
+            <i style="--h:67px;animation-delay:-0.3s;animation-duration:0.77s"></i>
+            <i style="--h:46px;animation-delay:-0.71s;animation-duration:0.81s"></i>
+            <i style="--h:22px;animation-delay:-0.2s;animation-duration:0.76s"></i>
+            <i style="--h:34px;animation-delay:-0.7s;animation-duration:0.94s"></i>
+            <i style="--h:25px;animation-delay:-0.65s;animation-duration:0.73s"></i>
+            <i style="--h:68px;animation-delay:-0.3s;animation-duration:0.87s"></i>
+            <i style="--h:46px;animation-delay:-0.4s;animation-duration:0.72s"></i>
+          </div>
+        </div>
+        <div class="vv-meta"><span class="out">tts · speaking</span><span class="in">mic · live</span><span>48 kHz</span></div>
+      </div>
+      <div class="vvnote">The full overlay you liked, kept as a contender with the fixed chrome: both spectra share one mirrored field, thin amber inbound over cyan outbound.</div>
+    </div>
+  </div>
+  <div class="aspects">
+    <label><input type="checkbox" value="overlaid streams">overlaid streams</label>
+    <label><input type="checkbox" value="single field">single field</label>
+    <label><input type="checkbox" value="dense">dense</label>
+    <label><input type="checkbox" value="full-height mirror">full-height mirror</label>
+  </div>
+</section>
+
+<section class="panel" data-tab="review" id="review-panel">
+  <h2>Review your selection</h2>
+  <div id="summary"></div>
+  <label for="notes"><b>Notes for the agent</b> (optional)</label>
+  <textarea id="notes" placeholder="e.g. option B, but with option A's color palette; avoid modals"></textarea>
+  <div class="actions">
+    <button id="send">Send selection</button>
+    <button id="copy" class="ghost">Copy instead</button>
+    <span id="status"></span>
+  </div>
+  <pre id="out"></pre>
+</section>
+</div>
+
+<script>
+// theme toggle: segmented Dark | Light, always visible top right; choice persists
+const themeSeg = document.getElementById('theme-toggle');
+function currentTheme() {
+  return document.documentElement.dataset.theme
+      || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+}
+function applyTheme(t, persist) {
+  document.documentElement.dataset.theme = t;
+  themeSeg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.themeOpt === t));
+  if (persist) { try { localStorage.setItem('ui-options-theme', t); } catch {} }
+  setTimeout(auditA11y, 60);
+}
+themeSeg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => applyTheme(b.dataset.themeOpt, true)));
+const _qp = new URLSearchParams(location.search);
+try { const saved = _qp.get('theme') || localStorage.getItem('ui-options-theme'); if (saved) applyTheme(saved, false); } catch {}
+themeSeg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.themeOpt === currentTheme()));
+
+// i18n: when the task calls for multi-language (i18n), fill I18N with one
+// entry per language code (en/pt/es/...), mark every translatable mockup text
+// with data-i18n="key" (text-only elements — setLang replaces textContent),
+// and use data-i18n-placeholder / data-i18n-aria for those attributes. The
+// language toggle appears automatically next to the theme toggle when 2+
+// languages are defined; leave the dict empty for single-language tasks.
+// The audit then enforces full coverage: no hardcoded mockup text, no
+// untranslated placeholder, no key missing from any language.
+const I18N = {};
+const LANGS = Object.keys(I18N);
+const langSeg = document.getElementById('lang-toggle');
+function setLang(l, persist) {
+  if (!I18N[l]) return;
+  document.documentElement.lang = l;
+  document.querySelectorAll('[data-i18n]').forEach(el => { const v = I18N[l][el.dataset.i18n]; if (v != null) el.textContent = v; });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { const v = I18N[l][el.dataset.i18nPlaceholder]; if (v != null) el.setAttribute('placeholder', v); });
+  document.querySelectorAll('[data-i18n-aria]').forEach(el => { const v = I18N[l][el.dataset.i18nAria]; if (v != null) el.setAttribute('aria-label', v); });
+  langSeg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.lang === l));
+  if (persist) { try { localStorage.setItem('ui-options-lang', l); } catch {} setTimeout(auditA11y, 60); }
+}
+if (LANGS.length > 1) {
+  langSeg.classList.remove('hidden');
+  for (const l of LANGS) { const b = document.createElement('button'); b.type = 'button'; b.dataset.lang = l;
+    b.textContent = l.toUpperCase(); b.addEventListener('click', () => setLang(l, true)); langSeg.appendChild(b); }
+  let savedL = null; try { savedL = localStorage.getItem('ui-options-lang'); } catch {}
+  const want = _qp.get('lang') || savedL || (navigator.language || 'en').slice(0, 2);
+  setLang(I18N[want] ? want : LANGS[0], false);
+}
+
+// ---- automated a11y + contrast audit --------------------------------------
+// Lints every mockup inside .preview on load and on every theme toggle:
+//  • contrast: all text + input placeholders vs the composited effective
+//    background (WCAG 4.5:1, or 3:1 for large/bold text). Gradient/image
+//    backgrounds are unverifiable per-pixel — declare data-bg="#rrggbb"
+//    (approximate base color) on the element or an ancestor.
+//  • semantics: form controls need an accessible name (a real <label>,
+//    aria-label/aria-labelledby, or title — placeholder alone does not
+//    count); <img> needs alt; buttons/links need text or aria-label; anything
+//    styled clickable (cursor:pointer) must be a real interactive element or
+//    carry role + tabindex.
+// Failures show a fixed red banner and land in window.__a11yIssues. A page
+// whose banner shows (in either theme) must NOT be served to the human.
+const _probe = document.createElement('div'); _probe.style.display = 'none'; document.body.appendChild(_probe);
+function parseColor(str) {
+  if (!str) return null;
+  _probe.style.color = 'rgb(0,0,0)'; _probe.style.color = str;
+  const m = getComputedStyle(_probe).color.match(/rgba?\(([^)]+)\)/);
+  if (!m) return null;
+  const p = m[1].split(',').map(parseFloat);
+  return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+}
+function _lum(c) { const f = v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }; return .2126 * f(c.r) + .7152 * f(c.g) + .0722 * f(c.b); }
+function _over(top, bot) {
+  const a = top.a + bot.a * (1 - top.a);
+  return a ? { r: (top.r * top.a + bot.r * bot.a * (1 - top.a)) / a,
+               g: (top.g * top.a + bot.g * bot.a * (1 - top.a)) / a,
+               b: (top.b * top.a + bot.b * bot.a * (1 - top.a)) / a, a } : { r: 0, g: 0, b: 0, a: 0 };
+}
+function _compose(layers) { let c = { ...layers[layers.length - 1], a: 1 }; for (let i = layers.length - 2; i >= 0; i--) c = _over(layers[i], c); return c; }
+function _effBg(el) {
+  const layers = [];
+  for (let n = el; n; n = n.parentElement) {
+    if (n.dataset && n.dataset.bg) { const d = parseColor(n.dataset.bg); if (d) { layers.push({ ...d, a: 1 }); return _compose(layers); } }
+    const cs = getComputedStyle(n);
+    const bc = parseColor(cs.backgroundColor);
+    if (bc && bc.a > 0) layers.push(bc);
+    if (bc && bc.a >= 1) return _compose(layers);
+    if (cs.backgroundImage !== 'none') return null; // gradient/image with no data-bg -> unverifiable
+  }
+  layers.push(parseColor(getComputedStyle(document.body).backgroundColor) || { r: 255, g: 255, b: 255, a: 1 });
+  return _compose(layers);
+}
+function _ratio(fg, bg) { const l1 = _lum(_over(fg, bg)), l2 = _lum(bg); return (Math.max(l1, l2) + .05) / (Math.min(l1, l2) + .05); }
+// axe-core (industry-standard rules engine, vendored in the plugin) runs on
+// every option panel when the page is served by the hub; its color-contrast
+// rule stays off because the composited data-bg-aware checker below covers it.
+const _axeCan = location.pathname.startsWith('/decision/');
+let _axeLoad = null;
+function loadAxe() {
+  if (!_axeCan) return Promise.resolve(null);
+  if (!_axeLoad) _axeLoad = new Promise(res => {
+    const sc = document.createElement('script'); sc.src = '/vendor/axe.min.js';
+    sc.onload = () => res(window.axe); sc.onerror = () => res(null);
+    document.head.appendChild(sc);
+  });
+  return _axeLoad;
+}
+async function axeSweep() {
+  const axe = await loadAxe();   // null when opened as a plain file — the size checks below still run
+  const issues = [];
+  for (const p of document.querySelectorAll('.option.panel')) {
+    const shown = p.classList.contains('active');
+    if (!shown) p.classList.add('axe-sweep');   // render offscreen so hidden tabs are measurable
+    // WCAG 2.5.8: interactive targets at least 24x24 CSS px (measurable only while rendered)
+    for (const el of p.querySelectorAll('.preview button, .preview a[href], .preview input, .preview select, .preview textarea, .preview [role="button"]')) {
+      const r = el.getBoundingClientRect();
+      if (r.width && r.height && (r.width < 24 || r.height < 24))
+        issues.push(`Option ${p.dataset.option} [target-size] ${el.tagName.toLowerCase()}${el.dataset.testid ? '#' + el.dataset.testid : ''}: ${Math.round(r.width)}\u00D7${Math.round(r.height)}px < 24\u00D724 (WCAG 2.5.8)`);
+    }
+    if (axe) try {
+      const res = await axe.run(p, { resultTypes: ['violations'], rules: { 'color-contrast': { enabled: false } } });
+      for (const v of res.violations)
+        for (const n of v.nodes.slice(0, 3))
+          issues.push(`Option ${p.dataset.option} [axe:${v.id}] ${n.target.join(' ')}: ${v.help}`);
+    } catch {}
+    if (!shown) p.classList.remove('axe-sweep');
+  }
+  return issues;
+}
+
+// per-option Score panel (hover/focus the Score button): category scores fed by
+// the audit; new categories (performance, semantics depth, ...) plug in here.
+function updateScores(issues) {
+  document.querySelectorAll('.option').forEach(s => {
+    const btn = s.querySelector('.score'), panel = s.querySelector('.score-panel');
+    if (!btn || !panel) return;
+    const mine = issues.filter(i => i.startsWith(`Option ${s.dataset.option} `) || i.startsWith(`Option ${s.dataset.option}:`) || i.startsWith(`Option ${s.dataset.option}[`));
+    const cat = { 'Contrast (WCAG)': 0, 'Semantics': 0, 'Testability': 0, 'i18n coverage': 0, 'axe-core': 0 };
+    for (const i of mine) {
+      if (i.includes('[axe:')) cat['axe-core']++;
+      else if (i.includes('data-testid') || i.includes('[target-size]') || i.includes('autocomplete')) cat['Testability']++;
+      else if (i.includes('contrast') || i.includes('data-bg')) cat['Contrast (WCAG)']++;
+      else if (i.includes('data-i18n')) cat['i18n coverage']++;
+      else cat['Semantics']++;
+    }
+    const globalI18n = issues.filter(i => i.startsWith('i18n:')).length;
+    btn.classList.toggle('bad', mine.length > 0);
+    btn.classList.toggle('good', mine.length === 0);
+    btn.textContent = mine.length ? `Score · ${mine.length}✗` : 'Score ✓';
+    panel.innerHTML = `<h4>Option ${s.dataset.option} — audit scores</h4>` +
+      Object.entries(cat).map(([k, v]) => `<div class="row"><span>${k}</span><span class="${v ? 'fail' : 'ok'}">${v ? v + ' issue' + (v > 1 ? 's' : '') : '✓ pass'}</span></div>`).join('') +
+      (globalI18n ? `<div class="row"><span>i18n dictionary (page-wide)</span><span class="fail">${globalI18n} missing</span></div>` : '') +
+      '<div class="note">Re-scored on every theme/language change. Details in the red banner when failing.</div>';
+  });
+}
+let _auditRun = 0;
+async function auditA11y() {
+  const run = ++_auditRun;
+  const issues = [];
+  document.querySelectorAll('.option .preview *').forEach(el => {
+    const s = el.closest('.option');
+    const cs = getComputedStyle(el);
+    const where = `Option ${s.dataset.option} [${elPath(el, s.querySelector('.preview'))}]`;
+    const tag = el.tagName;
+    // contrast
+    const checks = [];
+    if ([...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()))
+      checks.push({ col: parseColor(cs.color), label: (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 30) });
+    if ((tag === 'INPUT' || tag === 'TEXTAREA') && el.getAttribute('placeholder')) {
+      const pc = parseColor(getComputedStyle(el, '::placeholder').color);
+      if (pc) checks.push({ col: pc, label: 'placeholder "' + el.getAttribute('placeholder') + '"' });
+    }
+    if (checks.length) {
+      const bg = _effBg(el);
+      if (!bg) issues.push(`${where}: gradient/image background without data-bg — add data-bg="#rrggbb" so contrast can be verified`);
+      else {
+        const fs = parseFloat(cs.fontSize), bold = parseInt(cs.fontWeight, 10) >= 700;
+        const min = fs >= 24 || (fs >= 18.66 && bold) ? 3 : 4.5;
+        for (const ch of checks) {
+          if (!ch.col) continue;
+          const r = _ratio(ch.col, bg);
+          if (r < min) issues.push(`${where} "${ch.label}": contrast ${r.toFixed(2)}:1 < ${min}:1`);
+        }
+      }
+    }
+    // semantics
+    if (tag === 'IMG' && !el.hasAttribute('alt'))
+      issues.push(`${where}: <img> without alt`);
+    if (((tag === 'INPUT' && !['hidden', 'submit', 'button', 'image'].includes(el.type)) || tag === 'TEXTAREA' || tag === 'SELECT')) {
+      const named = (el.labels && el.labels.length) || el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || el.getAttribute('title');
+      if (!named) issues.push(`${where}: form control has no accessible name — add a <label for>, aria-label, or title (placeholder alone is not one)`);
+    }
+    if (tag === 'BUTTON' || (tag === 'A' && el.hasAttribute('href')) || ['button', 'link'].includes(el.getAttribute('role'))) {
+      const named = el.textContent.trim() || el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || el.getAttribute('title');
+      if (!named) issues.push(`${where}: interactive element has no accessible text — add text or aria-label`);
+    }
+    const interactive = tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'SUMMARY' ||
+      (tag === 'INPUT' && el.type !== 'hidden') ||
+      (tag === 'LABEL' && (el.control || el.querySelector('input,select,textarea'))) ||
+      el.closest('button, a[href], [tabindex], label');
+    if (cs.cursor === 'pointer' && !interactive)
+      issues.push(`${where}: styled clickable (cursor:pointer) but not keyboard-accessible — use <button>/<a href> or add role="button" tabindex="0"`);
+    // testability + input-purpose standards
+    const isInteractive = tag === 'BUTTON' || tag === 'SELECT' || tag === 'TEXTAREA' ||
+      (tag === 'A' && el.hasAttribute('href')) || (tag === 'INPUT' && el.type !== 'hidden') || el.getAttribute('role') === 'button';
+    if (isInteractive && !el.dataset.testid)
+      issues.push(`${where}: interactive element missing data-testid — add a stable test id for e2e hooks`);
+    if (tag === 'INPUT' && (el.type === 'password' || el.type === 'email' || /email|e-?mail|correo|邮箱/i.test((el.getAttribute('placeholder') || '') + (el.getAttribute('aria-label') || ''))) && !el.getAttribute('autocomplete'))
+      issues.push(`${where}: email/password input missing autocomplete (WCAG 1.3.5 Identify Input Purpose)`);
+  });
+  if (LANGS.length > 1) {
+    document.querySelectorAll('.option .preview *').forEach(el => {
+      const s = el.closest('.option');
+      if ([...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && !el.closest('[data-i18n]'))
+        issues.push(`Option ${s.dataset.option} [${elPath(el, s.querySelector('.preview'))}]: hardcoded text "${el.textContent.trim().slice(0, 20)}" — add data-i18n for multi-language`);
+      if (el.getAttribute('placeholder') && !el.dataset.i18nPlaceholder)
+        issues.push(`Option ${s.dataset.option}: placeholder "${el.getAttribute('placeholder')}" not translatable — add data-i18n-placeholder`);
+    });
+    const used = new Set();
+    document.querySelectorAll('[data-i18n],[data-i18n-placeholder],[data-i18n-aria]').forEach(el => {
+      for (const k of ['i18n', 'i18nPlaceholder', 'i18nAria']) if (el.dataset[k]) used.add(el.dataset[k]);
+    });
+    for (const l of LANGS) for (const k of used) if (I18N[l][k] == null) issues.push(`i18n: key "${k}" missing in language "${l}"`);
+  }
+  issues.push(...await axeSweep());
+  if (run !== _auditRun) return issues;   // superseded by a newer audit run
+  window.__a11yIssues = issues;
+  updateScores(issues);
+  renderA11yReport(issues);
+  return issues;
+}
+// red failure bar: collapsible, grouped per option (A, B, C..., plus Page-wide)
+let _a11yCollapsed = false;
+function renderA11yReport(issues) {
+  let bar = document.getElementById('a11y-report');
+  if (!issues.length) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    bar = document.createElement('div'); bar.id = 'a11y-report';
+    bar.innerHTML = '<button id="a11y-toggle" type="button" aria-expanded="true"></button><div id="a11y-body"></div>';
+    document.body.appendChild(bar);
+    bar.querySelector('#a11y-toggle').addEventListener('click', () => {
+      _a11yCollapsed = !_a11yCollapsed;
+      bar.classList.toggle('collapsed', _a11yCollapsed);
+      bar.querySelector('#a11y-toggle').setAttribute('aria-expanded', String(!_a11yCollapsed));
+      renderA11yReport(window.__a11yIssues || []);
+    });
+  }
+  bar.classList.toggle('collapsed', _a11yCollapsed);
+  const groups = {};
+  for (const i of issues) {
+    const m = i.match(/^Option (\S+?)[\s:\[]/);
+    (groups[m ? m[1] : 'Page'] = groups[m ? m[1] : 'Page'] || []).push(i);
+  }
+  const names = Object.keys(groups).sort();
+  bar.querySelector('#a11y-toggle').textContent = (_a11yCollapsed ? '\u25B8 ' : '\u25BE ') +
+    '\u26A0 A11y failures \u2014 ' + names.map(k => `${k === 'Page' ? 'page' : k} ${groups[k].length}`).join(' \u00B7 ');
+  const body = bar.querySelector('#a11y-body');
+  body.innerHTML = '';
+  for (const k of names) {
+    const d = document.createElement('details'); d.open = true;
+    const su = document.createElement('summary');
+    su.textContent = (k === 'Page' ? 'Page-wide' : 'Option ' + k) + ' \u2014 ' + groups[k].length;
+    d.appendChild(su);
+    const ul = document.createElement('ul');
+    for (const i of groups[k]) {
+      const li = document.createElement('li');
+      const lab = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.value = i; cb.className = 'a11y-pick'; cb.setAttribute('aria-label', 'select issue to fix');
+      lab.appendChild(cb); lab.appendChild(document.createTextNode(i));
+      li.appendChild(lab); ul.appendChild(li);
+    }
+    d.appendChild(ul); body.appendChild(d);
+  }
+  // tick the issues you want fixed, add an optional note, send — the card stays open
+  const act = document.createElement('div'); act.className = 'a11y-actions';
+  const note = document.createElement('input');
+  note.id = 'a11y-note'; note.placeholder = 'optional note for the agent'; note.setAttribute('aria-label', 'note for the agent');
+  const send = document.createElement('button'); send.type = 'button'; send.id = 'a11y-send'; send.textContent = 'Send selected to agent';
+  act.appendChild(note); act.appendChild(send); body.appendChild(act);
+  send.addEventListener('click', () => {
+    const picked = [...bar.querySelectorAll('.a11y-pick:checked')].map(c => c.value);
+    if (!picked.length) { send.textContent = 'Select issues first'; setTimeout(() => { send.textContent = 'Send selected to agent'; }, 1500); return; }
+    const lines = ['### A11y fixes requested — voice-visualizer', ...picked.map(p => '- ' + p)];
+    const n = note.value.trim();
+    if (n) lines.push('- Notes: ' + n);
+    deliver(lines.join('\n'), false, true);
+    send.textContent = 'Sent \u2713';
+    setTimeout(() => { send.textContent = 'Send selected to agent'; }, 2000);
+  });
+}
+
+
+// Served by the decision hub (ui-hub.py) the page POSTs the answer back; opened
+// as a plain file it falls back to clipboard -> execCommand -> auto-select.
+const HUB_ID = location.pathname.startsWith('/decision/') ? decodeURIComponent(location.pathname.split('/').pop()) : null;
+const statusEl = () => document.getElementById('status');
+async function deliver(text, forceCopy = false, keep = false) {
+  const out = document.getElementById('out');
+  out.textContent = text; out.style.display = 'block';
+  if (HUB_ID && !forceCopy) {
+    try {
+      const r = await fetch('/api/answer', { method: 'POST', headers: {'Content-Type': 'application/json'},
+                                             body: JSON.stringify({ id: HUB_ID, selection: text, keep }) });
+      if (r.ok) { statusEl().textContent = keep ? 'Sent to the agent — this card stays open for your final pick.'
+                                                : 'Sent to the agent — keep this tab open, it picks it up automatically.'; return; }
+    } catch {}
+  }
+  let copied = false;
+  try { await navigator.clipboard.writeText(text); copied = true; } catch {}
+  if (!copied) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { copied = document.execCommand('copy'); } catch {}
+    ta.remove();
+  }
+  if (copied) {
+    statusEl().textContent = 'Copied — paste it as a comment on the task issue.';
+  } else {
+    window.getSelection().selectAllChildren(out);
+    statusEl().textContent = 'Clipboard blocked — the text above is selected, press Ctrl/Cmd+C.';
+  }
+}
+function withNotes(lines) {
+  const notes = document.getElementById('notes').value.trim();
+  if (notes) lines.push(`- Notes: ${notes}`);
+  return lines.join('\n');
+}
+document.querySelectorAll('.use').forEach(btn => btn.addEventListener('click', () => {
+  const s = btn.closest('.option');
+  setFavorite(s);
+  const lines = [`### UI selection — voice-visualizer`,
+                 `- Use: Option ${s.dataset.option} — ${s.dataset.name} (as-is, final)`];
+  const en = elementNotes(s, '  ');
+  if (en.length) lines.push('- Element notes (apply to the chosen option):', ...en);
+  deliver(withNotes(lines));
+}));
+function composed() {
+  const fav = document.querySelector('.option.favorite');
+  const lines = ['### UI selection — voice-visualizer'];
+  if (fav) {
+    lines.push(`- Favorite: Option ${fav.dataset.option} — ${fav.dataset.name}`);
+  } else {
+    lines.push('- Favorite: (none picked)');
+  }
+  const liked = [];
+  document.querySelectorAll('.option').forEach(s => {
+    const ks = [...s.querySelectorAll('.aspects input:checked')].map(i => i.value);
+    if (ks.length) liked.push(`  - Option ${s.dataset.option} (${s.dataset.name}): ${ks.join(', ')}`);
+  });
+  if (liked.length) lines.push('- Liked aspects:', ...liked);
+  const en = elementNotes(document, '  ');
+  if (en.length) lines.push('- Element notes:', ...en);
+  return withNotes(lines);
+}
+document.getElementById('send').addEventListener('click', () => deliver(composed()));
+document.getElementById('copy').addEventListener('click', () => deliver(composed(), true));
+
+// favorite: at most one option at a time (radio-like), toggled by a plain button
+function setFavorite(section) {
+  document.querySelectorAll('.option').forEach(s => {
+    const on = s === section;
+    s.classList.toggle('favorite', on);
+    const btn = s.querySelector('.fav');
+    btn.classList.toggle('on', on);
+    btn.textContent = on ? '★ Favorite' : '☆ Favorite';
+  });
+  refreshTabDone();
+}
+document.querySelectorAll('.option .fav').forEach(btn => btn.addEventListener('click', () => {
+  const s = btn.closest('.option');
+  setFavorite(s.classList.contains('favorite') ? null : s);
+}));
+
+// tabs: toggle between one option (or Review) at a time — no scrolling
+const tabs = [...document.querySelectorAll('.tab')];
+const panels = [...document.querySelectorAll('.panel')];
+function showTab(name) {
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  panels.forEach(p => p.classList.toggle('active', p.dataset.tab === name));
+  if (name === 'review') renderSummary();
+}
+tabs.forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
+
+function renderSummary() {
+  const el = document.getElementById('summary');
+  const fav = document.querySelector('.option.favorite');
+  const parts = [];
+  parts.push(`<h3>Favorite</h3><div>${fav ? `Option ${fav.dataset.option} — ${fav.dataset.name}` : '<span class="empty">none picked yet</span>'}</div>`);
+  const liked = [...document.querySelectorAll('.option')].map(s => {
+    const ks = [...s.querySelectorAll('.aspects input:checked')].map(i => i.value);
+    return ks.length ? `<li>Option ${s.dataset.option} (${s.dataset.name}): ${ks.join(', ')}</li>` : null;
+  }).filter(Boolean);
+  parts.push(`<h3>Liked aspects</h3>${liked.length ? `<ul>${liked.join('')}</ul>` : '<div class="empty">none ticked</div>'}`);
+  const notes = elementNotes(document, '');
+  parts.push(`<h3>Element notes</h3>${notes.length ? `<ul>${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '<div class="empty">none pinned</div>'}`);
+  el.innerHTML = parts.join('');
+}
+function refreshTabDone() {
+  document.querySelectorAll('.tab').forEach(t => {
+    if (t.dataset.tab === 'review') return;
+    const s = document.querySelector(`.option[data-option="${t.dataset.tab}"]`);
+    const hasPick = s && (s.classList.contains('favorite') || s.querySelectorAll('.aspects input:checked').length);
+    t.classList.toggle('done', !!hasPick);
+  });
+}
+
+// element-level annotation: toggle Annotate, click an element in the mockup, type the note.
+// Notes live on the element (data-note) and are collected at send time with a selector path.
+function elPath(el, root) {
+  const parts = [];
+  while (el && el !== root && parts.length < 5) {
+    let p = el.tagName.toLowerCase();
+    if (el.classList.length) p += '.' + [...el.classList].slice(0, 2).join('.');
+    parts.unshift(p);
+    el = el.parentElement;
+  }
+  return parts.join(' > ');
+}
+function elementNotes(scope, indent) {
+  const out = [];
+  scope.querySelectorAll('.preview [data-note]').forEach(el => {
+    const s = el.closest('.option');
+    const txt = el.textContent.trim().slice(0, 40).replace(/\s+/g, ' ');
+    out.push(`${indent}- Option ${s.dataset.option} [${elPath(el, s.querySelector('.preview'))}] "${txt}": ${el.dataset.note}`);
+  });
+  return out;
+}
+document.querySelectorAll('.tgl-annot').forEach(btn => btn.addEventListener('click', () => {
+  const s = btn.closest('.option');
+  const on = s.classList.toggle('annotating');
+  btn.textContent = on ? 'Done annotating' : 'Annotate';
+  btn.classList.toggle('on', on);
+}));
+document.querySelectorAll('.option .preview').forEach(pv => pv.addEventListener('click', e => {
+  const s = pv.closest('.option');
+  if (!s.classList.contains('annotating')) return;
+  e.preventDefault(); e.stopPropagation();
+  const t = e.target;
+  if (t === pv) return;
+  const note = window.prompt(`Note for ${elPath(t, pv)} "${t.textContent.trim().slice(0, 40)}" (empty removes):`, t.dataset.note || '');
+  if (note === null) return;
+  if (note.trim()) { t.dataset.note = note.trim(); t.classList.add('noted'); }
+  else { delete t.dataset.note; t.classList.remove('noted'); }
+  refreshTabDone();
+}, true));
+document.querySelectorAll('.aspects input').forEach(i => i.addEventListener('change', refreshTabDone));
+
+// shuffle option tab order on every load — kills position bias in the pick.
+// Review's button always stays last; option panels can stay in source order
+// since only the active one is ever visible.
+const bar = document.querySelector('.tabbar');
+const reviewBtn = bar.querySelector('[data-tab="review"]');
+const optionTabs = tabs.filter(t => t.dataset.tab !== 'review');
+optionTabs.sort(() => Math.random() - 0.5).forEach(t => bar.insertBefore(t, reviewBtn));
+
+// open on the first (post-shuffle) option tab
+showTab(optionTabs[0]?.dataset.tab || 'review');
+refreshTabDone();
+auditA11y();
+</script>
+</body>
+</html>
