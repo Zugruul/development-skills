@@ -29,6 +29,11 @@
     "last": null,
     "weight": 0.5
   },
+  "mutation-check-assertions->import-and-probe-python-library": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "mutation-test-verify-suite-discriminates->reproduce-claimed-bug-fix-before-and-after": {
     "fires": 2,
     "last": "2026-07-22",
