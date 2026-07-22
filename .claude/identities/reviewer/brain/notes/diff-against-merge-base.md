@@ -1,12 +1,10 @@
 ---
-tags: [review, git, concurrency]
+tags: [review, git, staleness]
 paths: ["**"]
-strength: 1
-source: "#75 review retro"
+strength: 2
+source: "bug #359 review"
 graduated: false
 created: 2026-07-08
 ---
 
-When main has diverged past a branch's base, `origin/main..HEAD` shows phantom deletions — measure the branch's true diff from `git merge-base HEAD origin/main`. For scratch-worktree checks, pass the explicit target SHA by value, never the bare word HEAD — HEAD resolves from the current cwd's checkout and silently grabs the wrong ref when cwd drifts in a multi-lane session (a false-clean merge check nearly resulted).
-
-Related: [[explicit-cd-every-command]] [[red-commit-worktree-verify]]
+Always diff a branch two-dot against the CURRENT fetched origin/main (git fetch first; git diff origin/main..HEAD), never only three-dot against the merge-base — a stale branch can look clean while actually reverting work main has since landed. Caught live on bug #359: the branch's 'fix' would have regressed main's already-landed better version; merge-base diffing alone would never have shown it.

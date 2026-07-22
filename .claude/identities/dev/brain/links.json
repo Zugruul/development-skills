@@ -1,17 +1,7 @@
 {
-  "acceptance-criterion-outranks-test-spec-paraphrase->front-load-exact-mechanics-in-design-docs": {
-    "fires": 12,
-    "last": "2026-07-22",
-    "weight": 0.5
-  },
   "acceptance-criterion-outranks-test-spec-paraphrase->respect-named-scope-boundaries": {
     "fires": 12,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "additivity-proof-against-live-config-not-fixture->old-path-repo-wide-sweep": {
-    "fires": 1,
-    "last": "2026-07-20",
     "weight": 0.5
   },
   "anonymous-listener-slice-eval->duplicate-with-agreement-pin": {
@@ -34,19 +24,9 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
-  "audit-new-path-parity-before-writing->parity-check-new-vs-existing-path": {
-    "fires": 12,
-    "last": "2026-07-22",
-    "weight": 0.5
-  },
   "audit-new-path-parity-before-writing->verify-fixture-isolates-intended-path": {
     "fires": 12,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "bash-c-heredoc-apostrophe-hazard->prefer-structural-signal-over-keyword-gate": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "bash32-empty-array-set-u->budget-count-join-separators": {
@@ -64,28 +44,8 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
-  "behavioral-guard-is-spec-worthy->old-path-repo-wide-sweep": {
-    "fires": 13,
-    "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "block-capture-regex-spans-breaks->apply-blocks-guard-empty-candidates": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "block-capture-regex-spans-breaks->type-validate-jsonl-reads": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "bool-excluded-before-int->stdlib-vs-enrichment-split": {
     "fires": 16,
-    "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "boundary-test-needs-exact-value-plus-absence-check->trace-boundary-operators-by-hand": {
-    "fires": 12,
     "last": "2026-07-22",
     "weight": 0.5
   },
@@ -122,11 +82,6 @@
   "copy-not-eyeball-format-parity->vocab-dict-fake-embedder": {
     "fires": 12,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "design-doc-sweep-suggestion-needs-verification->old-path-repo-wide-sweep": {
-    "fires": 7,
-    "last": "2026-07-20",
     "weight": 0.5
   },
   "deterministic-repro-fast->hotfix-repro-incident-sequence": {
@@ -184,6 +139,11 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
+  "extend-house-fixture-style->test-section-shell-plumbing-risk": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "extend-may-mean-prove-and-legible->circular-fixture-detector": {
     "fires": 13,
     "last": "2026-07-22",
@@ -209,11 +169,6 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
-  "gate-sh-records-suite-does-not->gate-runs-outlive-agent-turns": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "guards-are-not-cache-targets->second-order-after-concurrency-fix": {
     "fires": 13,
     "last": "2026-07-22",
@@ -230,11 +185,6 @@
     "weight": 0.5
   },
   "heredoc-commit-messages->bash32-empty-array-set-u": {
-    "fires": 16,
-    "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "hermetic-tmpdir-per-guard-case->old-path-repo-wide-sweep": {
     "fires": 16,
     "last": "2026-07-22",
     "weight": 0.5
@@ -269,11 +219,6 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
-  "new-rule-can-break-existing-noop-fixtures->old-path-repo-wide-sweep": {
-    "fires": 12,
-    "last": "2026-07-22",
-    "weight": 0.5
-  },
   "normalize-after-load-identity-fields->bool-excluded-before-int": {
     "fires": 13,
     "last": "2026-07-22",
@@ -304,21 +249,6 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
-  "pair-every-side-effect-with-undo->old-path-repo-wide-sweep": {
-    "fires": 13,
-    "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "pin-external-tool-versions-in-ci->confirm-external-asset-before-ci": {
-    "fires": 12,
-    "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "pin-external-tool-versions-in-ci->local-gate-green-doesnt-imply-ci-green-for-infra": {
-    "fires": 12,
-    "last": "2026-07-22",
-    "weight": 0.5
-  },
   "poll-own-children->second-order-after-concurrency-fix": {
     "fires": 16,
     "last": "2026-07-22",
@@ -332,11 +262,6 @@
   "prefer-posix-single-behavior-over-terse-idioms->pin-external-tool-versions-in-ci": {
     "fires": 12,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "prefer-structural-signal-over-keyword-gate->audit-new-path-parity-before-writing": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "presence-vs-value-claims->bool-excluded-before-int": {
@@ -360,11 +285,6 @@
     "weight": 0.5
   },
   "read-config-live-not-hardcoded-in-tests->verify-design-doc-quotes-against-live-file": {
-    "fires": 12,
-    "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "read-config-live-not-hardcoded-in-tests->verify-doc-links-and-quotes-against-live-source": {
     "fires": 12,
     "last": "2026-07-22",
     "weight": 0.5
@@ -416,16 +336,6 @@
   },
   "second-order-after-concurrency-fix->pair-every-side-effect-with-undo": {
     "fires": 13,
-    "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "self-check-string-surgery-helpers-first->verify-guard-regex-on-real-artifact": {
-    "fires": 9,
-    "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "self-check-string-surgery-helpers-first->verify-portability-claims-in-target-environment": {
-    "fires": 9,
     "last": "2026-07-22",
     "weight": 0.5
   },
@@ -504,6 +414,11 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
+  "test-section-shell-plumbing-risk->extend-house-fixture-style": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "trace-state-mutation-not-named-trigger->anonymous-listener-slice-eval": {
     "fires": 16,
     "last": "2026-07-22",
@@ -544,22 +459,12 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
-  "verify-branch-state-before-acting-in-shared-checkout->finish-unresponsive-subagents-work-on-behalf": {
-    "fires": 5,
-    "last": "2026-07-22",
-    "weight": 0.5
-  },
   "verify-brief-characterizations-independently->respect-named-scope-boundaries": {
     "fires": 12,
     "last": "2026-07-22",
     "weight": 0.5
   },
   "verify-design-doc-quotes-against-live-file->boundary-test-needs-exact-value-plus-absence-check": {
-    "fires": 12,
-    "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "verify-design-doc-quotes-against-live-file->verify-ordering-assertions-at-two-levels": {
     "fires": 12,
     "last": "2026-07-22",
     "weight": 0.5

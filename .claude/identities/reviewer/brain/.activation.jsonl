@@ -162,3 +162,97 @@
 {"event": "inject", "note": "verify-with-library-own-classes", "activation": 1.2, "ts": "2026-07-20T06:35:18+00:00", "role": "reviewer"}
 {"event": "inject", "note": "avoid-git-checkout-in-shared-working-directory", "activation": 1.1, "ts": "2026-07-20T06:35:18+00:00", "role": "reviewer"}
 {"event": "inject", "note": "check-helper-is-substring-not-equality", "activation": 1.1, "ts": "2026-07-20T06:35:18+00:00", "role": "reviewer"}
+{"event": "seed", "note": "avoid-git-checkout-in-shared-working-directory", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "confirm-named-scope-exclusions-respected", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "confirmed-broken-only", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "diff-against-merge-base", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "distinguish-missed-vs-uncatchable-findings", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "domain-inventory-sweep", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "drive-poll-loops-at-boundary", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "drive-real-helper-adversarially", "activation": 1.3, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "emission-vs-assertion", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "empty-vs-error-probe", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "equality-guards-invite-ordering-probes", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "explicit-cd-every-command", "activation": 1.2, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "fetch-before-merge-forward", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "fixture-provenance-check", "activation": 1.4, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "golden-identical-covers-absent-not-present", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "grep-for-known-bug-class-before-deep-analysis", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "monkeypatch-to-reach-real-branch", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "mutation-test-verify-suite-discriminates", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "name-reusable-infra-for-followups-explicitly", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "named-stash-pop-only", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "narrowed-exploit-survives", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "note-dont-gate-on-unrelated-findings", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "outcome-language-marks-unverified-seams", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "own-payload-not-devs", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "parity-check-new-vs-existing-path", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "principled-vs-accidental-asymmetry", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "probe-spec-silent-input-categories", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "probe-with-real-repos", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "read-beyond-the-diff", "activation": 1.3, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "red-commit-worktree-verify", "activation": 1.3, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "reports-are-not-the-code", "activation": 1.2, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "reproduce-claimed-bug-fix-before-and-after", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "reproduce-then-verify-fix", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "rerun-the-red-empirically", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "signature-change-grep-all-callsites", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "spot-check-large-data-files-at-boundaries", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "test-default-seams", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "trace-boundary-operators-by-hand", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "trace-dict-merge-for-key-collisions", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "two-pass-review-catches-omissions", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "unnecessary-vs-inconsistent", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-backcompat-claims-algebraically", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-doc-links-and-quotes-against-live-source", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-guard-regex-on-real-artifact", "activation": 1.4, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-ordering-assertions-at-two-levels", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-portability-claims-in-target-environment", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-proximity-checks-dont-bleed-into-next-record", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-reuse-by-symbol-grep", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-tdd-empirically-when-log-is-thin", "activation": 1.2, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-with-library-own-classes", "activation": 1.2, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-branch-state-before-acting-in-shared-checkout", "activation": 0.275, "link": "avoid-git-checkout-in-shared-working-directory->verify-branch-state-before-acting-in-shared-checkout", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "note-dont-gate-on-unrelated-findings", "activation": 0.275, "link": "confirm-named-scope-exclusions-respected->note-dont-gate-on-unrelated-findings", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-portability-claims-in-target-environment", "activation": 0.275, "link": "distinguish-missed-vs-uncatchable-findings->verify-portability-claims-in-target-environment", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "parity-check-new-vs-existing-path", "activation": 0.275, "link": "golden-identical-covers-absent-not-present->parity-check-new-vs-existing-path", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-portability-claims-in-target-environment", "activation": 0.275, "link": "grep-for-known-bug-class-before-deep-analysis->verify-portability-claims-in-target-environment", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "reproduce-claimed-bug-fix-before-and-after", "activation": 0.275, "link": "mutation-test-verify-suite-discriminates->reproduce-claimed-bug-fix-before-and-after", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-proximity-checks-dont-bleed-into-next-record", "activation": 0.275, "link": "mutation-test-verify-suite-discriminates->verify-proximity-checks-dont-bleed-into-next-record", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "front-load-exact-mechanics-in-design-docs", "activation": 0.275, "link": "name-reusable-infra-for-followups-explicitly->front-load-exact-mechanics-in-design-docs", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "separate-live-repo-state-tests-from-fixtures", "activation": 0.275, "link": "name-reusable-infra-for-followups-explicitly->separate-live-repo-state-tests-from-fixtures", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "audit-new-path-parity-before-writing", "activation": 0.275, "link": "parity-check-new-vs-existing-path->audit-new-path-parity-before-writing", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "golden-identical-covers-absent-not-present", "activation": 0.275, "link": "parity-check-new-vs-existing-path->golden-identical-covers-absent-not-present", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "trace-boundary-operators-by-hand", "activation": 0.275, "link": "probe-spec-silent-input-categories->trace-boundary-operators-by-hand", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "recompute-hashes-never-eyeball", "activation": 0.325, "link": "red-commit-worktree-verify->recompute-hashes-never-eyeball", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "reports-are-not-the-code", "activation": 0.325, "link": "red-commit-worktree-verify->reports-are-not-the-code", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-backcompat-claims-algebraically", "activation": 0.275, "link": "reproduce-claimed-bug-fix-before-and-after->verify-backcompat-claims-algebraically", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-tdd-empirically-when-log-is-thin", "activation": 0.275, "link": "reproduce-claimed-bug-fix-before-and-after->verify-tdd-empirically-when-log-is-thin", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "rerun-the-red-empirically", "activation": 0.275, "link": "reproduce-then-verify-fix->rerun-the-red-empirically", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "reproduce-then-verify-fix", "activation": 0.275, "link": "rerun-the-red-empirically->reproduce-then-verify-fix", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-guard-regex-on-real-artifact", "activation": 0.275, "link": "spot-check-large-data-files-at-boundaries->verify-guard-regex-on-real-artifact", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "equality-guards-invite-ordering-probes", "activation": 0.275, "link": "trace-boundary-operators-by-hand->equality-guards-invite-ordering-probes", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-backcompat-claims-algebraically", "activation": 0.275, "link": "trace-dict-merge-for-key-collisions->verify-backcompat-claims-algebraically", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-tdd-empirically-when-log-is-thin", "activation": 0.275, "link": "verify-backcompat-claims-algebraically->verify-tdd-empirically-when-log-is-thin", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "confirm-named-scope-exclusions-respected", "activation": 0.275, "link": "verify-doc-links-and-quotes-against-live-source->confirm-named-scope-exclusions-respected", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-guard-regex-on-real-artifact", "activation": 0.275, "link": "verify-doc-links-and-quotes-against-live-source->verify-guard-regex-on-real-artifact", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "match-repo-security-baseline", "activation": 0.35, "link": "verify-guard-regex-on-real-artifact->match-repo-security-baseline", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "recompute-hashes-never-eyeball", "activation": 0.35, "link": "verify-guard-regex-on-real-artifact->recompute-hashes-never-eyeball", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "red-commit-worktree-verify", "activation": 0.35, "link": "verify-guard-regex-on-real-artifact->red-commit-worktree-verify", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "trace-boundary-operators-by-hand", "activation": 0.275, "link": "verify-ordering-assertions-at-two-levels->trace-boundary-operators-by-hand", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-guard-regex-on-real-artifact", "activation": 0.275, "link": "verify-ordering-assertions-at-two-levels->verify-guard-regex-on-real-artifact", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "local-gate-green-doesnt-imply-ci-green-for-infra", "activation": 0.275, "link": "verify-portability-claims-in-target-environment->local-gate-green-doesnt-imply-ci-green-for-infra", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-guard-regex-on-real-artifact", "activation": 0.275, "link": "verify-portability-claims-in-target-environment->verify-guard-regex-on-real-artifact", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "reproduce-claimed-bug-fix-before-and-after", "activation": 0.275, "link": "verify-proximity-checks-dont-bleed-into-next-record->reproduce-claimed-bug-fix-before-and-after", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "trace-dict-merge-for-key-collisions", "activation": 0.275, "link": "verify-proximity-checks-dont-bleed-into-next-record->trace-dict-merge-for-key-collisions", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "dual-path-fixture-proves-sharing", "activation": 0.275, "link": "verify-reuse-by-symbol-grep->dual-path-fixture-proves-sharing", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-red-test-genuinely-discriminates", "activation": 0.3, "link": "verify-tdd-empirically-when-log-is-thin->verify-red-test-genuinely-discriminates", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-guard-regex-on-real-artifact", "activation": 0.0875, "link": "match-repo-security-baseline->verify-guard-regex-on-real-artifact", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "confirm-external-asset-before-ci", "activation": 0.0688, "link": "local-gate-green-doesnt-imply-ci-green-for-infra->confirm-external-asset-before-ci", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "hop", "note": "pin-external-tool-versions-in-ci", "activation": 0.0688, "link": "local-gate-green-doesnt-imply-ci-green-for-infra->pin-external-tool-versions-in-ci", "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "inject", "note": "red-commit-worktree-verify", "activation": 1.3, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "inject", "note": "explicit-cd-every-command", "activation": 1.2, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "inject", "note": "reports-are-not-the-code", "activation": 1.2, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "inject", "note": "verify-tdd-empirically-when-log-is-thin", "activation": 1.2, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "inject", "note": "verify-with-library-own-classes", "activation": 1.2, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
+{"event": "inject", "note": "avoid-git-checkout-in-shared-working-directory", "activation": 1.1, "ts": "2026-07-22T06:13:01+00:00", "role": "reviewer"}
