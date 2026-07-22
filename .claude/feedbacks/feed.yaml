@@ -420,3 +420,66 @@ items:
   routing:
     action: backlog
     ref: Zugruul/development-skills#299
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T05:50:00Z'
+iteration:
+  task: Zugruul/development-skills#300
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: testing
+  severity: medium
+  summary: A new sourced test-section file leaked cwd via brace-group cd blocks and
+    cascaded 39 failures into unrelated later sections; isolation runs could not catch
+    it, costing a full diagnose-reproduce cycle.
+  generalized: The test gate should structurally lint section files for brace-group
+    cd (sourced sections require subshell-wrapped cd), since per-author discipline
+    demonstrably fails and isolation runs are structurally blind to the leak class.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#354
+- category: friction
+  area: briefing
+  severity: medium
+  summary: The dev agent stalled twice at the finish line by ending turns on status
+    updates after Monitor-gated background gate runs, leaving work uncommitted until
+    the orchestrator finished the close on-behalf.
+  generalized: Dev briefs should state that after a backgrounded check completes,
+    the completion event triggers the remaining finish-line sequence (fix, re-run,
+    commit, report) in the same turn — a wait's resolution is a trigger, never a stopping
+    point.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#355
+- category: worked-well
+  area: review
+  severity: low
+  summary: Reviewer verified reuse claims at symbol level (grep imports, match call
+    signatures), redid guard-fraction arithmetic instead of trusting a self-consistent
+    test, and swept the cwd-leak defect class suite-wide; read-only working-tree constraint
+    in the brief cost nothing and prevented a repeat of the previous iteration's stash
+    incident.
+  generalized: Reviewer briefs should keep the strict read-only working-tree rule
+    and encourage symbol-level reuse verification and independent re-derivation of
+    numeric assertions.
+  routing:
+    action: brain-note
+    ref: reviewer/verify-reuse-by-symbol-grep
+- category: worked-well
+  area: board
+  severity: low
+  summary: Close ordering learned last iteration (gate and all board moves from the
+    task branch before deleting it; merge via temp worktree while main is held elsewhere;
+    named stash pops) executed cleanly with zero guard collisions this time.
+  generalized: Task-close under local delivery should follow a fixed ordered checklist
+    (branch-scoped moves before branch deletion, temp-worktree merges, named stashes)
+    — codifying it removed a whole class of previous-iteration friction.
+  routing:
+    action: brain-note
+    ref: orchestrator/board-moves-before-branch-delete
