@@ -26,6 +26,7 @@ Python 3 standard library only (no pyyaml). Usage:
     brain.py <root> graduate-check [role] [--threshold N]
     brain.py <root> verify-feed <role>
     brain.py <root> outcome <role> <slug> useful|dead_end|corrected [--task <ref>] [--note "<text>"]
+    brain.py <root> explain <role> <slug>
 
 `<root>` is the consumer repo root; identities live under `--dir` (default
 `.claude/identities`).
@@ -962,6 +963,53 @@ def cmd_query(identities, args):
     print("(%d match(es)%s)" % (len(matches), "" if len(matches) <= len(shown) else ", showing %d" % len(shown)))
 
 
+# --------------------------------------------------------------- link spread
+def _spread_activation(links, seed_activation, max_hops=MAX_HOPS, mutate=False, on_cross=None):
+    """Hop-spread activation over outgoing links from `seed_activation`, up
+    to `max_hops`, keeping the max activation seen per note -- the same
+    spreading-activation rule `cmd_recall` has always used, factored out so
+    GL-020's `explain` (2-hop spread seeded on a single note) reuses it
+    verbatim instead of duplicating the traversal. Returns
+    (activation, traversed): `activation` is `seed_activation` merged with
+    every note reached by the spread; `traversed` is the list of link keys
+    crossed, in first-crossed order (deterministic: `sorted()` at each hop).
+
+    `mutate=True` bumps `fires`/`last` on `links` in place the first time
+    each key is crossed -- `cmd_recall`'s link-strengthening side effect.
+    `mutate=False` (GL-020 `explain`) leaves `links` completely untouched:
+    read-only interrogation must never strengthen the graph it inspects.
+    `on_cross(key, target, activation)` -- when given -- fires once per
+    first-crossing, in the same order, so a caller needing a log
+    (`cmd_recall`'s `hop` events) can build it without re-deriving the
+    traversal."""
+    activation = dict(seed_activation)
+    frontier = [(s, activation[s]) for s in sorted(activation)]
+    traversed = []
+    traversed_set = set()
+    for _hop in range(max_hops):
+        nxt = []
+        for src, src_act in frontier:
+            for key in sorted(links):
+                if not key.startswith(src + "->"):
+                    continue
+                target = key.split("->", 1)[1]
+                weight = float(links[key].get("weight", DEFAULT_WEIGHT))
+                nact = src_act * HOP_DECAY * weight
+                if key not in traversed_set:
+                    traversed_set.add(key)
+                    traversed.append(key)
+                    if mutate:
+                        links[key]["fires"] = int(links[key].get("fires", 0)) + 1
+                        links[key]["last"] = today()
+                    if on_cross:
+                        on_cross(key, target, nact)
+                if nact > activation.get(target, 0):
+                    activation[target] = nact
+                    nxt.append((target, nact))
+        frontier = nxt
+    return activation, traversed
+
+
 # ----------------------------------------------------------------------- recall
 def cmd_recall(identities, args):
     if getattr(args, "query", None):
@@ -1045,26 +1093,11 @@ def cmd_recall(identities, args):
                                        "activation": round(act, 4), "source": "embedding"})
 
     # (2) spread along outgoing links, up to MAX_HOPS, keeping the max per note
-    frontier = [(s, activation[s]) for s in sorted(activation)]
-    traversed = set()
-    for _hop in range(MAX_HOPS):
-        nxt = []
-        for src, src_act in frontier:
-            for key in sorted(links):
-                if not key.startswith(src + "->"):
-                    continue
-                target = key.split("->", 1)[1]
-                weight = float(links[key].get("weight", DEFAULT_WEIGHT))
-                nact = src_act * HOP_DECAY * weight
-                if key not in traversed:
-                    traversed.add(key)
-                    links[key]["fires"] = int(links[key].get("fires", 0)) + 1
-                    links[key]["last"] = today()
-                    events.append({"event": "hop", "note": target, "activation": round(nact, 4), "link": key})
-                if nact > activation.get(target, 0):
-                    activation[target] = nact
-                    nxt.append((target, nact))
-        frontier = nxt
+    def _on_cross(key, target, nact):
+        events.append({"event": "hop", "note": target, "activation": round(nact, 4), "link": key})
+
+    activation, traversed_list = _spread_activation(links, activation, mutate=True, on_cross=_on_cross)
+    traversed = set(traversed_list)
 
     if traversed:
         save_links(identities, role, links)
@@ -1288,6 +1321,99 @@ def cmd_status(identities, args):
     for slug in sorted(notes):
         fm = notes[slug]["fm"]
         lines.append(_note_line(slug, fm, tallies.get(slug)))
+    print("\n".join(lines))
+
+
+# ------------------------------------------------------------------------ explain
+def _explain_link_line(direction, other, meta):
+    last = meta.get("last") or "never"
+    return "%s %s  weight %s  fires %d  last %s" % (
+        direction, other, meta.get("weight", DEFAULT_WEIGHT), int(meta.get("fires", 0)), last)
+
+
+def cmd_explain(identities, args):
+    """`explain <role> <slug>` (SPEC-GRAPHIFY §9 R9.1, GL-020): a full
+    interrogation card for one note -- fixed section order: title, the exact
+    GL-013 header (confidence + outcome tally + contested/stale, via
+    `_format_header_line` -- the same helper `cmd_recall` calls, never a
+    parallel format string that could drift), the full note body (no budget
+    cap -- this is a targeted single-note view, unlike recall's tiered
+    budget rendering), a community-membership placeholder seam (`community:
+    (pending GL-030)` -- literal, until GL-030 computes real communities),
+    every inbound/outbound link (weight/fires/last, sorted by weight desc
+    then the OTHER note's slug asc), and the top 5 co-activated notes from a
+    2-hop spread (`_spread_activation`, shared with `cmd_recall`) seeded
+    ONLY on this note at activation 1.0.
+
+    Read-only by construction: `mutate=False` on the spread call means
+    `links` is never written to, and this function never calls
+    `save_links`/`log_event`/`emit_event` -- unlike `recall`, which is the
+    only path that strengthens the graph it visits."""
+    role = args.role
+    bdir = brain_dir(identities, role)
+    if not os.path.isdir(bdir):
+        sys.exit("unknown role: %s (no %s)" % (role, bdir))
+
+    notes = load_notes(identities, role)
+    if args.slug not in notes:
+        sys.exit("no such note: %s/%s" % (role, args.slug))
+
+    note = notes[args.slug]
+    fm = note["fm"]
+    links = load_links(identities, role)
+
+    tallies, outcomes_malformed = outcome_window_tallies(identities, role, full_history=True)
+    if outcomes_malformed:
+        sys.stderr.write(
+            "warning: %s is malformed — outcome tallies disabled for this explain\n"
+            % outcomes_path(identities, role)
+        )
+        tallies = {}
+    tally = tallies.get(args.slug, {})
+    contested = _is_contested(tally)
+
+    stale_map = _stale_slugs(args.root, identities, role, notes)
+    stale = stale_map.get(args.slug, False)
+
+    confidence = fm.get("confidence", DEFAULT_CONFIDENCE)
+    strength = int(fm.get("strength", DEFAULT_STRENGTH))
+    header = _format_header_line(args.slug, strength, confidence, tally.get("useful", 0), contested, stale)
+
+    lines = ["# %s/%s" % (role, args.slug), "", header, "", note["body"].strip(), "",
+             "community: (pending GL-030)", "", "## links"]
+
+    outbound = []
+    inbound = []
+    for key, meta in links.items():
+        src, _, target = key.partition("->")
+        if src == args.slug:
+            outbound.append((target, meta))
+        elif target == args.slug:
+            inbound.append((src, meta))
+    outbound.sort(key=lambda p: (-float(p[1].get("weight", DEFAULT_WEIGHT)), p[0]))
+    inbound.sort(key=lambda p: (-float(p[1].get("weight", DEFAULT_WEIGHT)), p[0]))
+
+    if not outbound and not inbound:
+        lines.append("(none)")
+    else:
+        for other, meta in outbound:
+            lines.append(_explain_link_line("out", other, meta))
+        for other, meta in inbound:
+            lines.append(_explain_link_line("in ", other, meta))
+
+    lines.append("")
+    lines.append("## co-activated")
+    # GL-020: seed the shared spread with ONLY this note at activation 1.0,
+    # mutate=False so link fires/last are never bumped (read-only).
+    coactivation, _traversed = _spread_activation(links, {args.slug: 1.0}, mutate=False)
+    coactivation.pop(args.slug, None)
+    ranked = sorted(coactivation, key=lambda s: (-coactivation[s], s))[:5]
+    if not ranked:
+        lines.append("(none)")
+    else:
+        for slug in ranked:
+            lines.append("%s  %.4f" % (slug, coactivation[slug]))
+
     print("\n".join(lines))
 
 
@@ -1803,6 +1929,11 @@ def main(argv):
     sp.add_argument("--task", default="")
     sp.add_argument("--note", default="")
     sp.set_defaults(fn=cmd_outcome)
+
+    sp = sub.add_parser("explain")
+    sp.add_argument("role")
+    sp.add_argument("slug")
+    sp.set_defaults(fn=cmd_explain)
 
     args = p.parse_args(argv)
     identities = os.path.join(args.root, args.dir)

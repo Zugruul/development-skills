@@ -1,6 +1,6 @@
 ---
 name: brain
-description: Inspect and tend the per-identity zettel brains — status/recall/mint/prune/directory/graduate-check via brain.sh. Orchestrator-only memory (each role's brain is private; subagents never read one). Use to see what a role has learned, recall lessons for a task, mint a retro note, prune stale links, or regenerate the directory. Bare invocation shows the directory + per-brain note counts.
+description: Inspect and tend the per-identity zettel brains — status/recall/mint/prune/directory/graduate-check/explain via brain.sh. Orchestrator-only memory (each role's brain is private; subagents never read one). Use to see what a role has learned, recall lessons for a task, mint a retro note, prune stale links, explain why one note matters, or regenerate the directory. Bare invocation shows the directory + per-brain note counts.
 allowed-tools: Bash
 ---
 
@@ -49,6 +49,12 @@ graduate-check [role] [--threshold N]
                                    # (methodology.graduationThreshold, default 3) with a proposed
                                    # destination (ROLE.md rule / specs[].invariants entry /
                                    # test-or-lint); never mutates a note — graduate stays the call
+explain <role> <slug>              # READ-ONLY interrogation card for ONE note: full body, the
+                                   # exact recall header (confidence + outcome tally +
+                                   # contested/stale), a community placeholder (pending GL-030),
+                                   # every inbound/outbound link with weight/fires/last, and the
+                                   # top 5 co-activated notes from a 2-hop spread seeded on just
+                                   # this note — never bumps links.json (unlike recall)
 ```
 
 ## Precise queries (`recall --query`)
@@ -81,6 +87,7 @@ list; use plain `recall` when you want associative "what's relevant" retrieval.
 - **Precise lookup** — answering a compound "which notes match X and not Y" question: use `recall <role> --query "..."` instead of guessing at `--keywords` overlap.
 - **Retro** (at each PR close) — `mint` new notes in your own wording, `prune`, `graduate` proven ones, `retro-mark`, `directory`, then commit as the orchestrator identity (`identity.sh orchestrator`).
 - **Consult** — a report asked `CONSULT <role>: <slug>`: run `consult` and paste the body once; a 2nd hit prints a RECURRENCE reminder to mint it into the consumer's own brain.
+- **Explain** — debugging "why does this note matter/rank/link the way it does": run `explain <role> <slug>` for a self-contained card (body, header, links, co-activation) instead of piecing it together from `recall`/`status`/`directory` output by hand.
 
 ## Rules
 - Notes are atomic: one idea, a few lines. Link related notes with `[[slug]]`.

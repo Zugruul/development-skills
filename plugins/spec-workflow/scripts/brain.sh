@@ -16,6 +16,7 @@
 #   brain.sh graduate <role> <slug>
 #   brain.sh graduate-check [role] [--threshold N]
 #   brain.sh outcome <role> <slug> useful|dead_end|corrected [--task <ref>] [--note "<text>"]
+#   brain.sh explain <role> <slug>                              # graph interrogation card
 #
 # Env: BRAIN_DIR (identities dir override, relative to root; default .claude/identities).
 set -uo pipefail
