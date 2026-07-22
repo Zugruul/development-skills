@@ -1465,3 +1465,97 @@ items:
   routing:
     action: backlog
     ref: Zugruul/development-skills#364
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-23T00:20:00Z'
+iteration:
+  task: AST-session-close
+  outcome: merged
+  reviewRounds: 0
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: high
+  summary: The two-pass independent review protocol caught eight substantive pre-merge
+    defect classes across sixteen tasks
+  detail: An env-home instruction-ingestion isolation leak proven on the real CLI,
+    three distinct concurrency races (state clobber, torn config writes, lock-key
+    aliasing), environmental crash classes on advisory scripts, entirely unguarded
+    default constants, and three recurrences of vacuous empty-expected assertions
+    — every one reproduced empirically by the reviewer, fixed with discrimination-proven
+    regressions, and re-verified.
+  evidence:
+  - Zugruul/development-skills#309
+  - Zugruul/development-skills#314
+  - Zugruul/development-skills#305
+  - Zugruul/development-skills#311
+  - Zugruul/development-skills#306
+  - Zugruul/development-skills#312
+  generalized: Reviewer briefs that mandate empirical reproduction (drive the real
+    binary, reproduce the race, ablate the fix) rather than diff-reading convert review
+    from opinion into evidence; the fix-round cost was repaid many times over by the
+    defect classes that never reached the main branch.
+  routing:
+    action: brain-note
+    ref: reviewer/probe-isolation-claims-on-real-cli
+- category: incident
+  area: briefing
+  severity: high
+  summary: Chronic subagent stalls at commit boundaries were root-caused to auto-backgrounded
+    long gate runs, then largely fixed by two brief lines
+  detail: Ten of eleven early tasks stalled with finished-but-uncommitted work; the
+    one non-stalling dev diagnosed the harness auto-backgrounding of multi-minute
+    gate runs as the likely thread-loss point; adding a verbatim closed-action-set
+    line plus an explicit backgrounded-gate recovery recipe produced three consecutive
+    full dev cycles to close the session.
+  evidence:
+  - Zugruul/development-skills#313
+  - Zugruul/development-skills#364
+  generalized: When agents consistently stall at one lifecycle point, interview the
+    outlier that did not stall — the root cause (an environmental behavior like auto-backgrounding,
+    not agent unwillingness) and the fix (name the closed set of allowed next actions
+    and teach the recovery for the environmental trap) both came from the agent, not
+    the orchestrator's guesses.
+  routing:
+    action: brain-note
+    ref: orchestrator/brief-closed-action-set
+- category: worked-well
+  area: merge
+  severity: medium
+  summary: Numbers-gated epic progression worked end to end — real measured latencies
+    decided the next epic, not optimism
+  detail: The epic gate required a real-provider measurement; the harness shipped
+    with a CI stub mode plus a dogfood real mode, the real run recorded p95 well under
+    threshold, the results artifact was committed, and the unblock decision cites
+    it. A provider-dependent gap in one gate's simulation was caught and re-measured
+    honestly rather than papered over.
+  evidence:
+  - Zugruul/development-skills#315
+  generalized: Gating UI/UX epics on committed, real-mode measurement artifacts (with
+    the harness itself CI-proven in stub mode) prevents building interface layers
+    on unmeasured latency assumptions, and the results file doubles as the auditable
+    record of why the gate opened.
+  routing:
+    action: brain-note
+    ref: orchestrator/numbers-gated-epic-doors
+- category: recommendation
+  area: concurrency
+  severity: medium
+  summary: Parallel sessions on one repo need conflict-free shared-state write paths
+  detail: This session hand-merged a brain link-state conflict with a parallel session,
+    hit a stale-lane hotfix collision another session had already fixed, and adopted
+    fetch-before-everything as standing discipline.
+  evidence:
+  - Zugruul/development-skills#365
+  - Zugruul/development-skills#359
+  generalized: Multi-session repos surface every tracked file with read-modify-write
+    semantics as a merge hazard; append-only or merge-on-read designs for agent-maintained
+    state files remove a whole class of cross-session friction.
+  routing:
+    action: ignore
+    ref: already tracked as Zugruul/development-skills#365 (brain write-path race)
+      — no new filing needed

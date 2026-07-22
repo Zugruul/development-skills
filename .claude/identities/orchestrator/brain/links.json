@@ -4,22 +4,7 @@
     "last": null,
     "weight": 0.5
   },
-  "bisect-before-blaming-tracked-flakiness->fix-root-cause-not-retry-around-flake": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "board-comment-body-only-via-stdin->board-comment-bodies-via-file": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "board-moves-before-branch-delete->merge-via-temp-worktree-when-main-held": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "brief-background-command-wait-discipline->trust-completion-signal-not-early-log-read": {
     "fires": 0,
     "last": null,
     "weight": 0.5
@@ -39,16 +24,6 @@
     "last": null,
     "weight": 0.5
   },
-  "brief-subagents-to-report-before-idle->nudge-idle-agents-after-backgrounded-gate": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "check-stray-worktrees-before-branch-ops->worktree-loss-recovery": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "combined-two-pass-for-small-siblings->idle-agent-is-not-done": {
     "fires": 0,
     "last": null,
@@ -59,42 +34,12 @@
     "last": null,
     "weight": 0.5
   },
-  "design-doc-name-structural-invariant-not-idiom-list->prefer-structural-signal-over-keyword-gate": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "diagnose-stalls-before-attributing->board-moves-before-branch-delete": {
     "fires": 0,
     "last": null,
     "weight": 0.5
   },
-  "dual-independent-review-raises-confidence->independent-review-catches-self-test-blindspots": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "dual-independent-review-raises-confidence->parallel-independent-review-passes": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "fetch-before-hotfix-filing->idle-agent-is-not-done": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "finish-unresponsive-subagents-work-on-behalf->fix-trivial-review-nits-directly-on-behalf": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "fix-trivial-review-nits-directly-on-behalf->check-stray-worktrees-before-branch-ops": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "front-load-exact-mechanics-in-design-docs->audit-new-path-parity-before-writing": {
     "fires": 0,
     "last": null,
     "weight": 0.5
@@ -114,42 +59,17 @@
     "last": null,
     "weight": 0.5
   },
-  "investigate-existing-behavior-before-assuming-new-work->old-path-repo-wide-sweep": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "invoke-python-scripts-with-python3-not-bash->sanity-check-computed-paths-with-ls": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "merge-via-temp-worktree-when-main-held->board-moves-before-branch-delete": {
     "fires": 0,
     "last": null,
     "weight": 0.5
   },
-  "name-reserved-baseline-keys-when-briefing-shared-emitter->check-stray-worktrees-before-branch-ops": {
+  "numbers-gated-epic-doors->brief-closed-action-set": {
     "fires": 0,
     "last": null,
     "weight": 0.5
   },
-  "never-pipe-gate-run-through-tail->trust-completion-signal-not-early-log-read": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "one-design-doc-per-epic-not-per-task->front-load-exact-mechanics-in-design-docs": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "one-design-doc-per-epic-not-per-task->name-reusable-infra-for-followups-explicitly": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "parallel-independent-review-passes->concurrent-gate-runs-collide": {
+  "numbers-gated-epic-doors->combined-two-pass-for-small-siblings": {
     "fires": 0,
     "last": null,
     "weight": 0.5
@@ -159,32 +79,7 @@
     "last": null,
     "weight": 0.5
   },
-  "research-agent-before-implementation-brief->parity-check-new-vs-existing-path": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "section-filter-can-skip-shared-setup->trust-completion-signal-not-early-log-read": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "serial-delivery-prevents-stack-debt->stacked-prs-retarget-before-delete": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "session-close-protocol->orchestrator-cd-prefix-own-commands": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "spec-interviews-need-concrete-previews->plan-stage-adversarial-review-before-spec": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "stacked-prs-retarget-before-delete->serial-delivery-prevents-stack-debt": {
     "fires": 0,
     "last": null,
     "weight": 0.5
@@ -215,26 +110,6 @@
     "weight": 0.5
   },
   "unresponsive-agent-take-over->idle-agent-is-not-done": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "use-repo-scripts-not-stale-marketplace-cache->trust-completion-signal-not-early-log-read": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "verify-claimed-push-and-scope->gate-runs-outlive-agent-turns": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "verify-live-system-not-just-local-artifacts->local-gate-green-doesnt-imply-ci-green-for-infra": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "worktree-isolation-when-multitasking->concurrent-gate-runs-collide": {
     "fires": 0,
     "last": null,
     "weight": 0.5

@@ -1,10 +1,10 @@
 ---
 tags: [tests, bash, quoting, heredoc, bash32]
 paths: ["plugins/spec-workflow/tests/**"]
-strength: 3
-source: "PR-close #308 recurrence"
+strength: 4
+source: "session close (3rd confirmation, AST-018)"
 graduated: false
 created: 2026-07-22
 ---
 
-In new-module tasks the real defect risk concentrates in the bash test-section plumbing. Bash-3.2 heredoc gotcha RECURRED even with the lesson pasted in the brief (dev typed apostrophes into a <<PY body inside $() and caught it only via bash -n) — keep the lesson verbatim with the minimal repro, and treat bash -n as a mandatory pre-run step for any section edit.
+In new-module tasks the real defect risk concentrates in the bash test-section plumbing. Bash-3.2 heredoc gotcha CONFIRMED A THIRD TIME (AST-018: apostrophe in a <<QUOTED heredoc body inside $() breaks the whole file parse even with a quoted delimiter; apostrophes outside $() spans are fine). bash -n before every section run is mandatory; no apostrophes in heredoc bodies under command substitution, ever.
