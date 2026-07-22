@@ -17,4 +17,5 @@ docs/handoffs/
 .claude/.flush*
 .claude/worktrees/
 .claude/identities/*/brain/index.sqlite3
+.claude/identities/*/brain/.staleness-cache.json
 # <<< spec-workflow managed

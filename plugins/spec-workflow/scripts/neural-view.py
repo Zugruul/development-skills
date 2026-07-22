@@ -841,9 +841,13 @@ def render_body(body):
             [(m.start(), m.end(), "wl", m) for m in WIKILINK.finditer(s)]
             + [(m.start(), m.end(), "img", m) for m in MDIMG.finditer(s)]
             + [(m.start(), m.end(), "link", m) for m in MDLINK.finditer(s)])
+        # `code spans` are literal: a ![img](p) / [link](p) / [[wikilink]]
+        # inside backticks must render as code, not as live media (found by
+        # the demo-note-media dogfood — its syntax EXAMPLES came alive)
+        codes = [(m.start(), m.end()) for m in re.finditer(r"`[^`]+`", s)]
         out, last = [], 0
         for start, end, kind, m in tokens:
-            if start < last:
+            if start < last or any(start < ce and end > cs for cs, ce in codes):
                 continue
             out.append(escape(s[last:start]))
             if kind == "wl":

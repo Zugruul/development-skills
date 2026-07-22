@@ -35,3 +35,25 @@ check "bold in a paragraph still renders" "<strong>bold</strong>" "$NVRB_OUT"
 check "underscore italic renders <em>italic</em>" "<em>italic</em>" "$NVRB_OUT"
 check_absent "no literal pipe characters leak into the output" "|" "$NVRB_OUT"
 check_absent "no literal hash characters leak into the output" "#" "$NVRB_OUT"
+
+echo "== neural-view render_body (note media: images, links, code-span protection #289) =="
+NVRB_MEDIA_OUT="$(python3 - "$PLUGIN/scripts/neural-view.py" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("neural_view", sys.argv[1])
+nv = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(nv)
+body = """Embed ![duck](assets/duck.png) and [trailer](assets/demo.mp4) and
+[site](https://example.com/x) here.
+
+Syntax examples stay literal: `![alt](path)` and `[label](file.mp4)` and `[[wl]]`.
+"""
+print(nv.render_body(body))
+PY
+)"
+check "![img](path) renders an img.nm with data-src" '<img class="nm" data-src="assets/duck.png" alt="duck">' "$NVRB_MEDIA_OUT"
+check "[link](relative) renders a file link (a.fl)" '<a class="fl" data-href="assets/demo.mp4">trailer</a>' "$NVRB_MEDIA_OUT"
+check "[link](https) renders an external link with noopener" '<a class="ext" href="https://example.com/x" target="_blank" rel="noopener">site</a>' "$NVRB_MEDIA_OUT"
+check "image markdown inside backticks stays literal code" '<code>![alt](path)</code>' "$NVRB_MEDIA_OUT"
+check "link markdown inside backticks stays literal code" '<code>[label](file.mp4)</code>' "$NVRB_MEDIA_OUT"
+check "wikilink inside backticks stays literal code" '<code>[[wl]]</code>' "$NVRB_MEDIA_OUT"
+check_absent "no live file link leaks from the code-span examples" 'data-href="file.mp4"' "$NVRB_MEDIA_OUT"

@@ -1068,7 +1068,12 @@ check "step() (the physics/force-integration function) never references entityLi
 echo "== activation log panel: clear button, sticky header, always-visible scrollbar (#211/#212) =="
 check "activation log header has a clear button" 'id="rightbar-clear"' "$(cat "$NVHTML")"
 check "clear button wires an onclick handler that empties the log" 'document.getElementById("rightbar-clear").onclick = ()=>{ LOG.innerHTML = ""; };' "$(cat "$NVHTML")"
-check "activation log header is pinned via position:sticky while the log scrolls beneath it" "#rightbar-head{position:sticky;top:0" "$(cat "$NVHTML")"
-check "activation log scrollbar is explicitly styled (not a bare overflow:auto that defers to an OS auto-hide overlay)" "#rightbar::-webkit-scrollbar{width:9px}" "$(cat "$NVHTML")"
-check "activation log scrollbar thumb/track colors match the rest of the HUD's scrollbar convention" "#rightbar::-webkit-scrollbar-thumb{background:rgba(90,190,255,.4);border-radius:5px}" "$(cat "$NVHTML")"
+# stacked layout (post-#289 polish): the header row and the entries are plain
+# flex siblings — the PANEL never scrolls, #tickerlog is the scroll area, so
+# entries can never flow behind/above the header (no sticky, no header bg).
+check "activation log panel stacks header then entries (flex column, panel itself never scrolls)" "display:flex;flex-direction:column" "$(sed -n '/#rightbar{/,/}/p' "$NVHTML")"
+check_absent "activation log header is NOT sticky (entries scroll in #tickerlog below it instead)" "#rightbar-head{position:sticky" "$(cat "$NVHTML")"
+check "activation log entries area owns the scroll" "#tickerlog{flex:1;min-height:0;overflow:auto" "$(cat "$NVHTML")"
+check "activation log scrollbar is explicitly styled (not a bare overflow:auto that defers to an OS auto-hide overlay)" "#tickerlog::-webkit-scrollbar{width:9px}" "$(cat "$NVHTML")"
+check "activation log scrollbar thumb/track colors match the rest of the HUD's scrollbar convention" "#tickerlog::-webkit-scrollbar-thumb{background:rgba(90,190,255,.4);border-radius:5px}" "$(cat "$NVHTML")"
 
