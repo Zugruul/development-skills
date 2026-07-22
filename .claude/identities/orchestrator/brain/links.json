@@ -24,6 +24,16 @@
     "last": null,
     "weight": 0.5
   },
+  "brief-closed-action-set->brief-out-of-scope-failure-line": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "brief-closed-action-set->idle-agent-is-not-done": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "brief-out-of-scope-failure-line->idle-agent-is-not-done": {
     "fires": 0,
     "last": null,
@@ -175,6 +185,16 @@
     "weight": 0.5
   },
   "stacked-prs-retarget-before-delete->serial-delivery-prevents-stack-debt": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "stall-hypothesis-backgrounded-gate->brief-closed-action-set": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "stall-hypothesis-backgrounded-gate->unresponsive-agent-take-over": {
     "fires": 0,
     "last": null,
     "weight": 0.5
