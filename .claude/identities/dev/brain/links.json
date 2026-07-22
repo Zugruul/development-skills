@@ -129,6 +129,16 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
+  "construct-before-try->lock-key-canonicalize": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "construct-before-try->partial-results-honesty": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "copy-exact-strings-tests-assert-against->copy-not-eyeball-format-parity": {
     "fires": 13,
     "last": "2026-07-22",
@@ -417,6 +427,16 @@
   "pair-every-side-effect-with-undo->old-path-repo-wide-sweep": {
     "fires": 13,
     "last": "2026-07-22",
+    "weight": 0.5
+  },
+  "partial-results-honesty->advisory-scripts-catch-oserror": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "partial-results-honesty->tracked-config-atomic-writes": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "per-cli-isolation-differs->env-home-isolation-not-cwd": {
