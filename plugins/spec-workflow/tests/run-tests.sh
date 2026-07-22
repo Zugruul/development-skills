@@ -127,6 +127,7 @@ SECTIONS=(
     section-brain-explain.sh
     section-brain-path.sh
     section-brain-library.sh
+    section-brain-atomic.sh
     section-kb-seed.sh
     section-entity-index.sh
     section-neural-view-entities.sh

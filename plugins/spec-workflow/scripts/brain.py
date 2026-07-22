@@ -34,7 +34,9 @@ Python 3 standard library only (no pyyaml). Usage:
 """
 
 import argparse
+import contextlib
 import datetime
+import fcntl
 import hashlib
 import json
 import os
@@ -42,6 +44,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as C  # noqa: E402
@@ -79,6 +82,112 @@ def brain_dir(identities, role):
 
 def notes_dir(identities, role):
     return os.path.join(brain_dir(identities, role), "notes")
+
+
+# ------------------------------------------------------- cross-process lock
+# SPEC-ASSISTANT §5a bullet 4 / §17.5: every brain.py write path -- across
+# every role -- is guarded by ONE flock per identities dir, shared by every
+# CLI invocation (mint, recall, prune, ...) and, later, the in-process
+# engine (E1/AST-010+). `_BRAIN_LOCK_STATE` makes `brain_lock` reentrant
+# WITHIN a single process: fcntl.flock() locks are per open-file-description,
+# so a second bare os.open()+flock() on the same path from the SAME process
+# would block on its own outer lock (recall() holds the lock across its
+# read-modify-write cycle and calls save_links(), which also acquires the
+# lock -- that inner acquisition must be a no-op, not a self-deadlock).
+# Released on exception via try/finally, so a mid-critical-section crash
+# (or a deliberate kill -9 of a *different* holder) never leaves a stale
+# advisory lock -- flock is released by the OS when the holding process's
+# fd is closed/exits, regardless of how it exits.
+_BRAIN_LOCK_STATE = {}
+
+
+def _brain_lock_path(identities):
+    # realpath, not the raw string: two spellings of the SAME directory
+    # (relative vs absolute, a symlink alias, a trailing slash) must key
+    # to the identical lock file, or the reentrancy dict below sees them as
+    # two different locks and the same process can self-deadlock flocking
+    # the same underlying directory twice (review r2 finding 1) -- safe
+    # today (main() computes identities once per process) but mint()/
+    # recall() are the documented in-process engine import surface, where a
+    # future caller deriving the path differently across nested calls would
+    # hit this for real.
+    return os.path.join(os.path.realpath(identities), ".brain.lock")
+
+
+@contextlib.contextmanager
+def brain_lock(identities):
+    """Cross-process exclusive lock guarding every brain.py write under
+    `identities` (all roles share the one lock file). Reentrant within a
+    single process -- see the module-level note above."""
+    path = _brain_lock_path(identities)
+    state = _BRAIN_LOCK_STATE.get(path)
+    if state is not None:
+        state[1] += 1
+        try:
+            yield
+        finally:
+            state[1] -= 1
+        return
+    os.makedirs(identities, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    except Exception:
+        # review r2 finding 2: os.open() already succeeded, so a failure
+        # from flock() itself (e.g. ENOLCK) must not leak the fd -- close
+        # it before propagating, same discipline as _atomic_write's tmp-file
+        # cleanup on a failed write.
+        os.close(fd)
+        raise
+    _BRAIN_LOCK_STATE[path] = [fd, 1]
+    try:
+        yield
+    finally:
+        entry = _BRAIN_LOCK_STATE.pop(path, None)
+        if entry is not None:
+            fcntl.flock(entry[0], fcntl.LOCK_UN)
+            os.close(entry[0])
+
+
+def _atomic_write(identities, path, text):
+    """Write `text` to `path` atomically (temp file in the SAME directory,
+    then os.replace()) under the identities-wide flock. Reentrant: a caller
+    already holding `brain_lock` across a larger read-modify-write critical
+    section (mint, recall's link-bumps, ...) is not blocked by its own
+    write. A tmp file that fails to land is cleaned up; the real path is
+    never left partially written."""
+    d = os.path.dirname(path) or "."
+    with brain_lock(identities):
+        os.makedirs(d, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix=".brain-tmp-", dir=d)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(text)
+            os.replace(tmp, path)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+
+
+def _append_line(identities, path, line):
+    """Append one already-newline-terminated line to `path` under the
+    identities-wide flock. Stays an append -- a single os.write() to an
+    O_APPEND descriptor, same shape as before this task (POSIX already
+    guarantees that single write is atomic under PIPE_BUF); the flock adds
+    cross-process serialization with every OTHER brain write, it does not
+    turn the append into a rewrite."""
+    d = os.path.dirname(path)
+    with brain_lock(identities):
+        if d:
+            os.makedirs(d, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+        try:
+            os.write(fd, line.encode("utf-8"))
+        finally:
+            os.close(fd)
 
 
 def glob_to_regex(glob):
@@ -238,15 +347,12 @@ def load_links(identities, role):
 
 def save_links(identities, role, links):
     p = links_path(identities, role)
-    os.makedirs(os.path.dirname(p), exist_ok=True)
-    json.dump(links, open(p, "w", encoding="utf-8"), indent=2, sort_keys=True)
+    _atomic_write(identities, p, json.dumps(links, indent=2, sort_keys=True))
 
 
 def log_event(identities, role, obj):
     p = os.path.join(brain_dir(identities, role), ".activation.jsonl")
-    os.makedirs(os.path.dirname(p), exist_ok=True)
-    with open(p, "a", encoding="utf-8") as f:
-        f.write(json.dumps(obj) + "\n")
+    _append_line(identities, p, json.dumps(obj) + "\n")
 
 
 # ------------------------------------------------ unified brain-event feed (E2)
@@ -263,7 +369,7 @@ def _feed_repo(root):
     return os.path.basename(os.path.abspath(root)) or root
 
 
-def emit_event(root, obj):
+def emit_event(root, obj, identities=None):
     """Append ONE JSON line to <root>/.claude/brain-events.jsonl (§8.1, §8.2).
 
     The line is written in a SINGLE os.write() to an O_APPEND file descriptor;
@@ -272,6 +378,13 @@ def emit_event(root, obj):
     payload carrying at least `role` and `type` (one of the §8.2 enum) plus
     slug/link-key/count fields — NEVER full note bodies. The v1 baseline fields
     `v`/`ts`/`repo` are filled here.
+
+    `identities`, when the caller has it in scope, additionally serializes
+    this append with every other brain write under the identities-wide
+    flock (SPEC-ASSISTANT §5a bullet 4/§17.5) -- optional and defaulted to
+    None so callers outside brain.py (feedback.py) that only have `root`
+    keep working unchanged, on the existing O_APPEND-alone atomicity this
+    docstring already relied on.
 
     The feed is NEVER load-bearing (§8.1.1): any failure prints a warning and
     returns False without raising, so the caller's real work completes normally.
@@ -283,11 +396,19 @@ def emit_event(root, obj):
         line = json.dumps(event, sort_keys=True) + "\n"
         p = os.path.join(root, ".claude", BRAIN_EVENTS_FILENAME)
         os.makedirs(os.path.dirname(p), exist_ok=True)
-        fd = os.open(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
-        try:
-            os.write(fd, line.encode("utf-8"))
-        finally:
-            os.close(fd)
+        if identities is not None:
+            with brain_lock(identities):
+                fd = os.open(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+                try:
+                    os.write(fd, line.encode("utf-8"))
+                finally:
+                    os.close(fd)
+        else:
+            fd = os.open(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+            try:
+                os.write(fd, line.encode("utf-8"))
+            finally:
+                os.close(fd)
         return True
     except Exception as e:
         sys.stderr.write("warning: brain-event feed append failed: %s\n" % e)
@@ -359,11 +480,7 @@ def cmd_outcome(identities, args):
     }
     line = json.dumps(obj, sort_keys=True) + "\n"
     p = outcomes_path(identities, role)
-    fd = os.open(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
-    try:
-        os.write(fd, line.encode("utf-8"))
-    finally:
-        os.close(fd)
+    _append_line(identities, p, line)
 
     print("recorded outcome: %s/%s %s" % (role, args.slug, args.outcome))
 
@@ -378,7 +495,7 @@ def cmd_outcome(identities, args):
             "slug": args.slug,
             "outcome": args.outcome,
             "task": task_ref,
-        })
+        }, identities=identities)
 
 
 # ---------------------------------------------------------- outcome weighting
@@ -682,10 +799,9 @@ def _read_staleness_cache(path):
         return None
 
 
-def _write_staleness_cache(path, head, since, commits):
+def _write_staleness_cache(identities, path, head, since, commits):
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump({"head": head, "since": since, "commits": commits}, f)
+        _atomic_write(identities, path, json.dumps({"head": head, "since": since, "commits": commits}))
     except OSError:
         pass
 
@@ -809,7 +925,7 @@ def _stale_slugs(root, identities, role, notes):
         commits = _git_changed_files_since(root, since)
         if commits is None:
             return {}
-        _write_staleness_cache(cache_path, head, since, commits)
+        _write_staleness_cache(identities, cache_path, head, since, commits)
 
     result = {}
     for slug, fm in candidates.items():
@@ -854,67 +970,75 @@ def mint(identities, role, slug, root, body, tags="", paths="", entities="",
     os.makedirs(d, exist_ok=True)
     path = os.path.join(d, slug + ".md")
 
-    strength = DEFAULT_STRENGTH
-    created = today()
-    old_confidence = None
-    if os.path.isfile(path):
-        old_fm, _ = parse_note(open(path, encoding="utf-8").read())
-        strength = int(old_fm.get("strength", DEFAULT_STRENGTH)) + 1
-        created = old_fm.get("created", created)
-        old_confidence = old_fm.get("confidence", DEFAULT_CONFIDENCE)
+    # SPEC-ASSISTANT §5a bullet 4/§17.5: the whole read-modify-write cycle
+    # (read the existing note for its strength bump, write the note, then
+    # load-mutate-save links.json for auto-formed wikilinks) is ONE critical
+    # section under the identities-wide flock -- not just the two writes at
+    # the end -- so a concurrent mint/recall touching the same note or
+    # links.json can never observe or clobber a half-applied update.
+    with brain_lock(identities):
+        strength = DEFAULT_STRENGTH
+        created = today()
+        old_confidence = None
+        if os.path.isfile(path):
+            old_fm, _ = parse_note(open(path, encoding="utf-8").read())
+            strength = int(old_fm.get("strength", DEFAULT_STRENGTH)) + 1
+            created = old_fm.get("created", created)
+            old_confidence = old_fm.get("confidence", DEFAULT_CONFIDENCE)
 
-    # GL-012: confidence is additive and two-valued only (argparse `choices`
-    # rejects anything else before we ever get here, exit 2, nothing
-    # written). Omitting --confidence on a re-mint PRESERVES the existing
-    # note's confidence (never a silent direct -> inferred downgrade); only
-    # an explicit `--confidence inferred` on a currently-direct note performs
-    # that downgrade, and it prints a notice when it does. A first-time mint
-    # (or any note that resolves to inferred) writes no key at all -- missing
-    # key IS the inferred default (AC1/AC2).
-    notice = None
-    if confidence is not None:
-        new_confidence = confidence
-        if old_confidence == "direct" and new_confidence == "inferred":
-            notice = "notice: downgrading %s/%s confidence direct -> inferred\n" % (role, slug)
-    else:
-        new_confidence = old_confidence if old_confidence is not None else DEFAULT_CONFIDENCE
+        # GL-012: confidence is additive and two-valued only (argparse `choices`
+        # rejects anything else before we ever get here, exit 2, nothing
+        # written). Omitting --confidence on a re-mint PRESERVES the existing
+        # note's confidence (never a silent direct -> inferred downgrade); only
+        # an explicit `--confidence inferred` on a currently-direct note performs
+        # that downgrade, and it prints a notice when it does. A first-time mint
+        # (or any note that resolves to inferred) writes no key at all -- missing
+        # key IS the inferred default (AC1/AC2).
+        notice = None
+        if confidence is not None:
+            new_confidence = confidence
+            if old_confidence == "direct" and new_confidence == "inferred":
+                notice = "notice: downgrading %s/%s confidence direct -> inferred\n" % (role, slug)
+        else:
+            new_confidence = old_confidence if old_confidence is not None else DEFAULT_CONFIDENCE
 
-    fm = {
-        "tags": _split(tags),
-        "paths": _split(paths),
-        "strength": strength,
-        "source": source or "",
-        "graduated": False,
-        "created": created,
-        # GL-010: every mint -- first or re-mint (the strength-bump path) --
-        # touches the note, resetting its recency-decay clock.
-        "last-touched": today(),
-    }
-    if new_confidence == "direct":
-        fm["confidence"] = "direct"
-    entities_list = _split(entities)
-    if entities_list:
-        fm["entities"] = entities_list
-    if learned_from:
-        fm["learned-from"] = learned_from
-    if source_note:
-        fm["source-note"] = source_note
+        fm = {
+            "tags": _split(tags),
+            "paths": _split(paths),
+            "strength": strength,
+            "source": source or "",
+            "graduated": False,
+            "created": created,
+            # GL-010: every mint -- first or re-mint (the strength-bump path) --
+            # touches the note, resetting its recency-decay clock.
+            "last-touched": today(),
+        }
+        if new_confidence == "direct":
+            fm["confidence"] = "direct"
+        entities_list = _split(entities)
+        if entities_list:
+            fm["entities"] = entities_list
+        if learned_from:
+            fm["learned-from"] = learned_from
+        if source_note:
+            fm["source-note"] = source_note
 
-    open(path, "w", encoding="utf-8").write(render_note(fm, body))
+        _atomic_write(identities, path, render_note(fm, body))
 
-    # auto-add links.json entries for [[wikilinks]] in the body (never reset existing)
-    links = load_links(identities, role)
-    formed = []
-    for target in WIKILINK.findall(body):
-        key = "%s->%s" % (slug, target.strip())
-        if key not in links:
-            links[key] = {"weight": DEFAULT_WEIGHT, "fires": 0, "last": None}
-            formed.append(key)
-    save_links(identities, role, links)
+        # auto-add links.json entries for [[wikilinks]] in the body (never reset existing)
+        links = load_links(identities, role)
+        formed = []
+        for target in WIKILINK.findall(body):
+            key = "%s->%s" % (slug, target.strip())
+            if key not in links:
+                links[key] = {"weight": DEFAULT_WEIGHT, "fires": 0, "last": None}
+                formed.append(key)
+        save_links(identities, role, links)
 
-    emit_event(root, {"role": role, "type": "NoteMinted", "slug": slug, "strength": strength})
-    for key in formed:
-        emit_event(root, {"role": role, "type": "LinkFormed", "key": key})
+        emit_event(root, {"role": role, "type": "NoteMinted", "slug": slug, "strength": strength},
+                   identities=identities)
+        for key in formed:
+            emit_event(root, {"role": role, "type": "LinkFormed", "key": key}, identities=identities)
 
     return {
         "role": role, "slug": slug, "strength": strength,
@@ -1077,129 +1201,138 @@ def recall(identities, role, root, paths="", keywords="", budget=600, k=8):
         "links_fired": [key, ...],   # traversed link keys, sorted
       }
     """
-    notes = load_notes(identities, role)
-    links = load_links(identities, role)
-    paths_list = _split(paths)
-    keywords_lower = set(kw.lower() for kw in _split(keywords))
+    # SPEC-ASSISTANT §5a bullet 4/§17.5: the whole read-modify-write cycle --
+    # load_links, spread_activation's in-place fires/last bump, save_links --
+    # is ONE critical section under the identities-wide flock, held from the
+    # initial load through the eventual save (not just around the final
+    # write), so a concurrent mint/recall/prune touching the same links.json
+    # can never observe or clobber a half-applied update ("recall's own
+    # link-bump writes included" per the spec bullet).
+    with brain_lock(identities):
+        notes = load_notes(identities, role)
+        links = load_links(identities, role)
+        paths_list = _split(paths)
+        keywords_lower = set(kw.lower() for kw in _split(keywords))
 
-    # outcome weighting (SPEC-GRAPHIFY §7 R7.4/R7.5/R7.7): parsed ONCE per
-    # invocation (§14 latency budget). A malformed outcomes.jsonl warns once
-    # and disables weighting entirely for this run -- empty tallies means
-    # _outcome_multiplier() returns 1.0 everywhere and _is_contested() is
-    # always False, i.e. exactly today's behavior (never crash, exit 0).
-    window, mult_step = _outcome_config(root)
-    tallies, outcomes_malformed = outcome_window_tallies(identities, role, window)
-    if outcomes_malformed:
-        sys.stderr.write(
-            "warning: %s is malformed — outcome weighting disabled for this recall\n"
-            % outcomes_path(identities, role)
-        )
-        tallies = {}
+        # outcome weighting (SPEC-GRAPHIFY §7 R7.4/R7.5/R7.7): parsed ONCE per
+        # invocation (§14 latency budget). A malformed outcomes.jsonl warns once
+        # and disables weighting entirely for this run -- empty tallies means
+        # _outcome_multiplier() returns 1.0 everywhere and _is_contested() is
+        # always False, i.e. exactly today's behavior (never crash, exit 0).
+        window, mult_step = _outcome_config(root)
+        tallies, outcomes_malformed = outcome_window_tallies(identities, role, window)
+        if outcomes_malformed:
+            sys.stderr.write(
+                "warning: %s is malformed — outcome weighting disabled for this recall\n"
+                % outcomes_path(identities, role)
+            )
+            tallies = {}
 
-    # recency decay (GL-010): parsed ONCE per invocation, same latency
-    # budget as the outcome weighting above. A malformed outcomes.jsonl was
-    # already warned about once (above) -- reuse that verdict instead of
-    # parsing again and warning a second time for the exact same file.
-    retros = _load_retros(identities)
-    decay_k, decay_factor = _recency_decay_config(root)
-    useful_dates = {} if outcomes_malformed else _useful_touch_dates(identities, role)[0]
+        # recency decay (GL-010): parsed ONCE per invocation, same latency
+        # budget as the outcome weighting above. A malformed outcomes.jsonl was
+        # already warned about once (above) -- reuse that verdict instead of
+        # parsing again and warning a second time for the exact same file.
+        retros = _load_retros(identities)
+        decay_k, decay_factor = _recency_decay_config(root)
+        useful_dates = {} if outcomes_malformed else _useful_touch_dates(identities, role)[0]
 
-    # staleness (GL-011): parsed ONCE per invocation over the whole corpus,
-    # same latency budget as the two blocks above. Failure of any kind (no
-    # git, non-repo, cache miss that also fails) degrades to {} -- every
-    # note renders exactly as it did before this feature existed (R8.5).
-    stale_map = _stale_slugs(root, identities, role, notes)
+        # staleness (GL-011): parsed ONCE per invocation over the whole corpus,
+        # same latency budget as the two blocks above. Failure of any kind (no
+        # git, non-repo, cache miss that also fails) degrades to {} -- every
+        # note renders exactly as it did before this feature existed (R8.5).
+        stale_map = _stale_slugs(root, identities, role, notes)
 
-    def _decay(slug, fm):
-        touch_date = _note_touch_date(slug, fm, links, useful_dates)
-        return _recency_decay_multiplier(retros, decay_k, decay_factor, touch_date)
+        def _decay(slug, fm):
+            touch_date = _note_touch_date(slug, fm, links, useful_dates)
+            return _recency_decay_multiplier(retros, decay_k, decay_factor, touch_date)
 
-    activation = {}   # slug -> float
-    events = []       # collected, written after link bumps
+        activation = {}   # slug -> float
+        events = []       # collected, written after link bumps
 
-    # (1) seed
-    for slug in sorted(notes):
-        fm = notes[slug]["fm"]
-        note_globs = fm.get("paths", []) or []
-        tags = set(t.lower() for t in (fm.get("tags", []) or []))
-        hit = any(glob_match(p, g) for p in paths_list for g in note_globs) or bool(tags & keywords_lower)
-        if hit:
-            act = 1.0 * (1 + int(fm.get("strength", DEFAULT_STRENGTH)) / 10)
-            act *= _outcome_multiplier(tallies.get(slug, {}), mult_step)
-            act *= _decay(slug, fm)
-            if act > activation.get(slug, 0):
-                activation[slug] = act
-            events.append({"event": "seed", "note": slug, "activation": round(act, 4)})
+        # (1) seed
+        for slug in sorted(notes):
+            fm = notes[slug]["fm"]
+            note_globs = fm.get("paths", []) or []
+            tags = set(t.lower() for t in (fm.get("tags", []) or []))
+            hit = any(glob_match(p, g) for p in paths_list for g in note_globs) or bool(tags & keywords_lower)
+            if hit:
+                act = 1.0 * (1 + int(fm.get("strength", DEFAULT_STRENGTH)) / 10)
+                act *= _outcome_multiplier(tallies.get(slug, {}), mult_step)
+                act *= _decay(slug, fm)
+                if act > activation.get(slug, 0):
+                    activation[slug] = act
+                events.append({"event": "seed", "note": slug, "activation": round(act, 4)})
 
-    # (1b) hybrid seeding (MEM-032, SPEC-MEMORY §9.3): union in the top-K
-    # embedding neighbors of the query text, when the role's index.sqlite3
-    # sidecar exists. Absence of the sidecar falls through unchanged -- the
-    # exact same code that ran before this feature existed -- so the
-    # golden-identical-when-absent guarantee holds by construction.
-    db_path = index_db_path(identities, role)
-    if os.path.exists(db_path):
-        query_text = " ".join(_split(keywords))
-        if query_text:
-            vectors = _embed_texts([query_text])
-            if vectors is not None:
-                for slug, _sim in _top_k_neighbors(db_path, vectors[0], k):
-                    if slug not in notes:
-                        continue
-                    fm = notes[slug]["fm"]
-                    act = 1.0 * (1 + int(fm.get("strength", DEFAULT_STRENGTH)) / 10)
-                    act *= _outcome_multiplier(tallies.get(slug, {}), mult_step)
-                    act *= _decay(slug, fm)
-                    if act > activation.get(slug, 0):
-                        activation[slug] = act
-                        events.append({"event": "seed", "note": slug,
-                                       "activation": round(act, 4), "source": "embedding"})
+        # (1b) hybrid seeding (MEM-032, SPEC-MEMORY §9.3): union in the top-K
+        # embedding neighbors of the query text, when the role's index.sqlite3
+        # sidecar exists. Absence of the sidecar falls through unchanged -- the
+        # exact same code that ran before this feature existed -- so the
+        # golden-identical-when-absent guarantee holds by construction.
+        db_path = index_db_path(identities, role)
+        if os.path.exists(db_path):
+            query_text = " ".join(_split(keywords))
+            if query_text:
+                vectors = _embed_texts([query_text])
+                if vectors is not None:
+                    for slug, _sim in _top_k_neighbors(db_path, vectors[0], k):
+                        if slug not in notes:
+                            continue
+                        fm = notes[slug]["fm"]
+                        act = 1.0 * (1 + int(fm.get("strength", DEFAULT_STRENGTH)) / 10)
+                        act *= _outcome_multiplier(tallies.get(slug, {}), mult_step)
+                        act *= _decay(slug, fm)
+                        if act > activation.get(slug, 0):
+                            activation[slug] = act
+                            events.append({"event": "seed", "note": slug,
+                                           "activation": round(act, 4), "source": "embedding"})
 
-    # (2) spread along outgoing links, up to MAX_HOPS, keeping the max per note
-    def _on_cross(key, target, nact):
-        events.append({"event": "hop", "note": target, "activation": round(nact, 4), "link": key})
+        # (2) spread along outgoing links, up to MAX_HOPS, keeping the max per note
+        def _on_cross(key, target, nact):
+            events.append({"event": "hop", "note": target, "activation": round(nact, 4), "link": key})
 
-    activation, traversed_list = _spread_activation(links, activation, mutate=True, on_cross=_on_cross)
-    traversed = set(traversed_list)
+        activation, traversed_list = _spread_activation(links, activation, mutate=True, on_cross=_on_cross)
+        traversed = set(traversed_list)
 
-    if traversed:
-        save_links(identities, role, links)
+        if traversed:
+            save_links(identities, role, links)
 
-    # (3) rank + emit within the token budget; graduated notes are not injected
-    budget_chars = budget * CHARS_PER_TOKEN
-    ranked = sorted(activation, key=lambda s: (-activation[s], s))
-    out = []
-    used = 0
-    for slug in ranked:
-        if slug not in notes:
-            continue
-        if notes[slug]["fm"].get("graduated"):
-            continue
-        act = activation[slug]
-        sep = 1 if out else 0  # the "\n" that will join this block to the previous one
-        tally = tallies.get(slug, {})
-        contested = _is_contested(tally)
-        stale = stale_map.get(slug, False)
-        confidence = notes[slug]["fm"].get("confidence", DEFAULT_CONFIDENCE)
-        block = _render_block(slug, notes[slug], act, budget_chars - used - sep,
-                               contested=contested, stale=stale,
-                               confidence=confidence, useful_count=tally.get("useful", 0))
-        if block is None:
-            break
-        out.append(block)
-        used += len(block) + sep
-        events.append({"event": "inject", "note": slug, "activation": round(act, 4)})
+        # (3) rank + emit within the token budget; graduated notes are not injected
+        budget_chars = budget * CHARS_PER_TOKEN
+        ranked = sorted(activation, key=lambda s: (-activation[s], s))
+        out = []
+        used = 0
+        for slug in ranked:
+            if slug not in notes:
+                continue
+            if notes[slug]["fm"].get("graduated"):
+                continue
+            act = activation[slug]
+            sep = 1 if out else 0  # the "\n" that will join this block to the previous one
+            tally = tallies.get(slug, {})
+            contested = _is_contested(tally)
+            stale = stale_map.get(slug, False)
+            confidence = notes[slug]["fm"].get("confidence", DEFAULT_CONFIDENCE)
+            block = _render_block(slug, notes[slug], act, budget_chars - used - sep,
+                                   contested=contested, stale=stale,
+                                   confidence=confidence, useful_count=tally.get("useful", 0))
+            if block is None:
+                break
+            out.append(block)
+            used += len(block) + sep
+            events.append({"event": "inject", "note": slug, "activation": round(act, 4)})
 
-    for ev in events:
-        ev["ts"] = now_iso()
-        ev["role"] = role
-        log_event(identities, role, ev)
+        for ev in events:
+            ev["ts"] = now_iso()
+            ev["role"] = role
+            log_event(identities, role, ev)
 
-    seeds = sum(1 for e in events if e["event"] == "seed")
-    injected = sum(1 for e in events if e["event"] == "inject")
-    emit_event(root, {"role": role, "type": "RecallPerformed",
-                       "seeds": seeds, "injected": injected, "links_fired": len(traversed)})
-    for key in sorted(traversed):
-        emit_event(root, {"role": role, "type": "LinkFired", "key": key})
+        seeds = sum(1 for e in events if e["event"] == "seed")
+        injected = sum(1 for e in events if e["event"] == "inject")
+        emit_event(root, {"role": role, "type": "RecallPerformed",
+                           "seeds": seeds, "injected": injected, "links_fired": len(traversed)},
+                   identities=identities)
+        for key in sorted(traversed):
+            emit_event(root, {"role": role, "type": "LinkFired", "key": key}, identities=identities)
 
     return {"blocks": out, "seeds": seeds, "injected": injected, "links_fired": sorted(traversed)}
 
@@ -1281,10 +1414,16 @@ def cmd_graduate(identities, args):
     path = os.path.join(notes_dir(identities, args.role), args.slug + ".md")
     if not os.path.isfile(path):
         sys.exit("no such note: %s/%s" % (args.role, args.slug))
-    fm, body = parse_note(open(path, encoding="utf-8").read())
-    fm["graduated"] = True
-    open(path, "w", encoding="utf-8").write(render_note(fm, body))
-    emit_event(args.root, {"role": args.role, "type": "NoteGraduated", "slug": args.slug})
+    # read-modify-write is ONE critical section under the identities-wide
+    # flock -- a concurrent mint() of the same slug between the read and the
+    # write must not have its update silently reverted by this stale
+    # in-memory copy (review r1 finding 2).
+    with brain_lock(identities):
+        fm, body = parse_note(open(path, encoding="utf-8").read())
+        fm["graduated"] = True
+        _atomic_write(identities, path, render_note(fm, body))
+        emit_event(args.root, {"role": args.role, "type": "NoteGraduated", "slug": args.slug},
+                   identities=identities)
     print("graduated %s/%s" % (args.role, args.slug))
 
 
@@ -1370,9 +1509,8 @@ def cmd_directory(identities, _args):
             fm = notes[slug]["fm"]
             lines.append(_note_line(slug, fm))
         lines.append("")
-    os.makedirs(identities, exist_ok=True)
     out = os.path.join(identities, "DIRECTORY.md")
-    open(out, "w", encoding="utf-8").write("\n".join(lines).rstrip() + "\n")
+    _atomic_write(identities, out, "\n".join(lines).rstrip() + "\n")
     print("wrote %s (%d role(s))" % (out, len(roles)))
 
 
@@ -1606,9 +1744,8 @@ def cmd_entity_index(identities, args):
                 anchor = "%s/%s" % (home_role, home_notes[0])
         out_entities[key] = {"anchor": anchor, "notes": [list(n) for n in notes]}
 
-    os.makedirs(identities, exist_ok=True)
     out = os.path.join(identities, "entity-index.json")
-    open(out, "w", encoding="utf-8").write(_render_entity_index(out_entities))
+    _atomic_write(identities, out, _render_entity_index(out_entities))
     print("wrote %s (%d entit%s)" % (out, len(out_entities), "y" if len(out_entities) == 1 else "ies"))
 
 
@@ -1649,23 +1786,27 @@ def cmd_consult(identities, args):
         sys.exit("no such note: %s/%s" % (owner, slug))
     _fm, body = parse_note(open(path, encoding="utf-8").read())
 
-    # recurrence count lives in the CONSUMER's brain
+    # recurrence count lives in the CONSUMER's brain. load-mutate-save is one
+    # critical section under the identities-wide flock, same as mint/recall's
+    # links.json cycle, so two concurrent consults of the same key can never
+    # lose one's increment to the other's stale in-memory copy.
     cpath = os.path.join(brain_dir(identities, consumer), "consults.json")
-    consults = {}
-    if os.path.isfile(cpath):
-        consults = json.load(open(cpath, encoding="utf-8"))
-    ckey = "%s:%s" % (owner, slug)
-    count = int(consults.get(ckey, 0)) + 1
-    consults[ckey] = count
-    os.makedirs(os.path.dirname(cpath), exist_ok=True)
-    json.dump(consults, open(cpath, "w", encoding="utf-8"), indent=2, sort_keys=True)
+    with brain_lock(identities):
+        consults = {}
+        if os.path.isfile(cpath):
+            consults = json.load(open(cpath, encoding="utf-8"))
+        ckey = "%s:%s" % (owner, slug)
+        count = int(consults.get(ckey, 0)) + 1
+        consults[ckey] = count
+        _atomic_write(identities, cpath, json.dumps(consults, indent=2, sort_keys=True))
 
-    # log to the OWNER's activation log
-    log_event(identities, owner, {"ts": now_iso(), "role": owner, "event": "consult",
-                                  "note": slug, "consumer": consumer})
+        # log to the OWNER's activation log
+        log_event(identities, owner, {"ts": now_iso(), "role": owner, "event": "consult",
+                                      "note": slug, "consumer": consumer})
 
-    emit_event(args.root, {"role": owner, "type": "ConsultPerformed",
-                           "slug": slug, "consumer": consumer, "count": count})
+        emit_event(args.root, {"role": owner, "type": "ConsultPerformed",
+                               "slug": slug, "consumer": consumer, "count": count},
+                   identities=identities)
 
     print(body.rstrip())
     if count >= 2:
@@ -1773,92 +1914,100 @@ def _shrink_guard(kind, remove_keys, total_count, force, fraction):
 # ------------------------------------------------------------------------ prune
 def cmd_retro_mark(identities, _args):
     p = os.path.join(identities, "retros.log")
-    os.makedirs(identities, exist_ok=True)
-    with open(p, "a", encoding="utf-8") as f:
-        f.write(today() + "\n")
+    _append_line(identities, p, today() + "\n")
     n = sum(1 for _ in open(p, encoding="utf-8"))
     print("retro #%d marked" % n)
 
 
 def cmd_prune(identities, args):
     role = args.role
-    notes = load_notes(identities, role)
-    links = load_links(identities, role)
+    # read-modify-write is ONE critical section under the identities-wide
+    # flock, from the initial load_links() through the eventual save_links()
+    # -- mirroring mint() (962) and recall() (1194) -- so a concurrent mint()
+    # (new link keys) or recall() (fires/last bumps) between prune's read and
+    # its --apply write can never be silently clobbered by prune's stale
+    # snapshot (review r1 finding 1). The candidate print-out is computed
+    # from the same lock-held snapshot that --apply then acts on, so the two
+    # can never disagree about what "candidates" means.
+    with brain_lock(identities):
+        notes = load_notes(identities, role)
+        links = load_links(identities, role)
 
-    retros = []
-    rp = os.path.join(identities, "retros.log")
-    if os.path.isfile(rp):
-        retros = [ln.strip() for ln in open(rp, encoding="utf-8") if ln.strip()]
-    cutoff = retros[-3] if len(retros) >= 3 else None  # created before this = old enough
+        retros = []
+        rp = os.path.join(identities, "retros.log")
+        if os.path.isfile(rp):
+            retros = [ln.strip() for ln in open(rp, encoding="utf-8") if ln.strip()]
+        cutoff = retros[-3] if len(retros) >= 3 else None  # created before this = old enough
 
-    candidates = []
-    for key in sorted(links):
-        src, _, target = key.partition("->")
-        meta = links[key]
-        target_note = notes.get(target)
-        # (a) target graduated or missing
-        if target_note is None:
-            candidates.append((key, "target missing"))
-            continue
-        if target_note["fm"].get("graduated"):
-            candidates.append((key, "target graduated"))
-            continue
-        # (b) never fired and the source note is older than the last 3 retros
-        if int(meta.get("fires", 0)) == 0 and cutoff is not None:
-            src_note = notes.get(src)
-            created = src_note["fm"].get("created", "") if src_note else ""
-            if created and created < cutoff:
-                candidates.append((key, "never fired, aged out"))
+        candidates = []
+        for key in sorted(links):
+            src, _, target = key.partition("->")
+            meta = links[key]
+            target_note = notes.get(target)
+            # (a) target graduated or missing
+            if target_note is None:
+                candidates.append((key, "target missing"))
+                continue
+            if target_note["fm"].get("graduated"):
+                candidates.append((key, "target graduated"))
+                continue
+            # (b) never fired and the source note is older than the last 3 retros
+            if int(meta.get("fires", 0)) == 0 and cutoff is not None:
+                src_note = notes.get(src)
+                created = src_note["fm"].get("created", "") if src_note else ""
+                if created and created < cutoff:
+                    candidates.append((key, "never fired, aged out"))
 
-    # outcome-rule candidates (SPEC-GRAPHIFY §7 R7.6, GL-004): a note that is
-    # repeatedly dead_end and never useful, full history (not the retro
-    # window recall's ranking multiplier uses -- #248 wants the whole
-    # record, since a note this bad doesn't get a second chance to redeem
-    # itself just because the window rolled forward). Note-level, so it's
-    # reported alongside the existing link-level candidates but tracked
-    # separately -- this rule is propose-only (see below), never wired into
-    # --apply's removal path, so it can never trigger the shrink guard by
-    # itself; --apply's existing link-removal path is unaffected.
-    K = _outcome_deadend_prune_threshold(args)
-    tallies = _load_outcome_tallies_or_warn(identities, role, "prune")
-    note_candidates = []
-    for slug in sorted(notes):
-        t = tallies.get(slug)
-        if not t:
-            continue
-        if t.get("dead_end", 0) >= K and t.get("useful", 0) == 0:
-            note_candidates.append(
-                (slug, "outcome rule: %d× dead_end, 0 useful (full history, threshold %d)"
-                 % (t["dead_end"], K))
-            )
+        # outcome-rule candidates (SPEC-GRAPHIFY §7 R7.6, GL-004): a note that is
+        # repeatedly dead_end and never useful, full history (not the retro
+        # window recall's ranking multiplier uses -- #248 wants the whole
+        # record, since a note this bad doesn't get a second chance to redeem
+        # itself just because the window rolled forward). Note-level, so it's
+        # reported alongside the existing link-level candidates but tracked
+        # separately -- this rule is propose-only (see below), never wired into
+        # --apply's removal path, so it can never trigger the shrink guard by
+        # itself; --apply's existing link-removal path is unaffected.
+        K = _outcome_deadend_prune_threshold(args)
+        tallies = _load_outcome_tallies_or_warn(identities, role, "prune")
+        note_candidates = []
+        for slug in sorted(notes):
+            t = tallies.get(slug)
+            if not t:
+                continue
+            if t.get("dead_end", 0) >= K and t.get("useful", 0) == 0:
+                note_candidates.append(
+                    (slug, "outcome rule: %d× dead_end, 0 useful (full history, threshold %d)"
+                     % (t["dead_end"], K))
+                )
 
-    if not candidates and not note_candidates:
-        print("no prune candidates")
-        return
-    for key, why in candidates:
-        print("%s  (%s)" % (key, why))
-    for slug, why in note_candidates:
-        print("%s  (%s)" % (slug, why))
-    if args.apply:
-        if not candidates:
-            # review round 1: link candidates is empty (only outcome-rule note
-            # candidates exist, if any) -- skip the link-removal machinery
-            # entirely. Running the shrink guard on an empty list, calling
-            # save_links (which would CREATE links.json in a brain that never
-            # had one), and printing "removed 0 link(s)" are all wrong here:
-            # the outcome rule is propose-only and must never write anything.
-            print("0 link candidate(s); outcome candidates are propose-only (nothing written)")
-        else:
-            fraction = _shrink_guard_fraction(args)
-            keys = [key for key, _why in candidates]
-            if not _shrink_guard("link(s)", keys, len(links), args.force, fraction):
-                sys.exit(1)
-            for key, _why in candidates:
-                links.pop(key, None)
-            save_links(identities, role, links)
-            for key, why in candidates:
-                emit_event(args.root, {"role": role, "type": "LinkPruned", "key": key, "reason": why})
-            print("removed %d link(s)" % len(candidates))
+        if not candidates and not note_candidates:
+            print("no prune candidates")
+            return
+        for key, why in candidates:
+            print("%s  (%s)" % (key, why))
+        for slug, why in note_candidates:
+            print("%s  (%s)" % (slug, why))
+        if args.apply:
+            if not candidates:
+                # review round 1: link candidates is empty (only outcome-rule note
+                # candidates exist, if any) -- skip the link-removal machinery
+                # entirely. Running the shrink guard on an empty list, calling
+                # save_links (which would CREATE links.json in a brain that never
+                # had one), and printing "removed 0 link(s)" are all wrong here:
+                # the outcome rule is propose-only and must never write anything.
+                print("0 link candidate(s); outcome candidates are propose-only (nothing written)")
+            else:
+                fraction = _shrink_guard_fraction(args)
+                keys = [key for key, _why in candidates]
+                if not _shrink_guard("link(s)", keys, len(links), args.force, fraction):
+                    sys.exit(1)
+                for key, _why in candidates:
+                    links.pop(key, None)
+                save_links(identities, role, links)
+                for key, why in candidates:
+                    emit_event(args.root, {"role": role, "type": "LinkPruned", "key": key, "reason": why},
+                               identities=identities)
+                print("removed %d link(s)" % len(candidates))
 
 
 # ------------------------------------------------------------------------ index
