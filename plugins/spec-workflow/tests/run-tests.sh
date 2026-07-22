@@ -167,6 +167,7 @@ SECTIONS=(
     section-assistant-claude.sh
     section-assistant-turns.sh
     section-assistant-store.sh
+    section-assistant-isolation.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then
