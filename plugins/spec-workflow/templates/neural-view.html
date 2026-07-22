@@ -4112,9 +4112,12 @@ function make3dBlock(name, url){
   const zone = document.createElement("div");
   zone.className = "mw-zone";
   zone.innerHTML = '<div class="mw-actions">' +
+    '<button class="iconbtn n3d-nt" type="button">New tab</button>' +
+    '<button class="iconbtn n3d-dl" type="button">Save to</button>' +
     '<button class="iconbtn n3d-spin" type="button" title="Toggle auto-rotation" aria-pressed="true">Spin</button>' +
     '<button class="iconbtn n3d-pop" type="button">Detach</button></div>';
   zone.querySelector(".n3d-pop").onclick = ()=>open3dWindow(name, url);
+  wireModelFileActions(zone, name, url);
   box.appendChild(zone);
   boot3dViewer(box).catch(err=>{
     // surface the real reason IN the block — a silent flat strip is undebuggable
@@ -4283,8 +4286,9 @@ function detachNote(fromRect){
   win.querySelectorAll("img.nm").forEach(img=>{ img.onclick = ()=>openMediaViewer(img.src, img.alt || mediaName(img.src)); });
   win.querySelectorAll(".n3d").forEach(box=>{
     box.querySelector("canvas").replaceWith(document.createElement("canvas"));
-    const pop = box.querySelector(".n3d-pop");   // cloned handler is dead — rebind
+    const pop = box.querySelector(".n3d-pop");   // cloned handlers are dead — rebind
     if(pop) pop.onclick = ()=>open3dWindow(box.dataset.name, box.dataset.url);
+    wireModelFileActions(box, box.dataset.name, box.dataset.url);
     boot3dViewer(box).catch(()=>{});
   });
   // capture phase: the drag surfaces stopPropagation on pointerdown, so a
@@ -4349,7 +4353,7 @@ function openMediaViewer(src, name){
     '<div class="mw-imgwrap"><img class="mw-img">' +
       '<div class="mw-zone"><div class="mw-actions">' +
         '<button class="iconbtn mw-newtab" type="button">New tab</button>' +
-        '<button class="iconbtn mw-dl" type="button">Download</button>' +
+        '<button class="iconbtn mw-dl" type="button">Save to</button>' +
       '</div></div></div>';
   win.querySelector(".mw-name").textContent = name;
   const im = win.querySelector(".mw-img");
@@ -4401,6 +4405,22 @@ function openMediaViewer(src, name){
   return win;
 }
 function mediaName(src){ try{ return decodeURIComponent(src.split("/").pop().split("?")[0]) || "image"; }catch{ return "image"; } }
+// New tab / Download for a model file (same handlers wherever the block lives)
+function wireModelFileActions(scope, name, url){
+  const nt = scope.querySelector(".n3d-nt"), dl = scope.querySelector(".n3d-dl");
+  if(nt) nt.onclick = ()=>window.open(url, "_blank");
+  if(dl) dl.onclick = async ()=>{
+    try{
+      const resp = await fetch(url);
+      if(!resp.ok) throw new Error("fetch failed");
+      const u = URL.createObjectURL(await resp.blob());
+      const a = document.createElement("a");
+      a.href = u; a.download = name.split("/").pop() || "model";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(u), 5000);
+    }catch{ window.open(url, "_blank"); }
+  };
+}
 // a 3D block's Detach action: the model in its own window (⛶ fullscreen, ✕)
 function open3dWindow(name, url){
   const win = document.createElement("aside");
