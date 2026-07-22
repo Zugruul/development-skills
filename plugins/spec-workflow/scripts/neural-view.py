@@ -1277,6 +1277,44 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_ranged(self, data, ctype):
+        """Serve bytes honoring a single-range Range header (RFC 9110) — the
+        browser's <video> can only SEEK if the server answers 206 partial
+        responses; a plain 200-everything makes scrubbing snap back to the
+        played position. Unsatisfiable ranges get 416; multi-range requests
+        fall back to the full 200 body (browsers don't send them for media)."""
+        rng = self.headers.get("Range", "")
+        m = re.match(r"bytes=(\d*)-(\d*)$", rng.strip())
+        if not m or (not m.group(1) and not m.group(2)):
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Accept-Ranges", "bytes")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        n = len(data)
+        if m.group(1):
+            start = int(m.group(1))
+            end = min(int(m.group(2)), n - 1) if m.group(2) else n - 1
+        else:                              # suffix form: bytes=-K (last K bytes)
+            start = max(0, n - int(m.group(2)))
+            end = n - 1
+        if start >= n or start > end:
+            self.send_response(416)
+            self.send_header("Content-Range", f"bytes */{n}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        chunk = data[start:end + 1]
+        self.send_response(206)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Range", f"bytes {start}-{end}/{n}")
+        self.send_header("Content-Length", str(len(chunk)))
+        self.send_header("Accept-Ranges", "bytes")
+        self.end_headers()
+        self.wfile.write(chunk)
+
     def log_message(self, *a):  # quiet
         pass
 
@@ -1417,7 +1455,7 @@ class Handler(BaseHTTPRequestHandler):
                                 continue
                             f = brain / rel
                             if _within(f, brain) and f.is_file():
-                                return self._send(200, f.read_bytes(), ctype)
+                                return self._send_ranged(f.read_bytes(), ctype)
             return self._send(404, {"error": "not found"})
         if path.startswith("/note/"):
             parts = path[len("/note/"):].split("/", 2)

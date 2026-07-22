@@ -66,6 +66,27 @@ for trav in "/vendor/../scripts/config.py" "/vendor/..%2fscripts%2fconfig.py" "/
     code="$(curl -s --path-as-is -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT$trav")"
     check "vendor route rejects $trav (404)" "404" "$code"
 done
+# /file media route (#289): Range support — <video> seeking needs 206 partial
+# responses; a 200-everything server makes scrubbing snap back to the played
+# position. Also: extension allowlist + traversal guard.
+mkdir -p "$_nvbrain/assets"
+printf '0123456789abcdef' >"$_nvbrain/assets/clip.mp4"
+_fu="http://127.0.0.1:$NEURAL_VIEW_PORT/file/$_nvrepo/dev/assets/clip.mp4"
+hdrs="$(curl -s -D - -o /dev/null "$_fu" | tr -d '\r')"
+check "file route serves media (200)" "200 OK" "$hdrs"
+check "file route advertises Accept-Ranges: bytes" "Accept-Ranges: bytes" "$hdrs"
+hdrs="$(curl -s -D - -o /dev/null -H 'Range: bytes=4-7' "$_fu" | tr -d '\r')"
+check "file route answers a Range request with 206" "206 Partial Content" "$hdrs"
+check "file route 206 carries Content-Range" "Content-Range: bytes 4-7/16" "$hdrs"
+body="$(curl -s -H 'Range: bytes=4-7' "$_fu")"
+check "file route 206 body is exactly the requested slice" "4567" "$body"
+hdrs="$(curl -s -D - -o /dev/null -H 'Range: bytes=999-' "$_fu" | tr -d '\r')"
+check "file route unsatisfiable range gets 416" "416" "$hdrs"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/file/$_nvrepo/dev/assets/clip.sh")"
+check "file route rejects non-allowlisted extension (404)" "404" "$code"
+code="$(curl -s --path-as-is -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/file/$_nvrepo/dev/../../../etc/passwd")"
+check "file route rejects traversal (404)" "404" "$code"
+
 # finding 2: path traversal via ../ in the slug must not escape notes/ (arbitrary file read)
 printf 'TOPSECRET-XYZZY' >"$_nvbrain/SECRET.md"       # a file OUTSIDE notes/, one level up
 body="$(curl -s --path-as-is "http://127.0.0.1:$NEURAL_VIEW_PORT/note/$_nvrepo/dev/../SECRET")"
