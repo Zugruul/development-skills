@@ -109,6 +109,11 @@
     "last": null,
     "weight": 0.5
   },
+  "plan-stage-adversarial-review-before-spec->ui-rounds-converge-via-favorite-plus-aspects": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "research-agent-before-implementation-brief->parity-check-new-vs-existing-path": {
     "fires": 0,
     "last": null,
@@ -125,6 +130,11 @@
     "weight": 0.5
   },
   "session-close-protocol->orchestrator-cd-prefix-own-commands": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "spec-interviews-need-concrete-previews->plan-stage-adversarial-review-before-spec": {
     "fires": 0,
     "last": null,
     "weight": 0.5

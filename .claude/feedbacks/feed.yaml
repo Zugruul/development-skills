@@ -483,3 +483,86 @@ items:
   routing:
     action: brain-note
     ref: orchestrator/board-moves-before-branch-delete
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T05:10:00Z'
+iteration:
+  task: 'assistant spec crafting + board seeding (PR #356)'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: high
+  summary: Two independent cross-model plan reviews before any code caught a command-injection
+    design flaw and false codebase assumptions
+  detail: sonnet + fable-5 round 2 found invoke-template shell injection, harness-isolation
+    gap, marker/config authority split, /file artifact limits — all folded into the
+    spec as requirements.
+  evidence:
+  - Zugruul/development-skills#356
+  generalized: Before writing a spec, run the plan through 2+ independent agent reviewers
+    (different models), one grounded in the real codebase — plan-stage adversarial
+    review is the cheapest point to catch security-by-design flaws and wrong assumptions;
+    their findings become spec requirements, not code review comments later.
+  routing:
+    action: brain-note
+    ref: orchestrator
+- category: worked-well
+  area: docs
+  severity: medium
+  summary: Interview rounds with concrete previews let the human redirect architecture
+    early and cheaply
+  detail: AskUserQuestion previews (ASCII mockups/config sketches) surfaced the bare-brain
+    restructure, engine placement, and observability sink decisions before drafting.
+  evidence:
+  - Zugruul/development-skills#356
+  generalized: Spec interviews land better when every option carries a concrete preview
+    (mockup, config sketch, flow diagram) — humans redirect architecture at the option
+    stage instead of after a full draft, and their annotations map to precise plan
+    edits.
+  routing:
+    action: brain-note
+    ref: orchestrator
+- category: friction
+  area: board
+  severity: medium
+  summary: Seeded issues carry title-only bodies; thorough per-task briefs required
+    a post-hoc enrichment script
+  detail: 53 issues needed gh issue edit with a generated spec-first preamble + AC
+    after seeding.
+  generalized: The board seeder should accept per-task body content (or a body template
+    with spec-section/AC substitution) so issues are born with their read-the-spec-first
+    brief instead of needing a second pass.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#357
+- category: friction
+  area: other
+  component: plugins/spec-workflow/scripts/validate-config.py
+  severity: medium
+  summary: Config validator crashes with a traceback on string-form epic guards instead
+    of a schema message
+  detail: 'blockedBy: [E0] (string list) raised AttributeError at line ~123; the dict
+    form {epic, untilStatus} is required but the error names nothing.'
+  generalized: Config validators must fail with path-precise schema messages for every
+    shape mistake a reasonable author can make (string vs object list entries), never
+    with a raw traceback.
+  routing:
+    action: upstream
+    ref: Zugruul/development-skills#53
+- category: friction
+  area: board
+  severity: low
+  summary: Backlog priorities outside the board's scheme surface only at seeding time
+  detail: P3 written in the backlog; board scheme is P0-P2; seeder errored per-task
+    after creating issues.
+  generalized: Validate backlog priorities (and epic ids/ranges) against the board
+    scheme at spec-registration time, before seeding creates anything.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#358
