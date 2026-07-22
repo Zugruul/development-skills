@@ -160,6 +160,7 @@ SECTIONS=(
     section-codex-parity-walkthrough.sh
     section-assistant-marker.sh
     section-setup-assistant.sh
+    section-assistant-preflight.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then

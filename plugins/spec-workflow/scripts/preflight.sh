@@ -40,6 +40,16 @@ fi
 # unresolvable roles just fall back to committing as the human.
 bash "$HERE/identity.sh" --check
 
+# AST-006 (SPEC-ASSISTANT.md §6.6): enumerated preflight for this repo's own
+# `assistant:` section, IF it's an assistant repo at all (marker present --
+# preflight.py itself is silent, zero noise, when there's no marker). Never
+# blocks: preflight.py's own contract is "always exit 0, print advisory
+# lines" -- the model reads a printed FAIL line and redirects the human,
+# exactly like every other check in this script.
+if [[ -f "$ROOT/.claude/.neural-network" ]]; then
+    python3 "$HERE/assistant/preflight.py" "$ROOT"
+fi
+
 # development-skills#197: this repo dogfoods plugins/spec-workflow -- a
 # session can invoke its scripts either from this repo's own working tree
 # (always current) or via an installed marketplace cache copy
