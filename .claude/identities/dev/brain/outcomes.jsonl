@@ -14,3 +14,5 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "verify-fixture-isolates-intended-path", "task": "Zugruul/development-skills#254", "ts": "2026-07-21T21:59:34+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "absence-default-needs-three-states", "task": "Zugruul/development-skills#254", "ts": "2026-07-21T21:59:34+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "await-backgrounded-verification-results", "task": "Zugruul/development-skills#254", "ts": "2026-07-21T21:59:34+00:00"}
+{"note": "dev wrote all 21 assertions across 6 groups in one red commit before implementing; pinned literal strings against the red run", "outcome": "useful", "schemaVersion": 1, "slug": "batch-red-across-surfaces", "task": "GL-020 #255", "ts": "2026-07-22T03:29:33+00:00"}
+{"note": "3-note star fixture kept co-activation ranking honest; small explicit fan-out per this note", "outcome": "useful", "schemaVersion": 1, "slug": "verify-fixture-isolates-intended-path", "task": "GL-020 #255", "ts": "2026-07-22T03:29:33+00:00"}

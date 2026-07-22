@@ -1050,3 +1050,16 @@
 {"repo": "Zugruul/development-skills", "role": "dev", "slug": "mutation-verify-boundary-tests", "strength": 1, "ts": "2026-07-21T21:59:35+00:00", "type": "NoteMinted", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "verify-coverage-claims-in-fixtures", "strength": 1, "ts": "2026-07-21T21:59:46+00:00", "type": "NoteMinted", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "section-runs-for-review-full-runs-for-gate", "strength": 1, "ts": "2026-07-21T21:59:46+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "spread-traversal-single-source", "strength": 1, "ts": "2026-07-22T03:28:51+00:00", "type": "NoteMinted", "v": 1}
+{"key": "spread-traversal-single-source->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-22T03:28:51+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "hand-write-links-fixtures", "strength": 1, "ts": "2026-07-22T03:29:01+00:00", "type": "NoteMinted", "v": 1}
+{"key": "hand-write-links-fixtures->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-22T03:29:01+00:00", "type": "LinkFormed", "v": 1}
+{"key": "hand-write-links-fixtures->batch-red-across-surfaces", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-22T03:29:01+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "dual-path-fixture-proves-sharing", "strength": 1, "ts": "2026-07-22T03:29:06+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "named-stash-pop-only", "strength": 1, "ts": "2026-07-22T03:29:17+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "board-moves-before-branch-delete", "strength": 1, "ts": "2026-07-22T03:29:22+00:00", "type": "NoteMinted", "v": 1}
+{"key": "board-moves-before-branch-delete->merge-via-temp-worktree-when-main-held", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-22T03:29:22+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "merge-via-temp-worktree-when-main-held", "strength": 1, "ts": "2026-07-22T03:29:31+00:00", "type": "NoteMinted", "v": 1}
+{"key": "merge-via-temp-worktree-when-main-held->board-moves-before-branch-delete", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-22T03:29:31+00:00", "type": "LinkFormed", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "batch-red-across-surfaces", "task": "GL-020 #255", "ts": "2026-07-22T03:29:33+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "verify-fixture-isolates-intended-path", "task": "GL-020 #255", "ts": "2026-07-22T03:29:33+00:00", "type": "RecallOutcome", "v": 1}

@@ -9,6 +9,11 @@
     "last": null,
     "weight": 0.5
   },
+  "board-moves-before-branch-delete->merge-via-temp-worktree-when-main-held": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "brief-background-command-wait-discipline->trust-completion-signal-not-early-log-read": {
     "fires": 0,
     "last": null,
@@ -60,6 +65,11 @@
     "weight": 0.5
   },
   "invoke-python-scripts-with-python3-not-bash->sanity-check-computed-paths-with-ls": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "merge-via-temp-worktree-when-main-held->board-moves-before-branch-delete": {
     "fires": 0,
     "last": null,
     "weight": 0.5

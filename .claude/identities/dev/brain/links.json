@@ -219,6 +219,16 @@
     "last": "2026-07-20",
     "weight": 0.5
   },
+  "hand-write-links-fixtures->batch-red-across-surfaces": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "hand-write-links-fixtures->verify-fixture-isolates-intended-path": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "heredoc-commit-messages->bash32-empty-array-set-u": {
     "fires": 15,
     "last": "2026-07-20",
@@ -442,6 +452,11 @@
   "single-cause-fixtures->hermetic-tmpdir-per-guard-case": {
     "fires": 15,
     "last": "2026-07-20",
+    "weight": 0.5
+  },
+  "spread-traversal-single-source->verify-fixture-isolates-intended-path": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "stderr-suppression-hides-evidence->circular-fixture-detector": {
