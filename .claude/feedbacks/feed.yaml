@@ -792,3 +792,73 @@ items:
   routing:
     action: brain-note
     ref: reviewer/mutation-check-assertions
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T09:40:00Z'
+iteration:
+  task: AST-003
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Reviewer caught a vacuous-pass gap in a brand-new test section by attacking
+    the checker helper itself
+  detail: The equivalence checks passed the library rendering as the expected side
+    of a substring check; empty capture matched anything. Reviewer proved the vacuous
+    pass in the red worktree; one fix round hardened it with rc assertions.
+  evidence:
+  - Zugruul/development-skills#303
+  generalized: A shared check helper built on substring matching (grep -F) silently
+    accepts an empty expected string; any test whose expected side is a computed capture
+    needs an exit-status or sentinel assertion alongside it. Worth a lint or a helper
+    variant (check_nonempty) in the shared test library so new sections cannot reintroduce
+    the pattern.
+  proposal:
+    target: plugins/spec-workflow/tests/_lib.sh
+    change: Add a guard in check() that fails (or loudly warns) when the expected
+      argument is empty, plus a check_rc/check_nonempty helper documented for computed-capture
+      comparisons.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#366
+- category: friction
+  area: briefing
+  severity: low
+  summary: Subagent commit-boundary stalls recurred but a single concrete-command
+    nudge resolved them
+  detail: Third consecutive task where the dev paused with finished-but-uncommitted
+    work; unlike the previous full stall, one nudge with pasted commands resumed it
+    within minutes. The protocol-violation framing added to the brief may have helped;
+    the stall itself still happened.
+  evidence:
+  - Zugruul/development-skills#303
+  generalized: Commit-boundary stalls appear structural for subagents; briefs alone
+    reduce but do not eliminate them. The orchestrator loop should treat idle-check-nudge
+    as a standard cheap step, and loop tooling could surface "worktree has uncommitted
+    changes + agent idle" as an explicit signal instead of relying on the orchestrator
+    to notice.
+  routing:
+    action: brain-note
+    ref: orchestrator/idle-agent-is-not-done
+- category: worked-well
+  area: testing
+  severity: low
+  summary: Golden CLI-vs-library equivalence fixtures made a byte-identity refactor
+    provable
+  detail: The section runs the same operations via CLI subprocess and direct import
+    and asserts equality, which both reviews leaned on after independently re-verifying.
+  evidence:
+  - Zugruul/development-skills#303
+  generalized: For any extract-a-library-from-a-CLI refactor, a golden equivalence
+    section (same fixture, CLI output vs library-result rendering, plus side-effect
+    file assertions) converts "byte-identical" from a claim into a regression-proof
+    property.
+  routing:
+    action: brain-note
+    ref: reviewer/check-empty-expected-vacuous
