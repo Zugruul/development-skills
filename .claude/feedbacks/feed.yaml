@@ -566,3 +566,106 @@ items:
   routing:
     action: backlog
     ref: Zugruul/development-skills#358
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T06:44:00Z'
+iteration:
+  task: AST-001
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: briefing
+  severity: medium
+  summary: Dev agents pause at natural checkpoints with finished-but-uncommitted work
+  detail: dev-ast001 idled twice — once after the red-test confirmation, once after
+    hitting a pre-existing out-of-scope gate failure — each time with correct work
+    sitting uncommitted; two nudges were needed to complete the commit/gate/report
+    cycle.
+  evidence:
+  - Zugruul/development-skills#301
+  generalized: Dev briefs should state explicitly that an out-of-scope failure is
+    not the agent's blocker and that the red-test checkpoint is not a stopping point
+    — "finish your own commit/gate/report cycle, then name the anomaly in the report."
+    Without that line, agents read "if the gate cannot go green, STOP" as license
+    to pause mid-cycle, and the orchestrator must verify worktree state on every idle
+    signal rather than trusting it as completion.
+  proposal:
+    target: plugins/spec-workflow/skills/implement-task/SKILL.md
+    change: Add the "out-of-scope failure is not your blocker" framing line to the
+      dev-brief template's HOW section, and a note in build-next that an idle notification
+      requires a worktree check (commit present, gate run) before treating the task
+      as delivered.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#361
+- category: incident
+  area: concurrency
+  severity: medium
+  summary: Hotfix lane opened for a breakage a parallel session had already fixed
+    on the main branch
+  detail: A P0 bug was filed and a fix lane fully executed (dev agent, gate, review)
+    from a session-start snapshot; the independent reviewer then found the branch
+    stale — the identical fix had landed on the remote main branch minutes after the
+    snapshot, and merging the stale branch would have regressed better wording. Lane
+    discarded; only the review round caught it.
+  evidence:
+  - Zugruul/development-skills#359
+  generalized: Before filing or lane-fixing a repo-wide breakage discovered from a
+    session-start snapshot, fetch and re-verify against the current remote tip — parallel
+    sessions may have already fixed it. A recurring red-gate signature in the lessons
+    log is a strong hint the breakage is known and possibly already being addressed
+    elsewhere.
+  proposal:
+    target: plugins/spec-workflow/skills/build-next/SKILL.md
+    change: Operating rule addition — a gate-red on a pre-existing failure triggers
+      "git fetch + re-run on current remote tip" BEFORE filing the hotfix bug, not
+      just reproduce-on-clean-local-main (which can itself be stale).
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#362
+- category: friction
+  area: board
+  component: plugins/spec-workflow/scripts/board.sh
+  severity: low
+  summary: Comment subcommand silently expects the body on stdin and fails opaquely
+    when given an argument
+  detail: board.sh comment N "body text" produced "GraphQL Body cannot be blank" —
+    the body must be piped (--body-file -), but neither the usage line nor the error
+    says so; had to read the script source to discover the contract.
+  evidence: []
+  generalized: A CLI subcommand that reads its payload from stdin should either accept
+    an inline argument too, or fail fast with a usage message naming stdin — an opaque
+    upstream API error ("Body cannot be blank") costs a source-dive every time a new
+    session hits it.
+  proposal:
+    target: plugins/spec-workflow/scripts/board.sh
+    change: comment (and any stdin-reading subcommand) accepts an optional inline
+      body argument, falling back to stdin; usage string documents both.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#363
+- category: worked-well
+  area: review
+  severity: low
+  summary: Two-pass review plus an independent single-round hotfix review each earned
+    their cost
+  detail: The spec-compliance pass verified red-first TDD empirically at the red commit;
+    the quality pass found a structurally untestable line-boundary gap by import-probing
+    the module; the hotfix reviewer caught the stale-branch regression that reproduce-on-local-main
+    missed.
+  evidence:
+  - Zugruul/development-skills#301
+  - Zugruul/development-skills#359
+  generalized: Independent reviewer agents verifying claims empirically (running the
+    red commit in an isolated worktree, import-probing changed modules, two-dot diffing
+    against the fetched remote tip) catch failure classes the authoring agent and
+    the orchestrator structurally cannot; the cost of a review round on even a trivial
+    diff is repaid the first time it blocks a stale-lane merge.
+  routing:
+    action: ignore
+    ref: positive signal — records that the review protocol worked; no change to make
