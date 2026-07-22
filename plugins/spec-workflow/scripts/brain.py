@@ -2077,15 +2077,34 @@ def _top_k_neighbors(db_path, query_vector, k):
     return scored[:k]
 
 
-def cmd_index(identities, args):
-    role = args.role
+def refresh_index(identities, role, rebuild=False):
+    """Library entry point for `brain.py index` (AST-018, SPEC-ASSISTANT.md
+    Sec9.3): an importable refresh hook so callers (E3's distiller, via
+    assistant.distill.refresh_after_mint) can update a role's embeddings
+    sidecar without going through the CLI. Performs every side effect
+    `cmd_index` has always performed -- incremental hash-diffed embed
+    calls, stale-row cleanup, `--rebuild`'s DROP TABLE -- unchanged;
+    `cmd_index` is now a thin argparse-arg unwrapper over this function so
+    CLI behavior (stdout/stderr, exit code) stays byte-identical to before
+    this extraction.
+
+    Returns a dict:
+      {
+        "updated": int,   # notes (re-)embedded this run
+        "removed": int,   # stale rows deleted (notes no longer on disk)
+        "capability_available": bool | None,
+            # None when there was nothing to embed (no changed notes) --
+            # the capability was never invoked, so availability is
+            # genuinely unknown, not True or False.
+      }
+    """
     notes = load_notes(identities, role)
     db_path = index_db_path(identities, role)
     os.makedirs(brain_dir(identities, role), exist_ok=True)
 
     conn = sqlite3.connect(db_path)
     try:
-        if args.rebuild:
+        if rebuild:
             conn.execute("DROP TABLE IF EXISTS notes")
         conn.execute(
             "CREATE TABLE IF NOT EXISTS notes ("
@@ -2102,8 +2121,11 @@ def cmd_index(identities, args):
                 continue
             changed.append((slug, h))
 
+        updated = 0
+        capability_available = None
         if changed:
             vectors = _embed_texts([notes[slug]["body"] for slug, _h in changed])
+            capability_available = vectors is not None
             if vectors is None:
                 sys.stderr.write(
                     "index: embeddings capability unavailable, skipping %d changed note(s)\n"
@@ -2117,6 +2139,7 @@ def cmd_index(identities, args):
                     [(slug, h, json.dumps(vec), updated_at)
                      for (slug, h), vec in zip(changed, vectors)],
                 )
+                updated = len(changed)
 
         stale = [slug for slug in existing_hashes if slug not in notes]
         if stale:
@@ -2125,6 +2148,13 @@ def cmd_index(identities, args):
         conn.commit()
     finally:
         conn.close()
+
+    return {"updated": updated, "removed": len(stale),
+            "capability_available": capability_available}
+
+
+def cmd_index(identities, args):
+    refresh_index(identities, args.role, rebuild=args.rebuild)
 
 
 # -------------------------------------------------------------------------- cli

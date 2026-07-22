@@ -166,6 +166,7 @@ SECTIONS=(
     section-assistant-adapter.sh
     section-assistant-claude.sh
     section-assistant-turns.sh
+    section-assistant-embeddings.sh
     section-assistant-store.sh
     section-assistant-isolation.sh
     section-assistant-terminal.sh
