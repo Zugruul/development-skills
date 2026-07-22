@@ -231,3 +231,66 @@ items:
   routing:
     action: brain-note
     ref: reviewer/verify-coverage-claims-in-fixtures
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T03:45:00Z'
+iteration:
+  task: Zugruul/development-skills#255
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: review
+  severity: medium
+  summary: Reviewer session mutated the shared clone's working tree to reproduce the
+    red state; a bare 'git stash pop' after a silently-denied mid-chain command popped
+    a prior session's stash touching the same tracked runtime brain files, discarding
+    their uncommitted local modifications.
+  generalized: Reviewer briefs must state the reviewer is strictly read-only on the
+    working tree; red-first TDD should be verified by reading the test commit's diff
+    (or in an isolated worktree), never by checkout/stash mutation of a live shared
+    clone; stashes must be named and popped by ref, never positionally.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#294
+- category: friction
+  area: board
+  severity: low
+  summary: guard-board-move's red-first check reads the current branch history, so
+    under local squash delivery the moves failed from a detached-at-merge checkout
+    and the deleted task branch had to be recreated from the pre-merge tip to unblock
+    In-review/QA moves.
+  generalized: Task-close ordering under local delivery must run gate + all board
+    moves from the task branch BEFORE deleting it, or the red-first guard should recognize
+    a squash-merge context (merged tip with the branch gone).
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#295
+- category: friction
+  area: other
+  severity: low
+  summary: The installed plugin cache (0.25.0) lags the repo's own scripts (0.27.0);
+    skill-pinned cache paths exposed stale brain.py verb sets mid-iteration until
+    commands were re-pointed at the repo copies.
+  generalized: When a plugin dogfoods itself, in-repo iterations should resolve scripts
+    from the repo tree rather than the installed plugin cache, or the skill should
+    surface the version skew explicitly at preflight.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#296
+- category: worked-well
+  area: review
+  severity: low
+  summary: Round-1 APPROVE with executable evidence — dual-path byte-identical fixture
+    for the shared-formatter claim, sha256 before/after for read-only, literal hand-computed
+    activation constants — plus line-by-line tautology screening of the key tests.
+  generalized: Verification-by-executable-evidence (dual-path fixtures, before/after
+    hashes, hand-derived literals) reliably converts reviewer claims into checked
+    facts and should stay in reviewer briefs.
+  routing:
+    action: brain-note
+    ref: reviewer/dual-path-fixture-proves-sharing
