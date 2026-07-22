@@ -14,6 +14,7 @@ Everything project-specific lives in the consumer repo's **`.claude/project.yaml
 |---|---|
 | `craft-spec` | Assisted spec creation: plan-mode interview → numbered-§ draft → backlog → review gate |
 | `setup-project` | Bootstrap a repo: board creation, `init-config.sh` auto-fill, validation, hygiene |
+| `setup-assistant` | Scaffold (or edit the settings of) a bare-brain assistant repo — marker, `assistant:` config section, brain dirs, generated persona `AGENTS.md`, gitignores; idempotent, script-driven (`setup-assistant.sh`) |
 | `seed-board` | Issues + board items from the backlog (idempotent) |
 | `board` | All board reads/writes via `board.sh` (no hardcoded ids); comments are the human steering channel |
 | `next-task` | `PICK` / `RESUME` / `BLOCKED` decision from priority, epic order, guards, and the WIP limit |
@@ -150,6 +151,7 @@ on the loop itself), not a bug; it isn't deduped against step 8's emission.
 | ignore | `.claude/worktrees/` |
 | ignore | `.claude/identities/*/brain/index.sqlite3` |
 | ignore | `.claude/identities/*/brain/.staleness-cache.json` |
+| ignore | `.claude/assistant/` |
 | track | `.claude/feedbacks/` |
 | track | `.claude/identities/` |
 | track | `.claude/brain-events.jsonl` |

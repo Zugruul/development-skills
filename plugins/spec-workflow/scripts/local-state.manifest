@@ -24,6 +24,7 @@ ignore	.claude/.flush*
 ignore	.claude/worktrees/
 ignore	.claude/identities/*/brain/index.sqlite3
 ignore	.claude/identities/*/brain/.staleness-cache.json
+ignore	.claude/assistant/
 track	.claude/feedbacks/
 track	.claude/identities/
 track	.claude/brain-events.jsonl

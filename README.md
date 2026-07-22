@@ -82,6 +82,7 @@ Spec-driven autonomous build workflow. A repo declares its boards, specs, epics,
 |---|---|
 | `craft-spec` | Assisted spec creation: interview → draft → review → backlog |
 | `setup-project` | Bootstrap a repo: config, GitHub Project board, validation |
+| `setup-assistant` | Scaffold a bare-brain assistant repo (marker, project.yaml assistant section, brain dirs, persona AGENTS.md, gitignores) and edit its settings |
 | `seed-board` | Create issues + board items from a spec's backlog (idempotent) |
 | `board` | All board reads/writes (single script, no hardcoded ids) |
 | `next-task` | Prioritized + sequenced + guarded pick; reads human comments |

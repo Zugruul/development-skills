@@ -159,6 +159,7 @@ SECTIONS=(
     section-agents-claude.sh
     section-codex-parity-walkthrough.sh
     section-assistant-marker.sh
+    section-setup-assistant.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then
