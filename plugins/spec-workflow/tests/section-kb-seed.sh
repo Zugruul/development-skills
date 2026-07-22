@@ -206,11 +206,15 @@ check "brain.sh explain knowledge <slug>: renders the note body" "Spec \`SPEC.md
 rm -rf "$KB6"
 
 # --------------------------------------------------- AC7: spec delta, not spec edit
+# Pre-fold the delta sits at spec-deltas/GL-050.md; after the In-review->QA
+# fold it moves to spec-deltas/applied/gl-300.md (see build-next §Advancing).
+# Either location satisfies AC7 — the requirement is delta-not-direct-edit.
 GL050_DELTA="$HERE/../../../docs/spec-deltas/GL-050.md"
-if [[ -f "$GL050_DELTA" ]]; then
-    echo "ok   docs/spec-deltas/GL-050.md exists"
+GL050_APPLIED="$HERE/../../../docs/spec-deltas/applied/gl-300.md"
+if [[ -f "$GL050_DELTA" || -f "$GL050_APPLIED" ]]; then
+    echo "ok   GL-050 spec delta exists (pending or applied)"
 else
-    echo "FAIL docs/spec-deltas/GL-050.md missing"
+    echo "FAIL GL-050 spec delta missing from docs/spec-deltas/ (pending or applied/)"
     fails=$((fails + 1))
 fi
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"

@@ -1,6 +1,6 @@
 ---
 name: brain
-description: Inspect and tend the per-identity zettel brains — status/recall/mint/prune/directory/graduate-check/explain via brain.sh. Orchestrator-only memory (each role's brain is private; subagents never read one). Use to see what a role has learned, recall lessons for a task, mint a retro note, prune stale links, explain why one note matters, or regenerate the directory. Bare invocation shows the directory + per-brain note counts.
+description: Inspect and tend the per-identity zettel brains — status/recall/mint/prune/directory/graduate-check/explain/path via brain.sh. Orchestrator-only memory (each role's brain is private; subagents never read one). Use to see what a role has learned, recall lessons for a task, mint a retro note, prune stale links, explain why one note matters, find the shortest link path between two notes, or regenerate the directory. Bare invocation shows the directory + per-brain note counts.
 allowed-tools: Bash
 ---
 
@@ -55,6 +55,12 @@ explain <role> <slug>              # READ-ONLY interrogation card for ONE note: 
                                    # every inbound/outbound link with weight/fires/last, and the
                                    # top 5 co-activated notes from a 2-hop spread seeded on just
                                    # this note — never bumps links.json (unlike recall)
+path <role> <slug-a> <slug-b>      # READ-ONLY shortest link path (BFS over links.json, stdlib);
+                                   # links are UNDIRECTED for pathfinding — the stored from->to
+                                   # direction is a mint-order artifact, not a traversal
+                                   # constraint; deterministic sorted-slug tie-break on equal-
+                                   # length paths; prints "no path" (exit 0) when disconnected;
+                                   # A->A prints the single slug; never bumps links.json
 ```
 
 ## Precise queries (`recall --query`)
@@ -88,6 +94,7 @@ list; use plain `recall` when you want associative "what's relevant" retrieval.
 - **Retro** (at each PR close) — `mint` new notes in your own wording, `prune`, `graduate` proven ones, `retro-mark`, `directory`, then commit as the orchestrator identity (`identity.sh orchestrator`).
 - **Consult** — a report asked `CONSULT <role>: <slug>`: run `consult` and paste the body once; a 2nd hit prints a RECURRENCE reminder to mint it into the consumer's own brain.
 - **Explain** — debugging "why does this note matter/rank/link the way it does": run `explain <role> <slug>` for a self-contained card (body, header, links, co-activation) instead of piecing it together from `recall`/`status`/`directory` output by hand.
+- **Path** — debugging "how/why are these two notes connected": run `path <role> <slug-a> <slug-b>` for the shortest link chain instead of tracing `explain`'s link lists by hand.
 
 ## Rules
 - Notes are atomic: one idea, a few lines. Link related notes with `[[slug]]`.

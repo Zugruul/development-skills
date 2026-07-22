@@ -27,6 +27,7 @@ Python 3 standard library only (no pyyaml). Usage:
     brain.py <root> verify-feed <role>
     brain.py <root> outcome <role> <slug> useful|dead_end|corrected [--task <ref>] [--note "<text>"]
     brain.py <root> explain <role> <slug>
+    brain.py <root> path <role> <slug-a> <slug-b>
 
 `<root>` is the consumer repo root; identities live under `--dir` (default
 `.claude/identities`).
@@ -1421,6 +1422,75 @@ def cmd_explain(identities, args):
     print("\n".join(lines))
 
 
+# --------------------------------------------------------------------- path
+def cmd_path(identities, args):
+    """`path <role> <slug-a> <slug-b>` (SPEC-GRAPHIFY §9 R9.2, GL-021): BFS
+    shortest link path between two notes over `links.json`.
+
+    Links are UNDIRECTED for pathfinding -- the stored `from->to` direction
+    in `links.json` is a mint-order artifact, not a traversal constraint, so
+    a query can walk a stored edge in either direction.
+
+    Unweighted shortest hops; deterministic tie-break: neighbors are
+    expanded in sorted-slug order at every node, so equal-length paths
+    resolve identically across runs. Read-only, like `explain`: `links` is
+    only ever read, never passed through `_spread_activation`'s mutating
+    path -- BFS path-finding is a different traversal from spreading
+    activation, so this is a small dedicated BFS rather than a contortion of
+    that shared helper."""
+    role = args.role
+    bdir = brain_dir(identities, role)
+    if not os.path.isdir(bdir):
+        sys.exit("unknown role: %s (no %s)" % (role, bdir))
+
+    notes = load_notes(identities, role)
+    for slug in (args.slug_a, args.slug_b):
+        if slug not in notes:
+            sys.exit("no such note: %s/%s" % (role, slug))
+
+    if args.slug_a == args.slug_b:
+        print(args.slug_a)
+        return
+
+    links = load_links(identities, role)
+    adjacency = {}
+    for key, meta in links.items():
+        src, _, target = key.partition("->")
+        weight = meta.get("weight", DEFAULT_WEIGHT)
+        adjacency.setdefault(src, {})[target] = weight
+        adjacency.setdefault(target, {})[src] = weight
+
+    prev = {args.slug_a: None}
+    queue = [args.slug_a]
+    head = 0
+    while head < len(queue):
+        current = queue[head]
+        head += 1
+        if current == args.slug_b:
+            break
+        for neighbor in sorted(adjacency.get(current, {})):
+            if neighbor not in prev:
+                prev[neighbor] = current
+                queue.append(neighbor)
+
+    if args.slug_b not in prev:
+        print("no path")
+        return
+
+    chain = []
+    node = args.slug_b
+    while node is not None:
+        chain.append(node)
+        node = prev[node]
+    chain.reverse()
+
+    lines = []
+    for a, b in zip(chain, chain[1:]):
+        weight = adjacency[a][b]
+        lines.append("%s -> %s  weight %s" % (a, b, weight))
+    print("\n".join(lines))
+
+
 # ----------------------------------------------------------------- entity-index
 def cmd_entity_index(identities, args):
     """Regenerate `<identities>/entity-index.json` -- a derived, whole-repo
@@ -1938,6 +2008,12 @@ def main(argv):
     sp.add_argument("role")
     sp.add_argument("slug")
     sp.set_defaults(fn=cmd_explain)
+
+    sp = sub.add_parser("path")
+    sp.add_argument("role")
+    sp.add_argument("slug_a")
+    sp.add_argument("slug_b")
+    sp.set_defaults(fn=cmd_path)
 
     args = p.parse_args(argv)
     identities = os.path.join(args.root, args.dir)

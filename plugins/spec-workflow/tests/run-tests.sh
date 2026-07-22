@@ -125,6 +125,7 @@ SECTIONS=(
     section-brain-confidence.sh
     section-brain-recall-header.sh
     section-brain-explain.sh
+    section-brain-path.sh
     section-kb-seed.sh
     section-entity-index.sh
     section-neural-view-entities.sh
