@@ -526,9 +526,13 @@ canvas.grabbing{cursor:grabbing}
 .mw-actions{display:flex;gap:.3rem;opacity:0;transition:opacity .15s ease}
 .mw-zone:hover .mw-actions{opacity:1}
 .mw-actions .iconbtn{background:rgba(10,20,34,.85);font-size:.56rem;padding:.2rem .4rem}
-/* a 3D block promoted into its own window gets a taller canvas */
-.media-window .n3d{margin:0}
-.media-window .n3d canvas{height:min(58vh,480px)}
+/* a 3D block promoted into its own window: the window is a flex column and
+   the canvas fills it, so RESIZING the window resizes the viewport (the
+   render loop tracks clientWidth/Height and updates the camera aspect every
+   frame — the model stays properly framed at any window shape) */
+.media-window.m3d{display:flex;flex-direction:column;height:min(64vh,560px)}
+.media-window.m3d .n3d{flex:1;min-height:0;margin:0;display:flex;flex-direction:column}
+.media-window.m3d .n3d canvas{flex:1;height:auto;min-height:0}
 .media-window:fullscreen .n3d{flex:1;min-height:0;display:flex;flex-direction:column}
 .media-window:fullscreen .n3d canvas{flex:1;height:auto;min-height:0}
 .media-window:fullscreen{display:flex;flex-direction:column;background:var(--bg);
@@ -4166,7 +4170,7 @@ async function boot3dViewer(box){
     object = /\.obj$/i.test(name) ? parseOBJ(await res.text()) : parseSTL(await res.arrayBuffer());
   }
   const scene = new THREE.Scene();
-  const cam = new THREE.PerspectiveCamera(40, 1, .01, 1000);
+  const cam = new THREE.PerspectiveCamera(40, 1, .001, 1000);
   const ren = new THREE.WebGLRenderer({canvas: cv, antialias: true, alpha: true});
   scene.add(new THREE.HemisphereLight(0xdff2fb, 0x0a1422, 1.1));
   const dl = new THREE.DirectionalLight(0xffffff, 1.4);
@@ -4175,9 +4179,53 @@ async function boot3dViewer(box){
   const bb = new THREE.Box3().setFromObject(object);
   const size = bb.getSize(new THREE.Vector3()).length() || 1;
   object.position.sub(bb.getCenter(new THREE.Vector3()));
-  cam.position.set(size*.8, size*.55, size*.9);
-  cam.lookAt(0, 0, 0);
-  const t0 = performance.now();
+  cam.near = size*.005; cam.far = size*50;
+  // orbit rig: drag = orbit, right/shift-drag = pan, wheel = zoom, any
+  // interaction pauses the auto-rotation, double-click reframes + resumes.
+  // Fit distance from the vertical fov with margin so the whole model is in
+  // frame at boot regardless of the canvas' aspect ratio.
+  const FIT = (size*.5) / Math.tan(cam.fov*Math.PI/360) * 1.35;
+  const target = new THREE.Vector3();
+  let yaw = .8, pitch = .32, dist = FIT, auto = true;
+  function applyCam(){
+    const cp = Math.cos(pitch);
+    cam.position.set(target.x + dist*cp*Math.sin(yaw),
+                     target.y + dist*Math.sin(pitch),
+                     target.z + dist*cp*Math.cos(yaw));
+    cam.lookAt(target);
+  }
+  let drag = null;
+  cv.style.touchAction = "none";
+  cv.addEventListener("pointerdown", ev=>{
+    drag = {x: ev.clientX, y: ev.clientY, pan: ev.button===2 || ev.shiftKey};
+    auto = false;
+    cv.setPointerCapture(ev.pointerId);
+    ev.preventDefault();
+  });
+  cv.addEventListener("pointermove", ev=>{
+    if(!drag) return;
+    const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+    drag.x = ev.clientX; drag.y = ev.clientY;
+    if(drag.pan){
+      const right = new THREE.Vector3().setFromMatrixColumn(cam.matrix, 0);
+      const up = new THREE.Vector3().setFromMatrixColumn(cam.matrix, 1);
+      target.add(right.multiplyScalar(-dx*dist*.0016)).add(up.multiplyScalar(dy*dist*.0016));
+    }else{
+      yaw -= dx*.008;
+      pitch = Math.max(-1.5, Math.min(1.5, pitch + dy*.008));
+    }
+  });
+  const endDrag = ev=>{ drag = null; try{ cv.releasePointerCapture(ev.pointerId); }catch{} };
+  cv.addEventListener("pointerup", endDrag);
+  cv.addEventListener("pointercancel", endDrag);
+  cv.addEventListener("wheel", ev=>{
+    ev.preventDefault();
+    auto = false;
+    dist = Math.max(size*.15, Math.min(size*10, dist*Math.exp(ev.deltaY*.0015)));
+  }, {passive: false});
+  cv.addEventListener("dblclick", ()=>{ target.set(0,0,0); yaw=.8; pitch=.32; dist=FIT; auto=true; });
+  cv.addEventListener("contextmenu", ev=>ev.preventDefault());
+  cv.title = "drag: rotate · right/shift-drag: pan · wheel: zoom · double-click: reset";
   (function tick(){
     if(!cv.isConnected){ ren.dispose(); return; }   // window closed / re-render
     requestAnimationFrame(tick);
@@ -4186,7 +4234,8 @@ async function boot3dViewer(box){
       ren.setSize(w, h, false); ren.setPixelRatio(devicePixelRatio);
       cam.aspect = w/h; cam.updateProjectionMatrix();
     }
-    object.rotation.y = (performance.now() - t0) * .0004;
+    if(auto) yaw += .004;
+    applyCam();
     ren.render(scene, cam);
   })();
 }
@@ -4339,7 +4388,7 @@ function mediaName(src){ try{ return decodeURIComponent(src.split("/").pop().spl
 // a 3D block's Detach action: the model in its own window (⛶ fullscreen, ✕)
 function open3dWindow(name, url){
   const win = document.createElement("aside");
-  win.className = "hud note-window media-window";
+  win.className = "hud note-window media-window m3d";
   win.style.left = "26vw"; win.style.top = "14vh";
   win.style.width = "min(640px,70vw)";
   win.style.zIndex = ++noteWinZ;
