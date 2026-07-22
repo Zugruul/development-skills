@@ -56,11 +56,63 @@ if home_file:
 
 mode = os.environ.get("CODEX_STUB_MODE", "ok")
 
+# AST-017 gates-harness additions below (SPEC-ASSISTANT.md Sec15 N1/N4/N5,
+# issue #315). Every env var here is OPTIONAL and a documented no-op when
+# unset -- every pre-existing caller of this stub (section-assistant-
+# adapter.sh, section-assistant-terminal.sh) is unaffected.
+#
+#   CODEX_STUB_INVOCATION_COUNTER_FILE -- read-increment-write an int
+#       (default 0), BEFORE the marker/sleep below. Not locked: callers of
+#       this counter (gates.py's N1) invoke turns SEQUENTIALLY against one
+#       long-running server, so there is never a concurrent writer. Gives
+#       each invocation of a long-lived stub server a stable 1-based
+#       ordinal a harness can address ("fire a tool event on invocation
+#       #5") without the caller having to thread a per-turn env var through
+#       a server it only starts once.
+#   CODEX_STUB_TURN_MARKER -- path (re)created the instant this invocation
+#       starts, BEFORE any mode-specific sleep/output. Lets a harness
+#       barrier-wait on "the provider CLI has started this turn" instead of
+#       a fixed sleep -- deterministic mid-turn kill (N4) and bounded-time
+#       measurement (N5) start their clock from this file's appearance.
+#   CODEX_STUB_TOOL_EVENT_TURNS -- comma-separated 1-based invocation
+#       ordinals (from the counter above) on which this stub emits one
+#       EXTRA item.completed event whose item.type is "command_execution"
+#       (a plausible codex tool-call event shape) alongside the normal
+#       agent_message -- "ok" mode only. codex.py's own _parse_jsonl only
+#       ever looks at item.type == "agent_message", so this extra event is
+#       silently ignored by the real parsing path (same as any OTHER item
+#       type codex might emit) -- it exists purely for the ground-truth
+#       side-channel below.
+#   CODEX_STUB_TOOL_EVENTS_FILE -- appended with "<ordinal> <TOOL|NONE>\n"
+#       once per "ok"-mode invocation, so a harness can read which
+#       invocations carried a tool event directly, without needing
+#       codex.py's return value (today text/usage/timings only) to surface
+#       raw event types -- see gates.py's module docstring for why tool-use
+#       counting reads this side-channel instead of the adapter's return.
+invocation_ordinal = None
+counter_file = os.environ.get("CODEX_STUB_INVOCATION_COUNTER_FILE")
+if counter_file:
+    try:
+        with open(counter_file, "r") as fh:
+            invocation_ordinal = int(fh.read().strip() or "0")
+    except (OSError, ValueError):
+        invocation_ordinal = 0
+    invocation_ordinal += 1
+    with open(counter_file, "w") as fh:
+        fh.write(str(invocation_ordinal))
+
+marker_path = os.environ.get("CODEX_STUB_TURN_MARKER")
+if marker_path:
+    with open(marker_path, "w") as fh:
+        fh.write(str(invocation_ordinal if invocation_ordinal is not None else ""))
+
 # CODEX_STUB_SLEEP_SECONDS (AST-016 review r1, engine.py's per-root chat
 # lock regression test) -- optional, "ok" mode only, no-op when unset (every
 # pre-existing caller of this stub is unaffected). Widens the window between
 # a turn's session-state load and its save just enough for two concurrent
-# /assistant/chat requests to provably overlap if nothing serializes them.
+# /assistant/chat requests to provably overlap if nothing serializes them
+# (AST-016), or for a harness to reliably observe/kill a turn in flight
+# (AST-017 N1/N3/N4).
 sleep_seconds = os.environ.get("CODEX_STUB_SLEEP_SECONDS")
 if mode == "ok" and sleep_seconds:
     time.sleep(float(sleep_seconds))
@@ -68,6 +120,19 @@ if mode == "ok" and sleep_seconds:
 if mode == "ok":
     print(json.dumps({"type": "thread.started", "thread_id": "stub-thread"}))
     print(json.dumps({"type": "turn.started"}))
+    tool_event_turns = {
+        t.strip() for t in os.environ.get("CODEX_STUB_TOOL_EVENT_TURNS", "").split(",") if t.strip()
+    }
+    fired_tool_event = invocation_ordinal is not None and str(invocation_ordinal) in tool_event_turns
+    if fired_tool_event:
+        print(json.dumps({
+            "type": "item.completed",
+            "item": {"type": "command_execution", "command": "echo stub-tool-call"},
+        }))
+    events_file = os.environ.get("CODEX_STUB_TOOL_EVENTS_FILE")
+    if events_file and invocation_ordinal is not None:
+        with open(events_file, "a") as fh:
+            fh.write(f"{invocation_ordinal} {'TOOL' if fired_tool_event else 'NONE'}\n")
     print(json.dumps({
         "type": "item.completed",
         "item": {"type": "agent_message", "text": "Hello from stub"},
