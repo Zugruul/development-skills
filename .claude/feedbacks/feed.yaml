@@ -1249,3 +1249,48 @@ items:
   routing:
     action: backlog
     ref: Zugruul/development-skills#364
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T19:55:00Z'
+iteration:
+  task: AST-014
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: brains
+  severity: low
+  summary: The FileNotFoundError-only catch pattern shipped a third time despite a
+    minted lesson naming the exact smell
+  detail: history() caught FileNotFoundError only; a chmod-000 transcript dropped
+    the HTTP response. Same class as two prior preflight findings; lesson re-minted
+    with the greppable smell pattern.
+  evidence:
+  - Zugruul/development-skills#312
+  - Zugruul/development-skills#306
+  generalized: Recurring code-smell lessons should eventually become mechanical checks
+    (a grep-based lint for narrow filesystem-exception catches on read paths) rather
+    than brief text; three recurrences is the threshold this loop uses elsewhere.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#369
+- category: worked-well
+  area: testing
+  severity: medium
+  summary: Marker-and-gate barrier kill-tests were deterministic and flake-free across
+    repeated review runs
+  detail: The writer parks after N fsync'd appends because the next go-file never
+    appears; the kill lands deterministically. Reviewer ran the section 6x total across
+    two rounds with zero flakes and mutation-proved the fsync assertions.
+  evidence:
+  - Zugruul/development-skills#312
+  generalized: Crash-durability kill-tests should gate child progress on marker files
+    the test controls, never sleeps — deterministic barriers turn kill-9 timing into
+    a controlled interleave and survive CI variance.
+  routing:
+    action: brain-note
+    ref: dev/marker-barrier-interleave
