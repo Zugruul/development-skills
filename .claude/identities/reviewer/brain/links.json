@@ -19,6 +19,16 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
+  "fixture-must-reach-fixed-path->check-empty-expected-vacuous": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "fixture-must-reach-fixed-path->mutation-check-assertions": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "golden-identical-covers-absent-not-present->parity-check-new-vs-existing-path": {
     "fires": 2,
     "last": "2026-07-22",

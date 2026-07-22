@@ -224,6 +224,16 @@
     "last": null,
     "weight": 0.5
   },
+  "grep-qf-multiline-or-trap->check-empty-expected-vacuous": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "grep-qf-multiline-or-trap->test-section-shell-plumbing-risk": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "guards-are-not-cache-targets->second-order-after-concurrency-fix": {
     "fires": 14,
     "last": "2026-07-22",
@@ -562,6 +572,16 @@
   "trace-state-mutation-not-named-trigger->raf-rearm-first": {
     "fires": 17,
     "last": "2026-07-22",
+    "weight": 0.5
+  },
+  "tracked-config-atomic-writes->lock-key-canonicalize": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "tracked-config-atomic-writes->marker-barrier-interleave": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "trust-completion-signal-not-early-log-read->deterministic-repro-fast": {
