@@ -52,9 +52,13 @@ HOP_DECAY = 0.5
 MAX_HOPS = 2
 CHARS_PER_TOKEN = 4
 DEFAULT_GRADUATION_THRESHOLD = 3  # methodology.graduationThreshold override in project.yaml
-# frontmatter keys in deterministic write order
+# frontmatter keys in deterministic write order. `seed-path`/`seed-commit`
+# (GL-050) are an additive-only extension for kb-seed.py's provenance
+# frontmatter (source path + commit SHA at seed time, distinguishing a
+# seeded note from a retro-minted one whose `source` holds free text like
+# "PR#N ..."); a note that never sets them renders identically to before.
 KEY_ORDER = ["tags", "paths", "entities", "strength", "source", "confidence", "learned-from", "source-note",
-             "graduated", "created", "last-touched"]
+             "seed-path", "seed-commit", "graduated", "created", "last-touched"]
 CONFIDENCE_VALUES = ("direct", "inferred")
 DEFAULT_CONFIDENCE = "inferred"
 
