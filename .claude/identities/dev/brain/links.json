@@ -399,6 +399,16 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
+  "per-cli-isolation-differs->env-home-isolation-not-cwd": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "per-cli-isolation-differs->probe-isolation-claims-on-real-cli": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "pin-external-tool-versions-in-ci->confirm-external-asset-before-ci": {
     "fires": 12,
     "last": "2026-07-22",
