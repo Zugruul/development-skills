@@ -19,6 +19,16 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
+  "empty-expected-recurrence-needs-lint->check-empty-expected-vacuous": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "empty-expected-recurrence-needs-lint->fixture-must-reach-fixed-path": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "fixture-must-reach-fixed-path->check-empty-expected-vacuous": {
     "fires": 0,
     "last": null,
