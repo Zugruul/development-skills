@@ -255,6 +255,93 @@ specs:
     - Claude Code's existing installation, manifests, hooks, and slash-command invocation remain unchanged and functioning throughout.
     - No unrelated pre-existing working-tree changes are reverted, overwritten, staged, or committed by this work.
     - Degraded features are documented explicitly; none are silently faked or hidden.
+-   id: ast
+    title: Persistent LLM-agnostic assistant on the neural network (SPEC-ASSISTANT.md)
+    board: main
+    specPath: SPEC-ASSISTANT.md
+    backlogPath: docs/BACKLOG-ASSISTANT.md
+    taskPrefix: AST
+    epics:
+    -   id: E0
+        title: Foundations — config, identity, brain library
+        taskRanges:
+        -   - 1
+            - 9
+    -   id: E1
+        title: Engine core & numeric gates
+        blockedBy:
+        -   epic: E0
+            untilStatus: Deployed
+        taskRanges:
+        -   - 10
+            - 19
+    -   id: E2
+        title: Selection UX & chat overlay
+        blockedBy:
+        -   epic: E1
+            untilStatus: Deployed
+        taskRanges:
+        -   - 20
+            - 29
+    -   id: E3
+        title: Distiller & self-feedback
+        blockedBy:
+        -   epic: E1
+            untilStatus: Deployed
+        taskRanges:
+        -   - 30
+            - 39
+    -   id: E4
+        title: Observability — traces, metrics, inspector
+        blockedBy:
+        -   epic: E1
+            untilStatus: Deployed
+        taskRanges:
+        -   - 40
+            - 49
+    -   id: E5
+        title: Voice — TTS/STT loop
+        blockedBy:
+        -   epic: E2
+            untilStatus: Deployed
+        taskRanges:
+        -   - 50
+            - 59
+    -   id: E6
+        title: Capabilities, artifacts, async tasks
+        blockedBy:
+        -   epic: E2
+            untilStatus: Deployed
+        taskRanges:
+        -   - 60
+            - 79
+    -   id: E7
+        title: Remote compute — Windows/ComfyUI
+        blockedBy:
+        -   epic: E6
+            untilStatus: Deployed
+        taskRanges:
+        -   - 80
+            - 89
+    -   id: E8
+        title: Note lifecycle & session retro
+        blockedBy:
+        -   epic: E3
+            untilStatus: Deployed
+        taskRanges:
+        -   - 90
+            - 99
+    invariants:
+    - LLM invocations occur only through locally authenticated subscription CLIs enabled as capabilities; no metered API is ever called.
+    - A disabled capability is never invoked by the engine, and harness subprocesses always run with pinned isolation and sandbox flags — the pair constitutes the boundary.
+    - Capability invocation is argv-array with schema-validated parameters; no invoke string is ever interpreted by a shell.
+    - The assistant repository contains no engine code and no dev-loop agent instructions.
+    - All brain writes are atomic and serialized (engine writer queue + cross-process flock in brain.py write paths).
+    - The assistant brain remains fully zettel-schema-compatible, including brain-events.jsonl emission.
+    - Conversation turns never block on the distiller, index refresh, or task queue.
+    - Transcripts, traces, tasks, and artifacts are never committed to git.
+    - Voice and chat are hard-gated off when no enabled assistant is selected.
+    - The engine's HTTP surface binds localhost only.
 commands:
     gate: bash plugins/spec-workflow/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/scripts/lib/*.sh plugins/spec-workflow/tests/*.sh && claude plugin validate plugins/spec-workflow
 docs:
