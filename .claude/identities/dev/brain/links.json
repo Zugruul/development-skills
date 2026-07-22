@@ -234,6 +234,16 @@
     "last": null,
     "weight": 0.5
   },
+  "getter-over-global-snapshot->lifecycle-changes-need-full-suite": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "getter-over-global-snapshot->lock-key-canonicalize": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "grep-qf-multiline-or-trap->check-empty-expected-vacuous": {
     "fires": 0,
     "last": null,
@@ -280,6 +290,16 @@
     "weight": 0.5
   },
   "key-order-is-serialization-contract->hand-write-links-fixtures": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "lifecycle-changes-need-full-suite->deterministic-repro-fast": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "lifecycle-changes-need-full-suite->marker-barrier-interleave": {
     "fires": 0,
     "last": null,
     "weight": 0.5

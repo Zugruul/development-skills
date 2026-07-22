@@ -1,12 +1,10 @@
 ---
 tags: [tests, bash, quoting, heredoc, bash32]
 paths: ["plugins/spec-workflow/tests/**"]
-strength: 2
-source: "PR-close #303 dev CONSULT confirmation"
+strength: 3
+source: "PR-close #308 recurrence"
 graduated: false
 created: 2026-07-22
 ---
 
-In new-module tasks the real defect risk concentrates in the bash test-section plumbing, not the code under test. Confirmed hard gotcha (bash 3.2): an apostrophe inside a <<'PY' heredoc BODY breaks parsing when the whole heredoc is wrapped in a double-quoted command substitution x="$(... <<'PY' ... PY)" — 'unexpected EOF while looking for matching quote' even though the quoted delimiter should make the body literal. Repro: b="$(cat <<'PY'\n# the CLI's own thing\nPY\n)". Fix: no apostrophes in heredoc bodies inside $(), or move the text out. Also: double-quoted strings need no \x27 escapes; python -c helpers must shift-and-forward "$@".
-
-Related: [[extend-house-fixture-style]] [[bool-before-int-guard]]
+In new-module tasks the real defect risk concentrates in the bash test-section plumbing. Bash-3.2 heredoc gotcha RECURRED even with the lesson pasted in the brief (dev typed apostrophes into a <<PY body inside $() and caught it only via bash -n) — keep the lesson verbatim with the minimal repro, and treat bash -n as a mandatory pre-run step for any section edit.
