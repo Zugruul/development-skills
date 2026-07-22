@@ -69,6 +69,11 @@
     "last": null,
     "weight": 0.5
   },
+  "gate-before-fold-push->board-moves-before-branch-delete": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "investigate-existing-behavior-before-assuming-new-work->old-path-repo-wide-sweep": {
     "fires": 0,
     "last": null,
@@ -150,6 +155,16 @@
     "weight": 0.5
   },
   "worktree-isolation-when-multitasking->concurrent-gate-runs-collide": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "worktree-lane-default->board-moves-before-branch-delete": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "worktree-lane-default->merge-via-temp-worktree-when-main-held": {
     "fires": 0,
     "last": null,
     "weight": 0.5

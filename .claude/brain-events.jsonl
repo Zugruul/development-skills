@@ -1196,3 +1196,18 @@
 {"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "named-stash-pop-only", "task": "GL-050 #300", "ts": "2026-07-22T05:34:24+00:00", "type": "RecallOutcome", "v": 1}
 {"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "dual-path-fixture-proves-sharing", "task": "GL-050 #300", "ts": "2026-07-22T05:34:24+00:00", "type": "RecallOutcome", "v": 1}
 {"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "batch-red-across-surfaces", "task": "GL-050 #300", "ts": "2026-07-22T05:34:24+00:00", "type": "RecallOutcome", "v": 1}
+{"idx": 0, "itemTs": "2026-07-22T06:25:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-22T06:31:53+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 1, "itemTs": "2026-07-22T06:25:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-22T06:31:53+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 2, "itemTs": "2026-07-22T06:25:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-22T06:31:53+00:00", "type": "FeedbackEmitted", "v": 1}
+{"action": "backlog", "idx": 0, "itemTs": "2026-07-22T06:25:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-22T06:32:33+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "ignore", "idx": 1, "itemTs": "2026-07-22T06:25:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-22T06:32:33+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 2, "itemTs": "2026-07-22T06:25:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-22T06:32:33+00:00", "type": "FeedbackRouted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "gate-before-fold-push", "strength": 1, "ts": "2026-07-22T06:32:48+00:00", "type": "NoteMinted", "v": 1}
+{"key": "gate-before-fold-push->board-moves-before-branch-delete", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-22T06:32:48+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "worktree-lane-default", "strength": 1, "ts": "2026-07-22T06:32:50+00:00", "type": "NoteMinted", "v": 1}
+{"key": "worktree-lane-default->merge-via-temp-worktree-when-main-held", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-22T06:32:50+00:00", "type": "LinkFormed", "v": 1}
+{"key": "worktree-lane-default->board-moves-before-branch-delete", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-22T06:32:50+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "no-stage-specific-path-assertions", "strength": 1, "ts": "2026-07-22T06:33:07+00:00", "type": "NoteMinted", "v": 1}
+{"key": "no-stage-specific-path-assertions->sourced-section-no-brace-cd", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-22T06:33:07+00:00", "type": "LinkFormed", "v": 1}
+{"key": "no-stage-specific-path-assertions->batch-red-across-surfaces", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-22T06:33:07+00:00", "type": "LinkFormed", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "sourced-section-no-brace-cd", "task": "GL-021 #256", "ts": "2026-07-22T06:33:07+00:00", "type": "RecallOutcome", "v": 1}

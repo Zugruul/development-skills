@@ -17,3 +17,4 @@
 {"note": "dev wrote all 21 assertions across 6 groups in one red commit before implementing; pinned literal strings against the red run", "outcome": "useful", "schemaVersion": 1, "slug": "batch-red-across-surfaces", "task": "GL-020 #255", "ts": "2026-07-22T03:29:33+00:00"}
 {"note": "3-note star fixture kept co-activation ranking honest; small explicit fan-out per this note", "outcome": "useful", "schemaVersion": 1, "slug": "verify-fixture-isolates-intended-path", "task": "GL-020 #255", "ts": "2026-07-22T03:29:33+00:00"}
 {"note": "all 8 AC batches in one red commit afdc961", "outcome": "useful", "schemaVersion": 1, "slug": "batch-red-across-surfaces", "task": "GL-050 #300", "ts": "2026-07-22T05:34:24+00:00"}
+{"note": "new section-brain-path.sh contains no brace-group cd; no suite cascade this iteration", "outcome": "useful", "schemaVersion": 1, "slug": "sourced-section-no-brace-cd", "task": "GL-021 #256", "ts": "2026-07-22T06:33:07+00:00"}

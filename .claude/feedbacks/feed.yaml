@@ -483,3 +483,51 @@ items:
   routing:
     action: brain-note
     ref: orchestrator/board-moves-before-branch-delete
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T06:25:00Z'
+iteration:
+  task: Zugruul/development-skills#256
+  outcome: merged
+  reviewRounds: 0
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: merge
+  severity: medium
+  summary: Main went red after the spec-delta fold because fold/retro/feedback commits
+    were pushed without a gate run, and a test asserted the delta file's transient
+    pre-fold location.
+  generalized: Orchestrator post-merge commits (spec-delta folds, retros) must re-run
+    the gate before pushing, and tests must never assert a file location that a later
+    workflow stage legitimately moves — assert either-location or content, not stage-specific
+    paths.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#360
+- category: friction
+  area: briefing
+  severity: low
+  summary: The dev agent again left finished work uncommitted at the finish line and
+    the orchestrator closed on-behalf, third occurrence across three tasks.
+  generalized: Until the brief-template fix lands, orchestrators should plan for on-behalf
+    closes as the norm rather than the exception when subagents run long background
+    checks.
+  routing:
+    action: ignore
+    ref: already tracked as Zugruul/development-skills#355 (brief-template finish-line
+      wording); third occurrence noted there
+- category: worked-well
+  area: concurrency
+  severity: low
+  summary: The worktree-per-task lane fully isolated this task from the shared clone
+    (no stash collisions, no foreign dirty files, no held-main friction) at the cost
+    of one extra setup command.
+  generalized: Running each task in its own worktree cut from fresh origin/main eliminates
+    the entire shared-clone collision class and should be the default lane model.
+  routing:
+    action: brain-note
+    ref: orchestrator/worktree-lane-default
