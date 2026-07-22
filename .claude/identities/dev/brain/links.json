@@ -139,6 +139,16 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
+  "defaults-need-own-tests->fixture-must-reach-fixed-path": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "defaults-need-own-tests->mutation-check-assertions": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "design-doc-sweep-suggestion-needs-verification->old-path-repo-wide-sweep": {
     "fires": 7,
     "last": "2026-07-20",
@@ -185,6 +195,16 @@
     "weight": 0.5
   },
   "env-home-isolation-not-cwd->getter-over-global-snapshot": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "estimator-honesty-dense-scripts->bool-before-int-guard": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "estimator-honesty-dense-scripts->defaults-need-own-tests": {
     "fires": 0,
     "last": null,
     "weight": 0.5
