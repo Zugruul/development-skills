@@ -862,3 +862,50 @@ items:
   routing:
     action: brain-note
     ref: reviewer/check-empty-expected-vacuous
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T10:55:00Z'
+iteration:
+  task: AST-004
+  outcome: merged
+  reviewRounds: 4
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: high
+  summary: Two-pass review with independent sweeps caught a lost-update hole and a
+    deadlock-class bug before merge
+  detail: Pass 1's independent write-site classification found two unlocked read-modify-write
+    cycles the dev's own sweep missed; pass 2 empirically reproduced a path-spelling
+    self-deadlock in the new lock helper and an fd leak. Two fix rounds, both re-verified
+    against the reviewer's own repros.
+  evidence:
+  - Zugruul/development-skills#304
+  generalized: For concurrency-safety tasks, reviews that rebuild the coverage claim
+    from scratch (own grep sweep + own scratch-process repros) rather than auditing
+    the dev's list are what catch the omitted-site and aliased-path-identity failure
+    classes; the fix rounds are cheap relative to shipping a self-deadlock into a
+    long-running server.
+  routing:
+    action: brain-note
+    ref: reviewer/write-site-classification-sweep
+- category: friction
+  area: testing
+  severity: low
+  summary: Concurrency probes without watchdog timeouts can hang the whole suite on
+    a reintroduced deadlock
+  detail: Only one of four concurrency probes had a SIGALRM watchdog; a regression
+    of the deadlock class would hang CI indefinitely. Follow-up filed on the board.
+  evidence:
+  - Zugruul/development-skills#304
+  - Zugruul/development-skills#367
+  generalized: Every test that can block on a lock or a child process needs a fail-fast
+    timeout; a hanging test is worse than a failing one because it hides WHICH check
+    died. Worth a house rule for concurrency sections.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#367
