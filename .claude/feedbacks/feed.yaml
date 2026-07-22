@@ -1420,3 +1420,48 @@ items:
   routing:
     action: backlog
     ref: Zugruul/development-skills#315
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T23:20:00Z'
+iteration:
+  task: AST-017
+  outcome: merged
+  reviewRounds: 3
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: high
+  summary: Splitting the review into a math-focused spec pass and a lifecycle-focused
+    quality pass caught orthogonal defect classes in a measurement harness
+  detail: The spec pass hand-verified percentile math and methodology honesty (cache-miss
+    sampling, sequential timing vs the chat lock); the quality pass found resource-lifecycle
+    and partial-result-persistence blockers the math pass had no reason to look at.
+    Neither pass would have caught the other's findings.
+  evidence:
+  - Zugruul/development-skills#315
+  generalized: For instruments whose output gates decisions (benchmark harnesses,
+    verdict scripts), review the MATH and the LIFECYCLE as separate passes with separate
+    briefs — correctness of numbers and survival of numbers are different failure
+    domains.
+  routing:
+    action: brain-note
+    ref: dev/partial-results-honesty
+- category: friction
+  area: briefing
+  severity: low
+  summary: Dev stalled at the literal commit command with everything staged
+  detail: Fourth stall variant observed (after write-uncommitted, pre-red, and fix-round
+    variants); staged-and-stalled is the narrowest yet — one command from done.
+  evidence:
+  - Zugruul/development-skills#315
+  - Zugruul/development-skills#364
+  generalized: Stall-point coverage in briefs keeps narrowing the failure but not
+    eliminating it; the design fix (orchestrator commits as first-class flow) remains
+    the durable answer.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#364
