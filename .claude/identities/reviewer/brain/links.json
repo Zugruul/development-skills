@@ -1,4 +1,14 @@
 {
+  "check-empty-expected-vacuous->import-and-probe-python-library": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "check-empty-expected-vacuous->mutation-check-assertions": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "confirm-named-scope-exclusions-respected->note-dont-gate-on-unrelated-findings": {
     "fires": 2,
     "last": "2026-07-22",

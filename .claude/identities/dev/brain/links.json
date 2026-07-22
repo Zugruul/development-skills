@@ -524,6 +524,11 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
+  "test-section-shell-plumbing-risk->bool-before-int-guard": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "test-section-shell-plumbing-risk->extend-house-fixture-style": {
     "fires": 1,
     "last": null,
