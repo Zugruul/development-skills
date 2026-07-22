@@ -56,6 +56,15 @@ if home_file:
 
 mode = os.environ.get("CODEX_STUB_MODE", "ok")
 
+# CODEX_STUB_SLEEP_SECONDS (AST-016 review r1, engine.py's per-root chat
+# lock regression test) -- optional, "ok" mode only, no-op when unset (every
+# pre-existing caller of this stub is unaffected). Widens the window between
+# a turn's session-state load and its save just enough for two concurrent
+# /assistant/chat requests to provably overlap if nothing serializes them.
+sleep_seconds = os.environ.get("CODEX_STUB_SLEEP_SECONDS")
+if mode == "ok" and sleep_seconds:
+    time.sleep(float(sleep_seconds))
+
 if mode == "ok":
     print(json.dumps({"type": "thread.started", "thread_id": "stub-thread"}))
     print(json.dumps({"type": "turn.started"}))

@@ -28,10 +28,11 @@ particular must stay subprocess-free.
 engine is a no-op, and `stop()` may be called more than once (e.g. once from
 an explicit shutdown path and once via `atexit`) without raising.
 """
+import os
 import queue
 import threading
 
-from assistant import default_store
+from assistant import adapters, default_store, turns
 from assistant.store import SessionStore
 
 # The four §5a-mandated subsystem workers this skeleton wires up. Real logic
@@ -72,6 +73,11 @@ class AssistantEngine:
         self.queues = {name: queue.Queue() for name in WORKER_NAMES}
         self.workers = []  # [(name, Thread, stop_event), ...] -- see start()
         self._lock = threading.Lock()
+        # AST-016 review r1 BLOCKER fix: one lock per resolved assistant
+        # root, guarding _chat's whole load_state -> run_turn -> save_state
+        # critical section (see _chat_lock_for's docstring).
+        self._chat_locks = {}
+        self._chat_locks_guard = threading.Lock()
 
     def start(self):
         """Launch the worker registry. Idempotent: a second call while
@@ -116,6 +122,8 @@ class AssistantEngine:
             return 200, self._status(), "application/json"
         if method == "GET" and path == "/assistant/history":
             return 200, self._history(query), "application/json"
+        if method == "POST" and path == "/assistant/chat":
+            return self._chat(body)
         return None
 
     def _status(self):
@@ -157,6 +165,102 @@ class AssistantEngine:
             # None` treatment of the same not-yet-selected state.
             return {"exchanges": [], "warnings": [f"no assistant resolved: {exc}"]}
         return SessionStore(root).history(n)
+
+    def _chat_lock_for(self, root):
+        """One `threading.Lock` per resolved assistant root, canonicalized
+        via `os.path.realpath` so two different-looking paths to the same
+        repo (a symlink hop, a relative vs. absolute root) share the SAME
+        lock instead of silently getting independent ones (the exact
+        lock-key-canonicalize failure mode: a lock keyed on a raw, non-
+        canonical string looks correct in the common case and only misses
+        under path aliasing).
+
+        Per §7.5 there is exactly one session per assistant (repo) -- two
+        concurrent `/assistant/chat` requests against the SAME assistant
+        MUST serialize (a turn is a load -> compose -> provider-call ->
+        save read-modify-write against `session-state.json`; unlocked, the
+        later save silently clobbers the earlier one -- reproduced live in
+        review r1: 2 concurrent chats, transcript kept both exchanges
+        [append-only, each write lands atomically] but session-state.json
+        kept only one [read-modify-write, not append-only], turn_count
+        stuck at 1 instead of 2). Two chats against DIFFERENT assistants
+        must NOT block each other, hence per-root rather than one global
+        lock. Creating a not-yet-seen root's Lock is itself guarded by a
+        small top-level `_chat_locks_guard` (cheap dict mutation only --
+        never held across a turn, so it is never the serialization
+        bottleneck; the per-root lock returned here is what `_chat` holds
+        across the actual turn)."""
+        key = os.path.realpath(root)
+        with self._chat_locks_guard:
+            lock = self._chat_locks.get(key)
+            if lock is None:
+                lock = threading.Lock()
+                self._chat_locks[key] = lock
+            return lock
+
+    def _chat(self, body):
+        """POST /assistant/chat -- {"message": str, "assistant"?: str} ->
+        {"text", "chips", "warnings"} (§7.6, §5, AST-016, issue #314). The
+        ENGINE-CORE turn endpoint: §7.6 resolution (flag -> sole assistant
+        -> local default -> error listing candidates, same order/errors as
+        `_history` above and the terminal's own `--assistant`), then
+        turns.run_turn against the resolved assistant's persona/provider,
+        then a durable append + state save via SessionStore (§8.7) --
+        exactly what both the terminal (this task) and the future overlay
+        (E2) call. No worker-queue involvement: per §5a HTTP request
+        threads execute turns directly, on the request thread.
+
+        A resolution failure is a clean 4xx, never a turn attempt (§17.9:
+        chat is hard-gated off with no assistant to run it against) --
+        listing candidates exactly like `_history`'s ResolutionError
+        handling and default_store.resolve_assistant's own message shape,
+        so a terminal `--assistant <unknown>` error and this route's JSON
+        error say the same thing.
+
+        The load_state -> run_turn -> append_exchange -> save_state
+        sequence runs under `_chat_lock_for(root)` (review r1 BLOCKER fix,
+        see that method's docstring): concurrent turns against the SAME
+        assistant are serialized -- correct per §7.5's one-session model --
+        while turns against different assistants never block each other.
+        """
+        body = body if isinstance(body, dict) else {}
+        message = body.get("message")
+        if not isinstance(message, str) or not message.strip():
+            return 400, {"error": "message is required"}, "application/json"
+
+        assistant_flag = body.get("assistant")
+        candidates = default_store.discover_candidates(
+            root for _, root in self._repos_getter()
+        )
+        try:
+            root, section = default_store.resolve_assistant(
+                candidates, flag=assistant_flag, state_dir=self.state_dir)
+        except default_store.ResolutionError as exc:
+            return 400, {"error": str(exc)}, "application/json"
+
+        store = SessionStore(root)
+        with self._chat_lock_for(root):
+            session_state = store.load_state()
+            try:
+                result = turns.run_turn(section, None, None, session_state, message)
+            except adapters.AdapterError as exc:
+                # provider CLI failure (Sec8.5) -- a clean upstream error,
+                # never a raw traceback, and never a persisted exchange
+                # (nothing to append: the turn produced no reply).
+                return 502, {"error": str(exc)}, "application/json"
+
+            store.append_exchange(message, result["text"])
+            store.save_state(result["updated_session_state"])
+
+        warnings = []
+        if result.get("budget_report", {}).get("over_budget"):
+            warnings.append("turn context exceeded the token budget")
+
+        return 200, {
+            "text": result["text"],
+            "chips": result["chips"],
+            "warnings": warnings,
+        }, "application/json"
 
 
 def _parse_history_n(query):

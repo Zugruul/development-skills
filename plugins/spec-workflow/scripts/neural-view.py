@@ -16,6 +16,9 @@ canvas containing its own role-clusters (dev/reviewer/orchestrator/...).
   neural-view.py serve [--port N] [--dir ROOT] [--scan BASE] [--rescan SECS] # run in the foreground (internal)
   neural-view.py dev [--port N] [--dir ROOT] [--scan BASE] [--rescan SECS]   # foreground + auto-restart on script
                                        # change; the page live-reloads via GET /version (dev only)
+  neural-view.py assistant status                        # GET /assistant/status against the running server
+  neural-view.py assistant default [NAME]                # set/read the machine-local default assistant (local file, no server needed)
+  neural-view.py assistant chat [--assistant NAME] <msg...>  # POST /assistant/chat; §7.6 resolution: flag -> sole assistant -> local default -> error
 
 Stale-server detection: if the pidfile is missing/stale but the configured
 port is still occupied, `status` reports STALE (never a bare STOPPED) and
@@ -105,6 +108,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from html import escape
@@ -114,6 +118,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # import config (project.yaml reader) beside this script
 
 from assistant.engine import AssistantEngine  # noqa: E402  the /assistant/* engine (AST-010, SPEC-ASSISTANT.md §5a)
+from assistant import default_store  # noqa: E402  §7.6 resolution + machine-local default store, for `assistant default` (AST-016)
 
 ENGINE = None  # set by the `serve` branch of main(); route dispatch below checks for None so `import neural_view` alone (e.g. from a test) never needs a live engine
 
@@ -1454,7 +1459,26 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?")[0]
         if path.startswith("/assistant/"):
-            result = ENGINE.handle("POST", path) if ENGINE is not None else None
+            # AST-016: /assistant/chat needs a JSON body ({message,
+            # assistant?}) -- read + parse it here (not inside engine.py),
+            # same division of labor as do_GET's query-string parsing above.
+            # Bounded read (64KiB, well past any real chat message) so a
+            # malicious/broken Content-Length can never force an unbounded
+            # blocking read on the request thread; a body that isn't valid
+            # JSON is passed through as None, which _chat()'s missing-
+            # "message" check turns into a clean 400 rather than a crash.
+            body = None
+            try:
+                length = min(int(self.headers.get("Content-Length", 0) or 0), 65536)
+            except ValueError:
+                length = 0
+            if length:
+                raw = self.rfile.read(length)
+                try:
+                    body = json.loads(raw)
+                except ValueError:
+                    body = None
+            result = ENGINE.handle("POST", path, body=body) if ENGINE is not None else None
             if result is None:
                 return self._send(404, {"error": "not found"})
             status, payload, ctype = result
@@ -1512,6 +1536,165 @@ def configured_port():
         except Exception:  # noqa: BLE001
             pass
     return DEFAULT_PORT
+
+
+# --- `assistant` subcommand (AST-016, SPEC-ASSISTANT.md §7.6, issue #314) ---
+# The terminal talks HTTP to the running server (§5 diagram: page/terminal/
+# tabs all hit the SAME /assistant/* endpoints the engine mounts, §7.5) --
+# `chat`/`status` are thin urllib clients against it, using the exact
+# port/pidfile discovery `status`/`stop` already use above. `default` is the
+# one exception: it is a machine-local FILE (default_store.write_default /
+# read_default, §6.3), so it works whether or not a server is running --
+# routing it through HTTP would just add a dependency this subcommand does
+# not need.
+
+
+def _assistant_not_running_message():
+    return f"neural-view not running — start it with '{SCRIPT_NAME} start'\n"
+
+
+def _assistant_http(port, method, path, body=None, timeout=65):
+    """One JSON HTTP round-trip against this server's own `/assistant/*`
+    routes (engine.py's `handle()`). Returns (status_code, payload dict).
+    Raises OSError (urllib.error.URLError is a subclass) if the server
+    can't be reached at all -- an HTTPError (4xx/5xx the engine returned on
+    purpose, e.g. a §7.6 resolution failure) is NOT an error here, it is
+    just a non-200 status the caller inspects, same as a successful
+    request; only a connection-level failure (refused/reset/timeout)
+    propagates as an exception."""
+    url = f"http://127.0.0.1:{port}{path}"
+    data = json.dumps(body).encode() if body is not None else None
+    headers = {"Content-Type": "application/json"} if data else {}
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, json.loads(resp.read() or b"{}")
+    except urllib.error.HTTPError as exc:
+        raw = exc.read()
+        try:
+            payload = json.loads(raw or b"{}")
+        except ValueError:
+            payload = {"error": raw.decode("utf-8", errors="replace") or str(exc)}
+        return exc.code, payload
+
+
+def _extract_assistant_flag(args):
+    """Pulls a `--assistant NAME` pair out of `args` wherever it appears
+    (matches this CLI's other flag-anywhere conventions, e.g. arg_port).
+    Returns (name_or_None, remaining_args, error_or_None).
+
+    review r1 LOW 2: a TRAILING `--assistant` with nothing after it is a
+    usage error, not silently swallowed -- the old version's `i + 1 <
+    len(args)` guard just fell through to the `else` branch on a trailing
+    flag, so "--assistant" itself became (part of) the literal chat
+    message instead of failing loudly."""
+    flag = None
+    rest = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--assistant":
+            if i + 1 >= len(args):
+                return None, None, "--assistant requires a NAME argument"
+            flag = args[i + 1]
+            i += 2
+        else:
+            rest.append(args[i])
+            i += 1
+    return flag, rest, None
+
+
+def _cmd_assistant_status():
+    if not pid_alive():
+        sys.stderr.write(_assistant_not_running_message())
+        return 1
+    try:
+        code, payload = _assistant_http(configured_port(), "GET", "/assistant/status")
+    except OSError as exc:
+        sys.stderr.write(f"neural-view: could not reach the server: {exc}\n")
+        return 1
+    print(f"assistants={payload.get('assistants')} selected={payload.get('selected')}")
+    print(json.dumps(payload))
+    return 0 if code == 200 else 1
+
+
+def _cmd_assistant_default(args):
+    """`assistant default [NAME]` -- a thin wrapper over
+    assistant.default_store's write_default/read_default (§6.3), using the
+    SAME state dir this process's own `S` resolves to (NEURAL_VIEW_STATE
+    env override, else <git root>/.claude/neural-view) -- direct, not
+    routed through setup.py's `set_default(root, name)`, because that verb
+    is keyed off a REPO root (it exists for the per-repo `set-default` CLI
+    surface) whereas this one is keyed off neural-view's own machine-local
+    state dir, exactly like `read-default`/`write-default` on
+    default_store.py's own CLI."""
+    if args:
+        name = args[0]
+        try:
+            path = default_store.write_default(name, state_dir=str(S))
+        except default_store.DefaultStoreError as exc:
+            sys.stderr.write(f"neural-view assistant default: {exc}\n")
+            return 1
+        print(f"default assistant set to {name!r} ({path})")
+        return 0
+    try:
+        current = default_store.read_default(state_dir=str(S))
+    except default_store.DefaultStoreError as exc:
+        sys.stderr.write(f"neural-view assistant default: {exc}\n")
+        return 1
+    print(current or "(none)")
+    return 0
+
+
+def _cmd_assistant_chat(args, assistant_flag):
+    message = " ".join(args).strip()
+    if not message:
+        sys.stderr.write("usage: neural-view.py assistant chat [--assistant NAME] <message...>\n")
+        return 2
+    if not pid_alive():
+        sys.stderr.write(_assistant_not_running_message())
+        return 1
+    body = {"message": message}
+    if assistant_flag:
+        body["assistant"] = assistant_flag
+    try:
+        code, payload = _assistant_http(configured_port(), "POST", "/assistant/chat", body)
+    except OSError as exc:
+        sys.stderr.write(f"neural-view: could not reach the server: {exc}\n")
+        return 1
+    if code != 200:
+        sys.stderr.write(f"assistant chat failed: {payload.get('error', payload)}\n")
+        return 1
+    print(payload.get("text", ""))
+    chips = payload.get("chips") or []
+    if chips:
+        print("chips: " + ", ".join(c.get("slug", "?") for c in chips))
+    return 0
+
+
+def cmd_assistant(args):
+    """`neural-view.py assistant <chat|status|default> [--assistant NAME] ...`
+    (AST-016, SPEC-ASSISTANT.md §7.6, issue #314). All headless: `chat`/
+    `status` talk to the running server over HTTP (clean, non-traceback
+    error + nonzero exit if it isn't running); `default` needs no server at
+    all (see `_cmd_assistant_default`'s docstring)."""
+    if not args:
+        sys.stderr.write("usage: neural-view.py assistant <chat|status|default> [--assistant NAME] ...\n")
+        return 2
+    sub, rest = args[0], args[1:]
+    assistant_flag, rest, flag_err = _extract_assistant_flag(rest)
+    if flag_err:
+        sys.stderr.write(f"neural-view.py assistant: {flag_err}\n")
+        return 2
+
+    if sub == "status":
+        return _cmd_assistant_status()
+    if sub == "default":
+        return _cmd_assistant_default(rest)
+    if sub == "chat":
+        return _cmd_assistant_chat(rest, assistant_flag)
+
+    sys.stderr.write(f"neural-view.py assistant: unknown subcommand {sub!r}\n")
+    return 2
 
 
 def _port_is_free(port):
@@ -1931,6 +2114,9 @@ def main():
             if child.poll() is None:
                 reap(child)
             print("\ndev: stopped")
+
+    elif cmd == "assistant":
+        sys.exit(cmd_assistant(args))
 
     else:
         print(__doc__)
