@@ -156,6 +156,7 @@ SECTIONS=(
     section-repo-hygiene.sh
     section-agents-claude.sh
     section-codex-parity-walkthrough.sh
+    section-assistant-marker.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then
