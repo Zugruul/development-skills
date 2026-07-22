@@ -161,6 +161,7 @@ SECTIONS=(
     section-assistant-marker.sh
     section-setup-assistant.sh
     section-assistant-preflight.sh
+    section-assistant-default.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then

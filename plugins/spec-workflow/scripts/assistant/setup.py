@@ -40,6 +40,7 @@ if _SCRIPTS_DIR not in sys.path:
 
 import config as project_config  # noqa: E402  scripts/config.py, the shared loader
 from assistant.config import validate_assistant  # noqa: E402
+from assistant import default_store  # noqa: E402  AST-007: single source of truth for the default store
 
 # Verbatim match of neural-view.py's MARKER_CONTENT (§6.2) — duplicated
 # rather than imported so this module never pulls in neural-view.py's
@@ -408,14 +409,12 @@ def disable_capability(root, name):
 
 def set_default(root, name):
     """§6.3 touchpoint: write the machine-local default assistant name into
-    neural-view's existing local-state dir (never a tracked file). AST-007
-    owns ambiguity resolution/error listing; this is a bare setter."""
+    neural-view's existing local-state dir (never a tracked file). Wired to
+    assistant.default_store (AST-007's single source of truth for the store
+    + §7.6 ambiguity resolution) -- kept as a thin root->state_dir adapter so
+    this CLI's `set-default <name>` surface stays byte-identical."""
     state_dir = os.environ.get("NEURAL_VIEW_STATE") or os.path.join(root, STATE_DEFAULT_REL)
-    os.makedirs(state_dir, exist_ok=True)
-    path = os.path.join(state_dir, DEFAULT_FILE_NAME)
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(name.strip() + "\n")
-    return path
+    return default_store.write_default(name, state_dir=state_dir)
 
 
 # --- CLI -------------------------------------------------------------------
@@ -428,6 +427,12 @@ def _cli(argv):
         return _dispatch(argv)
     except project_config.ConfigError as e:
         sys.stderr.write(f"PREFLIGHT FAIL: {e}\n")
+        return 1
+    except default_store.DefaultStoreError as e:
+        # AST-007 advisory-scripts-catch-oserror: write_default() already
+        # turns an OSError into this clean message -- never let it (or a raw
+        # OSError) traceback out of the CLI.
+        sys.stderr.write(f"STORE FAIL: {e}\n")
         return 1
 
 
