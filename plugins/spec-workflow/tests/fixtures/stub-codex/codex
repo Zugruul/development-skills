@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Stub codex CLI for section-assistant-adapter.sh (AST-011, SPEC-ASSISTANT.md
+Sec8.4-Sec8.5, Sec16). Records its argv to $CODEX_STUB_ARGV_FILE (one
+argument per line, so the test can assert the pinned flag set and prove an
+injection payload arrives as a single literal argv element) and then
+behaves per $CODEX_STUB_MODE. Never touches the network or a real codex
+binary -- this is the ONLY "codex" contract tests put on PATH.
+
+Provenance of each mode's output shape:
+  ok       -- ASSUMED from codex exec --json's documented event schema
+              (item.completed/agent_message + turn.completed/usage). Not
+              captured against a real authenticated run (auth + cost are
+              out of scope here) -- flagged for dogfood validation.
+  auth     -- CORPUS-SOURCED: reproduces (event types, field names, and
+              message wording) a REAL unauthenticated `codex exec --json`
+              run captured on this machine (codex-cli 0.144.4): exit 1
+              after five retries, JSONL ending in a turn.failed event whose
+              error.message contains "401 Unauthorized" / "Missing bearer
+              or basic authentication", plus a stderr ERROR line naming the
+              same failure. No login instruction ever appears in codex's
+              own output -- that instruction is the adapter's own text.
+  nonzero  -- synthetic: any non-auth CLI failure.
+  garbage  -- synthetic: output the adapter cannot parse as JSONL.
+  hang     -- synthetic: sleeps well past any short test timeout.
+"""
+import json
+import os
+import sys
+import time
+
+argv_file = os.environ.get("CODEX_STUB_ARGV_FILE")
+if argv_file:
+    with open(argv_file, "a") as fh:
+        for arg in sys.argv[1:]:
+            fh.write(arg + "\n")
+
+# CODEX_STUB_HOME_FILE (AST-011 review r1 fix) -- records the CODEX_HOME
+# this invocation actually sees, INSPECTED FROM INSIDE the subprocess (the
+# adapter's isolated CODEX_HOME temp dir is removed once complete()
+# returns, so the caller can't inspect it after the fact). Proves the
+# adapter's isolated-CODEX_HOME mechanism: the isolated dir carries a copy
+# of the real auth.json (login/auth preserved) but never a global
+# AGENTS.md (no user-global instruction ingestion, Sec8.4 clause 1).
+home_file = os.environ.get("CODEX_STUB_HOME_FILE")
+if home_file:
+    codex_home = os.environ.get("CODEX_HOME", "")
+    auth_path = os.path.join(codex_home, "auth.json") if codex_home else ""
+    agents_path = os.path.join(codex_home, "AGENTS.md") if codex_home else ""
+    with open(home_file, "w") as fh:
+        fh.write("CODEX_HOME=" + codex_home + "\n")
+        fh.write("HAS_AUTH=" + str(bool(auth_path) and os.path.isfile(auth_path)) + "\n")
+        fh.write("HAS_AGENTS=" + str(bool(agents_path) and os.path.isfile(agents_path)) + "\n")
+        if auth_path and os.path.isfile(auth_path):
+            with open(auth_path) as afh:
+                fh.write("AUTH_CONTENT=" + afh.read().strip() + "\n")
+
+mode = os.environ.get("CODEX_STUB_MODE", "ok")
+
+if mode == "ok":
+    print(json.dumps({"type": "thread.started", "thread_id": "stub-thread"}))
+    print(json.dumps({"type": "turn.started"}))
+    print(json.dumps({
+        "type": "item.completed",
+        "item": {"type": "agent_message", "text": "Hello from stub"},
+    }))
+    print(json.dumps({
+        "type": "turn.completed",
+        "usage": {"input_tokens": 10, "output_tokens": 5},
+    }))
+    sys.exit(0)
+
+if mode == "nonzero":
+    print("generic failure: disk full", file=sys.stderr)
+    sys.exit(1)
+
+if mode == "hang":
+    time.sleep(30)
+    sys.exit(0)
+
+if mode == "garbage":
+    print("not-json-output-{{{")
+    sys.exit(0)
+
+if mode == "auth":
+    print(json.dumps({"type": "thread.started", "thread_id": "stub-thread-2"}))
+    print(json.dumps({"type": "turn.started"}))
+    print(json.dumps({
+        "type": "error",
+        "message": (
+            "Reconnecting... 1/5 (unexpected status 401 Unauthorized: "
+            "Missing bearer or basic authentication in header, "
+            "url: https://api.openai.com/v1/responses)"
+        ),
+    }))
+    print(json.dumps({
+        "type": "turn.failed",
+        "error": {
+            "message": (
+                "unexpected status 401 Unauthorized: Missing bearer or "
+                "basic authentication in header, "
+                "url: https://api.openai.com/v1/responses"
+            ),
+        },
+    }))
+    print(
+        "ERROR codex_api::endpoint::responses_websocket: failed to connect "
+        "to websocket: HTTP error: 401 Unauthorized",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+print("unknown CODEX_STUB_MODE: " + mode, file=sys.stderr)
+sys.exit(2)

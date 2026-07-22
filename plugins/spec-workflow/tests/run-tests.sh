@@ -163,6 +163,7 @@ SECTIONS=(
     section-assistant-preflight.sh
     section-assistant-default.sh
     section-assistant-engine.sh
+    section-assistant-adapter.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then
