@@ -39,6 +39,11 @@
     "last": null,
     "weight": 0.5
   },
+  "diagnose-stalls-before-attributing->board-moves-before-branch-delete": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "dual-independent-review-raises-confidence->independent-review-catches-self-test-blindspots": {
     "fires": 0,
     "last": null,

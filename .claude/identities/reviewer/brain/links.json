@@ -89,6 +89,16 @@
     "last": "2026-07-20",
     "weight": 0.5
   },
+  "passing-test-proves-agreement-only->dual-path-fixture-proves-sharing": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "passing-test-proves-agreement-only->verify-reuse-by-symbol-grep": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "probe-spec-silent-input-categories->trace-boundary-operators-by-hand": {
     "fires": 1,
     "last": "2026-07-20",
@@ -212,6 +222,11 @@
   "verify-proximity-checks-dont-bleed-into-next-record->trace-dict-merge-for-key-collisions": {
     "fires": 1,
     "last": "2026-07-20",
+    "weight": 0.5
+  },
+  "verify-reuse-by-symbol-grep->dual-path-fixture-proves-sharing": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "verify-tdd-empirically-when-log-is-thin->verify-red-test-genuinely-discriminates": {

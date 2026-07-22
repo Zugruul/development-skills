@@ -1,0 +1,2 @@
+{"note": "read-only review constraint derived from this note cost nothing and improved fidelity (git show over checkout)", "outcome": "useful", "schemaVersion": 1, "slug": "named-stash-pop-only", "task": "GL-050 #300", "ts": "2026-07-22T05:34:24+00:00"}
+{"note": "tautology screening from this note applied to AC2/AC5 hash assertions", "outcome": "useful", "schemaVersion": 1, "slug": "dual-path-fixture-proves-sharing", "task": "GL-050 #300", "ts": "2026-07-22T05:34:24+00:00"}
