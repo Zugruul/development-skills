@@ -909,3 +909,51 @@ items:
   routing:
     action: backlog
     ref: Zugruul/development-skills#367
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T12:45:00Z'
+iteration:
+  task: AST-005
+  outcome: merged
+  reviewRounds: 4
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: briefing
+  severity: medium
+  summary: Subagent commit-boundary stalls now recur on most tasks; orchestrator take-over
+    with on-behalf recording has become the standard resolution
+  detail: Two stalls in one task (post-fix and post-gate, the second after an explicit
+    commit-immediately instruction); both resolved by verify-and-record-on-behalf.
+    Across five tasks the stall rate at the write-vs-commit boundary is 4/5.
+  evidence:
+  - Zugruul/development-skills#305
+  - Zugruul/development-skills#302
+  generalized: The subagent stall at the commit boundary is chronic, not incidental;
+    loop tooling should either give agents an explicit commit step in their driver
+    or give the orchestrator a first-class signal (agent idle + dirty worktree) so
+    take-over happens mechanically instead of via ad-hoc nudge cycles.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#364
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Review rounds converged on real corruption bugs and a non-discriminating
+    regression test that had shipped green
+  detail: Pass 2 reproduced torn tracked-config writes at 12-25-way concurrency and
+    a traceback path; round 3 caught that the fix's own regression fixture never reached
+    the fixed path (valid YAML exercising a different refusal), which the orchestrator
+    then proved by revert-run-restore.
+  evidence:
+  - Zugruul/development-skills#305
+  generalized: For any fix, demand evidence the regression test fails at the pre-fix
+    commit (revert-run-restore); a green test proves nothing about path coverage.
+    Reviewers re-running their own original repros against the fix commit is what
+    keeps fix rounds honest.
+  routing:
+    action: brain-note
+    ref: reviewer/fixture-must-reach-fixed-path
