@@ -1294,3 +1294,65 @@ items:
   routing:
     action: brain-note
     ref: dev/marker-barrier-interleave
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T20:45:00Z'
+iteration:
+  task: AST-015
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: briefing
+  severity: high
+  summary: A closed action set after the gate plus a pre-specified commit split produced
+    the first full-cycle dev run of the session
+  detail: The dev credited three brief features - the verbatim only-remaining-actions
+    line, the pre-decided two-commit shape for an ambiguous test-only task, and an
+    explicit scope stop condition - and completed red, impl, gate, both commits, and
+    the report without a stall.
+  evidence:
+  - Zugruul/development-skills#313
+  generalized: At known stall points, name the closed set of allowed next actions
+    verbatim rather than an open instruction, and pre-decide any ambiguous structural
+    choice (commit splits) in the brief; deliberation windows are where agents stall.
+  routing:
+    action: brain-note
+    ref: orchestrator/brief-closed-action-set
+- category: recommendation
+  area: testing
+  severity: medium
+  summary: Stall root cause may be harness auto-backgrounding of long gate runs, not
+    commit refusal
+  detail: The full gate exceeds the 120s auto-background threshold; the non-stalling
+    dev reported the backgrounded-wait chain as the messiest part of its run and hypothesized
+    predecessors lost the thread there.
+  evidence:
+  - Zugruul/development-skills#313
+  - Zugruul/development-skills#364
+  generalized: When a multi-minute command is auto-backgrounded mid-agent-run, the
+    agent needs an explicit recovery recipe (poll the task result, conclude from exit
+    status, proceed); briefs should teach it, and loop tooling could offer a fast-fail
+    gate order so the common path stays under the threshold.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#364
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Reviewer proved the isolation section catches real regressions by injecting
+    an actual adapter leak, beyond the shipped self-test
+  detail: Patched a scratch codex.py to leak the fake global AGENTS.md; the section
+    failed on the AST-011 guard exactly as designed.
+  evidence:
+  - Zugruul/development-skills#313
+  generalized: For guard/checker artifacts, the strongest review evidence is injecting
+    the real failure class the guard exists for, not just the artifact's own planted
+    self-test.
+  routing:
+    action: brain-note
+    ref: reviewer/fixture-must-reach-fixed-path
