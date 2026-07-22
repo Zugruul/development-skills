@@ -1157,3 +1157,50 @@ items:
   routing:
     action: backlog
     ref: Zugruul/development-skills#364
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T18:30:00Z'
+iteration:
+  task: AST-012
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Combined two-pass review in one agent worked well for a small sibling diff
+    without losing rigor
+  detail: A 3-point adapter mirroring a just-reviewed sibling got both passes from
+    one reviewer with distinct sections; the flag-audit-table standard from the sibling
+    review carried over and everything was independently probed; zero fix rounds.
+  evidence:
+  - Zugruul/development-skills#310
+  generalized: For small diffs that mirror a just-reviewed sibling, a single reviewer
+    running both passes as distinct sections preserves the two-pass structure at half
+    the wall-clock; the risk (single perspective) is mitigated when the sibling review
+    established the verification standard days-fresh.
+  routing:
+    action: brain-note
+    ref: orchestrator/combined-two-pass-for-small-siblings
+- category: worked-well
+  area: briefing
+  severity: low
+  summary: A freshly minted lesson from the previous task materially shaped the next
+    task's design and review
+  detail: The env-home isolation lesson minted at the codex-adapter close was pasted
+    into the claude-adapter brief and led the dev to research the auth locus and deliberately
+    REJECT the env-home override with documented evidence, which the reviewer independently
+    reproduced.
+  evidence:
+  - Zugruul/development-skills#310
+  - Zugruul/development-skills#309
+  generalized: Same-session lesson recycling (mint at close, paste into the next brief)
+    visibly changes agent behavior; the loop should keep prioritizing fresh-lesson
+    injection over generic brief text.
+  routing:
+    action: brain-note
+    ref: dev/per-cli-isolation-differs

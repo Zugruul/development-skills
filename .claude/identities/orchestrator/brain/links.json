@@ -39,6 +39,16 @@
     "last": null,
     "weight": 0.5
   },
+  "combined-two-pass-for-small-siblings->idle-agent-is-not-done": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "combined-two-pass-for-small-siblings->unresponsive-agent-take-over": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "design-doc-name-structural-invariant-not-idiom-list->prefer-structural-signal-over-keyword-gate": {
     "fires": 0,
     "last": null,
