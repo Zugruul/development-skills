@@ -506,8 +506,8 @@ def _is_contested(tally):
     return tally.get("useful", 0) >= 1 and (tally.get("dead_end", 0) + tally.get("corrected", 0)) >= 1
 
 
-def _outcome_config(args):
-    cfg = C.load_config(root=args.root, warn=False) or {}
+def _outcome_config(root):
+    cfg = C.load_config(root=root, warn=False) or {}
     window = C.dig(cfg, "methodology.outcomeWindow")
     step = C.dig(cfg, "methodology.outcomeMultiplierStep")
     return (
@@ -586,8 +586,8 @@ DEFAULT_RECENCY_DECAY_GRACE_RETROS = 3   # methodology.recencyDecayGraceRetros (
 DEFAULT_RECENCY_DECAY_FACTOR = 0.85      # methodology.recencyDecayFactor
 
 
-def _recency_decay_config(args):
-    cfg = C.load_config(root=args.root, warn=False) or {}
+def _recency_decay_config(root):
+    cfg = C.load_config(root=root, warn=False) or {}
     k = C.dig(cfg, "methodology.recencyDecayGraceRetros")
     factor = C.dig(cfg, "methodology.recencyDecayFactor")
     return (
@@ -828,11 +828,31 @@ def _stale_slugs(root, identities, role, notes):
 
 
 # ------------------------------------------------------------------------- mint
-def cmd_mint(identities, args):
-    body = sys.stdin.read().rstrip("\n") + "\n"
-    d = notes_dir(identities, args.role)
+def mint(identities, role, slug, root, body, tags="", paths="", entities="",
+          source="", learned_from="", source_note="", confidence=None):
+    """Library entry point for `brain.py mint` (AST-003): an importable,
+    engine-callable function with explicit typed parameters (no argparse
+    Namespace) that returns a structured result instead of printing or
+    exiting. Performs every side effect `cmd_mint` has always performed --
+    writing the note file, auto-adding links.json entries for [[wikilinks]]
+    in `body`, and emitting NoteMinted/LinkFormed brain events -- unchanged.
+    `cmd_mint` is now a thin renderer over this function, so CLI stdout
+    stays byte-identical to before this extraction.
+
+    Returns a dict:
+      {
+        "role": role, "slug": slug, "strength": int (post-mint strength),
+        "formed_links": [link-key, ...],  # new links.json entries created
+        "path": note file path written,
+        "confidence": the confidence value written ("direct"/"inferred"),
+        "confidence_downgrade_notice": the exact GL-012 stderr notice
+            string when an explicit confidence="inferred" downgraded a
+            previously-direct note, else None.
+      }
+    """
+    d = notes_dir(identities, role)
     os.makedirs(d, exist_ok=True)
-    path = os.path.join(d, args.slug + ".md")
+    path = os.path.join(d, slug + ".md")
 
     strength = DEFAULT_STRENGTH
     created = today()
@@ -851,18 +871,19 @@ def cmd_mint(identities, args):
     # that downgrade, and it prints a notice when it does. A first-time mint
     # (or any note that resolves to inferred) writes no key at all -- missing
     # key IS the inferred default (AC1/AC2).
-    if args.confidence is not None:
-        new_confidence = args.confidence
+    notice = None
+    if confidence is not None:
+        new_confidence = confidence
         if old_confidence == "direct" and new_confidence == "inferred":
-            sys.stderr.write("notice: downgrading %s/%s confidence direct -> inferred\n" % (args.role, args.slug))
+            notice = "notice: downgrading %s/%s confidence direct -> inferred\n" % (role, slug)
     else:
         new_confidence = old_confidence if old_confidence is not None else DEFAULT_CONFIDENCE
 
     fm = {
-        "tags": _split(args.tags),
-        "paths": _split(args.paths),
+        "tags": _split(tags),
+        "paths": _split(paths),
         "strength": strength,
-        "source": args.source or "",
+        "source": source or "",
         "graduated": False,
         "created": created,
         # GL-010: every mint -- first or re-mint (the strength-bump path) --
@@ -871,31 +892,48 @@ def cmd_mint(identities, args):
     }
     if new_confidence == "direct":
         fm["confidence"] = "direct"
-    entities = _split(args.entities)
-    if entities:
-        fm["entities"] = entities
-    if args.learned_from:
-        fm["learned-from"] = args.learned_from
-    if args.source_note:
-        fm["source-note"] = args.source_note
+    entities_list = _split(entities)
+    if entities_list:
+        fm["entities"] = entities_list
+    if learned_from:
+        fm["learned-from"] = learned_from
+    if source_note:
+        fm["source-note"] = source_note
 
     open(path, "w", encoding="utf-8").write(render_note(fm, body))
 
     # auto-add links.json entries for [[wikilinks]] in the body (never reset existing)
-    links = load_links(identities, args.role)
+    links = load_links(identities, role)
     formed = []
     for target in WIKILINK.findall(body):
-        key = "%s->%s" % (args.slug, target.strip())
+        key = "%s->%s" % (slug, target.strip())
         if key not in links:
             links[key] = {"weight": DEFAULT_WEIGHT, "fires": 0, "last": None}
             formed.append(key)
-    save_links(identities, args.role, links)
+    save_links(identities, role, links)
 
-    emit_event(args.root, {"role": args.role, "type": "NoteMinted", "slug": args.slug, "strength": strength})
+    emit_event(root, {"role": role, "type": "NoteMinted", "slug": slug, "strength": strength})
     for key in formed:
-        emit_event(args.root, {"role": args.role, "type": "LinkFormed", "key": key})
+        emit_event(root, {"role": role, "type": "LinkFormed", "key": key})
 
-    print("minted %s/%s (strength %d, %d new link(s))" % (args.role, args.slug, strength, len(formed)))
+    return {
+        "role": role, "slug": slug, "strength": strength,
+        "formed_links": formed, "path": path,
+        "confidence": new_confidence,
+        "confidence_downgrade_notice": notice,
+    }
+
+
+def cmd_mint(identities, args):
+    body = sys.stdin.read().rstrip("\n") + "\n"
+    result = mint(identities, args.role, args.slug, args.root, body,
+                   tags=args.tags, paths=args.paths, entities=args.entities,
+                   source=args.source, learned_from=args.learned_from,
+                   source_note=args.source_note, confidence=args.confidence)
+    if result["confidence_downgrade_notice"]:
+        sys.stderr.write(result["confidence_downgrade_notice"])
+    print("minted %s/%s (strength %d, %d new link(s))" %
+          (result["role"], result["slug"], result["strength"], len(result["formed_links"])))
 
 
 def _split(csv):
@@ -1016,21 +1054,40 @@ def _spread_activation(links, seed_activation, max_hops=MAX_HOPS, mutate=False, 
 
 
 # ----------------------------------------------------------------------- recall
-def cmd_recall(identities, args):
-    if getattr(args, "query", None):
-        return cmd_query(identities, args)
-    role = args.role
+def recall(identities, role, root, paths="", keywords="", budget=600, k=8):
+    """Library entry point for `brain.py recall`'s fuzzy activation path
+    (AST-003): an importable, engine-callable function with explicit typed
+    parameters (no argparse Namespace) that returns a structured result
+    instead of printing. Covers everything `cmd_recall` has always done
+    EXCEPT the `--query` precise-filter branch, which stays a separate CLI
+    dispatch to `cmd_query` (unchanged, out of scope here). Performs every
+    side effect `cmd_recall` has always performed -- link-fire bumps on
+    links.json, activation events written to .activation.jsonl, and
+    RecallPerformed/LinkFired brain events -- unchanged. `cmd_recall` is
+    now a thin renderer over this function for the fuzzy-recall path, so
+    CLI stdout stays byte-identical to before this extraction.
+
+    Returns a dict:
+      {
+        "blocks": [rendered note block str, ...],  # ranked, budget-clipped;
+            "\\n".join(blocks) reproduces cmd_recall's stdout exactly
+            (falling back to "(no lessons recalled)" when empty)
+        "seeds": int,                # seed-event count
+        "injected": int,             # inject-event count
+        "links_fired": [key, ...],   # traversed link keys, sorted
+      }
+    """
     notes = load_notes(identities, role)
     links = load_links(identities, role)
-    paths = _split(args.paths)
-    keywords = set(k.lower() for k in _split(args.keywords))
+    paths_list = _split(paths)
+    keywords_lower = set(kw.lower() for kw in _split(keywords))
 
     # outcome weighting (SPEC-GRAPHIFY §7 R7.4/R7.5/R7.7): parsed ONCE per
     # invocation (§14 latency budget). A malformed outcomes.jsonl warns once
     # and disables weighting entirely for this run -- empty tallies means
     # _outcome_multiplier() returns 1.0 everywhere and _is_contested() is
     # always False, i.e. exactly today's behavior (never crash, exit 0).
-    window, mult_step = _outcome_config(args)
+    window, mult_step = _outcome_config(root)
     tallies, outcomes_malformed = outcome_window_tallies(identities, role, window)
     if outcomes_malformed:
         sys.stderr.write(
@@ -1044,14 +1101,14 @@ def cmd_recall(identities, args):
     # already warned about once (above) -- reuse that verdict instead of
     # parsing again and warning a second time for the exact same file.
     retros = _load_retros(identities)
-    decay_k, decay_factor = _recency_decay_config(args)
+    decay_k, decay_factor = _recency_decay_config(root)
     useful_dates = {} if outcomes_malformed else _useful_touch_dates(identities, role)[0]
 
     # staleness (GL-011): parsed ONCE per invocation over the whole corpus,
     # same latency budget as the two blocks above. Failure of any kind (no
     # git, non-repo, cache miss that also fails) degrades to {} -- every
     # note renders exactly as it did before this feature existed (R8.5).
-    stale_map = _stale_slugs(args.root, identities, role, notes)
+    stale_map = _stale_slugs(root, identities, role, notes)
 
     def _decay(slug, fm):
         touch_date = _note_touch_date(slug, fm, links, useful_dates)
@@ -1065,7 +1122,7 @@ def cmd_recall(identities, args):
         fm = notes[slug]["fm"]
         note_globs = fm.get("paths", []) or []
         tags = set(t.lower() for t in (fm.get("tags", []) or []))
-        hit = any(glob_match(p, g) for p in paths for g in note_globs) or bool(tags & keywords)
+        hit = any(glob_match(p, g) for p in paths_list for g in note_globs) or bool(tags & keywords_lower)
         if hit:
             act = 1.0 * (1 + int(fm.get("strength", DEFAULT_STRENGTH)) / 10)
             act *= _outcome_multiplier(tallies.get(slug, {}), mult_step)
@@ -1081,11 +1138,11 @@ def cmd_recall(identities, args):
     # golden-identical-when-absent guarantee holds by construction.
     db_path = index_db_path(identities, role)
     if os.path.exists(db_path):
-        query_text = " ".join(_split(args.keywords))
+        query_text = " ".join(_split(keywords))
         if query_text:
             vectors = _embed_texts([query_text])
             if vectors is not None:
-                for slug, _sim in _top_k_neighbors(db_path, vectors[0], args.k):
+                for slug, _sim in _top_k_neighbors(db_path, vectors[0], k):
                     if slug not in notes:
                         continue
                     fm = notes[slug]["fm"]
@@ -1108,7 +1165,7 @@ def cmd_recall(identities, args):
         save_links(identities, role, links)
 
     # (3) rank + emit within the token budget; graduated notes are not injected
-    budget_chars = args.budget * CHARS_PER_TOKEN
+    budget_chars = budget * CHARS_PER_TOKEN
     ranked = sorted(activation, key=lambda s: (-activation[s], s))
     out = []
     used = 0
@@ -1139,12 +1196,20 @@ def cmd_recall(identities, args):
 
     seeds = sum(1 for e in events if e["event"] == "seed")
     injected = sum(1 for e in events if e["event"] == "inject")
-    emit_event(args.root, {"role": role, "type": "RecallPerformed",
-                           "seeds": seeds, "injected": injected, "links_fired": len(traversed)})
+    emit_event(root, {"role": role, "type": "RecallPerformed",
+                       "seeds": seeds, "injected": injected, "links_fired": len(traversed)})
     for key in sorted(traversed):
-        emit_event(args.root, {"role": role, "type": "LinkFired", "key": key})
+        emit_event(root, {"role": role, "type": "LinkFired", "key": key})
 
-    text = "\n".join(out)
+    return {"blocks": out, "seeds": seeds, "injected": injected, "links_fired": sorted(traversed)}
+
+
+def cmd_recall(identities, args):
+    if getattr(args, "query", None):
+        return cmd_query(identities, args)
+    result = recall(identities, args.role, args.root, paths=args.paths,
+                     keywords=args.keywords, budget=args.budget, k=args.k)
+    text = "\n".join(result["blocks"])
     print(text if text else "(no lessons recalled)")
 
 
