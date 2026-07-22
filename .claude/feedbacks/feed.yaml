@@ -1002,3 +1002,50 @@ items:
   routing:
     action: brain-note
     ref: dev/advisory-scripts-catch-oserror
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T14:20:00Z'
+iteration:
+  task: AST-007
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: testing
+  severity: medium
+  summary: The empty-expected vacuous assertion pattern shipped in a third consecutive
+    new test section despite a minted lesson in the dev brief
+  detail: Same substring-helper footgun each time; each caught only by reviewer sweep.
+    The mechanical fix (helper guard) is already a backlog item but has not been prioritized,
+    so every new section pays a review round for it.
+  evidence:
+  - Zugruul/development-skills#307
+  - Zugruul/development-skills#306
+  - Zugruul/development-skills#303
+  - Zugruul/development-skills#366
+  generalized: When the same syntactic footgun ships three times past briefs that
+    explicitly warn about it, knowledge injection has hit its ceiling — the shared
+    helper itself must enforce the rule (fail or warn on an empty expected); bump
+    the existing lint/backlog item's priority rather than re-minting lessons.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#366
+- category: worked-well
+  area: review
+  severity: low
+  summary: Mutation-kill verification of a test fix (patch the impl to violate the
+    invariant, watch the check fail, restore)
+  detail: Reviewer patched write_default to leave a tmp file and confirmed the hardened
+    assertion flipped to FAIL, then restored byte-identical.
+  evidence:
+  - Zugruul/development-skills#307
+  generalized: A hardened assertion is only proven by making the guarded invariant
+    false once and watching it fail — mutation-kill is the cheapest such proof for
+    test-only fixes.
+  routing:
+    action: brain-note
+    ref: reviewer/empty-expected-recurrence-needs-lint
