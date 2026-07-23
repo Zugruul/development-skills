@@ -1296,4 +1296,5 @@ check "open3dWindow tags its window .mw-3d so the flex-fill CSS and open-time si
 check "boot3dViewer sizes the detached panel from the loaded model's bounding box before the first frame" "applyModelPanelSize(win, bb)" "$(cat "$NVHTML")"
 check "the 3D detached window flex-fills so its canvas tracks the panel's actual size (not a fixed vh-based height)" ".media-window.mw-3d{display:flex;flex-direction:column}" "$(cat "$NVHTML")"
 check "the 3D canvas absolute-fills the panel (in-flow sizing fights the canvas intrinsic aspect-ratio and leaves a dead strip)" ".media-window.mw-3d .n3d canvas{position:absolute;inset:0;width:100%;height:100%}" "$(cat "$NVHTML")"
+check "the 3D label carries a live FPS readout beside the file name, windowed over ~500ms" 'lab.textContent = labBase + " (" + Math.round(fpsFrames*1000/(fnow - fpsT0)) + "FPS)";' "$(cat "$NVHTML")"
 

@@ -4336,6 +4336,11 @@ async function boot3dViewer(box){
   cv.addEventListener("dblclick", ()=>{ target.set(0,0,0); yaw=.8; pitch=.32; dist=FIT; setAuto(true); });
   cv.addEventListener("contextmenu", ev=>ev.preventDefault());
   cv.title = "drag: rotate · right/shift-drag: pan · wheel: zoom · double-click: reset";
+  // live FPS readout beside the file name on the canvas label ("3D · duck.glb (60FPS)"),
+  // recomputed over ~half-second windows so the number is readable, not jittery
+  const lab = box.querySelector(".n3d-label");
+  const labBase = lab ? lab.textContent : "";
+  let fpsFrames = 0, fpsT0 = performance.now();
   (function tick(){
     if(!cv.isConnected){ ren.dispose(); ro.disconnect(); return; }   // window closed / re-render
     requestAnimationFrame(tick);
@@ -4343,6 +4348,12 @@ async function boot3dViewer(box){
     if(auto) yaw += .004;
     applyCam();
     ren.render(scene, cam);
+    fpsFrames++;
+    const fnow = performance.now();
+    if(lab && fnow - fpsT0 >= 500){
+      lab.textContent = labBase + " (" + Math.round(fpsFrames*1000/(fnow - fpsT0)) + "FPS)";
+      fpsFrames = 0; fpsT0 = fnow;
+    }
   })();
 }
 // ---- detached note windows ----
