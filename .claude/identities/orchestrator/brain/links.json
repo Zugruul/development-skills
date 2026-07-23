@@ -59,6 +59,11 @@
     "last": null,
     "weight": 0.5
   },
+  "live-validation-is-loop-input->clean-main-repro-before-blame": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "merge-via-temp-worktree-when-main-held->board-moves-before-branch-delete": {
     "fires": 0,
     "last": null,

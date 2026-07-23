@@ -1636,3 +1636,52 @@ items:
   routing:
     action: brain-note
     ref: orchestrator/serialize-suite-runs-per-tree
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-23T02:00:00Z'
+iteration:
+  task: '377'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: briefing
+  severity: medium
+  summary: Explicit mandatory-report brief instruction still did not produce a dev
+    deliverable report
+  detail: The dev brief stated in LESSONS and DELIVERABLE that sending the report
+    is the mandatory final action; the dev still went idle without one, while the
+    reviewer given the same instruction complied. Orchestrator proceeded from ground
+    truth (branch + gate-pass inspection).
+  evidence:
+  - Zugruul/development-skills#375
+  - Zugruul/development-skills#377
+  generalized: A prose mandate in the brief does not reliably produce a final deliverable
+    report from implementation agents; the report habit needs mechanical support (harness-level
+    completion payload or an orchestrator ground-truth-first protocol), not stronger
+    wording.
+  routing:
+    action: ignore
+    ref: Zugruul/development-skills#375
+- category: worked-well
+  area: other
+  severity: medium
+  summary: Live user validation fed straight back into the loop as filed, fixed, merged
+    work
+  detail: A human validation session on a real deployment surfaced a config-default
+    trap; it became a filed bug, a briefed fix, a review, and a merge within the same
+    session, plus a separate tracked enhancement.
+  evidence:
+  - Zugruul/development-skills#376
+  - Zugruul/development-skills#377
+  generalized: Treat human live-validation reports as first-class loop input — triage
+    each finding into filed bugs or enhancements immediately and fix the small sharp
+    ones in-session; the validation-to-merge distance shrinking to one session is
+    a sign the loop is healthy.
+  routing:
+    action: brain-note
+    ref: orchestrator/live-validation-is-loop-input
