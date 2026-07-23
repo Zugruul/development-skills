@@ -162,6 +162,7 @@ SECTIONS=(
     section-setup-assistant.sh
     section-assistant-preflight.sh
     section-assistant-default.sh
+    section-assistant-discovery.sh
     section-assistant-engine.sh
     section-assistant-adapter.sh
     section-assistant-claude.sh

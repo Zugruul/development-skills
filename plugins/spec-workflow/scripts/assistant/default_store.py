@@ -34,13 +34,13 @@ Library:
         `name` is empty.
 
     discover_candidate(root) -> (root, assistant_section) | None
-        Minimal single-repo discovery reusing assistant.marker +
-        assistant.config.validate_assistant (AST-006 preflight's own
-        contract): a marker'd repo with a structurally valid, enabled
-        `assistant:` section is a candidate; anything else (no marker, no
-        config, invalid section, disabled) is silently not a candidate.
-        Full multi-repo discovery UX is AST-020 (E2) -- this is deliberately
-        minimal, just enough to drive resolve_assistant()'s tests.
+        Single-repo discovery: a behavior-identical wrapper over
+        assistant.discovery.classify_repo (AST-020) -- kind == "candidate"
+        returns (root, section), anything else (no marker, no config,
+        invalid section, disabled) silently returns None. AST-020 owns the
+        one classification code path (with rejection reasons, for the full
+        multi-repo discovery UX); this stays the minimal boolean-ish shape
+        resolve_assistant()'s tests were written against.
 
     discover_candidates(roots) -> list[(root, assistant_section)]
         discover_candidate() mapped over `roots`, dropping non-candidates.
@@ -80,11 +80,8 @@ if _SCRIPTS_DIR in sys.path:
     sys.path.remove(_SCRIPTS_DIR)
 sys.path.insert(0, _SCRIPTS_DIR)
 
-import config as project_config  # noqa: E402  scripts/config.py, the shared loader
-from assistant import marker  # noqa: E402
-from assistant.config import validate_assistant  # noqa: E402
+from assistant import discovery  # noqa: E402  AST-020: single classification code path
 
-MARKER_NAME = ".neural-network"
 DEFAULT_FILE_NAME = "assistant-default"
 
 
@@ -164,28 +161,10 @@ def write_default(name, state_dir=None):
 # --- minimal discovery (AST-020 owns the full UX) -------------------------------
 
 def discover_candidate(root):
-    marker_path = os.path.join(root, ".claude", MARKER_NAME)
-    if not os.path.isfile(marker_path):
+    c = discovery.classify_repo(root)
+    if c.kind != "candidate":
         return None
-    try:
-        marker.read_marker(marker_path)
-    except OSError:
-        return None
-
-    cfg_path = project_config.find_config(root)
-    if cfg_path is None:
-        return None
-    try:
-        cfg = project_config.load_config(root=root, path=cfg_path, warn=False)
-    except (project_config.ConfigError, OSError):
-        return None
-
-    section = (cfg or {}).get("assistant")
-    if section is None or validate_assistant(section):
-        return None
-    if section.get("enabled") is not True:
-        return None
-    return (root, section)
+    return (root, c.section)
 
 
 def discover_candidates(roots):
