@@ -485,7 +485,9 @@ function showTooltip(x, y, html) { lastTooltipKind = html; canvas.classList.add(
 function tooltipHtml(ud) { return ud.kind; }
 function projectToScreen(x, y, z) { return { x, y, depth: 1 }; }
 function worldToPixels(worldSize) { return worldSize; }
+function clusterKey(repo, role) { return repo + "|" + role; }
 
+eval(extract("pickClusterCull"));
 eval(extract("pickNoteAt"));
 eval(extract("distToSegment"));
 eval(extract("pickSynapseAt"));
@@ -1297,4 +1299,8 @@ check "boot3dViewer sizes the detached panel from the loaded model's bounding bo
 check "the 3D detached window flex-fills so its canvas tracks the panel's actual size (not a fixed vh-based height)" ".media-window.mw-3d{display:flex;flex-direction:column}" "$(cat "$NVHTML")"
 check "the 3D canvas absolute-fills the panel (in-flow sizing fights the canvas intrinsic aspect-ratio and leaves a dead strip)" ".media-window.mw-3d .n3d canvas{position:absolute;inset:0;width:100%;height:100%}" "$(cat "$NVHTML")"
 check "the 3D label carries a live FPS readout beside the file name, windowed over ~500ms" 'lab.textContent = labBase + " (" + Math.round(fpsFrames*1000/(fnow - fpsT0)) + "FPS)";' "$(cat "$NVHTML")"
+check "hover picks cull whole off-cursor clusters before sweeping notes (perf: no full 7k-note projection per pointermove)" "function pickClusterCull(clientX, clientY){" "$(cat "$NVHTML")"
+check "hoverTest computes the cull set once and shares it across note and synapse picks" "const cull = pickClusterCull(clientX, clientY);" "$(cat "$NVHTML")"
+check "only an intra-cluster synapse may be culled — cross-cluster segments are always tested" "if(ka === clusterKey(l.b.repo, l.b.role) && cull.has(ka)) continue;" "$(cat "$NVHTML")"
+check "voice viz reads the settings snapshot once per frame, not once per bar" "const t = voiceTune();   // hoisted: settings snapshot per frame, not per bar" "$(cat "$NVHTML")"
 

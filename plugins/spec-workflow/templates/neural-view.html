@@ -2916,12 +2916,35 @@ function distToSegment(px, py, ax, ay, bx, by){
   t = Math.max(0, Math.min(1, t));
   return Math.hypot(px-(ax+dx*t), py-(ay+dy*t));
 }
+// screen-space cluster culling for picks: project each role-cluster's live
+// centroid ONCE and mark clusters whose projected circle (+ generous margin)
+// misses the cursor — a pick then tests the few hundred notes of nearby
+// clusters instead of every note in the scene (at 7k+ notes the full sweep
+// was ~30k matrix projections per throttled pointermove — the "sloppy"
+// hover feel). Correctness: a note can't sit outside its own cluster's rad
+// (updateVisuals computes rad as the max note distance + note radius + 16),
+// an unprojectable centroid keeps its cluster IN range (its nodes then cull
+// themselves node-by-node), and pre-first-step (no live centroids yet) skips
+// culling entirely.
+function pickClusterCull(clientX, clientY){
+  if(!liveClusterCenters || !liveClusterCenters.size) return null;
+  const out = new Set();
+  for(const [ck, s] of liveClusterCenters){
+    if(!s.n) continue;
+    const p = projectToScreen(s.x, s.y, s.z);
+    if(!p) continue;
+    const rPix = worldToPixels(s.rad, p.depth);
+    if(Math.hypot(p.x-clientX, p.y-clientY) > rPix*1.25 + 40) out.add(ck);
+  }
+  return out;
+}
 // nearest note whose drawn ball (+ small minimum grab radius for tiny far
 // dots) covers the cursor.
-function pickNoteAt(clientX, clientY){
+function pickNoteAt(clientX, clientY, cull){
   if(!webglOK) return null;
   let best = null, bestD = Infinity;
   for(const nd of nodes){
+    if(cull && cull.has(clusterKey(nd.repo, nd.role))) continue;
     const p = projectToScreen(nd.x, nd.y, nd.z);
     if(!p) continue;
     const d = Math.hypot(p.x-clientX, p.y-clientY);
@@ -2932,11 +2955,17 @@ function pickNoteAt(clientX, clientY){
 }
 // nearest synapse whose projected line segment passes within a few px of the
 // cursor (the drifting pulse dot rides the same segment, so it needs no
-// separate pick target).
-function pickSynapseAt(clientX, clientY){
+// separate pick target). Culling rule: only an INTRA-cluster link may be
+// skipped (it can't leave its cluster's circle); a cross-cluster segment can
+// pass anywhere on screen and is always tested.
+function pickSynapseAt(clientX, clientY, cull){
   if(!webglOK) return null;
   let best = null, bestD = Infinity;
   for(const l of links){
+    if(cull){
+      const ka = clusterKey(l.a.repo, l.a.role);
+      if(ka === clusterKey(l.b.repo, l.b.role) && cull.has(ka)) continue;
+    }
     const a = projectToScreen(l.a.x, l.a.y, l.a.z), b = projectToScreen(l.b.x, l.b.y, l.b.z);
     if(!a || !b) continue;
     const d = distToSegment(clientX, clientY, a.x, a.y, b.x, b.y);
@@ -2984,13 +3013,14 @@ function pickRoleLabelAt(clientX, clientY){
 function hoverTest(clientX, clientY){
   if(!webglOK || !sceneGroup){ hideTooltip(); return; }
   // priority: note > synapse > brain (role) label > repo label/region.
-  const nd = pickNoteAt(clientX, clientY);
+  const cull = pickClusterCull(clientX, clientY);
+  const nd = pickNoteAt(clientX, clientY, cull);
   if(nd){
     hoveredNode = nd; hoveredLink = null;
     showTooltip(clientX, clientY, tooltipHtml({kind:"note", node:nd}));
     return;
   }
-  const l = pickSynapseAt(clientX, clientY);
+  const l = pickSynapseAt(clientX, clientY, cull);
   if(l){
     hoveredNode = null; hoveredLink = l;
     showTooltip(clientX, clientY, tooltipHtml({kind:"synapse", link:l}));
@@ -3392,6 +3422,7 @@ function drawViz(){
   // inbound half goes quiet so speaker output can't masquerade as voice input
   if(echoGuardOn() && voiceSources.outbound.speaking) inBins.fill(0);
   const vdir = voiceDir(), mid = h/2, half = h*.44;
+  const t = voiceTune();   // hoisted: settings snapshot per frame, not per bar
   const gap = 3, bw = Math.max(2, (w - 28 - gap*(VIZ_BARS-1))/VIZ_BARS);
   vizCtx2d.fillStyle = "rgba(90,190,255,.25)";
   vizCtx2d.fillRect(10, mid-.5, w-20, 1);
@@ -3404,7 +3435,6 @@ function drawViz(){
     // per-column shimmer: slow phase-offset wave + a pinch of noise so the
     // two mirrored halves never read as perfectly rigid copies; its power
     // (and the in/out gains) come from the settings-panel sliders
-    const t = voiceTune();
     const sh = 1 - .2*t.shimmer + (.16*Math.sin(performance.now()*.006 + b*1.7) + .08*Math.random())*t.shimmer;
     const inV = Math.min(255, inBins[b]*t.gainIn), outV = Math.min(255, outBins[b]*t.gainOut);
     if(vdir==="out"){
