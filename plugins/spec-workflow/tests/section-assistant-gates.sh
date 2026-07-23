@@ -161,3 +161,62 @@ ag_r2b_rc=$?
 check_rc "r2: unwritable --out exits 2" 2 "$ag_r2b_rc"
 check "r2: unwritable --out yields a clean one-line error" "cannot write --out" "$ag_r2b_out"
 check_absent "r2: unwritable --out leaks no traceback" "Traceback (most recent call last)" "$ag_r2b_out"
+
+# ---------------------------------------------------------- regression: fixture hermeticity (BUG #373)
+# The Server fixture starts neural-view with --dir <fixture root> only, no
+# --scan. neural-view defaults an unset scan base to ~/Development, so on
+# any machine with a real marker repo living there (an assistant: enabled
+# project.yaml with a name distinct from the fixture) that repo becomes a
+# SECOND discovered assistant candidate. Simulated here with a fake HOME so
+# the check does not depend on what happens to exist on this machine.
+echo "-- regression: stub fixture server never leaks into the real ~/Development scan default (BUG #373) --"
+AG_HERMETIC="$(mktemp -d)"
+AG_FAKEHOME="$AG_HERMETIC/fakehome"
+mkdir -p "$AG_FAKEHOME/Development/realbot/.claude"
+cat >"$AG_FAKEHOME/Development/realbot/.claude/.neural-network" <<'MARKEOF'
+# neural-network
+MARKEOF
+cat >"$AG_FAKEHOME/Development/realbot/.claude/project.yaml" <<'YAMLEOF'
+schemaVersion: 2
+assistant:
+    version: 1
+    enabled: true
+    names: [realbot]
+    systemPrompt: |
+        You are realbot.
+    llm:
+        provider: openai
+        model: gpt-5.6-sol
+    capabilities:
+        codex:
+            enabled: true
+            provisioning:
+                bin: codex
+YAMLEOF
+# A fake HOME hides the real user site-packages dir from the spawned
+# neural-view subprocess (its PyYAML lives there), so it is passed through
+# explicitly on PYTHONPATH -- otherwise the probe fails on a PyYAML
+# preflight unrelated to the hermeticity behavior under test.
+AG_REAL_USERSITE="$(python3 -c "import site; print(site.getusersitepackages())")"
+cat >"$AG_HERMETIC/probe.py" <<'PYEOF'
+import sys
+sys.path.insert(0, sys.argv[1])
+from assistant import gates
+
+root = gates._stub_fixture_root()
+server = gates.Server(root, env_extra={"PYTHONPATH": sys.argv[2]})
+try:
+    server.start()
+    code, payload = gates._http("GET", server.url("/assistant/status"))
+    print("STATUS_CODE", code)
+    print("ASSISTANTS", payload.get("assistants"))
+finally:
+    server.stop()
+    server.cleanup()
+PYEOF
+ag_hermetic_out="$(HOME="$AG_FAKEHOME" python3 "$AG_HERMETIC/probe.py" "$AG_SCRIPTS" "$AG_REAL_USERSITE" 2>&1)"
+ag_hermetic_rc=$?
+check_rc "hermetic: probe exits 0 (server starts and status resolves cleanly)" 0 "$ag_hermetic_rc"
+check "hermetic: only the fixture assistant is discovered, the fake real repo never leaks in" "ASSISTANTS 1" "$ag_hermetic_out"
+
+rm -rf "$AG_HERMETIC"

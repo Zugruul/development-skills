@@ -232,6 +232,18 @@ class Server:
         self.root = root
         self.scan = scan
         self.state_dir = tempfile.mkdtemp(prefix="ast017-state-")
+        # Bug #373: when the caller does not pin an explicit scan base,
+        # neural-view's discover_repos() defaults an unset scan to
+        # ~/Development and scans it for marker repos -- on any machine
+        # with a real assistant-enabled repo living there, that repo leaks
+        # in as a second discovery candidate alongside this fixture,
+        # breaking the harness's hermeticity. An isolated, always-empty
+        # tempdir keeps --dir <root> the ONLY candidate the fixture ever
+        # sees, without touching discover_repos()'s real default (that
+        # default is intended production behavior, not part of this fix).
+        self._isolated_scan_dir = None
+        if self.scan is None:
+            self._isolated_scan_dir = tempfile.mkdtemp(prefix="ast017-empty-scan-")
         self.port = _free_port()
         self.env_extra = dict(env_extra or {})
         self.env = None
@@ -246,7 +258,8 @@ class Server:
     def start(self, timeout=15.0):
         env = self._build_env()
         argv = [sys.executable, NEURAL_VIEW, "start"]
-        argv += ["--scan", self.scan] if self.scan else ["--dir", self.root]
+        argv += ["--dir", self.root]
+        argv += ["--scan", self.scan or self._isolated_scan_dir]
         out = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=timeout)
         expect = f"RUNNING http://127.0.0.1:{self.port}"
         if expect not in out.stdout:
@@ -273,6 +286,8 @@ class Server:
 
     def cleanup(self):
         shutil.rmtree(self.state_dir, ignore_errors=True)
+        if self._isolated_scan_dir is not None:
+            shutil.rmtree(self._isolated_scan_dir, ignore_errors=True)
 
 
 def _http(method, url, body=None, timeout=30.0):
