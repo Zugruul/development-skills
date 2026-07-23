@@ -1559,3 +1559,80 @@ items:
     action: ignore
     ref: already tracked as Zugruul/development-skills#365 (brain write-path race)
       — no new filing needed
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-23T01:20:00Z'
+iteration:
+  task: AST-020
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: testing
+  component: plugins/spec-workflow/scripts/assistant/gates.py
+  severity: high
+  summary: Gate suite hermeticity broke when real developer-machine state changed
+  detail: A user scaffolding a real assistant repo under the default scan base made
+    the gates fixture discover two assistants, cascade-failing 35 assertions and blocking
+    the recorded gate machine-wide until a P0 hotfix landed.
+  evidence:
+  - Zugruul/development-skills#373
+  - Zugruul/development-skills#315
+  generalized: A test fixture that spawns a server with discovery/scan behavior must
+    pin EVERY implicit search path to isolated fixture-owned roots; a suite that claims
+    to be hermetic needs a regression test that simulates a polluted developer machine,
+    because environment-coupled defaults break gates only on machines whose state
+    changed.
+  routing:
+    action: brain-note
+    ref: dev/hermetic-fixture-pins-all-search-paths
+- category: worked-well
+  area: testing
+  severity: medium
+  summary: Clean-mainline reproduction protocol correctly exonerated the task branch
+  detail: The red gate on the task branch was reproduced identically on a throwaway
+    clean-main worktree, converting blame into a separate P0 hotfix without stalling
+    the task.
+  evidence:
+  - Zugruul/development-skills#373
+  - Zugruul/development-skills#317
+  generalized: When a gate goes red on a task branch, reproducing on a clean mainline
+    checkout in a throwaway worktree before blaming the diff cheaply separates pre-existing
+    environmental regressions from task defects and keeps the task lane unblocked.
+  routing:
+    action: brain-note
+    ref: orchestrator/clean-main-repro-before-blame
+- category: friction
+  area: briefing
+  severity: medium
+  summary: Subagents repeatedly went idle without sending their deliverable report
+  detail: Dev and reviewer agents finished (or paused) work but signaled only idle,
+    requiring an orchestrator nudge per occurrence (four nudges across one iteration)
+    before the report arrived.
+  evidence:
+  - Zugruul/development-skills#317
+  - Zugruul/development-skills#373
+  generalized: Subagent briefs should state that sending the deliverable report is
+    the mandatory FINAL action of the task, and orchestrators should treat a bare
+    idle notification as ground-truth-check time (inspect the branch) rather than
+    waiting.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#375
+- category: friction
+  area: testing
+  severity: low
+  summary: Concurrent full-suite runs in shared trees muddied failure attribution
+  detail: An orchestrator background suite run overlapped a dev agent gate run in
+    the same tree; partial captured output initially showed differing failure counts.
+  evidence:
+  - Zugruul/development-skills#317
+  generalized: Serialize full-suite/gate runs per working tree; two concurrent runs
+    in one tree produce partial or interleaved output that wastes a diagnosis round.
+  routing:
+    action: brain-note
+    ref: orchestrator/serialize-suite-runs-per-tree

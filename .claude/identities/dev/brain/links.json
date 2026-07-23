@@ -249,6 +249,16 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
+  "hermetic-fixture-pins-all-search-paths->inspect-red-before-trusting": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "hermetic-fixture-pins-all-search-paths->test-section-shell-plumbing-risk": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "hotfix-repro-incident-sequence->stderr-suppression-hides-evidence": {
     "fires": 17,
     "last": "2026-07-22",
@@ -257,6 +267,16 @@
   "hotfix-repro-incident-sequence->unassumed-full-pipeline-repro": {
     "fires": 17,
     "last": "2026-07-22",
+    "weight": 0.5
+  },
+  "inspect-red-before-trusting->capture-dont-transcribe": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "inspect-red-before-trusting->hermetic-fixture-pins-all-search-paths": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "key-order-is-serialization-contract->hand-write-links-fixtures": {
@@ -402,6 +422,11 @@
   "read-config-live-not-hardcoded-in-tests->verify-design-doc-quotes-against-live-file": {
     "fires": 13,
     "last": "2026-07-22",
+    "weight": 0.5
+  },
+  "read-validator-before-fixtures->capture-dont-transcribe": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "red-commit-as-you-go->batch-red-across-surfaces": {
