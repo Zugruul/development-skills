@@ -2830,3 +2830,83 @@
 {"event": "inject", "note": "anonymous-listener-slice-eval", "activation": 1.2, "ts": "2026-07-23T00:00:27+00:00", "role": "dev"}
 {"event": "inject", "note": "batch-red-across-surfaces", "activation": 1.2, "ts": "2026-07-23T00:00:27+00:00", "role": "dev"}
 {"event": "inject", "note": "capture-dont-transcribe", "activation": 1.2, "ts": "2026-07-23T00:00:27+00:00", "role": "dev"}
+{"event": "seed", "note": "capture-dont-transcribe", "activation": 1.2, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "circular-fixture-detector", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "extend-house-fixture-style", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "fake-cli-exit-code-is-contract", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "hand-write-links-fixtures", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "hermetic-fixture-pins-all-search-paths", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "neutralize-confounding-multipliers-in-fixtures", "activation": 0.0817, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "new-rule-can-break-existing-noop-fixtures", "activation": 0.0137, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "read-validator-before-fixtures", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "separate-live-repo-state-tests-from-fixtures", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "single-cause-fixtures", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "skip-not-crash-on-missing-external-tool-dependency", "activation": 0.0005, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "tiebreak-slugs-must-oppose-assertion", "activation": 0.0817, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "unassumed-full-pipeline-repro", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "verify-fixture-isolates-intended-path", "activation": 1.21, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "vocab-dict-fake-embedder", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "write-fixtures-direct-for-read-path-tests", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "deterministic-repro-fast", "activation": 0.3, "link": "capture-dont-transcribe->deterministic-repro-fast", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "bool-excluded-before-int", "activation": 0.275, "link": "circular-fixture-detector->bool-excluded-before-int", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "unassumed-full-pipeline-repro", "activation": 0.275, "link": "circular-fixture-detector->unassumed-full-pipeline-repro", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "test-section-shell-plumbing-risk", "activation": 0.275, "link": "extend-house-fixture-style->test-section-shell-plumbing-risk", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "circular-fixture-detector", "activation": 0.275, "link": "fake-cli-exit-code-is-contract->circular-fixture-detector", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "heredoc-commit-messages", "activation": 0.275, "link": "fake-cli-exit-code-is-contract->heredoc-commit-messages", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "batch-red-across-surfaces", "activation": 0.275, "link": "hand-write-links-fixtures->batch-red-across-surfaces", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "verify-fixture-isolates-intended-path", "activation": 0.275, "link": "hand-write-links-fixtures->verify-fixture-isolates-intended-path", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "inspect-red-before-trusting", "activation": 0.275, "link": "hermetic-fixture-pins-all-search-paths->inspect-red-before-trusting", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "test-section-shell-plumbing-risk", "activation": 0.275, "link": "hermetic-fixture-pins-all-search-paths->test-section-shell-plumbing-risk", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "capture-dont-transcribe", "activation": 0.275, "link": "read-validator-before-fixtures->capture-dont-transcribe", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "write-fixtures-direct-for-read-path-tests", "activation": 0.275, "link": "separate-live-repo-state-tests-from-fixtures->write-fixtures-direct-for-read-path-tests", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "bool-excluded-before-int", "activation": 0.275, "link": "single-cause-fixtures->bool-excluded-before-int", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "hermetic-tmpdir-per-guard-case", "activation": 0.275, "link": "single-cause-fixtures->hermetic-tmpdir-per-guard-case", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "hermetic-tmpdir-per-guard-case", "activation": 0.275, "link": "unassumed-full-pipeline-repro->hermetic-tmpdir-per-guard-case", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "trace-state-mutation-not-named-trigger", "activation": 0.275, "link": "unassumed-full-pipeline-repro->trace-state-mutation-not-named-trigger", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "audit-new-path-parity-before-writing", "activation": 0.3025, "link": "verify-fixture-isolates-intended-path->audit-new-path-parity-before-writing", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "vocab-dict-fake-embedder", "activation": 0.3025, "link": "verify-fixture-isolates-intended-path->vocab-dict-fake-embedder", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "verify-fixture-isolates-intended-path", "activation": 0.275, "link": "vocab-dict-fake-embedder->verify-fixture-isolates-intended-path", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "verify-fixture-isolates-intended-path", "activation": 0.275, "link": "write-fixtures-direct-for-read-path-tests->verify-fixture-isolates-intended-path", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "hotfix-repro-incident-sequence", "activation": 0.075, "link": "deterministic-repro-fast->hotfix-repro-incident-sequence", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "poll-own-children", "activation": 0.075, "link": "deterministic-repro-fast->poll-own-children", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "stdlib-vs-enrichment-split", "activation": 0.0688, "link": "bool-excluded-before-int->stdlib-vs-enrichment-split", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "bool-before-int-guard", "activation": 0.0688, "link": "test-section-shell-plumbing-risk->bool-before-int-guard", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "extend-house-fixture-style", "activation": 0.0688, "link": "test-section-shell-plumbing-risk->extend-house-fixture-style", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "bash32-empty-array-set-u", "activation": 0.0688, "link": "heredoc-commit-messages->bash32-empty-array-set-u", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "flag-safety-language-removal", "activation": 0.0688, "link": "batch-red-across-surfaces->flag-safety-language-removal", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "single-cause-fixtures", "activation": 0.0688, "link": "batch-red-across-surfaces->single-cause-fixtures", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "capture-dont-transcribe", "activation": 0.0688, "link": "inspect-red-before-trusting->capture-dont-transcribe", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "hermetic-fixture-pins-all-search-paths", "activation": 0.0688, "link": "inspect-red-before-trusting->hermetic-fixture-pins-all-search-paths", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "anonymous-listener-slice-eval", "activation": 0.0688, "link": "trace-state-mutation-not-named-trigger->anonymous-listener-slice-eval", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "raf-rearm-first", "activation": 0.0688, "link": "trace-state-mutation-not-named-trigger->raf-rearm-first", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "hop", "note": "verify-fixture-isolates-intended-path", "activation": 0.0756, "link": "audit-new-path-parity-before-writing->verify-fixture-isolates-intended-path", "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "inject", "note": "verify-fixture-isolates-intended-path", "activation": 1.21, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "inject", "note": "capture-dont-transcribe", "activation": 1.2, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "inject", "note": "circular-fixture-detector", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "inject", "note": "extend-house-fixture-style", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "inject", "note": "fake-cli-exit-code-is-contract", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "inject", "note": "hand-write-links-fixtures", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "inject", "note": "hermetic-fixture-pins-all-search-paths", "activation": 1.1, "ts": "2026-07-23T02:38:05+00:00", "role": "dev"}
+{"event": "seed", "note": "poll-own-children", "activation": 1.2, "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "seed", "note": "unassumed-full-pipeline-repro", "activation": 1.1, "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "hop", "note": "second-order-after-concurrency-fix", "activation": 0.3, "link": "poll-own-children->second-order-after-concurrency-fix", "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "hop", "note": "stderr-suppression-hides-evidence", "activation": 0.3, "link": "poll-own-children->stderr-suppression-hides-evidence", "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "hop", "note": "hermetic-tmpdir-per-guard-case", "activation": 0.275, "link": "unassumed-full-pipeline-repro->hermetic-tmpdir-per-guard-case", "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "hop", "note": "trace-state-mutation-not-named-trigger", "activation": 0.275, "link": "unassumed-full-pipeline-repro->trace-state-mutation-not-named-trigger", "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "hop", "note": "normalize-after-load-identity-fields", "activation": 0.075, "link": "second-order-after-concurrency-fix->normalize-after-load-identity-fields", "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "hop", "note": "pair-every-side-effect-with-undo", "activation": 0.075, "link": "second-order-after-concurrency-fix->pair-every-side-effect-with-undo", "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "hop", "note": "circular-fixture-detector", "activation": 0.075, "link": "stderr-suppression-hides-evidence->circular-fixture-detector", "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "hop", "note": "trace-state-mutation-not-named-trigger", "activation": 0.075, "link": "stderr-suppression-hides-evidence->trace-state-mutation-not-named-trigger", "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "hop", "note": "anonymous-listener-slice-eval", "activation": 0.0688, "link": "trace-state-mutation-not-named-trigger->anonymous-listener-slice-eval", "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "hop", "note": "raf-rearm-first", "activation": 0.0688, "link": "trace-state-mutation-not-named-trigger->raf-rearm-first", "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "inject", "note": "poll-own-children", "activation": 1.2, "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "inject", "note": "unassumed-full-pipeline-repro", "activation": 1.1, "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "inject", "note": "second-order-after-concurrency-fix", "activation": 0.3, "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "inject", "note": "stderr-suppression-hides-evidence", "activation": 0.3, "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "inject", "note": "hermetic-tmpdir-per-guard-case", "activation": 0.275, "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "inject", "note": "trace-state-mutation-not-named-trigger", "activation": 0.275, "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "inject", "note": "circular-fixture-detector", "activation": 0.075, "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "inject", "note": "normalize-after-load-identity-fields", "activation": 0.075, "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "inject", "note": "pair-every-side-effect-with-undo", "activation": 0.075, "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "inject", "note": "anonymous-listener-slice-eval", "activation": 0.0688, "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
+{"event": "inject", "note": "raf-rearm-first", "activation": 0.0688, "ts": "2026-07-23T02:39:09+00:00", "role": "dev"}
