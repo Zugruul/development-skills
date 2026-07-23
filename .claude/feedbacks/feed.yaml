@@ -1685,3 +1685,49 @@ items:
   routing:
     action: brain-note
     ref: orchestrator/live-validation-is-loop-input
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-23T03:20:00Z'
+iteration:
+  task: 379+380+381
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Reviewer live-executed the diff and caught a guarantee-violating edge the
+    tests missed
+  detail: The reviewer ran the normalization function against a double-separator slug
+    and proved the fix violated its own stated self-match guarantee; a targeted round-2
+    red+fix closed it pre-merge.
+  evidence:
+  - Zugruul/development-skills#380
+  generalized: Reviewers who EXECUTE the changed code against adversarial inputs (not
+    just read it) catch fixes that violate their own stated guarantees on inputs the
+    new tests did not sample; a stated guarantee in a fix is itself a test-generation
+    prompt for the reviewer.
+  routing:
+    action: brain-note
+    ref: reviewer/execute-guarantees-adversarially
+- category: worked-well
+  area: briefing
+  severity: low
+  summary: Batching three same-file small bugs into one branch with per-bug red+fix
+    pairs worked cleanly
+  detail: Three bugs sharing two files went through one dev lane, one review, one
+    gate, one merge — with per-bug commit pairs keeping attribution and revertability.
+  evidence:
+  - Zugruul/development-skills#379
+  - Zugruul/development-skills#380
+  - Zugruul/development-skills#381
+  generalized: Small same-surface bugs batch well into one branch when each keeps
+    its own red+fix commit pair — one review/gate/merge cycle without losing per-bug
+    traceability.
+  routing:
+    action: brain-note
+    ref: orchestrator/batch-same-surface-bugs

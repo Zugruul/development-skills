@@ -29,6 +29,16 @@
     "last": null,
     "weight": 0.5
   },
+  "execute-guarantees-adversarially->degrade-path-kind-honesty": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "execute-guarantees-adversarially->reproduce-red-first-claims": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "fixture-must-reach-fixed-path->check-empty-expected-vacuous": {
     "fires": 0,
     "last": null,
