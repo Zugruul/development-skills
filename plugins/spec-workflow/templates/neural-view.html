@@ -467,6 +467,13 @@ canvas.grabbing{cursor:grabbing}
 .ast-switcher-row:hover{border-color:var(--cyan);color:var(--cyan)}
 .ast-switcher-row.ast-switcher-selected{border-color:var(--cyan);color:var(--cyan)}
 .ast-ask-again{align-self:flex-start}
+/* AST-024 activation digest (SPEC-ASSISTANT.md §7.7/§7.8, issue #321):
+   same placeholder-only styling note as .ast-picker/.ast-switcher above --
+   restyle is a pending human choice, not made here. */
+.ast-digest{display:flex;flex-direction:column;gap:.2rem;margin-top:.3rem;
+  font-family:var(--mono);font-size:.6rem;color:var(--fg)}
+.ast-digest-note{border:1px solid var(--border);border-radius:3px;padding:.2rem .4rem}
+.ast-digest-empty{opacity:.6;font-style:italic}
 /* AST-023 T-key chat overlay (SPEC-ASSISTANT.md §8.6, §5, §8.3, §8.5,
    issue #320): minimal HUD-consistent placeholder styling only, matching
    .hud's panel/border language at the structural level -- the real look
@@ -888,6 +895,7 @@ canvas.grabbing{cursor:grabbing}
     </div>
     <div class="vs-hint">On: the picker shows every time this page loads, even if an assistant was chosen before. Off: the last choice loads automatically.</div>
     <div class="ast-switcher" id="ast-switcher" role="group" aria-label="Switch assistant"></div>
+    <div class="ast-digest" id="ast-digest" role="status" aria-label="Assistant activation digest"></div>
   </div>
   <div class="vs-row">
     <button class="iconbtn" id="vs-reset" aria-live="polite">Reset settings</button>
@@ -4928,6 +4936,48 @@ function renderNoneOverlay(){
 // the switcher is just "run the picker's row click logic again", no
 // separate turn-state flush/reload (that is AST-024's switch flow, out of
 // scope here).
+// ---- activation digest (AST-024, SPEC-ASSISTANT.md §7.7/§7.8, issue
+// #321) ---- Renders the `digest` key POST /assistant/select's response
+// carries ONLY on a real switch (engine.py's `_select` docstring -- never
+// on an initial pick or a same-name reselect, so a missing/undefined
+// `digestPayload` here just means "nothing to show", not an error).
+// Placeholder rows only (.ast-digest-note / .ast-digest-empty) -- restyle
+// is a pending human choice, same note as every other .ast-* block above.
+function renderAssistantDigest(digestPayload){
+  const el = document.getElementById("ast-digest");
+  if(!el) return;
+  el.innerHTML = "";
+  if(!digestPayload) return;
+  const notes = digestPayload.notesMinted || [];
+  const exchanges = digestPayload.exchanges || 0;
+  const tasks = digestPayload.tasks || [];
+  if(notes.length === 0 && exchanges === 0 && tasks.length === 0){
+    const row = document.createElement("div");
+    row.className = "ast-digest-empty";
+    row.textContent = "No background activity since last active.";
+    el.appendChild(row);
+    return;
+  }
+  for(const n of notes){
+    const row = document.createElement("div");
+    row.className = "ast-digest-note";
+    row.textContent = "note minted: " + n.slug + (n.strength != null ? ` [strength ${n.strength}]` : "");
+    el.appendChild(row);
+  }
+  if(exchanges > 0){
+    const row = document.createElement("div");
+    row.className = "ast-digest-note";
+    row.textContent = `${exchanges} exchange${exchanges === 1 ? "" : "s"} since last active`;
+    el.appendChild(row);
+  }
+  // §7.8's "completed/failed tasks" section -- v1 has no per-assistant
+  // task-queue trace to read yet (traces.sqlite is E4, see digest.py's
+  // docstring); this row says so honestly rather than fabricating data.
+  const trow = document.createElement("div");
+  trow.className = "ast-digest-note";
+  trow.textContent = tasks.length ? `${tasks.length} background task(s)` : "tasks: pending E4 (trace-sourced task digest not yet wired)";
+  el.appendChild(trow);
+}
 function renderAssistantSwitcher(candidates, selected){
   const el = document.getElementById("ast-switcher");
   if(!el) return;
@@ -4938,7 +4988,12 @@ function renderAssistantSwitcher(candidates, selected){
     row.className = "ast-switcher-row" + (c.name === selected ? " ast-switcher-selected" : "");
     row.textContent = (c.name === selected ? "✓ " : "") + c.name;
     row.onclick = async ()=>{
-      try{ await fetch("/assistant/select", {method:"POST", body: JSON.stringify({name: c.name})}); }catch{}
+      let resp = null;
+      try{
+        const r = await fetch("/assistant/select", {method:"POST", body: JSON.stringify({name: c.name})});
+        resp = await r.json();
+      }catch{}
+      renderAssistantDigest(resp && resp.digest);
       await refreshAssistantSettingsUi();
     };
     el.appendChild(row);

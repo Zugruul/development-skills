@@ -31,9 +31,14 @@ an explicit shutdown path and once via `atexit`) without raising.
 import os
 import queue
 import threading
+from datetime import datetime, timezone
 
-from assistant import adapters, default_store, discovery, selection_store, turns
+from assistant import adapters, default_store, digest as digest_module, discovery, selection_store, turns
 from assistant.store import SessionStore
+
+
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat()
 
 # The four §5a-mandated subsystem workers this skeleton wires up. Real logic
 # lands per-subsystem in later E1/E3/E4/E6 tasks; AST-010 only creates the
@@ -130,6 +135,14 @@ class AssistantEngine:
         else:
             self._selected = loaded["selected"]
             self._gated = loaded["gated"]
+        # AST-024 (SPEC-ASSISTANT.md §7.7/§7.8, issue #321): `lastActive`
+        # is loaded regardless of `_ask_again` -- unlike `_selected`/
+        # `_gated` (which askAgain=true deliberately resets so the picker
+        # re-shows), an assistant's activation-history bookkeeping is not
+        # part of "what was picked this boot" and must survive an
+        # askAgain=true boot untouched, or its very first digest after
+        # such a boot would wrongly look like "never active before".
+        self._last_active = loaded["lastActive"]
         self._selection_lock = threading.Lock()
 
     def start(self):
@@ -188,15 +201,17 @@ class AssistantEngine:
         return None
 
     def _persist_selection(self):
-        """Writes the CURRENT `_selected`/`_gated`/`_ask_again` triple to
-        `selection_store` (§7.5). Callers hold `_selection_lock` across both
-        the in-memory mutation and this call, so a concurrent request never
-        observes the fields mutated but not yet persisted (or persisted out
-        of order against another concurrent write) -- the same "mutate and
-        persist under one lock" shape `_chat_lock_for`'s critical section
-        uses for a whole turn, applied here to the smaller selection-state
-        update."""
-        selection_store.save(self.state_dir, self._selected, self._gated, self._ask_again)
+        """Writes the CURRENT `_selected`/`_gated`/`_ask_again`/
+        `_last_active` quadruple to `selection_store` (§7.5, and AST-024's
+        additive `lastActive`, §7.7/§7.8). Callers hold `_selection_lock`
+        across both the in-memory mutation and this call, so a concurrent
+        request never observes the fields mutated but not yet persisted
+        (or persisted out of order against another concurrent write) --
+        the same "mutate and persist under one lock" shape
+        `_chat_lock_for`'s critical section uses for a whole turn, applied
+        here to the smaller selection-state update."""
+        selection_store.save(self.state_dir, self._selected, self._gated,
+                              self._ask_again, self._last_active)
 
     def _status(self):
         """GET /assistant/status -- extended for AST-021 (SPEC-ASSISTANT.md
@@ -235,9 +250,10 @@ class AssistantEngine:
         }
 
     def _select(self, body):
-        """POST /assistant/select {"name": str} -> {"selected", "gated"}
-        (§7.2/§7.3, AST-021). `name` is resolved case-insensitively against
-        the CURRENT scan's candidates' names/aliases via
+        """POST /assistant/select {"name": str} ->
+        {"selected", "gated"[, "digest"]} (§7.2/§7.3, AST-021; switch flow
+        + digest §7.7/§7.8, AST-024). `name` is resolved case-insensitively
+        against the CURRENT scan's candidates' names/aliases via
         `default_store._matches_name` -- the exact same matching rule the
         §7.6 chat resolution path already uses, so a candidate's alias list
         is interpreted identically everywhere rather than by two matchers
@@ -247,7 +263,46 @@ class AssistantEngine:
         -- picking an assistant un-gates voice/chat for the rest of this
         engine's process lifetime AND, per AST-022 (§7.5), is persisted via
         `_persist_selection()` so a second tab, a page reload, or a
-        restarted engine over the same `state_dir` agrees."""
+        restarted engine over the same `state_dir` agrees.
+
+        AST-024 SWITCH FLOW (§7.7), on top of AST-021/022's plain select:
+        a "switch" is a select whose resolved name DIFFERS from the
+        PREVIOUSLY selected one, AND there was a previously selected one
+        (an initial pick -- `self._selected` was None -- is not a switch,
+        it has nothing to flush or digest). On a real switch:
+
+          - "flush in-flight turn state": §7.6/§8's turn pipeline is
+            synchronous per-HTTP-request (`_chat` runs load -> run_turn ->
+            save entirely on the request thread, under `_chat_lock_for`,
+            and returns before the next request is even accepted) -- there
+            is no queued/in-progress turn living in engine memory across
+            requests to abandon. This is a documented NO-OP today for that
+            reason, not an oversight (see docs/spec-deltas/AST-024.md);
+            what this method DOES actively do is reset the per-assistant
+            selection state below, which is the only cross-request state
+            engine.py holds for "which assistant is active".
+          - worker threads (`self.workers`) are NEVER touched here --
+            §7.7's "keep BOTH assistants' background work running
+            throughout" holds trivially because the worker registry has no
+            per-assistant identity yet (AST-010: workers are per-ENGINE,
+            not per-assistant) and this method's body never reads or
+            writes `self.workers`.
+          - the OUTGOING assistant's `_last_active[old]` is stamped `now`
+            -- "now" is the moment it stopped being active, which is
+            exactly the anchor §7.8's digest for its NEXT activation needs
+            ("activity since last active" == activity since this stamp).
+          - the INCOMING assistant's digest is built from its OWN prior
+            `_last_active` entry (before this stamp -- an assistant does
+            not digest against itself) via `digest_module.digest`; see
+            that module's docstring for what "since" means when no prior
+            entry exists (None -- "since the beginning of recorded
+            history", never fabricated, never an error).
+          - `digest` is INCLUDED in the response ONLY on a real switch --
+            an initial select (nothing to switch FROM) or a same-name
+            reselect (no change at all) return the plain AST-021/022
+            shape unchanged, so existing callers (the picker, a same-name
+            switcher click) see no new key.
+        """
         body = body if isinstance(body, dict) else {}
         name = body.get("name")
         if not isinstance(name, str) or not name.strip():
@@ -255,7 +310,7 @@ class AssistantEngine:
 
         scan = discovery.scan(root for _, root in self._repos_getter())
         matches = [
-            section for _, section in scan.candidates
+            (root, section) for root, section in scan.candidates
             if default_store._matches_name(section, name)
         ]
         candidate_names = sorted(
@@ -273,11 +328,31 @@ class AssistantEngine:
                 "candidates": candidate_names,
             }, "application/json"
 
+        matched_root, matched_section = matches[0]
+        new_name = _main_name(matched_section)
+
         with self._selection_lock:
-            self._selected = _main_name(matches[0])
+            old_name = self._selected
+            is_switch = old_name is not None and old_name != new_name
+
+            payload = None
+            if is_switch:
+                now = _now_iso()
+                # the outgoing assistant stops being active now -- see
+                # this method's docstring for why "now" is the correct
+                # anchor for ITS next digest, not for this one.
+                self._last_active[old_name] = now
+                since_ts = self._last_active.get(new_name)
+                payload = digest_module.digest(matched_root, since_ts)
+
+            self._selected = new_name
             self._gated = False
             self._persist_selection()
-        return 200, {"selected": self._selected, "gated": self._gated}, "application/json"
+
+        response = {"selected": self._selected, "gated": self._gated}
+        if payload is not None:
+            response["digest"] = payload
+        return 200, response, "application/json"
 
     def _skip(self):
         """POST /assistant/skip -> {"selected": null, "gated": true}

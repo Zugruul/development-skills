@@ -202,7 +202,7 @@ const document = {
     },
 };
 
-const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-ask-again", "ast-switcher"];
+const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-ask-again", "ast-switcher", "ast-digest"];
 for (const id of STATIC_IDS) {
     const el = mkEl(id);
     el.classList._parent = el;
@@ -227,6 +227,11 @@ eval(extract("setVoiceHeaderName"));
 eval(extract("gateVoiceAndChat"));
 eval(extract("renderAssistantPicker"));
 eval(extract("renderNoneOverlay"));
+// AST-024 (#321): renderAssistantSwitcher's row click now also calls
+// renderAssistantDigest -- extracted here too so this harness keeps
+// exercising the REAL production wiring rather than drifting into a
+// simplified fork (stub-failure-semantics lesson: extend, don't fork).
+eval(extract("renderAssistantDigest"));
 eval(extract("renderAssistantSwitcher"));
 eval(extract("setAskAgainUi"));
 eval(extract("refreshAssistantSettingsUi"));
