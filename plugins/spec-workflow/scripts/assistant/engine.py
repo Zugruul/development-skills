@@ -32,7 +32,7 @@ import os
 import queue
 import threading
 
-from assistant import adapters, default_store, turns
+from assistant import adapters, default_store, discovery, turns
 from assistant.store import SessionStore
 
 # The four §5a-mandated subsystem workers this skeleton wires up. Real logic
@@ -52,6 +52,19 @@ def _heartbeat_worker(stop_event):
     busy loop, no polling interval -- `wait()` blocks until `set()` is
     called. Replaced by a real per-subsystem loop in a later task."""
     stop_event.wait()
+
+
+def _main_name(section):
+    """The main name (names[0]) of a candidate's `assistant:` section, or
+    None if it somehow carries no names (should not happen for a
+    `discovery.classify_repo` "candidate" -- `validate_assistant` already
+    requires a non-empty `names` list -- but this stays defensive rather
+    than indexing blind). Delegates the actual name list extraction to
+    `default_store._names` (AST-021: one name/alias reading, matching the
+    §7.6 resolution path's own view of a section's names) instead of
+    re-parsing `section["names"]` a third time."""
+    names = default_store._names(section)
+    return names[0] if names else None
 
 
 class AssistantEngine:
@@ -78,6 +91,25 @@ class AssistantEngine:
         # critical section (see _chat_lock_for's docstring).
         self._chat_locks = {}
         self._chat_locks_guard = threading.Lock()
+        # AST-021 (SPEC-ASSISTANT.md §7.2-§7.4, §17.9): startup selection
+        # state, engine-instance memory only -- one process = one
+        # selection, lost on restart by design (cross-tab/cross-restart
+        # persistence is AST-022's selection MEMORY, out of scope here).
+        # `_selected` is the chosen candidate's main name, or None before
+        # any selection (or after Skip). `_gated` is set ONLY by an
+        # explicit POST /assistant/skip (§7.3) -- it is deliberately NOT
+        # derived from "_selected is None" alone, because the existing
+        # §7.6 chat resolution path (terminal `--assistant NAME` / stored
+        # local default, AST-016) must keep working unaffected by a
+        # multi-candidate repo that simply hasn't had a startup pick made
+        # yet (see section-assistant-terminal.sh's two-candidate coverage,
+        # which never calls /assistant/select at all). `/assistant/status`
+        # additionally folds in `outcome == "none"` for the page's benefit
+        # (see _status's docstring) since that branch is already hard-
+        # gated by having no assistant to resolve against.
+        self._selected = None
+        self._gated = False
+        self._selection_lock = threading.Lock()
 
     def start(self):
         """Launch the worker registry. Idempotent: a second call while
@@ -124,21 +156,98 @@ class AssistantEngine:
             return 200, self._history(query), "application/json"
         if method == "POST" and path == "/assistant/chat":
             return self._chat(body)
+        if method == "POST" and path == "/assistant/select":
+            return self._select(body)
+        if method == "POST" and path == "/assistant/skip":
+            return self._skip()
         return None
 
     def _status(self):
-        candidates = default_store.discover_candidates(
-            root for _, root in self._repos_getter()
-        )
+        """GET /assistant/status -- extended for AST-021 (SPEC-ASSISTANT.md
+        §7.2-§7.4): carries the FULL scan result (`outcome`, `candidates`)
+        so the page can branch on the exact same one/multiple/none
+        classification `discovery.scan` computed, plus this engine
+        instance's current selection state (`selected`, `gated`). `gated`
+        is true when Skip was explicitly chosen (§7.3) OR when there is no
+        assistant to select at all (`outcome == "none"`, §7.4) -- the page
+        needs one boolean to decide whether to hard-gate voice/chat, it
+        should not have to re-derive "none means gated" itself."""
+        scan = discovery.scan(root for _, root in self._repos_getter())
+        candidates_payload = [
+            {
+                "name": _main_name(section),
+                "aliases": default_store._names(section)[1:],
+                "root": str(root),
+            }
+            for root, section in scan.candidates
+        ]
         return {
             "engine": "ok",
             "workers": [
                 {"name": name, "alive": thread.is_alive()}
                 for name, thread, _ in self.workers
             ],
-            "assistants": len(candidates),
-            "selected": None,
+            "assistants": len(scan.candidates),
+            "outcome": scan.outcome,
+            "candidates": candidates_payload,
+            "selected": self._selected,
+            "gated": self._gated or scan.outcome == "none",
         }
+
+    def _select(self, body):
+        """POST /assistant/select {"name": str} -> {"selected", "gated"}
+        (§7.2/§7.3, AST-021). `name` is resolved case-insensitively against
+        the CURRENT scan's candidates' names/aliases via
+        `default_store._matches_name` -- the exact same matching rule the
+        §7.6 chat resolution path already uses, so a candidate's alias list
+        is interpreted identically everywhere rather than by two matchers
+        that could drift apart. An unmatched/ambiguous name is a 404-style
+        error listing the real candidates, never a crash or a silent
+        no-op. Selecting always clears an earlier Skip (`_gated` -> False)
+        -- picking an assistant un-gates voice/chat for the rest of this
+        engine's process lifetime (session memory only; cross-tab/
+        cross-restart persistence is AST-022, out of scope here)."""
+        body = body if isinstance(body, dict) else {}
+        name = body.get("name")
+        if not isinstance(name, str) or not name.strip():
+            return 400, {"error": "name is required"}, "application/json"
+
+        scan = discovery.scan(root for _, root in self._repos_getter())
+        matches = [
+            section for _, section in scan.candidates
+            if default_store._matches_name(section, name)
+        ]
+        candidate_names = sorted(
+            n for _, section in scan.candidates
+            for n in [_main_name(section)] if n
+        )
+        if not matches:
+            return 404, {
+                "error": f"no assistant named {name!r}",
+                "candidates": candidate_names,
+            }, "application/json"
+        if len(matches) > 1:
+            return 404, {
+                "error": f"assistant name {name!r} is ambiguous",
+                "candidates": candidate_names,
+            }, "application/json"
+
+        with self._selection_lock:
+            self._selected = _main_name(matches[0])
+            self._gated = False
+        return 200, {"selected": self._selected, "gated": self._gated}, "application/json"
+
+    def _skip(self):
+        """POST /assistant/skip -> {"selected": null, "gated": true}
+        (§7.3). Hard-gates chat (via `_chat`'s gate check below) for the
+        rest of this engine's process lifetime, or until a later
+        /assistant/select -- §17.9's "no assistant selected" invariant,
+        made explicit rather than merely implied by `selected` staying
+        null."""
+        with self._selection_lock:
+            self._selected = None
+            self._gated = True
+        return 200, {"selected": None, "gated": True}, "application/json"
 
     def _history(self, query):
         """GET /assistant/history?n=N -- last N exchanges of the resolved
@@ -222,8 +331,22 @@ class AssistantEngine:
         see that method's docstring): concurrent turns against the SAME
         assistant are serialized -- correct per §7.5's one-session model --
         while turns against different assistants never block each other.
+
+        AST-021 (§17.9): checked FIRST, before any resolution attempt -- an
+        explicit POST /assistant/skip (`_gated`) refuses every chat with a
+        specific gate error, distinct from an ordinary §7.6 resolution
+        failure below. This does NOT fire merely because nothing has been
+        selected yet (`_gated` defaults False) -- the terminal's own
+        `--assistant NAME`/stored-default resolution (this same route,
+        AST-016) must keep working unaffected by a multi-candidate repo
+        that never called /assistant/select at all.
         """
         body = body if isinstance(body, dict) else {}
+        if self._gated:
+            return 403, {
+                "error": "chat is gated off for this session (assistant "
+                          "selection was skipped) -- see /assistant/select",
+            }, "application/json"
         message = body.get("message")
         if not isinstance(message, str) or not message.strip():
             return 400, {"error": "message is required"}, "application/json"

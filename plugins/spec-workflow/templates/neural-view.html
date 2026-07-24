@@ -446,6 +446,18 @@ canvas.grabbing{cursor:grabbing}
   background:#c96a5e;transform:rotate(-45deg)}
 #voice-mic.always .micdot,#voice-mic.talking .micdot{background:#e0453a;box-shadow:0 0 8px rgba(224,69,58,.7)}
 #voice-mic.talking .micdot::after{display:none}
+/* AST-021 startup selection (SPEC-ASSISTANT.md §7.2-§7.4): minimal
+   HUD-consistent placeholder styling only -- the real look is a pending
+   human choice on the issue and lands as a follow-up restyle. */
+.ast-picker{display:flex;flex-direction:column;gap:.3rem;padding:.5rem;
+  border-top:1px solid var(--border)}
+.ast-picker-row{font-family:var(--mono);font-size:.62rem;color:var(--fg);
+  border:1px solid var(--border);border-radius:3px;padding:.3rem .5rem;cursor:pointer}
+.ast-picker-row:hover{border-color:var(--cyan);color:var(--cyan)}
+.ast-skip{align-self:flex-start;font-family:var(--mono);font-size:.6rem}
+.ast-none-overlay{margin:.5rem;padding:.5rem .6rem;border:1px solid #e0453a;
+  border-radius:3px;color:#e0453a;font-family:var(--mono);font-size:.62rem;
+  letter-spacing:.05em;cursor:help}
 /* voice settings context panel (cog) — REPLACES the note preview slot: same
    geometry as #inspect, one z above it; opening it closes the note card.
    The two settings here duplicate the header controls on purpose — shown in
@@ -4776,11 +4788,103 @@ const PROBE = location.search.includes("hoverprobe");
   }, 1500);
 })();
 
+// ---- assistant startup selection (AST-021, SPEC-ASSISTANT.md §7.2-§7.4) ----
+// Boot-time branch over GET /assistant/status's `outcome`: "one" auto-
+// selects the sole candidate and puts its main name in the voice panel
+// header ("Voice · <name>", uppercased by .secthead's CSS -- §7.2);
+// "multiple" renders a startup picker (main name + aliases) with a Skip
+// control (§7.3); "none" shows a red gate overlay with a hover explainer
+// (§7.4). Skip and none both hard-gate voice (and, via window.assistantGate,
+// whatever chat surface AST-023's T-key overlay adds later -- none exists
+// in this template yet, so gateVoiceAndChat() is the hook that route must
+// check before it ever calls POST /assistant/chat, per §17.9). Selection
+// MEMORY (cross-tab, ask-again setting, the ⚙ switcher) is AST-022, out of
+// scope here -- this reads the engine's in-memory selection fresh on every
+// boot and never persists anything itself. Minimal HUD-consistent
+// placeholder styling only (see the .ast-* CSS above) -- the real look is a
+// pending human choice on the issue, landing as a follow-up restyle.
+function gateVoiceAndChat(gated){
+  window.assistantGate = { gated: !!gated };
+  for(const id of ["voice-mic","voice-in","voice-out","voice-both"]){
+    const el = document.getElementById(id);
+    if(el) el.disabled = !!gated;
+  }
+}
+function setVoiceHeaderName(name){
+  const el = document.getElementById("sect-voice");
+  if(el) el.textContent = name ? `Voice · ${name}` : "Voice";
+}
+function renderAssistantPicker(candidates){
+  const bar = document.getElementById("voicebar");
+  if(!bar) return;
+  const old = document.getElementById("ast-picker");
+  if(old) old.remove();
+  const picker = document.createElement("div");
+  picker.id = "ast-picker";
+  picker.className = "ast-picker";
+  for(const c of candidates){
+    const row = document.createElement("div");
+    row.className = "ast-picker-row";
+    row.textContent = (c.aliases && c.aliases.length) ? `${c.name} (${c.aliases.join(", ")})` : c.name;
+    row.onclick = async ()=>{
+      try{ await fetch("/assistant/select", {method:"POST", body: JSON.stringify({name: c.name})}); }catch{}
+      picker.remove();
+      setVoiceHeaderName(c.name);
+      gateVoiceAndChat(false);
+    };
+    picker.appendChild(row);
+  }
+  const skip = document.createElement("button");
+  skip.className = "ast-skip iconbtn";
+  skip.textContent = "Skip";
+  skip.onclick = async ()=>{
+    try{ await fetch("/assistant/skip", {method:"POST"}); }catch{}
+    picker.remove();
+    setVoiceHeaderName(null);
+    gateVoiceAndChat(true);
+  };
+  picker.appendChild(skip);
+  bar.appendChild(picker);
+}
+function renderNoneOverlay(){
+  const bar = document.getElementById("voicebar");
+  if(!bar) return;
+  if(document.getElementById("ast-none-overlay")) return;
+  const overlay = document.createElement("div");
+  overlay.id = "ast-none-overlay";
+  overlay.className = "ast-none-overlay";
+  overlay.textContent = "set up an assistant";
+  overlay.title = "/setup-assistant scaffolds one";
+  bar.appendChild(overlay);
+}
+async function initAssistantSelection(){
+  let status;
+  try{ status = await (await fetch("/assistant/status")).json(); }catch{ return; }
+  if(!status) return;
+  if(status.outcome === "one"){
+    const sole = (status.candidates || [])[0];
+    if(sole){
+      try{ await fetch("/assistant/select", {method:"POST", body: JSON.stringify({name: sole.name})}); }catch{}
+      setVoiceHeaderName(sole.name);
+      gateVoiceAndChat(false);
+    }
+  } else if(status.outcome === "multiple"){
+    setVoiceHeaderName(null);
+    gateVoiceAndChat(true);
+    renderAssistantPicker(status.candidates || []);
+  } else {
+    setVoiceHeaderName(null);
+    gateVoiceAndChat(true);
+    renderNoneOverlay();
+  }
+}
+
 // ---- boot ----
 (async function(){
   window.__viewer = null;   // which external viewer POST /open would use (labels the panel button)
   fetch("/viewer").then(r=>r.json()).then(d=>{ window.__viewer = (d && d.viewer) || null; }).catch(()=>{});
   poll();
+  initAssistantSelection();   // independent of graph/session boot work -- fire and forget
   await loadSessions();
   if(uiState.liveBoard) startBoardPolling();  // off by default — enable via the ⚙ Settings popover
   const st=document.getElementById("status-txt");
