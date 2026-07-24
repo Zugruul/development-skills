@@ -199,11 +199,22 @@ function mkEl(initialId) {
             remove(c){ this._parent._classes.delete(c); },
             contains(c){ return this._parent._classes.has(c); },
         },
-        children: [],
+        _items: [],
+        // #387: children mirrors a real live HTMLCollection -- reads work,
+        // any mutation (length=0, push) throws like a getter-only property,
+        // so the stub reproduces real-browser failure semantics.
+        get children(){
+            return new Proxy(this._items, {
+                set(){ throw new TypeError("Cannot set property length of HTMLCollection which has only a getter"); },
+                get(o, k){ const v = o[k]; return typeof v === "function" ? v.bind(o) : v; },
+            });
+        },
+        set innerHTML(v){ this._innerHTMLv = v; if(v === "") this._items.length = 0; },
+        get innerHTML(){ return this._innerHTMLv || ""; },
         disabled: false,
         title: "",
         textContent: "",
-        appendChild(child){ this.children.push(child); },
+        appendChild(child){ this._items.push(child); },
         // real elements created via createElement(...) only become
         // discoverable via getElementById() once given an id -- the
         // template code sets .id right after createElement, mirroring

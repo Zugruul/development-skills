@@ -4932,7 +4932,7 @@ function renderAssistantSwitcher(candidates, selected){
   const el = document.getElementById("ast-switcher");
   if(!el) return;
   el.innerHTML = "";
-  el.children.length = 0;
+  el.innerHTML = "";   // #387: children.length=0 throws on a real live HTMLCollection
   for(const c of (candidates || [])){
     const row = document.createElement("div");
     row.className = "ast-switcher-row" + (c.name === selected ? " ast-switcher-selected" : "");
