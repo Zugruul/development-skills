@@ -177,6 +177,7 @@ SECTIONS=(
     section-assistant-gates.sh
     section-assistant-chat.sh
     section-assistant-switch.sh
+    section-assistant-distill.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then

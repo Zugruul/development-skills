@@ -12,13 +12,16 @@ lives in neural-view.py itself. `AssistantEngine` owns:
   - one long-lived worker thread per subsystem (distiller, tasks, traces,
     index), each in the `workers` registry as (name, Thread, stop_event) so
     tests can assert clean start/stop without an HTTP server. v1 (AST-010)
-    workers are no-op heartbeats parked on `stop_event.wait()` -- the real
-    per-subsystem loops arrive with their own tasks (distiller: E3,
-    traces/index: E4/E6) and replace the worker body without touching this
-    registry's shape;
+    workers were all no-op heartbeats parked on `stop_event.wait()`; AST-030
+    replaces the `distiller` slot's body with the real batching loop
+    (`distill.run_worker`) without touching this registry's shape --
+    tasks/traces/index stay heartbeats until their own E4/E6 tasks land;
   - a `queue.Queue` per subsystem (`queues[name]`), created now so HTTP
     request threads can enqueue-only into it later without the signature
-    churning when the real workers land -- nothing drains these queues yet.
+    churning when the real workers land. AST-030 is the first to actually
+    drain one: `_chat` enqueues a post-turn exchange-ref into
+    `queues["distiller"]` (see `_enqueue_distill`), which is bounded
+    (DISTILLER_QUEUE_MAXSIZE) unlike the other three, still-unused queues.
 
 Isolation (§17.1): constructing/starting/stopping an engine never imports a
 provider CLI and never spawns a subprocess -- `/assistant/status` in
@@ -33,7 +36,7 @@ import queue
 import threading
 from datetime import datetime, timezone
 
-from assistant import adapters, default_store, digest as digest_module, discovery, selection_store, turns
+from assistant import adapters, default_store, digest as digest_module, discovery, distill, selection_store, turns
 from assistant.store import SessionStore
 
 
@@ -50,6 +53,17 @@ WORKER_NAMES = ("distiller", "tasks", "traces", "index")
 # tail-read is a full-file read at v1 -- see store.py's docstring).
 HISTORY_DEFAULT_N = 20
 HISTORY_MAX_N = 500
+
+# AST-030 (SPEC-ASSISTANT.md Sec9.2/Sec9.5): the distiller queue is bounded
+# so a stalled/slow distiller worker can never grow unbounded memory off a
+# long-running chat session. Overflow policy is DROP-OLDEST: when full, the
+# oldest queued exchange-ref is evicted to make room for the newest one --
+# distillation favors recency over an unbounded backlog, and dropping a ref
+# never loses the exchange itself (SessionStore.append_exchange already
+# fsync'd it to session.jsonl before _enqueue_distill is ever called; only
+# that one exchange's contribution to a future batch is skipped, not the
+# turn). See `_enqueue_distill`.
+DISTILLER_QUEUE_MAXSIZE = 1000
 
 
 def _heartbeat_worker(stop_event):
@@ -89,6 +103,12 @@ class AssistantEngine:
         self._repos_getter = repos_getter
         self.state_dir = state_dir
         self.queues = {name: queue.Queue() for name in WORKER_NAMES}
+        # AST-030: the distiller's queue is bounded -- see
+        # DISTILLER_QUEUE_MAXSIZE's docstring for the overflow policy. The
+        # other three subsystems' queues stay unbounded no-op placeholders
+        # (AST-010: nothing drains them yet; E4/E6 give them their own real
+        # workers and bounding decisions later).
+        self.queues["distiller"] = queue.Queue(maxsize=DISTILLER_QUEUE_MAXSIZE)
         self.workers = []  # [(name, Thread, stop_event), ...] -- see start()
         self._lock = threading.Lock()
         # AST-016 review r1 BLOCKER fix: one lock per resolved assistant
@@ -154,12 +174,24 @@ class AssistantEngine:
             workers = []
             for name in WORKER_NAMES:
                 stop_event = threading.Event()
-                thread = threading.Thread(
-                    target=_heartbeat_worker,
-                    args=(stop_event,),
-                    name=f"assistant-{name}",
-                    daemon=False,
-                )
+                if name == "distiller":
+                    # AST-030: the distiller slot runs the real batching
+                    # loop instead of the v1 heartbeat no-op -- see
+                    # distill.run_worker's docstring for the buffering/
+                    # batch-trigger/failure posture this thread owns.
+                    thread = threading.Thread(
+                        target=distill.run_worker,
+                        args=(self.queues["distiller"], stop_event),
+                        name=f"assistant-{name}",
+                        daemon=False,
+                    )
+                else:
+                    thread = threading.Thread(
+                        target=_heartbeat_worker,
+                        args=(stop_event,),
+                        name=f"assistant-{name}",
+                        daemon=False,
+                    )
                 thread.start()
                 workers.append((name, thread, stop_event))
             self.workers = workers
@@ -447,6 +479,39 @@ class AssistantEngine:
                 self._chat_locks[key] = lock
             return lock
 
+    def _enqueue_distill(self, root, user_text, assistant_text, chips):
+        """AST-030: posts one exchange-ref to the `distiller` worker's
+        queue, O(1) and NEVER blocking the calling (HTTP request) thread --
+        `queue.Queue.put_nowait` either succeeds immediately or raises
+        `queue.Full` immediately, there is no wait either way. On overflow
+        (queue.Full) this evicts the OLDEST queued item to make room for
+        the newest one (see DISTILLER_QUEUE_MAXSIZE's docstring for why
+        drop-oldest is the chosen policy) -- both the eviction and the
+        retry are themselves non-blocking `_nowait` calls, so a full queue
+        never turns into so much as a brief stall on this thread. A raced
+        eviction (another producer's `get_nowait`/`put_nowait` slips in
+        between this method's own two calls) degrades to silently dropping
+        THIS item rather than blocking or raising -- acceptable per
+        Sec9.5's "turns never block on the distiller" invariant; the
+        exchange itself is already durably in session.jsonl regardless."""
+        item = {
+            "root": root,
+            "identities": os.path.join(root, ".claude", "identities"),
+            "exchange": {"user": user_text, "assistant": assistant_text, "chips": chips},
+        }
+        q = self.queues["distiller"]
+        try:
+            q.put_nowait(item)
+        except queue.Full:
+            try:
+                q.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                q.put_nowait(item)
+            except queue.Full:
+                pass
+
     def _chat(self, body):
         """POST /assistant/chat -- {"message": str, "assistant"?: str} ->
         {"text", "chips", "warnings"} (§7.6, §5, AST-016, issue #314). The
@@ -514,6 +579,12 @@ class AssistantEngine:
 
             store.append_exchange(message, result["text"])
             store.save_state(result["updated_session_state"])
+
+        # AST-030 (Sec9.2/Sec9.5): enqueue-only, AFTER the turn's own
+        # critical section has released the per-root lock -- a non-blocking
+        # put to the distiller's worker slot, never a synchronous distill
+        # on this request thread.
+        self._enqueue_distill(root, message, result["text"], result["chips"])
 
         warnings = []
         if result.get("budget_report", {}).get("over_budget"):
