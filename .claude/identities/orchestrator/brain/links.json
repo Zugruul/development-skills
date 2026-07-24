@@ -79,6 +79,16 @@
     "last": null,
     "weight": 0.5
   },
+  "inventory-stalled-agent-tree->mode-elastic-loop": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "inventory-stalled-agent-tree->search-branches-before-reimplementing": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "live-validation-is-loop-input->clean-main-repro-before-blame": {
     "fires": 0,
     "last": null,

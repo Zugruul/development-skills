@@ -2011,3 +2011,33 @@ items:
   routing:
     action: brain-note
     ref: dev/stub-failure-semantics
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-24T06:00:00Z'
+iteration:
+  task: AST-024
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: briefing
+  severity: medium
+  summary: A stalled dev agent had silently COMPLETED everything uncommitted, including
+    untracked new files
+  detail: Two idle notifications and a nudge later, a tree inventory showed the full
+    implementation, a new module, the test section, and a rigorous spec delta all
+    sitting uncommitted/untracked; the orchestrator salvage-committed in red-first
+    order using fast red proofs because the red state hung.
+  evidence:
+  - Zugruul/development-skills#321
+  generalized: When an implementation agent stalls, inventory the working tree INCLUDING
+    untracked files before re-briefing or reassigning — a stalled agent may have finished
+    everything and only failed at the commit/report step; salvage-committing its work
+    in proper order preserves both the TDD trail and its authorship.
+  routing:
+    action: brain-note
+    ref: orchestrator/inventory-stalled-agent-tree
