@@ -2041,3 +2041,49 @@ items:
   routing:
     action: brain-note
     ref: orchestrator/inventory-stalled-agent-tree
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-24T06:40:00Z'
+iteration:
+  task: AST-030
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: briefing
+  severity: medium
+  summary: Leading the brief with commit-and-report-are-part-of-the-task ended the
+    stalled-uncommitted pattern
+  detail: After a salvage the prior iteration, the next brief opened with the commit
+    discipline as the FIRST lesson; the agent committed red then impl properly and
+    left a clean tree.
+  evidence:
+  - Zugruul/development-skills#322
+  generalized: 'Ordering matters in briefs: putting process discipline (commit early,
+    report always) as the FIRST lesson — not buried mid-brief — measurably changes
+    agent behavior; leading with what most recently failed is cheap insurance.'
+  routing:
+    action: brain-note
+    ref: orchestrator/lead-brief-with-last-failure
+- category: recommendation
+  area: board
+  severity: low
+  summary: A task delivered incidentally inside another PR should be board-reconciled,
+    not rebuilt
+  detail: A 2pt task's whole AC shipped inside its neighbor via an existing seam;
+    the reviewer flagged the overlap and the board was reconciled by closing it against
+    the delivering merge with the fixture as evidence.
+  evidence:
+  - Zugruul/development-skills#322
+  - Zugruul/development-skills#323
+  generalized: When a diff legitimately delivers a neighboring task's full AC through
+    an existing seam, reconcile the board (close the neighbor citing the delivering
+    merge + its test evidence) instead of trimming correct code or building a duplicate
+    — the reviewer's overlap flag is the trigger for reconciliation.
+  routing:
+    action: brain-note
+    ref: orchestrator/reconcile-incidental-delivery

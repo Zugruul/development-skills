@@ -89,6 +89,16 @@
     "last": null,
     "weight": 0.5
   },
+  "lead-brief-with-last-failure->inventory-stalled-agent-tree": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "lead-brief-with-last-failure->ui-split-logic-first": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "live-validation-is-loop-input->clean-main-repro-before-blame": {
     "fires": 0,
     "last": null,
@@ -130,6 +140,16 @@
     "weight": 0.5
   },
   "plan-stage-adversarial-review-before-spec->ui-rounds-converge-via-favorite-plus-aspects": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "reconcile-incidental-delivery->live-validation-is-loop-input": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "reconcile-incidental-delivery->mode-elastic-loop": {
     "fires": 0,
     "last": null,
     "weight": 0.5
