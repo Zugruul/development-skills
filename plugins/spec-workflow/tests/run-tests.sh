@@ -166,6 +166,7 @@ SECTIONS=(
     section-assistant-discovery.sh
     section-assistant-engine.sh
     section-assistant-selection.sh
+    section-assistant-selection-memory.sh
     section-assistant-adapter.sh
     section-assistant-claude.sh
     section-assistant-turns.sh

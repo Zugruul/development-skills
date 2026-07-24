@@ -32,7 +32,7 @@ import os
 import queue
 import threading
 
-from assistant import adapters, default_store, discovery, turns
+from assistant import adapters, default_store, discovery, selection_store, turns
 from assistant.store import SessionStore
 
 # The four §5a-mandated subsystem workers this skeleton wires up. Real logic
@@ -92,11 +92,8 @@ class AssistantEngine:
         self._chat_locks = {}
         self._chat_locks_guard = threading.Lock()
         # AST-021 (SPEC-ASSISTANT.md §7.2-§7.4, §17.9): startup selection
-        # state, engine-instance memory only -- one process = one
-        # selection, lost on restart by design (cross-tab/cross-restart
-        # persistence is AST-022's selection MEMORY, out of scope here).
-        # `_selected` is the chosen candidate's main name, or None before
-        # any selection (or after Skip). `_gated` is set ONLY by an
+        # state. `_selected` is the chosen candidate's main name, or None
+        # before any selection (or after Skip). `_gated` is set ONLY by an
         # explicit POST /assistant/skip (§7.3) -- it is deliberately NOT
         # derived from "_selected is None" alone, because the existing
         # §7.6 chat resolution path (terminal `--assistant NAME` / stored
@@ -107,8 +104,32 @@ class AssistantEngine:
         # additionally folds in `outcome == "none"` for the page's benefit
         # (see _status's docstring) since that branch is already hard-
         # gated by having no assistant to resolve against.
-        self._selected = None
-        self._gated = False
+        #
+        # AST-022 (§7.5): the selection is no longer engine-instance memory
+        # only -- it is loaded from `selection_store` (a JSON file under
+        # `state_dir`, DISTINCT from `default_store`'s §6.3 machine-local
+        # default name -- see selection_store's module docstring for the
+        # two mechanisms' split) on every construction and persisted on
+        # every `/assistant/select` / `/assistant/skip` / settings change,
+        # so a second engine (page reload, second tab, a restarted
+        # `neural-view.py`) over the SAME state dir picks up the SAME
+        # choice. `_ask_again` is the persisted "ask again on load"
+        # setting (§7.5's page toggle): when true, THIS boot's `_selected`
+        # is forced back to None (a fresh pick is required every load) even
+        # though a prior selection is still on disk -- but the flag itself
+        # keeps persisting, so it stays on across restarts until the user
+        # turns it off. `_gated` is likewise reset to False on an
+        # askAgain=true boot: nothing has been explicitly Skipped yet this
+        # boot, so the same "not gated before any selection" rule AST-021
+        # already applies to a first-ever boot applies here too.
+        loaded = selection_store.load(state_dir)
+        self._ask_again = loaded["askAgain"]
+        if self._ask_again:
+            self._selected = None
+            self._gated = False
+        else:
+            self._selected = loaded["selected"]
+            self._gated = loaded["gated"]
         self._selection_lock = threading.Lock()
 
     def start(self):
@@ -160,7 +181,22 @@ class AssistantEngine:
             return self._select(body)
         if method == "POST" and path == "/assistant/skip":
             return self._skip()
+        if method == "GET" and path == "/assistant/settings":
+            return 200, {"askAgain": self._ask_again}, "application/json"
+        if method == "POST" and path == "/assistant/settings":
+            return self._settings(body)
         return None
+
+    def _persist_selection(self):
+        """Writes the CURRENT `_selected`/`_gated`/`_ask_again` triple to
+        `selection_store` (§7.5). Callers hold `_selection_lock` across both
+        the in-memory mutation and this call, so a concurrent request never
+        observes the fields mutated but not yet persisted (or persisted out
+        of order against another concurrent write) -- the same "mutate and
+        persist under one lock" shape `_chat_lock_for`'s critical section
+        uses for a whole turn, applied here to the smaller selection-state
+        update."""
+        selection_store.save(self.state_dir, self._selected, self._gated, self._ask_again)
 
     def _status(self):
         """GET /assistant/status -- extended for AST-021 (SPEC-ASSISTANT.md
@@ -192,6 +228,10 @@ class AssistantEngine:
             "candidates": candidates_payload,
             "selected": self._selected,
             "gated": self._gated or scan.outcome == "none",
+            # AST-022 (§7.5): so the page's boot branch can decide "still
+            # show the picker" vs. "apply the remembered selection" without
+            # a second round-trip to /assistant/settings.
+            "askAgain": self._ask_again,
         }
 
     def _select(self, body):
@@ -205,8 +245,9 @@ class AssistantEngine:
         error listing the real candidates, never a crash or a silent
         no-op. Selecting always clears an earlier Skip (`_gated` -> False)
         -- picking an assistant un-gates voice/chat for the rest of this
-        engine's process lifetime (session memory only; cross-tab/
-        cross-restart persistence is AST-022, out of scope here)."""
+        engine's process lifetime AND, per AST-022 (§7.5), is persisted via
+        `_persist_selection()` so a second tab, a page reload, or a
+        restarted engine over the same `state_dir` agrees."""
         body = body if isinstance(body, dict) else {}
         name = body.get("name")
         if not isinstance(name, str) or not name.strip():
@@ -235,6 +276,7 @@ class AssistantEngine:
         with self._selection_lock:
             self._selected = _main_name(matches[0])
             self._gated = False
+            self._persist_selection()
         return 200, {"selected": self._selected, "gated": self._gated}, "application/json"
 
     def _skip(self):
@@ -243,11 +285,34 @@ class AssistantEngine:
         rest of this engine's process lifetime, or until a later
         /assistant/select -- §17.9's "no assistant selected" invariant,
         made explicit rather than merely implied by `selected` staying
-        null."""
+        null. Persisted (AST-022, §7.5) the same way `_select` is, so a
+        Skip survives a page reload / second tab / engine restart too."""
         with self._selection_lock:
             self._selected = None
             self._gated = True
+            self._persist_selection()
         return 200, {"selected": None, "gated": True}, "application/json"
+
+    def _settings(self, body):
+        """POST /assistant/settings {"askAgain": bool} -> {"askAgain": bool}
+        (§7.5): toggles the persisted "ask again on load" setting. `true`
+        means every future boot forces a fresh pick (`__init__` resets
+        `_selected`/`_gated` to the "nothing selected yet" state on such a
+        boot even though a prior selection is still on disk); `false`
+        means a future boot loads and applies the last persisted selection
+        automatically. Does NOT itself change `_selected`/`_gated` for the
+        CURRENT, already-running engine -- only what the NEXT boot does
+        with what is on disk. A non-bool `askAgain` is a 400, not a silent
+        coercion (matching `_select`'s "clean error, never a silent
+        no-op" convention)."""
+        body = body if isinstance(body, dict) else {}
+        ask_again = body.get("askAgain")
+        if not isinstance(ask_again, bool):
+            return 400, {"error": "askAgain must be a boolean"}, "application/json"
+        with self._selection_lock:
+            self._ask_again = ask_again
+            self._persist_selection()
+        return 200, {"askAgain": self._ask_again}, "application/json"
 
     def _history(self, query):
         """GET /assistant/history?n=N -- last N exchanges of the resolved

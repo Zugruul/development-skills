@@ -458,6 +458,15 @@ canvas.grabbing{cursor:grabbing}
 .ast-none-overlay{margin:.5rem;padding:.5rem .6rem;border:1px solid #e0453a;
   border-radius:3px;color:#e0453a;font-family:var(--mono);font-size:.62rem;
   letter-spacing:.05em;cursor:help}
+/* AST-022 selection memory (SPEC-ASSISTANT.md §7.5): same placeholder-only
+   styling note as AST-021's .ast-picker above -- restyle is a pending
+   human choice, not made here. */
+.ast-switcher{display:flex;flex-direction:column;gap:.25rem;margin-top:.3rem}
+.ast-switcher-row{font-family:var(--mono);font-size:.6rem;color:var(--fg);
+  border:1px solid var(--border);border-radius:3px;padding:.25rem .45rem;cursor:pointer}
+.ast-switcher-row:hover{border-color:var(--cyan);color:var(--cyan)}
+.ast-switcher-row.ast-switcher-selected{border-color:var(--cyan);color:var(--cyan)}
+.ast-ask-again{align-self:flex-start}
 /* voice settings context panel (cog) — REPLACES the note preview slot: same
    geometry as #inspect, one z above it; opening it closes the note card.
    The two settings here duplicate the header controls on purpose — shown in
@@ -836,6 +845,13 @@ canvas.grabbing{cursor:grabbing}
       <button class="iconbtn" id="vs-say-3">“All brains nominal”</button>
     </div>
     <div class="vs-hint">Speaks the phrase through the active outbound adapter (native system voice) and drives the visualizer's outbound half.</div>
+  </div>
+  <div class="vs-row"><span class="label">Assistant</span>
+    <div class="vs-opts" role="group" aria-label="Assistant selection">
+      <button class="iconbtn ast-ask-again" id="ast-ask-again" aria-pressed="false">Ask again on load</button>
+    </div>
+    <div class="vs-hint">On: the picker shows every time this page loads, even if an assistant was chosen before. Off: the last choice loads automatically.</div>
+    <div class="ast-switcher" id="ast-switcher" role="group" aria-label="Switch assistant"></div>
   </div>
   <div class="vs-row">
     <button class="iconbtn" id="vs-reset" aria-live="polite">Reset settings</button>
@@ -3236,6 +3252,19 @@ document.getElementById("voice-settings").onclick = ()=>{
   p.classList.toggle("open", open);
   document.getElementById("voice-settings").setAttribute("aria-expanded", String(open));
   if(open) document.getElementById("inspect-close").click();
+  // AST-022 (§7.5): refresh the switcher/ask-again UI against the LATEST
+  // server state every time the panel opens, not just at boot -- a switch
+  // made from another tab must show up here without a full page reload.
+  if(open && typeof refreshAssistantSettingsUi === "function") refreshAssistantSettingsUi();
+};
+// AST-022 (§7.5): the ⚙ panel's "ask again on load" toggle -- flips the
+// PERSISTED setting for the NEXT boot (see engine.py's _settings docstring
+// for why this does not change the CURRENT selection).
+document.getElementById("ast-ask-again").onclick = async ()=>{
+  const btn = document.getElementById("ast-ask-again");
+  const next = btn.getAttribute("aria-pressed") !== "true";
+  try{ await fetch("/assistant/settings", {method:"POST", body: JSON.stringify({askAgain: next})}); }catch{}
+  setAskAgainUi(next);
 };
 // press-to-speak: holding Space in the 3D view keeps the mic open;
 // Shift+Space toggles between press-to-speak and mic-always-on
@@ -4793,14 +4822,13 @@ const PROBE = location.search.includes("hoverprobe");
 // selects the sole candidate and puts its main name in the voice panel
 // header ("Voice · <name>", uppercased by .secthead's CSS -- §7.2);
 // "multiple" renders a startup picker (main name + aliases) with a Skip
-// control (§7.3); "none" shows a red gate overlay with a hover explainer
-// (§7.4). Skip and none both hard-gate voice (and, via window.assistantGate,
-// whatever chat surface AST-023's T-key overlay adds later -- none exists
-// in this template yet, so gateVoiceAndChat() is the hook that route must
-// check before it ever calls POST /assistant/chat, per §17.9). Selection
-// MEMORY (cross-tab, ask-again setting, the ⚙ switcher) is AST-022, out of
-// scope here -- this reads the engine's in-memory selection fresh on every
-// boot and never persists anything itself. Minimal HUD-consistent
+// control (§7.3) UNLESS the server already reports a remembered `selected`
+// (AST-022, §7.5 -- see initAssistantSelection below); "none" shows a red
+// gate overlay with a hover explainer (§7.4). Skip and none both hard-gate
+// voice (and, via window.assistantGate, whatever chat surface AST-023's
+// T-key overlay adds later -- none exists in this template yet, so
+// gateVoiceAndChat() is the hook that route must check before it ever
+// calls POST /assistant/chat, per §17.9). Minimal HUD-consistent
 // placeholder styling only (see the .ast-* CSS above) -- the real look is a
 // pending human choice on the issue, landing as a follow-up restyle.
 function gateVoiceAndChat(gated){
@@ -4857,10 +4885,50 @@ function renderNoneOverlay(){
   overlay.title = "/setup-assistant scaffolds one";
   bar.appendChild(overlay);
 }
+// ---- assistant selection memory (AST-022, SPEC-ASSISTANT.md §7.5) ----
+// The ⚙ voice-settings panel's "ask again on load" toggle and assistant
+// switcher. Both read/write against the SAME /assistant/status and
+// /assistant/select routes AST-021's picker already uses -- selecting from
+// the switcher is just "run the picker's row click logic again", no
+// separate turn-state flush/reload (that is AST-024's switch flow, out of
+// scope here).
+function renderAssistantSwitcher(candidates, selected){
+  const el = document.getElementById("ast-switcher");
+  if(!el) return;
+  el.innerHTML = "";
+  el.children.length = 0;
+  for(const c of (candidates || [])){
+    const row = document.createElement("div");
+    row.className = "ast-switcher-row" + (c.name === selected ? " ast-switcher-selected" : "");
+    row.textContent = (c.name === selected ? "✓ " : "") + c.name;
+    row.onclick = async ()=>{
+      try{ await fetch("/assistant/select", {method:"POST", body: JSON.stringify({name: c.name})}); }catch{}
+      await refreshAssistantSettingsUi();
+    };
+    el.appendChild(row);
+  }
+}
+function setAskAgainUi(askAgain){
+  const btn = document.getElementById("ast-ask-again");
+  if(!btn) return;
+  btn.setAttribute("aria-pressed", String(!!askAgain));
+  if(askAgain) btn.classList.add("on"); else btn.classList.remove("on");
+}
+async function refreshAssistantSettingsUi(){
+  let status;
+  try{ status = await (await fetch("/assistant/status")).json(); }catch{ return; }
+  if(!status) return;
+  setVoiceHeaderName(status.selected);
+  gateVoiceAndChat(status.gated);
+  renderAssistantSwitcher(status.candidates || [], status.selected);
+  setAskAgainUi(status.askAgain);
+}
 async function initAssistantSelection(){
   let status;
   try{ status = await (await fetch("/assistant/status")).json(); }catch{ return; }
   if(!status) return;
+  renderAssistantSwitcher(status.candidates || [], status.selected);
+  setAskAgainUi(status.askAgain);
   if(status.outcome === "one"){
     const sole = (status.candidates || [])[0];
     if(sole){
@@ -4869,9 +4937,17 @@ async function initAssistantSelection(){
       gateVoiceAndChat(false);
     }
   } else if(status.outcome === "multiple"){
-    setVoiceHeaderName(null);
-    gateVoiceAndChat(true);
-    renderAssistantPicker(status.candidates || []);
+    if(status.selected){
+      // AST-022 (§7.5): askAgain is false and a prior selection is on
+      // disk -- the engine already reports it via `status.selected`, so
+      // apply it directly instead of re-showing the picker.
+      setVoiceHeaderName(status.selected);
+      gateVoiceAndChat(false);
+    } else {
+      setVoiceHeaderName(null);
+      gateVoiceAndChat(true);
+      renderAssistantPicker(status.candidates || []);
+    }
   } else {
     setVoiceHeaderName(null);
     gateVoiceAndChat(true);

@@ -214,6 +214,8 @@ function mkEl(initialId) {
         remove(){ if (this._id && elements[this._id] === this) delete elements[this._id]; },
         get className(){ return [...this._classes].join(" "); },
         set className(v){ this._classes = new Set(v.split(" ").filter(Boolean)); },
+        setAttribute(k, v){ this[k === "class" ? "className" : k] = v; this["_attr_" + k] = v; },
+        getAttribute(k){ return this["_attr_" + k] !== undefined ? this["_attr_" + k] : null; },
     };
     if (initialId) elements[initialId] = el;
     return el;
@@ -237,7 +239,12 @@ const document = {
 // the picker/overlay get appended into) -- pre-registered once, reset
 // per-run() below, unlike the ast-* ids the selection functions create
 // themselves each time.
-const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar"];
+// AST-022 (§7.5): ast-ask-again/ast-switcher are the ⚙ panel's static
+// furniture (present in the HTML at boot, same as sect-voice etc above) --
+// initAssistantSelection now unconditionally refreshes them, so they need
+// to exist as real elements here too even though this section doesn't
+// assert on them (section-assistant-selection-memory.sh does).
+const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-ask-again", "ast-switcher"];
 for (const id of STATIC_IDS) {
     const el = mkEl(id);
     el.classList._parent = el;
@@ -258,6 +265,8 @@ eval(extract("setVoiceHeaderName"));
 eval(extract("gateVoiceAndChat"));
 eval(extract("renderAssistantPicker"));
 eval(extract("renderNoneOverlay"));
+eval(extract("renderAssistantSwitcher"));
+eval(extract("setAskAgainUi"));
 eval(extract("initAssistantSelection"));
 
 async function run(outcome, candidates) {
