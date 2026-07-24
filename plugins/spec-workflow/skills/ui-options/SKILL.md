@@ -48,7 +48,12 @@ replacing `<task-id>-r<N>` with the exact id just asked. This exits — and fire
 ## 3. Keep working, don't block
 Continue every part of the task that does not commit to a UI option: domain logic, API, state, tests, plumbing, UI-agnostic scaffolding. The armed watcher (step 2) is what actually catches the human's answer — but also collect answers from both channels before any UI-specific work, and always at the start of a fresh iteration, in case a watcher was missed or this is a resumed session that never armed one:
 ```bash
-$HUB answers --consume           # JSON lines: {id, title, selection, ...}
+$HUB answers --consume --id <task-id>-r<N>   # JSON lines: {id, title, selection, ...} — ALWAYS scope --id to
+                                              # your own round id. A bare `--consume` drains and archives
+                                              # every OTHER pending task's answer on the hub too (the hub is
+                                              # shared across concurrent agents/tasks), not just yours —
+                                              # that has actually happened and stranded another task's
+                                              # answer where its owner would never look for it.
 bash "../../scripts/board.sh" show N   # '### UI selection' comment
 ```
 Answers whose selection starts with `### A11y fixes requested` are partial feedback, not a decision: the human ticked specific audit failures (plus an optional note) in the red bar and the card **stays pending** on the hub. Fix exactly those issues, re-run the gate, and re-`ask` the same id (the open card hot-reloads — and re-arm its watcher) — do not treat it as the UI selection and do not wait for it to be consumed as one.

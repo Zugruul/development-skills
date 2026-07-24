@@ -10,7 +10,11 @@ Stdlib only; state is plain files so everything survives restarts.
   ui-hub.py status                  # RUNNING <url> pending=N answered=N | STOPPED
   ui-hub.py stop
   ui-hub.py ask <id> <title> <html-file> [--blocking]   # enqueue a decision card
-  ui-hub.py answers [--consume]     # print answers as JSON lines; --consume archives them
+  ui-hub.py answers [--consume] [--id ID]   # print answers as JSON lines; --consume archives
+                                             # them; --id restricts to one exact card id — ALWAYS
+                                             # pass --id when multiple tasks share the hub, since a
+                                             # bare --consume drains and archives every OTHER
+                                             # pending task's answer too, not just your own
   ui-hub.py serve [--port N]        # run the server in the foreground (internal)
 
 State dir: $UI_HUB_STATE or <git root>/.claude/ui-hub (gitignore it).
@@ -292,7 +296,15 @@ def main():
         print(f"asked '{did}' — hub: {url}")
 
     elif cmd == "answers":
-        for f in sorted(OUTBOX.glob("*.json")):
+        want_id = args[args.index("--id") + 1] if "--id" in args else None
+        files = sorted(OUTBOX.glob("*.json"))
+        if want_id is not None:
+            # matches both the final "<id>.json" and any kept partial-feedback
+            # "<id>.fix-<ts>.json" — a bare id-prefix glob would also match a
+            # DIFFERENT id that happens to start with this one, so filter on
+            # the two exact shapes instead of `f"{want_id}*.json"`.
+            files = [f for f in files if f.stem == want_id or f.stem.startswith(f"{want_id}.fix-")]
+        for f in files:
             print(f.read_text().replace("\n", " "))
             if "--consume" in args:
                 f.rename(ARCHIVE / "answers" / f.name)
