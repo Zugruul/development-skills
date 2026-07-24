@@ -279,5 +279,5 @@ Named follow-up specs — deferred, not dropped:
 | OQ-1 | Multi-machine feed sync (git-only vs syncthing vs Option B) | Leonardo | git via committed tracked files; revisit at fleet spec | open |
 | OQ-2 | Sidecar install location: per-repo `.claude/capabilities/` vs shared `~/.claude/capabilities/` | Leonardo | shared `~/.claude/capabilities/` (one venv/model for all repos) | open |
 | OQ-3 | When do §8.5 fold-mode and §9.4 PPR flip default-on | Leonardo | after verify-feed green across 3 retros / recall-eval shows ≥ parity | open |
-| OQ-4 | Embedding model pin (bge-small-en-v1.5 vs nomic-embed-text-v1.5 ONNX) | dev (benchmark in MEM-030) | bge-small-en-v1.5 (384-dim, smallest, well-supported ONNX export) | open |
+| OQ-4 | Embedding model pin (bge-small-en-v1.5 vs nomic-embed-text-v1.5 ONNX) | dev (benchmark in MEM-030) | bge-small-en-v1.5 (384-dim, smallest, well-supported ONNX export) | MEM-030: pinned bge-small-en-v1.5 (Xenova ONNX export, commit `ea104da`); installs + embeds correctly, single-embed latency ~15ms median warm (well under the §13 ≤50ms budget). Full quality benchmark vs nomic deferred to MEM-034's recall-eval fixture — pin stands until then. |
 | OQ-5 | Does `brain-events.jsonl` rotate (size cap) in v1 | Leonardo | no rotation in v1; revisit if >10MB observed | open |

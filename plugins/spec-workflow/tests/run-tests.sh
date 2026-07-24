@@ -129,6 +129,7 @@ SECTIONS=(
     section-brain-library.sh
     section-brain-atomic.sh
     section-kb-seed.sh
+    section-capability-embeddings.sh
     section-entity-index.sh
     section-neural-view-entities.sh
     section-feedback.sh

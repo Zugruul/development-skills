@@ -145,7 +145,12 @@ rm -rf "$AE3"
 AE4="$(mktemp -d)"
 AE4_IDENTITIES="$AE4/.claude/identities"
 mkdir -p "$AE4_IDENTITIES"
-out="$(PYTHONPATH="$AE_SCRIPTS" python3 - "$AE4" "$AE4_IDENTITIES" <<'PY'
+# CAPABILITY_HOME pinned to an empty dir: "unavailable" must hold even on a
+# machine where the real embeddings capability IS installed (MEM-030 slow
+# tests legitimately install it into ~/.claude/capabilities).
+AE4_NOCAP="$AE4/no-capabilities"
+mkdir -p "$AE4_NOCAP"
+out="$(CAPABILITY_HOME="$AE4_NOCAP" PYTHONPATH="$AE_SCRIPTS" python3 - "$AE4" "$AE4_IDENTITIES" <<'PY'
 import sys
 root, identities = sys.argv[1], sys.argv[2]
 import brain

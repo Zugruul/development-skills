@@ -38,7 +38,9 @@ db_exists() {
 printf 'Body one.\n' | brainidx mint idx alpha --tags a >/dev/null
 printf 'Body two.\n' | brainidx mint idx beta --tags b >/dev/null
 unset BRAIN_EMBED_CMD
-out="$(brainidx index idx 2>&1 1>/dev/null)"
+# empty CAPABILITY_HOME: absence must hold even where the capability is installed
+BIT_NOCAP="$(mktemp -d)"
+out="$(CAPABILITY_HOME="$BIT_NOCAP" brainidx index idx 2>&1 1>/dev/null)"
 rc=$?
 check_rc "fresh build (capability absent) exits 0" 0 "$rc"
 check "fresh build (capability absent) prints one stderr notice" "embeddings capability unavailable" "$out"
