@@ -170,11 +170,17 @@
   <br>Ways back to the agent: comment on <a href="https://github.com/Zugruul/development-skills/issues/319">the issue</a> (read every iteration, works even after the session ends), or reopen the building session in a terminal: <code>claude --resume 0eac8db4-c31f-4f51-9512-bc7a5098189a</code>.
 </div>
 
+<div class="hint">
+  <b>Round 2 — building on your round-1 picks.</b> You favorited <b>Option C · Command palette</b>, liked <b>Option B's activation digest</b>, and asked to iterate over C “with and without digest — do 3-6 layout options”, adding a per-agent digest like B's. All five below are the same command-palette shell; they differ only in <b>how (and whether) each assistant's activation digest attaches</b> — none, inline on every row, on the highlighted row only, in a detail card below the list, and as glanceable badges. Every variant keeps the ask-again / remember on-load control.
+</div>
+
 <div class="tabbar" role="tablist">
 <!-- BEGIN TAB BUTTONS (one per option, in the same order as the panels below; Review stays last) -->
-<button class="tab" type="button" data-tab="A">A · Folded into ⚙</button>
-<button class="tab" type="button" data-tab="B">B · Switcher card + digest</button>
-<button class="tab" type="button" data-tab="C">C · Command palette</button>
+<button class="tab" type="button" data-tab="1">1 · No digest</button>
+<button class="tab" type="button" data-tab="2">2 · Inline on every row</button>
+<button class="tab" type="button" data-tab="3">3 · Highlighted row only</button>
+<button class="tab" type="button" data-tab="4">4 · Detail card below</button>
+<button class="tab" type="button" data-tab="5">5 · Glanceable badges</button>
 <!-- END TAB BUTTONS -->
 <button class="tab" type="button" data-tab="review">Review</button>
 </div>
@@ -262,125 +268,46 @@
   .opt-c .memrow{display:flex;align-items:center;gap:.5rem;cursor:pointer}
   .opt-c .memrow input{width:24px;height:24px;accent-color:var(--c-cy);flex:none;cursor:pointer}
   .opt-c .memtxt{font-size:.64rem;color:var(--c-fg)}
+
+  /* ---- Round 2 : per-agent activation-digest treatments on the palette ---- */
+  .astsw .prow-main{display:flex;align-items:center;gap:.5rem;width:100%}
+  .astsw .prow.two{flex-direction:column;align-items:stretch;gap:.22rem}
+  .astsw .dg{font-size:.54rem;letter-spacing:.02em;line-height:1.4;color:var(--c-mut);
+    display:flex;flex-wrap:wrap;gap:.05rem .55rem;padding-left:.05rem}
+  .astsw .dg .m{white-space:nowrap}
+  .astsw .dg-done{color:var(--c-cy)}
+  .astsw .dg-fail{color:var(--c-am)}
+  .astsw .dg-note{color:var(--c-slate)}
+  .astsw .dg-idle{color:var(--c-slate);font-style:italic}
+  /* opt 3 : digest only on the highlighted row */
+  .opt-sel .prow .dg{display:none}
+  .opt-sel .prow.sel{flex-direction:column;align-items:stretch;gap:.26rem}
+  .opt-sel .prow.sel .dg{display:flex;border-top:1px dashed rgba(70,230,255,.3);padding-top:.28rem}
+  /* opt 4 : detail card docked below the list */
+  .opt-detail .detail{background:var(--c-bg2);border:1px solid var(--c-cyd);border-radius:9px;
+    padding:.5rem .6rem;display:flex;flex-direction:column;gap:.32rem}
+  .opt-detail .detail .dh{display:flex;align-items:center;gap:.4rem}
+  .opt-detail .detail .dn{font-size:.72rem;letter-spacing:.05em;color:var(--c-fg);flex:1}
+  .opt-detail .detail .dsince{font-size:.5rem;color:var(--c-slate);text-transform:uppercase;letter-spacing:.1em}
+  .opt-detail .detail .dline{display:flex;justify-content:space-between;font-size:.58rem}
+  .opt-detail .detail .dline .k{color:var(--c-mut)}
+  .opt-detail .detail .dcy{color:var(--c-cy)}
+  .opt-detail .detail .dam{color:var(--c-am)}
+  .opt-detail .detail .dsl{color:var(--c-slate)}
+  /* opt 5 : glanceable metric badges */
+  .astsw .badges{display:inline-flex;gap:.25rem;flex:none}
+  .astsw .badge{font-size:.5rem;letter-spacing:.03em;padding:.08rem .32rem;border-radius:4px;
+    border:1px solid var(--c-bd);white-space:nowrap}
+  .astsw .badge.b-done{color:var(--c-cy);border-color:var(--c-cyd)}
+  .astsw .badge.b-fail{color:var(--c-am);border-color:rgba(255,179,71,.55)}
+  .astsw .badge.b-note{color:var(--c-slate);border-color:rgba(143,166,189,.55)}
+  .astsw .badge.b-idle{color:var(--c-slate);border-color:rgba(143,166,189,.4)}
 </style>
 
-<!-- ============ OPTION A ============ -->
-<section class="option panel" data-option="A" data-name="Folded into ⚙" data-tab="A">
+<!-- ============ OPTION 1 ============ -->
+<section class="option panel" data-option="1" data-name="No digest" data-tab="1">
   <div class="head">
-    <h2>Option A — Folded into ⚙</h2>
-    <button class="ghost tgl-annot" type="button">Annotate</button>
-    <span class="score-wrap"><button class="ghost score" type="button" aria-haspopup="true">Score</button>
-      <div class="score-panel" role="status"></div></span>
-    <button class="fav" type="button">☆ Favorite</button>
-    <button class="use" type="button">Use this one</button>
-  </div>
-  <div class="preview">
-    <div class="astsw opt-a">
-      <div class="vhead">
-        <span class="vt">Voice · JARVIS</span>
-        <button class="gear pulse" type="button" data-testid="a-gear" aria-label="Voice settings" title="Voice settings">⚙</button>
-      </div>
-      <div class="pop">
-        <div class="poptitle">Voice settings</div>
-        <div class="ctxrow"><span class="lbl">Direction</span><span class="ctxval">OUT · speech</span></div>
-        <div class="ctxrow"><span class="lbl">Microphone</span><span class="ctxval">Press to speak</span></div>
-        <div class="divider"></div>
-        <div class="sec">
-          <span class="lbl">Assistant</span>
-          <div class="alist">
-            <button class="arow active" type="button" data-testid="a-asst-jarvis" aria-pressed="true">
-              <span class="dot on"></span><span class="an">JARVIS</span><span class="atag">active</span></button>
-            <button class="arow" type="button" data-testid="a-asst-friday" aria-pressed="false">
-              <span class="dot"></span><span class="an">FRIDAY</span><span class="ali">fri · viernes</span></button>
-            <button class="arow" type="button" data-testid="a-asst-edith" aria-pressed="false">
-              <span class="dot"></span><span class="an">EDITH</span><span class="ali">ed</span></button>
-          </div>
-        </div>
-        <div class="sec">
-          <span class="lbl">On load</span>
-          <div class="seg" role="group" aria-label="Selection memory on load">
-            <button class="segb" type="button" data-testid="a-load-ask" aria-pressed="false">Ask again</button>
-            <button class="segb on" type="button" data-testid="a-load-remember" aria-pressed="true">Remember</button>
-          </div>
-          <div class="hnt">Remember reuses this pick next load. Ask again shows the startup picker each load.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="aspects">
-    <label><input type="checkbox" value="lives in ⚙ panel">lives in ⚙ panel</label>
-    <label><input type="checkbox" value="single panel">single panel</label>
-    <label><input type="checkbox" value="radio-style list">radio-style list</label>
-    <label><input type="checkbox" value="segmented toggle">segmented toggle</label>
-    <label><input type="checkbox" value="minimal chrome">minimal chrome</label>
-    <label><input type="checkbox" value="dense">dense</label>
-    <label><input type="checkbox" value="reuses existing pattern">reuses existing pattern</label>
-  </div>
-</section>
-
-<!-- ============ OPTION B ============ -->
-<section class="option panel" data-option="B" data-name="Switcher card + digest" data-tab="B">
-  <div class="head">
-    <h2>Option B — Switcher card + digest</h2>
-    <button class="ghost tgl-annot" type="button">Annotate</button>
-    <span class="score-wrap"><button class="ghost score" type="button" aria-haspopup="true">Score</button>
-      <div class="score-panel" role="status"></div></span>
-    <button class="fav" type="button">☆ Favorite</button>
-    <button class="use" type="button">Use this one</button>
-  </div>
-  <div class="preview">
-    <div class="astsw opt-b">
-      <div class="vhead">
-        <span class="vt">Voice · JARVIS</span>
-        <button class="gear pulse" type="button" data-testid="b-switch" aria-label="Switch assistant" title="Switch assistant">⚙</button>
-      </div>
-      <div class="pop">
-        <div class="pophead">
-          <span class="poptitle">Switch assistant</span>
-          <button class="x" type="button" data-testid="b-close" aria-label="Close switcher">✕</button>
-        </div>
-        <div class="cards">
-          <button class="card active" type="button" data-testid="b-asst-jarvis" aria-pressed="true">
-            <span class="crow"><span class="dot on"></span><span class="cn">JARVIS</span><span class="ctag">active</span></span>
-            <span class="cali">jr · mark-3</span>
-            <span class="digest">Since last active · 3 tasks done · 1 failed · 2 notes minted</span>
-          </button>
-          <button class="card" type="button" data-testid="b-asst-friday" aria-pressed="false">
-            <span class="crow"><span class="dot bg"></span><span class="cn">FRIDAY</span><span class="cstat">bg: running</span></span>
-            <span class="cali">fri · viernes</span>
-          </button>
-          <button class="card" type="button" data-testid="b-asst-edith" aria-pressed="false">
-            <span class="crow"><span class="dot bg"></span><span class="cn">EDITH</span><span class="cstat">bg: idle</span></span>
-            <span class="cali">ed</span>
-          </button>
-        </div>
-        <div class="divider"></div>
-        <div class="footrow">
-          <span class="lbl">On next load</span>
-          <div class="seg" role="group" aria-label="Selection memory on load">
-            <button class="segb" type="button" data-testid="b-load-ask" aria-pressed="false">Ask</button>
-            <button class="segb on" type="button" data-testid="b-load-remember" aria-pressed="true">Remember</button>
-          </div>
-        </div>
-        <div class="hnt">Saved server-side — page, tabs and terminal stay in sync.</div>
-      </div>
-    </div>
-  </div>
-  <div class="aspects">
-    <label><input type="checkbox" value="standalone card">standalone card</label>
-    <label><input type="checkbox" value="activation digest">activation digest</label>
-    <label><input type="checkbox" value="status dots">status dots</label>
-    <label><input type="checkbox" value="aliases shown">aliases shown</label>
-    <label><input type="checkbox" value="visual hierarchy">visual hierarchy</label>
-    <label><input type="checkbox" value="footer toggle">footer toggle</label>
-    <label><input type="checkbox" value="spacious">spacious</label>
-  </div>
-</section>
-
-<!-- ============ OPTION C ============ -->
-<section class="option panel" data-option="C" data-name="Command palette" data-tab="C">
-  <div class="head">
-    <h2>Option C — Command palette</h2>
+    <h2>Option 1 — No digest</h2>
     <button class="ghost tgl-annot" type="button">Annotate</button>
     <span class="score-wrap"><button class="ghost score" type="button" aria-haspopup="true">Score</button>
       <div class="score-panel" role="status"></div></span>
@@ -389,40 +316,215 @@
   </div>
   <div class="preview">
     <div class="astsw opt-c">
-      <div class="vhead">
-        <span class="vt">Voice · JARVIS</span>
-        <button class="gear pulse" type="button" data-testid="c-gear" aria-label="Switch assistant" title="Switch assistant">⚙</button>
-      </div>
+      <div class="vhead"><span class="vt">Voice · JARVIS</span>
+        <button class="gear pulse" type="button" data-testid="v1-gear" aria-label="Switch assistant" title="Switch assistant">⚙</button></div>
       <div class="pop">
-        <div class="palhead">
-          <span class="kbd">⌘K</span>
-          <input class="filter" type="text" data-testid="c-filter" aria-label="Filter assistants" placeholder="Switch assistant…">
-        </div>
+      <div class="palhead"><span class="kbd">⌘K</span>
+        <input class="filter" type="text" data-testid="v1-filter" aria-label="Filter assistants" placeholder="Switch assistant…"></div>
         <div class="rows">
-          <button class="prow sel" type="button" data-testid="c-asst-jarvis" aria-pressed="true">
+          <button class="prow sel" type="button" data-testid="v1-jarvis" aria-pressed="true">
             <span class="pn">JARVIS</span><span class="pali">jr, mark-3</span><span class="ptag active">active</span></button>
-          <button class="prow" type="button" data-testid="c-asst-friday" aria-pressed="false">
+          <button class="prow" type="button" data-testid="v1-friday" aria-pressed="false">
             <span class="pn">FRIDAY</span><span class="pali">fri, viernes</span><span class="ptag def">default</span></button>
-          <button class="prow" type="button" data-testid="c-asst-edith" aria-pressed="false">
+          <button class="prow" type="button" data-testid="v1-edith" aria-pressed="false">
             <span class="pn">EDITH</span><span class="pali">ed</span></button>
         </div>
-        <div class="divider"></div>
-        <label class="memrow">
-          <input type="checkbox" data-testid="c-load-remember" checked aria-label="Remember selection, skip picker next load">
-          <span class="memtxt">Remember — skip the picker next load</span>
-        </label>
-        <div class="hnt">Uncheck to be asked on each page load. Enter switches · Esc closes.</div>
+
+      <div class="divider"></div>
+      <label class="memrow"><input type="checkbox" data-testid="v1-remember" checked aria-label="Remember selection, skip picker next load"><span class="memtxt">Remember — skip the picker next load</span></label>
+      <div class="hnt">Uncheck to be asked on each page load. Enter switches · Esc closes.</div>
       </div>
     </div>
   </div>
   <div class="aspects">
-    <label><input type="checkbox" value="command palette">command palette</label>
-    <label><input type="checkbox" value="filter input">filter input</label>
-    <label><input type="checkbox" value="keyboard-first">keyboard-first</label>
-    <label><input type="checkbox" value="CLI-flavored">CLI-flavored</label>
-    <label><input type="checkbox" value="checkbox setting">checkbox setting</label>
+    <label><input type="checkbox" value="no digest">no digest</label>
+    <label><input type="checkbox" value="minimal">minimal</label>
+    <label><input type="checkbox" value="fastest scan">fastest scan</label>
     <label><input type="checkbox" value="compact rows">compact rows</label>
-    <label><input type="checkbox" value="default tag">default tag</label>
+    <label><input type="checkbox" value="keyboard-first">keyboard-first</label>
+    <label><input type="checkbox" value="clean default">clean default</label>
+  </div>
+</section>
+
+<!-- ============ OPTION 2 ============ -->
+<section class="option panel" data-option="2" data-name="Inline on every row" data-tab="2">
+  <div class="head">
+    <h2>Option 2 — Inline on every row</h2>
+    <button class="ghost tgl-annot" type="button">Annotate</button>
+    <span class="score-wrap"><button class="ghost score" type="button" aria-haspopup="true">Score</button>
+      <div class="score-panel" role="status"></div></span>
+    <button class="fav" type="button">☆ Favorite</button>
+    <button class="use" type="button">Use this one</button>
+  </div>
+  <div class="preview">
+    <div class="astsw opt-c">
+      <div class="vhead"><span class="vt">Voice · JARVIS</span>
+        <button class="gear pulse" type="button" data-testid="v2-gear" aria-label="Switch assistant" title="Switch assistant">⚙</button></div>
+      <div class="pop">
+      <div class="palhead"><span class="kbd">⌘K</span>
+        <input class="filter" type="text" data-testid="v2-filter" aria-label="Filter assistants" placeholder="Switch assistant…"></div>
+        <div class="rows">
+          <button class="prow two sel" type="button" data-testid="v2-jarvis" aria-pressed="true">
+            <span class="prow-main"><span class="pn">JARVIS</span><span class="pali">jr, mark-3</span><span class="ptag active">active</span></span>
+            <span class="dg"><span class="m dg-done">✓ 3 done</span><span class="m dg-fail">⚠ 1 failed</span><span class="m dg-note">✎ 2 notes</span></span></button>
+          <button class="prow two" type="button" data-testid="v2-friday" aria-pressed="false">
+            <span class="prow-main"><span class="pn">FRIDAY</span><span class="pali">fri, viernes</span><span class="ptag def">default</span></span>
+            <span class="dg"><span class="m dg-done">✓ 1 done</span><span class="m dg-note">✎ 1 note</span></span></button>
+          <button class="prow two" type="button" data-testid="v2-edith" aria-pressed="false">
+            <span class="prow-main"><span class="pn">EDITH</span><span class="pali">ed</span></span>
+            <span class="dg"><span class="m dg-idle">idle · no new activity</span></span></button>
+        </div>
+
+      <div class="divider"></div>
+      <label class="memrow"><input type="checkbox" data-testid="v2-remember" checked aria-label="Remember selection, skip picker next load"><span class="memtxt">Remember — skip the picker next load</span></label>
+      <div class="hnt">Uncheck to be asked on each page load. Enter switches · Esc closes.</div>
+      </div>
+    </div>
+  </div>
+  <div class="aspects">
+    <label><input type="checkbox" value="digest every row">digest every row</label>
+    <label><input type="checkbox" value="always visible">always visible</label>
+    <label><input type="checkbox" value="dense">dense</label>
+    <label><input type="checkbox" value="at-a-glance">at-a-glance</label>
+    <label><input type="checkbox" value="two-line rows">two-line rows</label>
+    <label><input type="checkbox" value="more scrolling">more scrolling</label>
+  </div>
+</section>
+
+<!-- ============ OPTION 3 ============ -->
+<section class="option panel" data-option="3" data-name="Highlighted row only" data-tab="3">
+  <div class="head">
+    <h2>Option 3 — Highlighted row only</h2>
+    <button class="ghost tgl-annot" type="button">Annotate</button>
+    <span class="score-wrap"><button class="ghost score" type="button" aria-haspopup="true">Score</button>
+      <div class="score-panel" role="status"></div></span>
+    <button class="fav" type="button">☆ Favorite</button>
+    <button class="use" type="button">Use this one</button>
+  </div>
+  <div class="preview">
+    <div class="astsw opt-c opt-sel">
+      <div class="vhead"><span class="vt">Voice · JARVIS</span>
+        <button class="gear pulse" type="button" data-testid="v3-gear" aria-label="Switch assistant" title="Switch assistant">⚙</button></div>
+      <div class="pop">
+      <div class="palhead"><span class="kbd">⌘K</span>
+        <input class="filter" type="text" data-testid="v3-filter" aria-label="Filter assistants" placeholder="Switch assistant…"></div>
+        <div class="rows">
+          <button class="prow sel" type="button" data-testid="v3-jarvis" aria-pressed="true">
+            <span class="prow-main"><span class="pn">JARVIS</span><span class="pali">jr, mark-3</span><span class="ptag active">active</span></span>
+            <span class="dg"><span class="m dg-done">✓ 3 done</span><span class="m dg-fail">⚠ 1 failed</span><span class="m dg-note">✎ 2 notes</span></span></button>
+          <button class="prow" type="button" data-testid="v3-friday" aria-pressed="false">
+            <span class="prow-main"><span class="pn">FRIDAY</span><span class="pali">fri, viernes</span><span class="ptag def">default</span></span>
+            <span class="dg"><span class="m dg-done">✓ 1 done</span><span class="m dg-note">✎ 1 note</span></span></button>
+          <button class="prow" type="button" data-testid="v3-edith" aria-pressed="false">
+            <span class="prow-main"><span class="pn">EDITH</span><span class="pali">ed</span></span>
+            <span class="dg"><span class="m dg-idle">idle · no new activity</span></span></button>
+        </div>
+
+      <div class="divider"></div>
+      <label class="memrow"><input type="checkbox" data-testid="v3-remember" checked aria-label="Remember selection, skip picker next load"><span class="memtxt">Remember — skip the picker next load</span></label>
+      <div class="hnt">Uncheck to be asked on each page load. Enter switches · Esc closes.</div>
+      </div>
+    </div>
+  </div>
+  <div class="aspects">
+    <label><input type="checkbox" value="digest on focus">digest on focus</label>
+    <label><input type="checkbox" value="progressive disclosure">progressive disclosure</label>
+    <label><input type="checkbox" value="clean default">clean default</label>
+    <label><input type="checkbox" value="one-at-a-time">one-at-a-time</label>
+    <label><input type="checkbox" value="keyboard-driven">keyboard-driven</label>
+    <label><input type="checkbox" value="compact list">compact list</label>
+  </div>
+</section>
+
+<!-- ============ OPTION 4 ============ -->
+<section class="option panel" data-option="4" data-name="Detail card below" data-tab="4">
+  <div class="head">
+    <h2>Option 4 — Detail card below</h2>
+    <button class="ghost tgl-annot" type="button">Annotate</button>
+    <span class="score-wrap"><button class="ghost score" type="button" aria-haspopup="true">Score</button>
+      <div class="score-panel" role="status"></div></span>
+    <button class="fav" type="button">☆ Favorite</button>
+    <button class="use" type="button">Use this one</button>
+  </div>
+  <div class="preview">
+    <div class="astsw opt-c opt-detail">
+      <div class="vhead"><span class="vt">Voice · JARVIS</span>
+        <button class="gear pulse" type="button" data-testid="v4-gear" aria-label="Switch assistant" title="Switch assistant">⚙</button></div>
+      <div class="pop">
+      <div class="palhead"><span class="kbd">⌘K</span>
+        <input class="filter" type="text" data-testid="v4-filter" aria-label="Filter assistants" placeholder="Switch assistant…"></div>
+        <div class="rows">
+          <button class="prow sel" type="button" data-testid="v4-jarvis" aria-pressed="true">
+            <span class="pn">JARVIS</span><span class="pali">jr, mark-3</span><span class="ptag active">active</span></button>
+          <button class="prow" type="button" data-testid="v4-friday" aria-pressed="false">
+            <span class="pn">FRIDAY</span><span class="pali">fri, viernes</span><span class="ptag def">default</span></button>
+          <button class="prow" type="button" data-testid="v4-edith" aria-pressed="false">
+            <span class="pn">EDITH</span><span class="pali">ed</span></button>
+        </div>
+        <div class="detail">
+          <div class="dh"><span class="dot on"></span><span class="dn">JARVIS</span><span class="dsince">since last active</span></div>
+          <div class="dline"><span class="k">Tasks completed</span><span class="dcy">3</span></div>
+          <div class="dline"><span class="k">Tasks failed</span><span class="dam">1</span></div>
+          <div class="dline"><span class="k">Notes minted</span><span class="dsl">2</span></div>
+        </div>
+      <div class="divider"></div>
+      <label class="memrow"><input type="checkbox" data-testid="v4-remember" checked aria-label="Remember selection, skip picker next load"><span class="memtxt">Remember — skip the picker next load</span></label>
+      <div class="hnt">Uncheck to be asked on each page load. Enter switches · Esc closes.</div>
+      </div>
+    </div>
+  </div>
+  <div class="aspects">
+    <label><input type="checkbox" value="master-detail">master-detail</label>
+    <label><input type="checkbox" value="rich digest">rich digest</label>
+    <label><input type="checkbox" value="detail card">detail card</label>
+    <label><input type="checkbox" value="stable list">stable list</label>
+    <label><input type="checkbox" value="highlighted preview">highlighted preview</label>
+    <label><input type="checkbox" value="more vertical space">more vertical space</label>
+  </div>
+</section>
+
+<!-- ============ OPTION 5 ============ -->
+<section class="option panel" data-option="5" data-name="Glanceable badges" data-tab="5">
+  <div class="head">
+    <h2>Option 5 — Glanceable badges</h2>
+    <button class="ghost tgl-annot" type="button">Annotate</button>
+    <span class="score-wrap"><button class="ghost score" type="button" aria-haspopup="true">Score</button>
+      <div class="score-panel" role="status"></div></span>
+    <button class="fav" type="button">☆ Favorite</button>
+    <button class="use" type="button">Use this one</button>
+  </div>
+  <div class="preview">
+    <div class="astsw opt-c">
+      <div class="vhead"><span class="vt">Voice · JARVIS</span>
+        <button class="gear pulse" type="button" data-testid="v5-gear" aria-label="Switch assistant" title="Switch assistant">⚙</button></div>
+      <div class="pop">
+      <div class="palhead"><span class="kbd">⌘K</span>
+        <input class="filter" type="text" data-testid="v5-filter" aria-label="Filter assistants" placeholder="Switch assistant…"></div>
+        <div class="rows">
+          <button class="prow sel" type="button" data-testid="v5-jarvis" aria-pressed="true">
+            <span class="pn">JARVIS</span><span class="pali">jr, mark-3</span><span class="ptag active">active</span>
+            <span class="badges"><span class="badge b-done">3 ✓</span><span class="badge b-fail">1 ⚠</span><span class="badge b-note">2 ✎</span></span></button>
+          <button class="prow" type="button" data-testid="v5-friday" aria-pressed="false">
+            <span class="pn">FRIDAY</span><span class="pali">fri, viernes</span><span class="ptag def">default</span>
+            <span class="badges"><span class="badge b-done">1 ✓</span><span class="badge b-note">1 ✎</span></span></button>
+          <button class="prow" type="button" data-testid="v5-edith" aria-pressed="false">
+            <span class="pn">EDITH</span><span class="pali">ed</span>
+            <span class="badges"><span class="badge b-idle">idle</span></span></button>
+        </div>
+
+      <div class="divider"></div>
+      <label class="memrow"><input type="checkbox" data-testid="v5-remember" checked aria-label="Remember selection, skip picker next load"><span class="memtxt">Remember — skip the picker next load</span></label>
+      <div class="hnt">Uncheck to be asked on each page load. Enter switches · Esc closes.</div>
+      </div>
+    </div>
+  </div>
+  <div class="aspects">
+    <label><input type="checkbox" value="badge digest">badge digest</label>
+    <label><input type="checkbox" value="glanceable">glanceable</label>
+    <label><input type="checkbox" value="color-coded">color-coded</label>
+    <label><input type="checkbox" value="compact">compact</label>
+    <label><input type="checkbox" value="no prose">no prose</label>
+    <label><input type="checkbox" value="scannable">scannable</label>
   </div>
 </section>
 
