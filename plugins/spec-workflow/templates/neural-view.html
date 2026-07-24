@@ -467,6 +467,42 @@ canvas.grabbing{cursor:grabbing}
 .ast-switcher-row:hover{border-color:var(--cyan);color:var(--cyan)}
 .ast-switcher-row.ast-switcher-selected{border-color:var(--cyan);color:var(--cyan)}
 .ast-ask-again{align-self:flex-start}
+/* AST-023 T-key chat overlay (SPEC-ASSISTANT.md §8.6, §5, §8.3, §8.5,
+   issue #320): minimal HUD-consistent placeholder styling only, matching
+   .hud's panel/border language at the structural level -- the real look
+   is a pending human choice on the issue, same restyle-later note as
+   AST-021/022 above. */
+.ast-chat-overlay{position:fixed;left:50%;bottom:1rem;transform:translateX(-50%);
+  width:min(560px,90vw);max-height:60vh;display:flex;flex-direction:column;
+  background:var(--panel-solid);border:1px solid var(--border);border-radius:8px;
+  z-index:60;font-family:var(--mono);font-size:.68rem;color:var(--fg)}
+.ast-chat-header{display:flex;align-items:center;justify-content:space-between;
+  padding:.35rem .5rem;border-bottom:1px solid var(--border)}
+.ast-chat-lastx{display:flex;gap:.2rem}
+.ast-chat-lastx-btn{font-family:var(--mono);font-size:.6rem;padding:.1rem .4rem;
+  border:1px solid var(--border);border-radius:3px;cursor:pointer;color:var(--fg);
+  background:transparent}
+.ast-chat-lastx-btn.ast-chat-lastx-active{border-color:var(--cyan);color:var(--cyan)}
+.ast-chat-close{font-family:var(--mono);font-size:.7rem;border:1px solid var(--border);
+  border-radius:3px;cursor:pointer;color:var(--fg);background:transparent}
+.ast-chat-log{flex:1;overflow-y:auto;padding:.4rem .5rem;display:flex;
+  flex-direction:column;gap:.3rem}
+.ast-chat-row{border:1px solid var(--border);border-radius:3px;padding:.25rem .4rem;
+  white-space:pre-wrap;max-width:85%}
+.ast-chat-row[data-role="user"]{align-self:flex-end;border-color:var(--cyan)}
+.ast-chat-row[data-role="assistant"]{align-self:flex-start}
+.ast-chat-row[data-role="system"]{align-self:stretch;border-color:#e0453a;color:#e0453a}
+.ast-chat-chips{display:flex;flex-wrap:wrap;gap:.2rem;margin-top:.25rem}
+.ast-chat-chip{font-size:.55rem;border:1px solid var(--border);border-radius:3px;
+  padding:.05rem .3rem;color:var(--fg)}
+.ast-chat-state{padding:.2rem .5rem;font-size:.6rem;color:var(--muted);min-height:1em}
+.ast-chat-state-gated,.ast-chat-state-offline{color:#e0453a}
+.ast-chat-inputrow{display:flex;gap:.3rem;padding:.4rem .5rem;border-top:1px solid var(--border)}
+.ast-chat-input{flex:1;font-family:var(--mono);font-size:.65rem;background:transparent;
+  color:var(--fg);border:1px solid var(--border);border-radius:3px;padding:.25rem .4rem}
+.ast-chat-retry{font-family:var(--mono);font-size:.6rem;border:1px solid var(--border);
+  border-radius:3px;cursor:pointer;color:var(--fg);background:transparent}
+.ast-chat-hidden{display:none}
 /* voice settings context panel (cog) — REPLACES the note preview slot: same
    geometry as #inspect, one z above it; opening it closes the note card.
    The two settings here duplicate the header controls on purpose — shown in
@@ -4954,6 +4990,257 @@ async function initAssistantSelection(){
     renderNoneOverlay();
   }
 }
+
+// ---- T-key chat overlay (AST-023, SPEC-ASSISTANT.md §8.6, §5, §8.3, §8.5,
+// issue #320) ----
+// T (outside any input/textarea/contenteditable) opens a bottom-center
+// dialog; Esc closes it. §8.6: while a turn is in flight the input SHALL
+// stay open and additional sends queue FIFO (never fired concurrently,
+// never dropped) -- `window.assistantChat` (mirroring the existing
+// `window.assistantGate` convention) is the single mutable state bag
+// (`queue`, `inFlight`, `exchanges` cache for the last-X toggle,
+// `lastX`, `elapsedTimer`, `elapsedStart`) both the keydown wiring and
+// the send/dispatch pipeline share. Recall-fired chips (§8.3) are
+// already carried on `POST /assistant/chat`'s response (`chips`, from
+// turns.py's `_chips_from_recall` -- see engine.py's `_chat` docstring)
+// so no engine change was needed for this task; history-seeded rows
+// (`GET /assistant/history`) have none (chips are per-turn, never
+// persisted to the transcript) and simply render without a chips block.
+window.assistantChat = window.assistantChat || {
+  queue: [], inFlight: false, exchanges: [], lastX: 2,
+  elapsedTimer: null, elapsedStart: 0,
+};
+function chatElapsedText(startMs, nowMs){
+  const secs = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+  return secs + "s";
+}
+function isChatTypingTarget(t){
+  return !!(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable));
+}
+function appendChatRow(log, role, text, chips){
+  if(!log) return null;
+  const row = document.createElement("div");
+  row.className = "ast-chat-row";
+  row.setAttribute("data-role", role);
+  row.textContent = text;
+  if(chips && chips.length){
+    const chipsEl = document.createElement("div");
+    chipsEl.className = "ast-chat-chips";
+    for(const c of chips){
+      const chip = document.createElement("span");
+      chip.className = "ast-chat-chip";
+      chip.textContent = c.slug + (c.strength !== null && c.strength !== undefined ? ` [${c.strength}]` : "");
+      chipsEl.appendChild(chip);
+    }
+    row.appendChild(chipsEl);
+  }
+  log.appendChild(row);
+  return row;
+}
+function renderChatLog(){
+  const log = document.getElementById("ast-chat-log");
+  if(!log) return;
+  log.innerHTML = "";
+  const take = window.assistantChat.exchanges.slice(-window.assistantChat.lastX);
+  for(const ex of take){
+    appendChatRow(log, "user", ex.user, null);
+    appendChatRow(log, "assistant", ex.assistant, ex.chips || null);
+  }
+}
+function renderChatLastXToggle(){
+  const wrap = document.getElementById("ast-chat-lastx");
+  if(!wrap) return;
+  wrap.innerHTML = "";
+  for(const n of [1, 2, 3]){
+    const btn = document.createElement("button");
+    btn.className = "ast-chat-lastx-btn" + (n === window.assistantChat.lastX ? " ast-chat-lastx-active" : "");
+    btn.textContent = String(n);
+    btn.onclick = ()=>{ setChatLastX(n); };
+    wrap.appendChild(btn);
+  }
+}
+function setChatLastX(n){
+  window.assistantChat.lastX = n;
+  renderChatLastXToggle();
+  renderChatLog();
+}
+function buildChatOverlay(){
+  const overlay = document.createElement("div");
+  overlay.id = "ast-chat-overlay";
+  overlay.className = "ast-chat-overlay";
+  const header = document.createElement("div");
+  header.className = "ast-chat-header";
+  const lastx = document.createElement("div");
+  lastx.id = "ast-chat-lastx";
+  lastx.className = "ast-chat-lastx";
+  header.appendChild(lastx);
+  const close = document.createElement("button");
+  close.className = "ast-chat-close";
+  close.textContent = "×";
+  close.onclick = ()=>{ closeChatOverlay(); };
+  header.appendChild(close);
+  overlay.appendChild(header);
+  const log = document.createElement("div");
+  log.id = "ast-chat-log";
+  log.className = "ast-chat-log";
+  overlay.appendChild(log);
+  const state = document.createElement("div");
+  state.id = "ast-chat-state";
+  state.className = "ast-chat-state";
+  overlay.appendChild(state);
+  const inputrow = document.createElement("div");
+  inputrow.className = "ast-chat-inputrow";
+  const input = document.createElement("input");
+  input.id = "ast-chat-input";
+  input.className = "ast-chat-input";
+  input.onkeydown = chatInputKeydown;
+  inputrow.appendChild(input);
+  const retry = document.createElement("button");
+  retry.id = "ast-chat-retry";
+  retry.className = "ast-chat-retry ast-chat-hidden";
+  retry.textContent = "retry";
+  retry.onclick = ()=>{ retry.classList.add("ast-chat-hidden"); loadChatHistory(); };
+  inputrow.appendChild(retry);
+  overlay.appendChild(inputrow);
+  return overlay;
+}
+function renderChatGated(overlay, status){
+  const log = document.getElementById("ast-chat-log");
+  if(log) log.innerHTML = "";
+  const input = document.getElementById("ast-chat-input");
+  if(input) input.disabled = true;
+  const state = document.getElementById("ast-chat-state");
+  if(state){
+    state.className = "ast-chat-state ast-chat-state-gated";
+    state.textContent = (status && status.outcome === "none")
+      ? "no assistant available -- set up an assistant"
+      : "assistant selection was skipped -- pick one in the ⚙ switcher";
+  }
+}
+function renderChatOffline(){
+  const input = document.getElementById("ast-chat-input");
+  if(input) input.disabled = true;
+  const state = document.getElementById("ast-chat-state");
+  if(state){
+    state.className = "ast-chat-state ast-chat-state-offline";
+    state.textContent = "offline -- could not reach the assistant server";
+  }
+  const retry = document.getElementById("ast-chat-retry");
+  if(retry) retry.classList.remove("ast-chat-hidden");
+}
+function startChatElapsed(){
+  window.assistantChat.elapsedStart = Date.now();
+  const tick = ()=>{
+    const state = document.getElementById("ast-chat-state");
+    if(state){
+      state.className = "ast-chat-state";
+      state.textContent = "thinking… " + chatElapsedText(window.assistantChat.elapsedStart, Date.now());
+    }
+  };
+  tick();
+  window.assistantChat.elapsedTimer = setInterval(tick, 1000);
+}
+function stopChatElapsed(){
+  if(window.assistantChat.elapsedTimer){
+    clearInterval(window.assistantChat.elapsedTimer);
+    window.assistantChat.elapsedTimer = null;
+  }
+  const state = document.getElementById("ast-chat-state");
+  if(state) state.textContent = "";
+}
+async function dispatchNextChat(){
+  if(window.assistantChat.inFlight) return;
+  const text = window.assistantChat.queue.shift();
+  if(text === undefined) return;
+  window.assistantChat.inFlight = true;
+  const log = document.getElementById("ast-chat-log");
+  appendChatRow(log, "user", text, null);
+  startChatElapsed();
+  let resp, payload;
+  try{
+    resp = await fetch("/assistant/chat", {method: "POST", body: JSON.stringify({message: text})});
+    payload = await resp.json();
+  }catch{
+    stopChatElapsed();
+    window.assistantChat.inFlight = false;
+    window.assistantChat.queue = [];
+    renderChatOffline();
+    return;
+  }
+  stopChatElapsed();
+  window.assistantChat.inFlight = false;
+  if(resp.status === 403){
+    window.assistantChat.queue = [];
+    renderChatGated(document.getElementById("ast-chat-overlay"), payload);
+    return;
+  }
+  if(resp.status >= 400){
+    // §8.5: surfaces the engine's error text (adapter timeout/nonzero
+    // exit/unparseable output, including the auth-expired login
+    // instruction) verbatim -- never a synthesized message.
+    appendChatRow(log, "system", (payload && payload.error) || "chat failed", null);
+  } else {
+    appendChatRow(log, "assistant", payload.text, payload.chips);
+    window.assistantChat.exchanges.push({user: text, assistant: payload.text, chips: payload.chips});
+  }
+  dispatchNextChat();
+}
+function queueOrSendChat(text){
+  window.assistantChat.queue.push(text);
+  dispatchNextChat();
+}
+function chatInputKeydown(ev){
+  if(ev.key !== "Enter") return;
+  if(ev.preventDefault) ev.preventDefault();
+  const input = document.getElementById("ast-chat-input");
+  if(!input || input.disabled) return;
+  const text = (input.value || "").trim();
+  if(!text) return;
+  input.value = "";
+  queueOrSendChat(text);
+}
+async function loadChatHistory(){
+  let data;
+  try{ data = await (await fetch("/assistant/history?n=30")).json(); }catch{
+    renderChatOffline();
+    return;
+  }
+  window.assistantChat.exchanges = (data && data.exchanges) || [];
+  renderChatLastXToggle();
+  renderChatLog();
+}
+async function openChatOverlay(){
+  if(document.getElementById("ast-chat-overlay")) return;
+  const overlay = buildChatOverlay();
+  document.body.appendChild(overlay);
+  renderChatLastXToggle();
+  let status;
+  try{ status = await (await fetch("/assistant/status")).json(); }catch{
+    renderChatOffline();
+    return;
+  }
+  if(!status || status.gated || status.outcome === "none"){
+    renderChatGated(overlay, status);
+    return;
+  }
+  await loadChatHistory();
+}
+function closeChatOverlay(){
+  stopChatElapsed();
+  const overlay = document.getElementById("ast-chat-overlay");
+  if(overlay) overlay.remove();
+}
+function handleAssistantChatKeydown(ev){
+  if(ev.key === "Escape"){
+    if(document.getElementById("ast-chat-overlay")) closeChatOverlay();
+    return;
+  }
+  if(ev.key !== "t" && ev.key !== "T") return;
+  if(isChatTypingTarget(ev.target)) return;
+  if(ev.preventDefault) ev.preventDefault();
+  return openChatOverlay();
+}
+addEventListener("keydown", handleAssistantChatKeydown);
 
 // ---- boot ----
 (async function(){
