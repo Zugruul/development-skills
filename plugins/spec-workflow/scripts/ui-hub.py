@@ -201,9 +201,17 @@ def main():
 
     if cmd == "serve":
         port = arg_port(args)
+        # Bind BEFORE writing pid/port files: two racing `start` calls can
+        # both reach here before either has a server bound. Writing the
+        # pidfile first meant a loser that later failed server_bind() had
+        # already clobbered the winner's pidfile with its own (about-to-die)
+        # pid, leaving `status`/`ask` reporting STOPPED against a server
+        # that was, in fact, alive and reachable. Binding first means only
+        # the actual winner ever reaches the writes below.
+        server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
         PORTFILE.write_text(str(port))
         PIDFILE.write_text(str(os.getpid()))
-        ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+        server.serve_forever()
 
     elif cmd == "start":
         if pid_alive():
