@@ -213,10 +213,10 @@
   .astsw .dot.on{background:var(--c-cy);box-shadow:0 0 7px rgba(70,230,255,.7)}
   .astsw .dot.bg{background:var(--c-am);box-shadow:0 0 6px rgba(255,179,71,.5)}
   /* segmented on-load toggle, mirrors neural-view #voice-dir */
-  .astsw .seg{display:inline-flex;border:1px solid var(--c-bd);border-radius:6px;overflow:hidden}
-  .astsw .segb{background:#0d1a2c;border:0;color:#a9c6d8;font-size:.62rem;letter-spacing:.06em;
+  .astsw .vseg{display:inline-flex;border:1px solid var(--c-bd);border-radius:6px;overflow:hidden;background:transparent;box-shadow:none;padding:0}
+  .astsw .vsegb{background:#0d1a2c;border:0;color:#a9c6d8;font-size:.62rem;letter-spacing:.06em;
     padding:.32rem .6rem}
-  .astsw .segb.on{color:#8bf0ff;background:#123b4d}
+  .astsw .vsegb.on{color:#8bf0ff;background:#123b4d}
 
   /* ---- Option A : folded into the ⚙ voice-settings panel ---- */
   .opt-a .ctxrow{display:flex;justify-content:space-between;align-items:baseline;gap:.5rem;opacity:.6}
@@ -302,6 +302,16 @@
   .astsw .badge.b-fail{color:var(--c-am);border-color:rgba(255,179,71,.55)}
   .astsw .badge.b-note{color:var(--c-slate);border-color:rgba(143,166,189,.55)}
   .astsw .badge.b-idle{color:var(--c-slate);border-color:rgba(143,166,189,.4)}
+  /* opt 5 finalized : preserve today's Voice-panel controls beside the switcher gear */
+  .opt5-final .vhead{flex-wrap:wrap;gap:.4rem .5rem}
+  .astsw .vh-l{display:flex;align-items:center;gap:.35rem}
+  .astsw .vh-r{display:flex;align-items:center;gap:.3rem}
+  .astsw .micbtn{min-width:26px;min-height:24px;display:inline-flex;align-items:center;justify-content:center;
+    background:rgba(224,69,58,.15);border:1px solid rgba(224,69,58,.65);border-radius:6px;padding:.2rem .4rem}
+  .astsw .micbtn .micdot{position:relative;width:9px;height:9px;border-radius:50%;
+    background:#e0453a;box-shadow:0 0 7px rgba(224,69,58,.75);display:block}
+  .astsw .micbtn.muted .micdot::after{content:"";position:absolute;left:-3px;right:-3px;top:50%;
+    height:1.5px;background:#ffc7c1;transform:rotate(-45deg)}
 </style>
 
 <!-- ============ OPTION 1 ============ -->
@@ -494,9 +504,19 @@
     <button class="use" type="button">Use this one</button>
   </div>
   <div class="preview">
-    <div class="astsw opt-c">
-      <div class="vhead"><span class="vt">Voice · JARVIS</span>
-        <button class="gear pulse" type="button" data-testid="v5-gear" aria-label="Switch assistant" title="Switch assistant">⚙</button></div>
+    <div class="astsw opt-c opt5-final">
+      <div class="vhead">
+        <div class="vh-l"><span class="vt">Voice · JARVIS</span>
+          <button class="gear pulse" type="button" data-testid="v5-gear" aria-label="Assistant switcher" title="Switch assistant">⚙</button></div>
+        <div class="vh-r">
+          <button class="micbtn muted" type="button" data-testid="v5-mic" aria-pressed="true" aria-label="Microphone muted — click to unmute" title="Muted — click to unmute"><span class="micdot"></span></button>
+          <span class="vseg" role="group" aria-label="Voice direction">
+            <button class="vsegb" type="button" data-testid="v5-dir-in" aria-pressed="false">IN</button>
+            <button class="vsegb on" type="button" data-testid="v5-dir-out" aria-pressed="true">OUT</button>
+            <button class="vsegb" type="button" data-testid="v5-dir-both" aria-pressed="false">BOTH</button>
+          </span>
+        </div>
+      </div>
       <div class="pop">
       <div class="palhead"><span class="kbd">⌘K</span>
         <input class="filter" type="text" data-testid="v5-filter" aria-label="Filter assistants" placeholder="Switch assistant…"></div>
@@ -514,7 +534,7 @@
 
       <div class="divider"></div>
       <label class="memrow"><input type="checkbox" data-testid="v5-remember" checked aria-label="Remember selection, skip picker next load"><span class="memtxt">Remember — skip the picker next load</span></label>
-      <div class="hnt">Uncheck to be asked on each page load. Enter switches · Esc closes.</div>
+      <div class="hnt">Uncheck to be asked on each page load. Also lives in the top-bar Settings ⚙ and persists server-side (page · tabs · terminal).</div>
       </div>
     </div>
   </div>
