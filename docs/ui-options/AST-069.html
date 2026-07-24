@@ -235,7 +235,8 @@
 .m69 .win[data-state="queued"] .pbar i{width:6%}
 .m69 .win[data-state="started"] .pbar i{width:24%}
 /* the artifact (CSS wireframe cube = stand-in for the loaded 3D model) */
-.m69 .art{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.m69 .art{position:absolute;inset:0;display:none;align-items:center;justify-content:center}
+.m69 .win[data-state="completed"] .art{display:flex}
 .m69 .stage{perspective:640px;width:130px;height:130px}
 .m69 .cube{position:relative;width:130px;height:130px;transform-style:preserve-3d;
   animation:m69cube 11s linear infinite}
@@ -568,6 +569,7 @@
         now.style.display = (st==='completed'||st==='failed') ? 'none' : '';
       }
     }
+    sec.__setState = setState;
     sec.querySelectorAll('.db[data-st]').forEach(b=>b.addEventListener('click',()=>setState(b.dataset.st)));
     const replay = sec.querySelector('.db.replay');
     if(replay) replay.addEventListener('click',()=>{
@@ -580,6 +582,25 @@
       b.setAttribute('aria-pressed', b.getAttribute('aria-pressed')==='true' ? 'false' : 'true');
     }));
   });
+  // Capture helper (screenshots only): ?shot=<A|B|C>&state=<queued|…|failed> hides
+  // the decision-hub chrome + the mockup's own scaffolding (caption, demo controls)
+  // so headless Chrome frames just the product panel in the requested state. Inert
+  // during normal human use — nothing happens without the ?shot param.
+  const _sp = new URLSearchParams(location.search);
+  const _shot = _sp.get('shot');
+  if(_shot){
+    const st = document.createElement('style');
+    st.textContent = '.toggles,header,.hint,.tabbar,.option>.head,.aspects,.m69 .cap,.m69 .demo{display:none!important}'
+      + '#a11y-report{display:none!important}body{max-width:none;padding:1.4rem 1.2rem}'
+      + '.panel{display:none!important}.panel[data-option="'+_shot+'"]{display:block!important}';
+    document.head.appendChild(st);
+    const sec = document.querySelector('.m69[data-option="'+_shot+'"]');
+    if(sec && sec.__setState){
+      const state = _sp.get('state') || 'progress';
+      sec.__setState(state);
+      if(state==='completed'){ const w = sec.querySelector('.win'); if(w) w.classList.add('enter'+_shot); }
+    }
+  }
 })();
 </script>
 
