@@ -182,11 +182,16 @@ assistant:
   [--assistant NAME]`; resolution order: flag → sole assistant → local default → error
   listing candidates. NAME matches any name/alias.
 - §7.7 (one-active model) WHEN the active assistant is switched THE SYSTEM SHALL flush
-  in-flight turn state, load the target assistant, and keep BOTH assistants' background
-  work (task queues, distillers) running throughout.
+  any in-flight or queued turn state held for the OUTGOING assistant (if the turn
+  pipeline is ever made asynchronous — v1's synchronous per-request pipeline has none to
+  flush), load the target assistant's selection state, and keep BOTH assistants'
+  background work (task queues, distillers) running throughout, unaffected by the
+  switch.
 - §7.8 WHEN an assistant becomes active THE SYSTEM SHALL present an activation digest of
   its background activity since last active (completed/failed tasks, minted notes),
-  sourced from its trace events.
+  sourced from its trace events (`traces.sqlite`, §10.2) where available, falling back
+  to `brain-events.jsonl`/`session.jsonl` for notes/exchanges until the per-assistant
+  task trace exists.
 
 ## §8 Conversation turns
 
