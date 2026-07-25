@@ -17,7 +17,7 @@ bash "../../scripts/board.sh" list "In progress"
 2. **Done this session** — tasks moved and to which status; PR links; human comments answered.
 3. **Running state** — dev stack up or down (see `dev-up`), port-forwards, background jobs.
 4. **How to resume** — `git status`, current branch, next `board.sh next` pick.
-5. **Gaps / blockers** — anything needing a human (secrets, credentials, decisions), including unanswered issue comments.
+5. **Gaps / blockers** — anything needing a human (secrets, credentials, decisions), including unanswered issue comments. Each blocker is an ACTION item: what to do, where (URL/command/element), how to verify, what it unblocks, and how to hand the result back — never a bare "waiting on human".
 6. **Checkpoint reason** — why the loop stopped (flag file contents / backlog empty / blocked / human requested).
 
 Commit the handoff. Resume later with `/loop /spec-workflow:build-next`.

@@ -50,6 +50,8 @@ work.sync governs WHEN board mutations happen — NOT whether they happen — an
 `board.sh` queues instead of failing when GitHub rate-limits a mutation (move/prio/est/add's item-add step, or `adopt`): it prints `QUEUED (rate-limited until <reset>): <op>` and exits 0. **A rate limit is never a stop condition.** Keep implementing, reviewing, and merging — mutations queue locally (`.claude/board-queue.jsonl`, gitignored) and replay automatically the next time any board-reading command (`next`/`list`/`show`) runs, or explicitly via `board.sh flush`. If a read itself is rate-limited, `board.sh` fails fast with `RATE-LIMITED until <reset> — work continues; mutations queue; retry reads after reset.`; treat that as "the board view is stale," not "stop the loop" — retry the read after the stated reset time, or continue non-board work meanwhile. Your iteration report (step 6) must state any ops that are still queued (unflushed) at the time you report.
 
 ## Stop conditions (run the loop-close protocol, then stop)
+
+**Blocked-on-human reports are ACTION LISTS (human feedback 2026-07-25).** Whenever a stop, wait, or idle report says work is gated on the human, it MUST enumerate the exact actions — per item: WHAT to do, WHERE (URL / page element / command), HOW to verify it worked, and WHAT it unblocks — plus the cheapest way to hand the result back (e.g. "reply 'E2 passes' and the orchestrator walks the board"). A bare "waiting on QA/human/decision" is never an acceptable report; if the loop cannot state the concrete action, it has not actually identified the blocker.
 - checkpoint flag present, OR
 - `board.sh next` reports empty/only-blocked backlog, OR
 - the gate cannot go green after a reasonable attempt (report the blocker), OR
