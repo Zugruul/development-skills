@@ -401,7 +401,7 @@ paths:
 methodology:
     tdd: true
     serialDelivery: true
-    maxInProgress: 3
+    maxInProgress: 4
     autoMerge: true
     mergeMethod: squash
     feedback:
