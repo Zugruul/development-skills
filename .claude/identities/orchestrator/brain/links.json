@@ -64,6 +64,11 @@
     "last": null,
     "weight": 0.5
   },
+  "live-tweaks-as-brief-amendments->prescription-ack-closes-round-cap": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "mode-elastic-loop->batch-same-surface-bugs": {
     "fires": 0,
     "last": null,

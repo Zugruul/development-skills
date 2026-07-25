@@ -2902,3 +2902,2285 @@ items:
   routing:
     action: backlog
     ref: Zugruul/development-skills#273
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-21T16:35:00Z'
+iteration:
+  task: Zugruul/development-skills#251
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: low
+  summary: Mutation testing during review empirically proved ranking tests non-tautological
+    in seconds
+  detail: Reviewer commented out the decay call sites, reran the section, confirmed
+    3 tests flip to FAIL, restored cleanly.
+  evidence:
+  - Zugruul/development-skills#251
+  generalized: 'Reviewers verifying diffs that add numeric/ranking effects should
+    mutation-test them: disable the effect, rerun the section, confirm expected assertions
+    flip to FAIL, restore and verify the tree matches base. Fast and decisive versus
+    reading assertions for plausibility.'
+  routing:
+    action: brain-note
+    ref: reviewer/mutation-test-ranking-diffs
+- category: friction
+  area: merge
+  component: plugins/spec-workflow/scripts/gate.sh
+  severity: medium
+  summary: Gate-pass recording is invalidated by a commit that changes no file contents,
+    forcing a redundant full gate re-run
+  detail: The recorded tree hash changed when the already-gated working-tree changes
+    were committed, so the In-review move hook demanded a second ~10-minute gate run
+    over byte-identical content.
+  evidence:
+  - Zugruul/development-skills#251
+  generalized: The recorded gate-pass hash should cover tracked file contents only,
+    so that committing already-gated changes (no content delta) does not invalidate
+    the pass and force a redundant full gate re-run before a board move.
+  proposal:
+    target: plugins/spec-workflow/scripts/gate.sh
+    change: Hash tracked content (e.g. git-based content hash independent of HEAD/index
+      state) instead of a hash that shifts on commit.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#284
+- category: friction
+  area: permissions
+  severity: medium
+  summary: Auto-mode permission classifier blocked role-attributed git commits until
+    a mid-session human approval
+  detail: The -c user.name/user.email agent-identity commit was denied; work stalled
+    until the human answered an AskUserQuestion approving agent-identity commits for
+    the session.
+  evidence:
+  - Zugruul/development-skills#251
+  generalized: Role-attributed commits (per-identity -c user.name/email flags) can
+    trip the harness permission classifier in auto mode; a per-session or settings-level
+    allowance for identity-attributed git commits would avoid a human interrupt on
+    every first commit.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#286
+- category: incident
+  area: concurrency
+  severity: medium
+  summary: Shared working tree with another live session forced a human-imposed git
+    hold mid-task
+  detail: Another session's uncommitted changes sat in the same clone; the human ordered
+    a freeze on all git operations until that work moved to a worktree. No damage,
+    but the task stalled and the dev agent had to hold its green commit.
+  evidence:
+  - Zugruul/development-skills#251
+  generalized: When multiple live sessions share one clone, the build loop should
+    detect foreign uncommitted changes at iteration start and either isolate its task
+    into a worktree lane or pause for a human decision, rather than discovering the
+    collision mid-task at commit time.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#285
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-21T20:05:00Z'
+iteration:
+  task: Zugruul/development-skills#252
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: concurrency
+  severity: high
+  summary: Orchestrator file restore in a shared clone silently discarded a dev agent's
+    uncommitted edit
+  detail: While extracting a human's doc changes to main via a temp worktree, the
+    orchestrator ran checkout -- on a file that also held the dev agent's uncommitted
+    edit; the edit vanished with no error, costing one gate-failure cycle before the
+    dev re-applied it. Root cause confirmed, not a race.
+  evidence:
+  - Zugruul/development-skills#252
+  generalized: When an orchestrator and a dev agent share one working tree, any orchestrator
+    git restore/checkout of a file can silently destroy the dev's uncommitted work.
+    Either isolate lanes in worktrees, or require dev agents to commit early and often
+    so no multi-tool-call edit sits uncommitted.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#285
+- category: worked-well
+  area: review
+  severity: low
+  summary: Reviewer probing the agents' own execution environment caught a silently-disabled
+    feature before merge
+  detail: The review brief asked the reviewer to test from a linked worktree; that
+    surfaced the file-form .git bug that all fixture tests missed.
+  evidence:
+  - Zugruul/development-skills#252
+  generalized: Review briefs should direct reviewers to exercise the code in the build
+    system's own execution environment (e.g. linked git worktrees), not only in textbook
+    fixtures — environment-layout blind spots fail silently under fail-silent contracts.
+  routing:
+    action: brain-note
+    ref: reviewer/fail-silent-hides-valid-layouts
+- category: friction
+  area: other
+  severity: low
+  summary: A stalled reviewer agent went silent through two check-ins and had to be
+    replaced
+  detail: The first reviewer never delivered a record; a replacement produced a full
+    record within one round. Idle notifications alone don't distinguish 'working'
+    from 'wedged'.
+  evidence:
+  - Zugruul/development-skills#252
+  generalized: Subagent idle notifications don't distinguish progress from wedging;
+    orchestrators need a check-in-then-replace protocol with a hard deadline, and
+    agent briefs should explicitly require sending the final report before going idle.
+  routing:
+    action: brain-note
+    ref: orchestrator/check-in-then-replace-stalled-agents
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-21T20:45:00Z'
+iteration:
+  task: Zugruul/development-skills#253
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: low
+  summary: Minor review findings fixed via a scoped mini-TDD fixup (test-to-red first,
+    one commit, orchestrator runs the single final gate)
+  detail: The stdout-vs-stderr notice finding was fixed in one commit with the test
+    adjusted to red first; the dev skipped the full gate and the orchestrator ran
+    it once, avoiding a duplicate ten-minute run.
+  evidence:
+  - Zugruul/development-skills#253
+  generalized: For minor single-file review findings, instruct the dev to adjust the
+    test to red, fix, verify the section only, and commit once — with the orchestrator
+    running the single full gate afterward. Avoids duplicate full-gate runs on trivial
+    fixups.
+  routing:
+    action: brain-note
+    ref: orchestrator/check-in-then-replace-stalled-agents
+- category: recommendation
+  area: docs
+  severity: low
+  summary: Codebase notice/warning stream convention is implicit and easy to violate
+  detail: brain.py consistently writes notices/warnings to stderr, but nothing documents
+    this; a first-pass implementation reached for print() out of habit and only review
+    caught it.
+  evidence:
+  - Zugruul/development-skills#253
+  generalized: Document implicit output-stream conventions (warnings/notices to stderr,
+    data to stdout) in a contributor-facing comment or role doc so first-pass implementations
+    don't violate them and burn a review round.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#290
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-21T22:10:00Z'
+iteration:
+  task: Zugruul/development-skills#254
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: briefing
+  severity: low
+  summary: Spec example and issue body disagreed on a format glyph, costing the dev
+    a cross-check
+  detail: The spec's R8.4 example used a comma while the issue and brief used a middot;
+    the dev resolved it via the brief's 'follow THIS task's format exactly' but flagged
+    the divergence. Spec synced to shipped format at close.
+  evidence:
+  - Zugruul/development-skills#254
+  generalized: When a task brief includes an exact output format, seed-time issue
+    bodies and the spec example must agree glyph-for-glyph; on divergence the brief
+    should state which source is authoritative, and the spec gets synced to shipped
+    reality at task close.
+  routing:
+    action: ignore
+    ref: spec synced to shipped middot in the same close-out commit; one-off divergence,
+      no recurring mechanism to fix
+- category: worked-well
+  area: review
+  severity: low
+  summary: Reviewer distrusted a test-file comment's coverage claim and found the
+    gap by reading fixture setups
+  detail: The claimed coverage suites never constructed confidence/outcome state,
+    so they could not exercise the new header lengths; a budget-boundary test was
+    added before merge.
+  evidence:
+  - Zugruul/development-skills#254
+  generalized: Coverage claims in test-file comments must be verified against what
+    the referenced fixtures actually construct — grep the claimed suites for the relevant
+    setup calls before accepting 'covered elsewhere'.
+  routing:
+    action: brain-note
+    ref: reviewer/verify-coverage-claims-in-fixtures
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T03:45:00Z'
+iteration:
+  task: Zugruul/development-skills#255
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: review
+  severity: medium
+  summary: Reviewer session mutated the shared clone's working tree to reproduce the
+    red state; a bare 'git stash pop' after a silently-denied mid-chain command popped
+    a prior session's stash touching the same tracked runtime brain files, discarding
+    their uncommitted local modifications.
+  generalized: Reviewer briefs must state the reviewer is strictly read-only on the
+    working tree; red-first TDD should be verified by reading the test commit's diff
+    (or in an isolated worktree), never by checkout/stash mutation of a live shared
+    clone; stashes must be named and popped by ref, never positionally.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#294
+- category: friction
+  area: board
+  severity: low
+  summary: guard-board-move's red-first check reads the current branch history, so
+    under local squash delivery the moves failed from a detached-at-merge checkout
+    and the deleted task branch had to be recreated from the pre-merge tip to unblock
+    In-review/QA moves.
+  generalized: Task-close ordering under local delivery must run gate + all board
+    moves from the task branch BEFORE deleting it, or the red-first guard should recognize
+    a squash-merge context (merged tip with the branch gone).
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#295
+- category: friction
+  area: other
+  severity: low
+  summary: The installed plugin cache (0.25.0) lags the repo's own scripts (0.27.0);
+    skill-pinned cache paths exposed stale brain.py verb sets mid-iteration until
+    commands were re-pointed at the repo copies.
+  generalized: When a plugin dogfoods itself, in-repo iterations should resolve scripts
+    from the repo tree rather than the installed plugin cache, or the skill should
+    surface the version skew explicitly at preflight.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#296
+- category: worked-well
+  area: review
+  severity: low
+  summary: Round-1 APPROVE with executable evidence — dual-path byte-identical fixture
+    for the shared-formatter claim, sha256 before/after for read-only, literal hand-computed
+    activation constants — plus line-by-line tautology screening of the key tests.
+  generalized: Verification-by-executable-evidence (dual-path fixtures, before/after
+    hashes, hand-derived literals) reliably converts reviewer claims into checked
+    facts and should stay in reviewer briefs.
+  routing:
+    action: brain-note
+    ref: reviewer/dual-path-fixture-proves-sharing
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T02:45:00Z'
+iteration:
+  task: '#289/#291 neural-view voice visualizer + polish (PRs #288/#293)'
+  outcome: merged
+  reviewRounds: 0
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: docs
+  severity: medium
+  summary: Iterative UI mode converged a visual design in 3 hub rounds via favorite+aspect
+    synthesis
+  detail: 'voice visualizer: 4 styles -> Mirror Spectrum variants -> Split Halves
+    final; element notes drove chrome fixes.'
+  evidence:
+  - Zugruul/development-skills#289
+  generalized: Presenting 2-4 genuinely different mockups per round and synthesizing
+    the favorite plus liked aspects into the next round converges on a final UI pick
+    in about three rounds; element-level annotations are the highest-signal feedback
+    channel.
+  routing:
+    action: brain-note
+    ref: orchestrator
+- category: worked-well
+  area: testing
+  severity: medium
+  summary: Dogfooding a feature by building a live demo artifact caught a real renderer
+    bug
+  detail: demo-note-media's backtick syntax examples came alive as broken media embeds;
+    fixed + regression-tested same session.
+  evidence:
+  - Zugruul/development-skills#293
+  generalized: After building a rendering feature, author a real artifact that exercises
+    every supported input INCLUDING documentation-style literal examples; syntax examples
+    inside code spans are a classic blind spot for tokenizers.
+  routing:
+    action: brain-note
+    ref: orchestrator
+- category: friction
+  area: testing
+  severity: medium
+  summary: Backgrounded test runs piped through grep produced empty output and stale
+    'running' states
+  detail: Two background suite runs yielded 0-byte outputs; a task showed running
+    with no processes alive. Writing the full log to a file and grepping afterwards
+    was reliable.
+  generalized: Long test suites run in background should redirect full output to a
+    log file and analyze the file afterwards; piping through grep/head buffers output
+    and makes hung-vs-finished undecidable.
+  routing:
+    action: brain-note
+    ref: orchestrator
+- category: incident
+  area: board
+  severity: medium
+  summary: Board item moved by a guessed issue number hit an unrelated issue
+  detail: 'add printed ''filed inbound #291'' but the follow-up move used a guessed
+    number and moved an unrelated Backlog bug; restored immediately.'
+  evidence:
+  - Zugruul/development-skills#291
+  generalized: Never guess an issue number for a follow-up board mutation in the same
+    breath as creation — parse the number from the creation output; a wrong guess
+    mutates an unrelated item silently.
+  routing:
+    action: brain-note
+    ref: orchestrator
+- category: friction
+  area: testing
+  severity: low
+  summary: A timing/TTL-based cache test flaked red under machine load and blocked
+    the gate
+  detail: /projects TTL test failed in a loaded full-suite run, passed in isolation;
+    matches the existing bisect-before-blaming lesson.
+  generalized: Tests asserting TTL/timing windows flake under host load; when a gate
+    goes red on code untouched by the diff, rerun the failing section in isolation
+    before assuming regression, and prefer injectable clocks in such tests.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#297
+- category: friction
+  area: other
+  component: plugins/spec-workflow/scripts/ui-hub.py
+  severity: low
+  summary: Decision hub port was held by an orphaned hub from another repo; start
+    failed opaquely
+  detail: Fixed by manually killing the orphan after verifying empty inbox/outbox;
+    also, asks from a worktree wrote to a different per-clone state dir than the running
+    server's.
+  generalized: 'A fixed-port, per-repo-state local server needs an ownership handshake:
+    on start, detect a foreign/orphaned instance on the port and offer takeover; and
+    asks should fail loudly when the running server serves a different state dir.'
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#298
+- category: friction
+  area: other
+  component: plugins/spec-workflow/scripts/gitignore-sync.sh
+  severity: low
+  summary: Managed gitignore block drifted behind the local-state manifest; sync also
+    left a temp file inside the repo
+  detail: staleness-cache entry existed in manifest but not in the repo's managed
+    block; dry-run temp file got committed by git add -A and needed a follow-up removal.
+  generalized: Manifest-driven gitignore blocks drift when config sync isn't re-run
+    after plugin upgrades — surface drift in status/setup checks; helper scripts must
+    create temp files OUTSIDE the repo tree, and blanket git add -A is how strays
+    get committed.
+  routing:
+    action: upstream
+    ref: Zugruul/development-skills#274
+- category: recommendation
+  area: docs
+  severity: low
+  summary: Stale browser tabs of a live-reload-less dev page caused false bug reports
+  detail: 3D viewers 'not rendering' was an old page whose CSS/JS predated the feature;
+    content is fetched live so the page LOOKS current.
+  generalized: A dev-mode page that fetches live data but not live code should detect
+    server/page version skew (boot id endpoint) and badge 'reload needed' — users
+    cannot tell a stale shell from a broken feature.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#299
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T05:50:00Z'
+iteration:
+  task: Zugruul/development-skills#300
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: testing
+  severity: medium
+  summary: A new sourced test-section file leaked cwd via brace-group cd blocks and
+    cascaded 39 failures into unrelated later sections; isolation runs could not catch
+    it, costing a full diagnose-reproduce cycle.
+  generalized: The test gate should structurally lint section files for brace-group
+    cd (sourced sections require subshell-wrapped cd), since per-author discipline
+    demonstrably fails and isolation runs are structurally blind to the leak class.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#354
+- category: friction
+  area: briefing
+  severity: medium
+  summary: The dev agent stalled twice at the finish line by ending turns on status
+    updates after Monitor-gated background gate runs, leaving work uncommitted until
+    the orchestrator finished the close on-behalf.
+  generalized: Dev briefs should state that after a backgrounded check completes,
+    the completion event triggers the remaining finish-line sequence (fix, re-run,
+    commit, report) in the same turn — a wait's resolution is a trigger, never a stopping
+    point.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#355
+- category: worked-well
+  area: review
+  severity: low
+  summary: Reviewer verified reuse claims at symbol level (grep imports, match call
+    signatures), redid guard-fraction arithmetic instead of trusting a self-consistent
+    test, and swept the cwd-leak defect class suite-wide; read-only working-tree constraint
+    in the brief cost nothing and prevented a repeat of the previous iteration's stash
+    incident.
+  generalized: Reviewer briefs should keep the strict read-only working-tree rule
+    and encourage symbol-level reuse verification and independent re-derivation of
+    numeric assertions.
+  routing:
+    action: brain-note
+    ref: reviewer/verify-reuse-by-symbol-grep
+- category: worked-well
+  area: board
+  severity: low
+  summary: Close ordering learned last iteration (gate and all board moves from the
+    task branch before deleting it; merge via temp worktree while main is held elsewhere;
+    named stash pops) executed cleanly with zero guard collisions this time.
+  generalized: Task-close under local delivery should follow a fixed ordered checklist
+    (branch-scoped moves before branch deletion, temp-worktree merges, named stashes)
+    — codifying it removed a whole class of previous-iteration friction.
+  routing:
+    action: brain-note
+    ref: orchestrator/board-moves-before-branch-delete
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T05:10:00Z'
+iteration:
+  task: 'assistant spec crafting + board seeding (PR #356)'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: high
+  summary: Two independent cross-model plan reviews before any code caught a command-injection
+    design flaw and false codebase assumptions
+  detail: sonnet + fable-5 round 2 found invoke-template shell injection, harness-isolation
+    gap, marker/config authority split, /file artifact limits — all folded into the
+    spec as requirements.
+  evidence:
+  - Zugruul/development-skills#356
+  generalized: Before writing a spec, run the plan through 2+ independent agent reviewers
+    (different models), one grounded in the real codebase — plan-stage adversarial
+    review is the cheapest point to catch security-by-design flaws and wrong assumptions;
+    their findings become spec requirements, not code review comments later.
+  routing:
+    action: brain-note
+    ref: orchestrator
+- category: worked-well
+  area: docs
+  severity: medium
+  summary: Interview rounds with concrete previews let the human redirect architecture
+    early and cheaply
+  detail: AskUserQuestion previews (ASCII mockups/config sketches) surfaced the bare-brain
+    restructure, engine placement, and observability sink decisions before drafting.
+  evidence:
+  - Zugruul/development-skills#356
+  generalized: Spec interviews land better when every option carries a concrete preview
+    (mockup, config sketch, flow diagram) — humans redirect architecture at the option
+    stage instead of after a full draft, and their annotations map to precise plan
+    edits.
+  routing:
+    action: brain-note
+    ref: orchestrator
+- category: friction
+  area: board
+  severity: medium
+  summary: Seeded issues carry title-only bodies; thorough per-task briefs required
+    a post-hoc enrichment script
+  detail: 53 issues needed gh issue edit with a generated spec-first preamble + AC
+    after seeding.
+  generalized: The board seeder should accept per-task body content (or a body template
+    with spec-section/AC substitution) so issues are born with their read-the-spec-first
+    brief instead of needing a second pass.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#357
+- category: friction
+  area: other
+  component: plugins/spec-workflow/scripts/validate-config.py
+  severity: medium
+  summary: Config validator crashes with a traceback on string-form epic guards instead
+    of a schema message
+  detail: 'blockedBy: [E0] (string list) raised AttributeError at line ~123; the dict
+    form {epic, untilStatus} is required but the error names nothing.'
+  generalized: Config validators must fail with path-precise schema messages for every
+    shape mistake a reasonable author can make (string vs object list entries), never
+    with a raw traceback.
+  routing:
+    action: upstream
+    ref: Zugruul/development-skills#53
+- category: friction
+  area: board
+  severity: low
+  summary: Backlog priorities outside the board's scheme surface only at seeding time
+  detail: P3 written in the backlog; board scheme is P0-P2; seeder errored per-task
+    after creating issues.
+  generalized: Validate backlog priorities (and epic ids/ranges) against the board
+    scheme at spec-registration time, before seeding creates anything.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#358
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T06:44:00Z'
+iteration:
+  task: AST-001
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: briefing
+  severity: medium
+  summary: Dev agents pause at natural checkpoints with finished-but-uncommitted work
+  detail: dev-ast001 idled twice — once after the red-test confirmation, once after
+    hitting a pre-existing out-of-scope gate failure — each time with correct work
+    sitting uncommitted; two nudges were needed to complete the commit/gate/report
+    cycle.
+  evidence:
+  - Zugruul/development-skills#301
+  generalized: Dev briefs should state explicitly that an out-of-scope failure is
+    not the agent's blocker and that the red-test checkpoint is not a stopping point
+    — "finish your own commit/gate/report cycle, then name the anomaly in the report."
+    Without that line, agents read "if the gate cannot go green, STOP" as license
+    to pause mid-cycle, and the orchestrator must verify worktree state on every idle
+    signal rather than trusting it as completion.
+  proposal:
+    target: plugins/spec-workflow/skills/implement-task/SKILL.md
+    change: Add the "out-of-scope failure is not your blocker" framing line to the
+      dev-brief template's HOW section, and a note in build-next that an idle notification
+      requires a worktree check (commit present, gate run) before treating the task
+      as delivered.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#361
+- category: incident
+  area: concurrency
+  severity: medium
+  summary: Hotfix lane opened for a breakage a parallel session had already fixed
+    on the main branch
+  detail: A P0 bug was filed and a fix lane fully executed (dev agent, gate, review)
+    from a session-start snapshot; the independent reviewer then found the branch
+    stale — the identical fix had landed on the remote main branch minutes after the
+    snapshot, and merging the stale branch would have regressed better wording. Lane
+    discarded; only the review round caught it.
+  evidence:
+  - Zugruul/development-skills#359
+  generalized: Before filing or lane-fixing a repo-wide breakage discovered from a
+    session-start snapshot, fetch and re-verify against the current remote tip — parallel
+    sessions may have already fixed it. A recurring red-gate signature in the lessons
+    log is a strong hint the breakage is known and possibly already being addressed
+    elsewhere.
+  proposal:
+    target: plugins/spec-workflow/skills/build-next/SKILL.md
+    change: Operating rule addition — a gate-red on a pre-existing failure triggers
+      "git fetch + re-run on current remote tip" BEFORE filing the hotfix bug, not
+      just reproduce-on-clean-local-main (which can itself be stale).
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#362
+- category: friction
+  area: board
+  component: plugins/spec-workflow/scripts/board.sh
+  severity: low
+  summary: Comment subcommand silently expects the body on stdin and fails opaquely
+    when given an argument
+  detail: board.sh comment N "body text" produced "GraphQL Body cannot be blank" —
+    the body must be piped (--body-file -), but neither the usage line nor the error
+    says so; had to read the script source to discover the contract.
+  evidence: []
+  generalized: A CLI subcommand that reads its payload from stdin should either accept
+    an inline argument too, or fail fast with a usage message naming stdin — an opaque
+    upstream API error ("Body cannot be blank") costs a source-dive every time a new
+    session hits it.
+  proposal:
+    target: plugins/spec-workflow/scripts/board.sh
+    change: comment (and any stdin-reading subcommand) accepts an optional inline
+      body argument, falling back to stdin; usage string documents both.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#363
+- category: worked-well
+  area: review
+  severity: low
+  summary: Two-pass review plus an independent single-round hotfix review each earned
+    their cost
+  detail: The spec-compliance pass verified red-first TDD empirically at the red commit;
+    the quality pass found a structurally untestable line-boundary gap by import-probing
+    the module; the hotfix reviewer caught the stale-branch regression that reproduce-on-local-main
+    missed.
+  evidence:
+  - Zugruul/development-skills#301
+  - Zugruul/development-skills#359
+  generalized: Independent reviewer agents verifying claims empirically (running the
+    red commit in an isolated worktree, import-probing changed modules, two-dot diffing
+    against the fetched remote tip) catch failure classes the authoring agent and
+    the orchestrator structurally cannot; the cost of a review round on even a trivial
+    diff is repaid the first time it blocks a stale-lane merge.
+  routing:
+    action: ignore
+    ref: positive signal — records that the review protocol worked; no change to make
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T06:25:00Z'
+iteration:
+  task: Zugruul/development-skills#256
+  outcome: merged
+  reviewRounds: 0
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: merge
+  severity: medium
+  summary: Main went red after the spec-delta fold because fold/retro/feedback commits
+    were pushed without a gate run, and a test asserted the delta file's transient
+    pre-fold location.
+  generalized: Orchestrator post-merge commits (spec-delta folds, retros) must re-run
+    the gate before pushing, and tests must never assert a file location that a later
+    workflow stage legitimately moves — assert either-location or content, not stage-specific
+    paths.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#360
+- category: friction
+  area: briefing
+  severity: low
+  summary: The dev agent again left finished work uncommitted at the finish line and
+    the orchestrator closed on-behalf, third occurrence across three tasks.
+  generalized: Until the brief-template fix lands, orchestrators should plan for on-behalf
+    closes as the norm rather than the exception when subagents run long background
+    checks.
+  routing:
+    action: ignore
+    ref: already tracked as Zugruul/development-skills#355 (brief-template finish-line
+      wording); third occurrence noted there
+- category: worked-well
+  area: concurrency
+  severity: low
+  summary: The worktree-per-task lane fully isolated this task from the shared clone
+    (no stash collisions, no foreign dirty files, no held-main friction) at the cost
+    of one extra setup command.
+  generalized: Running each task in its own worktree cut from fresh origin/main eliminates
+    the entire shared-clone collision class and should be the default lane model.
+  routing:
+    action: brain-note
+    ref: orchestrator/worktree-lane-default
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T07:35:00Z'
+iteration:
+  task: AST-002
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: concurrency
+  severity: medium
+  summary: Dev agent went permanently unresponsive between writing and committing
+    its implementation
+  detail: Agent idled three times ignoring two concrete-command nudges (including
+    exact commands to run); orchestrator verified the tree green and recorded the
+    commit on-behalf (author=dev, committer=orchestrator), reviews proceeded normally.
+    The explicit brief framing line added after the previous iteration did not prevent
+    the stall.
+  evidence:
+  - Zugruul/development-skills#302
+  generalized: Briefing-side fixes do not reliably prevent subagent stalls at the
+    write-vs-commit boundary; the orchestrator needs a bounded take-over protocol
+    (N ignored nudges, then verify-and-record on-behalf) as the standing escalation,
+    and the loop docs should codify the nudge cap so sessions don't wait indefinitely
+    on an agent that will never resume.
+  proposal:
+    target: plugins/spec-workflow/skills/build-next/references/concurrency.md
+    change: Document the take-over protocol — two ignored concrete-command nudges,
+      then orchestrator verifies (gate + red-to-head assertion diff) and commits on-behalf
+      per auto-review commit-identity rule (b).
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#364
+- category: friction
+  area: brains
+  severity: low
+  summary: Brain recall link-bumps in the session checkout collide with parallel sessions
+    pushing the shared brain files
+  detail: recall commands mutate links.json/.activation.jsonl in the working tree;
+    a parallel session's retro push then blocks pull with overwrite errors, requiring
+    a manual JSON union-merge mid-iteration to continue.
+  evidence:
+  - Zugruul/development-skills#302
+  generalized: Read-path brain commands that write activation metadata into tracked
+    files make every recall a potential merge conflict across concurrent sessions;
+    either commit recall bumps promptly after briefing, or make the recall write-path
+    conflict-free (append-only, or merge-on-read), so multi-session repos don't need
+    hand-merges of link state.
+  proposal:
+    target: plugins/spec-workflow/scripts/brain.py
+    change: Consider deferring link-bump writes to retro time or storing fires/last
+      in an append-only sidecar merged on read, eliminating tracked-file races between
+      concurrent sessions.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#365
+- category: worked-well
+  area: review
+  severity: low
+  summary: Reviewer mutation-tested error-message assertions and swept type-guard
+    sites, proving test discrimination
+  detail: Quality pass mutated the consistency message, confirmed exactly the dependent
+    checks failed, restored cleanly; swept all int sites for the bool-before-int guard.
+  evidence:
+  - Zugruul/development-skills#302
+  generalized: Mutation-testing an error-message assertion (swap specific for generic,
+    expect targeted failures) is a cheap standard step that proves a validator's test
+    section discriminates on content rather than on any-error-happened.
+  routing:
+    action: brain-note
+    ref: reviewer/mutation-check-assertions
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T09:40:00Z'
+iteration:
+  task: AST-003
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Reviewer caught a vacuous-pass gap in a brand-new test section by attacking
+    the checker helper itself
+  detail: The equivalence checks passed the library rendering as the expected side
+    of a substring check; empty capture matched anything. Reviewer proved the vacuous
+    pass in the red worktree; one fix round hardened it with rc assertions.
+  evidence:
+  - Zugruul/development-skills#303
+  generalized: A shared check helper built on substring matching (grep -F) silently
+    accepts an empty expected string; any test whose expected side is a computed capture
+    needs an exit-status or sentinel assertion alongside it. Worth a lint or a helper
+    variant (check_nonempty) in the shared test library so new sections cannot reintroduce
+    the pattern.
+  proposal:
+    target: plugins/spec-workflow/tests/_lib.sh
+    change: Add a guard in check() that fails (or loudly warns) when the expected
+      argument is empty, plus a check_rc/check_nonempty helper documented for computed-capture
+      comparisons.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#366
+- category: friction
+  area: briefing
+  severity: low
+  summary: Subagent commit-boundary stalls recurred but a single concrete-command
+    nudge resolved them
+  detail: Third consecutive task where the dev paused with finished-but-uncommitted
+    work; unlike the previous full stall, one nudge with pasted commands resumed it
+    within minutes. The protocol-violation framing added to the brief may have helped;
+    the stall itself still happened.
+  evidence:
+  - Zugruul/development-skills#303
+  generalized: Commit-boundary stalls appear structural for subagents; briefs alone
+    reduce but do not eliminate them. The orchestrator loop should treat idle-check-nudge
+    as a standard cheap step, and loop tooling could surface "worktree has uncommitted
+    changes + agent idle" as an explicit signal instead of relying on the orchestrator
+    to notice.
+  routing:
+    action: brain-note
+    ref: orchestrator/idle-agent-is-not-done
+- category: worked-well
+  area: testing
+  severity: low
+  summary: Golden CLI-vs-library equivalence fixtures made a byte-identity refactor
+    provable
+  detail: The section runs the same operations via CLI subprocess and direct import
+    and asserts equality, which both reviews leaned on after independently re-verifying.
+  evidence:
+  - Zugruul/development-skills#303
+  generalized: For any extract-a-library-from-a-CLI refactor, a golden equivalence
+    section (same fixture, CLI output vs library-result rendering, plus side-effect
+    file assertions) converts "byte-identical" from a claim into a regression-proof
+    property.
+  routing:
+    action: brain-note
+    ref: reviewer/check-empty-expected-vacuous
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T10:55:00Z'
+iteration:
+  task: AST-004
+  outcome: merged
+  reviewRounds: 4
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: high
+  summary: Two-pass review with independent sweeps caught a lost-update hole and a
+    deadlock-class bug before merge
+  detail: Pass 1's independent write-site classification found two unlocked read-modify-write
+    cycles the dev's own sweep missed; pass 2 empirically reproduced a path-spelling
+    self-deadlock in the new lock helper and an fd leak. Two fix rounds, both re-verified
+    against the reviewer's own repros.
+  evidence:
+  - Zugruul/development-skills#304
+  generalized: For concurrency-safety tasks, reviews that rebuild the coverage claim
+    from scratch (own grep sweep + own scratch-process repros) rather than auditing
+    the dev's list are what catch the omitted-site and aliased-path-identity failure
+    classes; the fix rounds are cheap relative to shipping a self-deadlock into a
+    long-running server.
+  routing:
+    action: brain-note
+    ref: reviewer/write-site-classification-sweep
+- category: friction
+  area: testing
+  severity: low
+  summary: Concurrency probes without watchdog timeouts can hang the whole suite on
+    a reintroduced deadlock
+  detail: Only one of four concurrency probes had a SIGALRM watchdog; a regression
+    of the deadlock class would hang CI indefinitely. Follow-up filed on the board.
+  evidence:
+  - Zugruul/development-skills#304
+  - Zugruul/development-skills#367
+  generalized: Every test that can block on a lock or a child process needs a fail-fast
+    timeout; a hanging test is worse than a failing one because it hides WHICH check
+    died. Worth a house rule for concurrency sections.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#367
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T12:45:00Z'
+iteration:
+  task: AST-005
+  outcome: merged
+  reviewRounds: 4
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: briefing
+  severity: medium
+  summary: Subagent commit-boundary stalls now recur on most tasks; orchestrator take-over
+    with on-behalf recording has become the standard resolution
+  detail: Two stalls in one task (post-fix and post-gate, the second after an explicit
+    commit-immediately instruction); both resolved by verify-and-record-on-behalf.
+    Across five tasks the stall rate at the write-vs-commit boundary is 4/5.
+  evidence:
+  - Zugruul/development-skills#305
+  - Zugruul/development-skills#302
+  generalized: The subagent stall at the commit boundary is chronic, not incidental;
+    loop tooling should either give agents an explicit commit step in their driver
+    or give the orchestrator a first-class signal (agent idle + dirty worktree) so
+    take-over happens mechanically instead of via ad-hoc nudge cycles.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#364
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Review rounds converged on real corruption bugs and a non-discriminating
+    regression test that had shipped green
+  detail: Pass 2 reproduced torn tracked-config writes at 12-25-way concurrency and
+    a traceback path; round 3 caught that the fix's own regression fixture never reached
+    the fixed path (valid YAML exercising a different refusal), which the orchestrator
+    then proved by revert-run-restore.
+  evidence:
+  - Zugruul/development-skills#305
+  generalized: For any fix, demand evidence the regression test fails at the pre-fix
+    commit (revert-run-restore); a green test proves nothing about path coverage.
+    Reviewers re-running their own original repros against the fix commit is what
+    keeps fix rounds honest.
+  routing:
+    action: brain-note
+    ref: reviewer/fixture-must-reach-fixed-path
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T13:55:00Z'
+iteration:
+  task: AST-006
+  outcome: merged
+  reviewRounds: 3
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: briefing
+  severity: medium
+  summary: Dev agent fully unresponsive for an entire task; orchestrator carried impl
+    recording and both fix rounds on-behalf
+  detail: No response to any nudge from red-commit onward; implementation, one test-hardening
+    and one two-blocker fix round were all verified and recorded on-behalf. Reviews
+    stayed independent and caught real crashes.
+  evidence:
+  - Zugruul/development-skills#306
+  generalized: When a subagent goes fully dark the loop still functions if the orchestrator
+    treats verify-and-record as a first-class mode, but author truthfulness then rests
+    entirely on the on-behalf attribution discipline; the take-over protocol write-up
+    should cover the fully-dark case, not only the stall-after-writing case.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#364
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Quality pass probing environmental failure modes caught two advisory-contract
+    crashes the AC never mentioned
+  detail: Unreadable config (PermissionError past the domain-exception catch) and
+    read-only state dir both crashed a script whose whole contract is advisory-only;
+    both were invisible to the AC-driven fixtures.
+  evidence:
+  - Zugruul/development-skills#306
+  generalized: For advisory/always-exit-0 scripts, reviews should probe the environment
+    (permissions, read-only mounts, corrupted caches) — the AC enumerates domain failures,
+    but the crash class lives in OSError-land the domain exceptions never cover.
+  routing:
+    action: brain-note
+    ref: dev/advisory-scripts-catch-oserror
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T14:20:00Z'
+iteration:
+  task: AST-007
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: testing
+  severity: medium
+  summary: The empty-expected vacuous assertion pattern shipped in a third consecutive
+    new test section despite a minted lesson in the dev brief
+  detail: Same substring-helper footgun each time; each caught only by reviewer sweep.
+    The mechanical fix (helper guard) is already a backlog item but has not been prioritized,
+    so every new section pays a review round for it.
+  evidence:
+  - Zugruul/development-skills#307
+  - Zugruul/development-skills#306
+  - Zugruul/development-skills#303
+  - Zugruul/development-skills#366
+  generalized: When the same syntactic footgun ships three times past briefs that
+    explicitly warn about it, knowledge injection has hit its ceiling — the shared
+    helper itself must enforce the rule (fail or warn on an empty expected); bump
+    the existing lint/backlog item's priority rather than re-minting lessons.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#366
+- category: worked-well
+  area: review
+  severity: low
+  summary: Mutation-kill verification of a test fix (patch the impl to violate the
+    invariant, watch the check fail, restore)
+  detail: Reviewer patched write_default to leave a tmp file and confirmed the hardened
+    assertion flipped to FAIL, then restored byte-identical.
+  evidence:
+  - Zugruul/development-skills#307
+  generalized: A hardened assertion is only proven by making the guarded invariant
+    false once and watching it fail — mutation-kill is the cheapest such proof for
+    test-only fixes.
+  routing:
+    action: brain-note
+    ref: reviewer/empty-expected-recurrence-needs-lint
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T16:35:00Z'
+iteration:
+  task: AST-010
+  outcome: merged
+  reviewRounds: 3
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: testing
+  severity: medium
+  summary: Dev ran the full suite unprompted for a lifecycle change and caught a cross-section
+    stop/start race its own new section could not see
+  detail: Graceful SIGTERM shifted shutdown latency; 29 checks across other sections
+    failed until the stop verb gained a bounded wait-for-exit. The dev bisected, fixed,
+    and reported it without a review round.
+  evidence:
+  - Zugruul/development-skills#308
+  generalized: Lifecycle-touching changes (signals, shutdown timing, daemon threads)
+    must gate on the FULL suite, never an isolated section — the breakage lives in
+    other tests' rapid stop-start sequences. Worth stating explicitly in dev briefs
+    for any change to server lifecycle code.
+  routing:
+    action: brain-note
+    ref: dev/lifecycle-changes-need-full-suite
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Both dev and reviewer independently bug-injected the reverted behavior
+    to prove a regression check discriminates
+  detail: The live-repos getter regression was proven by reintroducing the snapshot
+    bug on both sides; the check failed exactly as claimed.
+  evidence:
+  - Zugruul/development-skills#308
+  generalized: Bug-injection (temporarily reintroduce the fixed defect, watch the
+    new check fail, restore) is becoming the house standard for fix-round verification;
+    cheap and decisive on both the author and reviewer side.
+  routing:
+    action: brain-note
+    ref: reviewer/fixture-must-reach-fixed-path
+- category: friction
+  area: review
+  severity: low
+  summary: Reviewers idle silently while waiting on long background runs instead of
+    sending verdicts with available evidence
+  detail: Two reviewers this session finished analysis but idled awaiting full-suite
+    background runs; each needed a nudge to send. One apologized and named the pattern
+    explicitly.
+  evidence:
+  - Zugruul/development-skills#308
+  - Zugruul/development-skills#303
+  generalized: Reviewer briefs should instruct — send the verdict with the evidence
+    in hand and name any still-running check; never idle on a background run. The
+    orchestrator loses more wall-clock to silent-idle reviewers than to any other
+    review friction.
+  routing:
+    action: ignore
+    ref: 'already operationalized: reviewer briefs now carry the send-immediately
+      instruction verbatim; no plugin change to file'
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T17:40:00Z'
+iteration:
+  task: AST-011
+  outcome: merged
+  reviewRounds: 3
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: high
+  summary: Spec review validated an isolation boundary against the real CLI with a
+    no-auth probe and caught a documented-as-solved gap that was not solved
+  detail: The env-home instruction-ingestion leak was invisible to stub tests and
+    asserted-solved by the docstring; a no-cost real-binary probe (debug prompt-input)
+    exposed it, and the fix was re-verified with a discrimination proof.
+  evidence:
+  - Zugruul/development-skills#309
+  generalized: Reviews of subprocess-isolation code must validate boundary claims
+    against the real binary (help text + no-auth render probes), never only stub tests
+    — stubs prove YOUR code's reactions, not the wrapped tool's actual ingestion behavior.
+  routing:
+    action: brain-note
+    ref: reviewer/probe-isolation-claims-on-real-cli
+- category: incident
+  area: briefing
+  severity: medium
+  summary: Dev stall pattern reached the pre-red-commit stage; a scripted recovery
+    nudge restored red-first honestly
+  detail: Agent idled with tests AND impl uncommitted; the nudge prescribed impl-aside
+    → red run → tests-only commit → restore → green, which the agent executed for
+    the red half before stalling again; orchestrator completed and recorded the rest.
+  evidence:
+  - Zugruul/development-skills#309
+  generalized: When a subagent stalls before even the red commit with mixed work in
+    tree, red-first can still be recovered honestly by setting implementation files
+    aside, proving the red run, committing tests only, then restoring — a recovery
+    recipe worth codifying next to the take-over protocol.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#364
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T18:30:00Z'
+iteration:
+  task: AST-012
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Combined two-pass review in one agent worked well for a small sibling diff
+    without losing rigor
+  detail: A 3-point adapter mirroring a just-reviewed sibling got both passes from
+    one reviewer with distinct sections; the flag-audit-table standard from the sibling
+    review carried over and everything was independently probed; zero fix rounds.
+  evidence:
+  - Zugruul/development-skills#310
+  generalized: For small diffs that mirror a just-reviewed sibling, a single reviewer
+    running both passes as distinct sections preserves the two-pass structure at half
+    the wall-clock; the risk (single perspective) is mitigated when the sibling review
+    established the verification standard days-fresh.
+  routing:
+    action: brain-note
+    ref: orchestrator/combined-two-pass-for-small-siblings
+- category: worked-well
+  area: briefing
+  severity: low
+  summary: A freshly minted lesson from the previous task materially shaped the next
+    task's design and review
+  detail: The env-home isolation lesson minted at the codex-adapter close was pasted
+    into the claude-adapter brief and led the dev to research the auth locus and deliberately
+    REJECT the env-home override with documented evidence, which the reviewer independently
+    reproduced.
+  evidence:
+  - Zugruul/development-skills#310
+  - Zugruul/development-skills#309
+  generalized: Same-session lesson recycling (mint at close, paste into the next brief)
+    visibly changes agent behavior; the loop should keep prioritizing fresh-lesson
+    injection over generic brief text.
+  routing:
+    action: brain-note
+    ref: dev/per-cli-isolation-differs
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T19:20:00Z'
+iteration:
+  task: AST-013
+  outcome: merged
+  reviewRounds: 3
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Quality pass executed the brief's spot-mutation instruction literally and
+    exposed entirely unguarded default constants
+  detail: Every budget test passed explicit overrides, so a 10x default mutation stayed
+    green; the reviewer ran the exact mutation the brief prescribed and proved it.
+    Fix round added constant-relationship assertions with a revert-run-restore proof.
+  evidence:
+  - Zugruul/development-skills#311
+  generalized: Review briefs that prescribe a concrete mutation ("change constant
+    X, a check must fail") get findings generic instructions miss; keep writing executable
+    review instructions rather than qualitative ones.
+  routing:
+    action: brain-note
+    ref: dev/defaults-need-own-tests
+- category: friction
+  area: briefing
+  severity: low
+  summary: Orchestrator now takes over the commit step by default; dev agents complete
+    red and implementation but reliably stall before committing
+  detail: Ninth consecutive task with a commit-boundary stall despite protocol lines,
+    nudges, and concrete-command instructions; take-over with on-behalf recording
+    is the de facto workflow now.
+  evidence:
+  - Zugruul/development-skills#311
+  generalized: When a step fails 9/9 times across varied prompts, the loop design
+    should stop fighting it — either move the commit step to the orchestrator formally
+    (dev returns a work report; orchestrator commits after verification) or fix the
+    underlying agent-runtime cause; repeated nudge cycles are pure overhead.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#364
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T19:55:00Z'
+iteration:
+  task: AST-014
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: brains
+  severity: low
+  summary: The FileNotFoundError-only catch pattern shipped a third time despite a
+    minted lesson naming the exact smell
+  detail: history() caught FileNotFoundError only; a chmod-000 transcript dropped
+    the HTTP response. Same class as two prior preflight findings; lesson re-minted
+    with the greppable smell pattern.
+  evidence:
+  - Zugruul/development-skills#312
+  - Zugruul/development-skills#306
+  generalized: Recurring code-smell lessons should eventually become mechanical checks
+    (a grep-based lint for narrow filesystem-exception catches on read paths) rather
+    than brief text; three recurrences is the threshold this loop uses elsewhere.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#369
+- category: worked-well
+  area: testing
+  severity: medium
+  summary: Marker-and-gate barrier kill-tests were deterministic and flake-free across
+    repeated review runs
+  detail: The writer parks after N fsync'd appends because the next go-file never
+    appears; the kill lands deterministically. Reviewer ran the section 6x total across
+    two rounds with zero flakes and mutation-proved the fsync assertions.
+  evidence:
+  - Zugruul/development-skills#312
+  generalized: Crash-durability kill-tests should gate child progress on marker files
+    the test controls, never sleeps — deterministic barriers turn kill-9 timing into
+    a controlled interleave and survive CI variance.
+  routing:
+    action: brain-note
+    ref: dev/marker-barrier-interleave
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T20:45:00Z'
+iteration:
+  task: AST-015
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: briefing
+  severity: high
+  summary: A closed action set after the gate plus a pre-specified commit split produced
+    the first full-cycle dev run of the session
+  detail: The dev credited three brief features - the verbatim only-remaining-actions
+    line, the pre-decided two-commit shape for an ambiguous test-only task, and an
+    explicit scope stop condition - and completed red, impl, gate, both commits, and
+    the report without a stall.
+  evidence:
+  - Zugruul/development-skills#313
+  generalized: At known stall points, name the closed set of allowed next actions
+    verbatim rather than an open instruction, and pre-decide any ambiguous structural
+    choice (commit splits) in the brief; deliberation windows are where agents stall.
+  routing:
+    action: brain-note
+    ref: orchestrator/brief-closed-action-set
+- category: recommendation
+  area: testing
+  severity: medium
+  summary: Stall root cause may be harness auto-backgrounding of long gate runs, not
+    commit refusal
+  detail: The full gate exceeds the 120s auto-background threshold; the non-stalling
+    dev reported the backgrounded-wait chain as the messiest part of its run and hypothesized
+    predecessors lost the thread there.
+  evidence:
+  - Zugruul/development-skills#313
+  - Zugruul/development-skills#364
+  generalized: When a multi-minute command is auto-backgrounded mid-agent-run, the
+    agent needs an explicit recovery recipe (poll the task result, conclude from exit
+    status, proceed); briefs should teach it, and loop tooling could offer a fast-fail
+    gate order so the common path stays under the threshold.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#364
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Reviewer proved the isolation section catches real regressions by injecting
+    an actual adapter leak, beyond the shipped self-test
+  detail: Patched a scratch codex.py to leak the fake global AGENTS.md; the section
+    failed on the AST-011 guard exactly as designed.
+  evidence:
+  - Zugruul/development-skills#313
+  generalized: For guard/checker artifacts, the strongest review evidence is injecting
+    the real failure class the guard exists for, not just the artifact's own planted
+    self-test.
+  routing:
+    action: brain-note
+    ref: reviewer/fixture-must-reach-fixed-path
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T22:15:00Z'
+iteration:
+  task: AST-016
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: high
+  summary: Review reproduced a silent concurrent read-modify-write clobber the whole
+    test suite missed, and both sides proved the fix by lock ablation
+  detail: Two concurrent chats silently lost a turn in the state file while the append-only
+    transcript kept both; the reviewer reproduced it live, the dev red-firsted the
+    regression, and both independently ablated the lock to prove discrimination.
+  evidence:
+  - Zugruul/development-skills#314
+  generalized: Every new read-modify-write over shared state introduced by a request-handling
+    path needs a concurrency probe in review (two overlapping requests, widened window
+    via a sleeping stub) — append-only channels surviving is what makes the state-file
+    loss silent.
+  routing:
+    action: brain-note
+    ref: reviewer/lock-ablation-proof
+- category: worked-well
+  area: briefing
+  severity: medium
+  summary: Gate-recovery recipe and closed action set held for a second and third
+    dev cycle; residual stall moved to the fix-round commit
+  detail: The dev completed red+impl commits and recovered two auto-backgrounded gate
+    runs by polling; the only remaining stall was the post-review fix commit, which
+    the orchestrator recorded.
+  evidence:
+  - Zugruul/development-skills#314
+  - Zugruul/development-skills#313
+  generalized: Stall-point instructions must cover EVERY commit boundary in the task
+    lifecycle (red, impl, each fix round) — agents generalize the instruction poorly
+    across boundaries it does not name explicitly.
+  routing:
+    action: brain-note
+    ref: orchestrator/brief-closed-action-set
+- category: recommendation
+  area: testing
+  severity: low
+  summary: A QA smoke unintentionally ran a real authenticated provider turn end-to-end
+    and revealed plan-mode framing leaking into replies
+  detail: The scaffolded assistant defaults to provider claude; with no stub reachable
+    for that provider the real CLI answered, and the reply carried permission-mode-plan
+    meta-language ("I'll exit plan mode"), which a persona reply should not surface.
+  evidence:
+  - Zugruul/development-skills#314
+  - Zugruul/development-skills#315
+  generalized: When pinning isolation flags that shape model behavior (plan permission
+    modes), dogfood should check the flags' effect on reply TONE, not just their security
+    effect — a gates/dogfood item, and QA smokes should pin the provider to the stubbed
+    one explicitly.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#315
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-22T23:20:00Z'
+iteration:
+  task: AST-017
+  outcome: merged
+  reviewRounds: 3
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: high
+  summary: Splitting the review into a math-focused spec pass and a lifecycle-focused
+    quality pass caught orthogonal defect classes in a measurement harness
+  detail: The spec pass hand-verified percentile math and methodology honesty (cache-miss
+    sampling, sequential timing vs the chat lock); the quality pass found resource-lifecycle
+    and partial-result-persistence blockers the math pass had no reason to look at.
+    Neither pass would have caught the other's findings.
+  evidence:
+  - Zugruul/development-skills#315
+  generalized: For instruments whose output gates decisions (benchmark harnesses,
+    verdict scripts), review the MATH and the LIFECYCLE as separate passes with separate
+    briefs — correctness of numbers and survival of numbers are different failure
+    domains.
+  routing:
+    action: brain-note
+    ref: dev/partial-results-honesty
+- category: friction
+  area: briefing
+  severity: low
+  summary: Dev stalled at the literal commit command with everything staged
+  detail: Fourth stall variant observed (after write-uncommitted, pre-red, and fix-round
+    variants); staged-and-stalled is the narrowest yet — one command from done.
+  evidence:
+  - Zugruul/development-skills#315
+  - Zugruul/development-skills#364
+  generalized: Stall-point coverage in briefs keeps narrowing the failure but not
+    eliminating it; the design fix (orchestrator commits as first-class flow) remains
+    the durable answer.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#364
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-23T00:20:00Z'
+iteration:
+  task: AST-session-close
+  outcome: merged
+  reviewRounds: 0
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: high
+  summary: The two-pass independent review protocol caught eight substantive pre-merge
+    defect classes across sixteen tasks
+  detail: An env-home instruction-ingestion isolation leak proven on the real CLI,
+    three distinct concurrency races (state clobber, torn config writes, lock-key
+    aliasing), environmental crash classes on advisory scripts, entirely unguarded
+    default constants, and three recurrences of vacuous empty-expected assertions
+    — every one reproduced empirically by the reviewer, fixed with discrimination-proven
+    regressions, and re-verified.
+  evidence:
+  - Zugruul/development-skills#309
+  - Zugruul/development-skills#314
+  - Zugruul/development-skills#305
+  - Zugruul/development-skills#311
+  - Zugruul/development-skills#306
+  - Zugruul/development-skills#312
+  generalized: Reviewer briefs that mandate empirical reproduction (drive the real
+    binary, reproduce the race, ablate the fix) rather than diff-reading convert review
+    from opinion into evidence; the fix-round cost was repaid many times over by the
+    defect classes that never reached the main branch.
+  routing:
+    action: brain-note
+    ref: reviewer/probe-isolation-claims-on-real-cli
+- category: incident
+  area: briefing
+  severity: high
+  summary: Chronic subagent stalls at commit boundaries were root-caused to auto-backgrounded
+    long gate runs, then largely fixed by two brief lines
+  detail: Ten of eleven early tasks stalled with finished-but-uncommitted work; the
+    one non-stalling dev diagnosed the harness auto-backgrounding of multi-minute
+    gate runs as the likely thread-loss point; adding a verbatim closed-action-set
+    line plus an explicit backgrounded-gate recovery recipe produced three consecutive
+    full dev cycles to close the session.
+  evidence:
+  - Zugruul/development-skills#313
+  - Zugruul/development-skills#364
+  generalized: When agents consistently stall at one lifecycle point, interview the
+    outlier that did not stall — the root cause (an environmental behavior like auto-backgrounding,
+    not agent unwillingness) and the fix (name the closed set of allowed next actions
+    and teach the recovery for the environmental trap) both came from the agent, not
+    the orchestrator's guesses.
+  routing:
+    action: brain-note
+    ref: orchestrator/brief-closed-action-set
+- category: worked-well
+  area: merge
+  severity: medium
+  summary: Numbers-gated epic progression worked end to end — real measured latencies
+    decided the next epic, not optimism
+  detail: The epic gate required a real-provider measurement; the harness shipped
+    with a CI stub mode plus a dogfood real mode, the real run recorded p95 well under
+    threshold, the results artifact was committed, and the unblock decision cites
+    it. A provider-dependent gap in one gate's simulation was caught and re-measured
+    honestly rather than papered over.
+  evidence:
+  - Zugruul/development-skills#315
+  generalized: Gating UI/UX epics on committed, real-mode measurement artifacts (with
+    the harness itself CI-proven in stub mode) prevents building interface layers
+    on unmeasured latency assumptions, and the results file doubles as the auditable
+    record of why the gate opened.
+  routing:
+    action: brain-note
+    ref: orchestrator/numbers-gated-epic-doors
+- category: recommendation
+  area: concurrency
+  severity: medium
+  summary: Parallel sessions on one repo need conflict-free shared-state write paths
+  detail: This session hand-merged a brain link-state conflict with a parallel session,
+    hit a stale-lane hotfix collision another session had already fixed, and adopted
+    fetch-before-everything as standing discipline.
+  evidence:
+  - Zugruul/development-skills#365
+  - Zugruul/development-skills#359
+  generalized: Multi-session repos surface every tracked file with read-modify-write
+    semantics as a merge hazard; append-only or merge-on-read designs for agent-maintained
+    state files remove a whole class of cross-session friction.
+  routing:
+    action: ignore
+    ref: already tracked as Zugruul/development-skills#365 (brain write-path race)
+      — no new filing needed
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-23T01:20:00Z'
+iteration:
+  task: AST-020
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: testing
+  component: plugins/spec-workflow/scripts/assistant/gates.py
+  severity: high
+  summary: Gate suite hermeticity broke when real developer-machine state changed
+  detail: A user scaffolding a real assistant repo under the default scan base made
+    the gates fixture discover two assistants, cascade-failing 35 assertions and blocking
+    the recorded gate machine-wide until a P0 hotfix landed.
+  evidence:
+  - Zugruul/development-skills#373
+  - Zugruul/development-skills#315
+  generalized: A test fixture that spawns a server with discovery/scan behavior must
+    pin EVERY implicit search path to isolated fixture-owned roots; a suite that claims
+    to be hermetic needs a regression test that simulates a polluted developer machine,
+    because environment-coupled defaults break gates only on machines whose state
+    changed.
+  routing:
+    action: brain-note
+    ref: dev/hermetic-fixture-pins-all-search-paths
+- category: worked-well
+  area: testing
+  severity: medium
+  summary: Clean-mainline reproduction protocol correctly exonerated the task branch
+  detail: The red gate on the task branch was reproduced identically on a throwaway
+    clean-main worktree, converting blame into a separate P0 hotfix without stalling
+    the task.
+  evidence:
+  - Zugruul/development-skills#373
+  - Zugruul/development-skills#317
+  generalized: When a gate goes red on a task branch, reproducing on a clean mainline
+    checkout in a throwaway worktree before blaming the diff cheaply separates pre-existing
+    environmental regressions from task defects and keeps the task lane unblocked.
+  routing:
+    action: brain-note
+    ref: orchestrator/clean-main-repro-before-blame
+- category: friction
+  area: briefing
+  severity: medium
+  summary: Subagents repeatedly went idle without sending their deliverable report
+  detail: Dev and reviewer agents finished (or paused) work but signaled only idle,
+    requiring an orchestrator nudge per occurrence (four nudges across one iteration)
+    before the report arrived.
+  evidence:
+  - Zugruul/development-skills#317
+  - Zugruul/development-skills#373
+  generalized: Subagent briefs should state that sending the deliverable report is
+    the mandatory FINAL action of the task, and orchestrators should treat a bare
+    idle notification as ground-truth-check time (inspect the branch) rather than
+    waiting.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#375
+- category: friction
+  area: testing
+  severity: low
+  summary: Concurrent full-suite runs in shared trees muddied failure attribution
+  detail: An orchestrator background suite run overlapped a dev agent gate run in
+    the same tree; partial captured output initially showed differing failure counts.
+  evidence:
+  - Zugruul/development-skills#317
+  generalized: Serialize full-suite/gate runs per working tree; two concurrent runs
+    in one tree produce partial or interleaved output that wastes a diagnosis round.
+  routing:
+    action: brain-note
+    ref: orchestrator/serialize-suite-runs-per-tree
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-23T02:00:00Z'
+iteration:
+  task: '377'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: briefing
+  severity: medium
+  summary: Explicit mandatory-report brief instruction still did not produce a dev
+    deliverable report
+  detail: The dev brief stated in LESSONS and DELIVERABLE that sending the report
+    is the mandatory final action; the dev still went idle without one, while the
+    reviewer given the same instruction complied. Orchestrator proceeded from ground
+    truth (branch + gate-pass inspection).
+  evidence:
+  - Zugruul/development-skills#375
+  - Zugruul/development-skills#377
+  generalized: A prose mandate in the brief does not reliably produce a final deliverable
+    report from implementation agents; the report habit needs mechanical support (harness-level
+    completion payload or an orchestrator ground-truth-first protocol), not stronger
+    wording.
+  routing:
+    action: ignore
+    ref: Zugruul/development-skills#375
+- category: worked-well
+  area: other
+  severity: medium
+  summary: Live user validation fed straight back into the loop as filed, fixed, merged
+    work
+  detail: A human validation session on a real deployment surfaced a config-default
+    trap; it became a filed bug, a briefed fix, a review, and a merge within the same
+    session, plus a separate tracked enhancement.
+  evidence:
+  - Zugruul/development-skills#376
+  - Zugruul/development-skills#377
+  generalized: Treat human live-validation reports as first-class loop input — triage
+    each finding into filed bugs or enhancements immediately and fix the small sharp
+    ones in-session; the validation-to-merge distance shrinking to one session is
+    a sign the loop is healthy.
+  routing:
+    action: brain-note
+    ref: orchestrator/live-validation-is-loop-input
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-23T03:20:00Z'
+iteration:
+  task: 379+380+381
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Reviewer live-executed the diff and caught a guarantee-violating edge the
+    tests missed
+  detail: The reviewer ran the normalization function against a double-separator slug
+    and proved the fix violated its own stated self-match guarantee; a targeted round-2
+    red+fix closed it pre-merge.
+  evidence:
+  - Zugruul/development-skills#380
+  generalized: Reviewers who EXECUTE the changed code against adversarial inputs (not
+    just read it) catch fixes that violate their own stated guarantees on inputs the
+    new tests did not sample; a stated guarantee in a fix is itself a test-generation
+    prompt for the reviewer.
+  routing:
+    action: brain-note
+    ref: reviewer/execute-guarantees-adversarially
+- category: worked-well
+  area: briefing
+  severity: low
+  summary: Batching three same-file small bugs into one branch with per-bug red+fix
+    pairs worked cleanly
+  detail: Three bugs sharing two files went through one dev lane, one review, one
+    gate, one merge — with per-bug commit pairs keeping attribution and revertability.
+  evidence:
+  - Zugruul/development-skills#379
+  - Zugruul/development-skills#380
+  - Zugruul/development-skills#381
+  generalized: Small same-surface bugs batch well into one branch when each keeps
+    its own red+fix commit pair — one review/gate/merge cycle without losing per-bug
+    traceability.
+  routing:
+    action: brain-note
+    ref: orchestrator/batch-same-surface-bugs
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-23T04:10:00Z'
+iteration:
+  task: 382 (+3d-viewer recovery, FPS label)
+  outcome: merged
+  reviewRounds: 0
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: other
+  severity: medium
+  summary: Unmerged prior-session work was recovered by searching branches before
+    reimplementing
+  detail: A remembered feature turned out to live on a day-old unmerged branch; rebasing
+    it onto the current mainline (resolving overlaps with a freshly merged fix in
+    the same file, keeping the better half of each) shipped it without duplicate implementation.
+  evidence:
+  - Zugruul/development-skills#381
+  generalized: When a human remembers a feature that the mainline lacks, grep the
+    unmerged branches and worktrees BEFORE reimplementing — recovered work rebased
+    over the current mainline preserves original authorship and catches design lessons
+    (e.g. a superseding CSS technique) that a fresh reimplementation would miss.
+  routing:
+    action: brain-note
+    ref: orchestrator/search-branches-before-reimplementing
+- category: friction
+  area: review
+  severity: medium
+  summary: Human overrides compressed the protocol (no independent review, merges
+    before the recorded gate finished)
+  detail: Under an explicit human time/AFK constraint, several merges shipped orchestrator-verified
+    only, one ahead of its full gate result (which later passed). Documented per merge,
+    but the protocol has no first-class expedited mode — each override is ad hoc.
+  evidence:
+  - Zugruul/development-skills#382
+  generalized: An explicit expedited-delivery mode (human-invoked) that records what
+    was skipped per merge would make time-pressured sessions auditable instead of
+    ad hoc; the recorded gate remaining mandatory-but-async (merge allowed, auto-revert
+    task filed on red) is a policy worth designing deliberately.
+  routing:
+    action: upstream
+    ref: Zugruul/development-skills#382
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-23T04:30:00Z'
+iteration:
+  task: session 2026-07-22/23 (AST-020 -> perf increment)
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: other
+  severity: medium
+  summary: One loop iteration degraded gracefully into interactive pair-programming
+    without losing board truth
+  detail: A single autonomous iteration absorbed a P0 hotfix, live human validation,
+    four user-reported page bugs, a feature recovery from an unmerged branch, and
+    a perf increment — every piece landed as a tracked, closed board item with a merge
+    SHA.
+  evidence:
+  - Zugruul/development-skills#317
+  - Zugruul/development-skills#373
+  - Zugruul/development-skills#382
+  generalized: The loop's real strength is mode-elasticity — autonomous batch work
+    and human-driven interactive fixes can interleave within one session as long as
+    every piece of work still gets its board item, verdict record, and merge announcement;
+    the board staying truthful is what makes the mode switches safe.
+  routing:
+    action: brain-note
+    ref: orchestrator/mode-elastic-loop
+- category: friction
+  area: merge
+  severity: medium
+  summary: No canonical merge locus for local-route merges — every merge improvised
+    its base
+  detail: Local main was checked out at varying places across the session (stale primary
+    checkout, task worktrees), forcing branch -f workarounds, a push-by-SHA, and one
+    retro commit transplant via cherry-pick after landing on a wrong base.
+  evidence:
+  - Zugruul/development-skills#382
+  generalized: Under local-route delivery the orchestrator needs ONE canonical merge
+    procedure (e.g. always merge in a dedicated detached temp worktree and push by
+    SHA to the remote mainline, never force-moving the local branch) — improvising
+    per merge invites wrong-base commits and checked-out-branch conflicts.
+  routing:
+    action: brain-note
+    ref: orchestrator/canonical-merge-locus
+- category: incident
+  area: other
+  severity: medium
+  summary: The primary checkout served months-stale code during live human validation
+  detail: The checkout a human used for validation sat detached at an old commit with
+    local modifications; the viewer served stale code, producing misleading missing-dependency
+    and missing-feature symptoms until diagnosed.
+  evidence:
+  - Zugruul/development-skills#379
+  generalized: Before a human validates anything in a checkout, verify it is on the
+    current mainline tip — and the long-running viewer could check its serving revision
+    against the remote mainline and surface a stale-code warning chip mechanically
+    instead of relying on someone noticing.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#384
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-24T02:20:00Z'
+iteration:
+  task: MEM-030
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Reviewer enforced the docs covenant mechanically and verified resume-specific
+    claims by execution
+  detail: Round-1 grep of the README for every new user-facing surface caught the
+    one real gap; the reviewer also re-ran the hermeticity-pinned fixtures against
+    the genuinely installed capability to prove the pins load-bearing.
+  evidence:
+  - Zugruul/development-skills#138
+  generalized: Two reviewer habits with outsized yield — grep the covenant docs for
+    every new user-facing name in the diff before reading code, and verify environment-coupled
+    test claims by executing them in the real environment state rather than reasoning
+    about them.
+  routing:
+    action: brain-note
+    ref: reviewer/covenant-grep-and-execute
+- category: friction
+  area: testing
+  severity: medium
+  summary: A resumed branch carried assertions about a world that moved, in both directions
+  detail: A week-old branch pinned a negative that a later merge legitimately invalidated,
+    and its own installer invalidated machine-state assumptions in OTHER suites (capability-absent
+    fixtures) — two distinct staleness failures surfaced only at rebase+full-gate
+    time.
+  evidence:
+  - Zugruul/development-skills#138
+  generalized: Resuming an old branch needs a dedicated staleness pass, not just a
+    rebase — re-read its negative assertions against current mainline behavior, and
+    ask what machine/global state the branch's own feature will change that OTHER
+    tests currently assume; run the full suite, not just the branch's section, before
+    calling it resumed.
+  routing:
+    action: brain-note
+    ref: orchestrator/resumed-branch-staleness-pass
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-24T02:45:00Z'
+iteration:
+  task: AST-021
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: briefing
+  severity: medium
+  summary: Iterative-UI logic-first split let an approved task merge despite a pending
+    visual choice
+  detail: The brief split the task into all-logic-with-restyle-hooks (built, reviewed,
+    merged) vs visual polish (pending the human option pick as a follow-up round)
+    — the epic kept moving without guessing UI.
+  evidence:
+  - Zugruul/development-skills#318
+  generalized: When iterative-UI gates a task, brief the dev to build every behavior
+    with named restyle-hook classes and placeholder styling; the reviewed logic can
+    merge on human direction while the visual choice stays an open follow-up round
+    — the loop never idles on aesthetics.
+  routing:
+    action: brain-note
+    ref: orchestrator/ui-split-logic-first
+- category: friction
+  area: other
+  severity: low
+  summary: Transient infra failures (safety-classifier outage, reviewer connection
+    drop) each cost a wake cycle
+  detail: One agent spawn was refused by a temporary model-availability error and
+    one reviewer died mid-response; both recovered via retry/resume.
+  evidence:
+  - Zugruul/development-skills#318
+  generalized: Transient spawn/connection failures are recoverable by retry-later
+    and resume-by-message; no protocol change needed beyond treating them as wake
+    events, not blockers.
+  routing:
+    action: ignore
+    ref: transient infra, recovered; no action
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-24T03:35:00Z'
+iteration:
+  task: AST-022
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: merge
+  severity: high
+  summary: Merge executed before the gate verdict was read — chained into one command
+  detail: The merge+push was scripted in the same shell chain that printed the gate
+    result, so the push happened regardless of the RED line above it. The red proved
+    unrelated, but only luck separated this from shipping a broken tree.
+  evidence:
+  - Zugruul/development-skills#319
+  generalized: Never chain merge/push into the same command as a gate check — the
+    gate line must be READ and judged before any merge command is issued; a merge
+    is a separate decision, not a pipeline stage after the gate.
+  routing:
+    action: brain-note
+    ref: orchestrator/gate-verdict-before-merge
+- category: incident
+  area: merge
+  severity: medium
+  summary: Direct-to-mainline pushes from a parallel session bypassed the gate and
+    broke it for the next merger
+  detail: A parallel interactive session pushed skill-doc edits straight to the mainline;
+    a prose lint they never ran went red and surfaced under the NEXT task's gate,
+    mis-attributing the failure. A second direct push also raced a hotfix push, forcing
+    a reflog recovery and transplant.
+  evidence:
+  - Zugruul/development-skills#319
+  generalized: Any session pushing directly to the mainline should run the recorded
+    gate first (or at minimum the lint sections covering its surfaces); the loop should
+    treat a red gate on an unchanged-surface task as possibly inherited and attribute
+    failures before assigning blame — and pushes should expect races and transplant
+    by SHA rather than assume a stable tip.
+  routing:
+    action: brain-note
+    ref: orchestrator/parallel-push-races
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-24T04:15:00Z'
+iteration:
+  task: AST-023
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: testing
+  severity: high
+  summary: Simplified DOM stub masked a crash-on-open defect through two consecutive
+    green-suite tasks
+  detail: The template harness modeled element children as a plain array, so an assignment
+    that throws on a real live HTMLCollection passed silently; two tasks shipped the
+    anti-pattern before an execution-minded reviewer caught it, and the fix hardened
+    the stub so the whole class is now guarded.
+  evidence:
+  - Zugruul/development-skills#320
+  - Zugruul/development-skills#387
+  generalized: A test double must reproduce the FAILURE SEMANTICS of the real interface,
+    not just its happy-path API — model getter-only properties, strict-mode throw
+    behavior, and live-collection semantics; when a reviewer finds a stub-masked defect,
+    the fix always lands in two places (the code site AND the stub) so the class is
+    caught forever after.
+  routing:
+    action: brain-note
+    ref: dev/stub-failure-semantics
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-24T06:00:00Z'
+iteration:
+  task: AST-024
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: briefing
+  severity: medium
+  summary: A stalled dev agent had silently COMPLETED everything uncommitted, including
+    untracked new files
+  detail: Two idle notifications and a nudge later, a tree inventory showed the full
+    implementation, a new module, the test section, and a rigorous spec delta all
+    sitting uncommitted/untracked; the orchestrator salvage-committed in red-first
+    order using fast red proofs because the red state hung.
+  evidence:
+  - Zugruul/development-skills#321
+  generalized: When an implementation agent stalls, inventory the working tree INCLUDING
+    untracked files before re-briefing or reassigning — a stalled agent may have finished
+    everything and only failed at the commit/report step; salvage-committing its work
+    in proper order preserves both the TDD trail and its authorship.
+  routing:
+    action: brain-note
+    ref: orchestrator/inventory-stalled-agent-tree
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-24T06:40:00Z'
+iteration:
+  task: AST-030
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: briefing
+  severity: medium
+  summary: Leading the brief with commit-and-report-are-part-of-the-task ended the
+    stalled-uncommitted pattern
+  detail: After a salvage the prior iteration, the next brief opened with the commit
+    discipline as the FIRST lesson; the agent committed red then impl properly and
+    left a clean tree.
+  evidence:
+  - Zugruul/development-skills#322
+  generalized: 'Ordering matters in briefs: putting process discipline (commit early,
+    report always) as the FIRST lesson — not buried mid-brief — measurably changes
+    agent behavior; leading with what most recently failed is cheap insurance.'
+  routing:
+    action: brain-note
+    ref: orchestrator/lead-brief-with-last-failure
+- category: recommendation
+  area: board
+  severity: low
+  summary: A task delivered incidentally inside another PR should be board-reconciled,
+    not rebuilt
+  detail: A 2pt task's whole AC shipped inside its neighbor via an existing seam;
+    the reviewer flagged the overlap and the board was reconciled by closing it against
+    the delivering merge with the fixture as evidence.
+  evidence:
+  - Zugruul/development-skills#322
+  - Zugruul/development-skills#323
+  generalized: When a diff legitimately delivers a neighboring task's full AC through
+    an existing seam, reconcile the board (close the neighbor citing the delivering
+    merge + its test evidence) instead of trimming correct code or building a duplicate
+    — the reviewer's overlap flag is the trigger for reconciliation.
+  routing:
+    action: brain-note
+    ref: orchestrator/reconcile-incidental-delivery
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-24T11:45:00Z'
+iteration:
+  task: E4 epic close (AST-040..045)
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Reviewer briefs that name concrete failure modes to hunt consistently outperform
+    generic review asks
+  detail: Across six observability-epic reviews, briefs that specified the exact traps
+    (cumulative-bucket math, silent caps, lock windows, stub fidelity, XSS in generated
+    markup) produced verdicts with hand-recomputed math and genuine catches; every
+    accepted finding traced to a named hunt.
+  evidence:
+  - Zugruul/development-skills#326
+  - Zugruul/development-skills#328
+  - Zugruul/development-skills#330
+  - Zugruul/development-skills#331
+  generalized: Write reviewer briefs as a list of NAMED failure modes specific to
+    the diff's domain (math correctness, silent truncation, lock scope, stub fidelity,
+    injection surfaces) rather than generic verify-the-AC asks — reviewers reliably
+    execute the named hunts and the findings quality tracks the brief's specificity.
+  routing:
+    action: brain-note
+    ref: orchestrator/name-the-failure-modes
+- category: worked-well
+  area: other
+  severity: low
+  summary: Delta jurisprudence stabilized — the reviewer corpus now distinguishes
+    real contract corrections from untyped-prose gap-filling
+  detail: One reviewer resolved a spec-delta question by reading the actual spec text
+    and citing both the delta precedents and the no-delta precedent, correcting the
+    framing both the dev and orchestrator carried.
+  evidence:
+  - Zugruul/development-skills#329
+  generalized: Spec deltas are for text that CONTRADICTS implemented reality; untyped
+    prose being filled by a reasonable implementation choice needs code/README documentation,
+    not a delta — and reviewers should verify the alleged contradiction against the
+    actual spec text before demanding either.
+  routing:
+    action: brain-note
+    ref: reviewer/delta-jurisprudence
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-24T13:20:00Z'
+iteration:
+  task: AST run close (hardening batch + queue drain)
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: concurrency
+  severity: medium
+  summary: A long fully-autonomous run sustained quality via the same fixed iteration
+    shape every time
+  detail: Roughly fifteen consecutive task closes ran the identical loop — brief with
+    recency-ordered lessons, red-first verification, named-failure-mode review, gate-line
+    read as its own step, board close with verdict trail — with zero human interventions
+    needed after the process lessons stabilized mid-run.
+  evidence:
+  - Zugruul/development-skills#322
+  - Zugruul/development-skills#326
+  - Zugruul/development-skills#331
+  - Zugruul/development-skills#393
+  generalized: Autonomous throughput comes from a FIXED iteration shape whose steps
+    encode past failures, not from adaptive cleverness — once the brief template,
+    verification order, and close-out checklist stabilized, every subsequent iteration
+    was clean; invest failures into the template, then repeat it mechanically.
+  routing:
+    action: brain-note
+    ref: orchestrator/fixed-iteration-shape
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-24T14:30:00Z'
+iteration:
+  task: mini-loop close (skill fix + layout conformance)
+  outcome: merged
+  reviewRounds: 0
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: testing
+  severity: medium
+  summary: A red gate was mis-attributed for a full suite run because only the test
+    leg was checked
+  detail: The gate chains three legs (suite, shellcheck, manifest validation); an
+    info-severity shellcheck finding on a new pinned-phrase line made the gate red
+    while the suite was fully green, and the first diagnosis re-ran the whole suite
+    instead of checking the other legs.
+  generalized: When the gate goes red, attribute across ALL of its legs before rerunning
+    anything — the test suite, the linter, and the manifest validation each fail the
+    gate independently, and an info-severity lint finding on a brand-new line is the
+    cheapest leg to check first.
+  routing:
+    action: brain-note
+    ref: orchestrator/attribute-all-gate-legs
+- category: worked-well
+  area: other
+  severity: low
+  summary: A process gap the human flagged became an enforced, pinned skill contract
+    within one sitting
+  detail: The human noticed the loop close skipped the feedback/retrospective skills;
+    the mandate was added to the skill text, pinned in the contracts section, gated,
+    merged — and immediately honored by the very session that shipped it.
+  generalized: When a human flags a workflow-protocol gap, the fix is a pinned skill-contract
+    change (text + contract test in one PR), not a memory note — and the shipping
+    session should immediately execute the new protocol itself, proving it runnable
+    before any other session inherits it.
+  routing:
+    action: brain-note
+    ref: orchestrator/gap-to-pinned-contract
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-25T02:45:00Z'
+iteration:
+  task: '397'
+  outcome: merged
+  reviewRounds: 3
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: A reviewer that renders and measures rendered geometry headlessly catches
+    layout defects string-assert tests structurally cannot
+  detail: Three real MAJORs on the voice-panel restyle were invisible to the template's
+    substring assertions and to spec-reasoning; each was proven with pixel measurements
+    from a faithful headless repro, including proving a regression NEW by re-injecting
+    the old rule.
+  evidence:
+  - Zugruul/development-skills#397
+  generalized: For UI/layout diffs, brief the reviewer to build a minimal headless
+    repro and measure rendered geometry (offsetHeight/scrollHeight/getBoundingClientRect)
+    across viewports and interactive states — substring-level template tests stay
+    green through genuine layout regressions, so a measuring reviewer is the only
+    automated line of defense.
+  routing:
+    action: brain-note
+    ref: reviewer/measure-geometry-not-strings
+- category: friction
+  area: review
+  severity: low
+  summary: Reviewer-prescribed one-line fixes at the relay-round cap have no defined
+    closing move
+  detail: Round 3 ended REQUEST_CHANGES with an exactly-specified one-liner; the protocol's
+    cap left only merge-over-a-MAJOR or park-for-human. Used a prescription-ACK round
+    (apply verbatim, reviewer re-measures with its existing repro, framed as verdict-completion)
+    to close cleanly.
+  evidence:
+  - Zugruul/development-skills#397
+  generalized: 'The auto-review relay cap should explicitly define a prescription-ACK
+    closing move: when the final round''s REQUEST_CHANGES prescribes an exact minimal
+    fix, applying it verbatim and having the reviewer ACK its own prescription with
+    its existing repro counts as completing that round, not opening a new one.'
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#398
+- category: worked-well
+  area: briefing
+  severity: low
+  summary: Live human tweaks folded into an in-flight dev lane via teammate messages
+    kept one task one branch
+  detail: Three incremental restyle asks arrived mid-implementation and were relayed
+    as brief amendments (each with its own red-first pin) instead of new tasks; history
+    stayed a legible red/green audit trail.
+  evidence:
+  - Zugruul/development-skills#397
+  generalized: When a human drips small scope refinements onto an in-flight UI task,
+    relay each to the running dev agent as a brief amendment with its own red-first
+    test pin rather than filing separate tasks — the branch stays one reviewable unit
+    and every tweak stays independently pinned.
+  routing:
+    action: brain-note
+    ref: orchestrator/live-tweaks-as-brief-amendments
