@@ -4,6 +4,11 @@
     "last": null,
     "weight": 0.5
   },
+  "brief-load-bearing-lines->live-tweaks-as-brief-amendments": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "fixed-iteration-shape->gate-verdict-before-merge": {
     "fires": 0,
     "last": null,

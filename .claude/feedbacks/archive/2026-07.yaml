@@ -5184,3 +5184,65 @@ items:
   routing:
     action: brain-note
     ref: orchestrator/live-tweaks-as-brief-amendments
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-25T03:50:00Z'
+iteration:
+  task: '318'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Static tracing of all same-event listeners caught a cross-handler regression
+    the stubbed harness structurally could not see
+  detail: The Esc double-fire (chat overlay close + persisted assistant skip) was
+    invisible to the per-feature harness until the fix round extended it to bind both
+    real handlers with real event semantics.
+  evidence:
+  - Zugruul/development-skills#318
+  generalized: Review protocol for event-handler diffs should include enumerating
+    every listener bound to the same event type and checking ownership coordination;
+    per-feature harnesses that bind only the feature's own handler are blind to cross-handler
+    collisions until they bind all real cooperating handlers.
+  routing:
+    action: brain-note
+    ref: reviewer/stub-harness-blindspot
+- category: friction
+  area: review
+  severity: low
+  summary: A reviewer's code-level fix prescription embedded an untraced ordering
+    assumption and would itself have raced
+  detail: The re-query prescription failed the finding's own test when implemented
+    as given; the dev diagnosed and substituted an event-object flag. Cost one extra
+    relay message; contract-level prescriptions would avoid it.
+  evidence:
+  - Zugruul/development-skills#318
+  generalized: Reviewer briefs and reviewer training should require prescribing the
+    behavioral contract rather than concrete code unless the reviewer has traced the
+    fix's execution order; devs should implement a received prescription as given
+    and run it against the finding's test before arguing or substituting.
+  routing:
+    action: brain-note
+    ref: reviewer/prescribe-contract-not-code
+- category: worked-well
+  area: briefing
+  severity: low
+  summary: Briefs that name load-bearing lines, pinned test contracts, and the finalized-design
+    artifact keep the dev's exploration budget on genuine unknowns
+  detail: Dev cited the exact function location, STATIC_IDS test contracts, and the
+    mockup path as the main accelerant.
+  evidence:
+  - Zugruul/development-skills#318
+  generalized: When briefing a dev agent for a restyle/refactor with frozen logic,
+    include the exact code locations, the test files with their pinned contracts,
+    and the finalized design artifact path — the agent then spends its exploration
+    on payload/API unknowns instead of re-deriving settled decisions.
+  routing:
+    action: brain-note
+    ref: orchestrator/live-tweaks-as-brief-amendments
