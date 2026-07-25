@@ -1,27 +1,7 @@
 {
-  "check-empty-expected-vacuous->import-and-probe-python-library": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "check-empty-expected-vacuous->mutation-check-assertions": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "confirm-named-scope-exclusions-respected->note-dont-gate-on-unrelated-findings": {
     "fires": 2,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "covenant-grep-and-execute->execute-guarantees-adversarially": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "covenant-grep-and-execute->reproduce-red-first-claims": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "delta-jurisprudence->covenant-grep-and-execute": {
@@ -39,36 +19,6 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
-  "empty-expected-recurrence-needs-lint->check-empty-expected-vacuous": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "empty-expected-recurrence-needs-lint->fixture-must-reach-fixed-path": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "execute-guarantees-adversarially->degrade-path-kind-honesty": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "execute-guarantees-adversarially->reproduce-red-first-claims": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "fixture-must-reach-fixed-path->check-empty-expected-vacuous": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "fixture-must-reach-fixed-path->mutation-check-assertions": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "golden-identical-covers-absent-not-present->parity-check-new-vs-existing-path": {
     "fires": 2,
     "last": "2026-07-22",
@@ -77,31 +27,6 @@
   "grep-for-known-bug-class-before-deep-analysis->verify-portability-claims-in-target-environment": {
     "fires": 2,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "import-and-probe-python-library->reports-are-not-the-code": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "import-and-probe-python-library->verify-with-library-own-classes": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "lock-ablation-proof->fixture-must-reach-fixed-path": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "lock-ablation-proof->write-site-classification-sweep": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "mutation-check-assertions->import-and-probe-python-library": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "mutation-test-verify-suite-discriminates->reproduce-claimed-bug-fix-before-and-after": {
@@ -117,26 +42,6 @@
   "parity-check-new-vs-existing-path->golden-identical-covers-absent-not-present": {
     "fires": 2,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "passing-test-proves-agreement-only->dual-path-fixture-proves-sharing": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "passing-test-proves-agreement-only->verify-reuse-by-symbol-grep": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "probe-isolation-claims-on-real-cli->reports-are-not-the-code": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "probe-isolation-claims-on-real-cli->write-site-classification-sweep": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "probe-spec-silent-input-categories->trace-boundary-operators-by-hand": {
@@ -172,11 +77,6 @@
   "rerun-the-red-empirically->reproduce-then-verify-fix": {
     "fires": 1,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "settle-conventions-empirically->import-and-probe-python-library": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "trace-boundary-operators-by-hand->equality-guards-invite-ordering-probes": {
@@ -237,16 +137,6 @@
   "verify-reuse-by-symbol-grep->dual-path-fixture-proves-sharing": {
     "fires": 1,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "write-site-classification-sweep->check-empty-expected-vacuous": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "write-site-classification-sweep->mutation-check-assertions": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   }
 }

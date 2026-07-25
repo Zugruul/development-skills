@@ -4,16 +4,6 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
-  "advisory-scripts-catch-oserror->lock-key-canonicalize": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "advisory-scripts-catch-oserror->tracked-config-atomic-writes": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "anonymous-listener-slice-eval->duplicate-with-agreement-pin": {
     "fires": 12,
     "last": "2026-07-22",
@@ -54,11 +44,6 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
-  "bool-before-int-guard->extend-house-fixture-style": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "bool-excluded-before-int->stdlib-vs-enrichment-split": {
     "fires": 18,
     "last": "2026-07-22",
@@ -87,16 +72,6 @@
   "claims-point-at-diff-lines->flag-safety-language-removal": {
     "fires": 17,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "construct-before-try->lock-key-canonicalize": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "construct-before-try->partial-results-honesty": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "copy-exact-strings-tests-assert-against->copy-not-eyeball-format-parity": {
@@ -142,26 +117,6 @@
   "enumerate-state-writers->trace-state-mutation-not-named-trigger": {
     "fires": 17,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "env-home-isolation-not-cwd->advisory-scripts-catch-oserror": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "env-home-isolation-not-cwd->getter-over-global-snapshot": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "estimator-honesty-dense-scripts->bool-before-int-guard": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "estimator-honesty-dense-scripts->defaults-need-own-tests": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "exclude-before-scan->circular-fixture-detector": {
@@ -214,21 +169,6 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
-  "getter-over-global-snapshot->lifecycle-changes-need-full-suite": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "getter-over-global-snapshot->lock-key-canonicalize": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "grep-qf-multiline-or-trap->test-section-shell-plumbing-risk": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "guards-are-not-cache-targets->second-order-after-concurrency-fix": {
     "fires": 14,
     "last": "2026-07-22",
@@ -279,41 +219,6 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
-  "key-order-is-serialization-contract->hand-write-links-fixtures": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "lifecycle-changes-need-full-suite->deterministic-repro-fast": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "lifecycle-changes-need-full-suite->marker-barrier-interleave": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "lock-key-canonicalize->bool-before-int-guard": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "lock-key-canonicalize->marker-barrier-interleave": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "marker-barrier-interleave->deterministic-repro-fast": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "marker-barrier-interleave->test-section-shell-plumbing-risk": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "multiline-body-stdin-contract-gap->sanity-check-fix-against-broken-code": {
     "fires": 3,
     "last": "2026-07-22",
@@ -327,16 +232,6 @@
   "naive-counters-need-quotes-first->self-scan-first-class": {
     "fires": 14,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "no-stage-specific-path-assertions->batch-red-across-surfaces": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "no-stage-specific-path-assertions->sourced-section-no-brace-cd": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "normalize-after-load-identity-fields->bool-excluded-before-int": {
@@ -367,21 +262,6 @@
   "pair-every-side-effect-with-undo->behavioral-guard-is-spec-worthy": {
     "fires": 14,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "partial-results-honesty->advisory-scripts-catch-oserror": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "partial-results-honesty->tracked-config-atomic-writes": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "per-cli-isolation-differs->env-home-isolation-not-cwd": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "poll-own-children->second-order-after-concurrency-fix": {
@@ -582,16 +462,6 @@
   "trace-state-mutation-not-named-trigger->raf-rearm-first": {
     "fires": 19,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "tracked-config-atomic-writes->lock-key-canonicalize": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "tracked-config-atomic-writes->marker-barrier-interleave": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "trust-completion-signal-not-early-log-read->deterministic-repro-fast": {
