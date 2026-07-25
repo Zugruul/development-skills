@@ -198,6 +198,15 @@ function mkEl(initialId) {
             add(c){ this._parent._classes.add(c); },
             remove(c){ this._parent._classes.delete(c); },
             contains(c){ return this._parent._classes.has(c); },
+            // AST-021 restyle: renderAssistantPicker's keyboard nav toggles
+            // .ast-picker-active per row -- real DOM's classList.toggle(c,
+            // force) semantics (force omitted = flip; force given = set to
+            // that boolean).
+            toggle(c, force){
+                const on = force === undefined ? !this._parent._classes.has(c) : !!force;
+                if(on) this._parent._classes.add(c); else this._parent._classes.delete(c);
+                return on;
+            },
         },
         _items: [],
         // #387: children mirrors a real live HTMLCollection -- reads work,
@@ -242,9 +251,13 @@ const document = {
     getElementById(id) {
         return elements[id] || null;
     },
-    createElement(_tag) {
+    createElement(tag) {
         const el = mkEl(null);
         el.classList._parent = el;
+        // review round 1, finding 3: tagName lets a test confirm Skip is a
+        // real <button> (native Tab focus + Enter/Space activation) rather
+        // than a styled div needing its own hand-rolled key handling.
+        el.tagName = String(tag || "").toUpperCase();
         return el;
     },
 };
@@ -259,7 +272,12 @@ const document = {
 // initAssistantSelection now unconditionally refreshes them, so they need
 // to exist as real elements here too even though this section doesn't
 // assert on them (section-assistant-selection-memory.sh does).
-const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-ask-again", "ast-switcher", "voice-viz-name"];
+// AST-021 restyle (Option C command palette, issue #318): #ast-picker-anchor
+// is new static boot furniture (top-center, under the search bar -- see the
+// HTML comment beside it) that renderAssistantPicker looks up instead of
+// appending into #voicebar; it needs to exist here for the same reason the
+// other STATIC_IDS do.
+const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-picker-anchor", "ast-ask-again", "ast-switcher", "voice-viz-name"];
 for (const id of STATIC_IDS) {
     const el = mkEl(id);
     el.classList._parent = el;
@@ -276,8 +294,39 @@ global.fetch = async (url, opts) => {
     return { json: async () => ({}) };
 };
 
+// AST-021 restyle: renderAssistantPicker now binds/unbinds a real
+// document-level keydown listener (Up/Down/Enter/Esc) while the palette is
+// open -- Node has no browser addEventListener global, so this stub tracks
+// listeners the same way the DOM would (add/remove by reference) and
+// fireKeydown() below drives them like a real keypress would.
+global.__listeners = { keydown: [] };
+global.addEventListener = (type, fn) => {
+    global.__listeners[type] = global.__listeners[type] || [];
+    global.__listeners[type].push(fn);
+};
+global.removeEventListener = (type, fn) => {
+    const arr = global.__listeners[type] || [];
+    const i = arr.indexOf(fn);
+    if (i !== -1) arr.splice(i, 1);
+};
+function fireKeydown(props) {
+    // review round 1 (#318), finding 1: preventDefault() must actually flip
+    // defaultPrevented, real-Event style -- handleAssistantChatKeydown and
+    // onPickerKeydown coordinate "who owns this Escape" through that flag
+    // (DOM dispatch runs every listener on the same event object, in
+    // registration order, same as this loop below).
+    const ev = Object.assign({ defaultPrevented: false, preventDefault(){ this.defaultPrevented = true; } }, props);
+    for (const fn of [...(global.__listeners.keydown || [])]) fn(ev);
+}
+
 eval(extract("setVoiceHeaderName"));
 eval(extract("gateVoiceAndChat"));
+// AST-021 restyle: isChatTypingTarget (typing-target guard, shared with the
+// T-key chat overlay) and unbindAssistantPickerKeys are both real
+// production helpers renderAssistantPicker now calls -- extracted here too
+// so this stays the real wiring instead of a simplified fork.
+eval(extract("isChatTypingTarget"));
+eval(extract("unbindAssistantPickerKeys"));
 eval(extract("renderAssistantPicker"));
 eval(extract("renderNoneOverlay"));
 // AST-022 restyle (issue #319 follow-up): renderAssistantSwitcher now calls
@@ -287,12 +336,24 @@ eval(extract("escapeHtml"));
 eval(extract("renderAssistantSwitcher"));
 eval(extract("setAskAgainUi"));
 eval(extract("initAssistantSelection"));
+// review round 1 (#318), finding 1: the T-key chat overlay's own Esc
+// handler is bound at module scope unconditionally in production (not
+// only while an overlay is open), so it and the picker's keydown handler
+// can BOTH be live at once -- extract the real chat-overlay Esc plumbing
+// too and bind it the same unconditional way, so this harness can catch a
+// double-fire instead of only ever exercising the picker in isolation.
+eval(extract("stopChatElapsed"));
+eval(extract("closeChatOverlay"));
+eval(extract("handleAssistantChatKeydown"));
+global.assistantChat = { queue: [], inFlight: false, exchanges: [], lastX: 2, elapsedTimer: null, elapsedStart: 0 };
+addEventListener("keydown", handleAssistantChatKeydown);
 
 async function run(outcome, candidates) {
     // dynamic ids the selection functions create/remove themselves --
     // dropped so each run starts from "nothing rendered yet", exactly
     // like a fresh page boot.
     delete elements["ast-picker"];
+    delete elements["ast-picker-wrap"];
     delete elements["ast-none-overlay"];
     for (const id of STATIC_IDS) {
         const el = elements[id];
@@ -301,10 +362,22 @@ async function run(outcome, candidates) {
         el.children = [];
         el._classes = new Set();
     }
+    // a real page boot only ever runs initAssistantSelection() once, so
+    // there is never a stale keydown listener to worry about -- this test
+    // harness re-boots several scenarios in one process, so it must clear
+    // between them the same way a real reload would. handleAssistantChatKeydown
+    // is the one exception: production binds it once, unconditionally, at
+    // module load (never torn down) -- re-add it so every run() reflects
+    // that same "always listening" reality instead of losing it on reset.
+    delete elements["ast-chat-overlay"];
+    global.__listeners.keydown = [];
+    addEventListener("keydown", handleAssistantChatKeydown);
+    window.__astPickerKeydown = null;
     fetchCalls = [];
     statusResponse = {outcome, candidates, selected: null, gated: outcome !== "one"};
     await initAssistantSelection();
 }
+const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
 
 (async () => {
     // ---- outcome one: silent auto-select + header name ----
@@ -318,7 +391,7 @@ async function run(outcome, candidates) {
     console.log("ONE_OK true");
 
     // ---- outcome multiple: picker rendered, rows wired, gated until a pick ----
-    await run("multiple", [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}]);
+    await run("multiple", [{name: "jarvis", aliases: ["jay"], root: "/repo/a"}, {name: "friday", aliases: [], root: "/repo/b"}]);
     const picker = document.getElementById("ast-picker");
     if (!picker) throw new Error("outcome multiple did not render a picker");
     if (!picker.className.includes("ast-picker")) throw new Error("picker missing ast-picker class");
@@ -330,9 +403,50 @@ async function run(outcome, candidates) {
     if (!document.getElementById("voice-mic").disabled) throw new Error("outcome multiple must gate voice before a pick");
     console.log("MULTIPLE_OK true");
 
-    // picking a row selects + un-gates + sets header
+    // ---- AST-021 restyle (Option C command palette, issue #318): the
+    // picker now lives in a top-center card under #ast-picker-anchor, with
+    // a header, structured rows (name/aliases/repo-path), and a keyboard
+    // hint strip -- #ast-picker itself keeps the same DOM contract checked
+    // above (pinned class hooks, 2 rows + skip).
+    const wrap = document.getElementById("ast-picker-wrap");
+    if (!wrap) throw new Error("palette wrap (#ast-picker-wrap) not rendered");
+    if (!wrap.className.includes("ast-picker-wrap")) throw new Error("wrap missing ast-picker-wrap class");
+    const anchor = document.getElementById("ast-picker-anchor");
+    if (!anchor || anchor._items.indexOf(wrap) === -1) throw new Error("palette wrap not appended under #ast-picker-anchor");
+    const hintRow = wrap._items[wrap._items.length - 1];
+    if (!hintRow || !/navigate/i.test(hintRow.textContent) || !/select/i.test(hintRow.textContent) || !/esc/i.test(hintRow.textContent))
+        throw new Error("keyboard hint row missing/incomplete: " + (hintRow && hintRow.textContent));
+    const row0 = rows[0];
+    if (!row0.innerHTML.includes("ast-picker-name")) throw new Error("row missing name span");
+    if (!row0.innerHTML.includes("ast-picker-aliases") || !row0.textContent.includes("jay")) throw new Error("row missing/incorrect aliases: " + row0.innerHTML);
+    if (!row0.innerHTML.includes("ast-picker-path") || !row0.textContent.includes("/repo/a")) throw new Error("row missing/incorrect repo path: " + row0.innerHTML);
+    if (!row0.className.includes("ast-picker-active")) throw new Error("first row should start as the active row");
+    console.log("PALETTE_STRUCTURE_OK true");
+
+    // ---- keyboard nav: ArrowDown moves the active highlight, Enter selects it ----
+    fireKeydown({key: "ArrowDown"});
+    const row1 = rows[1];
+    if (!row1.className.includes("ast-picker-active")) throw new Error("ArrowDown did not move the active highlight to row 2");
+    if (row0.className.includes("ast-picker-active")) throw new Error("ArrowDown left the first row active too");
     fetchCalls = [];
-    await rows[0].onclick();
+    fireKeydown({key: "Enter"});
+    await flushMicrotasks();
+    const kbSelect = fetchCalls.find(c => c.url === "/assistant/select");
+    if (!kbSelect || JSON.parse(kbSelect.opts.body).name !== "friday") throw new Error("Enter did not select the active (friday) row");
+    if (document.getElementById("ast-picker-wrap")) throw new Error("palette did not close after a keyboard select");
+    if (document.getElementById("voice-mic").disabled) throw new Error("keyboard select did not un-gate voice");
+    // exactly ONE listener should remain: handleAssistantChatKeydown, bound
+    // unconditionally at module load in production and never torn down --
+    // see the identical note on the Esc-skip check below.
+    if ((global.__listeners.keydown || []).length !== 1) throw new Error("picker keydown handler leaked after a keyboard select (expected only the chat handler left)");
+    if (window.__astPickerKeydown) throw new Error("window.__astPickerKeydown was not cleared after a keyboard select");
+    console.log("KEYBOARD_SELECT_OK true");
+
+    // picking a row with the mouse still selects + un-gates + sets header
+    await run("multiple", [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}]);
+    const mouseRows = document.getElementById("ast-picker").children.slice(0, 2);
+    fetchCalls = [];
+    await mouseRows[0].onclick();
     const pickSelect = fetchCalls.find(c => c.url === "/assistant/select");
     if (!pickSelect || JSON.parse(pickSelect.opts.body).name !== "jarvis") throw new Error("picker row click did not select jarvis");
     if (document.getElementById("voice-mic").disabled) throw new Error("picking a candidate did not un-gate voice");
@@ -346,6 +460,44 @@ async function run(outcome, candidates) {
     if (!skipCall) throw new Error("Skip did not POST /assistant/skip");
     if (!document.getElementById("voice-mic").disabled) throw new Error("Skip did not gate voice-mic");
     console.log("SKIP_OK true");
+
+    // ---- Esc = Skip (keyboard escape hatch), and the picker's OWN listener
+    // unbinds after (handleAssistantChatKeydown is bound unconditionally at
+    // module load in production and never torn down, so exactly ONE
+    // listener -- the chat one -- should remain, not zero). ----
+    await run("multiple", [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}]);
+    fetchCalls = [];
+    fireKeydown({key: "Escape"});
+    await flushMicrotasks();
+    const escSkip = fetchCalls.find(c => c.url === "/assistant/skip");
+    if (!escSkip) throw new Error("Esc did not POST /assistant/skip");
+    if (!document.getElementById("voice-mic").disabled) throw new Error("Esc-skip did not gate voice-mic");
+    if ((global.__listeners.keydown || []).length !== 1) throw new Error("picker keydown handler leaked after Esc-skip (expected only the chat handler left)");
+    if (window.__astPickerKeydown) throw new Error("window.__astPickerKeydown was not cleared after Esc-skip");
+    console.log("ESC_SKIP_OK true");
+
+    // ---- review round 1 (#318), finding 1: Esc must not double-fire when
+    // the T-key chat overlay is ALSO open on top of the picker -- the
+    // overlay's own Esc handling should own that keypress (closing the
+    // overlay), and the picker must NOT also skip from the same keypress. ----
+    await run("multiple", [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}]);
+    const chatOverlay = document.createElement("div");
+    chatOverlay.id = "ast-chat-overlay";   // simulates T having opened it while the picker was up
+    fetchCalls = [];
+    fireKeydown({key: "Escape"});
+    await flushMicrotasks();
+    if (document.getElementById("ast-chat-overlay")) throw new Error("Esc did not close the chat overlay");
+    if (fetchCalls.some(c => c.url === "/assistant/skip")) throw new Error("Esc double-fired: picker skipped even though the chat overlay owned this keypress");
+    if (!document.getElementById("ast-picker-wrap")) throw new Error("picker must still be open -- Esc only closed the chat overlay, it did not skip");
+    if (document.getElementById("voice-mic").disabled !== true) throw new Error("voice-mic gating must be unchanged (still gated, picker still pending)");
+    console.log("ESC_NO_DOUBLE_FIRE_OK true");
+
+    // ---- review round 1 (#318), finding 3: Skip is a real <button> (native
+    // Tab focus + Enter/Space activation), not a styled div. ----
+    await run("multiple", [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}]);
+    const skipEl = document.getElementById("ast-picker").children[2];
+    if (skipEl.tagName !== "BUTTON") throw new Error("Skip must be a real <button> for native keyboard activation, got <" + skipEl.tagName + ">");
+    console.log("SKIP_IS_BUTTON_OK true");
 
     // ---- outcome none: red overlay + hover explainer + hard gate ----
     await run("none", []);
@@ -364,10 +516,26 @@ rm -f "$_as_node"
 check_rc "template selection script exits 0" 0 "$tmpl_rc"
 check "template: outcome one auto-selects + sets the header main name" "ONE_OK true" "$tmpl_out"
 check "template: outcome multiple renders a picker with pinned class hooks" "MULTIPLE_OK true" "$tmpl_out"
+# AST-021 restyle (Option C command palette, issue #318): top-center card
+# under #ast-picker-anchor, structured rows (name/aliases/repo-path), a
+# keyboard hint strip, and Up/Down/Enter/Esc wiring bound only while open.
+check "template: palette wrap/header/hint + structured row content" "PALETTE_STRUCTURE_OK true" "$tmpl_out"
+check "template: ArrowDown/Enter move the highlight and select via keyboard" "KEYBOARD_SELECT_OK true" "$tmpl_out"
 check "template: picking a picker row selects and un-gates voice" "PICK_OK true" "$tmpl_out"
 check "template: Skip gates voice off" "SKIP_OK true" "$tmpl_out"
+check "template: Esc skips via keyboard and unbinds the listener after" "ESC_SKIP_OK true" "$tmpl_out"
+check "template: Esc does not double-fire skip when the T-key chat overlay is also open (review round 1 finding 1)" "ESC_NO_DOUBLE_FIRE_OK true" "$tmpl_out"
+check "template: Skip is a real button, not a div, for native keyboard activation (review round 1 finding 3)" "SKIP_IS_BUTTON_OK true" "$tmpl_out"
 check "template: outcome none renders the red overlay + hover explainer + hard gate" "NONE_OK true" "$tmpl_out"
 if [[ "$tmpl_rc" -ne 0 ]]; then echo "$tmpl_out" >&2; fi
 
 check "template pins the ast-picker class name in source" '"ast-picker"' "$(cat "$NVHTML")"
 check "template pins the ast-none-overlay class name in source" '"ast-none-overlay"' "$(cat "$NVHTML")"
+check "template pins the ast-picker-anchor id in source" 'ast-picker-anchor' "$(cat "$NVHTML")"
+check "template pins the ast-picker-wrap class name in source" 'ast-picker-wrap' "$(cat "$NVHTML")"
+check "template pins the ast-picker-row class name in source" 'ast-picker-row' "$(cat "$NVHTML")"
+check "template pins the ast-picker-active class name in source" 'ast-picker-active' "$(cat "$NVHTML")"
+check "template pins the ast-picker-hint class name in source" 'ast-picker-hint' "$(cat "$NVHTML")"
+check "template pins the ast-picker-name class name in source" 'ast-picker-name' "$(cat "$NVHTML")"
+check "template pins the ast-picker-aliases class name in source" 'ast-picker-aliases' "$(cat "$NVHTML")"
+check "template pins the ast-picker-path class name in source" 'ast-picker-path' "$(cat "$NVHTML")"

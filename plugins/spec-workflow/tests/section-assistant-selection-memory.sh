@@ -163,6 +163,14 @@ function mkEl(initialId) {
             add(c){ this._parent._classes.add(c); },
             remove(c){ this._parent._classes.delete(c); },
             contains(c){ return this._parent._classes.has(c); },
+            // AST-021 restyle: renderAssistantPicker's keyboard nav toggles
+            // .ast-picker-active per row -- see the identical stub in
+            // section-assistant-selection.sh's harness.
+            toggle(c, force){
+                const on = force === undefined ? !this._parent._classes.has(c) : !!force;
+                if(on) this._parent._classes.add(c); else this._parent._classes.delete(c);
+                return on;
+            },
         },
         _items: [],
         // #387: children mirrors a real live HTMLCollection -- reads work,
@@ -208,7 +216,10 @@ const document = {
     },
 };
 
-const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-ask-again", "ast-switcher", "ast-digest", "voice-viz-name"];
+// AST-021 restyle (Option C command palette, issue #318): #ast-picker-anchor
+// is new static boot furniture renderAssistantPicker appends into -- see
+// the identical comment in section-assistant-selection.sh's harness.
+const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-picker-anchor", "ast-ask-again", "ast-switcher", "ast-digest", "voice-viz-name"];
 for (const id of STATIC_IDS) {
     const el = mkEl(id);
     el.classList._parent = el;
@@ -229,8 +240,27 @@ global.fetch = async (url, opts) => {
     return { json: async () => ({}) };
 };
 
+// AST-021 restyle: renderAssistantPicker binds/unbinds a real document-level
+// keydown listener while the palette is open -- see the identical stub in
+// section-assistant-selection.sh's harness for the full rationale.
+global.__listeners = { keydown: [] };
+global.addEventListener = (type, fn) => {
+    global.__listeners[type] = global.__listeners[type] || [];
+    global.__listeners[type].push(fn);
+};
+global.removeEventListener = (type, fn) => {
+    const arr = global.__listeners[type] || [];
+    const i = arr.indexOf(fn);
+    if (i !== -1) arr.splice(i, 1);
+};
+
 eval(extract("setVoiceHeaderName"));
 eval(extract("gateVoiceAndChat"));
+// AST-021 restyle: isChatTypingTarget/unbindAssistantPickerKeys are real
+// production helpers renderAssistantPicker now calls -- extracted here too
+// so this stays the real wiring instead of a simplified fork.
+eval(extract("isChatTypingTarget"));
+eval(extract("unbindAssistantPickerKeys"));
 eval(extract("renderAssistantPicker"));
 eval(extract("renderNoneOverlay"));
 // AST-024 (#321): renderAssistantSwitcher's row click now also calls
@@ -249,6 +279,7 @@ eval(extract("initAssistantSelection"));
 
 async function run(outcome, candidates, selected, askAgain) {
     delete elements["ast-picker"];
+    delete elements["ast-picker-wrap"];
     delete elements["ast-none-overlay"];
     for (const id of STATIC_IDS) {
         const el = elements[id];
@@ -257,6 +288,10 @@ async function run(outcome, candidates, selected, askAgain) {
         el.children = [];
         el._classes = new Set();
     }
+    // mirrors a real page reload's clean slate -- see the identical comment
+    // in section-assistant-selection.sh's run().
+    global.__listeners.keydown = [];
+    window.__astPickerKeydown = null;
     fetchCalls = [];
     statusResponse = {outcome, candidates, selected: selected || null, gated: outcome !== "one" && !selected, askAgain: !!askAgain};
     await initAssistantSelection();

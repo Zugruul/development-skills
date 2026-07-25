@@ -537,15 +537,49 @@ canvas.grabbing{cursor:grabbing}
   background:#c96a5e;transform:rotate(-45deg)}
 #voice-mic.always .micdot,#voice-mic.talking .micdot{background:#e0453a;box-shadow:0 0 8px rgba(224,69,58,.7)}
 #voice-mic.talking .micdot::after{display:none}
-/* AST-021 startup selection (SPEC-ASSISTANT.md §7.2-§7.4): minimal
-   HUD-consistent placeholder styling only -- the real look is a pending
-   human choice on the issue and lands as a follow-up restyle. */
-.ast-picker{display:flex;flex-direction:column;gap:.3rem;padding:.5rem;
-  border-top:1px solid var(--border)}
-.ast-picker-row{font-family:var(--mono);font-size:.62rem;color:var(--fg);
-  border:1px solid var(--border);border-radius:3px;padding:.3rem .5rem;cursor:pointer}
-.ast-picker-row:hover{border-color:var(--cyan);color:var(--cyan)}
-.ast-skip{align-self:flex-start;font-family:var(--mono);font-size:.6rem}
+/* AST-021 startup selection (SPEC-ASSISTANT.md §7.2-§7.4, issue #318):
+   finalized as Option C "command palette" (docs/ui-options/AST-021-r1.html,
+   human pick recorded on the issue) -- a top-center dropdown anchored
+   directly under the search bar (#ast-picker-anchor above), styled like the
+   page's search-result rows (dark panel, 1px border, backdrop blur,
+   rounded corners, mono font, cyan accents). Keyboard-first: Up/Down move
+   the .ast-picker-active highlight, Enter selects it, Esc = Skip (wired in
+   renderAssistantPicker, bound only while the picker is open). Mouse click
+   still selects any row; the Skip row plus the hint strip keep the escape
+   hatch visible without a keyboard. */
+/* z-index:21 is DELIBERATELY below #search-wrap (22) and
+   #search-filters-panel (60), not a leftover -- the picker is boot
+   furniture (shown once, before the user has necessarily touched
+   search), while search-results/filters are active user interactions
+   the human is mid-task on; those win the overlap (measured ~138px at
+   700px viewport width) rather than the palette blocking them. Don't
+   "fix" this by raising the z-index without re-deciding that tradeoff. */
+#ast-picker-anchor{position:fixed;top:128px;left:50%;transform:translateX(-50%);
+  z-index:21;width:min(360px,84vw);display:flex;flex-direction:column}
+.ast-picker-wrap{background:var(--panel-solid);border:1px solid var(--border);
+  border-radius:10px;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+  box-shadow:0 16px 44px rgba(0,0,0,.5);overflow:hidden;font-family:var(--mono)}
+.ast-picker-head{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;
+  padding:.4rem .6rem;border-bottom:1px solid var(--border);
+  font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan)}
+.ast-picker-count{font-size:.56rem;letter-spacing:.03em;text-transform:none;color:var(--muted)}
+.ast-picker{display:flex;flex-direction:column;gap:.15rem;padding:.35rem}
+.ast-picker-row{display:flex;align-items:baseline;flex-wrap:wrap;gap:.5rem;
+  font-family:var(--mono);font-size:.68rem;color:var(--fg);text-align:left;width:100%;
+  background:transparent;border:1px solid transparent;border-radius:6px;
+  padding:.4rem .55rem;cursor:pointer}
+.ast-picker-row:hover{border-color:var(--cyan-dim);color:var(--cyan)}
+.ast-picker-row.ast-picker-active{border-color:var(--cyan-dim);background:rgba(70,230,255,.12)}
+.ast-picker-name{font-size:.76rem;letter-spacing:.03em;flex:none}
+.ast-picker-aliases{font-size:.58rem;color:var(--muted);flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ast-picker-path{flex-basis:100%;font-size:.56rem;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ast-skip{display:block;align-self:stretch;text-align:center;margin:.15rem .1rem .1rem;
+  font-family:var(--mono);font-size:.6rem;color:var(--muted);border-color:var(--border)}
+.ast-skip:hover{color:var(--cyan);border-color:var(--cyan-dim)}
+.ast-picker-hint{display:flex;flex-wrap:wrap;gap:.7rem;padding:.35rem .6rem;
+  border-top:1px solid var(--border);font-size:.54rem;letter-spacing:.03em;color:var(--muted)}
 .ast-none-overlay{margin:.5rem;padding:.5rem .6rem;border:1px solid #e0453a;
   border-radius:3px;color:#e0453a;font-family:var(--mono);font-size:.62rem;
   letter-spacing:.05em;cursor:help}
@@ -877,6 +911,15 @@ canvas.grabbing{cursor:grabbing}
     <div id="search-results-list"></div>
   </div>
 </div>
+<!-- AST-021 startup selection (SPEC-ASSISTANT.md sec7.2-sec7.4, issue #318):
+     the command-palette picker (renderAssistantPicker) anchors here -- a
+     top-center dropdown directly under the search bar, static furniture so
+     it exists at boot regardless of outcome, populated only for outcome
+     "multiple". Not nested under #search-wrap for the same reason
+     #search-filters-panel isn't (see the comment right below): a
+     `transform` on an ancestor would break position:fixed's viewport
+     containing block for anything absolutely/fixed-positioned inside. -->
+<div id="ast-picker-anchor"></div>
 <!-- NOT nested under #search-wrap: that wrapper has `transform:translateX(-50%)`,
      and a transform on an ancestor turns a position:fixed descendant's containing
      block into THAT ancestor instead of the viewport (a CSS spec quirk) — so
@@ -5027,9 +5070,12 @@ const PROBE = location.search.includes("hoverprobe");
 // voice (and, via window.assistantGate, whatever chat surface AST-023's
 // T-key overlay adds later -- none exists in this template yet, so
 // gateVoiceAndChat() is the hook that route must check before it ever
-// calls POST /assistant/chat, per §17.9). Minimal HUD-consistent
-// placeholder styling only (see the .ast-* CSS above) -- the real look is a
-// pending human choice on the issue, landing as a follow-up restyle.
+// calls POST /assistant/chat, per §17.9). Restyled as Option C "command
+// palette" (issue #318, see the .ast-picker-* CSS above) -- the picker
+// itself keeps the same DOM contract the tests pin (#ast-picker,
+// .ast-picker-row, .ast-skip), just wrapped in a top-center card
+// (#ast-picker-wrap under #ast-picker-anchor) with a header, a keyboard
+// hint strip, and Up/Down/Enter/Esc wiring bound only while it's open.
 function gateVoiceAndChat(gated){
   window.assistantGate = { gated: !!gated };
   for(const id of ["voice-mic","voice-in","voice-out","voice-both"]){
@@ -5046,37 +5092,117 @@ function setVoiceHeaderName(name){
   const tag = document.getElementById("voice-viz-name");
   if(tag) tag.textContent = name || "";
 }
+// Bound only while a picker is actually on screen -- created fresh in
+// renderAssistantPicker, torn down by unbindAssistantPickerKeys() on every
+// exit path (select, skip, or a re-render replacing the card) so a stale
+// listener never fights the page's other keydown wiring (T-key chat
+// overlay, Space press-to-speak, the search input's own Enter handler).
+function unbindAssistantPickerKeys(){
+  if(window.__astPickerKeydown){
+    removeEventListener("keydown", window.__astPickerKeydown);
+    window.__astPickerKeydown = null;
+  }
+}
 function renderAssistantPicker(candidates){
-  const bar = document.getElementById("voicebar");
-  if(!bar) return;
-  const old = document.getElementById("ast-picker");
-  if(old) old.remove();
+  const anchor = document.getElementById("ast-picker-anchor");
+  if(!anchor) return;
+  unbindAssistantPickerKeys();
+  const oldWrap = document.getElementById("ast-picker-wrap");
+  if(oldWrap) oldWrap.remove();
+  const wrap = document.createElement("div");
+  wrap.id = "ast-picker-wrap";
+  wrap.className = "ast-picker-wrap";
+
+  const head = document.createElement("div");
+  head.className = "ast-picker-head";
+  head.innerHTML = `<span>Select assistant</span><span class="ast-picker-count">${candidates.length} · this repo</span>`;
+  wrap.appendChild(head);
+
   const picker = document.createElement("div");
   picker.id = "ast-picker";
   picker.className = "ast-picker";
+  const rows = [];
+  let activeIdx = 0;
+  function setActiveRow(i){
+    activeIdx = rows.length ? ((i % rows.length) + rows.length) % rows.length : 0;
+    rows.forEach((r, idx)=>{
+      r.classList.toggle("ast-picker-active", idx === activeIdx);
+    });
+  }
   for(const c of candidates){
     const row = document.createElement("div");
     row.className = "ast-picker-row";
-    row.textContent = (c.aliases && c.aliases.length) ? `${c.name} (${c.aliases.join(", ")})` : c.name;
+    const aliasesHtml = (c.aliases && c.aliases.length)
+      ? `<span class="ast-picker-aliases">${escapeHtml(c.aliases.join(", "))}</span>` : "";
+    // engine.py's candidates_payload carries `root` (the repo path) --
+    // rendered small underneath name/aliases when present; older/stub
+    // payloads without it just skip the row (name+aliases still show).
+    const pathHtml = c.root ? `<span class="ast-picker-path">${escapeHtml(c.root)}</span>` : "";
+    row.innerHTML = `<span class="ast-picker-name">${escapeHtml(c.name)}</span>${aliasesHtml}${pathHtml}`;
     row.onclick = async ()=>{
       try{ await fetch("/assistant/select", {method:"POST", body: JSON.stringify({name: c.name})}); }catch{}
-      picker.remove();
+      unbindAssistantPickerKeys();
+      wrap.remove();
       setVoiceHeaderName(c.name);
       gateVoiceAndChat(false);
     };
     picker.appendChild(row);
+    rows.push(row);
   }
+  // A real <button>, not a styled div: gets Tab focus + Enter/Space
+  // activation for free instead of needing a hand-rolled keydown handler
+  // (review round 1, finding 3).
   const skip = document.createElement("button");
   skip.className = "ast-skip iconbtn";
+  skip.type = "button";
   skip.textContent = "Skip";
   skip.onclick = async ()=>{
     try{ await fetch("/assistant/skip", {method:"POST"}); }catch{}
-    picker.remove();
+    unbindAssistantPickerKeys();
+    wrap.remove();
     setVoiceHeaderName(null);
     gateVoiceAndChat(true);
   };
   picker.appendChild(skip);
-  bar.appendChild(picker);
+  wrap.appendChild(picker);
+
+  const hint = document.createElement("div");
+  hint.className = "ast-picker-hint";
+  hint.textContent = "↑↓ navigate · ↵ select · esc skip";
+  wrap.appendChild(hint);
+
+  anchor.appendChild(wrap);
+  setActiveRow(0);
+
+  function onPickerKeydown(ev){
+    if(isChatTypingTarget(ev.target)) return;
+    if(ev.key === "ArrowDown"){ if(ev.preventDefault) ev.preventDefault(); setActiveRow(activeIdx + 1); return; }
+    if(ev.key === "ArrowUp"){ if(ev.preventDefault) ev.preventDefault(); setActiveRow(activeIdx - 1); return; }
+    if(ev.key === "Enter"){
+      if(ev.preventDefault) ev.preventDefault();
+      if(rows[activeIdx]) rows[activeIdx].onclick();
+      return;
+    }
+    if(ev.key === "Escape"){
+      // review round 1 (#318), finding 1: with the picker still open, T
+      // can open the (ungated, since chat itself isn't gated by the
+      // picker) T-key chat overlay on top of it -- both this handler and
+      // handleAssistantChatKeydown are bound at that point, and an
+      // unqualified Esc here would ALSO skip (persisting a gate the user
+      // never meant) on top of the overlay closing. handleAssistantChatKeydown
+      // is bound first (module load, well before the picker exists) and
+      // marks defaultPrevented when IT owns an Escape -- checking that
+      // flag is race-free, unlike re-querying #ast-chat-overlay here
+      // (which the chat handler may have already removed by the time this
+      // runs, making a "still open?" check always say no).
+      if(ev.defaultPrevented) return;
+      if(ev.preventDefault) ev.preventDefault();
+      skip.onclick();
+      return;
+    }
+  }
+  window.__astPickerKeydown = onPickerKeydown;
+  addEventListener("keydown", onPickerKeydown);
 }
 function renderNoneOverlay(){
   const bar = document.getElementById("voicebar");
@@ -5454,7 +5580,19 @@ function closeChatOverlay(){
 }
 function handleAssistantChatKeydown(ev){
   if(ev.key === "Escape"){
-    if(document.getElementById("ast-chat-overlay")) closeChatOverlay();
+    // review round 1 (#318), finding 1: mark the event as handled via the
+    // standard defaultPrevented flag (not just closing the overlay) so
+    // onPickerKeydown's own Escape branch -- bound AFTER this one, since
+    // the AST-021 picker only exists once initAssistantSelection() runs,
+    // well after this listener attaches at module load -- can tell "the
+    // overlay owned this keypress" even though by the time it runs the
+    // overlay element is already gone (re-querying the DOM after the fact
+    // raced and lost; this doesn't).
+    const overlay = document.getElementById("ast-chat-overlay");
+    if(overlay){
+      if(ev.preventDefault) ev.preventDefault();
+      closeChatOverlay();
+    }
     return;
   }
   if(ev.key !== "t" && ev.key !== "T") return;
