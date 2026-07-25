@@ -616,10 +616,33 @@ canvas.grabbing{cursor:grabbing}
   font-family:var(--mono);font-size:.6rem;color:var(--fg)}
 .ast-digest-note{border:1px solid var(--border);border-radius:3px;padding:.2rem .4rem}
 .ast-digest-empty{opacity:.6;font-style:italic}
-/* AST-044 voice-panel metrics expansion (SPEC-ASSISTANT.md §10.5, issue
-   #330): same placeholder-only styling note as .ast-picker/.ast-switcher/
-   .ast-digest above -- restyle is a pending human choice on the issue, not
-   made here. */
+/* AST-044 restyle (Option B -- detached inspector window, SPEC-ASSISTANT.md
+   §10.5, issue #330, FINAL pick): the metrics/turns fold no longer lives
+   inside the ⚙ voice-settings panel -- it's its own detached, draggable HUD
+   window (.ast-inspector-window, same chrome family as .note-window/
+   .media-window above: wireWinDrag, noteWinZ raise-to-front, resize/scroll),
+   opened/focused from the small Inspect button in the voice panel
+   (#ast-inspect-open). The pinned fold classes below (.ast-metrics/
+   .ast-metrics-row/.ast-metrics-graph/.ast-turnlist-row/.ast-waterfall/
+   .ast-waterfall-error/.ast-truncated) are unchanged -- only their container
+   moved. */
+/* compound selector (not bare .ast-inspector-window): .note-window{width:
+   var(--colw);max-height:70vh} below is an EQUAL-specificity single-class
+   rule declared LATER in source (review round 1, #330) -- a bare
+   .ast-inspector-window rule up here would lose that cascade tie and the
+   window would render at .note-window's docked-sidebar size instead of
+   Option B's own geometry (measured: ~19% under). .note-window.
+   ast-inspector-window has strictly higher specificity (two classes), so
+   it wins regardless of source order -- robust to .note-window ever
+   moving/reordering, unlike relying on .media-window's own fix below it
+   (which only wins because it happens to come AFTER .note-window). */
+.note-window.ast-inspector-window{width:min(420px,92vw);max-height:80vh}
+.ast-inspector-window .aiw-bar{display:flex;align-items:center;gap:.4rem;margin:.1rem 0 .55rem}
+.ast-inspector-window .aiw-bar .close{float:none;display:inline-flex;align-items:center;justify-content:center;
+  min-width:24px;min-height:24px;padding:0 .2rem}
+.ast-inspector-window .aiw-title{font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:var(--cyan);flex:1}
+.ast-inspector-window .aiw-top{display:flex;flex-direction:column;gap:.3rem;padding-bottom:.5rem;border-bottom:1px dashed var(--border)}
+.ast-inspector-window .aiw-bottom{display:flex;flex-direction:column;gap:.3rem;margin-top:.5rem}
 .ast-metrics{display:flex;flex-direction:column;gap:.3rem;margin-top:.3rem;
   font-family:var(--mono);font-size:.6rem;color:var(--fg)}
 .ast-metrics-row{display:flex;justify-content:space-between;gap:.5rem;
@@ -999,6 +1022,9 @@ canvas.grabbing{cursor:grabbing}
     <div style="display:flex;align-items:center;gap:.35rem">
       <button class="secthead" id="sect-voice" aria-expanded="true">Voice</button>
       <button class="iconbtn" id="voice-settings" title="Voice settings" aria-label="Voice settings" aria-expanded="false">⚙</button>
+      <!-- AST-044 restyle (Option B, issue #330): opens/focuses the detached
+           metrics/trace inspector window -- see .ast-inspector-window below. -->
+      <button class="iconbtn" id="ast-inspect-open" title="Open the metrics/trace inspector" aria-label="Open the metrics/trace inspector" aria-haspopup="true">Inspect</button>
     </div>
     <div style="display:flex;align-items:center;gap:.3rem">
       <button class="iconbtn" id="voice-mic" aria-pressed="false"
@@ -1077,17 +1103,6 @@ canvas.grabbing{cursor:grabbing}
       <button class="iconbtn ast-ask-again" id="ast-ask-again" aria-pressed="false">Ask again on load</button>
     </div>
     <div class="vs-hint">On: the picker shows every time this page loads, even if an assistant was chosen before. Off: the last choice loads automatically. The switcher itself now lives docked under the waveform, always visible — not only here.</div>
-  </div>
-  <div class="vs-row"><span class="label">Metrics</span>
-    <div class="vs-opts">
-      <button class="iconbtn" id="ast-metrics-refresh">Refresh</button>
-      <button class="iconbtn ast-metrics-retry ast-metrics-hidden" id="ast-metrics-retry">Retry</button>
-    </div>
-    <div class="ast-metrics-state" id="ast-metrics-state"></div>
-    <div class="ast-metrics" id="ast-metrics" role="region" aria-label="Assistant metrics"></div>
-    <div class="ast-truncated ast-metrics-hidden" id="ast-truncated" role="status">showing the newest turns only -- older activity may exist</div>
-    <div class="ast-turnlist" id="ast-turnlist" role="list" aria-label="Turn list"></div>
-    <div class="ast-waterfall ast-metrics-hidden" id="ast-waterfall" role="group" aria-label="Turn waterfall"></div>
   </div>
   <div class="vs-row">
     <button class="iconbtn" id="vs-reset" aria-live="polite">Reset settings</button>
@@ -3494,10 +3509,6 @@ document.getElementById("voice-settings").onclick = ()=>{
   // server state every time the panel opens, not just at boot -- a switch
   // made from another tab must show up here without a full page reload.
   if(open && typeof refreshAssistantSettingsUi === "function") refreshAssistantSettingsUi();
-  // AST-044 (§10.5): fetch the metrics/turns fold's data fresh every time
-  // the panel opens, same "latest server state on open" posture as
-  // AST-022's refreshAssistantSettingsUi call directly above.
-  if(open && typeof loadAssistantInspector === "function") loadAssistantInspector();
 };
 // AST-022 (§7.5): the ⚙ panel's "ask again on load" toggle -- flips the
 // PERSISTED setting for the NEXT boot (see engine.py's _settings docstring
@@ -5602,18 +5613,18 @@ function handleAssistantChatKeydown(ev){
 }
 addEventListener("keydown", handleAssistantChatKeydown);
 
-// ---- voice-panel metrics expansion (AST-044, SPEC-ASSISTANT.md §10.5,
-// issue #330) ----
-// Extends the ⚙ voice-settings panel (AST-021/022/023/024 above) with a
-// metrics fold: percentile/per-area counters from GET /assistant/metrics
-// (AST-043 -- fleet-wide; this reads ONLY the currently selected
-// assistant's own entry out of that roots map, matching every other row in
-// this panel's single-assistant focus) plus a turn list + click-to-
-// waterfall view sourced from GET /assistant/traces (AST-043, resolves the
-// SAME assistant /assistant/history already resolves against). Same
-// gated/offline posture as AST-023's chat overlay above: gated/none shows
-// the existing status reason, a fetch failure shows a specific offline
-// message with a retry hook -- no new gating concept invented here.
+// ---- metrics/trace inspector (AST-044, SPEC-ASSISTANT.md §10.5, issue
+// #330 -- restyled as Option B, a detached window, see the window-chrome
+// section further below) ----
+// The data/render pipeline here is unchanged by the restyle: percentile/
+// per-area counters from GET /assistant/metrics (AST-043 -- fleet-wide;
+// this reads ONLY the currently selected assistant's own entry out of that
+// roots map) plus a turn list + click-to-waterfall view sourced from GET
+// /assistant/traces (AST-043, resolves the SAME assistant
+// /assistant/history already resolves against). Same gated/offline posture
+// as AST-023's chat overlay above: gated/none shows the existing status
+// reason, a fetch failure shows a specific offline message with a retry
+// hook -- no new gating concept invented here.
 window.assistantInspector = window.assistantInspector || { turns: [], selectedTurnId: null };
 
 // Mirrors observability.py's LATENCY_BUCKETS_SECONDS/`_fmt_num` exactly
@@ -5929,8 +5940,153 @@ async function loadAssistantInspector(){
   renderAstWaterfall(null);
   renderAstTruncated(!!(tracesData && tracesData.truncated));
 }
-document.getElementById("ast-metrics-refresh").onclick = () => { loadAssistantInspector(); };
-document.getElementById("ast-metrics-retry").onclick = () => { loadAssistantInspector(); };
+
+// ---- AST-044 restyle (Option B, SPEC-ASSISTANT.md §10.5, issue #330,
+// FINAL pick): detached inspector window ----
+// The fold above used to live inside the ⚙ voice-settings panel; it now
+// lives in its own detached, draggable HUD window -- same chrome family
+// (and the same wireWinDrag/noteWinZ raise-to-front plumbing) as the note/
+// media detached windows further up this file, opened from the small
+// Inspect button in the voice panel (#ast-inspect-open). Built with
+// document.createElement rather than the innerHTML+querySelector pattern
+// those older windows use, so the fold's own ids (ast-metrics/ast-turnlist/
+// ast-waterfall/...) stay individually addressable the instant they're
+// created, matching the "getElementById-driven" style every render fn
+// above already assumes.
+//
+// One window max: window.astInspectorWin is the single source of truth --
+// a second Inspect click while one is already open FOCUSES it (raises
+// z-index) instead of opening a duplicate. Esc closes it only when it OWNS
+// the keypress: the same ev.defaultPrevented ownership handshake
+// onPickerKeydown/handleAssistantChatKeydown use above, so a T-key chat
+// overlay (or the AST-021 picker) that already claimed the Escape is never
+// double-handled. Closing tears down BOTH the window and its keydown
+// listener via window.__astInspectorKeydown -- an orphaned listener here
+// would keep answering Esc for a window that no longer exists, the same
+// class of bug unbindAssistantPickerKeys() exists to avoid for the picker.
+window.astInspectorWin = window.astInspectorWin || null;
+function buildAstInspectorWindow(){
+  const win = document.createElement("aside");
+  win.id = "ast-inspector-window";
+  win.className = "hud note-window ast-inspector-window";
+
+  const bar = document.createElement("div");
+  bar.className = "aiw-bar";
+  bar.setAttribute("data-drag", "");
+  const grip = document.createElement("button");
+  grip.className = "close grip";
+  grip.title = "Drag to move window";
+  grip.setAttribute("aria-label", "Drag to move window");
+  grip.textContent = "⠿";
+  const title = document.createElement("span");
+  title.className = "aiw-title";
+  title.textContent = "Trace inspector";
+  const refresh = document.createElement("button");
+  refresh.id = "ast-metrics-refresh";
+  refresh.className = "iconbtn";
+  refresh.textContent = "Refresh";
+  const retry = document.createElement("button");
+  retry.id = "ast-metrics-retry";
+  retry.className = "iconbtn ast-metrics-retry ast-metrics-hidden";
+  retry.textContent = "Retry";
+  const closeBtn = document.createElement("button");
+  closeBtn.id = "ast-inspector-close";
+  closeBtn.className = "close";
+  closeBtn.setAttribute("aria-label", "Close inspector");
+  closeBtn.textContent = "✕";
+  bar.appendChild(grip);
+  bar.appendChild(title);
+  bar.appendChild(refresh);
+  bar.appendChild(retry);
+  bar.appendChild(closeBtn);
+  win.appendChild(bar);
+
+  const state = document.createElement("div");
+  state.id = "ast-metrics-state";
+  state.className = "ast-metrics-state";
+  win.appendChild(state);
+
+  // graphs on top: percentile rows + the bucket-distribution SVG
+  // (renderAstMetrics/buildAstMetricsGraphMarkup, both unchanged)
+  const top = document.createElement("div");
+  top.className = "aiw-top";
+  const metrics = document.createElement("div");
+  metrics.id = "ast-metrics";
+  metrics.className = "ast-metrics";
+  metrics.setAttribute("role", "region");
+  metrics.setAttribute("aria-label", "Assistant metrics");
+  top.appendChild(metrics);
+  win.appendChild(top);
+
+  // turn list + expandable span waterfall on the bottom
+  const bottom = document.createElement("div");
+  bottom.className = "aiw-bottom";
+  const truncated = document.createElement("div");
+  truncated.id = "ast-truncated";
+  truncated.className = "ast-truncated ast-metrics-hidden";
+  truncated.setAttribute("role", "status");
+  truncated.textContent = "showing the newest turns only -- older activity may exist";
+  const turnlist = document.createElement("div");
+  turnlist.id = "ast-turnlist";
+  turnlist.className = "ast-turnlist";
+  turnlist.setAttribute("role", "list");
+  turnlist.setAttribute("aria-label", "Turn list");
+  const waterfall = document.createElement("div");
+  waterfall.id = "ast-waterfall";
+  waterfall.className = "ast-waterfall ast-metrics-hidden";
+  waterfall.setAttribute("role", "group");
+  waterfall.setAttribute("aria-label", "Turn waterfall");
+  bottom.appendChild(truncated);
+  bottom.appendChild(turnlist);
+  bottom.appendChild(waterfall);
+  win.appendChild(bottom);
+
+  closeBtn.onclick = () => closeAstInspectorWindow();
+  refresh.onclick = () => loadAssistantInspector();
+  retry.onclick = () => loadAssistantInspector();
+  return win;
+}
+function closeAstInspectorWindow(){
+  if(window.astInspectorWin){
+    window.astInspectorWin.remove();
+    window.astInspectorWin = null;
+  }
+  if(window.__astInspectorKeydown){
+    removeEventListener("keydown", window.__astInspectorKeydown);
+    window.__astInspectorKeydown = null;
+  }
+}
+function handleAstInspectorKeydown(ev){
+  if(ev.key !== "Escape") return;
+  // ownership handshake: defer to whatever already claimed this Escape
+  // (T-key chat overlay, the AST-021 picker), same defaultPrevented check
+  // onPickerKeydown uses for handleAssistantChatKeydown.
+  if(ev.defaultPrevented) return;
+  if(ev.preventDefault) ev.preventDefault();
+  closeAstInspectorWindow();
+}
+function openAstInspectorWindow(){
+  if(window.astInspectorWin){
+    window.astInspectorWin.style.zIndex = ++noteWinZ;   // already open -- focus, don't duplicate
+    return window.astInspectorWin;
+  }
+  const win = buildAstInspectorWindow();
+  win.style.left = "26vw";
+  win.style.top = "14vh";
+  win.style.zIndex = ++noteWinZ;
+  document.body.appendChild(win);
+  // capture phase: the drag surfaces stopPropagation on pointerdown, so a
+  // bubble listener would miss header clicks -- raise-to-front must win
+  // first, same pattern detachNote/openMediaViewer/open3dWindow use above.
+  win.addEventListener("pointerdown", () => { win.style.zIndex = ++noteWinZ; }, true);
+  wireWinDrag(win);
+  window.astInspectorWin = win;
+  window.__astInspectorKeydown = handleAstInspectorKeydown;
+  addEventListener("keydown", handleAstInspectorKeydown);
+  loadAssistantInspector();
+  return win;
+}
+document.getElementById("ast-inspect-open").onclick = () => { openAstInspectorWindow(); };
 
 // ---- boot ----
 (async function(){

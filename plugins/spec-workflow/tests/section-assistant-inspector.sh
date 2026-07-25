@@ -44,6 +44,15 @@ function mkEl(initialId) {
             add(c){ this._parent._classes.add(c); },
             remove(c){ this._parent._classes.delete(c); },
             contains(c){ return this._parent._classes.has(c); },
+            // renderAssistantPicker's setActiveRow() (three-way Esc test,
+            // review round 1 #330) is the first real caller here needing
+            // toggle -- same add/remove-by-boolean semantics as a real
+            // DOMTokenList's.
+            toggle(c, force){
+                const on = force === undefined ? !this.contains(c) : !!force;
+                if(on) this.add(c); else this.remove(c);
+                return on;
+            },
         },
         disabled: false,
         title: "",
@@ -63,14 +72,45 @@ function mkEl(initialId) {
         set innerHTML(v){ this._items.length = 0; this._innerHTML = v; },
         get id(){ return this._id; },
         set id(v){ this._id = v; if (v) elements[v] = this; },
-        remove(){ if (this._id && elements[this._id] === this) delete elements[this._id]; },
+        // AST-044 restyle (Option B, #330): the inspector window is now a
+        // detached DOM subtree (mirrors .note-window/.media-window) instead
+        // of static markup -- remove() must tear down the WHOLE subtree's id
+        // registrations, not just its own, or a stale entry would let
+        // getElementById keep "seeing" a closed window's children (a real
+        // browser's document tree removal has this same effect for free).
+        remove(){
+            if (this._id && elements[this._id] === this) delete elements[this._id];
+            for (const child of this._items || []) if (child && typeof child.remove === "function") child.remove();
+        },
         get className(){ return [...this._classes].join(" "); },
         set className(v){ this._classes = new Set(v.split(" ").filter(Boolean)); },
         setAttribute(k, v){ this[k === "class" ? "className" : k] = v; this["_attr_" + k] = v; },
         getAttribute(k){ return this["_attr_" + k] !== undefined ? this["_attr_" + k] : null; },
+        // minimal selector support (class + [attr] only) -- enough for
+        // wireWinDrag's own querySelector(".grip")/querySelectorAll("[data-drag]")
+        // calls, the only selectors the production window-chrome code uses.
+        querySelector(sel){ return queryAll(this, sel)[0] || null; },
+        querySelectorAll(sel){ return queryAll(this, sel); },
+        addEventListener(){},
+        removeEventListener(){},
+        setPointerCapture(){},
+        releasePointerCapture(){},
     };
     if (initialId) elements[initialId] = el;
     return el;
+}
+function matchesSel(el, sel) {
+    if (sel[0] === ".") return !!(el.classList && el.classList.contains(sel.slice(1)));
+    if (sel[0] === "[" && sel[sel.length - 1] === "]") return el.getAttribute && el.getAttribute(sel.slice(1, -1)) !== null;
+    return false;
+}
+function queryAll(el, sel) {
+    const out = [];
+    for (const child of el._items || []) {
+        if (matchesSel(child, sel)) out.push(child);
+        out.push(...queryAll(child, sel));
+    }
+    return out;
 }
 function seedEl(id, className) {
     const el = mkEl(id);
@@ -78,7 +118,9 @@ function seedEl(id, className) {
     el.className = className;
     return el;
 }
+const docBody = mkEl(null);
 const document = {
+    body: docBody,
     getElementById(id) {
         return elements[id] || null;
     },
@@ -88,7 +130,37 @@ const document = {
         return el;
     },
 };
+// static in production markup, always present -- renderAssistantPicker
+// (review round 1's three-way Esc coordination test) bails out early
+// without it.
+seedEl("ast-picker-anchor", "");
+global.assistantChat = { queue: [], inFlight: false, exchanges: [], lastX: 2, elapsedTimer: null, elapsedStart: 0 };
 global.window = global;
+
+// AST-044 restyle (Option B, #330): openAstInspectorWindow/closeAstInspectorWindow
+// bind/unbind a real keydown listener (Esc) while the window is open -- same
+// "stub addEventListener like the DOM would, drive it with fireKeydown()"
+// harness style as section-assistant-selection.sh's picker keydown tests.
+global.__listeners = { keydown: [] };
+global.addEventListener = (type, fn) => {
+    global.__listeners[type] = global.__listeners[type] || [];
+    global.__listeners[type].push(fn);
+};
+global.removeEventListener = (type, fn) => {
+    const arr = global.__listeners[type] || [];
+    const i = arr.indexOf(fn);
+    if (i !== -1) arr.splice(i, 1);
+};
+function fireKeydown(props) {
+    const ev = Object.assign({ defaultPrevented: false, preventDefault(){ this.defaultPrevented = true; } }, props);
+    for (const fn of [...(global.__listeners.keydown || [])]) fn(ev);
+    return ev;
+}
+// noteWinZ is a top-level `let` counter in production (shared by every
+// detached-window opener: detachNote/openMediaViewer/open3dWindow/
+// openAstInspectorWindow), not a function -- can't be extract()'d by name,
+// so it's seeded here the same starting value production uses.
+global.noteWinZ = 70;
 
 let fetchCalls = [];
 let statusResponse = null;
@@ -132,6 +204,33 @@ eval(extract("renderAstInspectorGated"));
 eval(extract("renderAstInspectorOffline"));
 eval(extract("clearAstInspectorState"));
 eval(extract("loadAssistantInspector"));
+// AST-044 restyle (Option B, #330): the metrics/turns fold now lives in a
+// detached window, same chrome family as .note-window/.media-window --
+// wireWinDrag is the SAME shared drag helper those use (extracted here too,
+// not reimplemented, so this exercises the real wiring).
+eval(extract("wireWinDrag"));
+eval(extract("buildAstInspectorWindow"));
+eval(extract("closeAstInspectorWindow"));
+eval(extract("handleAstInspectorKeydown"));
+eval(extract("openAstInspectorWindow"));
+// review round 1 (#330): a three-way Esc coordination test needs the OTHER
+// two real Esc owners too (the T-key chat overlay, the AST-021 picker) --
+// extracted verbatim, same "real production wiring, not a simplified
+// fork" posture section-assistant-selection.sh already uses for the
+// chat<->picker pair. onPickerKeydown itself is a nested function inside
+// renderAssistantPicker (extract()'s "up to the first unindented \n}\n"
+// regex can only grab whole top-level functions) -- calling the real
+// renderAssistantPicker(candidates) is what binds it for real, exactly
+// like initAssistantSelection() does in production.
+eval(extract("setVoiceHeaderName"));
+eval(extract("gateVoiceAndChat"));
+eval(extract("escapeHtml"));
+eval(extract("isChatTypingTarget"));
+eval(extract("unbindAssistantPickerKeys"));
+eval(extract("renderAssistantPicker"));
+eval(extract("stopChatElapsed"));
+eval(extract("closeChatOverlay"));
+eval(extract("handleAssistantChatKeydown"));
 
 function resetInspector() {
     for (const id of ["ast-metrics-refresh", "ast-metrics-retry", "ast-metrics-state", "ast-metrics", "ast-truncated", "ast-turnlist", "ast-waterfall"]) {
@@ -162,6 +261,8 @@ const TURN_EVENTS = [
     {kind: "provider.error", turn_id: "B", ts: "2024-01-01T00:00:03.200Z", status: "error", payload: {error: "boom"}},
     {kind: "turn.end", turn_id: "B", ts: "2024-01-01T00:00:03.400Z", status: "error"},
 ];
+
+const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
 
 (async () => {
     // ---- percentile estimation math, from a known cumulative-bucket fixture ----
@@ -280,6 +381,162 @@ const TURN_EVENTS = [
     await loadAssistantInspector();
     if (!document.getElementById("ast-truncated").classList.contains("ast-metrics-hidden")) throw new Error("truncated=false must keep the ast-truncated marker hidden");
     console.log("TRUNCATED_MARKER_OK true");
+
+    // ---- AST-044 restyle (Option B, #330): detached inspector window --
+    // open/focus/close lifecycle + Esc ownership handshake ----
+    function resetInspectorWindow() {
+        delete elements["ast-inspector-window"];
+        docBody._items.length = 0;
+        global.__listeners.keydown = [];
+        window.astInspectorWin = null;
+        window.__astInspectorKeydown = null;
+        fetchCalls = [];
+        statusResponse = {outcome: "one", candidates: [{name: "jarvis", aliases: [], root: "/r"}], selected: "jarvis", gated: false, askAgain: false};
+        metricsResponse = { roots: {} };
+        tracesResponse = { events: [] };
+        window.assistantInspector = { turns: [], selectedTurnId: null };
+    }
+
+    // opening builds the window (pinned chrome + fold ids), fetches once,
+    // appends to <body>, and binds exactly one keydown listener
+    resetInspectorWindow();
+    const win1 = openAstInspectorWindow();
+    await flushMicrotasks();
+    if (!win1 || win1.id !== "ast-inspector-window") throw new Error("openAstInspectorWindow did not build the window");
+    if (docBody._items.indexOf(win1) === -1) throw new Error("window was not appended to document.body");
+    if (window.astInspectorWin !== win1) throw new Error("window.astInspectorWin not set to the opened window");
+    if (!document.getElementById("ast-metrics") || !document.getElementById("ast-turnlist") || !document.getElementById("ast-waterfall"))
+        throw new Error("window is missing one of the pinned fold ids (ast-metrics/ast-turnlist/ast-waterfall)");
+    if (fetchCalls.filter(c => c.url === "/assistant/metrics").length !== 1) throw new Error("opening the window did not fetch /assistant/metrics");
+    if ((global.__listeners.keydown || []).length !== 1) throw new Error("open must bind exactly one keydown listener, got " + (global.__listeners.keydown || []).length);
+    if (window.__astInspectorKeydown !== handleAstInspectorKeydown) throw new Error("window.__astInspectorKeydown must reference the bound handler");
+    console.log("OPEN_BUILDS_AND_LOADS_OK true");
+
+    // reopening while already open FOCUSES (same reference, raised z-index,
+    // no duplicate fetch, no second listener) instead of opening a duplicate
+    const zBefore = win1.style.zIndex;
+    fetchCalls = [];
+    const win2 = openAstInspectorWindow();
+    if (win2 !== win1) throw new Error("reopening while open must return the SAME window, not a duplicate");
+    if (Number(win2.style.zIndex) <= Number(zBefore)) throw new Error("reopening while open must raise z-index (focus): before=" + zBefore + " after=" + win2.style.zIndex);
+    if (fetchCalls.length !== 0) throw new Error("reopening an already-open window must not re-fetch");
+    if ((global.__listeners.keydown || []).length !== 1) throw new Error("reopening while open must not bind a second keydown listener");
+    console.log("REOPEN_FOCUSES_OK true");
+
+    // closing tears down BOTH the window and its keydown listener
+    closeAstInspectorWindow();
+    if (window.astInspectorWin !== null) throw new Error("close must clear window.astInspectorWin");
+    if (document.getElementById("ast-inspector-window")) throw new Error("close must remove the window from the DOM");
+    if (document.getElementById("ast-metrics")) throw new Error("close must remove the window's descendant fold ids too");
+    if ((global.__listeners.keydown || []).length !== 0) throw new Error("close must unbind the keydown listener (leaked: " + (global.__listeners.keydown || []).length + " remaining)");
+    if (window.__astInspectorKeydown !== null) throw new Error("close must clear window.__astInspectorKeydown");
+    console.log("CLOSE_TEARS_DOWN_OK true");
+
+    // reopening after a close fetches fresh data again (not a stale window)
+    resetInspectorWindow();
+    openAstInspectorWindow();
+    await flushMicrotasks();
+    closeAstInspectorWindow();
+    fetchCalls = [];
+    openAstInspectorWindow();
+    await flushMicrotasks();
+    if (fetchCalls.filter(c => c.url === "/assistant/metrics").length !== 1) throw new Error("reopening after a close must fetch fresh metrics again");
+    console.log("REOPEN_AFTER_CLOSE_REFETCHES_OK true");
+
+    // Esc owns the keypress when nothing claimed it first: closes + marks
+    // the event handled (preventDefault) so listeners bound after this one
+    // can defer via the same ev.defaultPrevented flag the picker checks
+    let ev = fireKeydown({key: "Escape"});
+    if (window.astInspectorWin !== null) throw new Error("Esc must close the inspector window when it owns the keypress");
+    if (!ev.defaultPrevented) throw new Error("Esc must call preventDefault when the inspector window handles it");
+    console.log("ESC_CLOSES_OK true");
+
+    // Esc defers when another handler already claimed it (defaultPrevented
+    // already true) -- window.astInspectorWin currently null (closed above,
+    // simulating "nothing to own" is a distinct case); reopen and prove a
+    // pre-claimed event does NOT get closed by the inspector's own handler
+    resetInspectorWindow();
+    openAstInspectorWindow();
+    await flushMicrotasks();
+    handleAstInspectorKeydown({key: "Escape", defaultPrevented: true, preventDefault(){ throw new Error("must not preventDefault an already-claimed event"); }});
+    if (window.astInspectorWin === null) throw new Error("Esc must NOT close the inspector window when ev.defaultPrevented is already true (another handler owns it)");
+    console.log("ESC_DEFERS_WHEN_ALREADY_CLAIMED_OK true");
+
+    // non-Escape keys are ignored
+    handleAstInspectorKeydown({key: "a", defaultPrevented: false, preventDefault(){ throw new Error("must not preventDefault a non-Escape key"); }});
+    if (window.astInspectorWin === null) throw new Error("a non-Escape keydown must not close the inspector window");
+    closeAstInspectorWindow();
+    console.log("ESC_ONLY_OK true");
+
+    // ---- review round 1 (#330): three-way Esc coordination -- the T-key
+    // chat overlay (handleAssistantChatKeydown, bound unconditionally at
+    // module load, never torn down) and the AST-021 picker (onPickerKeydown,
+    // bound only while its own card is open, via the real
+    // renderAssistantPicker) are BOTH already-shipped real Esc owners; the
+    // inspector's handler must slot into the SAME defaultPrevented ownership
+    // chain without double-firing or starving the others. fireKeydown()
+    // drives every currently-bound listener in registration order on one
+    // shared event object, exactly like a real Escape keypress dispatches.
+    function resetThreeWay() {
+        delete elements["ast-inspector-window"];
+        delete elements["ast-chat-overlay"];
+        delete elements["ast-picker-wrap"];
+        delete elements["ast-picker"];
+        docBody._items.length = 0;
+        global.__listeners.keydown = [];
+        window.astInspectorWin = null;
+        window.__astInspectorKeydown = null;
+        window.__astPickerKeydown = null;
+        fetchCalls = [];
+        statusResponse = {outcome: "one", candidates: [{name: "jarvis", aliases: [], root: "/r"}], selected: "jarvis", gated: false, askAgain: false};
+        metricsResponse = { roots: {} };
+        tracesResponse = { events: [] };
+        window.assistantInspector = { turns: [], selectedTurnId: null };
+        window.assistantChat = { queue: [], inFlight: false, exchanges: [], lastX: 2, elapsedTimer: null, elapsedStart: 0 };
+        addEventListener("keydown", handleAssistantChatKeydown);   // module-load binding, never torn down
+    }
+
+    // A) chat overlay + picker + inspector all open: the chat overlay is
+    // registered FIRST (module load) and claims Escape -- neither the
+    // picker nor the inspector may also act on the same keypress.
+    resetThreeWay();
+    document.createElement("div").id = "ast-chat-overlay";   // id setter registers it in elements[], same as production's getElementById lookup
+    renderAssistantPicker([{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}]);
+    openAstInspectorWindow();
+    await flushMicrotasks();
+    fetchCalls = [];
+    const evA = fireKeydown({key: "Escape"});
+    await flushMicrotasks();
+    if (document.getElementById("ast-chat-overlay")) throw new Error("3-way A: the chat overlay should have closed (it owns this Escape)");
+    if (!evA.defaultPrevented) throw new Error("3-way A: the chat overlay must preventDefault when it owns Escape");
+    if (!document.getElementById("ast-picker-wrap")) throw new Error("3-way A: the picker must NOT act once the chat overlay already claimed Escape");
+    if (fetchCalls.some(c => c.url === "/assistant/skip")) throw new Error("3-way A: the picker must not Skip once the chat overlay already claimed Escape");
+    if (window.astInspectorWin === null) throw new Error("3-way A: the inspector must NOT close once the chat overlay already claimed Escape");
+    console.log("THREEWAY_CHAT_OWNS_OK true");
+
+    // B) no chat overlay, picker + inspector open: the picker is registered
+    // right after the (inert, no overlay) chat handler and owns Escape --
+    // Skip fires, the inspector must defer and stay open.
+    resetThreeWay();
+    renderAssistantPicker([{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}]);
+    openAstInspectorWindow();
+    await flushMicrotasks();
+    fetchCalls = [];
+    fireKeydown({key: "Escape"});
+    await flushMicrotasks();
+    if (document.getElementById("ast-picker-wrap")) throw new Error("3-way B: the picker must act (Skip-close) when nothing claimed Escape first");
+    if (!fetchCalls.some(c => c.url === "/assistant/skip")) throw new Error("3-way B: Skip did not fire");
+    if (window.astInspectorWin === null) throw new Error("3-way B: the inspector must defer (stay open) once the picker already claimed Escape");
+    console.log("THREEWAY_PICKER_OWNS_OK true");
+
+    // C) no chat overlay, no picker: the inspector is the only real owner
+    // left on the listener chain and must still close.
+    resetThreeWay();
+    openAstInspectorWindow();
+    await flushMicrotasks();
+    fireKeydown({key: "Escape"});
+    if (window.astInspectorWin !== null) throw new Error("3-way C: the inspector must close Escape when it is the only remaining owner");
+    console.log("THREEWAY_INSPECTOR_OWNS_OK true");
 })().catch(e => { console.error("FAIL", e.message); process.exit(1); });
 NODEJS
 tmpl_inspector_out="$(node "$_ai_node" "$NVHTML_INSPECTOR" 2>&1)"
@@ -297,7 +554,43 @@ check "template: loading fetches metrics+traces once and renders percentile/coun
 check "template: turn list renders grouped turns with an error hook class" "TURNLIST_OK true" "$tmpl_inspector_out"
 check "template: clicking a turn wires the waterfall render" "TURN_CLICK_WIRING_OK true" "$tmpl_inspector_out"
 check "template (#393): fetches /assistant/traces?order=desc, and the truncated marker follows the endpoint's own flag" "TRUNCATED_MARKER_OK true" "$tmpl_inspector_out"
+check "template (#330 Option B): opening the inspector builds the detached window, loads once, binds one keydown listener" "OPEN_BUILDS_AND_LOADS_OK true" "$tmpl_inspector_out"
+check "template (#330 Option B): reopening while already open focuses (same window, raised z-index) instead of duplicating" "REOPEN_FOCUSES_OK true" "$tmpl_inspector_out"
+check "template (#330 Option B): closing removes the window AND unbinds its keydown listener" "CLOSE_TEARS_DOWN_OK true" "$tmpl_inspector_out"
+check "template (#330 Option B): reopening after a close fetches fresh data again" "REOPEN_AFTER_CLOSE_REFETCHES_OK true" "$tmpl_inspector_out"
+check "template (#330 Option B): Esc closes the inspector window when it owns the keypress" "ESC_CLOSES_OK true" "$tmpl_inspector_out"
+check "template (#330 Option B): Esc defers to an already-claimed event (defaultPrevented) instead of double-closing" "ESC_DEFERS_WHEN_ALREADY_CLAIMED_OK true" "$tmpl_inspector_out"
+check "template (#330 Option B): non-Escape keydowns are ignored by the inspector's handler" "ESC_ONLY_OK true" "$tmpl_inspector_out"
+check "template (review round 1, #330): chat overlay + picker + inspector all open -- the chat overlay (registered first) owns Escape, the other two do not act" "THREEWAY_CHAT_OWNS_OK true" "$tmpl_inspector_out"
+check "template (review round 1, #330): picker + inspector open, no chat overlay -- the picker owns Escape, the inspector defers" "THREEWAY_PICKER_OWNS_OK true" "$tmpl_inspector_out"
+check "template (review round 1, #330): inspector open alone -- it is the sole remaining owner and closes on Escape" "THREEWAY_INSPECTOR_OWNS_OK true" "$tmpl_inspector_out"
 if [[ "$tmpl_inspector_rc" -ne 0 ]]; then echo "$tmpl_inspector_out" >&2; fi
+
+check "template pins the ast-inspector-window class name in source (#330 Option B detached window)" "ast-inspector-window" "$(cat "$NVHTML_INSPECTOR")"
+check_absent "template: AST-044's inspector placeholder-restyle note is gone (Option B is the FINAL pick, #330)" "a pending human choice on the issue, not" "$(cat "$NVHTML_INSPECTOR")"
+
+# review round 1 (#330): the window's sizing must use the higher-specificity
+# compound selector .note-window.ast-inspector-window, not a bare
+# .ast-inspector-window rule -- .note-window{width:var(--colw);max-height:
+# 70vh} is an EQUAL-specificity single-class rule declared LATER in source,
+# so a bare .ast-inspector-window rule loses that cascade tie regardless of
+# what it says (measured: ~19% under the finalized Option B geometry). What
+# these two checks CAN prove (pure source-text matching, no CSS engine):
+# the compound (higher-specificity, order-independent) selector carries the
+# Option B sizing, and that exact declaration is not duplicated/shadowed by
+# a second copy of itself elsewhere in the file. What they CANNOT prove: a
+# real browser's computed cascade/layout (no CSS parser here), nor that
+# some DIFFERENTLY-worded rule with equal-or-higher specificity (a
+# different selector matching the same element) doesn't also apply --
+# that would need an actual browser or a full CSS specificity calculator.
+check "template (review round 1, #330): inspector window sizing uses the higher-specificity compound selector .note-window.ast-inspector-window (wins the cascade regardless of source order against .note-window's own later, equal-specificity rule)" ".note-window.ast-inspector-window{width:min(420px,92vw);max-height:80vh}" "$(cat "$NVHTML_INSPECTOR")"
+_aiw_sizing_decl_count="$(grep -c 'width:min(420px,92vw);max-height:80vh' "$NVHTML_INSPECTOR")"
+if [[ "$_aiw_sizing_decl_count" -eq 1 ]]; then
+    echo "ok   template (review round 1, #330): the Option B sizing declaration (width:min(420px,92vw);max-height:80vh) appears exactly once -- not duplicated/shadowed by a second copy"
+else
+    echo "FAIL template (review round 1, #330): expected exactly 1 declaration of width:min(420px,92vw);max-height:80vh, found $_aiw_sizing_decl_count"
+    fails=$((fails + 1))
+fi
 
 check "template pins the ast-metrics class name in source" '"ast-metrics"' "$(cat "$NVHTML_INSPECTOR")"
 check "template pins the ast-metrics-row class name in source" '"ast-metrics-row"' "$(cat "$NVHTML_INSPECTOR")"
