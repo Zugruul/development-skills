@@ -1304,3 +1304,46 @@ check "hoverTest computes the cull set once and shares it across note and synaps
 check "only an intra-cluster synapse may be culled — cross-cluster segments are always tested" "if(ka === clusterKey(l.b.repo, l.b.role) && cull.has(ka)) continue;" "$(cat "$NVHTML")"
 check "voice viz reads the settings snapshot once per frame, not once per bar" "const t = voiceTune();   // hoisted: settings snapshot per frame, not per bar" "$(cat "$NVHTML")"
 
+# #397 (human review): the audio-feedback waveform took far more vertical
+# room than the bars needed. #voice-viz drops flex:1 (which let it absorb
+# all leftover panel height) for a compact explicit basis, and --voiceh
+# shrinks to match -- both pinned here so neither regresses back open.
+check_absent "voice-viz no longer absorbs all leftover panel height via flex:1 (#397)" "#voice-viz{flex:1;" "$(cat "$NVHTML")"
+# #397 round 2 (live human follow-up): the first compact pass (clamp(40,
+# .3*colq,60) / *.85) still read as too tall -- slimmed further to a
+# genuine VU-strip footprint, and --voiceh recomputed down to match.
+check "voice-viz has a slim, capped-height VU-strip footprint (#397 round 2)" "#voice-viz{flex:0 0 clamp(28px, calc(var(--colq)*.18), 40px);min-height:28px;position:relative;display:flex;align-items:center;gap:" "$(cat "$NVHTML")"
+check_absent "voiceh no longer inflated for the pre-compact-viz waveform (#397)" "--voiceh:calc(var(--colq)*1.1);" "$(cat "$NVHTML")"
+check "voiceh shrunk again to fit head + slim viz + dock now that the waveform is a thin strip (#397 round 2)" "--voiceh:calc(var(--colq)*.75);" "$(cat "$NVHTML")"
+check "assistant name beside the bars shrinks a notch alongside the slimmer viz (#397 round 2)" ".ast-voice-name{font-size:.5rem;" "$(cat "$NVHTML")"
+# #397 round 3 (live human follow-up): the label sat too far from the bars
+# -- own, honestly-labeled assertion (this used to be silently folded into
+# the round-2 footprint check above, which never named the gap value it
+# was also pinning).
+check "the gap between the assistant-name label and the bars tightened (#397 round 3)" "#voice-viz{flex:0 0 clamp(28px, calc(var(--colq)*.18), 40px);min-height:28px;position:relative;display:flex;align-items:center;gap:.25rem;overflow:hidden}" "$(cat "$NVHTML")"
+# #397 review round 1 (MAJOR): #voice-dock's max-height:40% resolves
+# against the now-shrunken --voiceh, so past a certain viewport shrink the
+# 40% cap falls below the dock's own floor content (one assistant row +
+# one digest note, ~64px) and clips it -- give the dock an absolute-floor
+# cap so it is never clipped, without growing --voiceh back open.
+check_absent "voice-dock max-height is no longer a bare percentage that can shrink below its own floor content (#397 review round 1)" "#voice-dock{flex:none;max-height:40%;" "$(cat "$NVHTML")"
+check "voice-dock's cap has an absolute-px floor so it never clips its own minimum content, however small --voiceh gets (#397 review round 1)" "#voice-dock{flex:none;max-height:max(64px, 40%);" "$(cat "$NVHTML")"
+# #397 review round 2: with *{box-sizing:border-box} and no overflow set on
+# #voicebar, a FIXED height:var(--voiceh) meant vbar.offsetHeight (what
+# --voice-below is live-measured from, applyUiState) stayed the nominal
+# border box and excluded any overflowing dock content -- so at short
+# viewports where the dock's guaranteed 64px floor pushes real content past
+# --voiceh, --voice-below under-reserved and #inspect below overlapped the
+# dock. min-height instead of a fixed height lets #voicebar grow to its
+# true content, so offsetHeight (and --voice-below) always reflect it.
+check_absent "voicebar no longer has a fixed height that can under-report the panel's true (possibly dock-inflated) footprint (#397 review round 2)" "#voicebar{top:70px;right:14px;width:var(--colw);height:var(--voiceh);" "$(cat "$NVHTML")"
+check "voicebar uses min-height instead, so it grows to fit an overflowing dock rather than under-reporting its footprint (#397 review round 2)" "#voicebar{top:70px;right:14px;width:var(--colw);min-height:var(--voiceh);" "$(cat "$NVHTML")"
+# #397 review round 3: min-height floors EVERY state of #voicebar,
+# including .folded -- so dropping the old .folded{height:auto} rule (now
+# redundant against a fixed height) regressed folding: with only
+# min-height:var(--voiceh) left, the folded panel could never shrink below
+# --voiceh, reclaiming 0px instead of the head+dock-only footprint. A
+# folded-state override that drops the floor (not a plain height:auto,
+# which no longer suffices against min-height) restores the reclaim.
+check "voicebar.folded drops the min-height floor so folding still reclaims space down to head+dock content (#397 review round 3)" "#voicebar.folded{min-height:0}" "$(cat "$NVHTML")"
+

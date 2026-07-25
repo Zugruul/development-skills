@@ -35,12 +35,29 @@
      footprint (height + gap) kept current by applyUiState — it shrinks to the
      bare header when the section is folded and to 0 when collapsed away, so
      the note/settings panels below always reclaim the space */
-  /* grown from *.67 (#319 follow-up, human review): the waveform-only
-     height left no room once the assistant switcher moved from the
-     buried ⚙ settings popover to a permanent dock at the bottom of the
-     Voice section — see #voice-dock below. The waveform itself keeps
-     flex:1 and simply shares less of this larger total. */
-  --voiceh:calc(var(--colq)*1.1);
+  /* #397 follow-up (human review, round 2): *1.1 (from #319, grown for
+     #voice-dock below) left the bars far more vertical room than a
+     VU-style strip needs -- and the first compact pass (*.85) still read
+     as too tall live. #voice-viz now takes a genuinely slim capped height
+     instead of flex:1 (see its rule below), so shrunk again to just fit
+     #voicebar-head (~26px, its tallest child) + #voicebar's own padding
+     (~22px) + the slim viz + #voice-dock's floor content (~64px for one
+     assistant row + one digest note) at common viewport heights.
+     #397 review round 1: #voice-dock's cap is now max(64px, 40%) (see its
+     rule below) so its floor content is NEVER clipped, at any viewport --
+     recomputed the fit at 700/900/1200px (colq = (vh-100)/4, so 150/200/
+     275): total need is ~48px head+padding + viz (28/36/40, clamped) +
+     dock (max(64, 0.4*voiceh)) = ~140/~148/~171px against voiceh of
+     ~112/150/206px. At 900-1200px that fits with a few px to spare; below
+     ~900px the guaranteed dock floor can push #voicebar's true content a
+     bit past --voiceh (e.g. ~28px over at 700px). #397 review round 2:
+     #voicebar itself uses min-height:var(--voiceh), not a fixed height
+     (see its rule below), so this is never a clip and never an
+     under-measurement either -- the box grows to fit that extra content,
+     vbar.offsetHeight (what --voice-below is read live from, applyUiState)
+     reports the TRUE grown height in that case, and panels below still
+     start in the right place. --voiceh is a target/floor, not a hard cap. */
+  --voiceh:calc(var(--colq)*.75);
   --voice-below:calc(var(--voiceh) + 12px);
   /* --log-space mirrors --voice-below for the BOTTOM of the column: the room
      reserved for the activation log (height + gap), live-updated by
@@ -417,9 +434,27 @@ canvas.grabbing{cursor:grabbing}
    log (edge tab restores); the IN/OUT segmented toggle picks the direction the
    visualizer represents (outbound TTS is the default). The body is a stub
    until the visualizer style is decided (iterative UI round in flight). */
-#voicebar{top:70px;right:14px;width:var(--colw);height:var(--voiceh);display:flex;flex-direction:column;
+/* #397 review round 2: this was a FIXED height:var(--voiceh). With
+   box-sizing:border-box and no overflow set here, a fixed height makes
+   offsetHeight report the nominal border box only — any content that
+   overflows past it (the dock's guaranteed-floor case below) is invisible
+   to offsetHeight. --voice-below is read live off vbar.offsetHeight
+   (applyUiState), so a fixed height meant it could under-reserve space at
+   short viewports and #inspect below would overlap the overflowing dock.
+   min-height keeps --voiceh as the target/floor but lets the box grow to
+   its real content when needed, so offsetHeight (and --voice-below) always
+   reflect the panel's true footprint — no overlap, no separate clip fix
+   needed. Deliberately NOT overflow:hidden, which would just re-clip the
+   dock instead of fixing the measurement. */
+#voicebar{top:70px;right:14px;width:var(--colw);min-height:var(--voiceh);display:flex;flex-direction:column;
   padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease}
 #voicebar.collapsed{transform:translateX(calc(100% + 24px));opacity:0;pointer-events:none}
+/* #397 review round 3: min-height:var(--voiceh) above floors every state
+   of #voicebar, including folded — drop the floor here so a folded panel
+   can actually shrink to its head + dock content instead of staying stuck
+   at --voiceh (reclaiming 0px). See the comment by #voice-viz[hidden]
+   below for the fuller why. */
+#voicebar.folded{min-height:0}
 #voicebar-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
 #voicebar-tab{position:fixed;top:70px;right:0;z-index:20;border-right:0;border-radius:8px 0 0 8px;
   padding:.55rem .4rem;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:.8rem}
@@ -440,12 +475,20 @@ canvas.grabbing{cursor:grabbing}
    justify-content:center outlived #395's flex-row intent once the canvas
    below was pulled out of flow by position:absolute, centering the name
    label dead in the middle of the waveform instead of beside it. One rule. */
-#voice-viz{flex:1;min-height:34px;position:relative;display:flex;align-items:center;gap:.5rem;overflow:hidden}
+#voice-viz{flex:0 0 clamp(28px, calc(var(--colq)*.18), 40px);min-height:28px;position:relative;display:flex;align-items:center;gap:.25rem;overflow:hidden}
 /* the explicit display:flex above would defeat the hidden attribute the
-   section fold sets — restate it; .folded lets the panel shrink to its head */
+   section fold sets — restate it. #voicebar.folded{height:auto} used to
+   live here to let the panel shrink to its head when folded, back when
+   #voicebar had a fixed height:var(--voiceh) (a plain auto overrode a
+   fixed height just fine). #397 review round 2 switched #voicebar to
+   min-height:var(--voiceh) instead — but min-height is a FLOOR that
+   applies in every state, including .folded, so a bare height:auto no
+   longer suffices: the folded panel got stuck no shorter than --voiceh,
+   reclaiming 0px instead of shrinking to just its head + dock content.
+   #voicebar.folded (below, next to #voicebar's own rule) drops the floor
+   for that state instead, so folding reclaims space again. */
 #voice-viz[hidden]{display:none}
-#voicebar.folded{height:auto}
-.ast-voice-name{font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);white-space:nowrap;flex:0 0 auto}
+.ast-voice-name{font-size:.5rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);white-space:nowrap;flex:0 0 auto}
 .ast-voice-name:empty{display:none}
 /* the canvas does NOT need position:absolute;inset:0 to size correctly —
    drawViz() reads vizCanvas.clientWidth/clientHeight fresh every animation
@@ -473,8 +516,14 @@ canvas.grabbing{cursor:grabbing}
    same #ast-switcher/#ast-digest ids and render functions, just relocated.
    flex:none (not flex:1) so it takes only the room its content needs;
    own scroll region caps it if the candidate list grows long, rather than
-   pushing --voiceh (and everything below it) open further. */
-#voice-dock{flex:none;max-height:40%;overflow-y:auto;border-top:1px solid var(--border);
+   pushing --voiceh (and everything below it) open further.
+   #397 review round 1: a bare 40% resolves against --voiceh, and once
+   #397 shrank --voiceh that 40% could fall below the dock's own FLOOR
+   content (one assistant row + one digest note, ~64px) -- clipping it
+   even with nothing long to scroll. max(64px, 40%) keeps 40% as the cap
+   for genuinely long lists (once --voiceh is tall enough that 40% of it
+   exceeds 64px) while guaranteeing the floor content is never clipped. */
+#voice-dock{flex:none;max-height:max(64px, 40%);overflow-y:auto;border-top:1px solid var(--border);
   padding-top:.35rem;margin-top:.3rem}
 #voice-dock::-webkit-scrollbar{width:7px}
 #voice-dock::-webkit-scrollbar-thumb{background:rgba(90,190,255,.4);border-radius:4px}
