@@ -1,90 +1,15 @@
 {
-  "attribute-all-gate-legs->gate-verdict-before-merge": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "brief-load-bearing-lines->live-tweaks-as-brief-amendments": {
     "fires": 0,
     "last": null,
     "weight": 0.5
   },
-  "fixed-iteration-shape->gate-verdict-before-merge": {
+  "direct-mode-standdown-and-sweep->live-tweaks-as-brief-amendments": {
     "fires": 0,
     "last": null,
     "weight": 0.5
   },
-  "fixed-iteration-shape->lead-brief-with-last-failure": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "fixed-iteration-shape->name-the-failure-modes": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "gap-to-pinned-contract->fixed-iteration-shape": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "gate-verdict-before-merge->canonical-merge-locus": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "gate-verdict-before-merge->clean-main-repro-before-blame": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "inventory-stalled-agent-tree->mode-elastic-loop": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "inventory-stalled-agent-tree->search-branches-before-reimplementing": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "lead-brief-with-last-failure->inventory-stalled-agent-tree": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "lead-brief-with-last-failure->ui-split-logic-first": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "live-tweaks-as-brief-amendments->prescription-ack-closes-round-cap": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "name-the-failure-modes->lead-brief-with-last-failure": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "parallel-push-races->canonical-merge-locus": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "parallel-push-races->gate-verdict-before-merge": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "reconcile-incidental-delivery->live-validation-is-loop-input": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "reconcile-incidental-delivery->mode-elastic-loop": {
+  "direct-mode-standdown-and-sweep->prescription-ack-closes-round-cap": {
     "fires": 0,
     "last": null,
     "weight": 0.5

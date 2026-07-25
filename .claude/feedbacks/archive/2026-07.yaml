@@ -5293,3 +5293,65 @@ items:
   routing:
     action: brain-note
     ref: reviewer/static-specificity-tie-check
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-25T07:05:00Z'
+iteration:
+  task: '399'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: concurrency
+  severity: medium
+  summary: A stand-down message did not stop a dev agent before the orchestrator began
+    editing the same tree
+  detail: The lane kept committing/editing for minutes after the message; the tree
+    changed under the orchestrator mid-edit and required a full re-survey. TaskStop
+    before first edit resolved it.
+  evidence:
+  - Zugruul/development-skills#399
+  generalized: A stand-down instruction to a running agent is asynchronous and non-binding;
+    before taking over an agent's working tree, hard-stop the agent (task termination)
+    and verify no further writes, otherwise two writers interleave on one checkout.
+  routing:
+    action: brain-note
+    ref: orchestrator/direct-mode-standdown-and-sweep
+- category: worked-well
+  area: review
+  severity: medium
+  summary: A post-merge review sweep over the whole direct-mode range restored the
+    review guarantee without blocking the human's pace
+  detail: Three direct merges reviewed on main in one sweep with measured evidence;
+    zero blockers; six note-only findings filed as backlog items.
+  evidence:
+  - Zugruul/development-skills#399
+  - Zugruul/development-skills#400
+  - Zugruul/development-skills#401
+  - Zugruul/development-skills#402
+  - Zugruul/development-skills#403
+  generalized: When a human orders direct-to-main implementation, replace per-merge
+    pre-review with one post-merge sweep over the merged range — verdicts recorded
+    per merge, blockers fixed immediately, minors filed as backlog — so speed and
+    the reviewed-main invariant coexist.
+  routing:
+    action: brain-note
+    ref: orchestrator/direct-mode-standdown-and-sweep
+- category: recommendation
+  area: other
+  severity: low
+  summary: Perf complaints need an external-throttle check before code archaeology
+  detail: A 120-to-30fps report was Chrome Energy Saver at 19 percent battery; an
+    empty-page rAF measurement settled it in minutes.
+  evidence:
+  - Zugruul/development-skills#399
+  generalized: 'Add an external-pacing triage step to perf investigations: measure
+    rAF cadence with all app content hidden and check power/energy-saver state before
+    attributing frame-rate regressions to the code.'
+  routing:
+    action: brain-note
+    ref: orchestrator/external-throttle-before-code-blame

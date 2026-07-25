@@ -29,6 +29,16 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
+  "backdrop-filter-traps-popovers->compound-selector-for-shared-base": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "backdrop-filter-traps-popovers->render-states-before-asserting-layout": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "bash32-empty-array-set-u->budget-count-join-separators": {
     "fires": 18,
     "last": "2026-07-22",
