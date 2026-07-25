@@ -1,0 +1,33 @@
+name: semver
+
+# #400: defense-in-depth semver bump. The local merge protocol (auto-review.md
+# §5) already amends the version bump into the squash commit itself; this job
+# only acts when a conventional bump-worthy commit lands on main WITHOUT its
+# version bump (e.g. a hotfix pushed outside the loop). Loop-safe twice over:
+# a commit that already touched plugin.json is skipped, and chore(release)
+# classifies as `none`.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: bump if the head commit warrants one and didn't bring its own
+        run: |
+          if git diff HEAD^ HEAD --name-only | grep -q "plugins/spec-workflow/.claude-plugin/plugin.json"; then
+            echo "head commit already carries a version change — nothing to do"; exit 0
+          fi
+          NEW="$(bash plugins/spec-workflow/scripts/semver.sh apply-head . spec-workflow)"
+          if [ "$NEW" = "none" ]; then echo "no bump warranted"; exit 0; fi
+          git config user.name "semver-bot"
+          git config user.email "semver-bot@users.noreply.github.com"
+          git add .claude-plugin/marketplace.json plugins/spec-workflow/.claude-plugin/plugin.json
+          git commit -m "chore(release): spec-workflow v${NEW}"
+          git push

@@ -134,6 +134,7 @@ SECTIONS=(
     section-neural-view-entities.sh
     section-feedback.sh
     section-telemetry.sh
+section-semver.sh
     section-two-pass-review-preflight.sh
     section-find-task.sh
     section-pagination.sh

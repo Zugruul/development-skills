@@ -246,6 +246,21 @@ Route:
 4. Remove the temporary worktree; continue the loop exactly as if `gh pr
    merge` had succeeded (`board.sh move N "QA"`, announce, fold the delta).
 
+MERGE FRESHNESS + SEMVER (both routes, #400): before the squash-merge,
+verify the branch's merge-base equals the CURRENT `origin/<mainBranch>` tip
+— if main moved since the branch's last gate, rebase the branch onto
+`origin/<mainBranch>` and re-run the recorded gate before merging; never
+squash-merge code that has not seen the main it lands on. After the squash
+commit and BEFORE the push, run
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/semver.sh" apply-head <root> spec-workflow`
+and, when it prints a version (i.e. the commit classifies as
+fix/perf/refactor → patch, feat → minor, `!`/BREAKING CHANGE → major),
+`git add` the two version files and `--amend --no-edit` them into the squash
+commit so one commit carries the change and its version. `none` (docs,
+chore, retro, release commits) means push as-is. `.github/workflows/semver.yml`
+is defense in depth only: it bumps on main solely when a bump-worthy commit
+arrives without its version change.
+
 If one of the LOCAL route's OWN steps (the `git push`, or the REST
 PATCH-close) itself hits a hard denial, that falls back to the doc's
 top-level floor: never retry around a denial — it means ask the human, full
