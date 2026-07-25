@@ -344,6 +344,13 @@ canvas.grabbing{cursor:grabbing}
 .secthead:hover{color:var(--cyan)}
 .secthead::before{content:"▾";margin-right:.45rem;color:var(--cyan-dim)}
 .secthead[aria-expanded="false"]::before{content:"▸"}
+/* #399 (human refinement): the Voice section is not foldable anymore --
+   the ▾ caret and pointer cursor go away (same non-folding treatment as
+   the Talk header above). The .folded machinery stays in CSS/JS for
+   applyUiState compatibility, but no UI toggles it and boot force-unfolds
+   any stale persisted fold. */
+#voicebar-head .secthead{cursor:default}
+#voicebar-head .secthead::before{content:""}
 #boards-head{margin:.6rem 0 .4rem}
 /* edge tab that restores the collapsed panel */
 #gauges-tab{position:fixed;top:70px;left:0;z-index:20;border-left:0;border-radius:0 8px 8px 0;
@@ -447,6 +454,14 @@ canvas.grabbing{cursor:grabbing}
    below for the fuller why. */
 #voicebar.folded{min-height:0}
 #voicebar-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
+/* #399 (human refinement): every control in the header shares ONE height
+   -- the ⚙/Inspect/mic/IN-OUT-BOTH/collapse buttons previously each sized
+   themselves from their own font+padding and read as a ragged row. The
+   segmented #voice-dir wrapper gets the same height with its inner
+   buttons stretched to fill. */
+#voicebar-head .iconbtn{height:26px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;padding-top:0;padding-bottom:0}
+#voicebar-head #voice-dir{height:26px;box-sizing:border-box;align-items:stretch}
+#voicebar-head #voice-dir .iconbtn{height:100%}
 #voicebar-tab{position:fixed;top:70px;right:0;z-index:20;border-right:0;border-radius:8px 0 0 8px;
   padding:.55rem .4rem;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:.8rem}
 #voicebar-tab:hover{color:var(--cyan)}
@@ -503,22 +518,26 @@ canvas.grabbing{cursor:grabbing}
 .ast-voice-name:hover,.ast-voice-name:focus-visible{color:var(--fg)}
 .ast-voice-name::after{content:" ▾";opacity:.7}
 .ast-voice-name:empty::before{content:"SELECT"}
-/* #399: the post-boot switch dropdown, anchored AT the label. NOT a child
-   of #voice-viz -- that row clips (overflow:hidden), and overflow clips
-   absolutely-positioned descendants of the clipping box when it is also
-   their containing block. It sits as a sibling inside #voicebar
-   (position:fixed containing block) at top:100%;left:1rem: with
-   #voice-dock gone the panel ends at the label's own row, so this drops
-   directly under the label without any JS measurement, and OUT of flow
-   (doesn't grow #voicebar or perturb --voiceh, same reasoning as
-   #ast-digest-panel below). Compact HUD list (name + dimmed alias, current
-   one marked via .ast-switch-row-selected), plus a kbd-styled hint row
-   showing the platform-appropriate ⌘K/Ctrl+K chips (renderShortcutKeycaps,
-   JS below). */
-#ast-switch-dropdown{position:absolute;top:100%;left:1rem;margin-top:6px;min-width:11rem;
+/* #399: the post-boot switch dropdown, visually anchored AT the label.
+   It CANNOT live inside #voicebar: .hud's backdrop-filter makes the panel
+   its own stacking context and the containing block even for fixed
+   descendants, so a child's z-index is trapped at the panel's 25 and
+   paints under the settings/inspect/filters panels (66/65/60). It sits at
+   body level and mirrors the panel's box with position:fixed instead:
+   top = the panel's 70px offset + --voiceh (fixed head+viz arithmetic
+   since the dock removal, so the panel's real bottom), right = the
+   panel's 14px offset + its 1rem padding, width = the panel's content
+   width. z-index:90 per human direction ("atop all content, always") --
+   above every sidebar panel and the note/inspector windows (70), below
+   only the fullscreen hoverprobe overlay (99). Compact HUD list (name +
+   dimmed alias, current one marked via .ast-switch-row-selected) + a
+   kbd-styled hint row with the platform ⌘K/Ctrl+K chips
+   (renderShortcutKeycaps, JS below). */
+#ast-switch-dropdown{position:fixed;top:calc(70px + var(--voiceh) + 4px);right:calc(14px + 1rem);
+  width:calc(var(--colw) - 2rem);
   background:var(--panel-solid);border:1px solid var(--border);border-radius:8px;
   backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
-  box-shadow:0 10px 28px rgba(0,0,0,.45);z-index:15;overflow:hidden;font-family:var(--mono)}
+  box-shadow:0 10px 28px rgba(0,0,0,.45);z-index:90;overflow:hidden;font-family:var(--mono)}
 #ast-switch-dropdown[hidden]{display:none}
 .ast-switch-list{display:flex;flex-direction:column;gap:.15rem;padding:.35rem;max-height:40vh;overflow-y:auto}
 .ast-switch-list::-webkit-scrollbar{width:7px}
@@ -1058,8 +1077,7 @@ canvas.grabbing{cursor:grabbing}
 <div class="hud" id="voicebar">
   <div id="voicebar-head">
     <div style="display:flex;align-items:center;gap:.35rem">
-      <button class="secthead" id="sect-voice" aria-expanded="true">Voice</button>
-      <button class="iconbtn" id="voice-settings" title="Voice settings" aria-label="Voice settings" aria-expanded="false">⚙</button>
+      <button class="secthead" id="sect-voice">Voice</button>
       <!-- AST-044 restyle (Option B, issue #330): opens/focuses the detached
            metrics/trace inspector window -- see .ast-inspector-window below. -->
       <button class="iconbtn" id="ast-inspect-open" title="Open the metrics/trace inspector" aria-label="Open the metrics/trace inspector" aria-haspopup="true">Inspect</button>
@@ -1073,6 +1091,9 @@ canvas.grabbing{cursor:grabbing}
         <button class="iconbtn" id="voice-out" aria-pressed="true" title="Outbound — speech synthesis">OUT</button>
         <button class="iconbtn" id="voice-both" aria-pressed="false" title="Both directions">BOTH</button>
       </span>
+      <!-- #399 (human refinement): ⚙ sits at the far right of all the
+           other buttons, just before the collapse chevron. -->
+      <button class="iconbtn" id="voice-settings" title="Voice settings" aria-label="Voice settings" aria-expanded="false">⚙</button>
       <button class="iconbtn" id="voicebar-collapse" title="Hide voice" aria-label="Hide voice">⟩</button>
     </div>
   </div>
@@ -1086,16 +1107,6 @@ canvas.grabbing{cursor:grabbing}
        see the JS below. -->
   <div id="voice-viz"><button type="button" id="voice-viz-name" class="ast-voice-name"
       aria-haspopup="listbox" aria-expanded="false" title="Switch assistant"></button><canvas id="voice-viz-canvas"></canvas><span id="voice-viz-status" hidden></span></div>
-  <!-- #399: the switch dropdown is a SIBLING of #voice-viz, not a child --
-       #voice-viz clips (overflow:hidden), and an absolutely-positioned
-       descendant is still clipped by its positioned ancestor's overflow.
-       Anchored against #voicebar instead (position:fixed containing block);
-       with #voice-dock gone the panel ends at the label's own row, so
-       top:100% + left:1rem drops it directly under the label. -->
-  <div id="ast-switch-dropdown" class="ast-switch-dropdown" hidden>
-    <div class="ast-switch-list" id="ast-switch-list" role="listbox" aria-label="Switch assistant"></div>
-    <div class="ast-switch-hint" id="ast-switch-hint" aria-hidden="true"></div>
-  </div>
   <!-- AST-024 digest (#321): relocated out of the removed #voice-dock into
        a transient, click-to-dismiss overlay -- see the #ast-digest-panel
        CSS comment above. hidden until renderAssistantDigest has something
@@ -1106,6 +1117,18 @@ canvas.grabbing{cursor:grabbing}
   </div>
 </div>
 <button class="hud" id="voicebar-tab" title="Show voice" aria-label="Show voice" hidden>⟨</button>
+<!-- #399 (human refinement): the switch dropdown lives at BODY level, not
+     inside #voicebar -- .hud's backdrop-filter makes each panel its own
+     stacking context (and the containing block even for fixed
+     descendants), so any child of #voicebar is trapped at the panel's
+     z-index (25) and paints UNDER the settings (66) / inspect (65) /
+     filters (60) panels. Out here it mirrors the panel's box with
+     position:fixed and sits atop ALL content (z-index 90) per human
+     direction. -->
+<div id="ast-switch-dropdown" class="ast-switch-dropdown" hidden>
+  <div class="ast-switch-list" id="ast-switch-list" role="listbox" aria-label="Switch assistant"></div>
+  <div class="ast-switch-hint" id="ast-switch-hint" aria-hidden="true"></div>
+</div>
 
 <div class="hud" id="voice-settings-panel" role="dialog" aria-label="Voice settings">
   <div class="label">Voice settings</div>
@@ -3524,7 +3547,10 @@ gaugesTab.onclick = ()=>{ uiState.panel = false; saveUiState(); applyUiState(); 
 document.getElementById("rightbar-collapse").onclick = ()=>{ uiState.rpanel = true; saveUiState(); applyUiState(); };
 document.getElementById("rightbar-tab").onclick = ()=>{ uiState.rpanel = false; saveUiState(); applyUiState(); };
 document.getElementById("rightbar-clear").onclick = ()=>{ LOG.innerHTML = ""; };
-document.getElementById("sect-voice").onclick = ()=>{ uiState.voice = !uiState.voice; saveUiState(); applyUiState(); };
+// #399 (human refinement): the Voice section no longer folds -- no
+// sect-voice click handler. A stale persisted fold from an older session
+// would otherwise leave the panel stuck folded with no UI to unfold it:
+uiState.voice = false;
 document.getElementById("voicebar-collapse").onclick = ()=>{ uiState.vpanel = true; saveUiState(); applyUiState(); };
 document.getElementById("voicebar-tab").onclick = ()=>{ uiState.vpanel = false; saveUiState(); applyUiState(); };
 // voice state: direction (in/out/both, outbound default) + mic mode
