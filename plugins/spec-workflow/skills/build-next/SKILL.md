@@ -51,6 +51,13 @@ work.sync governs WHEN board mutations happen — NOT whether they happen — an
 
 ## Stop conditions (run the loop-close protocol, then stop)
 
+**Human-interaction rules (human feedback 2026-07-25) — follow literally:**
+1. **A human question is answered FIRST, immediately, in the chat** — before any tool call, status ritual, or file write. Never make the human repeat a question; never answer it only into a file/handoff instead of the chat.
+2. **Human away + human input needed ≠ idle.** Park the blocked item with its action list and CONTINUE working anything not gated on the human (other tasks in scope, filed hardening items, process debt). Idle heartbeats are a last resort when literally everything in scope is human-gated — and even then say so explicitly.
+3. **Blockers restated simply, every interaction.** Each report names what is blocked in one plain sentence per item (no jargon, no epic/invariant citations) with the exact human action next to it.
+4. **When the human returns (any new human message after a blocked period): the FIRST output is the ordered bullet list of the things they need to do** — shortest first, each with its reply token — before resuming anything else.
+5. **Every ask-the-human-to-test item carries its exact URL(s) explicitly** (and the element/keystroke on that page) — `http://127.0.0.1:<port>/...` written out per item, never "the page", "the hub", or "the app".
+
 **Blocked-on-human reports are ACTION LISTS (human feedback 2026-07-25).** Whenever a stop, wait, or idle report says work is gated on the human, it MUST enumerate the exact actions — per item: WHAT to do, WHERE (URL / page element / command), HOW to verify it worked, and WHAT it unblocks — plus the cheapest way to hand the result back (e.g. "reply 'E2 passes' and the orchestrator walks the board"). A bare "waiting on QA/human/decision" is never an acceptable report; if the loop cannot state the concrete action, it has not actually identified the blocker.
 - checkpoint flag present, OR
 - `board.sh next` reports empty/only-blocked backlog, OR
