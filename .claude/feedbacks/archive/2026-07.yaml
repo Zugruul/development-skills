@@ -5246,3 +5246,50 @@ items:
   routing:
     action: brain-note
     ref: orchestrator/live-tweaks-as-brief-amendments
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-25T05:00:00Z'
+iteration:
+  task: '330'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: brains
+  severity: medium
+  summary: Freshly minted lessons fed into the very next brief prevented a repeat
+    defect class on the first pass
+  detail: The listener-coordination note minted hours earlier was pointed at in the
+    dev brief; the dev reused the exact idiom and the multi-handler keyboard wiring
+    was right first-pass, unlike the prior task where the same class of bug cost a
+    review round.
+  evidence:
+  - Zugruul/development-skills#330
+  generalized: Pointing dev briefs at the specific established idiom (file+lines of
+    the pattern to reuse) rather than general cautions converts fresh retro lessons
+    into first-pass correctness; the orchestrator should routinely recall recent brain
+    notes when composing briefs for adjacent work.
+  routing:
+    action: brain-note
+    ref: orchestrator/brief-load-bearing-lines
+- category: friction
+  area: testing
+  severity: low
+  summary: The node-stub harness has no CSS engine, so cascade/specificity defects
+    sail through green
+  detail: A dead sizing rule (equal-specificity tie lost to source order) shipped
+    past a green suite; caught only by the reviewer's static tie-check + headless
+    measurement.
+  evidence:
+  - Zugruul/development-skills#330
+  generalized: For template-heavy UIs tested via DOM-stub harnesses, add a static
+    lint step or review checklist item for CSS specificity ties on shared class families
+    — the harness structurally cannot observe the cascade, so green is a floor, not
+    a verdict, for styling changes.
+  routing:
+    action: brain-note
+    ref: reviewer/static-specificity-tie-check

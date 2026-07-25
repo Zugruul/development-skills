@@ -74,6 +74,11 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
+  "compound-selector-for-shared-base->render-states-before-asserting-layout": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "copy-exact-strings-tests-assert-against->copy-not-eyeball-format-parity": {
     "fires": 13,
     "last": "2026-07-22",

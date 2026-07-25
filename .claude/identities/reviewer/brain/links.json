@@ -54,6 +54,11 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
+  "red-check-precision->prescribe-contract-not-code": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "red-commit-worktree-verify->recompute-hashes-never-eyeball": {
     "fires": 2,
     "last": "2026-07-22",
@@ -82,6 +87,16 @@
   "rerun-the-red-empirically->reproduce-then-verify-fix": {
     "fires": 1,
     "last": "2026-07-22",
+    "weight": 0.5
+  },
+  "static-specificity-tie-check->measure-geometry-not-strings": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "static-specificity-tie-check->stub-harness-blindspot": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "stub-harness-blindspot->measure-geometry-not-strings": {
