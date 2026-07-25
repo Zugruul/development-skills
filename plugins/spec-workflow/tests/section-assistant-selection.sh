@@ -267,7 +267,7 @@ const document = {
 // the picker/overlay get appended into) -- pre-registered once, reset
 // per-run() below, unlike the ast-* ids the selection functions create
 // themselves each time.
-// AST-022 (§7.5): ast-ask-again/ast-switcher are the ⚙ panel's static
+// AST-022 (§7.5): ast-ask-again is the ⚙ panel's static
 // furniture (present in the HTML at boot, same as sect-voice etc above) --
 // initAssistantSelection now unconditionally refreshes them, so they need
 // to exist as real elements here too even though this section doesn't
@@ -277,7 +277,9 @@ const document = {
 // HTML comment beside it) that renderAssistantPicker looks up instead of
 // appending into #voicebar; it needs to exist here for the same reason the
 // other STATIC_IDS do.
-const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-picker-anchor", "ast-ask-again", "ast-switcher", "voice-viz-name"];
+// #399: ast-switcher is gone (dock removed) -- voice-viz-name (the label
+// selector) is already a STATIC_ID above; nothing else to add here.
+const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-picker-anchor", "ast-ask-again", "voice-viz-name"];
 for (const id of STATIC_IDS) {
     const el = mkEl(id);
     el.classList._parent = el;
@@ -329,11 +331,15 @@ eval(extract("isChatTypingTarget"));
 eval(extract("unbindAssistantPickerKeys"));
 eval(extract("renderAssistantPicker"));
 eval(extract("renderNoneOverlay"));
-// AST-022 restyle (issue #319 follow-up): renderAssistantSwitcher now calls
-// the shared escapeHtml() helper -- extract it too so this stays the real
-// production wiring instead of a simplified fork.
+// #399: renderAssistantPicker's row click now also captures the select
+// response and calls renderAssistantDigest -- extract it too (real
+// production wiring, not a fork); no #ast-digest element is registered in
+// STATIC_IDS here since this file doesn't assert on digest content, but
+// the function's own `if(!el) return` guard makes that a harmless no-op.
+eval(extract("renderAssistantDigest"));
+// escapeHtml is used by renderAssistantPicker's row markup (name/aliases)
+// -- extract it so this stays the real production wiring.
 eval(extract("escapeHtml"));
-eval(extract("renderAssistantSwitcher"));
 eval(extract("setAskAgainUi"));
 eval(extract("initAssistantSelection"));
 // review round 1 (#318), finding 1: the T-key chat overlay's own Esc

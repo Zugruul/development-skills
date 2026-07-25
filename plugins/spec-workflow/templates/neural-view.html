@@ -35,29 +35,21 @@
      footprint (height + gap) kept current by applyUiState — it shrinks to the
      bare header when the section is folded and to 0 when collapsed away, so
      the note/settings panels below always reclaim the space */
-  /* #397 follow-up (human review, round 2): *1.1 (from #319, grown for
-     #voice-dock below) left the bars far more vertical room than a
-     VU-style strip needs -- and the first compact pass (*.85) still read
-     as too tall live. #voice-viz now takes a genuinely slim capped height
-     instead of flex:1 (see its rule below), so shrunk again to just fit
-     #voicebar-head (~26px, its tallest child) + #voicebar's own padding
-     (~22px) + the slim viz + #voice-dock's floor content (~64px for one
-     assistant row + one digest note) at common viewport heights.
-     #397 review round 1: #voice-dock's cap is now max(64px, 40%) (see its
-     rule below) so its floor content is NEVER clipped, at any viewport --
-     recomputed the fit at 700/900/1200px (colq = (vh-100)/4, so 150/200/
-     275): total need is ~48px head+padding + viz (28/36/40, clamped) +
-     dock (max(64, 0.4*voiceh)) = ~140/~148/~171px against voiceh of
-     ~112/150/206px. At 900-1200px that fits with a few px to spare; below
-     ~900px the guaranteed dock floor can push #voicebar's true content a
-     bit past --voiceh (e.g. ~28px over at 700px). #397 review round 2:
-     #voicebar itself uses min-height:var(--voiceh), not a fixed height
-     (see its rule below), so this is never a clip and never an
-     under-measurement either -- the box grows to fit that extra content,
-     vbar.offsetHeight (what --voice-below is read live from, applyUiState)
-     reports the TRUE grown height in that case, and panels below still
-     start in the right place. --voiceh is a target/floor, not a hard cap. */
-  --voiceh:calc(var(--colq)*.75);
+  /* #399 (human-directed): #voice-dock (the switcher row + digest docked
+     under the waveform, #397) is gone -- the assistant-name label beside
+     the bars is the selector now, so --voiceh no longer needs to reserve
+     any dock floor content, or scale with --colq the way the dock's
+     percentage cap once forced it to. What's left is fixed, honest
+     arithmetic: #voicebar-head (~26px, its tallest child) + #voicebar's
+     own vertical padding (.7rem top+bottom ~= 22px) + the slim VU-strip
+     viz (still clamp(28px, .18*colq, 40px), see #voice-viz below) --
+     48px + a 28-40px clamp, so ~76-88px across common viewports (was
+     ~112-206px under the old dock-driven *.75 fraction). #voicebar itself
+     still uses min-height, not a fixed height (see its rule below), so if
+     some future addition grows past this floor the box grows with it
+     instead of clipping -- vbar.offsetHeight (what --voice-below is read
+     live from, applyUiState) always reports the TRUE height either way. */
+  --voiceh:calc(48px + clamp(28px, calc(var(--colq)*.18), 40px));
   --voice-below:calc(var(--voiceh) + 12px);
   /* --log-space mirrors --voice-below for the BOTTOM of the column: the room
      reserved for the activation log (height + gap), live-updated by
@@ -437,22 +429,21 @@ canvas.grabbing{cursor:grabbing}
 /* #397 review round 2: this was a FIXED height:var(--voiceh). With
    box-sizing:border-box and no overflow set here, a fixed height makes
    offsetHeight report the nominal border box only — any content that
-   overflows past it (the dock's guaranteed-floor case below) is invisible
-   to offsetHeight. --voice-below is read live off vbar.offsetHeight
-   (applyUiState), so a fixed height meant it could under-reserve space at
-   short viewports and #inspect below would overlap the overflowing dock.
-   min-height keeps --voiceh as the target/floor but lets the box grow to
-   its real content when needed, so offsetHeight (and --voice-below) always
-   reflect the panel's true footprint — no overlap, no separate clip fix
-   needed. Deliberately NOT overflow:hidden, which would just re-clip the
-   dock instead of fixing the measurement. */
+   overflows past it is invisible to offsetHeight. --voice-below is read
+   live off vbar.offsetHeight (applyUiState), so a fixed height meant it
+   could under-reserve space at short viewports and #inspect below would
+   overlap. min-height keeps --voiceh as the target/floor but lets the box
+   grow to its real content when needed, so offsetHeight (and
+   --voice-below) always reflect the panel's true footprint — no overlap,
+   no separate clip fix needed. Deliberately NOT overflow:hidden, which
+   would just re-clip content instead of fixing the measurement. */
 #voicebar{top:70px;right:14px;width:var(--colw);min-height:var(--voiceh);display:flex;flex-direction:column;
   padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease}
 #voicebar.collapsed{transform:translateX(calc(100% + 24px));opacity:0;pointer-events:none}
 /* #397 review round 3: min-height:var(--voiceh) above floors every state
    of #voicebar, including folded — drop the floor here so a folded panel
-   can actually shrink to its head + dock content instead of staying stuck
-   at --voiceh (reclaiming 0px). See the comment by #voice-viz[hidden]
+   can actually shrink to just its head instead of staying stuck at
+   --voiceh (reclaiming 0px). See the comment by #voice-viz[hidden]
    below for the fuller why. */
 #voicebar.folded{min-height:0}
 #voicebar-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
@@ -484,12 +475,67 @@ canvas.grabbing{cursor:grabbing}
    min-height:var(--voiceh) instead — but min-height is a FLOOR that
    applies in every state, including .folded, so a bare height:auto no
    longer suffices: the folded panel got stuck no shorter than --voiceh,
-   reclaiming 0px instead of shrinking to just its head + dock content.
-   #voicebar.folded (below, next to #voicebar's own rule) drops the floor
-   for that state instead, so folding reclaims space again. */
+   reclaiming 0px instead of shrinking to just its head. #voicebar.folded
+   (below, next to #voicebar's own rule) drops the floor for that state
+   instead, so folding reclaims space again. */
 #voice-viz[hidden]{display:none}
-.ast-voice-name{font-size:.5rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);white-space:nowrap;flex:0 0 auto}
-.ast-voice-name:empty{display:none}
+/* #399 (human review, live refinement): the label is now a real <button>
+   with combobox semantics (aria-haspopup="listbox"/aria-expanded, native
+   Tab focus + Enter/Space activation -- same "no styled-div escape hatch"
+   lesson #318's Skip button already applied here) that opens an anchored
+   dropdown (#ast-switch-dropdown below) positioned AT the label, not the
+   top-center AST-021 palette (that palette is untouched -- it stays the
+   BOOT-time "multiple outcome" picker only, see initAssistantSelection).
+   Reset the default button chrome so it still reads as the plain HUD
+   label #395 established, and add a hover/focus affordance so it's
+   discoverable as clickable. setVoiceHeaderName still sets textContent to
+   exactly the name (or "" -- the same contract #395/#397's tests already
+   pin), so the "▾" caret and the empty-state "SELECT" fallback are
+   generated content here instead of JS-appended text -- a real assistant
+   name never gets mangled with a trailing glyph, and there's still a
+   discoverable click target (SELECT ▾) before any assistant is chosen.
+   aria-label (set in JS, see setVoiceHeaderName) carries the real
+   accessible name since generated content isn't reliably exposed to the
+   accessibility tree. */
+.ast-voice-name{font-size:.5rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);
+  white-space:nowrap;flex:0 0 auto;background:transparent;border:0;padding:0;margin:0;
+  font-family:inherit;cursor:pointer}
+.ast-voice-name:hover,.ast-voice-name:focus-visible{color:var(--fg)}
+.ast-voice-name::after{content:" ▾";opacity:.7}
+.ast-voice-name:empty::before{content:"SELECT"}
+/* #399: the post-boot switch dropdown, anchored AT the label. NOT a child
+   of #voice-viz -- that row clips (overflow:hidden), and overflow clips
+   absolutely-positioned descendants of the clipping box when it is also
+   their containing block. It sits as a sibling inside #voicebar
+   (position:fixed containing block) at top:100%;left:1rem: with
+   #voice-dock gone the panel ends at the label's own row, so this drops
+   directly under the label without any JS measurement, and OUT of flow
+   (doesn't grow #voicebar or perturb --voiceh, same reasoning as
+   #ast-digest-panel below). Compact HUD list (name + dimmed alias, current
+   one marked via .ast-switch-row-selected), plus a kbd-styled hint row
+   showing the platform-appropriate ⌘K/Ctrl+K chips (renderShortcutKeycaps,
+   JS below). */
+#ast-switch-dropdown{position:absolute;top:100%;left:1rem;margin-top:6px;min-width:11rem;
+  background:var(--panel-solid);border:1px solid var(--border);border-radius:8px;
+  backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+  box-shadow:0 10px 28px rgba(0,0,0,.45);z-index:15;overflow:hidden;font-family:var(--mono)}
+#ast-switch-dropdown[hidden]{display:none}
+.ast-switch-list{display:flex;flex-direction:column;gap:.15rem;padding:.35rem;max-height:40vh;overflow-y:auto}
+.ast-switch-list::-webkit-scrollbar{width:7px}
+.ast-switch-list::-webkit-scrollbar-thumb{background:rgba(90,190,255,.4);border-radius:4px}
+.ast-switch-row{display:flex;align-items:baseline;gap:.5rem;font-family:var(--mono);
+  font-size:.66rem;color:var(--fg);text-align:left;width:100%;background:transparent;
+  border:1px solid transparent;border-radius:6px;padding:.32rem .5rem;cursor:pointer}
+.ast-switch-row:hover{border-color:var(--cyan-dim);color:var(--cyan)}
+.ast-switch-row.ast-switch-row-active{border-color:var(--cyan-dim);background:rgba(70,230,255,.12)}
+.ast-switch-row-selected{color:var(--cyan)}
+.ast-switch-row-name{flex:none;letter-spacing:.03em}
+.ast-switch-row-aliases{flex:1;min-width:0;color:var(--muted);opacity:.65;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ast-switch-hint{display:flex;align-items:center;justify-content:flex-end;gap:.2rem;
+  padding:.3rem .5rem;border-top:1px solid var(--border)}
+.ast-kbd{font-family:var(--mono);font-size:.52rem;letter-spacing:.03em;color:var(--muted);
+  border:1px solid var(--border);border-radius:4px;padding:.05rem .3rem;line-height:1.3}
 /* the canvas does NOT need position:absolute;inset:0 to size correctly —
    drawViz() reads vizCanvas.clientWidth/clientHeight fresh every animation
    frame (see the JS below) and resizes its backing buffer to match, so a
@@ -509,24 +555,29 @@ canvas.grabbing{cursor:grabbing}
    fix — same duplicate-rule bug class as #395, one cascade layer deeper. */
 #voice-viz canvas{position:static;inset:auto;width:auto;height:auto;flex:1;min-width:0;align-self:stretch;display:block}
 #voice-viz-status{position:relative;font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--amber)}
-/* assistant switcher, docked at the bottom of the Voice section (human
-   review, 2026-07-24): the finalized Option 5 design (docs/ui-options/
-   AST-022.html) was reachable only inside the ⚙ settings popover, invisible
-   until opened — moved here so it's always visible under the waveform,
-   same #ast-switcher/#ast-digest ids and render functions, just relocated.
-   flex:none (not flex:1) so it takes only the room its content needs;
-   own scroll region caps it if the candidate list grows long, rather than
-   pushing --voiceh (and everything below it) open further.
-   #397 review round 1: a bare 40% resolves against --voiceh, and once
-   #397 shrank --voiceh that 40% could fall below the dock's own FLOOR
-   content (one assistant row + one digest note, ~64px) -- clipping it
-   even with nothing long to scroll. max(64px, 40%) keeps 40% as the cap
-   for genuinely long lists (once --voiceh is tall enough that 40% of it
-   exceeds 64px) while guaranteeing the floor content is never clipped. */
-#voice-dock{flex:none;max-height:max(64px, 40%);overflow-y:auto;border-top:1px solid var(--border);
-  padding-top:.35rem;margin-top:.3rem}
-#voice-dock::-webkit-scrollbar{width:7px}
-#voice-dock::-webkit-scrollbar-thumb{background:rgba(90,190,255,.4);border-radius:4px}
+/* #399 (human-directed): the assistant switcher that used to be docked at
+   the bottom of the Voice section (#397/#319, #voice-dock) is gone -- the
+   #voice-viz-name label beside the bars IS the selector now (click it, or
+   Cmd+K/Ctrl+K, opens the anchored #ast-switch-dropdown, see its CSS
+   comment above -- the top-center AST-021 palette is untouched and stays
+   boot-only). The activation digest (AST-024, #321) still needs somewhere
+   to render on a real switch; rather than a permanent docked row it's a
+   transient overlay
+   (#ast-digest-panel, click-to-dismiss) anchored under the voicebar via
+   position:absolute against #voicebar's position:fixed containing block --
+   deliberately OUT of #voicebar's normal flow, so a shown digest never
+   grows #voicebar itself or perturbs --voiceh/--voice-below the way the
+   old in-flow dock did. */
+#ast-digest-panel{position:absolute;left:1rem;right:1rem;top:100%;margin-top:6px;
+  background:var(--panel-solid);border:1px solid var(--border);border-radius:8px;
+  padding:.4rem 1.6rem .4rem .55rem;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+  box-shadow:0 10px 28px rgba(0,0,0,.45);z-index:15;max-height:40vh;overflow-y:auto}
+#ast-digest-panel[hidden]{display:none}
+#ast-digest-panel::-webkit-scrollbar{width:7px}
+#ast-digest-panel::-webkit-scrollbar-thumb{background:rgba(90,190,255,.4);border-radius:4px}
+.ast-digest-close{position:absolute;top:.25rem;right:.35rem;background:transparent;border:0;
+  color:var(--muted);font-family:var(--mono);font-size:.7rem;line-height:1;cursor:pointer;padding:.15rem .3rem}
+.ast-digest-close:hover{color:var(--cyan)}
 /* cog rides directly right of the VOICE heading, sized as a real target */
 #voice-settings{font-size:1rem;line-height:1;padding:.25rem .5rem}
 /* mic-mode dot: press-to-speak = dark red with a slash; always-on = solid red;
@@ -583,36 +634,23 @@ canvas.grabbing{cursor:grabbing}
 .ast-none-overlay{margin:.5rem;padding:.5rem .6rem;border:1px solid #e0453a;
   border-radius:3px;color:#e0453a;font-family:var(--mono);font-size:.62rem;
   letter-spacing:.05em;cursor:help}
-/* AST-022 selection memory (SPEC-ASSISTANT.md §7.5, issue #319): human-picked
-   restyle -- Option 5 "glanceable badges" (docs/ui-options/AST-022.html,
-   finalized in f923566). The mockup's palette is lifted 1:1 from this
-   file's vars (its own comment says so), so the rules below reference
-   --cyan/--cyan-dim/--muted/--border directly instead of re-deriving hex.
-   The mockup's badges show per-candidate done/fail/note counts, but
-   status.candidates carries only name+aliases (engine.py) -- no per-row
-   activity data exists yet to badge honestly, so the one badge this can
-   show is the selected row's "active" state, styled like the mockup's
-   b-done (cyan) badge. */
-.ast-switcher{display:flex;flex-direction:column;gap:.3rem;margin-top:.4rem}
-.ast-switcher-row{display:flex;align-items:center;gap:.5rem;
-  font-family:var(--mono);font-size:.62rem;color:var(--fg);
-  border:1px solid var(--border);border-radius:6px;padding:.35rem .55rem;cursor:pointer;background:transparent}
-.ast-switcher-row:hover{border-color:var(--cyan-dim);color:var(--cyan)}
-.ast-switcher-row.ast-switcher-selected{border-color:var(--cyan-dim);background:rgba(70,230,255,.12)}
-.ast-switcher-name{font-size:.68rem;letter-spacing:.03em;flex:none}
-.ast-switcher-aliases{font-size:.56rem;color:var(--muted);flex:1;min-width:0;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ast-switcher-badge{font-size:.5rem;letter-spacing:.05em;text-transform:uppercase;
-  padding:.08rem .32rem;border-radius:4px;border:1px solid var(--cyan-dim);color:var(--cyan);
-  flex:none;white-space:nowrap}
+/* #399: the AST-022 switcher (Option 5 "glanceable badges",
+   docs/ui-options/AST-022.html, #319) that lived here as .ast-switcher-*
+   rows is gone along with #voice-dock -- switching is now the label/⌘K
+   anchored dropdown (.ast-switch-dropdown/.ast-switch-row, styled above,
+   near #voice-viz-name). The top-center .ast-picker-* rules just above
+   remain untouched: that's still the boot-time "multiple outcome" palette,
+   a separate flow this refinement did not change. */
 .ast-ask-again{align-self:flex-start}
 /* same on/active treatment as .iconbtn.active elsewhere, applied via the
    .on class setAskAgainUi() already toggles */
 .ast-ask-again.on{color:var(--cyan);border-color:var(--cyan-dim);background:rgba(70,230,255,.1)}
 /* AST-024 activation digest (SPEC-ASSISTANT.md §7.7/§7.8, issue #321):
-   same placeholder-only styling note as .ast-picker/.ast-switcher above --
-   restyle is a pending human choice, not made here. */
-.ast-digest{display:flex;flex-direction:column;gap:.2rem;margin-top:.3rem;
+   rows are still placeholder-only styling (a real restyle is a pending
+   human choice, not made here) -- #399 moved the CONTAINER from the
+   removed #voice-dock into #ast-digest-panel above, but .ast-digest itself
+   (the row list renderAssistantDigest fills) is unchanged. */
+.ast-digest{display:flex;flex-direction:column;gap:.2rem;
   font-family:var(--mono);font-size:.6rem;color:var(--fg)}
 .ast-digest-note{border:1px solid var(--border);border-radius:3px;padding:.2rem .4rem}
 .ast-digest-empty{opacity:.6;font-style:italic}
@@ -1038,9 +1076,32 @@ canvas.grabbing{cursor:grabbing}
       <button class="iconbtn" id="voicebar-collapse" title="Hide voice" aria-label="Hide voice">⟩</button>
     </div>
   </div>
-  <div id="voice-viz"><span id="voice-viz-name" class="ast-voice-name"></span><canvas id="voice-viz-canvas"></canvas><span id="voice-viz-status" hidden></span></div>
-  <div id="voice-dock">
-    <div class="ast-switcher" id="ast-switcher" role="group" aria-label="Switch assistant"></div>
+  <!-- #399 (human review, live refinement): the assistant-name label IS
+       the selector -- a real <button> with combobox semantics (native
+       Tab/Enter/Space, see the .ast-voice-name CSS comment above) that
+       opens #ast-switch-dropdown, anchored right here, not the top-center
+       AST-021 palette (that stays boot-only). setVoiceHeaderName renders
+       the label's text ("NAME ▾" or "SELECT ▾" when nothing is chosen
+       yet). Same Cmd+K/Ctrl+K shortcut opens/toggles the same dropdown --
+       see the JS below. -->
+  <div id="voice-viz"><button type="button" id="voice-viz-name" class="ast-voice-name"
+      aria-haspopup="listbox" aria-expanded="false" title="Switch assistant"></button><canvas id="voice-viz-canvas"></canvas><span id="voice-viz-status" hidden></span></div>
+  <!-- #399: the switch dropdown is a SIBLING of #voice-viz, not a child --
+       #voice-viz clips (overflow:hidden), and an absolutely-positioned
+       descendant is still clipped by its positioned ancestor's overflow.
+       Anchored against #voicebar instead (position:fixed containing block);
+       with #voice-dock gone the panel ends at the label's own row, so
+       top:100% + left:1rem drops it directly under the label. -->
+  <div id="ast-switch-dropdown" class="ast-switch-dropdown" hidden>
+    <div class="ast-switch-list" id="ast-switch-list" role="listbox" aria-label="Switch assistant"></div>
+    <div class="ast-switch-hint" id="ast-switch-hint" aria-hidden="true"></div>
+  </div>
+  <!-- AST-024 digest (#321): relocated out of the removed #voice-dock into
+       a transient, click-to-dismiss overlay -- see the #ast-digest-panel
+       CSS comment above. hidden until renderAssistantDigest has something
+       to show (a real switch's response digest). -->
+  <div id="ast-digest-panel" hidden>
+    <button type="button" class="ast-digest-close" id="ast-digest-close" aria-label="Dismiss activation digest">×</button>
     <div class="ast-digest" id="ast-digest" role="status" aria-label="Assistant activation digest"></div>
   </div>
 </div>
@@ -1102,7 +1163,7 @@ canvas.grabbing{cursor:grabbing}
     <div class="vs-opts" role="group" aria-label="Assistant selection">
       <button class="iconbtn ast-ask-again" id="ast-ask-again" aria-pressed="false">Ask again on load</button>
     </div>
-    <div class="vs-hint">On: the picker shows every time this page loads, even if an assistant was chosen before. Off: the last choice loads automatically. The switcher itself now lives docked under the waveform, always visible — not only here.</div>
+    <div class="vs-hint">On: the picker shows every time this page loads, even if an assistant was chosen before. Off: the last choice loads automatically. Switch anytime by clicking the assistant name beside the bars, or Cmd+K/Ctrl+K.</div>
   </div>
   <div class="vs-row">
     <button class="iconbtn" id="vs-reset" aria-live="polite">Reset settings</button>
@@ -5101,7 +5162,13 @@ function setVoiceHeaderName(name){
   const el = document.getElementById("sect-voice");
   if(el) el.textContent = "Voice";
   const tag = document.getElementById("voice-viz-name");
-  if(tag) tag.textContent = name || "";
+  if(!tag) return;
+  tag.textContent = name || "";
+  // #399: the caret/"SELECT" fallback is CSS generated content (see the
+  // .ast-voice-name comment) so textContent stays exactly the name --
+  // aria-label carries the real accessible string since generated content
+  // isn't reliably exposed to assistive tech.
+  tag.setAttribute("aria-label", name ? `Switch assistant, current: ${name}` : "Select assistant");
 }
 // Bound only while a picker is actually on screen -- created fresh in
 // renderAssistantPicker, torn down by unbindAssistantPickerKeys() on every
@@ -5227,24 +5294,31 @@ function renderNoneOverlay(){
   bar.appendChild(overlay);
 }
 // ---- assistant selection memory (AST-022, SPEC-ASSISTANT.md §7.5) ----
-// The ⚙ voice-settings panel's "ask again on load" toggle and assistant
-// switcher. Both read/write against the SAME /assistant/status and
-// /assistant/select routes AST-021's picker already uses -- selecting from
-// the switcher is just "run the picker's row click logic again", no
-// separate turn-state flush/reload (that is AST-024's switch flow, out of
-// scope here).
+// The ⚙ voice-settings panel's "ask again on load" toggle. (#399: the
+// switcher that used to live here too -- read/writing the same
+// /assistant/status and /assistant/select routes as the AST-021 picker --
+// is gone; switching is the label/⌘K anchored dropdown now, see
+// openAssistantSwitchDropdown further below.)
 // ---- activation digest (AST-024, SPEC-ASSISTANT.md §7.7/§7.8, issue
 // #321) ---- Renders the `digest` key POST /assistant/select's response
 // carries ONLY on a real switch (engine.py's `_select` docstring -- never
 // on an initial pick or a same-name reselect, so a missing/undefined
-// `digestPayload` here just means "nothing to show", not an error).
-// Placeholder rows only (.ast-digest-note / .ast-digest-empty) -- restyle
-// is a pending human choice, same note as every other .ast-* block above.
+// `digestPayload` here just means "nothing to show", not an error). #399:
+// the container moved from the removed #voice-dock into #ast-digest-panel
+// (a transient, click-to-dismiss overlay -- see its CSS comment) -- shown
+// only while there's something to show, hidden again on a no-op response
+// or the close button. Placeholder rows only (.ast-digest-note /
+// .ast-digest-empty) -- restyle is a pending human choice.
 function renderAssistantDigest(digestPayload){
   const el = document.getElementById("ast-digest");
+  const panel = document.getElementById("ast-digest-panel");
   if(!el) return;
   el.innerHTML = "";
-  if(!digestPayload) return;
+  if(!digestPayload){
+    if(panel) panel.hidden = true;
+    return;
+  }
+  if(panel) panel.hidden = false;
   const notes = digestPayload.notesMinted || [];
   const exchanges = digestPayload.exchanges || 0;
   const tasks = digestPayload.tasks || [];
@@ -5275,34 +5349,6 @@ function renderAssistantDigest(digestPayload){
   trow.textContent = tasks.length ? `${tasks.length} background task(s)` : "tasks: pending E4 (trace-sourced task digest not yet wired)";
   el.appendChild(trow);
 }
-function renderAssistantSwitcher(candidates, selected){
-  const el = document.getElementById("ast-switcher");
-  if(!el) return;
-  el.innerHTML = "";   // #387: children.length=0 throws on a real live HTMLCollection
-  for(const c of (candidates || [])){
-    const row = document.createElement("div");
-    const isSelected = c.name === selected;
-    row.className = "ast-switcher-row" + (isSelected ? " ast-switcher-selected" : "");
-    // Option 5 "glanceable badges" (issue #319): name + aliases + an
-    // active-state badge on the selected row -- see the CSS comment above
-    // renderAssistantSwitcher for why this is the one badge available
-    // without per-candidate activity data.
-    const aliasesHtml = (c.aliases && c.aliases.length)
-      ? `<span class="ast-switcher-aliases">${escapeHtml(c.aliases.join(", "))}</span>` : "";
-    const badgeHtml = isSelected ? `<span class="ast-switcher-badge">active</span>` : "";
-    row.innerHTML = `<span class="ast-switcher-name">${escapeHtml(c.name)}</span>${aliasesHtml}${badgeHtml}`;
-    row.onclick = async ()=>{
-      let resp = null;
-      try{
-        const r = await fetch("/assistant/select", {method:"POST", body: JSON.stringify({name: c.name})});
-        resp = await r.json();
-      }catch{}
-      renderAssistantDigest(resp && resp.digest);
-      await refreshAssistantSettingsUi();
-    };
-    el.appendChild(row);
-  }
-}
 function setAskAgainUi(askAgain){
   const btn = document.getElementById("ast-ask-again");
   if(!btn) return;
@@ -5315,14 +5361,12 @@ async function refreshAssistantSettingsUi(){
   if(!status) return;
   setVoiceHeaderName(status.selected);
   gateVoiceAndChat(status.gated);
-  renderAssistantSwitcher(status.candidates || [], status.selected);
   setAskAgainUi(status.askAgain);
 }
 async function initAssistantSelection(){
   let status;
   try{ status = await (await fetch("/assistant/status")).json(); }catch{ return; }
   if(!status) return;
-  renderAssistantSwitcher(status.candidates || [], status.selected);
   setAskAgainUi(status.askAgain);
   if(status.outcome === "one"){
     const sole = (status.candidates || [])[0];
@@ -5349,6 +5393,151 @@ async function initAssistantSelection(){
     renderNoneOverlay();
   }
 }
+
+// ---- label-as-selector dropdown + Cmd+K/Ctrl+K quick switch (issue #399) ----
+// The #voice-viz-name label (click) and a global Cmd+K/Ctrl+K shortcut both
+// toggle #ast-switch-dropdown -- the compact post-boot switcher anchored at
+// the label (see its CSS/HTML comments). Fresh candidates come from GET
+// /assistant/status on every open (same "latest server state on open"
+// posture the settings panel uses) -- a candidate set can change without a
+// reload. 0 candidates opens an empty list (harmless); exactly 1 still
+// opens (explicit user intent, unlike boot's silent single-candidate
+// auto-select). The boot-time AST-021 palette (renderAssistantPicker
+// above) is UNTOUCHED -- it remains the boot "multiple" flow and still
+// Skips/gates on Escape; this dropdown exists only post-boot and its
+// close paths never skip and never touch the gate.
+function astShortcutKeys(){
+  const plat = (typeof navigator !== "undefined" &&
+    (navigator.platform || (navigator.userAgentData && navigator.userAgentData.platform))) || "";
+  return /mac|iphone|ipad|ipod/i.test(plat) ? ["\u2318", "K"] : ["Ctrl", "K"];
+}
+function renderShortcutKeycaps(){
+  const hint = document.getElementById("ast-switch-hint");
+  if(!hint) return;
+  hint.innerHTML = astShortcutKeys().map(k => `<kbd class="ast-kbd">${k}</kbd>`).join("");
+}
+function unbindAssistantSwitchDropdownKeys(){
+  if(window.__astSwitchKeydown){
+    removeEventListener("keydown", window.__astSwitchKeydown);
+    window.__astSwitchKeydown = null;
+  }
+}
+function closeAssistantSwitchDropdown(){
+  const dd = document.getElementById("ast-switch-dropdown");
+  if(dd) dd.hidden = true;
+  unbindAssistantSwitchDropdownKeys();
+  const label = document.getElementById("voice-viz-name");
+  if(label) label.setAttribute("aria-expanded", "false");
+}
+async function openAssistantSwitchDropdown(){
+  const dd = document.getElementById("ast-switch-dropdown");
+  const list = document.getElementById("ast-switch-list");
+  if(!dd || !list || !dd.hidden) return;
+  let status;
+  try{ status = await (await fetch("/assistant/status")).json(); }catch{ return; }
+  const candidates = (status && status.candidates) || [];
+  const selected = status && status.selected;
+  list.innerHTML = "";
+  const rows = [];
+  let activeIdx = 0;
+  function setActiveRow(i){
+    activeIdx = rows.length ? ((i % rows.length) + rows.length) % rows.length : 0;
+    rows.forEach((r, idx)=>{ r.classList.toggle("ast-switch-row-active", idx === activeIdx); });
+  }
+  for(const c of candidates){
+    // real <button> rows: native Tab/Enter/Space for free (the #318 Skip
+    // lesson -- no styled-div interactive elements)
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "ast-switch-row" + (c.name === selected ? " ast-switch-row-selected" : "");
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", String(c.name === selected));
+    const aliasesHtml = (c.aliases && c.aliases.length)
+      ? `<span class="ast-switch-row-aliases">${escapeHtml(c.aliases.join(", "))}</span>` : "";
+    row.innerHTML = `<span class="ast-switch-row-name">${escapeHtml(c.name)}</span>${aliasesHtml}`;
+    row.onclick = async ()=>{
+      let resp = null;
+      try{
+        const r = await fetch("/assistant/select", {method:"POST", body: JSON.stringify({name: c.name})});
+        resp = await r.json();
+      }catch{}
+      closeAssistantSwitchDropdown();
+      setVoiceHeaderName(c.name);
+      gateVoiceAndChat(false);
+      // AST-024 (#321): only a REAL switch's response carries `digest`; an
+      // undefined payload is a harmless clear (panel stays hidden).
+      renderAssistantDigest(resp && resp.digest);
+    };
+    list.appendChild(row);
+    rows.push(row);
+  }
+  renderShortcutKeycaps();
+  dd.hidden = false;
+  const label = document.getElementById("voice-viz-name");
+  if(label) label.setAttribute("aria-expanded", "true");
+  // start the keyboard highlight on the CURRENT assistant so Enter with no
+  // arrows is a no-op-ish reselect, and one arrow reaches a neighbor fast
+  setActiveRow(Math.max(0, candidates.findIndex(c => c.name === selected)));
+  function onSwitchKeydown(ev){
+    if(isChatTypingTarget(ev.target)) return;
+    if(ev.key === "ArrowDown"){ if(ev.preventDefault) ev.preventDefault(); setActiveRow(activeIdx + 1); return; }
+    if(ev.key === "ArrowUp"){ if(ev.preventDefault) ev.preventDefault(); setActiveRow(activeIdx - 1); return; }
+    if(ev.key === "Enter"){
+      if(ev.preventDefault) ev.preventDefault();
+      if(rows[activeIdx]) rows[activeIdx].onclick();
+      return;
+    }
+    if(ev.key === "Escape"){
+      // same defaultPrevented handshake as the boot picker/chat overlay/
+      // inspector (#318): a handler bound earlier that owned this Escape
+      // marks the shared event; defer to it instead of re-querying DOM
+      // state it may already have mutated. Closing the dropdown NEVER
+      // skips and NEVER touches the gate -- unlike the boot picker.
+      if(ev.defaultPrevented) return;
+      if(ev.preventDefault) ev.preventDefault();
+      closeAssistantSwitchDropdown();
+      return;
+    }
+  }
+  window.__astSwitchKeydown = onSwitchKeydown;
+  addEventListener("keydown", onSwitchKeydown);
+}
+function toggleAssistantSwitchDropdown(){
+  const dd = document.getElementById("ast-switch-dropdown");
+  if(dd && !dd.hidden){ closeAssistantSwitchDropdown(); return; }
+  openAssistantSwitchDropdown();
+}
+// Bound at module level like the other global keydown handlers (Space PTT
+// above, the T-key chat overlay and inspector Esc further below) -- guards
+// against typing targets the same way isChatTypingTarget already does for
+// them, and only preventDefault()s when it actually acts, so the browser's
+// own Cmd+K (address-bar/search) is suppressed only then. A named
+// top-level function so tests can extract and drive it directly, same
+// pattern as handleAssistantChatKeydown/handleAstInspectorKeydown.
+function handleAssistantSwitchKeydown(ev){
+  if((ev.key !== "k" && ev.key !== "K") || !(ev.metaKey || ev.ctrlKey)) return;
+  if(isChatTypingTarget(ev.target)) return;
+  if(ev.preventDefault) ev.preventDefault();
+  toggleAssistantSwitchDropdown();
+}
+// Wires the label click, the ⌘K/Ctrl+K listener, the platform-aware label
+// tooltip, and the digest panel's close button -- a named function so a
+// test harness can call it once against its own DOM stub instead of this
+// running unconditionally at template-eval time.
+function wireAssistantSwitchUi(){
+  const label = document.getElementById("voice-viz-name");
+  if(label){
+    label.onclick = ()=> toggleAssistantSwitchDropdown();
+    label.title = `Switch assistant (${astShortcutKeys().join("+")})`;
+  }
+  addEventListener("keydown", handleAssistantSwitchKeydown);
+  const digestClose = document.getElementById("ast-digest-close");
+  if(digestClose) digestClose.onclick = ()=>{
+    const p = document.getElementById("ast-digest-panel");
+    if(p) p.hidden = true;
+  };
+}
+wireAssistantSwitchUi();
 
 // ---- T-key chat overlay (AST-023, SPEC-ASSISTANT.md §8.6, §5, §8.3, §8.5,
 // issue #320) ----

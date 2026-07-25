@@ -348,6 +348,14 @@ function mkEl(initialId) {
             add(c){ this._parent._classes.add(c); },
             remove(c){ this._parent._classes.delete(c); },
             contains(c){ return this._parent._classes.has(c); },
+            // #399: renderAssistantPicker's keyboard nav toggles
+            // .ast-picker-active per row -- same stub as
+            // section-assistant-selection-memory.sh's identical harness.
+            toggle(c, force){
+                const on = force === undefined ? !this._parent._classes.has(c) : !!force;
+                if(on) this._parent._classes.add(c); else this._parent._classes.delete(c);
+                return on;
+            },
         },
         _items: [],
         get children(){
@@ -388,19 +396,26 @@ const document = {
     },
 };
 
-const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-ask-again", "ast-switcher", "ast-digest"];
+// #399: ast-switcher is gone (the label/⌘K palette replaced the docked
+// switcher) -- ast-picker-anchor + voice-viz-name are its STATIC_IDS
+// replacements, and ast-digest now lives inside ast-digest-panel.
+const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-ask-again", "ast-picker-anchor", "voice-viz-name", "ast-digest-panel", "ast-digest", "ast-switch-dropdown", "ast-switch-list", "ast-switch-hint"];
 for (const id of STATIC_IDS) {
     const el = mkEl(id);
     el.classList._parent = el;
 }
+elements["ast-digest-panel"].hidden = true;
+// #399: the switch dropdown ships hidden; open refuses to double-open.
+elements["ast-switch-dropdown"].hidden = true;
 
 global.window = global;
 let fetchCalls = [];
 let selectResponse = null;
+let statusResponse = {outcome: "multiple", candidates: [], selected: null, gated: false, askAgain: false};
 global.fetch = async (url, opts) => {
     fetchCalls.push({url, opts});
     if (url === "/assistant/status") {
-        return { json: async () => ({outcome: "multiple", candidates: [], selected: null, gated: false, askAgain: false}) };
+        return { json: async () => statusResponse };
     }
     if (url === "/assistant/select") {
         return { json: async () => selectResponse };
@@ -408,14 +423,33 @@ global.fetch = async (url, opts) => {
     return { json: async () => ({}) };
 };
 
+// #399: renderAssistantPicker binds/unbinds a real document-level keydown
+// listener while open -- same stub as section-assistant-selection.sh.
+global.__listeners = { keydown: [] };
+global.addEventListener = (type, fn) => {
+    global.__listeners[type] = global.__listeners[type] || [];
+    global.__listeners[type].push(fn);
+};
+global.removeEventListener = (type, fn) => {
+    const arr = global.__listeners[type] || [];
+    const i = arr.indexOf(fn);
+    if (i !== -1) arr.splice(i, 1);
+};
+
 eval(extract("renderAssistantDigest"));
 eval(extract("setVoiceHeaderName"));
 eval(extract("gateVoiceAndChat"));
-// AST-022 restyle (issue #319 follow-up): renderAssistantSwitcher now calls
-// the shared escapeHtml() helper -- extract it too so this stays the real
-// production wiring instead of a simplified fork.
 eval(extract("escapeHtml"));
-eval(extract("renderAssistantSwitcher"));
+eval(extract("isChatTypingTarget"));
+eval(extract("unbindAssistantPickerKeys"));
+eval(extract("renderAssistantPicker"));
+// #399: the dropdown switch path (label/⌘K) -- digest renders through ITS
+// row clicks now, not a palette switch mode.
+eval(extract("astShortcutKeys"));
+eval(extract("renderShortcutKeycaps"));
+eval(extract("unbindAssistantSwitchDropdownKeys"));
+eval(extract("closeAssistantSwitchDropdown"));
+eval(extract("openAssistantSwitchDropdown"));
 eval(extract("setAskAgainUi"));
 eval(extract("refreshAssistantSettingsUi"));
 
@@ -424,12 +458,14 @@ eval(extract("refreshAssistantSettingsUi"));
     elements["ast-digest"].innerHTML = "";
     renderAssistantDigest(null);
     if (elements["ast-digest"].children.length !== 0) throw new Error("null digest must render nothing");
+    if (elements["ast-digest-panel"].hidden !== true) throw new Error("a null digest must not reveal the panel");
     console.log("NULL_DIGEST_OK true");
 
     // ---- an all-empty digest renders the ast-digest-empty placeholder row ----
     renderAssistantDigest({sinceTs: "2020-01-01T00:00:00+00:00", notesMinted: [], exchanges: 0, tasks: [], tasksSource: "pending-E4"});
     const emptyRow = elements["ast-digest"].children.find(r => r.className.includes("ast-digest-empty"));
     if (!emptyRow) throw new Error("empty digest must render an ast-digest-empty row");
+    if (elements["ast-digest-panel"].hidden !== false) throw new Error("a real (even all-empty) digest payload must reveal the panel");
     console.log("EMPTY_DIGEST_OK true");
 
     // ---- a populated digest renders one ast-digest-note row per note + exchanges ----
@@ -442,21 +478,34 @@ eval(extract("refreshAssistantSettingsUi"));
     if (!noteRows.some(r => r.textContent.includes("2 exchanges"))) throw new Error("digest did not render the exchange count");
     console.log("POPULATED_DIGEST_OK true");
 
-    // ---- switcher row click renders the digest carried on the select response ----
-    const sw = elements["ast-switcher"];
-    renderAssistantSwitcher([{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}], "jarvis");
-    const fridayRow = sw.children.find(r => r.textContent.includes("friday"));
+    // ---- #399: end-to-end switch via the label dropdown -- open -> row
+    // select -> digest renders in the relocated panel. Exercises the SAME
+    // openAssistantSwitchDropdown row.onclick production code the label
+    // click and Cmd+K use (their wiring is exercised in
+    // section-assistant-selection-memory.sh's template harness).
+    elements["ast-digest-panel"].hidden = true;
+    elements["ast-digest"].innerHTML = "";
+    statusResponse = {outcome: "multiple", candidates: [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}], selected: "jarvis", gated: false, askAgain: false};
+    await openAssistantSwitchDropdown();
+    const fridayRow = elements["ast-switch-list"].children.find(r => r.textContent.includes("friday"));
     selectResponse = {selected: "friday", gated: false, digest: {sinceTs: "2020-01-01T00:00:00+00:00",
         notesMinted: [{slug: "clicked-note", strength: 1, ts: "2020-01-02T00:00:00+00:00"}],
         exchanges: 0, tasks: [], tasksSource: "pending-E4"}};
     await fridayRow.onclick();
     const rowsAfterClick = elements["ast-digest"].children.filter(r => r.className.includes("ast-digest-note"));
-    if (!rowsAfterClick.some(r => r.textContent.includes("clicked-note"))) throw new Error("switcher click did not render the select response's digest");
+    if (!rowsAfterClick.some(r => r.textContent.includes("clicked-note"))) throw new Error("dropdown row click did not render the select response's digest");
+    if (elements["ast-digest-panel"].hidden !== false) throw new Error("a real switch's digest must reveal the relocated panel");
+    if (elements["voice-viz-name"].textContent !== "friday") throw new Error("dropdown row click did not update the header/label name");
+    if (elements["ast-switch-dropdown"].hidden !== true) throw new Error("the dropdown must close after a pick");
     console.log("SWITCH_CLICK_RENDERS_DIGEST_OK true");
 
-    // ---- a select response with NO digest key (initial pick / same-name reselect) clears any stale row ----
-    selectResponse = {selected: "friday", gated: false};
-    await fridayRow.onclick();
+    // ---- a select response with NO digest key (initial pick / same-name reselect) clears any stale row and re-hides the panel ----
+    statusResponse = {outcome: "multiple", candidates: [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}], selected: "friday", gated: false, askAgain: false};
+    await openAssistantSwitchDropdown();
+    const jarvisRow = elements["ast-switch-list"].children.find(r => r.textContent.includes("jarvis"));
+    selectResponse = {selected: "jarvis", gated: false};
+    await jarvisRow.onclick();
+    if (elements["ast-digest-panel"].hidden !== true) throw new Error("a digest-less select response must hide the panel again, not leave a stale one showing");
     console.log("NO_DIGEST_RESPONSE_OK true");
 })().catch(e => { console.error("FAIL", e.message); process.exit(1); });
 NODEJS
@@ -464,11 +513,13 @@ tmpl_switch_out="$(node "$_asw_node" "$NVHTML_SWITCH" 2>&1)"
 tmpl_switch_rc=$?
 rm -f "$_asw_node"
 check_rc "template switch script exits 0" 0 "$tmpl_switch_rc"
-check "template: a null digest renders nothing" "NULL_DIGEST_OK true" "$tmpl_switch_out"
-check "template: an all-empty digest renders the ast-digest-empty placeholder" "EMPTY_DIGEST_OK true" "$tmpl_switch_out"
+check "template: a null digest renders nothing and keeps the panel hidden" "NULL_DIGEST_OK true" "$tmpl_switch_out"
+check "template: an all-empty digest renders the ast-digest-empty placeholder and reveals the panel" "EMPTY_DIGEST_OK true" "$tmpl_switch_out"
 check "template: a populated digest renders note + exchange rows" "POPULATED_DIGEST_OK true" "$tmpl_switch_out"
-check "template: clicking a switcher row renders the digest from the select response" "SWITCH_CLICK_RENDERS_DIGEST_OK true" "$tmpl_switch_out"
-check "template: a digest-less select response does not crash the click handler" "NO_DIGEST_RESPONSE_OK true" "$tmpl_switch_out"
+# #399: dock removed by human direction -- superseded by the palette (switch
+# mode) end-to-end coverage below, since that is now the only way to switch.
+check "template (#399): a dropdown row click renders the digest in the relocated panel, updates the label, and closes" "SWITCH_CLICK_RENDERS_DIGEST_OK true" "$tmpl_switch_out"
+check "template: a digest-less select response does not crash the click handler and re-hides the panel" "NO_DIGEST_RESPONSE_OK true" "$tmpl_switch_out"
 if [[ "$tmpl_switch_rc" -ne 0 ]]; then echo "$tmpl_switch_out" >&2; fi
 
 check "template pins the ast-digest class/id name in source" '"ast-digest"' "$(cat "$NVHTML_SWITCH")"

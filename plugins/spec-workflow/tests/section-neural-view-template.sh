@@ -1314,20 +1314,25 @@ check_absent "voice-viz no longer absorbs all leftover panel height via flex:1 (
 # genuine VU-strip footprint, and --voiceh recomputed down to match.
 check "voice-viz has a slim, capped-height VU-strip footprint (#397 round 2)" "#voice-viz{flex:0 0 clamp(28px, calc(var(--colq)*.18), 40px);min-height:28px;position:relative;display:flex;align-items:center;gap:" "$(cat "$NVHTML")"
 check_absent "voiceh no longer inflated for the pre-compact-viz waveform (#397)" "--voiceh:calc(var(--colq)*1.1);" "$(cat "$NVHTML")"
-check "voiceh shrunk again to fit head + slim viz + dock now that the waveform is a thin strip (#397 round 2)" "--voiceh:calc(var(--colq)*.75);" "$(cat "$NVHTML")"
+# #399: the *.75-of-colq fraction existed to reserve room for #voice-dock's
+# percentage-capped floor content -- with the dock gone, --voiceh no longer
+# needs to scale with --colq at all; it's fixed head+padding (48px) plus
+# the still-clamped slim viz. See the --voiceh CSS comment for the honest
+# recompute (was ~112-206px under the old fraction; now ~76-88px).
+check_absent "voiceh no longer scales as a fraction of --colq now that the dock it was sized for is gone (#399)" "--voiceh:calc(var(--colq)*.75);" "$(cat "$NVHTML")"
+check "voiceh recomputed as fixed head+padding plus the still-clamped slim viz, no dock reservation (#399)" "--voiceh:calc(48px + clamp(28px, calc(var(--colq)*.18), 40px));" "$(cat "$NVHTML")"
 check "assistant name beside the bars shrinks a notch alongside the slimmer viz (#397 round 2)" ".ast-voice-name{font-size:.5rem;" "$(cat "$NVHTML")"
 # #397 round 3 (live human follow-up): the label sat too far from the bars
 # -- own, honestly-labeled assertion (this used to be silently folded into
 # the round-2 footprint check above, which never named the gap value it
 # was also pinning).
 check "the gap between the assistant-name label and the bars tightened (#397 round 3)" "#voice-viz{flex:0 0 clamp(28px, calc(var(--colq)*.18), 40px);min-height:28px;position:relative;display:flex;align-items:center;gap:.25rem;overflow:hidden}" "$(cat "$NVHTML")"
-# #397 review round 1 (MAJOR): #voice-dock's max-height:40% resolves
-# against the now-shrunken --voiceh, so past a certain viewport shrink the
-# 40% cap falls below the dock's own floor content (one assistant row +
-# one digest note, ~64px) and clips it -- give the dock an absolute-floor
-# cap so it is never clipped, without growing --voiceh back open.
-check_absent "voice-dock max-height is no longer a bare percentage that can shrink below its own floor content (#397 review round 1)" "#voice-dock{flex:none;max-height:40%;" "$(cat "$NVHTML")"
-check "voice-dock's cap has an absolute-px floor so it never clips its own minimum content, however small --voiceh gets (#397 review round 1)" "#voice-dock{flex:none;max-height:max(64px, 40%);" "$(cat "$NVHTML")"
+# #399 (human-directed dock removal): #voice-dock (the switcher row +
+# digest previously docked under the waveform, #397) is gone now that the
+# assistant-name label beside the bars IS the selector -- superseded by the
+# label-selector + digest-panel assertions further below, including the
+# dock's CSS (its long #397 max-height comments went with it).
+check_absent "#voice-dock CSS rule no longer exists -- removed, not just its comments (#399)" "#voice-dock{" "$(cat "$NVHTML")"
 # #397 review round 2: with *{box-sizing:border-box} and no overflow set on
 # #voicebar, a FIXED height:var(--voiceh) meant vbar.offsetHeight (what
 # --voice-below is live-measured from, applyUiState) stayed the nominal
@@ -1346,4 +1351,21 @@ check "voicebar uses min-height instead, so it grows to fit an overflowing dock 
 # folded-state override that drops the floor (not a plain height:auto,
 # which no longer suffices against min-height) restores the reclaim.
 check "voicebar.folded drops the min-height floor so folding still reclaims space down to head+dock content (#397 review round 3)" "#voicebar.folded{min-height:0}" "$(cat "$NVHTML")"
+
+# #399: the assistant-name label is now a real interactive control (button
+# semantics for a11y -- the repo already learned "Skip as a styled div loses
+# native keyboard activation" from #318 and applied the same lesson here).
+check "the voice-viz-name label is a real button, not a styled span (#399 -- a11y, same lesson #318's Skip button already applied)" '<button type="button" id="voice-viz-name" class="ast-voice-name"' "$(cat "$NVHTML")"
+check_absent "the label is no longer a plain non-interactive span (#399)" '<span id="voice-viz-name" class="ast-voice-name">' "$(cat "$NVHTML")"
+# discoverable even with nothing selected: CSS generated content, not
+# JS-appended text, so setVoiceHeaderName's textContent-equals-name
+# contract (pinned by #395/#397's tests) never gets a trailing glyph.
+check "the label always shows a caret via generated content, not JS-appended text" '.ast-voice-name::after{content:" ▾"' "$(cat "$NVHTML")"
+check "an empty label (nothing selected yet) falls back to a SELECT affordance via :empty generated content" '.ast-voice-name:empty::before{content:"SELECT"}' "$(cat "$NVHTML")"
+# #ast-digest-panel (AST-024 digest relocation) is out of #voicebar's normal
+# flow (position:absolute against its position:fixed containing block) so a
+# shown digest never grows #voicebar or perturbs --voiceh/--voice-below.
+check "the relocated digest panel is positioned out of #voicebar's normal flow (#399)" "#ast-digest-panel{position:absolute;left:1rem;right:1rem;top:100%;" "$(cat "$NVHTML")"
+check "the digest panel has a click-to-dismiss close control (#399)" ".ast-digest-close{" "$(cat "$NVHTML")"
+check_absent "the old docked .ast-switcher-* row CSS no longer exists (#399)" ".ast-switcher-row{" "$(cat "$NVHTML")"
 

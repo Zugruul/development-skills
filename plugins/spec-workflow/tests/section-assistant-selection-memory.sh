@@ -139,7 +139,7 @@ check "atomic writes: no leftover tmp files after a select" "NO_TMP_LEFTOVERS Tr
 
 rm -rf "$_asm_multi_a" "$_asm_multi_b" "$_asm_state"
 
-echo "-- template: askAgain boot honoring + switcher + toggle wiring --"
+echo "-- template: askAgain boot honoring + label/⌘K switch palette + toggle wiring (#399) --"
 NVHTML_MEM="$PLUGIN/templates/neural-view.html"
 
 _asm_node="$(mktemp).cjs"
@@ -219,16 +219,24 @@ const document = {
 // AST-021 restyle (Option C command palette, issue #318): #ast-picker-anchor
 // is new static boot furniture renderAssistantPicker appends into -- see
 // the identical comment in section-assistant-selection.sh's harness.
-const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-picker-anchor", "ast-ask-again", "ast-switcher", "ast-digest", "voice-viz-name"];
+// #399: ast-switcher is gone (dock removed); ast-digest-panel/
+// ast-digest-close are its digest-relocation replacement, wired by
+// wireAssistantSwitchUi below.
+const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-picker-anchor", "ast-ask-again", "ast-digest-panel", "ast-digest-close", "ast-digest", "voice-viz-name", "ast-switch-dropdown", "ast-switch-list", "ast-switch-hint"];
 for (const id of STATIC_IDS) {
     const el = mkEl(id);
     el.classList._parent = el;
 }
+elements["ast-digest-panel"].hidden = true;
+// #399: the switch dropdown ships hidden; open flips it (and refuses to
+// double-open), so the stub must start from the real initial state.
+elements["ast-switch-dropdown"].hidden = true;
 
 global.window = global;
 let fetchCalls = [];
 let statusResponse = null;
 let settingsResponse = { askAgain: false };
+let selectResponse = null;
 global.fetch = async (url, opts) => {
     fetchCalls.push({url, opts});
     if (url === "/assistant/status") {
@@ -236,6 +244,11 @@ global.fetch = async (url, opts) => {
     }
     if (url === "/assistant/settings") {
         return { json: async () => settingsResponse };
+    }
+    // #399: openAssistantSwitchPicker's palette row click POSTs here and
+    // reads back `digest` -- selectResponse lets tests control that.
+    if (url === "/assistant/select") {
+        return { json: async () => selectResponse || {} };
     }
     return { json: async () => ({}) };
 };
@@ -253,6 +266,15 @@ global.removeEventListener = (type, fn) => {
     const i = arr.indexOf(fn);
     if (i !== -1) arr.splice(i, 1);
 };
+// fireKeydown drives every currently-bound listener on one shared event
+// object, real-Event style -- same helper section-assistant-selection.sh
+// and section-assistant-inspector.sh already use for Esc ownership; here
+// it also exercises the ⌘K/Ctrl+K binding (#399).
+function fireKeydown(props) {
+    const ev = Object.assign({ defaultPrevented: false, preventDefault(){ this.defaultPrevented = true; } }, props);
+    for (const fn of [...(global.__listeners.keydown || [])]) fn(ev);
+}
+const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
 
 eval(extract("setVoiceHeaderName"));
 eval(extract("gateVoiceAndChat"));
@@ -263,19 +285,25 @@ eval(extract("isChatTypingTarget"));
 eval(extract("unbindAssistantPickerKeys"));
 eval(extract("renderAssistantPicker"));
 eval(extract("renderNoneOverlay"));
-// AST-024 (#321): renderAssistantSwitcher's row click now also calls
+// AST-024 (#321): renderAssistantPicker's row click now also calls
 // renderAssistantDigest -- extracted here too so this harness keeps
 // exercising the REAL production wiring rather than drifting into a
 // simplified fork (stub-failure-semantics lesson: extend, don't fork).
 eval(extract("renderAssistantDigest"));
-// AST-022 restyle (issue #319 follow-up): renderAssistantSwitcher now calls
-// the shared escapeHtml() helper -- extract it too so this stays the real
-// production wiring instead of a simplified fork.
 eval(extract("escapeHtml"));
-eval(extract("renderAssistantSwitcher"));
 eval(extract("setAskAgainUi"));
 eval(extract("refreshAssistantSettingsUi"));
 eval(extract("initAssistantSelection"));
+// #399: the label-as-selector dropdown + ⌘K/Ctrl+K quick switch that
+// replaced the removed switcher/dock.
+eval(extract("astShortcutKeys"));
+eval(extract("renderShortcutKeycaps"));
+eval(extract("unbindAssistantSwitchDropdownKeys"));
+eval(extract("closeAssistantSwitchDropdown"));
+eval(extract("openAssistantSwitchDropdown"));
+eval(extract("toggleAssistantSwitchDropdown"));
+eval(extract("handleAssistantSwitchKeydown"));
+eval(extract("wireAssistantSwitchUi"));
 
 async function run(outcome, candidates, selected, askAgain) {
     delete elements["ast-picker"];
@@ -310,30 +338,110 @@ async function run(outcome, candidates, selected, askAgain) {
     if (!document.getElementById("ast-picker")) throw new Error("askAgain=true must still show the picker on boot");
     console.log("ASKAGAIN_PICKER_OK true");
 
-    // ---- switcher renders candidates and marks the selected one -------------
-    const sw = document.getElementById("ast-switcher");
-    renderAssistantSwitcher([{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}], "friday");
-    if (sw.children.length !== 2) throw new Error("switcher expected 2 rows, got " + sw.children.length);
-    for (const r of sw.children) if (!r.className.includes("ast-switcher-row")) throw new Error("switcher row missing ast-switcher-row class");
-    const selectedRow = sw.children.find(r => r.textContent.includes("friday"));
-    if (!selectedRow || !selectedRow.className.includes("ast-switcher-selected")) throw new Error("selected candidate not marked in switcher");
-    // AST-022 restyle (Option 5 "glanceable badges", issue #319 follow-up):
-    // the selected row carries a badge element; unselected rows don't.
-    if (!selectedRow.innerHTML.includes("ast-switcher-badge")) throw new Error("selected row missing glanceable badge");
-    const unselectedRow = sw.children.find(r => r.textContent.includes("jarvis"));
-    if (unselectedRow.innerHTML.includes("ast-switcher-badge")) throw new Error("unselected row should not carry the active badge");
-    console.log("SWITCHER_OK true");
+    // ---- #399 (human refinement): the label IS the selector -- click (or
+    // Cmd+K/Ctrl+K) toggles the compact #ast-switch-dropdown anchored at
+    // the label. The boot-time AST-021 palette above stays untouched (it
+    // still Skips/gates); the dropdown's close paths never skip and never
+    // touch the gate. Clean slate first: no picker/keydown listeners left
+    // over from the run()-based boot scenarios above.
+    delete elements["ast-picker"];
+    delete elements["ast-picker-wrap"];
+    global.__listeners.keydown = [];
+    window.__astPickerKeydown = null;
+    window.__astSwitchKeydown = null;
+    wireAssistantSwitchUi();
+    if (!elements["voice-viz-name"].title.includes("K")) throw new Error("label tooltip must carry the platform shortcut");
 
-    // clicking a switcher row re-POSTs select
+    // label click fetches FRESH candidates and opens the dropdown: rows
+    // rendered (current one marked), keycap chips in the hint, label
+    // aria-expanded flipped
     fetchCalls = [];
-    const jarvisRow = sw.children.find(r => r.textContent.includes("jarvis"));
-    statusResponse = {outcome: "multiple", candidates: [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}], selected: "jarvis", gated: false, askAgain: true};
-    await jarvisRow.onclick();
+    statusResponse = {outcome: "multiple", candidates: [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: ["fri"], root: "/b"}], selected: "jarvis", gated: false, askAgain: true};
+    elements["voice-viz-name"].onclick();
+    await flushMicrotasks();
+    if (!fetchCalls.some(c => c.url === "/assistant/status")) throw new Error("label click did not fetch fresh /assistant/status");
+    if (elements["ast-switch-dropdown"].hidden !== false) throw new Error("label click did not open the dropdown");
+    const swList = elements["ast-switch-list"];
+    if (swList.children.length !== 2) throw new Error("dropdown expected 2 rows, got " + swList.children.length);
+    const selRow = swList.children.find(r => r.textContent.includes("jarvis"));
+    if (!selRow || !selRow.className.includes("ast-switch-row-selected")) throw new Error("current assistant not marked selected in the dropdown");
+    if (!elements["ast-switch-hint"].innerHTML.includes("ast-kbd")) throw new Error("dropdown hint must render keycap chips");
+    if (!/\u2318|Ctrl/.test(elements["ast-switch-hint"].innerHTML)) throw new Error("keycap chips must show the platform modifier");
+    if (elements["voice-viz-name"].getAttribute("aria-expanded") !== "true") throw new Error("label aria-expanded must be true while open");
+    console.log("LABEL_OPENS_SWITCH_DROPDOWN_OK true");
+
+    // picking a row selects, updates the label, closes the dropdown, and
+    // reveals the relocated digest panel (AST-024, #321)
+    fetchCalls = [];
+    const fridayRow = swList.children.find(r => r.textContent.includes("friday"));
+    selectResponse = {selected: "friday", gated: false, digest: {sinceTs: null, notesMinted: [], exchanges: 1, tasks: [], tasksSource: "pending-E4"}};
+    await fridayRow.onclick();
     const switchSelect = fetchCalls.find(c => c.url === "/assistant/select");
-    if (!switchSelect || JSON.parse(switchSelect.opts.body).name !== "jarvis") throw new Error("switcher row click did not select jarvis");
-    const refreshed = fetchCalls.find(c => c.url === "/assistant/status");
-    if (!refreshed) throw new Error("switcher row click did not refresh status");
-    console.log("SWITCHER_CLICK_OK true");
+    if (!switchSelect || JSON.parse(switchSelect.opts.body).name !== "friday") throw new Error("dropdown row click did not select friday");
+    if (document.getElementById("voice-viz-name").textContent !== "friday") throw new Error("dropdown row click did not update the label beside the bars");
+    if (elements["ast-switch-dropdown"].hidden !== true) throw new Error("dropdown did not close after a pick");
+    if (elements["voice-viz-name"].getAttribute("aria-expanded") !== "false") throw new Error("label aria-expanded must reset on close");
+    if (elements["ast-digest-panel"].hidden !== false) throw new Error("a real switch's digest must reveal the relocated panel");
+    console.log("DROPDOWN_SELECT_OK true");
+
+    // Cmd+K opens when closed (fresh candidates again)
+    fetchCalls = [];
+    statusResponse = {outcome: "multiple", candidates: [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}], selected: "friday", gated: false, askAgain: true};
+    fireKeydown({key: "k", metaKey: true});
+    await flushMicrotasks();
+    if (elements["ast-switch-dropdown"].hidden !== false) throw new Error("Cmd+K did not open the dropdown");
+    console.log("CMDK_OPENS_OK true");
+
+    // Cmd+K again TOGGLES it closed -- and NEVER skips or gates (the user
+    // already has an assistant selected; dismissal must not cost them it)
+    fetchCalls = [];
+    fireKeydown({key: "k", metaKey: true});
+    if (elements["ast-switch-dropdown"].hidden !== true) throw new Error("a second Cmd+K did not close the open dropdown");
+    if (fetchCalls.some(c => c.url === "/assistant/skip")) throw new Error("closing the dropdown must never POST /assistant/skip");
+    if (document.getElementById("voice-mic").disabled) throw new Error("closing the dropdown must never gate voice");
+    console.log("CMDK_TOGGLE_CLOSES_OK true");
+
+    // Ctrl+K works too; a typing target suppresses it (same guard the
+    // T-key chat overlay and picker keys already use)
+    fetchCalls = [];
+    statusResponse = {outcome: "multiple", candidates: [{name: "jarvis", aliases: [], root: "/a"}], selected: "friday", gated: false, askAgain: true};
+    fireKeydown({key: "K", ctrlKey: true, target: {tagName: "INPUT"}});
+    await flushMicrotasks();
+    if (elements["ast-switch-dropdown"].hidden !== true) throw new Error("Ctrl+K while a typing target is focused must be ignored");
+    fireKeydown({key: "K", ctrlKey: true, target: {tagName: "DIV"}});
+    await flushMicrotasks();
+    if (elements["ast-switch-dropdown"].hidden !== false) throw new Error("Ctrl+K outside a typing target must open the dropdown");
+    console.log("CTRLK_AND_TYPING_GUARD_OK true");
+
+    // ArrowDown+Enter: highlight starts on the CURRENT assistant, one
+    // arrow reaches the neighbor, Enter selects it
+    fireKeydown({key: "Escape"});
+    statusResponse = {outcome: "multiple", candidates: [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}], selected: "jarvis", gated: false, askAgain: true};
+    fireKeydown({key: "k", metaKey: true});
+    await flushMicrotasks();
+    fetchCalls = [];
+    selectResponse = {selected: "friday", gated: false};
+    fireKeydown({key: "ArrowDown"});
+    fireKeydown({key: "Enter"});
+    await flushMicrotasks();
+    const kbSelect = fetchCalls.find(c => c.url === "/assistant/select");
+    if (!kbSelect || JSON.parse(kbSelect.opts.body).name !== "friday") throw new Error("ArrowDown+Enter did not select the next assistant, got: " + (kbSelect ? kbSelect.opts.body : "no select call"));
+    console.log("DROPDOWN_KEYBOARD_SELECT_OK true");
+
+    // Escape closes only the dropdown -- no skip, no gating
+    statusResponse = {outcome: "multiple", candidates: [{name: "jarvis", aliases: [], root: "/a"}], selected: "friday", gated: false, askAgain: true};
+    fireKeydown({key: "k", metaKey: true});
+    await flushMicrotasks();
+    fetchCalls = [];
+    fireKeydown({key: "Escape"});
+    if (elements["ast-switch-dropdown"].hidden !== true) throw new Error("Escape did not close the dropdown");
+    if (fetchCalls.some(c => c.url === "/assistant/skip")) throw new Error("Escape on the dropdown must never Skip");
+    console.log("ESC_CLOSES_DROPDOWN_OK true");
+
+    // the ⌘K keydown listener wired by wireAssistantSwitchUi is the only
+    // one left once the dropdown's own (open-only) listener has unbound
+    if ((global.__listeners.keydown || []).length !== 1) throw new Error("expected exactly the ⌘K listener left after the dropdown closed, got " + (global.__listeners.keydown || []).length);
+    console.log("CMDK_LISTENER_SOLE_SURVIVOR_OK true");
 })().catch(e => { console.error("FAIL", e.message); process.exit(1); });
 NODEJS
 tmpl_mem_out="$(node "$_asm_node" "$NVHTML_MEM" 2>&1)"
@@ -342,15 +450,20 @@ rm -f "$_asm_node"
 check_rc "template selection-memory script exits 0" 0 "$tmpl_mem_rc"
 check "template: a remembered selection (askAgain false) skips the picker and applies" "REMEMBERED_OK true" "$tmpl_mem_out"
 check "template: askAgain true still shows the picker on boot" "ASKAGAIN_PICKER_OK true" "$tmpl_mem_out"
-check "template: switcher renders candidate rows and marks the selected one" "SWITCHER_OK true" "$tmpl_mem_out"
-check "template: clicking a switcher row re-selects and refreshes status" "SWITCHER_CLICK_OK true" "$tmpl_mem_out"
+# #399: dock removed by human direction -- SWITCHER_OK/SWITCHER_CLICK_OK
+# (the old #ast-switcher row list) are superseded by the label/⌘K palette
+# coverage below, since the label IS the selector now.
+check "template (#399): clicking the assistant-name label fetches fresh candidates and opens the anchored dropdown (rows, selected mark, keycaps, aria-expanded)" "LABEL_OPENS_SWITCH_DROPDOWN_OK true" "$tmpl_mem_out"
+check "template (#399): picking a dropdown row selects, updates the label, closes, and reveals the relocated digest panel" "DROPDOWN_SELECT_OK true" "$tmpl_mem_out"
+check "template (#399): Cmd+K opens the dropdown" "CMDK_OPENS_OK true" "$tmpl_mem_out"
+check "template (#399): a second Cmd+K toggles the dropdown closed -- never a skip, never a gate change" "CMDK_TOGGLE_CLOSES_OK true" "$tmpl_mem_out"
+check "template (#399): Ctrl+K opens the dropdown too, and a typing target suppresses it" "CTRLK_AND_TYPING_GUARD_OK true" "$tmpl_mem_out"
+check "template (#399): ArrowDown+Enter select the neighbor of the current assistant" "DROPDOWN_KEYBOARD_SELECT_OK true" "$tmpl_mem_out"
+check "template (#399): Escape closes only the dropdown -- never a Skip" "ESC_CLOSES_DROPDOWN_OK true" "$tmpl_mem_out"
+check "template (#399): only the always-on ⌘K listener remains once the dropdown closes" "CMDK_LISTENER_SOLE_SURVIVOR_OK true" "$tmpl_mem_out"
 if [[ "$tmpl_mem_rc" -ne 0 ]]; then echo "$tmpl_mem_out" >&2; fi
 
 check "template pins the ast-ask-again class/id name in source" 'ast-ask-again' "$(cat "$NVHTML_MEM")"
-check "template pins the ast-switcher class name in source" '"ast-switcher"' "$(cat "$NVHTML_MEM")"
-check "template pins the ast-switcher-row class name in source" 'ast-switcher-row' "$(cat "$NVHTML_MEM")"
-# AST-022 restyle (Option 5 "glanceable badges", docs/ui-options/AST-022.html,
-# issue #319 follow-up): the switcher row's name/badge structure is now
-# load-bearing markup, not placeholder text -- pin it.
-check "template pins the ast-switcher-name class name in source" 'ast-switcher-name' "$(cat "$NVHTML_MEM")"
-check "template pins the ast-switcher-badge class name in source" 'ast-switcher-badge' "$(cat "$NVHTML_MEM")"
+check_absent "template no longer pins the removed ast-switcher class name (#399)" '"ast-switcher"' "$(cat "$NVHTML_MEM")"
+check "template pins the ast-digest-panel id in source (digest relocation target, #399)" 'ast-digest-panel' "$(cat "$NVHTML_MEM")"
+check "template pins the ast-digest-close id in source (click-to-dismiss, #399)" 'ast-digest-close' "$(cat "$NVHTML_MEM")"
