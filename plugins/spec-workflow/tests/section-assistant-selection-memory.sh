@@ -302,6 +302,7 @@ eval(extract("unbindAssistantSwitchDropdownKeys"));
 eval(extract("closeAssistantSwitchDropdown"));
 eval(extract("openAssistantSwitchDropdown"));
 eval(extract("toggleAssistantSwitchDropdown"));
+eval(extract("quickSwitchAssistant"));
 eval(extract("handleAssistantSwitchKeydown"));
 eval(extract("wireAssistantSwitchUi"));
 
@@ -384,40 +385,53 @@ async function run(outcome, candidates, selected, askAgain) {
     if (elements["ast-digest-panel"].hidden !== false) throw new Error("a real switch's digest must reveal the relocated panel");
     console.log("DROPDOWN_SELECT_OK true");
 
-    // Cmd+K opens when closed (fresh candidates again)
+    // 2026-07-25 human refinement: Cmd+K QUICK-SWITCHES to the next
+    // assistant (wrapping) -- no panel. selected=friday of [jarvis,friday]
+    // -> Cmd+K selects jarvis.
     fetchCalls = [];
     statusResponse = {outcome: "multiple", candidates: [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}], selected: "friday", gated: false, askAgain: true};
+    selectResponse = {selected: "jarvis", gated: false};
     fireKeydown({key: "k", metaKey: true});
     await flushMicrotasks();
-    if (elements["ast-switch-dropdown"].hidden !== false) throw new Error("Cmd+K did not open the dropdown");
-    console.log("CMDK_OPENS_OK true");
+    const cyc = fetchCalls.find(c => c.url === "/assistant/select");
+    if (!cyc || JSON.parse(cyc.opts.body).name !== "jarvis") throw new Error("Cmd+K did not quick-switch to the next assistant, got: " + (cyc ? cyc.opts.body : "no select"));
+    if (document.getElementById("voice-viz-name").textContent !== "jarvis") throw new Error("quick-switch did not update the label");
+    if (elements["ast-switch-dropdown"].hidden !== true) throw new Error("quick-switch must not leave the panel open");
+    console.log("CMDK_CYCLES_OK true");
 
-    // Cmd+K again TOGGLES it closed -- and NEVER skips or gates (the user
-    // already has an assistant selected; dismissal must not cost them it)
+    // wrap-around: selected=jarvis (index 0) -> Ctrl+K -> friday
     fetchCalls = [];
-    fireKeydown({key: "k", metaKey: true});
-    if (elements["ast-switch-dropdown"].hidden !== true) throw new Error("a second Cmd+K did not close the open dropdown");
-    if (fetchCalls.some(c => c.url === "/assistant/skip")) throw new Error("closing the dropdown must never POST /assistant/skip");
-    if (document.getElementById("voice-mic").disabled) throw new Error("closing the dropdown must never gate voice");
-    console.log("CMDK_TOGGLE_CLOSES_OK true");
-
-    // Ctrl+K works too; a typing target suppresses it (same guard the
-    // T-key chat overlay and picker keys already use)
-    fetchCalls = [];
-    statusResponse = {outcome: "multiple", candidates: [{name: "jarvis", aliases: [], root: "/a"}], selected: "friday", gated: false, askAgain: true};
-    fireKeydown({key: "K", ctrlKey: true, target: {tagName: "INPUT"}});
-    await flushMicrotasks();
-    if (elements["ast-switch-dropdown"].hidden !== true) throw new Error("Ctrl+K while a typing target is focused must be ignored");
+    statusResponse = {outcome: "multiple", candidates: [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}], selected: "jarvis", gated: false, askAgain: true};
+    selectResponse = {selected: "friday", gated: false};
     fireKeydown({key: "K", ctrlKey: true, target: {tagName: "DIV"}});
     await flushMicrotasks();
-    if (elements["ast-switch-dropdown"].hidden !== false) throw new Error("Ctrl+K outside a typing target must open the dropdown");
+    const cyc2 = fetchCalls.find(c => c.url === "/assistant/select");
+    if (!cyc2 || JSON.parse(cyc2.opts.body).name !== "friday") throw new Error("Ctrl+K wrap did not select friday");
+    console.log("CMDK_WRAPS_OK true");
+
+    // single candidate: nothing to cycle -- falls back to opening the panel
+    fetchCalls = [];
+    statusResponse = {outcome: "multiple", candidates: [{name: "jarvis", aliases: [], root: "/a"}], selected: "jarvis", gated: false, askAgain: true};
+    fireKeydown({key: "k", metaKey: true});
+    await flushMicrotasks();
+    if (fetchCalls.some(c => c.url === "/assistant/skip")) throw new Error("single-candidate Cmd+K must never skip");
+    if (elements["ast-switch-dropdown"].hidden !== false) throw new Error("single-candidate Cmd+K should open the panel as the fallback");
+    fireKeydown({key: "Escape"});
+    console.log("CMDK_SINGLE_FALLBACK_OK true");
+
+    // typing target suppresses the shortcut entirely
+    fetchCalls = [];
+    fireKeydown({key: "K", ctrlKey: true, target: {tagName: "INPUT"}});
+    await flushMicrotasks();
+    if (fetchCalls.length) throw new Error("Ctrl+K in a typing target must be inert");
     console.log("CTRLK_AND_TYPING_GUARD_OK true");
 
     // ArrowDown+Enter: highlight starts on the CURRENT assistant, one
-    // arrow reaches the neighbor, Enter selects it
+    // arrow reaches the neighbor, Enter selects it. Opened via label CLICK
+    // (2026-07-25: clicking opens the panel; ⌘K quick-switches instead).
     fireKeydown({key: "Escape"});
     statusResponse = {outcome: "multiple", candidates: [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}], selected: "jarvis", gated: false, askAgain: true};
-    fireKeydown({key: "k", metaKey: true});
+    elements["voice-viz-name"].onclick();
     await flushMicrotasks();
     fetchCalls = [];
     selectResponse = {selected: "friday", gated: false};
@@ -428,9 +442,9 @@ async function run(outcome, candidates, selected, askAgain) {
     if (!kbSelect || JSON.parse(kbSelect.opts.body).name !== "friday") throw new Error("ArrowDown+Enter did not select the next assistant, got: " + (kbSelect ? kbSelect.opts.body : "no select call"));
     console.log("DROPDOWN_KEYBOARD_SELECT_OK true");
 
-    // Escape closes only the dropdown -- no skip, no gating
+    // Escape closes only the dropdown -- no skip, no gating (opened by click)
     statusResponse = {outcome: "multiple", candidates: [{name: "jarvis", aliases: [], root: "/a"}], selected: "friday", gated: false, askAgain: true};
-    fireKeydown({key: "k", metaKey: true});
+    elements["voice-viz-name"].onclick();
     await flushMicrotasks();
     fetchCalls = [];
     fireKeydown({key: "Escape"});
@@ -455,9 +469,10 @@ check "template: askAgain true still shows the picker on boot" "ASKAGAIN_PICKER_
 # coverage below, since the label IS the selector now.
 check "template (#399): clicking the assistant-name label fetches fresh candidates and opens the anchored dropdown (rows, selected mark, keycaps, aria-expanded)" "LABEL_OPENS_SWITCH_DROPDOWN_OK true" "$tmpl_mem_out"
 check "template (#399): picking a dropdown row selects, updates the label, closes, and reveals the relocated digest panel" "DROPDOWN_SELECT_OK true" "$tmpl_mem_out"
-check "template (#399): Cmd+K opens the dropdown" "CMDK_OPENS_OK true" "$tmpl_mem_out"
-check "template (#399): a second Cmd+K toggles the dropdown closed -- never a skip, never a gate change" "CMDK_TOGGLE_CLOSES_OK true" "$tmpl_mem_out"
-check "template (#399): Ctrl+K opens the dropdown too, and a typing target suppresses it" "CTRLK_AND_TYPING_GUARD_OK true" "$tmpl_mem_out"
+check "template (2026-07-25): Cmd+K quick-switches to the next assistant, panel stays closed" "CMDK_CYCLES_OK true" "$tmpl_mem_out"
+check "template (2026-07-25): the quick-switch wraps past the last assistant" "CMDK_WRAPS_OK true" "$tmpl_mem_out"
+check "template (2026-07-25): single candidate falls back to opening the panel, never skips" "CMDK_SINGLE_FALLBACK_OK true" "$tmpl_mem_out"
+check "template (#399): a typing target suppresses the shortcut" "CTRLK_AND_TYPING_GUARD_OK true" "$tmpl_mem_out"
 check "template (#399): ArrowDown+Enter select the neighbor of the current assistant" "DROPDOWN_KEYBOARD_SELECT_OK true" "$tmpl_mem_out"
 check "template (#399): Escape closes only the dropdown -- never a Skip" "ESC_CLOSES_DROPDOWN_OK true" "$tmpl_mem_out"
 check "template (#399): only the always-on ⌘K listener remains once the dropdown closes" "CMDK_LISTENER_SOLE_SURVIVOR_OK true" "$tmpl_mem_out"

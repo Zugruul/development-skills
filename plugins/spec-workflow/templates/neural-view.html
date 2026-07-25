@@ -459,8 +459,8 @@ canvas.grabbing{cursor:grabbing}
    themselves from their own font+padding and read as a ragged row. The
    segmented #voice-dir wrapper gets the same height with its inner
    buttons stretched to fill. */
-#voicebar-head .iconbtn{height:26px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;padding-top:0;padding-bottom:0}
-#voicebar-head #voice-dir{height:26px;box-sizing:border-box;align-items:stretch}
+#voicebar-head .iconbtn{height:20px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;padding-top:0;padding-bottom:0}
+#voicebar-head #voice-dir{height:20px;box-sizing:border-box;align-items:stretch}
 #voicebar-head #voice-dir .iconbtn{height:100%}
 #voicebar-tab{position:fixed;top:70px;right:0;z-index:20;border-right:0;border-radius:8px 0 0 8px;
   padding:.55rem .4rem;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:.8rem}
@@ -481,7 +481,10 @@ canvas.grabbing{cursor:grabbing}
    justify-content:center outlived #395's flex-row intent once the canvas
    below was pulled out of flow by position:absolute, centering the name
    label dead in the middle of the waveform instead of beside it. One rule. */
-#voice-viz{flex:0 0 clamp(28px, calc(var(--colq)*.18), 40px);min-height:28px;position:relative;display:flex;align-items:center;gap:.25rem;overflow:hidden}
+/* 2026-07-25 human refinement: margin:auto 0 centers the label+bars row
+   vertically in whatever space the panel has left under the (now slimmer)
+   header, instead of hugging the top. */
+#voice-viz{flex:0 0 clamp(28px, calc(var(--colq)*.18), 40px);min-height:28px;position:relative;display:flex;align-items:center;gap:.25rem;overflow:hidden;margin:auto 0}
 /* the explicit display:flex above would defeat the hidden attribute the
    section fold sets — restate it. #voicebar.folded{height:auto} used to
    live here to let the panel shrink to its head when folded, back when
@@ -516,8 +519,12 @@ canvas.grabbing{cursor:grabbing}
   white-space:nowrap;flex:0 0 auto;background:transparent;border:0;padding:0;margin:0;
   font-family:inherit;cursor:pointer}
 .ast-voice-name:hover,.ast-voice-name:focus-visible{color:var(--fg)}
-.ast-voice-name::after{content:" ▾";opacity:.7}
+/* 2026-07-25 human refinement: the ▾ caret is replaced by the platform
+   keycap chips (⌘ K / Ctrl K) rendered into the sibling #voice-viz-kbd by
+   wireAssistantSwitchUi — the shortcut IS the affordance now. */
 .ast-voice-name:empty::before{content:"SELECT"}
+#voice-viz-kbd{flex:0 0 auto;cursor:pointer;display:inline-flex;gap:.15rem}
+#voice-viz-kbd .ast-kbd{font-size:.48rem;padding:.03rem .24rem}
 /* #399: the post-boot switch dropdown, visually anchored AT the label.
    It CANNOT live inside #voicebar: .hud's backdrop-filter makes the panel
    its own stacking context and the containing block even for fixed
@@ -1106,7 +1113,7 @@ canvas.grabbing{cursor:grabbing}
        yet). Same Cmd+K/Ctrl+K shortcut opens/toggles the same dropdown --
        see the JS below. -->
   <div id="voice-viz"><button type="button" id="voice-viz-name" class="ast-voice-name"
-      aria-haspopup="listbox" aria-expanded="false" title="Switch assistant"></button><canvas id="voice-viz-canvas"></canvas><span id="voice-viz-status" hidden></span></div>
+      aria-haspopup="listbox" aria-expanded="false" title="Switch assistant"></button><span id="voice-viz-kbd" aria-hidden="true"></span><canvas id="voice-viz-canvas"></canvas><span id="voice-viz-status" hidden></span></div>
   <!-- AST-024 digest (#321): relocated out of the removed #voice-dock into
        a transient, click-to-dismiss overlay -- see the #ast-digest-panel
        CSS comment above. hidden until renderAssistantDigest has something
@@ -5540,11 +5547,32 @@ function toggleAssistantSwitchDropdown(){
 // own Cmd+K (address-bar/search) is suppressed only then. A named
 // top-level function so tests can extract and drive it directly, same
 // pattern as handleAssistantChatKeydown/handleAstInspectorKeydown.
+// 2026-07-25 human refinement: Cmd/Ctrl+K QUICK-SWITCHES — it selects the
+// NEXT assistant immediately (wrapping), no panel. Clicking the label/kbd
+// chips is what opens the selection panel. 0 or 1 candidates: nothing to
+// cycle to — fall back to opening the panel so the keystroke never dead-ends.
+async function quickSwitchAssistant(){
+  let status;
+  try{ status = await (await fetch("/assistant/status")).json(); }catch{ return; }
+  const candidates = (status && status.candidates) || [];
+  if(candidates.length < 2){ openAssistantSwitchDropdown(); return; }
+  const cur = Math.max(0, candidates.findIndex(c => c.name === (status && status.selected)));
+  const next = candidates[(cur + 1) % candidates.length];
+  let resp = null;
+  try{
+    const r = await fetch("/assistant/select", {method:"POST", body: JSON.stringify({name: next.name})});
+    resp = await r.json();
+  }catch{}
+  closeAssistantSwitchDropdown();
+  setVoiceHeaderName(next.name);
+  gateVoiceAndChat(false);
+  renderAssistantDigest(resp && resp.digest);
+}
 function handleAssistantSwitchKeydown(ev){
   if((ev.key !== "k" && ev.key !== "K") || !(ev.metaKey || ev.ctrlKey)) return;
   if(isChatTypingTarget(ev.target)) return;
   if(ev.preventDefault) ev.preventDefault();
-  toggleAssistantSwitchDropdown();
+  quickSwitchAssistant();
 }
 // Wires the label click, the ⌘K/Ctrl+K listener, the platform-aware label
 // tooltip, and the digest panel's close button -- a named function so a
@@ -5555,6 +5583,14 @@ function wireAssistantSwitchUi(){
   if(label){
     label.onclick = ()=> toggleAssistantSwitchDropdown();
     label.title = `Switch assistant (${astShortcutKeys().join("+")})`;
+  }
+  // 2026-07-25 human refinement: the caret is gone — the platform keycap
+  // chips sit beside the label as the visible shortcut/affordance, and
+  // clicking them toggles the dropdown just like the label.
+  const kbd = document.getElementById("voice-viz-kbd");
+  if(kbd){
+    kbd.innerHTML = astShortcutKeys().map(k => `<kbd class="ast-kbd">${k}</kbd>`).join("");
+    kbd.onclick = ()=> toggleAssistantSwitchDropdown();
   }
   addEventListener("keydown", handleAssistantSwitchKeydown);
   const digestClose = document.getElementById("ast-digest-close");

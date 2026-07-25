@@ -1326,7 +1326,7 @@ check "assistant name beside the bars shrinks a notch alongside the slimmer viz 
 # -- own, honestly-labeled assertion (this used to be silently folded into
 # the round-2 footprint check above, which never named the gap value it
 # was also pinning).
-check "the gap between the assistant-name label and the bars tightened (#397 round 3)" "#voice-viz{flex:0 0 clamp(28px, calc(var(--colq)*.18), 40px);min-height:28px;position:relative;display:flex;align-items:center;gap:.25rem;overflow:hidden}" "$(cat "$NVHTML")"
+check "the gap between the assistant-name label and the bars tightened (#397 round 3)" "#voice-viz{flex:0 0 clamp(28px, calc(var(--colq)*.18), 40px);min-height:28px;position:relative;display:flex;align-items:center;gap:.25rem;overflow:hidden;margin:auto 0}" "$(cat "$NVHTML")"
 # #399 (human-directed dock removal): #voice-dock (the switcher row +
 # digest previously docked under the waveform, #397) is gone now that the
 # assistant-name label beside the bars IS the selector -- superseded by the
@@ -1360,7 +1360,10 @@ check_absent "the label is no longer a plain non-interactive span (#399)" '<span
 # discoverable even with nothing selected: CSS generated content, not
 # JS-appended text, so setVoiceHeaderName's textContent-equals-name
 # contract (pinned by #395/#397's tests) never gets a trailing glyph.
-check "the label always shows a caret via generated content, not JS-appended text" '.ast-voice-name::after{content:" ▾"' "$(cat "$NVHTML")"
+# 2026-07-25 human refinement: caret replaced by keycap chips beside the label
+check_absent "the caret is gone — keycap chips are the affordance now" '.ast-voice-name::after{content:" ▾"' "$(cat "$NVHTML")"
+check "keycap chips span sits beside the label" 'id="voice-viz-kbd"' "$(cat "$NVHTML")"
+check "header buttons slimmed to text height (2026-07-25)" '#voicebar-head .iconbtn{height:20px' "$(cat "$NVHTML")"
 check "an empty label (nothing selected yet) falls back to a SELECT affordance via :empty generated content" '.ast-voice-name:empty::before{content:"SELECT"}' "$(cat "$NVHTML")"
 # #ast-digest-panel (AST-024 digest relocation) is out of #voicebar's normal
 # flow (position:absolute against its position:fixed containing block) so a
