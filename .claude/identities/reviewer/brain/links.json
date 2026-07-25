@@ -44,6 +44,11 @@
     "last": "2026-07-22",
     "weight": 0.5
   },
+  "prescribe-contract-not-code->measure-geometry-not-strings": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "probe-spec-silent-input-categories->trace-boundary-operators-by-hand": {
     "fires": 2,
     "last": "2026-07-22",
@@ -77,6 +82,16 @@
   "rerun-the-red-empirically->reproduce-then-verify-fix": {
     "fires": 1,
     "last": "2026-07-22",
+    "weight": 0.5
+  },
+  "stub-harness-blindspot->measure-geometry-not-strings": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "stub-harness-blindspot->prescribe-contract-not-code": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "trace-boundary-operators-by-hand->equality-guards-invite-ordering-probes": {

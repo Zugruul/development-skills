@@ -4,16 +4,6 @@
     "last": null,
     "weight": 0.5
   },
-  "canonical-merge-locus->clean-main-repro-before-blame": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "canonical-merge-locus->search-branches-before-reimplementing": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "fixed-iteration-shape->gate-verdict-before-merge": {
     "fires": 0,
     "last": null,
@@ -69,16 +59,6 @@
     "last": null,
     "weight": 0.5
   },
-  "mode-elastic-loop->batch-same-surface-bugs": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "mode-elastic-loop->live-validation-is-loop-input": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "name-the-failure-modes->lead-brief-with-last-failure": {
     "fires": 0,
     "last": null,
@@ -100,36 +80,6 @@
     "weight": 0.5
   },
   "reconcile-incidental-delivery->mode-elastic-loop": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "resumed-branch-staleness-pass->clean-main-repro-before-blame": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "resumed-branch-staleness-pass->search-branches-before-reimplementing": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "search-branches-before-reimplementing->batch-same-surface-bugs": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "search-branches-before-reimplementing->live-validation-is-loop-input": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "ui-split-logic-first->batch-same-surface-bugs": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "ui-split-logic-first->mode-elastic-loop": {
     "fires": 0,
     "last": null,
     "weight": 0.5
