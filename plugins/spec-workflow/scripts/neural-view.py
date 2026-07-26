@@ -194,12 +194,21 @@ VENDOR_FILES = {
     "GLTFLoader.js": "text/javascript; charset=utf-8",
     "BufferGeometryUtils.js": "text/javascript; charset=utf-8",
     "SkeletonUtils.js": "text/javascript; charset=utf-8",
+    # note-media mermaid diagrams (#430): one self-contained bundle (no
+    # relative imports, no split-build companion like three.js needed) --
+    # dynamically imported client-side only when a note actually has a
+    # mermaid block, same laziness rationale as GLTFLoader.js.
+    "mermaid.min.js": "text/javascript; charset=utf-8",
 }
 WIKILINK = re.compile(r"\[\[([^\]]+)\]\]")
 # markdown media/links (#289): ![alt](path) and [text](path-or-url). The
 # client resolves relative paths against the note's brain dir via /file/.
 MDIMG = re.compile(r"!\[([^\]]*)\]\(([^()\s]+)\)")
 MDLINK = re.compile(r"(?<!!)\[([^\]]+)\]\(([^()\s]+)\)")
+# fenced ```mermaid diagram blocks (#430). Extracted from the body BEFORE the
+# blank-line block split below -- a flowchart's own source routinely contains
+# blank lines, which would otherwise fracture one diagram across several <p>s.
+MERMAID_FENCE = re.compile(r"```mermaid[ \t]*\n(.*?)```", re.S)
 # /file/ extension allowlist — media a note may embed or link. Anything else
 # 404s: this endpoint exposes brain-dir files to the browser, so the set is
 # deliberately small and read-only.
@@ -207,6 +216,8 @@ FILE_TYPES = {
     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
     ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
     ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
+    # audio (#430): same inline-vs-link split as video -- local files only
+    ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg", ".m4a": "audio/mp4",
     ".glb": "model/gltf-binary", ".gltf": "model/gltf+json", ".obj": "text/plain; charset=utf-8",
     ".stl": "application/octet-stream",
     ".md": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8",
@@ -918,10 +929,41 @@ def render_body(body):
         )
         return f"<table><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>"
 
+    # stash fenced mermaid blocks behind a NUL-delimited placeholder token (a
+    # byte sequence that can never occur in the source body) so the blank-line
+    # block splitter below can't fracture a diagram's own blank lines, then
+    # swap each one back in as its own block, verbatim.
+    mermaid_blocks = []
+
+    def _stash_mermaid(m):
+        mermaid_blocks.append(m.group(1))
+        return f"\x00MERMAID{len(mermaid_blocks) - 1}\x00"
+
+    body = MERMAID_FENCE.sub(_stash_mermaid, body)
+
+    def render_mermaid(src):
+        src = src.strip("\n")
+        # server emits only the escaped source, in a data attribute AND a
+        # (hidden-by-default) text fallback -- the client builds the
+        # text/graph toggle, copy button and detach window on top of this.
+        # escape(..., quote=True) on both: one is an HTML attribute, the
+        # other is element text, but escaping quotes in the text copy too is
+        # harmless and keeps a single escaping rule to reason about.
+        esc = escape(src, quote=True)
+        return (
+            '<div class="nmmd" data-mmd="' + esc + '">'
+            "<pre class=\"nmmd-src\" hidden><code>" + esc + "</code></pre>"
+            "</div>"
+        )
+
     out = []
     for block in re.split(r"\n\s*\n", body.strip()):
         block = block.strip("\n")
         if not block:
+            continue
+        mm = re.fullmatch(r"\x00MERMAID(\d+)\x00", block.strip())
+        if mm:
+            out.append(render_mermaid(mermaid_blocks[int(mm.group(1))]))
             continue
         lines = block.splitlines()
         h = re.match(r"^(#{1,6})\s+(.*)$", block)

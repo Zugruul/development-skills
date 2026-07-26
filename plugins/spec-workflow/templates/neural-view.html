@@ -956,6 +956,31 @@ canvas.grabbing{cursor:grabbing}
   padding:.6rem;font-size:.62rem;color:var(--amber);text-align:center;overflow-wrap:anywhere}
 .n3d .n3d-label{position:absolute;left:.5rem;top:.35rem;font-size:.56rem;letter-spacing:.12em;
   text-transform:uppercase;color:var(--muted);pointer-events:none}
+/* audio blocks (#430): same hover-revealed action zone as the 3D block --
+   New tab / Save to / Detach, just no Spin (nothing to rotate) */
+.naud{position:relative;margin:.4rem 0;padding:.3rem;border:1px solid var(--border);border-radius:8px;background:rgba(4,7,13,.5)}
+.naud audio.nm{width:100%;display:block}
+/* review round 1 (#430): the zone must not blind the native <audio controls>
+   scrubber/volume/menu underneath it -- pointer-events:none lets clicks pass
+   through, .mw-actions opts back in so its buttons stay clickable, and the
+   reveal trigger moves to the block itself (a pointer-events:none zone can
+   no longer receive :hover the way the shared .mw-zone:hover relies on) */
+.naud .mw-zone{width:60%;height:70%;pointer-events:none}
+.naud .mw-actions{pointer-events:auto}
+.naud:hover .mw-actions{opacity:1}
+/* mermaid blocks (#430): fenced ```mermaid``` note bodies -- a text|graph
+   toggle (same segmented .iconbtn group idiom as IN/OUT/BOTH), a copy
+   button that always copies the mermaid SOURCE text, and a detach action */
+.nmmd{margin:.4rem 0;border:1px solid var(--border);border-radius:8px;background:rgba(4,7,13,.5);overflow:hidden}
+.nmmd-bar{display:flex;align-items:center;gap:.4rem;padding:.35rem .5rem;border-bottom:1px solid var(--border)}
+.nmmd-opts{display:flex;gap:.25rem}
+.nmmd-bar .nmmd-copy,.nmmd-bar .nmmd-pop{margin-left:auto}
+.nmmd-bar .nmmd-pop{margin-left:.25rem}
+.nmmd-src-view{margin:0;padding:.6rem;font-size:.7rem;line-height:1.5;overflow:auto;max-height:340px;white-space:pre-wrap;word-break:break-word}
+.nmmd-graph-view{padding:.6rem;overflow:auto;max-height:60vh}
+.nmmd-graph-view svg{max-width:100%;height:auto;display:block;margin:0 auto}
+.media-window.mw-mmd .nmmd{border:0;border-radius:0}
+.media-window.mw-mmd .nmmd-graph-view{max-height:none}
 #links{margin-top:.6rem;font-size:.66rem;color:var(--muted)}
 #links .ln{display:flex;justify-content:space-between;gap:.5rem;padding:.15rem 0}
 #links .ln-click{cursor:pointer;margin:0 -.4rem;padding-left:.4rem;padding-right:.4rem;border-radius:4px}
@@ -2828,7 +2853,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // matches what the changelog overlay documents) -- it now lives in the
 // chip's tooltip, and as the fallback chip text when the plugin version
 // can't be read (see CHIP_VER_FALLBACK below).
-const NV_VERSION = "0.28.10";
+const NV_VERSION = "0.28.11";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -4941,11 +4966,14 @@ document.getElementById("inspect-pin").onclick=()=>{
   b.setAttribute("aria-pressed", String(panel.__pinned));
 };
 
-// ---- note media (#289): resolve a note's markdown media against /file/ ----
-// Images/videos render inline; .glb/.gltf/.obj/.stl become live 3D viewers
-// (GLTF via the vendored loader, OBJ/STL via tiny hand parsers on core
-// three); other allowed files open raw in a new tab.
+// ---- note media (#289, audio+mermaid #430): resolve a note's markdown
+// media against /file/. Images/videos/audio render inline; .glb/.gltf/.obj/
+// .stl become live 3D viewers (GLTF via the vendored loader, OBJ/STL via
+// tiny hand parsers on core three); other allowed files open raw in a new
+// tab. Fenced ```mermaid``` blocks (server-emitted as .nmmd[data-mmd]) are
+// hydrated separately, below.
 const VID_EXT = /\.(mp4|webm|mov)$/i, GLTF_EXT = /\.(glb|gltf)$/i, MESH_EXT = /\.(obj|stl)$/i;
+const AUD_EXT = /\.(mp3|wav|ogg|m4a)$/i;
 function fileUrl(nd, rel){
   return `/file/${encodeURIComponent(nd.repo)}/${encodeURIComponent(nd.role)}/`
        + rel.split("/").map(encodeURIComponent).join("/");
@@ -4963,14 +4991,166 @@ function hydrateNoteMedia(scope, nd){
       const v = document.createElement("video");
       v.className = "nm"; v.controls = true; v.preload = "metadata"; v.src = url;
       a.replaceWith(v);
+    }else if(AUD_EXT.test(href)){
+      a.replaceWith(makeAudioBlock(href, url));
     }else if(GLTF_EXT.test(href) || MESH_EXT.test(href)){
       a.replaceWith(make3dBlock(href, url));
     }else{
       a.href = url; a.target = "_blank"; a.rel = "noopener";
     }
   });
+  scope.querySelectorAll(".nmmd[data-mmd]").forEach(el=>{
+    el.replaceWith(makeMermaidBlock(el.dataset.mmd));
+  });
 }
 window.neuralNotes = { hydrate: hydrateNoteMedia, fileUrl, open: (...a)=>openNote(...a) };   // small public surface (also used by tests)
+// an inline audio block: a native <audio controls> player plus the same
+// hover-revealed New tab / Save to / Detach chrome as the 3D block (#430)
+function makeAudioBlock(name, url){
+  const box = document.createElement("div");
+  box.className = "naud"; box.dataset.name = name; box.dataset.url = url;
+  const a = document.createElement("audio");
+  a.className = "nm"; a.controls = true; a.preload = "metadata"; a.src = url;
+  box.appendChild(a);
+  const zone = document.createElement("div");
+  zone.className = "mw-zone";
+  zone.innerHTML = '<div class="mw-actions">' +
+    '<button class="iconbtn naud-nt" type="button">New tab</button>' +
+    '<button class="iconbtn naud-dl" type="button">Save to</button>' +
+    '<button class="iconbtn naud-pop" type="button">Detach</button></div>';
+  zone.querySelector(".naud-pop").onclick = ()=>openAudioWindow(name, url);
+  wireAudioFileActions(zone, name, url);
+  box.appendChild(zone);
+  return box;
+}
+// New tab / Save to for an audio file (same handlers wherever the block lives)
+function wireAudioFileActions(scope, name, url){
+  const nt = scope.querySelector(".naud-nt"), dl = scope.querySelector(".naud-dl");
+  if(nt) nt.onclick = ()=>window.open(url, "_blank");
+  if(dl) dl.onclick = async ()=>{
+    try{
+      const resp = await fetch(url);
+      if(!resp.ok) throw new Error("fetch failed");
+      const u = URL.createObjectURL(await resp.blob());
+      const a = document.createElement("a");
+      a.href = u; a.download = name.split("/").pop() || "audio";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(u), 5000);
+    }catch{ window.open(url, "_blank"); }
+  };
+}
+// an audio block's Detach action: the player in its own window (✕ close)
+function openAudioWindow(name, url){
+  const win = document.createElement("aside");
+  win.className = "hud note-window media-window mw-audio";
+  win.style.left = "28vw"; win.style.top = "18vh";
+  win.style.width = "min(420px,70vw)";
+  win.style.zIndex = ++noteWinZ;
+  win.innerHTML =
+    '<div class="mw-bar" data-drag>' +
+      '<button class="close grip" title="Drag to move window" aria-label="Drag to move window">⠿</button>' +
+      '<span class="mw-name"></span>' +
+      '<button class="close mw-x" aria-label="Close audio window">✕</button></div>';
+  win.querySelector(".mw-name").textContent = "Audio · " + name.split("/").pop();
+  const box = makeAudioBlock(name, url);
+  box.querySelector(".naud-pop").remove();   // no detach-from-detached recursion
+  win.appendChild(box);
+  win.querySelector(".mw-x").onclick = ()=>win.remove();
+  win.addEventListener("pointerdown", ()=>{ win.style.zIndex = ++noteWinZ; }, true);
+  document.body.appendChild(win);
+  wireWinDrag(win);
+  return win;
+}
+// ---- mermaid diagrams (#430): text|graph toggle (same segmented .iconbtn
+// group idiom as the header's IN/OUT/BOTH chips), a copy button that always
+// copies the SOURCE text (either mode), and a detach action. mermaid.min.js
+// is dynamically imported only the first time a note actually has one --
+// it's a large vendored bundle, no reason to pay for it on every note.
+let mermaidReady = null;
+function ensureMermaid(){
+  if(window.mermaid) return Promise.resolve(window.mermaid);
+  if(!mermaidReady) mermaidReady = import("/vendor/mermaid.min.js").then(()=>{
+    // securityLevel:"strict" -- mermaid sanitizes node/edge label text
+    // itself; note-derived diagram source never gets raw HTML passthrough
+    window.mermaid.initialize({startOnLoad: false, securityLevel: "strict"});
+    return window.mermaid;
+  });
+  return mermaidReady;
+}
+let mmdSeq = 0;
+function makeMermaidBlock(src){
+  const box = document.createElement("div");
+  box.className = "nmmd"; box.dataset.mmd = src;
+  box.innerHTML =
+    '<div class="nmmd-bar">' +
+      '<div class="nmmd-opts" role="group" aria-label="Diagram view">' +
+        '<button class="iconbtn nmmd-text" type="button" aria-pressed="false">Text</button>' +
+        '<button class="iconbtn nmmd-graph active" type="button" aria-pressed="true">Graph</button>' +
+      '</div>' +
+      '<button class="iconbtn nmmd-copy" type="button">Copy</button>' +
+      '<button class="iconbtn nmmd-pop" type="button">Detach</button></div>' +
+    '<pre class="nmmd-src-view" hidden><code></code></pre>' +
+    '<div class="nmmd-graph-view"></div>';
+  box.querySelector(".nmmd-src-view code").textContent = src;   // textContent, never innerHTML -- raw source can't inject markup even before mermaid sees it
+  wireMermaidBlock(box, src);
+  return box;
+}
+function wireMermaidBlock(box, src){
+  const textBtn = box.querySelector(".nmmd-text"), graphBtn = box.querySelector(".nmmd-graph");
+  const textView = box.querySelector(".nmmd-src-view"), graphView = box.querySelector(".nmmd-graph-view");
+  function setMode(mode){
+    const isText = mode === "text";
+    textBtn.classList.toggle("active", isText); textBtn.setAttribute("aria-pressed", String(isText));
+    graphBtn.classList.toggle("active", !isText); graphBtn.setAttribute("aria-pressed", String(!isText));
+    textView.hidden = !isText; graphView.hidden = isText;
+    if(!isText) renderMermaidGraph(graphView, src);
+  }
+  textBtn.onclick = ()=>setMode("text");
+  graphBtn.onclick = ()=>setMode("graph");
+  // copy always copies the SOURCE TEXT regardless of which mode is showing
+  box.querySelector(".nmmd-copy").onclick = async ()=>{
+    const btn = box.querySelector(".nmmd-copy");
+    try{ await navigator.clipboard.writeText(src); btn.textContent = "Copied"; }
+    catch{ btn.textContent = "Copy failed"; }
+    setTimeout(()=>{ btn.textContent = "Copy"; }, 1200);
+  };
+  box.querySelector(".nmmd-pop").onclick = ()=>openMermaidWindow(src);
+  renderMermaidGraph(graphView, src);   // graph is the default view
+}
+async function renderMermaidGraph(view, src){
+  if(view.dataset.rendered === src) return;   // already showing this exact source
+  try{
+    const mermaid = await ensureMermaid();
+    const id = "nmmd-render-" + (++mmdSeq);
+    const {svg} = await mermaid.render(id, src);
+    view.innerHTML = svg;   // mermaid's own sanitized output (securityLevel:"strict")
+    view.dataset.rendered = src;
+  }catch(err){
+    view.textContent = "Diagram failed to render: " + (err && err.message || err);
+  }
+}
+// a mermaid block's Detach action: the diagram in its own window (✕ close)
+function openMermaidWindow(src){
+  const win = document.createElement("aside");
+  win.className = "hud note-window media-window mw-mmd";
+  win.style.left = "24vw"; win.style.top = "12vh";
+  win.style.width = "min(640px,72vw)";
+  win.style.height = "min(560px,80vh)";
+  win.style.zIndex = ++noteWinZ;
+  win.innerHTML =
+    '<div class="mw-bar" data-drag>' +
+      '<button class="close grip" title="Drag to move window" aria-label="Drag to move window">⠿</button>' +
+      '<span class="mw-name">Mermaid diagram</span>' +
+      '<button class="close mw-x" aria-label="Close diagram window">✕</button></div>';
+  const box = makeMermaidBlock(src);
+  box.querySelector(".nmmd-pop").remove();   // no detach-from-detached recursion
+  win.appendChild(box);
+  win.querySelector(".mw-x").onclick = ()=>win.remove();
+  win.addEventListener("pointerdown", ()=>{ win.style.zIndex = ++noteWinZ; }, true);
+  document.body.appendChild(win);
+  wireWinDrag(win);
+  return win;
+}
 function make3dBlock(name, url){
   const box = document.createElement("div");
   box.className = "n3d"; box.dataset.name = name; box.dataset.url = url;
@@ -5231,6 +5411,15 @@ function detachNote(fromRect){
     wireModelFileActions(box, box.dataset.name, box.dataset.url);
     boot3dViewer(box).catch(()=>{});
   });
+  // cloned <audio> plays fine, but its action-zone handlers are dead — rebind
+  win.querySelectorAll(".naud").forEach(box=>{
+    const pop = box.querySelector(".naud-pop");
+    if(pop) pop.onclick = ()=>openAudioWindow(box.dataset.name, box.dataset.url);
+    wireAudioFileActions(box, box.dataset.name, box.dataset.url);
+  });
+  // cloned mermaid blocks: rebuild from the stashed source so the toggle,
+  // copy and detach handlers (and the rendered graph) are all live again
+  win.querySelectorAll(".nmmd").forEach(box=>{ box.replaceWith(makeMermaidBlock(box.dataset.mmd)); });
   // capture phase: the drag surfaces stopPropagation on pointerdown, so a
   // bubble listener would miss header clicks — raise-to-front must win first
   win.addEventListener("pointerdown", ()=>{ win.style.zIndex = ++noteWinZ; }, true);

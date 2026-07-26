@@ -58,6 +58,61 @@ check "link markdown inside backticks stays literal code" '<code>[label](file.mp
 check "wikilink inside backticks stays literal code" '<code>[[wl]]</code>' "$NVRB_MEDIA_OUT"
 check_absent "no live file link leaks from the code-span examples" 'data-href="file.mp4"' "$NVRB_MEDIA_OUT"
 
+echo "== neural-view render_body (note media: audio links #430) =="
+NVRB_AUDIO_OUT="$(python3 - "$PLUGIN/scripts/neural-view.py" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("neural_view", sys.argv[1])
+nv = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(nv)
+body = "Listen: [narration](assets/demo-audio.wav) here.\n"
+print(nv.render_body(body))
+PY
+)"
+check "[label](path.wav) renders a file link (a.fl) -- client resolves it to an <audio> block" '<a class="fl" data-href="assets/demo-audio.wav">narration</a>' "$NVRB_AUDIO_OUT"
+
+echo "== neural-view render_body (fenced mermaid blocks #430) =="
+NVRB_MMD_OUT="$(python3 - "$PLUGIN/scripts/neural-view.py" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("neural_view", sys.argv[1])
+nv = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(nv)
+body = """Before text.
+
+\x60\x60\x60mermaid
+graph TD
+  A --> B
+
+  B --> C
+\x60\x60\x60
+
+After text.
+"""
+print(nv.render_body(body))
+PY
+)"
+check "fenced mermaid block renders an .nmmd container" '<div class="nmmd" data-mmd="graph TD' "$NVRB_MMD_OUT"
+check "mermaid block's blank line inside the fence does NOT fracture it into two blocks" $'A --&gt; B\n\n  B --&gt; C' "$NVRB_MMD_OUT"
+check "surrounding prose still renders around the mermaid block" "<p>Before text.</p>" "$NVRB_MMD_OUT"
+check "surrounding prose still renders around the mermaid block (after)" "<p>After text.</p>" "$NVRB_MMD_OUT"
+check "mermaid source is duplicated into a hidden text-mode <pre><code> fallback" '<pre class="nmmd-src" hidden><code>graph TD' "$NVRB_MMD_OUT"
+
+echo "== neural-view render_body (mermaid XSS escaping #430) =="
+NVRB_MMDXSS_OUT="$(python3 - "$PLUGIN/scripts/neural-view.py" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("neural_view", sys.argv[1])
+nv = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(nv)
+body = """\x60\x60\x60mermaid
+graph TD
+  A["<img src=x onerror=alert(1)>"] --> B
+\x60\x60\x60
+"""
+print(nv.render_body(body))
+PY
+)"
+check_absent "mermaid source with an embedded HTML tag never reaches the page unescaped" "<img src=x onerror=alert(1)>" "$NVRB_MMDXSS_OUT"
+check "the same source is present, HTML-escaped" "&lt;img src=x onerror=alert(1)&gt;" "$NVRB_MMDXSS_OUT"
+
 echo "== neural-view Handler._send (BrokenPipeError silence #379) =="
 NVSEND_OUT="$(python3 - "$PLUGIN/scripts/neural-view.py" <<'PY' 2>&1
 import importlib.util, sys, types

@@ -1497,5 +1497,45 @@ if [[ "$tmpl_vs_rc" -ne 0 ]]; then echo "$tmpl_vs_out" >&2; fi
 
 echo "-- template: NV_VERSION bumped for this change (#428) --"
 check_absent "NV_VERSION is no longer the pre-#428 value" 'const NV_VERSION = "0.28.9";' "$(cat "$NVHTML")"
-check "NV_VERSION bumped to the new patch" 'const NV_VERSION = "0.28.10";' "$(cat "$NVHTML")"
+# version-stepping pins move with the head version: #428 landed 0.28.10 on
+# main, #430 (this branch) re-steps it once more to 0.28.11 -- this pin is
+# updated to match rather than left pointing at an intermediate value no
+# build will ever have again. The 0.28.9-absent guard above is untouched:
+# that's still a true statement at any later version.
+check "NV_VERSION bumped to the new patch" 'const NV_VERSION = "0.28.11";' "$(cat "$NVHTML")"
 
+echo "== neural-view note media: audio + mermaid (#430) =="
+check "NV_VERSION bumped for #430" 'const NV_VERSION = "0.28.11";' "$(cat "$NVHTML")"
+check "template imports mermaid via a dynamic import of the vendored file (no CDN)" 'import("/vendor/mermaid.min.js")' "$(cat "$NVHTML")"
+check "mermaid is initialized with securityLevel strict -- note-derived diagram source must not get raw HTML passthrough" 'securityLevel: "strict"' "$(cat "$NVHTML")"
+check "AUD_EXT recognizes the audio extensions FILE_TYPES allowlists server-side" "const AUD_EXT = /\\.(mp3|wav|ogg|m4a)\$/i;" "$(cat "$NVHTML")"
+check "a linked audio file becomes a live audio block, mirroring the video branch" 'a.replaceWith(makeAudioBlock(href, url));' "$(cat "$NVHTML")"
+check "makeAudioBlock renders a native <audio controls> player" 'a.controls = true; a.preload = "metadata"; a.src = url;' "$(cat "$NVHTML")"
+check "audio block reuses the same hover-revealed New tab / Save to / Detach chrome as the 3D block" '<button class="iconbtn naud-nt" type="button">New tab</button>' "$(cat "$NVHTML")"
+check "audio block detach action opens its own window" 'zone.querySelector(".naud-pop").onclick = ()=>openAudioWindow(name, url);' "$(cat "$NVHTML")"
+check "the detached audio window uses the same .note-window/.media-window chrome family" 'win.className = "hud note-window media-window mw-audio";' "$(cat "$NVHTML")"
+check "detachNote rebinds the audio block's dead-after-clone detach handler" 'if(pop) pop.onclick = ()=>openAudioWindow(box.dataset.name, box.dataset.url);' "$(cat "$NVHTML")"
+
+check "the server's .nmmd placeholder is hydrated into a live mermaid block" 'el.replaceWith(makeMermaidBlock(el.dataset.mmd));' "$(cat "$NVHTML")"
+check "mermaid block has a text|graph toggle, same segmented-group idiom as the IN/OUT/BOTH chips" 'role="group" aria-label="Diagram view"' "$(cat "$NVHTML")"
+check "the toggle's Text option exists" '<button class="iconbtn nmmd-text" type="button" aria-pressed="false">Text</button>' "$(cat "$NVHTML")"
+check "the toggle's Graph option is the default-active mode" '<button class="iconbtn nmmd-graph active" type="button" aria-pressed="true">Graph</button>' "$(cat "$NVHTML")"
+check "toggling to text mode reveals the source view and hides the graph view" "textView.hidden = !isText; graphView.hidden = isText;" "$(cat "$NVHTML")"
+check "the text-mode source is set via textContent, never innerHTML -- raw source can't inject markup" 'box.querySelector(".nmmd-src-view code").textContent = src;' "$(cat "$NVHTML")"
+check "copy button copies the mermaid SOURCE text (not the rendered SVG), regardless of mode" 'await navigator.clipboard.writeText(src); btn.textContent = "Copied";' "$(cat "$NVHTML")"
+check "mermaid rendering routes through mermaid.render() with the vendored lib's own sanitized output" 'const {svg} = await mermaid.render(id, src);' "$(cat "$NVHTML")"
+check "mermaid block detach action opens its own window" 'box.querySelector(".nmmd-pop").onclick = ()=>openMermaidWindow(src);' "$(cat "$NVHTML")"
+check "the detached mermaid window uses the same .note-window/.media-window chrome family" 'win.className = "hud note-window media-window mw-mmd";' "$(cat "$NVHTML")"
+check "detachNote rebuilds cloned mermaid blocks from their stashed source so handlers are live again" 'win.querySelectorAll(".nmmd").forEach(box=>{ box.replaceWith(makeMermaidBlock(box.dataset.mmd)); });' "$(cat "$NVHTML")"
+
+echo "== neural-view note media: audio block hover-zone must not blind the native controls (#430 review round 1) =="
+# .mw-zone is an absolutely-positioned overlay covering 60%x70% of the audio
+# block; without pointer-events:none it's an invisible hit target over the
+# native <audio controls> scrubber/volume/menu -- clicks land on the zone,
+# not the control underneath, so seeking/volume silently do nothing.
+check "the audio block's hover-zone lets clicks pass through to the native <audio> controls beneath it" '.naud .mw-zone{width:60%;height:70%;pointer-events:none}' "$(cat "$NVHTML")"
+check "the action buttons opt back into pointer events (they must stay clickable even though their zone parent doesn't capture)" '.naud .mw-actions{pointer-events:auto}' "$(cat "$NVHTML")"
+# the shared .mw-zone:hover reveal trigger can't fire once .mw-zone itself is
+# pointer-events:none (it stops receiving hover), so the audio block's own
+# reveal trigger must hang off the block, not the now-inert zone
+check "the audio block's action reveal is triggered by hovering the block itself, not the now pointer-events:none zone" '.naud:hover .mw-actions{opacity:1}' "$(cat "$NVHTML")"

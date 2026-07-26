@@ -66,6 +66,11 @@ for trav in "/vendor/../scripts/config.py" "/vendor/..%2fscripts%2fconfig.py" "/
     code="$(curl -s --path-as-is -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT$trav")"
     check "vendor route rejects $trav (404)" "404" "$code"
 done
+# mermaid diagrams (#430): vendored the same way, served same-origin
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/vendor/mermaid.min.js")"
+check "vendor route serves mermaid.min.js (200)" "200" "$code"
+ctype="$(curl -s -D - -o /dev/null "http://127.0.0.1:$NEURAL_VIEW_PORT/vendor/mermaid.min.js" | tr -d '\r' | grep -i '^content-type:')"
+check "vendor route mermaid.min.js content-type is javascript" "javascript" "$ctype"
 # /file media route (#289): Range support — <video> seeking needs 206 partial
 # responses; a 200-everything server makes scrubbing snap back to the played
 # position. Also: extension allowlist + traversal guard.
@@ -84,6 +89,12 @@ hdrs="$(curl -s -D - -o /dev/null -H 'Range: bytes=999-' "$_fu" | tr -d '\r')"
 check "file route unsatisfiable range gets 416" "416" "$hdrs"
 code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/file/$_nvrepo/dev/assets/clip.sh")"
 check "file route rejects non-allowlisted extension (404)" "404" "$code"
+# audio (#430): same allowlist mechanism, new extensions
+printf 'RIFF....WAVEfmt ' >"$_nvbrain/assets/clip.wav"
+_fau="http://127.0.0.1:$NEURAL_VIEW_PORT/file/$_nvrepo/dev/assets/clip.wav"
+hdrs="$(curl -s -D - -o /dev/null "$_fau" | tr -d '\r')"
+check "file route serves audio (200)" "200 OK" "$hdrs"
+check "file route audio content-type is audio/wav" "Content-Type: audio/wav" "$hdrs"
 code="$(curl -s --path-as-is -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/file/$_nvrepo/dev/../../../etc/passwd")"
 check "file route rejects traversal (404)" "404" "$code"
 

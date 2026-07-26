@@ -64,3 +64,32 @@ Then update the version/URL/sha256 for both files above and in
   - `SkeletonUtils.js`: `b1632a703206c3d830de9fcbe515696770d04b71a15ee6b50afa6d2c3298c86f`
   Loaded lazily (dynamic import) only when a note embeds a .glb/.gltf file;
   .obj/.stl use hand-rolled parsers in the template, no addon needed.
+
+## Note-media mermaid diagrams (#430)
+
+- **File**: `mermaid.min.js`
+- **Version**: 11.16.0 (npm `mermaid@11.16.0`)
+- **Source**: `https://unpkg.com/mermaid@11.16.0/dist/mermaid.min.js`
+- **Build**: the official browser IIFE bundle — a single self-contained file
+  (esbuild output; assigns `globalThis.mermaid`, no relative imports and no
+  split-build companion the way three.js needs). Loaded lazily via dynamic
+  `import("/vendor/mermaid.min.js")`, only the first time a note actually has
+  a fenced ` ```mermaid ` block — it's a large bundle (~3.4MB unminified
+  library, dagre/cytoscape layout engines included) with no reason to pay for
+  it on every note. `mermaid.initialize({securityLevel:"strict"})` is set
+  before the first render so note-derived diagram source can't smuggle raw
+  HTML through mermaid's own rendering (XSS discipline — see neural-view.py's
+  `render_body`, which independently HTML-escapes the source for the
+  text-mode `<pre><code>` fallback).
+- **License**: MIT, © Mermaid contributors.
+- **sha256**: `74d7c46dabca328c2294733910a8aa1ed0c37451776e8d5295da38a2b758fb9b`
+
+To re-vendor a newer release:
+
+```bash
+curl -sfL https://unpkg.com/mermaid@<version>/dist/mermaid.min.js \
+  -o plugins/spec-workflow/templates/vendor/mermaid.min.js
+shasum -a 256 plugins/spec-workflow/templates/vendor/mermaid.min.js
+```
+
+Then update the version/URL/sha256 above.
