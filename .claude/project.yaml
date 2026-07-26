@@ -383,6 +383,7 @@ delegation:
             email: '{local}+reviewer_agent@{domain}'
             color: '#ff5b7f'
             models:
+            - claude-opus-5[1m]
             - claude-fable-5[1m]
             - claude-sonnet-5
             - claude-sonnet-5[1m]
