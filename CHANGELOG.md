@@ -19,6 +19,12 @@
   > 
   > Closes #408
 
+### Documentation
+- **design:** ast-E5 epic design doc — voice TTS/STT loop (`c11fedd`)
+  > - TTS reuses the page's existing speechSynthesis pipeline and echo-guard
+  > - engine stays text-in/text-out; voice spans emitted from the page
+  > - STT choice (Web Speech vs whisper.cpp) is decision-gated per §13.2
+
 ## v0.35.0 — 2026-07-26
 
 ### Features
