@@ -753,7 +753,17 @@ canvas.grabbing{cursor:grabbing}
 .cl-entry.cl-has-body .cl-entry-row{cursor:pointer}
 .cl-desc{flex:1}
 .cl-hash{color:var(--muted);font-size:.6rem}
-.cl-body{margin:.2rem 0 .2rem 1rem;padding:.3rem .4rem;border-left:2px solid var(--border);color:var(--muted);white-space:pre-wrap}
+/* #419: body content is now real markup (renderMdBody()), not preformatted
+   plain text -- p/br carry line breaks, so pre-wrap would just double them. */
+.cl-body{margin:.2rem 0 .2rem 1rem;padding:.3rem .4rem;border-left:2px solid var(--border);color:var(--muted)}
+.cl-body p{margin:0 0 .3rem}
+.cl-body p:last-child{margin-bottom:0}
+.cl-body h3,.cl-body h4,.cl-body h5,.cl-body h6{color:var(--cyan);font-size:.62rem;margin:.4rem 0 .2rem}
+.cl-body code{background:rgba(70,230,255,.1);padding:.05rem .3rem;border-radius:4px}
+.cl-body pre{margin:.3rem 0;padding:.3rem .4rem;background:rgba(70,230,255,.06);border-radius:4px;overflow-x:auto}
+.cl-body pre code{background:none;padding:0}
+.cl-body ul,.cl-body ol{margin:.2rem 0;padding-left:1.1rem}
+.cl-body blockquote{margin:.2rem 0;padding-left:.5rem;border-left:2px solid var(--border)}
 .cl-disclosure{display:inline-block;width:1em;color:var(--muted)}
 .ast-metrics{display:flex;flex-direction:column;gap:.3rem;margin-top:.3rem;
   font-family:var(--mono);font-size:.6rem;color:var(--fg)}
@@ -2801,7 +2811,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // matches what the changelog overlay documents) -- it now lives in the
 // chip's tooltip, and as the fallback chip text when the plugin version
 // can't be read (see CHIP_VER_FALLBACK below).
-const NV_VERSION = "0.28.6";
+const NV_VERSION = "0.28.7";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -6488,6 +6498,77 @@ document.getElementById("ast-inspect-open").onclick = () => { openAstInspectorWi
 // it, since the two windows' bodies have nothing else in common. ----
 window.changelogWin = window.changelogWin || null;
 
+// #419: the one client-side markdown renderer in this template. Zettel
+// note bodies already render markdown -- but server-side, via render_body()
+// in scripts/neural-view.py, shipped to the client as pre-rendered, already-
+// safe `bodyHtml` (see renderNoteInto()'s `q("body").innerHTML = d.bodyHtml`
+// above -- that HTML is final and must never be re-parsed as markdown here,
+// it would double-escape/corrupt live wikilinks and media). The changelog
+// overlay has no equivalent: it fetches raw CHANGELOG.md text and parses it
+// entirely client-side (parseChangelog(), just below), so commit bodies
+// need their OWN renderer -- this is it, and it must stay the only one.
+// Safe subset only (headings, **bold**/*italic*/_italic_, `code`, fenced
+// ```code```, "- "/"* " and "1. " lists, "> " blockquotes) -- deliberately
+// not a general markdown parser, matching parseChangelog's own philosophy
+// below. Escape-at-sink (#419 XSS finding): every raw input line is
+// HTML-escaped inside inline() BEFORE any markdown substitution runs, so a
+// commit body crafted with e.g. `<img onerror=...>` can never inject live
+// markup -- only its escaped text ever reaches the DOM.
+function renderMdBody(text){
+  function inline(s){
+    let r = escapeHtml(s);
+    // #419 review round 1: code spans must be extracted to inert
+    // placeholders BEFORE emphasis substitution runs, not after --
+    // this repo's own commit bodies constantly carry snake_case
+    // identifiers and glob patterns inside backticks (port_zombie,
+    // section-*.sh), and emphasis regexes would otherwise read the
+    // underscores/asterisks INSIDE those backticks as _em_/*em*
+    // markers, corrupting the code span. Placeholders use characters
+    // (\0, digits) that can never appear in escapeHtml's output, so
+    // they can't collide with real escaped text.
+    const codes = [];
+    r = r.replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return `\0CODE${codes.length - 1}\0`; });
+    r = r.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    r = r.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    r = r.replace(/_([^_]+)_/g, "<em>$1</em>");
+    r = r.replace(/\0CODE(\d+)\0/g, (_, i) => `<code>${codes[Number(i)]}</code>`);
+    return r;
+  }
+  const lines = String(text).split("\n");
+  const out = [];
+  let list = null;   // {type: "ul"|"ol", items: [...]}
+  let para = [];
+  const flushPara = ()=>{ if(para.length){ out.push(`<p>${para.map(inline).join("<br>")}</p>`); para = []; } };
+  const flushList = ()=>{ if(list){ const t = list.type; out.push(`<${t}>${list.items.map(it=>`<li>${inline(it)}</li>`).join("")}</${t}>`); list = null; } };
+  let i = 0;
+  while(i < lines.length){
+    const line = lines[i];
+    if(/^\s*```/.test(line)){
+      flushPara(); flushList();
+      const code = [];
+      i++;
+      while(i < lines.length && !/^\s*```/.test(lines[i])){ code.push(lines[i]); i++; }
+      i++;   // skip the closing fence (tolerated even if missing -- EOF ends the block)
+      out.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+      continue;
+    }
+    if(line.trim() === ""){ flushPara(); flushList(); i++; continue; }
+    const h = /^(#{1,6})\s+(.+)$/.exec(line);
+    if(h){ flushPara(); flushList(); const lvl = Math.min(h[1].length+2, 6); out.push(`<h${lvl}>${inline(h[2].trim())}</h${lvl}>`); i++; continue; }
+    const bq = /^>\s?(.*)$/.exec(line);
+    if(bq){ flushPara(); flushList(); out.push(`<blockquote>${inline(bq[1])}</blockquote>`); i++; continue; }
+    const ul = /^[-*]\s+(.+)$/.exec(line);
+    if(ul){ flushPara(); if(!list || list.type !== "ul"){ flushList(); list = {type: "ul", items: []}; } list.items.push(ul[1]); i++; continue; }
+    const ol = /^\d+\.\s+(.+)$/.exec(line);
+    if(ol){ flushPara(); if(!list || list.type !== "ol"){ flushList(); list = {type: "ol", items: []}; } list.items.push(ol[1]); i++; continue; }
+    flushList();
+    para.push(line);
+    i++;
+  }
+  flushPara(); flushList();
+  return out.join("");
+}
+
 // Hand-rolled parser for changelog.py's OUTPUT FORMAT (see that script's
 // module docstring, plugins/spec-workflow/scripts/changelog.py) -- this is
 // NOT a general markdown parser and must never become one: it only ever
@@ -6548,7 +6629,7 @@ function changelogEntryHtml(e){
     + `<span class="cl-disclosure">${hasBody ? "▸" : ""}</span>`
     + `<span class="cl-desc">${scope}${escapeHtml(e.desc)}</span>`
     + `<span class="cl-hash">${escapeHtml(e.hash)}</span></div>`
-    + (hasBody ? `<div class="cl-body" id="${bodyId}" hidden>${e.body.map(escapeHtml).join("<br>")}</div>` : "")
+    + (hasBody ? `<div class="cl-body" id="${bodyId}" hidden>${renderMdBody(e.body.join("\n"))}</div>` : "")
     + `</div>`;
 }
 // newest-expanded default (#405): idx 0 (the newest version -- versions

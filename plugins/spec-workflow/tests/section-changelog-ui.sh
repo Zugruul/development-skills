@@ -151,6 +151,7 @@ global.fetch = async (url) => {
 };
 
 eval(extract("escapeHtml"));
+eval(extract("renderMdBody"));
 eval(extract("chipHtml"));
 eval(extract("wireWinDrag"));
 eval(extract("parseChangelog"));
@@ -364,6 +365,67 @@ const FIXTURE = [
     }
     console.log("HEADER_TEXT_CLICK_SECTION_ONLY_OK true");
 
+    // ---- #419: entry bodies render through the shared renderMdBody() —
+    // the same one client-side markdown renderer used by the changelog
+    // (note windows already get markdown server-side via render_body() in
+    // neural-view.py, see the #419 dev commit message / report for why that
+    // path isn't duplicated here) -- lists, bold, inline code must render
+    // as real markup, not escaped plain text. ----
+    {
+        const mdEntry = {scope: "", desc: "markdown body test", hash: "abc1234",
+            body: ["- item one", "- item two", "", "**bold** and `code` and plain text."]};
+        const mdHtml = changelogEntryHtml(mdEntry);
+        if (!mdHtml.includes("<li>item one</li>") || !mdHtml.includes("<li>item two</li>")) throw new Error("markdown body must render a bullet list: " + mdHtml);
+        if (!mdHtml.includes("<strong>bold</strong>")) throw new Error("markdown body must render **bold**: " + mdHtml);
+        if (!mdHtml.includes("<code>code</code>")) throw new Error("markdown body must render `code`: " + mdHtml);
+    }
+    console.log("BODY_MARKDOWN_RENDERS_OK true");
+
+    // ---- #419 XSS discipline: commit bodies are attacker-influenceable
+    // (git log --format is attacker-influenceable if a commit message is
+    // crafted) -- renderMdBody must escape-at-sink (escape BEFORE any
+    // markdown transform), so no raw tag ever reaches the DOM. ----
+    {
+        const evilEntry = {scope: "", desc: "injection test", hash: "abc1234",
+            body: ["<img src=x onerror=alert(1)>"]};
+        const evilHtml = changelogEntryHtml(evilEntry);
+        if (evilHtml.includes("<img")) throw new Error("commit body markdown renderer must escape raw markup, not pass it through: " + evilHtml);
+        if (!evilHtml.includes("&lt;img")) throw new Error("commit body markdown renderer must render the escaped form of injected markup: " + evilHtml);
+    }
+    console.log("BODY_MARKDOWN_ESCAPES_INJECTION_OK true");
+
+    // ---- #419 review round 1: code spans must be inert to emphasis --
+    // this repo's own commit bodies constantly carry snake_case
+    // identifiers and glob patterns inside backticks (port_zombie,
+    // section-*.sh); if emphasis substitution runs before code-span
+    // extraction, the underscores/asterisks INSIDE the backticks get
+    // eaten as em/strong markers instead of staying literal code text. ----
+    {
+        const snakeEntry = {scope: "", desc: "snake case in code span", hash: "abc1234",
+            body: ["see `snake_case_inside_backticks` for details."]};
+        const snakeHtml = changelogEntryHtml(snakeEntry);
+        if (!snakeHtml.includes("<code>snake_case_inside_backticks</code>")) throw new Error("underscores inside a code span must not be read as _em_ markers: " + snakeHtml);
+        if (snakeHtml.includes("<em>")) throw new Error("a code span containing underscores must never produce <em>: " + snakeHtml);
+
+        const globEntry = {scope: "", desc: "glob star in code span", hash: "abc1234",
+            body: ["matches `glob*star*inside` files."]};
+        const globHtml = changelogEntryHtml(globEntry);
+        if (!globHtml.includes("<code>glob*star*inside</code>")) throw new Error("asterisks inside a code span must not be read as *em* markers: " + globHtml);
+        if (globHtml.includes("<em>")) throw new Error("a code span containing asterisks must never produce <em>: " + globHtml);
+    }
+    console.log("CODE_SPAN_INERT_TO_EMPHASIS_OK true");
+
+    // ---- #419: one renderer, no divergent duplicate -- exactly one
+    // renderMdBody() definition in the template, and changelogEntryHtml
+    // is wired to call it (not a second parallel implementation). ----
+    {
+        const defCount = (html.match(/function renderMdBody\(/g) || []).length;
+        if (defCount !== 1) throw new Error("expected exactly one renderMdBody() definition in the template, found " + defCount);
+        const cehSrc = extract("changelogEntryHtml");
+        if (!/renderMdBody\(/.test(cehSrc)) throw new Error("changelogEntryHtml must call the shared renderMdBody() function, not its own inline transform");
+    }
+    console.log("ONE_RENDERER_PINNED_OK true");
+
     // ---- open builds the window, fetches once, binds one keydown listener ----
     resetChangelogWindow();
     changelogText = FIXTURE;
@@ -466,6 +528,10 @@ if command -v node >/dev/null 2>&1; then
     check "#411: caret click when every entry is already expanded collapses them all without touching the section's own open state" "CARET_ALL_EXPANDED_COLLAPSES_ALL_OK true" "$cl_tmpl_out"
     check "#411: caret click on a mixed state (some entries open, some not) expands the rest -- expand wins" "CARET_MIXED_STATE_EXPAND_WINS_OK true" "$cl_tmpl_out"
     check "#411: header TEXT click still only toggles the section -- it never touches entry-body state or the bulk caret's glyph" "HEADER_TEXT_CLICK_SECTION_ONLY_OK true" "$cl_tmpl_out"
+    check "#419: entry bodies render through the shared renderMdBody() -- bullet list, **bold**, and \`inline code\` all become real markup" "BODY_MARKDOWN_RENDERS_OK true" "$cl_tmpl_out"
+    check "#419: commit body markdown renderer escapes-at-sink -- <img onerror=...> in a commit body renders escaped, never as raw markup" "BODY_MARKDOWN_ESCAPES_INJECTION_OK true" "$cl_tmpl_out"
+    check "#419 review round 1: code spans are inert to emphasis -- underscores/asterisks inside \`backticks\` (snake_case identifiers, glob*star*patterns) never get read as em/strong markers" "CODE_SPAN_INERT_TO_EMPHASIS_OK true" "$cl_tmpl_out"
+    check "#419: exactly one renderMdBody() definition in the template, and changelogEntryHtml calls it (one renderer, no divergent duplicate)" "ONE_RENDERER_PINNED_OK true" "$cl_tmpl_out"
     check "open builds the detached window, fetches /changelog once, binds one keydown listener" "OPEN_BUILDS_AND_LOADS_OK true" "$cl_tmpl_out"
     check "reopening while open focuses (same window, raised z-index, no re-fetch, no dup listener)" "REOPEN_FOCUSES_OK true" "$cl_tmpl_out"
     check "closing removes the window AND unbinds its keydown listener" "CLOSE_TEARS_DOWN_OK true" "$cl_tmpl_out"
