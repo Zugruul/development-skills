@@ -323,3 +323,48 @@ else echo "ok   lost-pidfile: zombie process no longer alive after stop --force"
 unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT
 rm -rf "$_zroot2" "$_zstate2"
 
+echo "== neural-view (process identity, #415: named 'neural-view', not python3/Python, in ps/Activity Monitor) =="
+# Empirically verified (see #415 task notes): CPython's macOS FRAMEWORK
+# builds (Homebrew's bottled python@X.Y, python.org installers) perform
+# their OWN internal re-exec at process startup into
+# Resources/Python.app/Contents/MacOS/Python, unconditionally -- this
+# discards any executable path or argv[0] our own spawn chooses, so
+# `ps -o comm=` keeps showing the real framework binary no matter what a
+# stdlib-only trick does. sysconfig.get_config_var("PYTHONFRAMEWORK") is the
+# stdlib's own way to detect this ahead of time. On a NON-framework
+# interpreter (most Linux builds, many pyenv builds) the rename holds and
+# `ps -o comm=` genuinely reports "neural-view". This test asserts the
+# strict rename only when we know it's achievable, and always asserts the
+# portable part (the process-name symlink itself gets created/refreshed).
+_pnstate="$(mktemp -d)"
+_pnroot="$(mktemp -d)"
+mkdir -p "$_pnroot/.claude"
+export NEURAL_VIEW_STATE="$_pnstate"
+lifecycle_start "process-name: neural-view starts" NEURAL_VIEW_PORT 'python3 "$NV" start --dir "$_pnroot"'
+_pnpid="$(cat "$_pnstate/pid")"
+if [[ -L "$_pnstate/bin/neural-view" ]]; then echo "ok   process-name: state-dir bin/neural-view symlink created"
+else echo "FAIL process-name: state-dir bin/neural-view symlink created — not found"; fails=$((fails + 1)); fi
+_pnframework="$(python3 -c 'import sysconfig; print(bool(sysconfig.get_config_var("PYTHONFRAMEWORK")))')"
+_pncomm="$(ps -p "$_pnpid" -o comm= 2>/dev/null)"
+if [[ "$_pnframework" == "True" ]]; then
+    echo "ok   process-name: macOS framework Python detected (sysconfig PYTHONFRAMEWORK set) — comm cannot be renamed by any stdlib trick (documented OS limitation, #415), skipping strict comm check"
+else
+    check "process-name: ps comm reports neural-view (non-framework interpreter)" "neural-view" "$_pncomm"
+fi
+python3 "$NV" stop >/dev/null
+unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT
+rm -rf "$_pnstate" "$_pnroot"
+
+echo "== neural-view (process identity: naming failure never blocks startup, #415) =="
+_pfstate="$(mktemp -d)"
+_pfroot="$(mktemp -d)"
+mkdir -p "$_pfroot/.claude"
+: >"$_pfstate/bin"   # pre-occupy the bin path with a plain FILE so the symlink/mkdir must fail
+export NEURAL_VIEW_STATE="$_pfstate"
+lifecycle_start "process-name: start still succeeds when the rename link can't be created" NEURAL_VIEW_PORT 'python3 "$NV" start --dir "$_pfroot"'
+out="$(python3 "$NV" status)"
+check "process-name degrade: status still reports RUNNING" "RUNNING" "$out"
+python3 "$NV" stop >/dev/null
+unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT
+rm -rf "$_pfstate" "$_pfroot"
+

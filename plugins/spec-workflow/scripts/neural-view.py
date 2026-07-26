@@ -1609,6 +1609,49 @@ def pid_alive():
 
 
 SCRIPT_NAME = "neural-view.py"  # matched against a candidate's cmdline before it is ever killed
+PROCESS_NAME = "neural-view"    # #415: the OS-visible name `start` tries to give the spawned server
+
+
+def ensure_process_name_link():
+    """#415: (re)create S/bin/neural-view -> sys.executable and return its
+    path. `start` spawns the server through this link (instead of through
+    the raw interpreter path) so ps/Activity Monitor show "neural-view"
+    instead of "python3"/"Python" -- on platforms where the running Python
+    isn't itself re-exec'd through another binary at startup, this genuinely
+    renames the process (`ps -o comm=`, `ps -o command=` and argv[0] all
+    become "neural-view").
+
+    Always refreshed (sys.executable can change between runs -- a python
+    upgrade, a different venv, ...) and NEVER allowed to raise past the
+    caller: `start` treats naming as purely cosmetic and must still boot the
+    server if this fails (read-only state dir, path occupied by a plain
+    file, platform without symlink support, ...). Raises on failure; the
+    caller is responsible for catching and falling back.
+
+    KNOWN LIMITATION (verified empirically for #415, see the task's own
+    notes): CPython's macOS FRAMEWORK builds -- Homebrew's bottled
+    python@X.Y, the python.org installers, i.e. most developers' actual
+    `python3` on macOS -- perform their OWN internal re-exec at process
+    startup into Resources/Python.app/Contents/MacOS/Python,
+    unconditionally, discarding whatever executable path or argv[0] this
+    function's caller supplied. On those interpreters `ps -o comm=` keeps
+    showing the real framework binary no matter what a stdlib-only trick
+    does -- there is no pip package and no C extension allowed here
+    (PyYAML is the sole permitted dependency) that can suppress that
+    second, internal exec. `sysconfig.get_config_var("PYTHONFRAMEWORK")`
+    is the stdlib's own way to detect this ahead of time.
+    On a non-framework interpreter (most Linux builds, many pyenv builds)
+    the rename holds end-to-end. Everywhere, PYTHONEXECUTABLE (set by the
+    caller alongside this link) at least fixes sys.executable/sys.argv[0]
+    as the running process sees them, even when the OS-level name can't be
+    changed."""
+    link_dir = S / "bin"
+    link = link_dir / PROCESS_NAME
+    link_dir.mkdir(parents=True, exist_ok=True)
+    if link.exists() or link.is_symlink():
+        link.unlink()
+    link.symlink_to(sys.executable)
+    return link
 
 
 def configured_port():
@@ -2427,7 +2470,20 @@ def main():
             print(f"RUNNING http://127.0.0.1:{PORTFILE.read_text().strip()}")
             return
         port = arg_port(args)
-        child = [sys.executable, os.path.abspath(__file__), "serve", "--port", str(port)]
+        # #415: spawn through a refreshed `neural-view` symlink instead of
+        # the raw interpreter path, so ps/Activity Monitor can show
+        # "neural-view" rather than "python3"/"Python" -- naming is purely
+        # cosmetic, so any failure here (read-only state dir, path occupied,
+        # no symlink support, ...) just falls back to the old unnamed
+        # behavior rather than blocking startup.
+        exe, argv0, env = sys.executable, sys.executable, dict(os.environ)
+        try:
+            link = ensure_process_name_link()
+            exe, argv0 = str(link), PROCESS_NAME
+            env["PYTHONEXECUTABLE"] = str(link)
+        except Exception as e:  # noqa: BLE001 — naming is cosmetic; availability is not
+            print(f"neural-view: process-name link unavailable ({e}) — starting unnamed", file=sys.stderr)
+        child = [argv0, os.path.abspath(__file__), "serve", "--port", str(port)]
         explicit_dir = raw_arg_dir(args)
         if explicit_dir:
             child += ["--dir", os.path.abspath(explicit_dir)]
@@ -2438,7 +2494,7 @@ def main():
         if explicit_rescan is not None:
             child += ["--rescan", str(explicit_rescan)]
         log = open(S / "server.log", "ab")
-        subprocess.Popen(child, stdout=log, stderr=log, start_new_session=True, env=os.environ)
+        subprocess.Popen(child, executable=exe, stdout=log, stderr=log, start_new_session=True, env=env)
         came_up = False
         for _ in range(30):
             time.sleep(0.1)
@@ -2519,6 +2575,18 @@ def main():
                 time.sleep(0.1)
             if zombie is not None:
                 zpid, zcmd = zombie
+                # #415: matching on SCRIPT_NAME (not PROCESS_NAME) is
+                # deliberate and unchanged by the process-naming rename
+                # above -- our own spawn ALWAYS passes the script's own
+                # abspath as an argument regardless of what the executable
+                # is named (see `start`'s `child` list), so "neural-view.py"
+                # stays present in this candidate's cmdline whether or not
+                # the rename took hold on this platform. Matching on the
+                # shorter PROCESS_NAME ("neural-view") instead would widen
+                # the blast radius of --force to any unrelated process that
+                # merely mentions "neural-view" in its command line without
+                # actually being one of ours -- exactly what this refusal
+                # check exists to prevent.
                 if zpid is not None and zcmd and SCRIPT_NAME in zcmd:
                     os.kill(zpid, signal.SIGTERM)
                     print(f"killed zombie PID {zpid} holding port {port}")
