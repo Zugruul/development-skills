@@ -51,12 +51,17 @@ Branch already checked out: <branch>.
    must add cases under <isolationSuite>.">
 4. Run `<cfg:commands.gate>` until GREEN. Then push the branch and open a PR with body
    "Closes #N". Report the PR URL.
-   Commit subjects AND the PR title MUST be a conventional commit line —
-   `type(scope): description`, allowed types `feat fix perf refactor docs test chore ci build style`,
-   scope = the task id or the touched area, e.g. `feat(AST-060): add the widget cache` — because a
-   squash-merge carries the PR title into main's history, and that becomes the CHANGELOG entry a
-   human reads later. A title/subject that doesn't parse as a conventional commit falls into the
-   CHANGELOG's "Other" bucket, which should be rare-to-empty.
+   Commit subjects AND the PR title MUST follow the configured convention
+   (`<cfg:commit.convention>`, default conventional-commits) — under conventional-commits
+   that's a conventional commit line, `type(scope): description`, allowed types
+   `feat fix perf refactor docs test chore ci build style`, scope = the task id or the
+   touched area, e.g. `feat(AST-060): add the widget cache` — because a squash-merge
+   carries the PR title into main's history, and that becomes the CHANGELOG entry a
+   human reads later. A title/subject that doesn't parse under the configured convention
+   falls into the CHANGELOG's "Other" bucket, which should be rare-to-empty. Commit
+   BODIES follow `<cfg:commit.systemPrompt>` (default, when absent: "Simple titles.
+   Enumerated bullet-point lists of the changes. Simple human language.") — dense prose
+   bodies render verbatim into the generated CHANGELOG and are hard for a human to scan.
 5. Match surrounding code style; small focused commits; update spec/docs if you changed a contract.
    Documentation you own in this change: <paste the cfg:docs[] sets whose `covers` globs match
    the task's expected paths — id, path, notes>. If your diff changes behavior/config/usage a

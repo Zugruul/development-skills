@@ -127,6 +127,29 @@ def rule_ensure_serial_delivery():
     return TextRule("ensure-serial-delivery", detect, apply)
 
 
+def rule_ensure_commit_config():
+    """Adds a top-level commit: {convention, systemPrompt} block (#418) ONLY when
+    no top-level `commit:` key exists yet -- an existing commit: block (any
+    shape) is a choice the rule respects and leaves fully untouched, same
+    contract as ensure-serial-delivery but at the top level since `commit` is
+    a sibling of `work`/`methodology`, not a nested methodology key."""
+    key_pat = re.compile(r"(?m)^commit:\s*$")
+
+    def detect(text):
+        return key_pat.search(text) is None
+
+    def apply(text):
+        sep = "" if text.endswith("\n") else "\n"
+        block = (
+            f"{sep}commit:\n"
+            f"    convention: conventional-commits\n"
+            f'    systemPrompt: "Simple titles. Enumerated bullet-point lists of the changes. Simple human language."\n'
+        )
+        return text + block
+
+    return TextRule("ensure-commit-config", detect, apply)
+
+
 TEXT_RULES = [rule_strip_schema_data_key]  # ensure-feedback-key added with the configured value in main()
 
 
@@ -359,7 +382,8 @@ class RepoResult:
 
 
 def apply_text_rules(text, feedback_value):
-    rules = [rule_strip_schema_data_key(), rule_ensure_feedback_key(feedback_value), rule_ensure_serial_delivery()]
+    rules = [rule_strip_schema_data_key(), rule_ensure_feedback_key(feedback_value), rule_ensure_serial_delivery(),
+             rule_ensure_commit_config()]
     applied = []
     for r in rules:
         if r.detect(text):

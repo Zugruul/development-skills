@@ -168,6 +168,22 @@
                 }
             }
         },
+        "commit": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Commit-message conventions (#418): how agents write commit subjects, PR titles, and squash-merge subjects/bodies. Motivated by the generated CHANGELOG (#404) rendering a squash body verbatim -- dense prose there is unreadable to a human, so commit language is a product surface, not just an agent-prose habit. Absent == { convention: conventional-commits } plus the documented default systemPrompt below -- additive-only, consumed only as prose by implement-task's dev-brief template and build-next/references/auto-review.md's squash-merge step (no runtime code reads this section today).",
+            "properties": {
+                "convention": {
+                    "type": "string",
+                    "default": "conventional-commits",
+                    "description": "Which commit-message convention this repo's commit subjects/PR titles/squash-merge subjects follow. Any non-empty string is accepted (a custom in-house convention validates as free text), but these presets are recognized and documented: 'conventional-commits' (default) -- https://www.conventionalcommits.org, `type(scope): description`; 'angular' -- the stricter, fixed type/scope Angular convention conventional-commits itself descends from, with a strict subject length limit; 'gitmoji' -- an emoji prefixes (or replaces) the type word, e.g. `:bug: fix the widget cache`; 'plain' -- Tim Pope's 50/72 style, a short imperative summary line with no type prefix at all. An empty string is invalid."
+                },
+                "systemPrompt": {
+                    "type": "string",
+                    "description": "Free-text instruction injected at the preparing-to-commit phase to control commit-message LANGUAGE/STRUCTURE (the body's prose, distinct from `convention` above which governs the subject line's shape). Absent == \"Simple titles. Enumerated bullet-point lists of the changes. Simple human language.\" When present, must be non-empty."
+                }
+            }
+        },
         "docs": {
             "type": "array",
             "description": "Documentation sets the reviewer enforces: when a diff touches files under a set's `covers` globs and changes behavior/contracts/usage, that set's docs must be updated in the same PR (or the PR must state why not). Standalone repo: one entry covering everything. Monorepo: one entry per package/app plus an optional root entry.",

@@ -174,14 +174,19 @@ comment first — the recorded independent agent review IS the artifact that
 justifies the merge, whether or not GitHub demands a formal approval on top
 of it.
 
-The merge commit's SUBJECT line MUST be a conventional commit line —
-`type(scope): description`, allowed types `feat fix perf refactor docs test chore ci build style`,
-scope = the task id or the touched area, `(#N)` issue ref, imperative description, e.g.
+The merge commit's SUBJECT line MUST follow the configured convention
+(`<cfg:commit.convention>`, default conventional-commits) — under conventional-commits
+that's a conventional commit line, `type(scope): description`, allowed types
+`feat fix perf refactor docs test chore ci build style`, scope = the task id or the
+touched area, `(#N)` issue ref, imperative description, e.g.
 `feat(AST-060): add the widget cache (#123)`. This is not cosmetic: the subject becomes a
-CHANGELOG entry read by humans, and (for the squash route) `semver.sh apply-head`'s bump
-classification depends on that same type prefix (§MERGE FRESHNESS + SEMVER below). `gh pr merge
---squash` defaults the subject to `<PR title> (#N)`, so this mandate is already satisfied once
-implement-task's PR-title mandate is followed — verify it before merging rather than assume it.
+CHANGELOG entry read by humans, and (for the squash route, and only when the convention is
+the conventional-commits default) `semver.sh apply-head`'s bump classification depends on
+that same type prefix (§MERGE FRESHNESS + SEMVER below) — a repo customizing
+`commit.convention` away from the default takes on keeping its own semver classification in
+sync, out of scope here. `gh pr merge --squash` defaults the subject to `<PR title> (#N)`,
+so this mandate is already satisfied once implement-task's PR-title mandate is followed —
+verify it before merging rather than assume it.
 
 Merge with `<cfg:methodology.mergeMethod|squash>` — a per-repo decision made at
 setup (the `merge-mode.sh method` subcommand changes it later):
@@ -189,8 +194,12 @@ setup (the `merge-mode.sh method` subcommand changes it later):
 - **squash (default)** collapses the branch into one commit, so carry the
   attribution in the squash body: one `Co-authored-by:` trailer per distinct
   agent author on the branch (from `git log main..<branch> --format='%an <%ae>'`,
-  deduped) plus the reviewer, and name who applied it. GitHub links the squash
-  commit to the PR, where the original role-attributed commits remain visible.
+  deduped) plus the reviewer, and name who applied it. The rest of the body follows
+  `<cfg:commit.systemPrompt>` (default, when absent: "Simple titles. Enumerated
+  bullet-point lists of the changes. Simple human language.") — the squash body renders
+  verbatim into the generated CHANGELOG, so dense prose there is unreadable to a human.
+  GitHub links the squash commit to the PR, where the original role-attributed commits
+  remain visible.
 - **merge** preserves the individual role-attributed commits on main (pick this
   at setup if per-commit attribution in `git log` matters more than linear
   history); **rebase** replays them.

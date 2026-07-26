@@ -56,6 +56,23 @@ Each spec is a design document plus a backlog of numbered tasks. One repo can ha
        ```
      - **Don't enable** — no feedback feed; skip this block entirely.
      If accepted, write `methodology.feedback: true` into the config (the `feedback` skill and its config surface are documented in the plugin README).
+   - **Commit convention** (`commit.convention` / `commit.systemPrompt`, #418) — ask through the host's structured-input facility (header "Commit convention"): which commit-message convention does this repo use, and does the commit LANGUAGE need customizing? A squash-merge body renders verbatim into the generated CHANGELOG, so dense prose there is unreadable to a human — this is why the question is asked at setup instead of left to each agent's habits.
+     - **conventional-commits (Recommended default)** — description: "`type(scope): description` — https://www.conventionalcommits.org. What the CHANGELOG generator and semver classification already assume."
+     - **angular** — description: "The stricter, fixed type/scope Angular convention conventional-commits itself descends from, with a strict subject length limit."
+     - **gitmoji** — description: "An emoji prefixes (or replaces) the type word, e.g. `:bug: fix the widget cache`."
+     - **plain** — description: "Tim Pope's 50/72 style — a short imperative summary line, no type prefix at all."
+     - **Custom** — any other free-string convention name this repo already follows in-house.
+     Write the choice as `commit.convention: <value>` in `.claude/project.yaml` (omit the whole `commit:` block to accept the conventional-commits default outright).
+     Then ask whether to customize the commit-body LANGUAGE (`commit.systemPrompt`): the default, used whenever this key is absent, is
+     ```
+     Simple titles. Enumerated bullet-point lists of the changes. Simple human language.
+     ```
+     Offer to keep that default or write a custom `commit.systemPrompt` string (e.g. a house style guide, a different human language, stricter length limits). Preview the block:
+     ```yaml
+     commit:
+         convention: conventional-commits
+         systemPrompt: "Simple titles. Enumerated bullet-point lists of the changes. Simple human language."
+     ```
 3. Validate — must print `VALID`:
    ```bash
    bash "../../scripts/board.sh" config

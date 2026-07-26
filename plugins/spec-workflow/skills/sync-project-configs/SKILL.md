@@ -53,3 +53,9 @@ final `AGGREGATE` line.
   absent from the target's `methodology:` block. An existing explicit `true` or `false` is a
   choice the rule respects and leaves untouched -- no configurable value flag, unlike
   `ensure-feedback-key`.
+- `ensure-commit-config` -- adds a top-level `commit: {convention: conventional-commits,
+  systemPrompt: "Simple titles. Enumerated bullet-point lists of the changes. Simple human
+  language."}` block (#418) ONLY when the target has no top-level `commit:` key at all. Any
+  existing `commit:` block (any shape) is a choice the rule respects and leaves fully
+  untouched -- same respect-existing-value contract as `ensure-serial-delivery`, but at the
+  top level since `commit` is a sibling of `work`/`methodology`, not a nested methodology key.

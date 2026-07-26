@@ -16,14 +16,17 @@ declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tes
 SYNCCFG="$PLUGIN/scripts/sync-configs.py"
 
 # _sc_base_yaml <feedback:true|false> [serial:absent|true|false, default true]
+#   [commit:present|absent, default present]
 # -- a full, VALID (per validate-config.py) project.yaml body, with or
-# without methodology.feedback / methodology.serialDelivery already set.
-# serial defaults to "true" (already present) so every existing call site
-# that predates the ensure-serial-delivery rule keeps its no-op fixtures
-# no-op without having to be touched.
+# without methodology.feedback / methodology.serialDelivery / a top-level
+# commit: block already set. serial and commit both default to "present"
+# (already set) so every existing call site that predates the
+# ensure-serial-delivery / ensure-commit-config rules keeps its no-op
+# fixtures no-op without having to be touched.
 _sc_base_yaml() {
     local feedback="$1"
     local serial="${2:-true}"
+    local commit="${3:-present}"
     cat <<EOF
 # yaml-language-server: \$schema=https://raw.githubusercontent.com/event-sorcerer/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json
 schemaVersion: 2
@@ -64,6 +67,9 @@ methodology:
     isolationSuite: ""
     maxInProgress: 1$( [[ "$feedback" == "true" ]] && printf '\n    feedback: true' )$( [[ "$serial" != "absent" ]] && printf '\n    serialDelivery: %s' "$serial" )
 EOF
+    if [[ "$commit" != "absent" ]]; then
+        printf 'commit:\n    convention: conventional-commits\n'
+    fi
 }
 
 # _sc_base_yaml_noeol -- the same VALID body as _sc_base_yaml(false, ...) but
@@ -72,24 +78,28 @@ EOF
 # same line as the file's last key (no "\n" separator before it), which
 # corrupts the YAML -- i.e. a genuine way to make validate() fail on the
 # POST-edit call while the ORIGINAL file was fully valid, without any
-# test-only hook in the script itself.
+# test-only hook in the script itself. commit is forced "absent" so the
+# no-eol trigger stays on the methodology block's last line, isolated from
+# ensure-commit-config's own (unrelated) insertion.
 _sc_base_yaml_noeol() {
-    printf '%s' "$(_sc_base_yaml false)"
+    printf '%s' "$(_sc_base_yaml false true absent)"
 }
 
 # _sc_base_yaml_noeol_serial_absent -- the same NO-trailing-newline trigger
 # as _sc_base_yaml_noeol, but with feedback already present (so
 # ensure-feedback-key never fires) and serialDelivery absent, isolating the
-# corruption to ensure-serial-delivery's own insertion.
+# corruption to ensure-serial-delivery's own insertion. commit is forced
+# "absent" too, same isolation reasoning as _sc_base_yaml_noeol above.
 _sc_base_yaml_noeol_serial_absent() {
-    printf '%s' "$(_sc_base_yaml true absent)"
+    printf '%s' "$(_sc_base_yaml true absent absent)"
 }
 
 # _sc_mkrepo <dir> <feedback:true|false> <add_schema_dup:yes|no> [serial:absent|true|false, default true]
+#   [commit:present|absent, default present]
 # Creates <dir>/origin.git (bare) + <dir>/work (the "live" clone), commits an
 # initial project.yaml on main, and pushes it to origin.
 _sc_mkrepo() {
-    local dir="$1" feedback="$2" schemadup="$3" serial="${4:-true}"
+    local dir="$1" feedback="$2" schemadup="$3" serial="${4:-true}" commit="${5:-present}"
     mkdir -p "$dir"
     git init -q --bare "$dir/origin.git"
     git init -q -b main "$dir/work"
@@ -98,7 +108,7 @@ _sc_mkrepo() {
     git -C "$dir/work" remote add origin "$dir/origin.git"
     mkdir -p "$dir/work/.claude"
     : > "$dir/work/.claude/.neural-network"
-    _sc_base_yaml "$feedback" "$serial" > "$dir/work/.claude/project.yaml"
+    _sc_base_yaml "$feedback" "$serial" "$commit" > "$dir/work/.claude/project.yaml"
     if [[ "$schemadup" == "yes" ]]; then
         # insert a literal top-level $schema: line right after the comment header
         # shellcheck disable=SC2016  # single-quoted sed script: literal $schema, not shell expansion
@@ -591,3 +601,59 @@ check "case u: reports rolled back" "rolled-back-invalid" "$out"
 after_head="$(_sc_head "$SCU/r/work")"
 check_rc "case u: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
 rm -rf "$SCU"
+
+echo "== sync-configs.py: ensure-commit-config, key absent -> adds defaults (case v) =="
+SCV="$(mktemp -d)"
+_sc_mkrepo "$SCV/r" true no true absent
+_sc_sync_gitignore "$SCV/r/work"
+out="$(python3 "$SYNCCFG" --repo "$SCV/r/work" --apply 2>&1)"
+check "case v: rule applied" "ensure-commit-config" "$out"
+check "case v: post-validate ran" "validate post: VALID" "$out"
+check "case v: reports push ok" "push: ok" "$out"
+origin_yaml="$(_sc_origin_project_yaml "$SCV/r")"
+check "case v: origin's main now has commit.convention default" "convention: conventional-commits" "$origin_yaml"
+check "case v: origin's main now has the default commitSystemPrompt" "Simple titles" "$origin_yaml"
+check "case v: local project.yaml updated too" "convention: conventional-commits" "$(cat "$SCV/r/work/.claude/project.yaml")"
+rm -rf "$SCV"
+
+echo "== sync-configs.py: ensure-commit-config, key already present -> no-op, untouched (case w) =="
+SCW="$(mktemp -d)"
+mkdir -p "$SCW/r"
+git init -q --bare "$SCW/r/origin.git"
+git init -q -b main "$SCW/r/work"
+git -C "$SCW/r/work" config user.name "Fixture Human"
+git -C "$SCW/r/work" config user.email "fixture@example.com"
+git -C "$SCW/r/work" remote add origin "$SCW/r/origin.git"
+mkdir -p "$SCW/r/work/.claude"
+: > "$SCW/r/work/.claude/.neural-network"
+{
+    _sc_base_yaml true
+    printf 'commit:\n    convention: gitmoji\n'
+} > "$SCW/r/work/.claude/project.yaml"
+git -C "$SCW/r/work" add -A
+git -C "$SCW/r/work" commit -q -m init
+git -C "$SCW/r/work" push -q origin main
+_sc_sync_gitignore "$SCW/r/work"
+before_head="$(_sc_head "$SCW/r/work")"
+out="$(python3 "$SYNCCFG" --repo "$SCW/r/work" --apply 2>&1)"
+check "case w: reports no-op" "route: no-op" "$out"
+check_absent "case w: rule not named" "ensure-commit-config" "$out"
+after_head="$(_sc_head "$SCW/r/work")"
+check_rc "case w: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
+check "case w: existing commit.convention choice respected" "convention: gitmoji" "$(cat "$SCW/r/work/.claude/project.yaml")"
+rm -rf "$SCW"
+
+echo "== sync-configs.py: ensure-commit-config, dry-run does not write (case x) =="
+SCX="$(mktemp -d)"
+_sc_mkrepo "$SCX/r" true no true absent
+_sc_sync_gitignore "$SCX/r/work"
+before="$(cat "$SCX/r/work/.claude/project.yaml")"
+before_head="$(_sc_head "$SCX/r/work")"
+out="$(python3 "$SYNCCFG" --repo "$SCX/r/work" 2>&1)"
+check "case x: reports dry-run" "dry-run" "$out"
+check "case x: names the rule that would apply" "ensure-commit-config" "$out"
+after="$(cat "$SCX/r/work/.claude/project.yaml")"
+check_rc "case x: file untouched" 0 "$([[ "$before" == "$after" ]] && echo 0 || echo 1)"
+after_head="$(_sc_head "$SCX/r/work")"
+check_rc "case x: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
+rm -rf "$SCX"

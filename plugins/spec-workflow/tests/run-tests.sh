@@ -149,6 +149,7 @@ section-semver.sh
     section-codex-e0-smoke.sh
     section-changelog.sh
     section-conventional-commit-mandate.sh
+    section-commit-convention-config.sh
     section-sync-configs.sh
     section-guard-pr-create.sh
     section-board-audit.sh

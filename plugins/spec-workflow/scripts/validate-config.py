@@ -292,6 +292,33 @@ def main(path):
                     if "mode" in sync and sync["mode"] not in modes:
                         errs.append(f"work.sync.mode must be one of {', '.join(modes)} (got {sync.get('mode')!r})")
 
+    # commit: commit-message convention (#418) -- convention (free string,
+    # non-empty preset name or custom) + systemPrompt (free text, non-empty
+    # when present). Absent == { convention: conventional-commits } and the
+    # documented default systemPrompt -- see schemas/project-config.schema.json's
+    # `commit` object. Doc-only consumption (implement-task dev brief +
+    # auto-review.md's squash-merge step); no runtime code reads this today.
+    commit_cfg = cfg.get("commit")
+    if commit_cfg is not None:
+        if not isinstance(commit_cfg, dict):
+            errs.append("commit: must be a mapping with optional 'convention' and 'systemPrompt'")
+        else:
+            for k in commit_cfg:
+                if k not in ("convention", "systemPrompt"):
+                    errs.append(f"commit.{k}: unknown key (allowed: ['convention', 'systemPrompt'])")
+            if "convention" in commit_cfg:
+                conv = commit_cfg["convention"]
+                if not isinstance(conv, str):
+                    errs.append(f"commit.convention: must be a string (got {type(conv).__name__})")
+                elif not conv.strip():
+                    errs.append("commit.convention: must not be empty")
+            if "systemPrompt" in commit_cfg:
+                sp = commit_cfg["systemPrompt"]
+                if not isinstance(sp, str):
+                    errs.append(f"commit.systemPrompt: must be a string (got {type(sp).__name__})")
+                elif not sp.strip():
+                    errs.append("commit.systemPrompt: must not be empty")
+
     # assistant: persistent LLM-agnostic assistant identity/config (AST-002,
     # SPEC-ASSISTANT.md §6/§6.1/§6.5). Absent == no-op -- additive-only, like
     # work/neuralView/entityKinds above.

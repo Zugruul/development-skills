@@ -344,6 +344,9 @@ specs:
     - The engine's HTTP surface binds localhost only.
 commands:
     gate: bash plugins/spec-workflow/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/scripts/lib/*.sh plugins/spec-workflow/tests/*.sh && claude plugin validate plugins/spec-workflow
+commit:
+    convention: conventional-commits
+    systemPrompt: "Simple titles. Enumerated bullet-point lists of the changes. Simple human language."
 docs:
 -   id: root
     path: README.md

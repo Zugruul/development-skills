@@ -267,3 +267,51 @@ out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/assistant-bad.project.
 check "assistant: provider/capability violation surfaces through validate-config" "INVALID" "$out"
 check "assistant: error is path-precise" "assistant.llm.provider: 'openai' requires capabilities.codex.enabled: true" "$out"
 
+echo "== validate-config: commit.convention / commit.systemPrompt (#418) =="
+check "valid yaml (no commit key) still passes -- additive-only" "VALID: " \
+    "$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/valid.project.yaml")"
+
+CMT="$(mktemp -d)"
+cat "$FIX/valid.project.yaml" > "$CMT/preset-plus-prompt.project.yaml"
+{
+    printf 'commit:\n'
+    printf '    convention: gitmoji\n'
+    printf '    systemPrompt: "Short scannable bullets."\n'
+} >> "$CMT/preset-plus-prompt.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$CMT/preset-plus-prompt.project.yaml")"
+check "commit: recognized preset (gitmoji) + custom systemPrompt -> VALID" "VALID: " "$out"
+
+cat "$FIX/valid.project.yaml" > "$CMT/custom-string.project.yaml"
+printf 'commit:\n    convention: "our-shop-style"\n' >> "$CMT/custom-string.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$CMT/custom-string.project.yaml")"
+check "commit.convention: any non-empty custom string is VALID" "VALID: " "$out"
+
+cat "$FIX/valid.project.yaml" > "$CMT/empty-convention.project.yaml"
+printf 'commit:\n    convention: ""\n' >> "$CMT/empty-convention.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$CMT/empty-convention.project.yaml" || true)"
+check "commit.convention: empty string rejected" "commit.convention: must not be empty" "$out"
+
+cat "$FIX/valid.project.yaml" > "$CMT/wrongtype-convention.project.yaml"
+printf 'commit:\n    convention: 5\n' >> "$CMT/wrongtype-convention.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$CMT/wrongtype-convention.project.yaml" || true)"
+check "commit.convention: non-string rejected" "commit.convention: must be a string" "$out"
+
+cat "$FIX/valid.project.yaml" > "$CMT/empty-prompt.project.yaml"
+printf 'commit:\n    convention: conventional-commits\n    systemPrompt: ""\n' >> "$CMT/empty-prompt.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$CMT/empty-prompt.project.yaml" || true)"
+check "commit.systemPrompt: empty string rejected" "commit.systemPrompt: must not be empty" "$out"
+
+cat "$FIX/valid.project.yaml" > "$CMT/unknown-key.project.yaml"
+printf 'commit:\n    convention: conventional-commits\n    bogus: true\n' >> "$CMT/unknown-key.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$CMT/unknown-key.project.yaml" || true)"
+check "commit: unknown key rejected" "commit.bogus: unknown key" "$out"
+
+cat "$FIX/valid.project.yaml" > "$CMT/not-a-map.project.yaml"
+printf 'commit: "conventional-commits"\n' >> "$CMT/not-a-map.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$CMT/not-a-map.project.yaml" || true)"
+check "commit: non-mapping rejected" "commit: must be a mapping" "$out"
+rm -rf "$CMT"
+
+check "this repo's own .claude/project.yaml (commit block set per #418) still validates" "VALID: " \
+    "$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/../../.claude/project.yaml")"
+
