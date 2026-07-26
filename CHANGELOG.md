@@ -19,6 +19,11 @@
   > 
   > Closes #412
 
+### Documentation
+- **brain:** demo-note-media gains audio + mermaid examples (#430) (`39f9881`)
+  > - Test-tone wav fixture (generated 440Hz sine, deterministic, no ffmpeg)
+  > - Mermaid example diagram documenting its own toggle/copy/detach chrome
+
 ## v0.40.0 — 2026-07-26
 
 ### Features
