@@ -5355,3 +5355,135 @@ items:
   routing:
     action: brain-note
     ref: orchestrator/external-throttle-before-code-blame
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-26T19:55:00Z'
+iteration:
+  task: session-2026-07-26
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-sonnet-5
+items:
+- category: incident
+  area: testing
+  severity: high
+  summary: Concurrent full-suite runs from parallel lanes produced a deterministic-looking
+    failure cluster that was pure cross-suite interference, triggering a multi-hour
+    false investigation
+  generalized: When multiple agent lanes run the full test suite concurrently on one
+    machine, shared OS resources (ports, tmp state) can produce a repeatable-looking
+    failure cluster that reads as a real regression; the gate runner should serialize
+    whole-suite runs machine-wide (lock inside the gate script) instead of relying
+    on agents to coordinate
+  evidence:
+  - Zugruul/development-skills#412
+  - Zugruul/development-skills#335
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#412
+- category: incident
+  area: review
+  severity: high
+  summary: A reviewer agent's ad-hoc scratch-repo probe escaped isolation and committed
+    to a real branch under a fixture identity
+  generalized: Reviewer and dev agents building throwaway git fixtures in ad-hoc shell
+    commands can silently commit to the real repository when a cd or git-init step
+    fails; fixture helpers must hard-assert the enclosing repo before any commit,
+    and real refs should be guarded against known fixture identities
+  evidence:
+  - Zugruul/development-skills#407
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#407
+- category: friction
+  area: testing
+  severity: medium
+  summary: Red-first TDD order was violated twice in one day (test plus fix in a single
+    commit, with stash-cycle proofs offered instead of history)
+  generalized: Dev agents under time pressure collapse test and implementation into
+    one commit and offer stash-based red proofs; briefs should state explicitly that
+    red-first is a history property (separate commits), and reviewers should check
+    commit structure, not just test quality
+  evidence:
+  - Zugruul/development-skills#410
+  - Zugruul/development-skills#408
+  routing:
+    action: brain-note
+    ref: ''
+- category: friction
+  area: concurrency
+  severity: medium
+  summary: Bare mkdir gate-locks with no owner or liveness protocol politeness-deadlocked
+    twice; an owner-file plus explicit-turns protocol resolved it
+  generalized: Ad-hoc mutual exclusion between agent lanes needs an owner marker and
+    a staleness rule from the start; when two agents each defer to the other, the
+    orchestrator should assign explicit turns rather than letting them self-coordinate
+  evidence:
+  - Zugruul/development-skills#412
+  routing:
+    action: brain-note
+    ref: ''
+- category: friction
+  area: other
+  severity: medium
+  summary: An unbounded orchestrator watcher loop with a wrong predicate ran for two
+    hours before the human noticed
+  generalized: Every polling loop an orchestrator launches needs a hard timeout budget
+    derived from the watched operation's nominal duration (for example twice the gate
+    time with a fixed ceiling); an unbounded loop turns a bad predicate into silent
+    runaway cost
+  evidence:
+  - Zugruul/development-skills#414
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#414
+- category: worked-well
+  area: merge
+  severity: low
+  summary: Batched integration of three small same-surface tasks (one reviewer over
+    three diffs, sequential squash-merges, one post-merge full gate) cut three slow
+    gates to one with no quality loss
+  generalized: For several small approved changes on the same surface, one batch review
+    with an explicit integration-hazard analysis plus a single post-merge full gate
+    is materially faster than per-branch full gates, and just as safe when section-level
+    tests still run per branch
+  evidence:
+  - Zugruul/development-skills#409
+  - Zugruul/development-skills#410
+  - Zugruul/development-skills#411
+  routing:
+    action: brain-note
+    ref: ''
+- category: worked-well
+  area: merge
+  severity: low
+  summary: Human-directed merge-ahead-of-gate (merge now, verify after, fixer on standby)
+    shipped a feature the human wanted immediately, and the deferred verification
+    correctly caught nothing
+  generalized: When a human explicitly accepts the risk, merging review-approved work
+    ahead of the slow full gate with a committed post-merge verification plan is a
+    legitimate speed lever; the essential parts are review approval first, an honest
+    record on the issue, and a named fallback if verification goes red
+  evidence:
+  - Zugruul/development-skills#405
+  routing:
+    action: ignore
+    ref: ''
+- category: recommendation
+  area: docs
+  severity: medium
+  summary: Commit bodies became UI copy the moment the changelog overlay shipped;
+    dense reviewer-facing prose produced an unreadable changelog and a same-day config
+    feature to control commit language
+  generalized: 'Once a project renders commit messages into a human-facing surface,
+    commit language is a product decision: the workflow should carry an explicit commit-language
+    instruction into every commit-writing brief rather than inheriting each agent''s
+    prose habits'
+  evidence:
+  - Zugruul/development-skills#418
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#418
