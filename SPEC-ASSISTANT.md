@@ -267,7 +267,10 @@ assistant:
 - §11.3 The engine SHALL compile a capability index {name, one-liner, keywords,
   embedding, enabled, provisioned-ok} on start and on change; the per-turn roster SHALL
   be relevance-filtered top-N with a hard cap; ties/low confidence → the assistant asks
-  instead of guessing.
+  instead of guessing. A turn whose best-scoring capability has NO relevance signal at
+  all (a query unrelated to every installed capability) SHALL yield an empty roster, not
+  an ask — the ask-instead-of-guess behavior applies only when at least one capability
+  plausibly matched but the choice among matches was ambiguous or too weak to trust.
 - §11.4 Unprovisioned-but-enabled skills SHALL appear in the roster as unavailable with
   the reason; THE SYSTEM SHALL never present an unavailable ability as usable.
 - §11.5 `invoke.exec` SHALL be an argv ARRAY; placeholder substitution occurs only within
@@ -305,9 +308,18 @@ assistant:
 
 - §13.1 TTS: assistant replies SHALL be speakable via the existing speechSynthesis
   pipeline (echo-guard interplay preserved).
-- §13.2 STT: E5 decides Web Speech (zero-install; audio leaves the machine) vs
-  whisper.cpp sidecar (local); the engine API stays text-in/text-out either way. The
-  choice SHALL be recorded as a spec delta before implementation.
+- §13.2 STT: THE SYSTEM SHALL support BOTH engines, selectable per-session in the
+  neural-view voice ⚙ settings panel: `whisper` (whisper.cpp, fully local —
+  the DEFAULT) and `web-speech` (the browser's Web Speech API, zero-install; audio
+  leaves the machine to the browser vendor). The setting SHALL persist across page loads
+  the same way the panel's other voice settings do. WHEN whisper.cpp is selected THE
+  SYSTEM SHALL talk to a local whisper sidecar over a documented HTTP contract (a
+  capability-provisioned process, out of THIS decision's scope — see the whisper
+  capability, E6); WHEN the sidecar is unreachable THE SYSTEM SHALL surface an honest
+  "whisper sidecar not available" state naming both the follow-up capability and the
+  Web Speech alternative, never a generic/silent failure. Either engine's recognized
+  text SHALL enter the SAME downstream text path as typed chat input — the engine API
+  stays text-in/text-out regardless of the STT choice.
 - §13.3 Voice metrics (STT/TTS spans) join the same trace stream.
 
 ## §14 Remote compute (E7 — Windows/ComfyUI)
