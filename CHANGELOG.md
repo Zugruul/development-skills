@@ -19,6 +19,12 @@
   > 
   > Closes #333
 
+### Documentation
+- **spec:** fold AST-051 + AST-061 deltas into SPEC-ASSISTANT (`268a357`)
+  > - §13.2: both STT engines, settings-selectable, whisper.cpp default
+  > - §11.3: zero relevance = empty roster; ask only on tie or weak match
+  > - Both delta files moved to applied/
+
 ## v0.38.0 — 2026-07-26
 
 ### Features
