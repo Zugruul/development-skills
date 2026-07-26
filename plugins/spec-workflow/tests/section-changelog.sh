@@ -154,3 +154,162 @@ check "changelog.sh: --write second write still includes the first write's secti
 rm -rf "$IDD"
 
 rm -rf "$WGD"
+
+# ============================================================================
+# changelog.py — retro-generated CHANGELOG.md anchored on plugin.json semver
+# history (#404). All fixtures below are THROWAWAY git repos built in mktemp
+# -d -- never the real repo's live history, which grows every day and would
+# make these assertions rot.
+# ============================================================================
+
+_cpj() { # _cpj <repo-dir> <version> -- write plugin.json at the canonical
+         # relative path the generator reads (plugins/spec-workflow/.claude-plugin/plugin.json)
+    local dir="$1" version="$2"
+    mkdir -p "$dir/plugins/spec-workflow/.claude-plugin"
+    printf '{\n    "name": "spec-workflow",\n    "version": "%s"\n}\n' "$version" \
+        > "$dir/plugins/spec-workflow/.claude-plugin/plugin.json"
+}
+
+_cgcommit() { # _cgcommit <repo-dir> <date> <subject> [body] -- deterministic
+              # author/committer date so heading dates are assertable exactly.
+    local dir="$1" date="$2" subject="$3" body="${4:-}"
+    (
+        cd "$dir" || exit 1
+        export GIT_AUTHOR_DATE="$date" GIT_COMMITTER_DATE="$date"
+        if [[ -n "$body" ]]; then
+            git -c user.name=t -c user.email=t@e.com commit -q --allow-empty -m "$subject" -m "$body"
+        else
+            git -c user.name=t -c user.email=t@e.com commit -q --allow-empty -m "$subject"
+        fi
+    ) >/dev/null 2>&1
+}
+
+echo "== changelog.py: version-window bucketing across a plugin.json bump (#404) =="
+VWD="$(mktemp -d)"
+(cd "$VWD" && git init -q) >/dev/null 2>&1
+_cgcommit "$VWD" "2026-01-01T00:00:00" "feat: initial feature"
+_cpj "$VWD" "0.1.0"
+(cd "$VWD" && git add -A) >/dev/null 2>&1
+_cgcommit "$VWD" "2026-01-02T00:00:00" "chore(release): spec-workflow v0.1.0"
+_cgcommit "$VWD" "2026-01-03T00:00:00" "feat: add widget (#10)"
+_cpj "$VWD" "0.2.0"
+(cd "$VWD" && git add -A) >/dev/null 2>&1
+_cgcommit "$VWD" "2026-01-10T00:00:00" "chore(release): spec-workflow v0.2.0"
+_cgcommit "$VWD" "2026-01-11T00:00:00" "fix: broken thing"
+python3 "$PLUGIN/scripts/changelog.py" generate --repo "$VWD" --output "$VWD/CHANGELOG.md" >/dev/null 2>&1
+vwout="$(cat "$VWD/CHANGELOG.md" 2>/dev/null)"
+check "changelog.py: v0.1.0 heading dated by its window's newest commit" "## v0.1.0 — 2026-01-03" "$vwout"
+check "changelog.py: v0.2.0 heading dated by its window's newest commit" "## v0.2.0 — 2026-01-11" "$vwout"
+check "changelog.py: pre-plugin.json commit buckets under the oldest known version" "initial feature" "$vwout"
+check "changelog.py: post-bump commit buckets under the new version" "broken thing" "$vwout"
+v1pos=$(grep -n "## v0.1.0" "$VWD/CHANGELOG.md" | head -1 | cut -d: -f1)
+v2pos=$(grep -n "## v0.2.0" "$VWD/CHANGELOG.md" | head -1 | cut -d: -f1)
+if [[ "$v2pos" -lt "$v1pos" ]]; then vwcmp_rc=0; else vwcmp_rc=1; fi
+check_rc "changelog.py: versions render newest-first" 0 "$vwcmp_rc"
+rm -rf "$VWD"
+
+echo "== changelog.py: conventional classification into fixed-order groups (#404) =="
+CVD="$(mktemp -d)"
+(cd "$CVD" && git init -q) >/dev/null 2>&1
+_cpj "$CVD" "1.0.0"
+(cd "$CVD" && git add -A) >/dev/null 2>&1
+_cgcommit "$CVD" "2026-02-01T00:00:00" "chore: init"
+_cgcommit "$CVD" "2026-02-02T00:00:00" "feat(x): add feature"
+_cgcommit "$CVD" "2026-02-03T00:00:00" "fix(x): fix bug"
+_cgcommit "$CVD" "2026-02-04T00:00:00" "perf(x): speed up"
+_cgcommit "$CVD" "2026-02-05T00:00:00" "refactor(x): tidy internals"
+_cgcommit "$CVD" "2026-02-06T00:00:00" "docs(x): update docs"
+_cgcommit "$CVD" "2026-02-07T00:00:00" "test(x): add coverage"
+_cgcommit "$CVD" "2026-02-08T00:00:00" "ci(x): pipeline tweak"
+_cgcommit "$CVD" "2026-02-09T00:00:00" "build(x): build tweak"
+_cgcommit "$CVD" "2026-02-10T00:00:00" "style(x): reformat"
+_cgcommit "$CVD" "2026-02-11T00:00:00" "totally not conventional subject"
+python3 "$PLUGIN/scripts/changelog.py" generate --repo "$CVD" --output "$CVD/CHANGELOG.md" >/dev/null 2>&1
+cvout="$(cat "$CVD/CHANGELOG.md" 2>/dev/null)"
+check "changelog.py: Features group header" "### Features" "$cvout"
+check "changelog.py: Features bullet with bold scope" "- **x:** add feature" "$cvout"
+check "changelog.py: Fixes group header" "### Fixes" "$cvout"
+check "changelog.py: Fixes bullet" "- **x:** fix bug" "$cvout"
+check "changelog.py: Performance group header" "### Performance" "$cvout"
+check "changelog.py: Performance bullet" "- **x:** speed up" "$cvout"
+check "changelog.py: Refactoring group header" "### Refactoring" "$cvout"
+check "changelog.py: Refactoring bullet" "- **x:** tidy internals" "$cvout"
+check "changelog.py: Documentation group header" "### Documentation" "$cvout"
+check "changelog.py: Documentation bullet" "- **x:** update docs" "$cvout"
+check "changelog.py: Tests group header" "### Tests" "$cvout"
+check "changelog.py: Tests bullet" "- **x:** add coverage" "$cvout"
+check "changelog.py: CI/Build group header" "### CI/Build" "$cvout"
+check "changelog.py: CI/Build bullet (ci)" "- **x:** pipeline tweak" "$cvout"
+check "changelog.py: CI/Build bullet (build)" "- **x:** build tweak" "$cvout"
+check "changelog.py: Chores group header" "### Chores" "$cvout"
+check "changelog.py: Chores bullet (style)" "- **x:** reformat" "$cvout"
+check "changelog.py: Other group header" "### Other" "$cvout"
+check "changelog.py: Other bullet keeps full non-conventional subject" "- totally not conventional subject" "$cvout"
+
+echo "== changelog.py: fixed group order is actually pinned, not just presence (#404 review round 1) =="
+_grouppos() { grep -n "^### $2\$" "$1" | head -1 | cut -d: -f1; }
+gp_features="$(_grouppos "$CVD/CHANGELOG.md" "Features")"
+gp_fixes="$(_grouppos "$CVD/CHANGELOG.md" "Fixes")"
+gp_perf="$(_grouppos "$CVD/CHANGELOG.md" "Performance")"
+gp_refactor="$(_grouppos "$CVD/CHANGELOG.md" "Refactoring")"
+gp_docs="$(_grouppos "$CVD/CHANGELOG.md" "Documentation")"
+gp_tests="$(_grouppos "$CVD/CHANGELOG.md" "Tests")"
+gp_ci="$(_grouppos "$CVD/CHANGELOG.md" "CI/Build")"
+gp_chores="$(_grouppos "$CVD/CHANGELOG.md" "Chores")"
+gp_other="$(_grouppos "$CVD/CHANGELOG.md" "Other")"
+order_rc=0
+for pair in "$gp_features:$gp_fixes" "$gp_fixes:$gp_perf" "$gp_perf:$gp_refactor" "$gp_refactor:$gp_docs" \
+            "$gp_docs:$gp_tests" "$gp_tests:$gp_ci" "$gp_ci:$gp_chores" "$gp_chores:$gp_other"; do
+    a="${pair%%:*}"; b="${pair#*:}"
+    [[ "$a" -lt "$b" ]] || order_rc=1
+done
+check_rc "changelog.py: groups render in the fixed order Features<Fixes<Performance<Refactoring<Documentation<Tests<CI/Build<Chores<Other" 0 "$order_rc"
+
+echo "== changelog.py: exclusion list drops workflow-process noise, incl. its own loop-safety commit kind (#404) =="
+_cgcommit "$CVD" "2026-02-12T00:00:00" "retro: excl-retro-marker"
+_cgcommit "$CVD" "2026-02-13T00:00:00" "retro+feedback: excl-retrofeedback-marker"
+_cgcommit "$CVD" "2026-02-14T00:00:00" "feedback: excl-feedback-marker"
+_cgcommit "$CVD" "2026-02-15T00:00:00" "brain: excl-brain-marker"
+_cgcommit "$CVD" "2026-02-16T00:00:00" "config: excl-config-marker"
+_cgcommit "$CVD" "2026-02-17T00:00:00" "chore(changelog): excl-changelog-marker"
+python3 "$PLUGIN/scripts/changelog.py" generate --repo "$CVD" --output "$CVD/CHANGELOG.md" >/dev/null 2>&1
+exout="$(cat "$CVD/CHANGELOG.md" 2>/dev/null)"
+check_absent "changelog.py: excludes retro: subjects" "excl-retro-marker" "$exout"
+check_absent "changelog.py: excludes retro+feedback: subjects" "excl-retrofeedback-marker" "$exout"
+check_absent "changelog.py: excludes feedback: subjects" "excl-feedback-marker" "$exout"
+check_absent "changelog.py: excludes brain: subjects" "excl-brain-marker" "$exout"
+check_absent "changelog.py: excludes config: subjects" "excl-config-marker" "$exout"
+check_absent "changelog.py: excludes chore(changelog): subjects (loop-safety)" "excl-changelog-marker" "$exout"
+rm -rf "$CVD"
+
+echo "== changelog.py: body rendering — blockquote lines + trailer stripping (#404) =="
+TRD="$(mktemp -d)"
+(cd "$TRD" && git init -q) >/dev/null 2>&1
+_cpj "$TRD" "1.0.0"
+(cd "$TRD" && git add -A) >/dev/null 2>&1
+_cgcommit "$TRD" "2026-03-01T00:00:00" "chore: init"
+_cgcommit "$TRD" "2026-03-02T00:00:00" "fix(y): trailer test" "$(printf 'Detail line one.\nDetail line two.\n\nApplied-by: Someone\nReviewed-by: Other\nCo-authored-by: Bot <bot@example.com>')"
+python3 "$PLUGIN/scripts/changelog.py" generate --repo "$TRD" --output "$TRD/CHANGELOG.md" >/dev/null 2>&1
+trout="$(cat "$TRD/CHANGELOG.md" 2>/dev/null)"
+check "changelog.py: body first line rendered as blockquote" "> Detail line one." "$trout"
+check "changelog.py: body second line rendered as blockquote" "> Detail line two." "$trout"
+check_absent "changelog.py: Applied-by trailer stripped from body" "Applied-by" "$trout"
+check_absent "changelog.py: Reviewed-by trailer stripped from body" "Reviewed-by" "$trout"
+check_absent "changelog.py: Co-authored-by trailer stripped from body" "Co-authored-by" "$trout"
+
+echo "== changelog.py: idempotence — same history regenerates byte-identical output (#404) =="
+python3 "$PLUGIN/scripts/changelog.py" generate --repo "$TRD" --output "$TRD/CHANGELOG.second.md" >/dev/null 2>&1
+diff -q "$TRD/CHANGELOG.md" "$TRD/CHANGELOG.second.md" >/dev/null 2>&1
+check_rc "changelog.py: two runs against the same history are byte-identical" 0 $?
+rm -rf "$TRD"
+
+echo "== changelog.py: plugin.json never present anywhere in history — degenerate 'unversioned' bucket (#404 review round 1) =="
+UVD="$(mktemp -d)"
+(cd "$UVD" && git init -q) >/dev/null 2>&1
+_cgcommit "$UVD" "2026-04-01T00:00:00" "feat: first feature, no plugin.json ever"
+_cgcommit "$UVD" "2026-04-02T00:00:00" "fix: second commit, still no plugin.json"
+python3 "$PLUGIN/scripts/changelog.py" generate --repo "$UVD" --output "$UVD/CHANGELOG.md" >/dev/null 2>&1
+uvout="$(cat "$UVD/CHANGELOG.md" 2>/dev/null)"
+check "changelog.py: no-plugin.json-ever history renders a well-formed 'Unversioned' heading" "## Unversioned — 2026-04-02" "$uvout"
+check_absent "changelog.py: no-plugin.json-ever heading never renders the raw sentinel with a stray 'v' prefix" "## vunversioned" "$uvout"
+rm -rf "$UVD"

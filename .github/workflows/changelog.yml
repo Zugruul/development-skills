@@ -1,0 +1,38 @@
+name: changelog
+
+# #404: keep CHANGELOG.md current via a dumb, loop-safe GitHub Action.
+# changelog.py always does a FULL, deterministic, idempotent regeneration
+# (never an incremental append), so re-running it against the same history
+# always produces byte-identical output. Loop-safety is inherent, not a
+# workflow-level guard: the generator excludes its own commit kind
+# (chore(changelog): ...) from the history it reads, so once this job's own
+# push lands, the NEXT run's regeneration sees no new non-excluded commits
+# and produces no diff -> no commit -> the loop terminates on its own. See
+# plugins/spec-workflow/scripts/changelog.py's module docstring.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history is required — the generator walks
+          # the entire first-parent chain to reconstruct plugin.json's
+          # version windows.
+      - name: regenerate CHANGELOG.md
+        run: python3 plugins/spec-workflow/scripts/changelog.py generate --repo . --output CHANGELOG.md
+      - name: commit if changed
+        run: |
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md unchanged — nothing to commit"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore(changelog): regenerate"
+          git push
