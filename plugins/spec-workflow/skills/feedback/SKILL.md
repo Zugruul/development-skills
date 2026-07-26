@@ -1,6 +1,6 @@
 ---
 name: feedback
-description: Records structured agent feedback about the WORKFLOW itself (not the project being built) — what worked, what caused friction, incidents, recommendations — into the loop feedback feed for later triage. Use at the end of a build-loop iteration when methodology.feedback is enabled.
+description: Records structured agent feedback about the WORKFLOW itself (not the project being built) — what worked, what caused friction, incidents, recommendations — into the loop's feedback feed for later triage. Use at the end of a build-loop iteration when methodology.feedback is enabled.
 allowed-tools: Bash
 ---
 

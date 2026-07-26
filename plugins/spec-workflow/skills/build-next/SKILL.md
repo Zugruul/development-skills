@@ -1,6 +1,6 @@
 ---
 name: build-next
-description: Runs ONE autonomous build-loop iteration — checkpoint check, pick the next board task (reading human comments), implement it via TDD to a recorded green gate, open a PR, keep the board current. Use for 'build next', 'continue/resume the loop', 'work the backlog' — designed to be driven by /loop.
+description: Runs ONE autonomous build-loop iteration end to end — checks the checkpoint, picks the next board task (reading its human comments first), implements it via TDD to a recorded green gate, opens a PR, and keeps the board current throughout. Use for 'build next', 'continue/resume the loop', 'work the backlog' — designed to be driven by /loop.
 allowed-tools: Bash
 ---
 

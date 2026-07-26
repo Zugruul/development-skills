@@ -1,6 +1,6 @@
 ---
 name: setup-project
-description: Bootstraps a repository for the spec-workflow — creates the GitHub Project board, auto-fills .claude/project.yaml ids via init-config.sh, validates the config, and sets up local-state gitignores. Use for 'set up this repo', 'adopt the workflow', 'initialize the board', or onboarding a new/existing project.
+description: Bootstraps a repository for the spec-workflow — creates the GitHub Project board, auto-fills .claude/project.yaml ids via init-config.sh, validates the config, and sets up local-state gitignores, so the repo is ready to run the workflow. Use for 'set up this repo', 'adopt the workflow', 'initialize the board', or onboarding a new/existing project.
 ---
 
 # Set up a repository for the spec-workflow

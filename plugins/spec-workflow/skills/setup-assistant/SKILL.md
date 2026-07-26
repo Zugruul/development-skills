@@ -1,6 +1,6 @@
 ---
 name: setup-assistant
-description: Scaffolds a bare-brain assistant repo (marker, project.yaml assistant section, brain dirs, persona AGENTS.md, gitignores) and edits its settings (provider/model/capabilities/machine-local default). Use for '/setup-assistant', 'turn this repo into an assistant', 'set up jarvis', or flipping an assistant's provider/model/capability/default.
+description: Scaffolds a bare-brain assistant repo — marker file, project.yaml assistant section, brain directories, persona AGENTS.md, gitignores — and edits its settings (provider/model/capabilities/machine-local default). Use for '/setup-assistant', 'turn this repo into an assistant', 'set up jarvis', or flipping an assistant's provider/model/capability/default.
 ---
 
 # Set up (or edit) a persistent assistant repo

@@ -1,6 +1,6 @@
 ---
 name: ui-options
-description: Iterative UI mode — presents 2-4 concrete UI design options on the local decision hub as toggle tabs (no scrolling) — favorite selector, likeable aspect chips, element-level annotations, a final 'Use this one', and a Review tab summarizing every pick before sending. Use when a task involves UI-affecting decisions and iterative UI mode is on.
+description: Runs Iterative UI mode's decision step — presents 2-4 concrete UI design options on the local decision hub as toggle tabs (no scrolling), with a favorite selector, likeable-aspect chips, element-level annotations, a final 'Use this one', and a Review tab summarizing every pick before sending, so the human's UI choice comes back as a clear, structured decision. Use when a task involves UI-affecting decisions and iterative UI mode is on.
 ---
 
 # UI options page — delegate the UI decision to the human

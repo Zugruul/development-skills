@@ -1,6 +1,6 @@
 ---
 name: concurrency
-description: Shows or sets how many tasks the build loop works concurrently (methodology.maxInProgress — the board WIP limit AND the number of parallel implementation lanes). Use when the user asks how many tasks run at once, wants parallel lanes, or wants strictly-sequential building back. With no argument, show the current value and ask.
+description: Shows or sets how many tasks the build loop works on at once (methodology.maxInProgress) — this one number is both the board's WIP limit and the number of parallel implementation lanes. Use when the user asks how many tasks run at once, wants parallel lanes, or wants strictly-sequential building back. With no argument, show the current value and ask.
 allowed-tools: Bash, AskUserQuestion
 ---
 

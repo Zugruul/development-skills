@@ -1,9 +1,9 @@
 ---
 name: board
-description: Reads and updates the GitHub Project board configured in .claude/project.yaml — pick the next task, show an issue with its human comments, move it between statuses, set priority/estimate, reply to comments, file a bug. Use when the user mentions the board, task status, moving/prioritizing an issue #N, filing a bug, or replying on an issue. The board is the source of truth — keep it current in real time.
+description: Reads and updates the GitHub Project board configured in .claude/project.yaml — pick the next task, show an issue with its human comments, move it between statuses, set priority or estimate, reply to comments, or file a bug, all from this session. Use when the user mentions the board, task status, moving/prioritizing an issue #N, filing a bug, or replying on an issue. The board is the source of truth — keep it current in real time.
 ---
 
-# Board interaction
+# Board interaction — read and update the project board
 
 All board operations go through one script (never ad-hoc `gh project` calls — field ids live in `.claude/project.yaml`):
 

@@ -1,6 +1,6 @@
 ---
 name: neural-view
-description: Start/stop/status for the live JARVIS-style visualization of the identity brains — notes as neurons, links as synapses, recalls lighting up in real time, plus a project-overview HUD (hover inspection, per-repo board state, best-effort live sessions). Use with 'start', 'stop', or 'status' (default); bare invocation reports status + URL.
+description: Starts, stops, or reports status for the live JARVIS-style visualization of the identity brains — notes shown as neurons, links as synapses, recalls lighting up in real time — plus a project-overview HUD (hover inspection, per-repo board state, best-effort live sessions). Use with 'start', 'stop', or 'status' (default); bare invocation reports status + URL.
 allowed-tools: Bash
 ---
 

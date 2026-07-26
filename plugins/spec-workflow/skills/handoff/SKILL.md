@@ -1,9 +1,9 @@
 ---
 name: handoff
-description: Writes a handoff document — board snapshot, work done this session, running state, how to resume, gaps/blockers. Use at a loop checkpoint, end of a working session, 'write a handoff', or when pausing the build loop.
+description: Writes a handoff document capturing a board snapshot, the work done this session, running state, how to resume, and any gaps or blockers, so the next person or agent can pick up cleanly. Use at a loop checkpoint, end of a working session, 'write a handoff', or when pausing the build loop.
 ---
 
-# Handoff
+# Write a session handoff document
 
 Write to `<cfg:paths.handoffDir>/<YYYY-MM-DD-HHMM>.md` (default `docs/handoffs/`; convert relative dates to absolute). Gather state first:
 

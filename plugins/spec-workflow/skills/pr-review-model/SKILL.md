@@ -1,6 +1,6 @@
 ---
 name: pr-review-model
-description: Shows or changes which models the autonomous PR reviewer may run on (delegation.identities.reviewer.models, used when auto-merge is on). Use when the user wants a stronger/cheaper/larger-context PR reviewer or asks which model reviews PRs. With no argument, ask the user to pick from options.
+description: Shows or changes which models the autonomous PR reviewer is allowed to run on (delegation.identities.reviewer.models), used when auto-merge is on. Use when the user wants a stronger/cheaper/larger-context PR reviewer or asks which model reviews PRs. With no argument, ask the user to pick from options.
 allowed-tools: Bash, AskUserQuestion
 ---
 

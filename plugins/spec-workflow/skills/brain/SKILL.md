@@ -1,6 +1,6 @@
 ---
 name: brain
-description: Inspect and tend the per-identity zettel brains — status/recall/mint/prune/directory/graduate-check/explain/path via brain.sh. Orchestrator-only memory (each role's brain is private; subagents never read one). Use to see what a role has learned, recall lessons for a task, mint a retro note, prune stale links, explain why one note matters, find the shortest link path between two notes, or regenerate the directory. Bare invocation shows the directory + per-brain note counts.
+description: Inspects and tends the per-identity zettel brains — status, recall, mint, prune, directory, graduate-check, explain, path — all via brain.sh. This is orchestrator-only memory (each role's brain is private; subagents never read one). Use to see what a role has learned, recall lessons for a task, mint a retro note, prune stale links, explain why one note matters, find the shortest link path between two notes, or regenerate the directory. Bare invocation shows the directory + per-brain note counts.
 allowed-tools: Bash
 ---
 

@@ -1,9 +1,9 @@
 ---
 name: gate
-description: Runs the project quality gate via gate.sh, which records the pass a hook requires before any task can move to In review. Use for 'run the gate', 'is it green', and always before review or merge — green is mandatory and enforced.
+description: Runs the project's quality gate via gate.sh — the pass a hook requires before any task can move to In review, and the source of truth for whether the build is green. Use for 'run the gate', 'is it green', and always before review or merge — green is mandatory and enforced.
 ---
 
-# Quality gate
+# Quality gate — run gate.sh before review or merge
 
 Run the gate through the wrapper — it executes `commands.gate` from `.claude/project.yaml` AND records the pass:
 

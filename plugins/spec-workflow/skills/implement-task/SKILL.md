@@ -1,6 +1,6 @@
 ---
 name: implement-task
-description: Implements ONE board task — design-doc guard, brief a dev subagent (what/how/why, strict TDD), verify tests-first + invariants + spec deltas, two-pass review (spec compliance then code quality), drive the board. Use when a specific issue #N is picked and ready to build.
+description: Implements ONE board task end to end — checks for a design-doc guard, briefs a dev subagent with what/how/why under strict TDD, verifies tests-first plus invariants and spec deltas, runs a two-pass review (spec compliance, then code quality), and drives the board throughout. Use when a specific issue #N is picked and ready to build.
 allowed-tools: Bash
 ---
 
@@ -51,6 +51,12 @@ Branch already checked out: <branch>.
    must add cases under <isolationSuite>.">
 4. Run `<cfg:commands.gate>` until GREEN. Then push the branch and open a PR with body
    "Closes #N". Report the PR URL.
+   Commit subjects AND the PR title MUST be a conventional commit line —
+   `type(scope): description`, allowed types `feat fix perf refactor docs test chore ci build style`,
+   scope = the task id or the touched area, e.g. `feat(AST-060): add the widget cache` — because a
+   squash-merge carries the PR title into main's history, and that becomes the CHANGELOG entry a
+   human reads later. A title/subject that doesn't parse as a conventional commit falls into the
+   CHANGELOG's "Other" bucket, which should be rare-to-empty.
 5. Match surrounding code style; small focused commits; update spec/docs if you changed a contract.
    Documentation you own in this change: <paste the cfg:docs[] sets whose `covers` globs match
    the task's expected paths — id, path, notes>. If your diff changes behavior/config/usage a

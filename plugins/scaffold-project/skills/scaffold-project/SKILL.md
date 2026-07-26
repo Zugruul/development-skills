@@ -1,6 +1,6 @@
 ---
 name: scaffold-project
-description: Scaffolds a new greenfield project's minikube dev-workflow scripts (start/stop/dev/build/port-forward/bootstrap) into a scripts/ folder, with every profile bound explicitly and package.json wired to run them. Use for 'scaffold a new project', 'set up minikube scripts for this project', or bootstrapping a fresh repo's local dev-workflow.
+description: Sets up a brand-new project's local development workflow on minikube — generates start/stop/dev/build/port-forward/bootstrap scripts into a scripts/ folder, with every profile bound explicitly and package.json wired to run them, so you get a working local dev loop out of the box. Use for 'scaffold a new project', 'set up minikube scripts for this project', or bootstrapping a fresh repo's local dev-workflow.
 allowed-tools: Bash, Read, Write, Edit
 ---
 

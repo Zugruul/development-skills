@@ -1,9 +1,9 @@
 ---
 name: dev-up
-description: Brings up the project's local dev stack (commands.devUp in .claude/project.yaml) for QA, validation against acceptance criteria, or debugging the running system. Use for 'run the stack', 'start the dev environment', or QA of a merged task — not needed for unit/integration TDD.
+description: Brings up the project's local dev stack (commands.devUp in .claude/project.yaml) so you can QA a change, validate it against acceptance criteria, or debug the running system. Use for 'run the stack', 'start the dev environment', or QA of a merged task — not needed for unit/integration TDD.
 ---
 
-# Local dev stack
+# Bring up the local dev stack
 
 ```bash
 jq -r '.commands.devUp // empty' .claude/project.yaml   # then run that command, e.g.: ./dev.sh

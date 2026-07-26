@@ -1,10 +1,10 @@
 ---
 name: peer-review
-description: Independent, cross-vendor code review of the current diff — you pick which provider (OpenAI Codex or Claude today, more later) reviews it, deliberately never the orchestrating model reviewing its own diff. Use for '/peer-review', 'peer review this', 'get a second opinion on this diff', or 'review PR' by number.
+description: Gets an independent second opinion on your current code diff from a different AI vendor (OpenAI Codex or Claude today, more providers later) — you pick the provider, and it is deliberately never the same model orchestrating this session reviewing its own work. You get a structured review report back. Use for '/peer-review', 'peer review this', 'get a second opinion on this diff', or 'review PR' by number.
 allowed-tools: Bash, AskUserQuestion
 ---
 
-# Peer review
+# Peer review — get an independent second opinion on your diff
 
 **Sends your diff to the chosen provider's cloud.** Reviewing shells out to that provider's
 review script (for OpenAI Codex: the user-installed `codex` CLI, `codex exec --sandbox

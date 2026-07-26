@@ -1,6 +1,6 @@
 ---
 name: retrospective
-description: Runs the orchestrator's retro protocol on demand — dedupe/route any pending feedback and mint/prune/graduate brain notes from it — independent of a build-next PR-close. Use when the human explicitly asks to run a retrospective or "update the brains from feedback", or when the feedback skill offers this at the end of a standalone session and the human accepts.
+description: Runs the orchestrator's retro protocol on demand — dedupes and routes any pending feedback, then mints, prunes, or graduates brain notes from it — independent of a build-next PR-close. Use when the human explicitly asks to run a retrospective or "update the brains from feedback", or when the feedback skill offers this at the end of a standalone session and the human accepts.
 allowed-tools: Bash
 ---
 

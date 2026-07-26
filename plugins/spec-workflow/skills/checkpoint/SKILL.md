@@ -1,6 +1,6 @@
 ---
 name: checkpoint
-description: Pauses or resumes the autonomous build loop via a local gitignored flag file, at safe task boundaries with a handoff. Use for 'pause the loop', 'stop after this task', 'resume the loop', or holding work before a review/deploy gate.
+description: Pauses or resumes the autonomous build loop by writing or clearing a local gitignored flag file, always at a safe task boundary and with a handoff written first. Use for 'pause the loop', 'stop after this task', 'resume the loop', or holding work before a review/deploy gate.
 ---
 
 # Checkpoint — pause / resume the build loop

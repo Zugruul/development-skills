@@ -1,6 +1,6 @@
 ---
 name: queue
-description: Enumerates the tasks the autonomous build loop will pick up next, priority-first, and presents them human-readably. Use for 'what's next', 'what will build-next pick up', 'show the task queue', or 'what's upcoming'.
+description: Lists the tasks the autonomous build loop will pick up next, priority-first, presented in human-readable form so you can see what's coming. Use for 'what's next', 'what will build-next pick up', 'show the task queue', or 'what's upcoming'.
 allowed-tools: Bash
 ---
 

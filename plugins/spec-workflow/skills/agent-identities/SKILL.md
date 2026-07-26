@@ -1,6 +1,6 @@
 ---
 name: agent-identities
-description: Shows or configures the git author identities agent roles (dev/reviewer/orchestrator/peer-reviewer) commit with — name/email templates resolved per-clone ({name}, {local}+suffix@{domain}). Use when the user asks who agent commits are attributed to, wants to rename an agent, use their own plus-addressed email, or turn attribution off. With no argument, show current resolution and ask what to change.
+description: Shows or configures which git author identities (name/email) the agent roles — dev, reviewer, orchestrator, peer-reviewer — commit as. Templates resolve per clone ({name}, {local}+suffix@{domain} placeholders fill in from your own git config), so commits stay attributable without hardcoding anyone's real email. Use when the user asks who agent commits are attributed to, wants to rename an agent, use their own plus-addressed email, or turn attribution off. With no argument, show current resolution and ask what to change.
 allowed-tools: Bash, AskUserQuestion, Edit, Read
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: find-task
-description: Ranked search of existing board issues (open + closed) by title/body similarity. Use for the /find-task command with a search query, checking whether work already exists before filing something new, or "has this been reported before".
+description: Runs a ranked search of existing board issues (open and closed) by title/body similarity, so you can see if something's already been filed. Use for the /find-task command with a search query, checking whether work already exists before filing something new, or "has this been reported before".
 allowed-tools: Bash
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: sync-project-configs
-description: Discover every anchored repo (marked with .claude/.neural-network) under a scan base and bring its .claude/project.yaml up to this plugin's current config surface, via versioned sync rules. Dry-run by default. Use when the plugin's config surface has evolved (new methodology keys, path migrations) and consumer repos' project.yaml may have drifted, or the user asks to "sync configs" across repos.
+description: Discovers every anchored repo (marked with .claude/.neural-network) under a scan base and brings its .claude/project.yaml up to this plugin's current config surface, via versioned sync rules. Dry-run by default, so nothing changes until you say so. Use when the plugin's config surface has evolved (new methodology keys, path migrations) and consumer repos' project.yaml may have drifted, or the user asks to "sync configs" across repos.
 allowed-tools: Bash
 ---
 

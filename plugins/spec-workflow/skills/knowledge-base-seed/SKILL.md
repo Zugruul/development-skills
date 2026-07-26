@@ -1,10 +1,10 @@
 ---
 name: knowledge-base-seed
-description: Explores the current project (specs, backlogs, design docs, applied spec-deltas, READMEs/AGENTS.md/CLAUDE.md, script/source layout, git history, board epics from config) and seeds/updates a knowledge-graph identity brain (.claude/identities/knowledge/brain/) via kb-seed.sh, reusing brain.py's note/link machinery end to end. Use for '/knowledge-base-seed' — bootstrapping or refreshing a repo's knowledge brain so recall/explain/staleness and neural-view work on it for free, orchestrator-mediated like every brain.
+description: Explores the current project (specs, backlogs, design docs, applied spec-deltas, READMEs/AGENTS.md/CLAUDE.md, script/source layout, git history, board epics from config) and seeds or updates a knowledge-graph identity brain (.claude/identities/knowledge/brain/) via kb-seed.sh, reusing brain.py's note/link machinery end to end. Use for '/knowledge-base-seed' — bootstrapping or refreshing a repo's knowledge brain so recall/explain/staleness and neural-view work on it for free, orchestrator-mediated like every brain.
 allowed-tools: Bash
 ---
 
-# Knowledge-graph seeding
+# Seed the repo's knowledge-graph brain
 
 `kb-seed.sh` = `bash "../../scripts/kb-seed.sh"`. Like every identity brain,
 `knowledge` is orchestrator-mediated only — this skill runs `kb-seed.sh`,

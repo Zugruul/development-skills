@@ -1,10 +1,10 @@
 ---
 name: auto-merge
-description: Checks, enables, or disables auto-merge mode (an agent reviews, approves, and merges PRs instead of a human). Use with 'status' (default), 'on', or 'off' — when the user asks whether auto-merge is active, wants the loop to merge without them, or wants human approval back. With no argument, ask the user what to do.
+description: Checks the status of, turns on, or turns off auto-merge mode, where an agent reviews, approves, and merges pull requests instead of a human doing it. Use with 'status' (default), 'on', or 'off' — when the user asks whether auto-merge is active, wants the loop to merge without them, or wants human approval back. With no argument, ask the user what to do.
 allowed-tools: Bash, AskUserQuestion
 ---
 
-# Auto-merge mode — status / on / off
+# Auto-merge mode — let an agent review, approve, and merge PRs (status / on / off)
 
 `merge-mode.sh` = `bash "../../scripts/merge-mode.sh"`.
 

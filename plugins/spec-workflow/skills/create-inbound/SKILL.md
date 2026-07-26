@@ -1,6 +1,6 @@
 ---
 name: create-inbound
-description: Search-first capture of ad-hoc ideas/bugs/requests onto the board, gated by duplicate detection. Use for the /create-inbound command with a description, filing a new task without leaving the session, or "add this to the backlog".
+description: Captures an ad-hoc idea, bug, or request onto the board — search-first, so it checks for duplicates before creating anything new. Use for the /create-inbound command with a description, filing a new task without leaving the session, or "add this to the backlog".
 allowed-tools: Bash
 ---
 

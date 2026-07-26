@@ -1,6 +1,6 @@
 ---
 name: ui-mode
-description: Checks, enables, or disables Iterative UI mode (delegating UI decisions to the human via the decision hub). Use with 'status' (default), 'on', or 'off' — when the user asks whether the mode is active, wants UI questions to stop (going AFK), or wants them back.
+description: Checks the status of, turns on, or turns off Iterative UI mode, which delegates UI decisions to the human via the decision hub instead of the agent deciding alone. Use with 'status' (default), 'on', or 'off' — when the user asks whether the mode is active, wants UI questions to stop (going AFK), or wants them back.
 ---
 
 # Iterative UI mode — status / on / off

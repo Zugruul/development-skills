@@ -174,6 +174,15 @@ comment first — the recorded independent agent review IS the artifact that
 justifies the merge, whether or not GitHub demands a formal approval on top
 of it.
 
+The merge commit's SUBJECT line MUST be a conventional commit line —
+`type(scope): description`, allowed types `feat fix perf refactor docs test chore ci build style`,
+scope = the task id or the touched area, `(#N)` issue ref, imperative description, e.g.
+`feat(AST-060): add the widget cache (#123)`. This is not cosmetic: the subject becomes a
+CHANGELOG entry read by humans, and (for the squash route) `semver.sh apply-head`'s bump
+classification depends on that same type prefix (§MERGE FRESHNESS + SEMVER below). `gh pr merge
+--squash` defaults the subject to `<PR title> (#N)`, so this mandate is already satisfied once
+implement-task's PR-title mandate is followed — verify it before merging rather than assume it.
+
 Merge with `<cfg:methodology.mergeMethod|squash>` — a per-repo decision made at
 setup (the `merge-mode.sh method` subcommand changes it later):
 

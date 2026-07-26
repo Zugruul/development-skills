@@ -1,6 +1,6 @@
 ---
 name: ask-identity
-description: Ask one identity's brain (dev/reviewer/orchestrator, or any custom role with a brain directory under .claude/identities/) a question grounded in what it has learned, without running a build iteration or touching the board. Use for '/spec-workflow:ask-identity' with an identity name and a question — e.g. clicked from a neural-view "Talk" deep link, or any time you want a quick answer informed by one role's accumulated lessons instead of a full build-loop pass.
+description: Asks one identity's brain — dev, reviewer, orchestrator, or any custom role with a brain directory under .claude/identities/ — a question, and answers it grounded in what that one role has learned, without running a build iteration or touching the board. Use for '/spec-workflow:ask-identity' with an identity name and a question — e.g. clicked from a neural-view "Talk" deep link, or any time you want a quick answer informed by one role's accumulated lessons instead of a full build-loop pass.
 allowed-tools: Bash, Read, Write, Edit, AskUserQuestion
 ---
 
