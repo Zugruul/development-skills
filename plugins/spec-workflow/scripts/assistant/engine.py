@@ -15,7 +15,13 @@ lives in neural-view.py itself. `AssistantEngine` owns:
     workers were all no-op heartbeats parked on `stop_event.wait()`; AST-030
     replaces the `distiller` slot's body with the real batching loop
     (`distill.run_worker`) without touching this registry's shape --
-    tasks/traces/index stay heartbeats until their own E4/E6 tasks land;
+    tasks stays a heartbeat until its own E6 task lands. AST-061
+    (SPEC-ASSISTANT.md Sec11.3) replaces the `index` slot's body the same
+    way: `capability_index.run_worker` compiles a per-root
+    CapabilityIndex on start and recompiles on config/skill-set change
+    (never per-turn -- see `_on_capability_index_compiled`/
+    `capability_index_for` below for the lock-cheap snapshot read a turn
+    actually uses);
   - a `queue.Queue` per subsystem (`queues[name]`), created now so HTTP
     request threads can enqueue-only into it later without the signature
     churning when the real workers land. AST-030 is the first to actually
@@ -38,8 +44,8 @@ import threading
 import uuid
 from datetime import datetime, timezone
 
-from assistant import (adapters, default_store, digest as digest_module, discovery,
-                        distill, observability, selection_store, turns)
+from assistant import (adapters, capability_index, default_store, digest as digest_module,
+                        discovery, distill, observability, selection_store, turns)
 from assistant.store import SessionStore
 
 
@@ -89,6 +95,12 @@ DISTILLER_QUEUE_MAXSIZE = 1000
 # this case but was dead code in production while this queue stayed
 # unbounded (a `Queue()` with no maxsize can never raise `Full`).
 TRACES_QUEUE_MAXSIZE = 1000
+
+# AST-061 (SPEC-ASSISTANT.md Sec11.3): per-turn roster hard cap. Same
+# constant `_roster_provider_for` passes to `capability_index.roster_for_turn`
+# for every root -- a single, documented default rather than a per-call
+# magic number.
+ROSTER_TOP_N = capability_index.DEFAULT_ROSTER_TOP_N
 
 
 def _heartbeat_worker(stop_event):
@@ -200,6 +212,16 @@ class AssistantEngine:
         # None/None until (and unless) start() actually binds one.
         self._metrics_server = None
         self._metrics_thread = None
+        # AST-061 (Sec11.3): per-root compiled CapabilityIndex snapshots,
+        # written ONLY by the `index` worker thread's `on_compile` callback
+        # (`_on_capability_index_compiled`) and read by `capability_index_for`
+        # under the SAME short-held lock -- a plain dict-get/dict-set, never
+        # held across a compile or a turn, so a per-turn roster read stays
+        # lock-cheap (Sec17: never blocks on index refresh). Keyed by
+        # `os.path.realpath(root)`, same canonicalization `_chat_lock_for`
+        # already uses.
+        self._capability_indices = {}
+        self._capability_indices_lock = threading.Lock()
 
     def _retention_config_for(self, root):
         """AST-041 (SPEC-ASSISTANT.md §10.3, issue #327): per-root
@@ -305,6 +327,72 @@ class AssistantEngine:
             pairs.append((label or root, root))
         return pairs
 
+    def _on_capability_index_compiled(self, root, index):
+        """AST-061: `capability_index.run_worker`'s `on_compile` callback --
+        called from the `index` WORKER thread only, never an HTTP request
+        thread. The lock is held only across this dict-set (cheap, never
+        across the compile itself, which already happened before this
+        call), matching `_chat_lock_for`'s own "lock only the mutation,
+        never the slow part" discipline."""
+        key = os.path.realpath(root)
+        with self._capability_indices_lock:
+            self._capability_indices[key] = index
+
+    def capability_index_for(self, root):
+        """AST-061: a lock-cheap READ of whatever the `index` worker has
+        most recently compiled for `root` -- never compiles, never does
+        I/O (Sec11.3/Sec17: a turn never blocks on index refresh). Returns
+        an empty `CapabilityIndex` for a root the worker has not compiled
+        yet (e.g. a brand-new root discovered between polls, or a chat
+        request that races the very first compile pass) -- an empty
+        roster degrades to `default_roster_provider`'s existing
+        placeholder rendering in `turns.py`, never a crash."""
+        key = os.path.realpath(root)
+        with self._capability_indices_lock:
+            index = self._capability_indices.get(key)
+        return index if index is not None else capability_index.CapabilityIndex(entries=())
+
+    def _roster_provider_for(self, root, user_message):
+        """AST-061: builds the ZERO-ARG `roster_provider` closure
+        `turns.compose_context` already calls (see turns.py's "roster seam"
+        docstring -- `default_roster_provider` is the placeholder this
+        replaces). Reads the already-compiled snapshot
+        (`capability_index_for`, lock-cheap, no compute) and the per-turn
+        query (`capability_index.embed_query`, degrading to keyword-only
+        on any embeddings-capability failure, per that function's
+        docstring), then scores via `roster_for_turn`.
+
+        Turn contract (design doc's "the turn side of this task ends at
+        roster injected + ambiguous -> the turn's reply asks"): a plain
+        list of entries renders via `turns._render_roster_entries`'s
+        existing `{"name", "one-liner", "available"}` shape unchanged. An
+        `AskInsteadOfGuess` sentinel is surfaced as ONE synthetic roster
+        entry whose one-liner states the ambiguity -- this is a rendering
+        choice, not a control-flow branch: the ambiguity note becomes part
+        of the persona's own system context (same `roster_text` that
+        already reaches the adapter), so the model's natural reply asks
+        for clarification rather than this method silently picking a
+        capability or short-circuiting the adapter call. Ordinary chat
+        turns with no relevant capability at all (`roster_for_turn`
+        returns `[]`, see its docstring) are completely unaffected --
+        ambiguity only ever fires when there WAS a plausible, nonzero-
+        relevance signal to be ambiguous about."""
+        def _provider():
+            index = self.capability_index_for(root)
+            query = capability_index.embed_query(user_message)
+            result = capability_index.roster_for_turn(index, query, ROSTER_TOP_N)
+            if isinstance(result, capability_index.AskInsteadOfGuess):
+                return [{
+                    "name": "(ambiguous)",
+                    "one-liner": f"ambiguous match ({result.reason}) -- ask before using any capability",
+                    "available": False,
+                }]
+            return [
+                {"name": e.name, "one-liner": e.one_liner, "available": e.provisioned_ok}
+                for e in result
+            ]
+        return _provider
+
     def start(self):
         """Launch the worker registry. Idempotent: a second call while
         already started is a no-op (does not spawn duplicate workers)."""
@@ -326,6 +414,24 @@ class AssistantEngine:
                         target=distill.run_worker,
                         args=(self.queues["distiller"], stop_event),
                         kwargs={"traces_queue": self.queues["traces"]},
+                        name=f"assistant-{name}",
+                        daemon=False,
+                    )
+                elif name == "index":
+                    # AST-061 (SPEC-ASSISTANT.md Sec11.3): the index slot
+                    # runs the real compile-on-start/compile-on-change loop
+                    # instead of the v1 heartbeat no-op -- see
+                    # capability_index.run_worker's docstring. `repos_getter`
+                    # is passed straight through (same live-getter contract
+                    # `__init__`'s docstring already documents for
+                    # `_status`/`_history`); `on_compile` stores each
+                    # (re)compiled snapshot into `self._capability_indices`
+                    # under `_capability_indices_lock` -- the ONLY place that
+                    # dict is ever written.
+                    thread = threading.Thread(
+                        target=capability_index.run_worker,
+                        args=(self._repos_getter, stop_event),
+                        kwargs={"on_compile": self._on_capability_index_compiled},
                         name=f"assistant-{name}",
                         daemon=False,
                     )
@@ -923,7 +1029,13 @@ class AssistantEngine:
             session_state = store.load_state()
             provider_span_id = uuid.uuid4().hex
             try:
-                result = turns.run_turn(section, None, None, session_state, message)
+                # AST-061 (Sec11.3): a real, per-turn relevance-filtered
+                # roster instead of the AST-013 `None` placeholder (which
+                # `compose_context` treats as `default_roster_provider`,
+                # always []) -- see `_roster_provider_for`'s docstring for
+                # the ask-instead-of-guess rendering this closure applies.
+                roster_provider = self._roster_provider_for(root, message)
+                result = turns.run_turn(section, roster_provider, None, session_state, message)
             except adapters.AdapterError as exc:
                 # provider CLI failure (Sec8.5) -- a clean upstream error,
                 # never a raw traceback, and never a persisted exchange

@@ -40,9 +40,79 @@ Library:
         out-of-range version) returns a CapabilityError -- this function
         never raises and never attempts to execute anything the capability
         declares.
+
+AST-061 (SPEC-ASSISTANT.md Sec11.3, issue #336, docs/design/ast-E6.md) adds
+the compiled per-turn index + bounded, relevance-filtered roster on top of
+the schema/version-negotiation library above:
+
+    CapabilityIndexEntry(name, one_liner, keywords, embedding, enabled,
+        provisioned_ok, unavailable_reason) -- one compiled skill. Only
+        skills that are BOTH enabled (Sec11.2) and version-compatible
+        (Sec11.6, `load_capability` above) ever get an entry at all --
+        disabled or version-incompatible skills are invisible: no entry,
+        no roster, no prompt, never executed (design doc's "two
+        invisibility tiers" decision). `provisioned_ok`/`unavailable_reason`
+        model AST-062's (not this task's) provisioning-check outcome via an
+        injectable `provisioning_checker` seam on `compile_index` --
+        defaulting to "unknown/assumed ok" (`provisioned_ok=True,
+        unavailable_reason=None`) so AST-062 can plug in its TTL-cached
+        checker later without reshaping this entry.
+
+    CapabilityIndex(entries) -- an immutable snapshot (a tuple of
+        CapabilityIndexEntry, sorted by name for deterministic iteration)
+        produced by ONE `compile_index` pass. `roster_for_turn` only ever
+        READS an already-compiled CapabilityIndex -- it never compiles, so
+        a per-turn roster read stays lock-cheap (Sec11.3: "never per-turn"
+        recompute; Sec17 turns never block on index refresh).
+
+    compile_index(skills_root, assistant_cfg, provisioning_checker=None,
+        embed_fn=None) -> CapabilityIndex
+        One pass over every immediate subdirectory of `skills_root`
+        (`.claude/skills/<name>/`, Sec11.1) carrying a `capability.yaml`:
+        enablement (`assistant_cfg["capabilities"][name]["enabled"]`,
+        default False/absent -- Sec11.2) THEN version negotiation
+        (`load_capability`, Sec11.6) THEN provisioning
+        (`provisioning_checker(name, capability, skill_dir) ->
+        (provisioned_ok, unavailable_reason)`, defaults to always-ok).
+        `one_liner`/`keywords` are read from the skill's own `SKILL.md`
+        frontmatter `description:` (the same frontmatter shape every
+        installed skill in this repo already carries -- see
+        plugins/*/skills/*/SKILL.md); a skill with no SKILL.md (or no
+        `description`) still gets an entry, just with an empty one-liner
+        and no keywords, never a compile failure. `embedding` is computed
+        in ONE batched pass over every entry's `one_liner + " " +
+        keywords` text via `embed_fn` (default: a lazy, degrading wrapper
+        around brain.py's existing embeddings capability, `brain.
+        _embed_texts` -- MEM-03x's ONNX venv capability, reused rather
+        than re-implemented); when the embeddings capability is
+        unavailable at runtime EVERY entry's `embedding` is `None`
+        (never a crash, never a blocked turn -- Sec17) and
+        `roster_for_turn` degrades to deterministic keyword-overlap
+        scoring for that whole index.
+
+    Query(keywords, embedding) -- a per-turn query representation built by
+        `embed_query(text, embed_fn=None)`: extracted keywords always
+        computed (cheap, pure), embedding computed via the SAME embed_fn
+        seam as `compile_index` (None on any failure/unavailability).
+
+    AskInsteadOfGuess(reason) -- the sentinel `roster_for_turn` returns
+        instead of a list when the top-ranked candidates are TIED or the
+        best score is below `LOW_CONFIDENCE_THRESHOLD` (see that function's
+        docstring for the exact, deterministic rule) -- the turn pipeline
+        (turns.py) reads this as "ask instead of guess" (Sec11.3) rather
+        than silently picking a candidate.
+
+    roster_for_turn(index, query, top_n) -> list[CapabilityIndexEntry] |
+        AskInsteadOfGuess
+        Relevance-filtered, HARD-capped top-`top_n` read of an already-
+        compiled `index` -- never compiles, never does I/O (the embedding
+        hop, if any, already happened when `query` was built via
+        `embed_query`). See the function's own docstring for the precise
+        scoring/tie/low-confidence rule.
 """
 import collections
 import os
+import re
 
 SUPPORTED_VERSION_RANGE = (1, 1)
 
@@ -171,3 +241,400 @@ def load_capability(skill_dir):
         permissions=data["permissions"],
         invoke=data["invoke"],
     )
+
+
+# ------------------------------------------------------------------------
+# AST-061 (Sec11.3): compiled index + bounded, relevance-filtered roster.
+# ------------------------------------------------------------------------
+
+CapabilityIndexEntry = collections.namedtuple(
+    "CapabilityIndexEntry",
+    ["name", "one_liner", "keywords", "embedding", "enabled", "provisioned_ok", "unavailable_reason"],
+)
+CapabilityIndex = collections.namedtuple("CapabilityIndex", ["entries"])
+Query = collections.namedtuple("Query", ["keywords", "embedding"])
+AskInsteadOfGuess = collections.namedtuple("AskInsteadOfGuess", ["reason"])
+
+# Sec11.3 hard cap default -- engine.py's per-turn roster build uses this
+# unless a caller overrides it; `roster_for_turn` itself takes `top_n`
+# explicitly (no default) so tests can pin any N.
+DEFAULT_ROSTER_TOP_N = 5
+
+# roster_for_turn's normalized score (Jaccard for keyword-overlap fallback,
+# clamped cosine for the embedding path -- both land in [0.0, 1.0], see
+# `_score`'s docstring) below which the top candidate is "low confidence":
+# ask instead of guessing rather than surfacing a shaky top-1. Chosen so a
+# single shared keyword out of several (a weak, incidental overlap) does
+# not clear the bar, but a clearly-matching capability does.
+LOW_CONFIDENCE_THRESHOLD = 0.34
+
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'-]{2,}")
+_STOPWORDS = frozenset({
+    "the", "and", "for", "that", "this", "with", "from", "have", "has",
+    "was", "were", "are", "you", "your", "our", "not", "but", "can", "will",
+    "would", "could", "should", "into", "about", "then", "than", "when",
+    "what", "which", "who", "how", "why", "there", "here", "just", "like",
+    "also", "its", "it's", "them", "they", "their", "these", "those", "any",
+    "all", "one", "two", "did", "does", "let", "get", "got", "use", "uses",
+    "used", "capability", "skill",
+})
+_MAX_KEYWORDS = 8
+
+
+def _extract_keywords(text, limit=_MAX_KEYWORDS):
+    """Deterministic keyword extraction: lowercase word tokens, 3+ chars,
+    stopwords dropped, ranked by (frequency desc, alpha asc) so identical
+    input text always yields the identical ranked keyword list -- mirrors
+    distill.py's `_extract_keywords` shape (same stopword-filter idea) but
+    is kept as its own small copy here rather than importing distill.py,
+    since capability_index.py has no other reason to depend on the
+    distiller subsystem."""
+    counts = {}
+    for word in _WORD_RE.findall((text or "").lower()):
+        if word in _STOPWORDS:
+            continue
+        counts[word] = counts.get(word, 0) + 1
+    ranked = sorted(counts, key=lambda w: (-counts[w], w))
+    return ranked[:limit]
+
+
+def _read_skill_meta(skill_dir):
+    """Reads `<skill_dir>/SKILL.md`'s frontmatter `description:` (the same
+    `---\\nname: ...\\ndescription: ...\\n---` shape every installed skill in
+    this repo already carries, e.g. plugins/*/skills/*/SKILL.md) and
+    derives (one_liner, keywords) from it. Absent file, absent frontmatter,
+    or absent `description` all degrade to `("", [])` -- a skill with no
+    SKILL.md still compiles into the index, just with nothing to rank it
+    by (Sec17: never a compile failure over missing, optional metadata)."""
+    path = os.path.join(skill_dir, "SKILL.md")
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        return "", []
+
+    if not text.startswith("---"):
+        return "", []
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return "", []
+
+    import yaml  # local import: mirrors load_capability's lazy PyYAML import
+
+    try:
+        front = yaml.safe_load(parts[1])
+    except yaml.YAMLError:
+        return "", []
+    if not isinstance(front, dict):
+        return "", []
+    description = front.get("description")
+    if not isinstance(description, str) or not description.strip():
+        return "", []
+    one_liner = description.strip()
+    return one_liner, _extract_keywords(one_liner)
+
+
+def default_provisioning_checker(name, capability, skill_dir):
+    """AST-061's provisioning seam, defaulting to "unknown/assumed ok"
+    (`provisioned_ok=True, unavailable_reason=None`) -- this task does NOT
+    execute `capability.provisioning.check` (that is AST-062's TTL-cached
+    checker). `compile_index`'s `provisioning_checker` parameter exists so
+    AST-062 can swap this default out for a real checker without changing
+    `compile_index`'s call site or CapabilityIndexEntry's shape."""
+    return True, None
+
+
+def _default_embed_fn(texts):
+    """Lazy, degrading wrapper around brain.py's existing embeddings
+    capability (MEM-03x: ONNX venv capability, `brain._embed_texts`) --
+    imported INSIDE this function, never at module top, so importing
+    capability_index.py alone never imports brain.py (Sec17.1 isolation
+    discipline, same lazy-import posture turns.py's `make_default_recall`
+    and distill.py already use for brain.py). Returns None on ANY failure
+    (brain.py not importable, the capability itself unavailable, a
+    malformed response) -- callers treat None as "no embeddings this
+    pass", never a crash and never a blocked turn (Sec17)."""
+    try:
+        import brain as brain_module
+    except Exception:
+        return None
+    try:
+        return brain_module._embed_texts(list(texts))
+    except Exception:
+        return None
+
+
+def embed_query(text, embed_fn=None):
+    """Builds a per-turn `Query(keywords, embedding)` from raw user-message
+    text: keywords are always extracted (cheap, pure, deterministic);
+    `embedding` is computed via `embed_fn` (default `_default_embed_fn`),
+    `None` on any failure/unavailability -- `roster_for_turn` degrades to
+    keyword-overlap scoring whenever either side (query or entry) has no
+    embedding."""
+    embed_fn = embed_fn or _default_embed_fn
+    keywords = _extract_keywords(text)
+    embedding = None
+    try:
+        vectors = embed_fn([text or ""])
+        if vectors and len(vectors) == 1:
+            embedding = vectors[0]
+    except Exception:
+        embedding = None
+    return Query(keywords=keywords, embedding=embedding)
+
+
+def _iter_skill_dirs(skills_root):
+    """Immediate subdirectories of `skills_root` that carry a
+    `capability.yaml` (Sec11.1: `.claude/skills/<name>/`), sorted by name
+    for deterministic compile order. Returns `[]` for a missing/unreadable
+    `skills_root` -- an assistant repo with no installed skills yet is not
+    a compile failure."""
+    try:
+        names = sorted(os.listdir(skills_root))
+    except OSError:
+        return []
+    out = []
+    for name in names:
+        skill_dir = os.path.join(skills_root, name)
+        if os.path.isdir(skill_dir) and os.path.isfile(os.path.join(skill_dir, "capability.yaml")):
+            out.append((name, skill_dir))
+    return out
+
+
+def compile_index(skills_root, assistant_cfg, provisioning_checker=None, embed_fn=None):
+    """One pass over `skills_root` -> `CapabilityIndex` (Sec11.3's "Index
+    compile" sequence, docs/design/ast-E6.md). See the module docstring for
+    the enablement -> version -> provisioning ordering and the two-
+    invisibility-tiers rule (disabled/version-incompatible skills never get
+    an entry at all)."""
+    assistant_cfg = assistant_cfg or {}
+    provisioning_checker = provisioning_checker or default_provisioning_checker
+    caps_cfg = assistant_cfg.get("capabilities")
+    caps_cfg = caps_cfg if isinstance(caps_cfg, dict) else {}
+
+    pending = []  # [(name, one_liner, keywords, capability, skill_dir), ...]
+    for name, skill_dir in _iter_skill_dirs(skills_root):
+        entry_cfg = caps_cfg.get(name)
+        enabled = isinstance(entry_cfg, dict) and entry_cfg.get("enabled") is True
+        if not enabled:
+            # Sec11.2: disabled (or never configured at all) -- invisible.
+            # No entry, no roster, no prompt, never executed.
+            continue
+
+        capability = load_capability(skill_dir)
+        if isinstance(capability, CapabilityError):
+            # Sec11.6: version-incompatible/malformed -- also never added
+            # to the index (design doc's "two invisibility tiers" decision:
+            # this is stronger than "shown as unavailable").
+            continue
+
+        one_liner, keywords = _read_skill_meta(skill_dir)
+        pending.append((name, one_liner, keywords, capability, skill_dir))
+
+    embed_fn = embed_fn or _default_embed_fn
+    embeddings = [None] * len(pending)
+    if pending:
+        texts = [f"{one_liner} {' '.join(keywords)}".strip() for _n, one_liner, keywords, _c, _d in pending]
+        try:
+            vectors = embed_fn(texts)
+        except Exception:
+            vectors = None
+        if vectors and len(vectors) == len(pending):
+            embeddings = vectors
+
+    entries = []
+    for (name, one_liner, keywords, capability, skill_dir), embedding in zip(pending, embeddings):
+        provisioned_ok, unavailable_reason = provisioning_checker(name, capability, skill_dir)
+        entries.append(CapabilityIndexEntry(
+            name=name,
+            one_liner=one_liner,
+            keywords=keywords,
+            embedding=embedding,
+            enabled=True,
+            provisioned_ok=bool(provisioned_ok),
+            unavailable_reason=unavailable_reason,
+        ))
+
+    entries.sort(key=lambda e: e.name)
+    return CapabilityIndex(entries=tuple(entries))
+
+
+def _cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(x * x for x in b) ** 0.5
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
+
+
+def _score(entry, query):
+    """Normalized relevance score in [0.0, 1.0], regardless of which path
+    produced it -- so `LOW_CONFIDENCE_THRESHOLD` means the same thing on
+    both:
+      - embedding path (used when BOTH `entry.embedding` and
+        `query.embedding` are present): cosine similarity, clamped to
+        [0.0, 1.0] (a real embedding model's cosine can go slightly
+        negative for unrelated text; this is relevance-filtering, not a
+        signed-similarity report, so negative reads as "no relevance").
+      - keyword-overlap fallback (used whenever either embedding is
+        missing -- degraded, deterministic, never a crash, per the module
+        docstring): Jaccard similarity of `entry.keywords` and
+        `query.keywords` (both treated as sets). Two empty keyword sets
+        score 0.0 (no signal), never a division by zero.
+    """
+    if entry.embedding is not None and query.embedding is not None:
+        return max(0.0, min(1.0, _cosine(entry.embedding, query.embedding)))
+    a = set(entry.keywords or [])
+    b = set(query.keywords or [])
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def roster_for_turn(index, query, top_n):
+    """Relevance-filtered, HARD-capped top-`top_n` read of an already-
+    compiled `index` (Sec11.3). Never compiles, never does I/O -- pure,
+    in-memory scoring over `index.entries` and the already-built `query`
+    (see `embed_query`), so a per-turn roster read stays lock-cheap.
+
+    Deterministic ranking: entries are scored via `_score` (normalized to
+    [0.0, 1.0] on both the embedding and keyword-overlap paths), then
+    sorted by (-score, name) -- name is the tie-break for ORDERING only,
+    never for deciding whether an actual tie/low-confidence ask fires
+    below.
+
+    Precise tie/low-confidence rule (Sec11.3 "ties/low confidence -> the
+    assistant asks instead of guessing" -- flagged per house lesson
+    acceptance-criterion-outranks-test-spec-paraphrase, this is the exact
+    constraint this task tests against):
+      - No entries at all -> `[]` (nothing to be ambiguous about; an
+        empty roster for a turn unrelated to any capability, or an
+        assistant with none installed, is not "low confidence", it is
+        "no candidates" -- AST-071's capability-gap handling, not this
+        task).
+      - The best score is exactly 0.0 (no entry has ANY relevance signal
+        for this query) -> `[]`, same reasoning as above: nothing plausibly
+        matched, so there is nothing to guess among either.
+      - Two or more entries share the best (nonzero) score -> a genuine
+        TIE -> `AskInsteadOfGuess("tie among N candidates: ...")`.
+      - The single best score is nonzero but below
+        `LOW_CONFIDENCE_THRESHOLD` -> `AskInsteadOfGuess("low confidence
+        (score=...) for ...")`.
+      - Otherwise -> the top `top_n` entries (by the sort above), a HARD
+        cap -- exactly `min(top_n, len(entries))` entries are ever
+        returned, never more.
+    """
+    entries = list(index.entries) if index else []
+    if not entries:
+        return []
+
+    scored = [(entry, _score(entry, query)) for entry in entries]
+    scored.sort(key=lambda pair: (-pair[1], pair[0].name))
+
+    best_score = scored[0][1]
+    if best_score <= 0.0:
+        return []
+
+    tied = [entry for entry, score in scored if score == best_score]
+    if len(tied) >= 2:
+        names = ", ".join(e.name for e in tied)
+        return AskInsteadOfGuess(f"tie among {len(tied)} candidates: {names}")
+
+    if best_score < LOW_CONFIDENCE_THRESHOLD:
+        return AskInsteadOfGuess(
+            f"low confidence (score={best_score:.2f}) for top match {scored[0][0].name!r}"
+        )
+
+    return [entry for entry, _score_val in scored[:top_n]]
+
+
+def _index_signature(section, skills_root):
+    """A cheap, comparable snapshot of "what would change compile_index's
+    output": the section's `capabilities` config plus the sorted list of
+    subdirectory names under `skills_root` that carry a `capability.yaml`
+    (a skill's capability.yaml CONTENT changing -- e.g. version bump -- is
+    NOT covered by this signature; a full content-hash walk is a
+    heavier-weight future refinement, not required for AST-061's "compiled
+    on start and on change" contract, which is about enablement/skill-set
+    changes). Equality of two signatures is a reliable "nothing to
+    recompile" signal; inequality always triggers a recompile -- never the
+    reverse."""
+    caps = section.get("capabilities") if isinstance(section, dict) else None
+    caps = caps if isinstance(caps, dict) else {}
+    try:
+        skill_names = tuple(name for name, _dir in _iter_skill_dirs(skills_root))
+    except OSError:
+        skill_names = ()
+    caps_signature = tuple(sorted(
+        (name, entry.get("enabled") if isinstance(entry, dict) else None)
+        for name, entry in caps.items()
+    ))
+    return (caps_signature, skill_names)
+
+
+DEFAULT_INDEX_POLL_SECONDS = 2.0
+
+
+def run_worker(repos_getter, stop_event, on_compile, skills_subpath=(".claude", "skills"),
+                poll_interval=DEFAULT_INDEX_POLL_SECONDS, provisioning_checker=None, embed_fn=None):
+    """The `index` worker body engine.py's `start()` binds into the
+    AST-010 `index` slot, replacing the v1 heartbeat no-op (same
+    replace-the-heartbeat-body pattern AST-030 used for `distiller`).
+
+    On EVERY poll tick (including the very first, immediately on start --
+    `last_signature` starts empty so every currently-discovered candidate
+    root compiles at least once right away) this walks `repos_getter()`'s
+    CURRENT roots, classifies each (`discovery.classify_repo`, the same
+    classifier every other engine.py read-path already uses), and
+    recompiles ONLY a root whose `_index_signature` changed since the last
+    tick -- Sec11.3's "compiled on start and on change, never per-turn".
+    `on_compile(root, index)` is called once per (re)compile so the caller
+    (engine.py) can store the result wherever it holds per-root state;
+    this function holds no engine state itself.
+
+    `stop_event.wait(poll_interval)` (rather than a bare `sleep`) bounds
+    the loop's responsiveness to `stop_event.set()` to at most one
+    `poll_interval`, so `engine.stop()`'s bounded join stays prompt --
+    same posture as `distill.run_worker`'s `q.get(timeout=...)`.
+
+    Failure posture: a root that fails to classify or compile (any
+    exception) is skipped for this tick, never crashes the worker thread
+    -- the same "one broken sibling repo never takes down the others"
+    discipline `discovery.scan` already applies to every other read-path.
+    """
+    from assistant import discovery  # local import: avoids a hard import-time
+    # coupling from capability_index.py (a pure library, per the module
+    # docstring) to the discovery/marker/config stack for callers that only
+    # need compile_index/roster_for_turn.
+
+    last_signature = {}
+    while not stop_event.is_set():
+        for _name, root in repos_getter():
+            try:
+                classification = discovery.classify_repo(root)
+            except Exception:
+                continue
+            if classification.kind != "candidate":
+                continue
+            section = classification.section
+            skills_root = os.path.join(root, *skills_subpath)
+            try:
+                signature = _index_signature(section, skills_root)
+            except Exception:
+                continue
+            key = os.path.realpath(root)
+            if last_signature.get(key) == signature:
+                continue
+            last_signature[key] = signature
+            try:
+                index = compile_index(skills_root, section,
+                                       provisioning_checker=provisioning_checker,
+                                       embed_fn=embed_fn)
+            except Exception:
+                continue
+            try:
+                on_compile(root, index)
+            except Exception:
+                continue
+        stop_event.wait(poll_interval)
