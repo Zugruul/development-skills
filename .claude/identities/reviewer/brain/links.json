@@ -24,6 +24,11 @@
     "last": "2026-07-26",
     "weight": 0.5
   },
+  "duplicate-toplevel-symbols-across-branches->trial-merge-and-run-integrated-tree": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "escape-at-sink-not-caller->probe-spec-silent-input-categories": {
     "fires": 0,
     "last": null,
@@ -137,6 +142,11 @@
   "trace-dict-merge-for-key-collisions->verify-backcompat-claims-algebraically": {
     "fires": 3,
     "last": "2026-07-26",
+    "weight": 0.5
+  },
+  "trial-merge-and-run-integrated-tree->reports-are-not-the-code": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "verify-backcompat-claims-algebraically->verify-tdd-empirically-when-log-is-thin": {

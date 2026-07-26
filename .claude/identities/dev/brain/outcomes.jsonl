@@ -23,3 +23,5 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "acceptance-criterion-outranks-test-spec-paraphrase", "task": "Zugruul/development-skills#335", "ts": "2026-07-26T19:24:58+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "audit-new-path-parity-before-writing", "task": "Zugruul/development-skills#335", "ts": "2026-07-26T19:24:58+00:00"}
 {"note": null, "outcome": "dead_end", "schemaVersion": 1, "slug": "construct-before-try", "task": "Zugruul/development-skills#335", "ts": "2026-07-26T19:24:58+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "red-green-atomic-commit-pair", "task": "wave2 2026-07-26", "ts": "2026-07-26T22:34:23+00:00"}
+{"note": "Attribution incomplete: the 43-fail cluster's proven mechanism is shared-TMPDIR accumulation (solo locked runs failed 3x; fresh-TMPDIR run passed 0-fail immediately after); concurrency only accelerates the bloat. Ports remain a real, separate class.", "outcome": "corrected", "schemaVersion": 1, "slug": "check-concurrent-suites-before-believing-red", "task": "Zugruul/development-skills#412", "ts": "2026-07-26T22:34:24+00:00"}

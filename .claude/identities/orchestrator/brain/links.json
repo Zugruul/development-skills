@@ -14,6 +14,11 @@
     "last": null,
     "weight": 0.5
   },
+  "demo-note-media->bisect-before-blaming-tracked-flakiness": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "direct-mode-standdown-and-sweep->live-tweaks-as-brief-amendments": {
     "fires": 0,
     "last": null,
@@ -25,6 +30,21 @@
     "weight": 0.5
   },
   "locks-need-owner-liveness-and-turns->inventory-stalled-agent-tree": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "ping-gated-lane-sequencing->brief-collisions-and-inflight-siblings": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "ping-gated-lane-sequencing->version-const-collisions-hand-step": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "version-const-collisions-hand-step->locks-need-owner-liveness-and-turns": {
     "fires": 0,
     "last": null,
     "weight": 0.5
