@@ -2821,7 +2821,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // matches what the changelog overlay documents) -- it now lives in the
 // chip's tooltip, and as the fallback chip text when the plugin version
 // can't be read (see CHIP_VER_FALLBACK below).
-const NV_VERSION = "0.28.9";
+const NV_VERSION = "0.28.10";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -6942,7 +6942,6 @@ function changelogVersionHtml(v, idx){
     + `<div class="cl-version-head">`
     + `<span class="cl-version-caret" data-cl-caret="${secId}" role="button" tabindex="0" aria-label="Expand or collapse all entries in this version">▸</span>`
     + `<span class="cl-version-text" data-cl-section="${secId}" role="button" tabindex="0" aria-expanded="${open}">`
-    + `<span class="cl-disclosure">${open ? "▾" : "▸"}</span>`
     + `<span class="cl-version-num">v${escapeHtml(v.version)}</span>`
     + `<span class="cl-version-date">${escapeHtml(v.date)}</span></span></div>`
     + `<div class="cl-version-body" id="${secId}"${open ? "" : " hidden"}>${groups}</div></section>`;

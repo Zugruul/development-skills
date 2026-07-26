@@ -260,6 +260,24 @@ const FIXTURE = [
     }
     console.log("CARET_RENDER_SEPARATE_STATE_AWARE_OK true");
 
+    // ---- #429: exactly ONE caret glyph element per version row. #411 split
+    // the bulk entries-control (cl-version-caret) out of the header text
+    // span, but left #405's original section-toggle disclosure glyph
+    // (.cl-disclosure) still rendered INSIDE cl-version-text -- a second,
+    // dead-looking glyph sitting right beside the live state-aware caret
+    // (screenshot: "▸ ▾ v0.28.0"). The header TEXT keeps its section-toggle
+    // CLICK behavior (data-cl-section) -- only the redundant glyph markup
+    // goes. ----
+    for (const [html, label] of [[html0, "open version"], [html1, "collapsed version"]]) {
+        const headMatch = html.match(/<div class="cl-version-head">[\s\S]*?<\/div>(?=<div class="cl-version-body")/);
+        if (!headMatch) throw new Error(`${label}: could not isolate cl-version-head markup: ` + html);
+        const head = headMatch[0];
+        const discCount = (head.match(/class="cl-disclosure"/g) || []).length;
+        if (discCount !== 0) throw new Error(`${label}: expected exactly ONE caret glyph per version row (no leftover .cl-disclosure inside cl-version-head), found ${discCount} extra: ` + head);
+        if (!/data-cl-section="cl-ver-\d+"/.test(head)) throw new Error(`${label}: header text must still carry data-cl-section (section-toggle click behavior preserved): ` + head);
+    }
+    console.log("ONE_CARET_PER_VERSION_ROW_OK true");
+
     // ---- #411: hand-built fake DOM exercising handleChangelogBodyClick
     // directly -- the innerHTML setter in this stub (like the real one)
     // just stores a string, it never parses markup into a live tree, so
@@ -524,6 +542,7 @@ if command -v node >/dev/null 2>&1; then
     check "parser: CRLF input (Windows autocrlf checkout) still parses body lines, no stray \\r leaks into any field" "CRLF_INPUT_OK true" "$cl_tmpl_out"
     check "render: newest version expanded by default, older versions collapsed" "RENDER_DEFAULT_EXPANSION_OK true" "$cl_tmpl_out"
     check "render (#411): the bulk caret is its own element (cl-version-caret/data-cl-caret) separate from the header text's data-cl-section, and starts state-aware (▸, since entry bodies always start collapsed)" "CARET_RENDER_SEPARATE_STATE_AWARE_OK true" "$cl_tmpl_out"
+    check "render (#429): exactly ONE caret glyph per version row -- no leftover .cl-disclosure inside cl-version-head beside the live cl-version-caret, header text still carries data-cl-section" "ONE_CARET_PER_VERSION_ROW_OK true" "$cl_tmpl_out"
     check "#411: caret click on a collapsed version opens the section AND expands every entry body, flipping the caret to the collapse glyph" "CARET_COLLAPSED_SECTION_EXPANDS_ALL_OK true" "$cl_tmpl_out"
     check "#411: caret click when every entry is already expanded collapses them all without touching the section's own open state" "CARET_ALL_EXPANDED_COLLAPSES_ALL_OK true" "$cl_tmpl_out"
     check "#411: caret click on a mixed state (some entries open, some not) expands the rest -- expand wins" "CARET_MIXED_STATE_EXPAND_WINS_OK true" "$cl_tmpl_out"
