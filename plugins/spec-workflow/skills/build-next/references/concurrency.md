@@ -59,3 +59,80 @@ Never the reverse, never a bare counter.
 
 Examples: `dev-cp012` (dev lane for task CP-012), `pr-reviewer-pr5` (PR reviewer for PR #5),
 `dev-cp012-b` (second dev spawn on the same task after a re-brief).
+
+## The merge dance (`serialDelivery: true` + `maxInProgress: N>1`, #423)
+
+Plain `maxInProgress: N` alone lets N lanes run AND merge independently — fine
+when nothing needs main to stay fresh underneath it. Turning `serialDelivery`
+on **as well** makes the two knobs one coherent mode instead of cancelling
+each other out: N lanes of *implementation* throughput, but merges themselves
+serialize strictly ONE at a time — the **synchronization dance**. This keeps
+serialDelivery's original promise (every merge lands on a main it actually
+saw) without giving up maxInProgress's lane width.
+
+**Slots are COUNT-based, not identified.** A slot is occupied from the moment
+a task is PICKed until it is MERGED — both *In progress* and *In review*
+count toward `maxInProgress`. There are no slot ids and no side-car state
+file: the board itself (current item statuses) is the sole source of truth
+for how many slots are occupied. `next.py` computes `occupied = count(In
+progress) + count(In review)` and allows a new PICK while `occupied <
+maxInProgress`; once occupied reaches the limit, an In-progress lane is
+always the actionable next step (`RESUME`), and only when EVERY occupying
+task is In review (nothing left to resume) does it print `WAIT: merge-dance`.
+
+**Dance order is FIFO by In-review entry, oldest first** — deterministic,
+computed from the merge queue `next.py` always prints when `serialDelivery`
+is on and anything is In review (issue numbers, ascending — the most
+deterministic ordering field `gh project item-list --format json` actually
+offers; it carries no per-item timestamp at all).
+
+### The dance lock
+
+Two orchestrator sessions must never run the dance at once. Before touching
+ANY merge under this mode, acquire a lock:
+1. `mkdir .claude/merge-dance.lock` (atomic — the FIRST session to succeed
+   holds the lock; a second `mkdir` on an existing directory fails, meaning
+   "someone else is dancing right now").
+2. On success, immediately write an owner file inside it —
+   `.claude/merge-dance.lock/owner` — with your session identity and a
+   fresh timestamp (`date -u +%FT%TZ`), so a staleness check (next) can tell
+   whose lock it is and how old.
+3. **Staleness / steal rule:** if `mkdir` fails (lock already held), read the
+   owner file's timestamp. If it is **more than 25 minutes old with no
+   merge activity since** (no new commit/board move attributable to the
+   dance in that window), treat the lock as abandoned — a crashed or
+   orphaned session — and steal it: remove the stale lock directory and
+   `mkdir` your own. Otherwise, wait/back off and retry; do not force past a
+   live lock.
+4. Release the lock (`rm -rf .claude/merge-dance.lock`) as the LAST action of
+   each completed (or explicitly abandoned) dance step — never leave it held
+   across an idle/handoff boundary.
+
+### Running one dance step
+
+While the merge queue is non-empty and you hold the lock:
+1. Pick the **OLDEST** In-review task from the queue (issue-number ascending,
+   per the FIFO rule above).
+2. `cd <its worktree/branch> && git fetch origin && git rebase origin/<mainBranch>`
+   — rebase the branch onto the CURRENT main tip. If commits from an earlier,
+   already-landed dance step show up as already-applied during the rebase
+   (their content squashed into a prior merge commit), that's expected —
+   skip/drop them as `git rebase` naturally does when the tree already
+   matches; never re-apply a change main already carries.
+3. Re-run the recorded gate on the rebased tree (`gate.sh`) — a rebase
+   invalidates the previous recorded pass; never merge on a stale recording.
+4. Squash-merge with role attribution (`identity.sh on-behalf ...` recipe,
+   `auto-review.md` §Commit identities) and apply the semver bump
+   (`semver.sh apply-head`) into the same squash commit — same mechanics as
+   any other merge, just gated by this lock.
+5. Move the board item to *QA*, fold its spec delta, announce the merge to
+   every other live lane (existing auto-review §4 announce — a merge
+   invalidates the others' merge-bases, though NOT their in-flight work).
+6. Release the lock, then re-check the queue: if still non-empty, loop back
+   to step 1 (re-acquire the lock — do not hold it idle between steps).
+
+**In-progress lanes are NEVER force-rebased mid-flight by someone else's
+dance.** A lane still being implemented rebases onto main at its OWN dance
+time — i.e. once IT reaches In review and becomes the oldest queued item —
+never earlier, and never as a side effect of another lane's merge. Only the
+lane's own dev agent/orchestrator touches its branch while it's In progress.

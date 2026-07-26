@@ -144,6 +144,7 @@ SECTIONS=(
     section-work-mode.sh
     section-next-similar.sh
     section-serial-delivery.sh
+    section-merge-dance.sh
     section-preflight.sh
     section-ui-hub.sh
     section-neural-view-template.sh

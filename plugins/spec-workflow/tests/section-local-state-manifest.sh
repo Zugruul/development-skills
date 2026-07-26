@@ -28,6 +28,7 @@ LS_EXP_IGNORE="$(printf '%s\n' \
     '.claude/board-comments-seen.json' \
     '.claude/neural-view/' \
     '.claude/merge-requirements.json' \
+    '.claude/merge-dance.lock/' \
     '.claude/.flush*' \
     '.claude/worktrees/' \
     '.claude/identities/*/brain/index.sqlite3' \

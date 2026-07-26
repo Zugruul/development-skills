@@ -27,15 +27,20 @@
 # we can't prove it's safe, so we block with a distinct message rather than
 # risk letting a real move through unparsed.
 #
-# #272 (methodology.serialDelivery, defense in depth): a `board.sh move <n>
-# "In progress"` is ALSO intercepted below when the config has serialDelivery
-# on, blocking it if the offline .claude/board-cache.json (issue #78 — no
-# network call) shows another issue already In progress or In review.
-# Deliberately fail OPEN (allow, with a stderr warning) when the cache is
-# missing/unreadable: a cache-consistency problem must never wedge the build
-# loop the way a real network outage would if this were gate-checked instead.
-# SERIAL_DELIVERY_OVERRIDE=1 bypasses the block outright (documented escape
-# hatch for an intentional manual override).
+# #272/#423 (methodology.serialDelivery, defense in depth): a `board.sh move
+# <n> "In progress"` is ALSO intercepted below when the config has
+# serialDelivery on. #423 made this COUNT-based (slots, not a hard "nothing
+# else in flight" rule): a slot is occupied from PICK until MERGE (both In
+# progress AND In review count), methodology.maxInProgress is the number of
+# slots, and the move is blocked only when the OTHER occupying issues
+# (offline .claude/board-cache.json, issue #78 — no network call) already
+# fill every slot — i.e. there is no headroom left. At maxInProgress: 1 this
+# collapses to the original #272 rule (any other In progress/In review
+# occupant blocks). Deliberately fail OPEN (allow, with a stderr warning)
+# when the cache is missing/unreadable: a cache-consistency problem must
+# never wedge the build loop the way a real network outage would if this
+# were gate-checked instead. SERIAL_DELIVERY_OVERRIDE=1 bypasses the block
+# outright (documented escape hatch for an intentional manual override).
 set -uo pipefail
 
 # shellcheck disable=SC2016  # this is Python source in single quotes, not a
@@ -151,12 +156,22 @@ boards = cfg.get("boards") or []
 flow = (boards[0].get("statusFlow") if boards else None) or ["Backlog", "In progress", "In review"]
 blocking = set(flow[1:3])
 
+# #423: slot-count semantics -- a slot is occupied from PICK until MERGE
+# (both In progress AND In review count), and maxInProgress is the number of
+# slots, not a hard "nothing else may be in flight" rule. The item being
+# moved (num) is excluded from the count: it does not yet occupy a slot
+# (still Backlog/whatever today, moving TO In progress), and a re-move of
+# the SAME issue must never self-block (#272 review round 1 MUST FIX #4,
+# generalized). Block only when the OTHER occupying items already fill every
+# slot -- i.e. there is no headroom left for this one.
+max_wip = int((cfg.get("methodology") or {}).get("maxInProgress", 1) or 1)
+
 blockers = [
     (n, e.get("status", ""))
     for n, e in cache.items()
     if n != num and isinstance(e, dict) and e.get("status", "") in blocking
 ]
-if blockers:
+if len(blockers) >= max_wip:
     print("block:" + ";".join(f"#{n} is {s}" for n, s in blockers))
 else:
     print("allow")

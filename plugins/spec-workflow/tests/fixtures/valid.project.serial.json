@@ -60,5 +60,5 @@
     "commands": { "gate": "true", "test": "true" },
     "delegation": { "devModel": "sonnet", "reviewModel": "sonnet" },
     "paths": { "handoffDir": "docs/handoffs", "checkpointFile": ".claude/CHECKPOINT" },
-    "methodology": { "tdd": true, "isolationSuite": "", "maxInProgress": 5, "serialDelivery": true }
+    "methodology": { "tdd": true, "isolationSuite": "", "maxInProgress": 1, "serialDelivery": true }
 }

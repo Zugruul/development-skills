@@ -20,6 +20,7 @@ ignore	.claude/board-cache.json
 ignore	.claude/board-comments-seen.json
 ignore	.claude/neural-view/
 ignore	.claude/merge-requirements.json
+ignore	.claude/merge-dance.lock/
 ignore	.claude/.flush*
 ignore	.claude/worktrees/
 ignore	.claude/identities/*/brain/index.sqlite3

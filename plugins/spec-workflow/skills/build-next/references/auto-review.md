@@ -279,6 +279,17 @@ chore, retro, release commits) means push as-is. `.github/workflows/semver.yml`
 is defense in depth only: it bumps on main solely when a bump-worthy commit
 arrives without its version change.
 
+Under `methodology.serialDelivery` + `maxInProgress: N>1` (#423, the merge
+dance): this rebase+re-gate step is not just "if main moved" housekeeping —
+it is the discipline that makes N parallel lanes safe to merge one at a time.
+Hold the merge-dance lock (`../../skills/build-next/references/concurrency.md`)
+for the ENTIRE step (acquire before the rebase, release only after the board
+moves to *QA*) so **one merger at a time** is structural, not just convention
+— two orchestrator sessions racing this same rebase+gate+squash sequence is
+exactly the failure mode the lock exists to prevent. Process the merge queue
+strictly FIFO, oldest In-review task first; each dance step gets its own
+fresh rebase + fresh gate pass, never a pass recorded for a stale tree.
+
 If one of the LOCAL route's OWN steps (the `git push`, or the REST
 PATCH-close) itself hits a hard denial, that falls back to the doc's
 top-level floor: never retry around a denial — it means ask the human, full

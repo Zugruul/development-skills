@@ -151,6 +151,7 @@ on the loop itself), not a bug; it isn't deduped against step 8's emission.
 | ignore | `.claude/board-comments-seen.json` |
 | ignore | `.claude/neural-view/` |
 | ignore | `.claude/merge-requirements.json` |
+| ignore | `.claude/merge-dance.lock/` |
 | ignore | `.claude/.flush*` |
 | ignore | `.claude/worktrees/` |
 | ignore | `.claude/identities/*/brain/index.sqlite3` |

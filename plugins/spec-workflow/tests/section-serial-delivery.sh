@@ -18,11 +18,26 @@
 #      a network call) — fail OPEN with a warning on a cache miss, and
 #      correctly evaluated even when board.sh appears more than once in a
 #      compound command (review round 1, MUST FIX #3).
+#
+# #423 (deliberate wording change): serialDelivery x maxInProgress>1 is now a
+# COUNT-based slot model -- occupied = count(In progress) + count(In review);
+# a WAIT/RESUME only fires once occupied >= maxInProgress. Every fixture in
+# THIS file uses maxInProgress: 1 (valid.project.serial.json), under which
+# "occupied >= 1" collapses to the exact old "any WIP blocks" behavior next.py
+# used to hard-code -- so RESUME's wording is unchanged here, but WAIT's
+# wording and the old In-progress-AND-In-review trailing NOTE both changed (a
+# `Merge queue` block, always printed when anything is In review, replaces the
+# old ad hoc NOTE line). See section-merge-dance.sh for the maxInProgress>1
+# decision table and the guard-board-move.sh slot-count cases.
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== next.py (serialDelivery picker gate, #272) =="
 
 out="$(python3 "$PLUGIN/scripts/next.py" "$FIX/valid.project.serial.json" "" "$FIX/items.serial-review.json")"
-check "serial + In review only (nothing In progress): WAIT names #2 and its status" "WAIT: serial delivery — #2 FX-002: auth model is In review; merge it before picking" "$out"
+# #423: WAIT's wording changed to the merge-dance form (bare issue numbers +
+# slot count); the merge queue block above it is what names the title/status.
+check "serial + In review only: merge queue block names #2" "Merge queue (In review, oldest-first by issue number):" "$out"
+check "serial + In review only: merge queue lists #2 and its title" "#2  FX-002: auth model" "$out"
+check "serial + In review only (nothing In progress): WAIT names #2, slots 1/1 occupied" "WAIT: merge-dance — #2 In review; slots 1/1 occupied — run the dance (merge oldest first) to free a slot" "$out"
 check_absent "serial + In review only: no PICK line" "=> PICK:" "$out"
 check_absent "serial + In review only: no RESUME line (nothing to resume)" "=> RESUME:" "$out"
 
@@ -40,7 +55,13 @@ check_absent "serial + In progress only: no WAIT line" "WAIT: serial delivery" "
 out="$(python3 "$PLUGIN/scripts/next.py" "$FIX/valid.project.serial.json" "" "$FIX/items.serial-both.json")"
 check "serial + In progress AND In review: RESUME wins" "=> RESUME: #2  FX-002: auth model" "$out"
 check_absent "serial + In progress AND In review: no WAIT line" "WAIT: serial delivery" "$out"
-check "serial + In progress AND In review: In-review blocker is a trailing NOTE" "NOTE: serial delivery — #3 FX-003: sessions is also In review; merge it too before picking new work." "$out"
+check_absent "serial + In progress AND In review: no WAIT line (merge-dance form either)" "WAIT: merge-dance" "$out"
+# #423: the old ad hoc "NOTE: ... is also In review" trailing line is gone --
+# the always-printed merge queue block is now the one place the In-review
+# blocker is named.
+check "serial + In progress AND In review: the In-review blocker is named in the merge queue, not a NOTE" "Merge queue (In review, oldest-first by issue number):" "$out"
+check "serial + In progress AND In review: merge queue names #3" "#3  FX-003: sessions" "$out"
+check_absent "serial + In progress AND In review: no more ad hoc NOTE line" "NOTE: serial delivery" "$out"
 
 out="$(python3 "$PLUGIN/scripts/next.py" "$FIX/valid.project.serial.json" "" "$FIX/items.serial-safe.json")"
 check "serial + only QA/Ready/Deployed: PICK proceeds normally" "=> PICK: #1  FX-001: scaffold" "$out"
@@ -159,6 +180,9 @@ BUILD_NEXT_SKILL="$(cat "$PLUGIN/skills/build-next/SKILL.md")"
 # shellcheck disable=SC2016  # literal backticked markdown text being asserted against, not a shell expansion
 check "build-next SKILL.md Operating Rule 1 adds WAIT to the decision vocabulary" '`PICK` / `RESUME` / `WAIT` / `BLOCKED` / `PREFLIGHT FAIL` lines are decisions already made' "$BUILD_NEXT_SKILL"
 NEXT_TASK_SKILL="$(cat "$PLUGIN/skills/next-task/SKILL.md")"
-check "next-task SKILL.md documents WAIT" "WAIT: serial delivery" "$NEXT_TASK_SKILL"
+# #423: WAIT's wording moved from "WAIT: serial delivery" to the merge-dance
+# form -- see section-merge-dance.sh for the full doc-pinning coverage of the
+# new slot semantics (RESUME/WAIT/PICK meanings, the dance protocol).
+check "next-task SKILL.md documents WAIT" "WAIT: merge-dance" "$NEXT_TASK_SKILL"
 check "next-task SKILL.md's WAIT protocol checks the named PR's merge state" "gh pr view" "$NEXT_TASK_SKILL"
 check "next-task SKILL.md's WAIT protocol: a merged PR moves the item to QA and re-runs next" "QA" "$NEXT_TASK_SKILL"

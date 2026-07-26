@@ -93,6 +93,7 @@ paths:
 methodology:
     tdd: true
     isolationSuite: ""
+    serialDelivery: true
     maxInProgress: 1
     autoMerge: false
     feedback: true

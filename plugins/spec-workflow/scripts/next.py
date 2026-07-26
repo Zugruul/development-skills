@@ -33,20 +33,59 @@ def main(cfg_path, bid, items_path, only_spec=""):
     wip = [it for it in data["items"] if it.get("status") == wip_status]
     review_wip = [it for it in data["items"] if review_status and it.get("status") == review_status]
 
-    # #272 (review round 1 MUST FIX #1): serialDelivery is stricter than and
-    # orthogonal to the maxInProgress resume guard below, but it must never
-    # print WAIT while something is In progress — resuming/finishing that IS
-    # the correct next action, and a WAIT with nothing In progress to work on
-    # would deadlock the loop (a task can only leave In review by merging).
-    # So: In progress present -> always RESUME (folded into the ordinary
-    # resume guard below, which a bare serialDelivery now also triggers even
-    # under maxInProgress); an In-review blocker with NOTHING In progress ->
-    # WAIT, since only a merge can unblock it and there is nothing to resume.
-    if serial_delivery and not wip and review_wip:
-        for it in review_wip:
-            num = it.get("content", {}).get("number")
-            print(f'WAIT: serial delivery — #{num} {title_of(it)} is {it.get("status")}; merge it before picking')
-        return
+    def num_of(it):
+        return it.get("content", {}).get("number")
+
+    # #423: serialDelivery x maxInProgress>1 as ONE coherent mode — N parallel
+    # implementation lanes, merges strictly ONE at a time. A slot is occupied
+    # from PICK until MERGE: both In-progress AND In-review count toward
+    # maxInProgress. Slots are COUNT-based, not identified — the board (this
+    # item list) is the sole state; there is no slot-id side-car file.
+    #
+    #   occupied = count(In progress) + count(In review)
+    #   occupied <  maxInProgress -> headroom exists, PICK proceeds normally
+    #   occupied >= maxInProgress -> an In-progress item is the actionable
+    #                                 next step (RESUME — finishing it is
+    #                                 real progress even though the slot only
+    #                                 frees at merge); WAIT only when EVERY
+    #                                 occupying item is In review (nothing to
+    #                                 resume — only a merge unblocks the loop)
+    #
+    # This generalizes #272's old "any WIP under serialDelivery blocks" rule,
+    # which was exactly the maxInProgress=1 special case of this same formula
+    # (occupied >= 1 whenever anything occupies a slot at all).
+    #
+    # Merge-queue ordering (#423 HOW — inspected live `gh project item-list
+    # --format json`): its item/content shape carries NO per-item timestamp
+    # field at all — content: {body, number, repository, title, type, url};
+    # item: {content, estimate, id, labels, priority, repository, status,
+    # title}. No updatedAt/createdAt anywhere. The only deterministic,
+    # monotonic, immutable field available is content.number (the GitHub
+    # issue number, assigned once at creation) — so the merge-dance queue
+    # below sorts In-review items ascending by issue number as the "oldest
+    # first by In-review entry" proxy.
+    review_queue = sorted(review_wip, key=lambda it: (num_of(it) is None, num_of(it)))
+
+    if serial_delivery and review_queue:
+        print("Merge queue (In review, oldest-first by issue number):")
+        for it in review_queue:
+            print(f'  #{num_of(it)}  {title_of(it)}')
+
+    if serial_delivery:
+        occupied = len(wip) + len(review_wip)
+        if occupied >= max_wip:
+            if wip:
+                print(f"Work already {wip_status} (limit {max_wip}) — finish or move it before starting new work:")
+                for it in wip:
+                    print(f'  #{num_of(it)}  {title_of(it)}')
+                print(f'\n=> RESUME: #{num_of(wip[0])}  {title_of(wip[0])}')
+            else:
+                names = ",".join(f"#{num_of(it)}" for it in review_queue)
+                print(f'\nWAIT: merge-dance — {names} In review; slots {max_wip}/{max_wip} occupied — '
+                      "run the dance (merge oldest first) to free a slot")
+            return
+        # occupied < max_wip: headroom exists — fall through to the normal
+        # picking logic below (the merge queue, if any, was already printed).
 
     def classify(title):
         """title -> (spec, epic, epic_rank, tasknum) or None for untagged (bugs)."""
@@ -67,17 +106,14 @@ def main(cfg_path, bid, items_path, only_spec=""):
         except ValueError:
             return False
 
-    # resume guard: WIP at/over the configured limit -- or, under serialDelivery,
-    # ANY WIP at all (#272 review round 1 MUST FIX #1) -- finish that work first.
-    if len(wip) >= max_wip or (serial_delivery and wip):
+    # resume guard (non-serial mode; serialDelivery's own occupied-vs-max_wip
+    # check above already returned when it applies): WIP at/over the
+    # configured limit -- finish that work first.
+    if len(wip) >= max_wip:
         print(f"Work already {wip_status} (limit {max_wip}) — finish or move it before starting new work:")
         for it in wip:
             print(f'  #{it.get("content", {}).get("number")}  {title_of(it)}')
         print(f'\n=> RESUME: #{wip[0].get("content", {}).get("number")}  {title_of(wip[0])}')
-        if serial_delivery and review_wip:
-            for it in review_wip:
-                num = it.get("content", {}).get("number")
-                print(f'NOTE: serial delivery — #{num} {title_of(it)} is also In review; merge it too before picking new work.')
         return
 
     # epic completion map: (spec_id, epic_id) -> [statuses of its tasks]
