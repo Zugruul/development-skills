@@ -2776,12 +2776,16 @@ function updateVisuals(){
 // trajectory, played quickly while the scene is still forming, landing in
 // the same final layout.
 let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
-// Template version, shown in the status chip so it's always unambiguous WHICH
-// build a given tab is rendering (three copies of this file exist on disk —
-// dev repo / marketplace clone / plugin cache — and "why does it look old"
-// has burned real debugging time). Bump the PATCH on every template change
-// within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.28.4";
+// Template version -- disambiguates WHICH build a given tab is rendering
+// (three copies of this file exist on disk — dev repo / marketplace clone /
+// plugin cache — and "why does it look old" has burned real debugging
+// time). Bump the PATCH on every template change within an increment of
+// work; bump the MINOR when the increment ships. #410: this is no longer
+// the headline number in the status chip (that's the PLUGIN semver, which
+// matches what the changelog overlay documents) -- it now lives in the
+// chip's tooltip, and as the fallback chip text when the plugin version
+// can't be read (see CHIP_VER_FALLBACK below).
+const NV_VERSION = "0.28.5";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -2792,14 +2796,28 @@ const METRICS_ID = Math.random().toString(36).slice(2, 8);
 // specific segments (the version/branch pair, #405) can be made clickable
 // without every chip segment becoming one.
 function chipHtml(segs){
+  // segment TEXT is escaped too, not just the title (#410 review fix): every
+  // segment lands via statusEl.innerHTML, and CHIP_VER/CHIP_BRANCH now both
+  // carry file-sourced strings (plugin.json's version, the serving repo's
+  // git branch) -- unescaped, either is an HTML-injection vector the moment
+  // the file/branch name contains markup. escapeHtml is a hoisted function
+  // declaration (defined further down this file), safe to call from here.
   return segs.filter(Boolean).map(([text, title, cls]) =>
-    `<span${cls ? ` class="${cls}"` : ""} title="${title.replace(/"/g,"&quot;")}">${text}</span>`).join(" · ");
+    `<span${cls ? ` class="${cls}"` : ""} title="${title.replace(/"/g,"&quot;")}">${escapeHtml(text)}</span>`).join(" · ");
 }
 const CHIP_LIVE = ["live", "Connected — the page re-reads the brains every 15s and streams recall activations in as they happen"];
 // chip-changelog (#405): clicking this segment (or the branch/commit one
 // below) opens the changelog overlay -- see openChangelogWindow() near the
 // AST-044 inspector further down this file.
-const CHIP_VER = [`v${NV_VERSION}`, "neural-view template version — confirms which build this tab is rendering (bumped on every template change) — click to view the changelog", "chip-changelog"];
+// #410: the chip's headline version is the PLUGIN semver -- the number
+// bumped by semver.sh at every merge and the one the changelog overlay
+// documents (one user-facing version, not two). CHIP_VER starts as this
+// NV_VERSION-based fallback (deterministic before the async /version probe
+// below resolves) and is replaced with the plugin version once that probe
+// delivers a non-null `plugin` field; if it's null (plugin.json missing or
+// unparseable) the chip simply stays on this fallback, same as today.
+const CHIP_VER_FALLBACK = [`v${NV_VERSION}`, "neural-view template version — confirms which build this tab is rendering (bumped on every template change) — click to view the changelog", "chip-changelog"];
+let CHIP_VER = CHIP_VER_FALLBACK;
 // git branch of the serving repo — filled by the /version probe at boot
 // (falsy until then; chipHtml drops it, frame()'s per-second rebuild picks
 // it up as soon as it lands).
@@ -5194,15 +5212,24 @@ function hoverProbe(){
 const PROBE = location.search.includes("hoverprobe");
 
 // ---- dev live-reload (neural-view.py dev) ----
-// /version carries {boot, template, dev}: boot changes on every server
-// process, template on every template edit. Polled ONLY when dev is true —
-// a normal server costs one probe at boot, then silence.
+// /version carries {boot, template, dev, branch, plugin}: boot changes on
+// every server process, template on every template edit. Polled ONLY when
+// dev is true — a normal server costs one probe at boot, then silence.
+// #410: `plugin` (plugins/spec-workflow/.claude-plugin/plugin.json's
+// version, or null if unreadable) becomes the chip's headline version --
+// CHIP_VER swaps off CHIP_VER_FALLBACK once it lands; null leaves the
+// fallback in place, so the chip is never text-less.
 (async function(){
   let base; try{ base = await (await fetch("/version")).json(); }catch{ return; }
+  if(base && base.plugin){
+    CHIP_VER = [`v${base.plugin}`, `plugin release version — the number the changelog documents (bumped by semver.sh at every merge); this tab's template build is ${NV_VERSION} — click to view the changelog`, "chip-changelog"];
+  }
   if(base && base.branch){
     CHIP_BRANCH = [base.branch, "git branch the serving repo is on (read at server boot probe) — click to view the changelog", "chip-changelog"];
+  }
+  if(statusEl && !webglOK && base && (base.plugin || base.branch)){
     // frame() rebuilds the chip every second; repaint now for the non-WebGL path
-    if(statusEl && !webglOK) statusEl.innerHTML = chipHtml([CHIP_LIVE, CHIP_VER, CHIP_BRANCH, CHIP_NO3D]);
+    statusEl.innerHTML = chipHtml([CHIP_LIVE, CHIP_VER, CHIP_BRANCH, CHIP_NO3D]);
   }
   if(!base || !base.dev) return;
   setInterval(async ()=>{

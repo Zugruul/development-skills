@@ -127,6 +127,7 @@ global.fetch = async (url) => {
 };
 
 eval(extract("escapeHtml"));
+eval(extract("chipHtml"));
 eval(extract("wireWinDrag"));
 eval(extract("parseChangelog"));
 eval(extract("changelogEntryHtml"));
@@ -294,6 +295,17 @@ const FIXTURE = [
     if (window.changelogWin === null) throw new Error("a non-Escape keydown must not close the changelog window");
     closeChangelogWindow();
     console.log("ESC_ONLY_OK true");
+
+    // ---- #410 review fix: chipHtml must escape segment TEXT, not just the
+    // title -- CHIP_VER/CHIP_BRANCH now both carry file-sourced strings
+    // (plugin.json's version, the serving repo's git branch), so unescaped
+    // text is an HTML-injection vector the instant either contains markup
+    // (statusEl.innerHTML renders the chip's raw HTML string). ----
+    const evilText = '<img src=x onerror=alert(1)>';
+    const evilChipHtml = chipHtml([[evilText, "a plain tooltip", "chip-changelog"]]);
+    if (evilChipHtml.includes("<img")) throw new Error("chipHtml must escape segment text -- raw markup reached the rendered chip: " + evilChipHtml);
+    if (!evilChipHtml.includes("&lt;img")) throw new Error("chipHtml must render the escaped form of injected segment text: " + evilChipHtml);
+    console.log("CHIP_TEXT_ESCAPED_OK true");
 })().catch(e => { console.error("FAIL", e.message); process.exit(1); });
 NODEJS
 if command -v node >/dev/null 2>&1; then
@@ -311,6 +323,7 @@ if command -v node >/dev/null 2>&1; then
     check "Esc closes the changelog window when it owns the keypress" "ESC_CLOSES_OK true" "$cl_tmpl_out"
     check "Esc defers to an already-claimed event (defaultPrevented) instead of double-closing -- same handshake as the AST-044 inspector (#330)" "ESC_DEFERS_WHEN_ALREADY_CLAIMED_OK true" "$cl_tmpl_out"
     check "non-Escape keydowns are ignored by the changelog window's handler" "ESC_ONLY_OK true" "$cl_tmpl_out"
+    check "chipHtml escapes segment TEXT (not just the title) -- HTML-injection fix (#410 review): CHIP_VER/CHIP_BRANCH now carry file-sourced strings (plugin.json version, git branch)" "CHIP_TEXT_ESCAPED_OK true" "$cl_tmpl_out"
     if [[ "$cl_tmpl_rc" -ne 0 ]]; then echo "$cl_tmpl_out" >&2; fi
 else
     echo "SKIP changelog template script tests -- node not available"
@@ -321,12 +334,27 @@ echo "-- template: chip segments carry the clickable marker class + overlay clas
 # shellcheck disable=SC2016  # single-quoted on purpose -- pinning the literal
 # template source text (including its own template-literal backticks), not a
 # shell expansion.
-check "CHIP_VER carries the chip-changelog clickable marker class (chipHtml's optional 3rd segment element)" 'const CHIP_VER = [`v${NV_VERSION}`,' "$(cat "$NVHTML_CL")"
-check "CHIP_VER's chip-changelog class is present" '"chip-changelog"];' "$(cat "$NVHTML_CL")"
+check "CHIP_VER_FALLBACK carries the chip-changelog clickable marker class (chipHtml's optional 3rd segment element)" 'const CHIP_VER_FALLBACK = [`v${NV_VERSION}`,' "$(cat "$NVHTML_CL")"
+check "CHIP_VER_FALLBACK's chip-changelog class is present" '"chip-changelog"];' "$(cat "$NVHTML_CL")"
+check "CHIP_VER starts on the NV_VERSION-based fallback (deterministic pre-probe state, #410)" 'let CHIP_VER = CHIP_VER_FALLBACK;' "$(cat "$NVHTML_CL")"
 check "CHIP_BRANCH is assigned with the chip-changelog clickable marker class" 'CHIP_BRANCH = [base.branch, "git branch the serving repo is on (read at server boot probe) — click to view the changelog", "chip-changelog"];' "$(cat "$NVHTML_CL")"
 check "status chip click delegation opens/closes the changelog overlay via .chip-changelog" 'ev.target.closest(".chip-changelog")' "$(cat "$NVHTML_CL")"
 check "changelog overlay reuses the note-window chrome family via the compound selector .note-window.changelog-window (same specificity-tie defense as .note-window.ast-inspector-window)" ".note-window.changelog-window{width:min(480px,92vw);max-height:80vh}" "$(cat "$NVHTML_CL")"
 check "chipHtml() accepts an optional 3rd element (extra CSS class) per segment" 'map(([text, title, cls]) =>' "$(cat "$NVHTML_CL")"
+
+echo "-- template: #410 -- CHIP_VER swaps to the plugin semver once /version delivers a non-null plugin field, keeping the chip-changelog clickable marker class and mentioning the template build number in its tooltip --"
+# shellcheck disable=SC2016  # single-quoted on purpose -- pinning the literal
+# template source text (including its own template-literal backticks/${...}),
+# not a shell expansion.
+check "CHIP_VER is reassigned from the /version probe's plugin field, with the chip-changelog clickable marker class" 'CHIP_VER = [`v${base.plugin}`, `plugin release version' "$(cat "$NVHTML_CL")"
+check "the plugin-version tooltip names semver.sh as the bump mechanism (matches what the changelog overlay documents)" 'bumped by semver.sh at every merge' "$(cat "$NVHTML_CL")"
+# shellcheck disable=SC2016  # single-quoted on purpose -- pinning literal
+# template-literal ${...} source text, not a shell expansion.
+check "the plugin-version tooltip demotes NV_VERSION to naming the template build" 'this tab'"'"'s template build is ${NV_VERSION}' "$(cat "$NVHTML_CL")"
+# shellcheck disable=SC2016  # single-quoted on purpose -- pinning literal
+# template-literal ${...} source text, not a shell expansion.
+check "the plugin-version segment still carries the chip-changelog clickable marker class" 'this tab'"'"'s template build is ${NV_VERSION} — click to view the changelog`, "chip-changelog"];' "$(cat "$NVHTML_CL")"
+check "the /version repaint guard fires on either a non-null plugin OR a branch (not branch alone) -- #410 needs the plugin-only case to repaint too" 'if(statusEl && !webglOK && base && (base.plugin || base.branch)){' "$(cat "$NVHTML_CL")"
 
 echo "== changelog overlay (#405): GET /changelog route =="
 NV_CL="$PLUGIN/scripts/neural-view.py"
@@ -352,4 +380,18 @@ check "GET /changelog serves the file's raw content" "v1.2.3" "$body"
 check "GET /changelog serves the file's raw content verbatim (entry line included)" 'thing (`abc1234`)' "$body"
 ctype="$(curl -s -D - -o /dev/null "http://127.0.0.1:$NEURAL_VIEW_PORT/changelog" | tr -d '\r' | grep -i '^content-type:')"
 check "GET /changelog content-type is text/plain" "text/plain" "$ctype"
+
+echo "== #410: GET /version's plugin field (one user-facing version -- the chip must match the changelog overlay's latest section) =="
+body_v="$(curl -s "http://127.0.0.1:$NEURAL_VIEW_PORT/version")"
+check "GET /version's plugin field is null when plugins/spec-workflow/.claude-plugin/plugin.json is absent under the serving repo root" '"plugin": null' "$body_v"
+mkdir -p "$_clcwd/plugins/spec-workflow/.claude-plugin"
+printf '%s\n' '{"name": "spec-workflow", "version": "9.9.9"}' >"$_clcwd/plugins/spec-workflow/.claude-plugin/plugin.json"
+body_v="$(curl -s "http://127.0.0.1:$NEURAL_VIEW_PORT/version")"
+check "GET /version's plugin field reflects plugin.json's version string" '"plugin": "9.9.9"' "$body_v"
+printf '%s' 'not valid json{{{' >"$_clcwd/plugins/spec-workflow/.claude-plugin/plugin.json"
+code_v="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/version")"
+check "GET /version stays 200 even when plugin.json is unparseable (never a 500/exception)" "200" "$code_v"
+body_v="$(curl -s "http://127.0.0.1:$NEURAL_VIEW_PORT/version")"
+check "GET /version's plugin field falls back to null when plugin.json is unparseable" '"plugin": null' "$body_v"
+rm -rf "$_clcwd/plugins"
 python3 "$NV_CL" stop >/dev/null

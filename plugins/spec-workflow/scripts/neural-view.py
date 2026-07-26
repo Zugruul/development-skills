@@ -157,6 +157,23 @@ def git_branch():
         return ""
 
 
+def plugin_version():
+    """Plugin semver -- plugins/spec-workflow/.claude-plugin/plugin.json's
+    `version`, read fresh per call (like git_branch()) so a merge that bumps
+    it (semver.sh) shows up on the page's next /version probe without a
+    server restart (#410: this is the ONE user-facing version number now --
+    the changelog overlay (#405) documents plugin semver, not the template
+    build). Relative to the serving repo root; read-only, stdlib json.
+    Missing file, unparseable JSON, or a non-string `version` -> None, never
+    an exception -- the chip falls back to NV_VERSION client-side."""
+    try:
+        p = Path(git_root()) / "plugins" / "spec-workflow" / ".claude-plugin" / "plugin.json"
+        v = json.loads(p.read_text()).get("version")
+        return v if isinstance(v, str) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def state_dir():
     env = os.environ.get("NEURAL_VIEW_STATE")
     return Path(env) if env else Path(git_root()) / ".claude" / "neural-view"
@@ -1445,7 +1462,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"clients": sorted(out, key=lambda d: d.get("age", 0))})
         if path == "/version":
             tmpl = TEMPLATE.stat().st_mtime_ns if TEMPLATE.is_file() else 0
-            return self._send(200, {"boot": BOOT_ID, "template": tmpl, "dev": DEV_MODE, "branch": git_branch()})
+            # #410: `plugin` is the plugin semver (plugins/spec-workflow/
+            # .claude-plugin/plugin.json's `version`) -- the one user-facing
+            # version number, matching the changelog overlay's latest
+            # section. null when plugin.json is missing/unparseable; the
+            # chip falls back to NV_VERSION client-side in that case.
+            return self._send(200, {"boot": BOOT_ID, "template": tmpl, "dev": DEV_MODE, "branch": git_branch(), "plugin": plugin_version()})
         if path == "/changelog":
             # #405: raw CHANGELOG.md at the serving repo's root, rendered
             # client-side into the changelog overlay opened from the status
