@@ -125,6 +125,13 @@ canvas.grabbing{cursor:grabbing}
 #search-input-icons button{border:0;background:none;padding:.2rem .3rem}
 #search-clear{font-size:.85rem;color:var(--muted)}
 #search-btn{font-size:1.25rem}
+/* #409: the Cmd/Ctrl+L search-focus chip -- SAME factory (astShortcutKeys)
+   and SAME .ast-kbd chip class the ⌘K/Ctrl+K assistant-switch chip (issue
+   #399, #voice-viz-kbd above) uses, just anchored beside the search field
+   instead of the voice label. Sits compactly in the bar's existing flex
+   row (gap:.4rem on #searchbar) rather than crowding the input itself. */
+#search-kbd{flex:0 0 auto;cursor:pointer;display:inline-flex;gap:.15rem}
+#search-kbd .ast-kbd{font-size:.48rem;padding:.03rem .24rem}
 #search-count{font-size:.58rem;color:var(--muted);white-space:nowrap}
 #search-filters-btn{display:inline-flex;align-items:center;justify-content:center;border:0;background:none}
 #search-filters-wrap{position:relative}
@@ -1021,6 +1028,7 @@ canvas.grabbing{cursor:grabbing}
         <button class="iconbtn" id="search-btn" title="Search notes &amp; synapses" aria-label="Search">⌕</button>
       </div>
     </div>
+    <span id="search-kbd" aria-hidden="true"></span>
     <span id="search-count" class="label"></span>
     <div id="search-filters-wrap">
       <button class="iconbtn" id="search-filters-btn" title="Search filters" aria-label="Search filters" aria-haspopup="true">
@@ -2793,7 +2801,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // matches what the changelog overlay documents) -- it now lives in the
 // chip's tooltip, and as the fallback chip text when the plugin version
 // can't be read (see CHIP_VER_FALLBACK below).
-const NV_VERSION = "0.28.5";
+const NV_VERSION = "0.28.6";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -5523,10 +5531,15 @@ async function initAssistantSelection(){
 // above) is UNTOUCHED -- it remains the boot "multiple" flow and still
 // Skips/gates on Escape; this dropdown exists only post-boot and its
 // close paths never skip and never touch the gate.
-function astShortcutKeys(){
+// #409: parameterized with an optional key letter (defaults to "K", the
+// original #399 assistant-switch shortcut) so the search-focus chip (\u2318L/
+// Ctrl+L, further below) renders through the SAME platform-detection +
+// keycap-chip factory instead of forking a near-duplicate.
+function astShortcutKeys(letter){
+  const key = letter || "K";
   const plat = (typeof navigator !== "undefined" &&
     (navigator.platform || (navigator.userAgentData && navigator.userAgentData.platform))) || "";
-  return /mac|iphone|ipad|ipod/i.test(plat) ? ["\u2318", "K"] : ["Ctrl", "K"];
+  return /mac|iphone|ipad|ipod/i.test(plat) ? ["\u2318", key] : ["Ctrl", key];
 }
 function renderShortcutKeycaps(){
   const hint = document.getElementById("ast-switch-hint");
@@ -5684,6 +5697,48 @@ function wireAssistantSwitchUi(){
   };
 }
 wireAssistantSwitchUi();
+
+// ---- search-focus shortcut + keycap chip (issue #409) ----
+// Cmd/Ctrl+L focuses #search-input, styled/affordanced exactly like #399's
+// ⌘K/Ctrl+K assistant-switch chip: same astShortcutKeys() factory, same
+// .ast-kbd class, click-to-act. Unlike the T-key overlay's/Cmd+K's own
+// isChatTypingTarget guard, this one deliberately does NOT go inert on a
+// typing target -- a browser's native Cmd+L jumps to the address bar no
+// matter what has focus, and the human asked for that exact affordance
+// here (moving focus TO search FROM another field is the whole point).
+// It still has to defer to the two surfaces that actually own keyboard
+// input while open, the same "don't fight a modal" posture the T-key
+// overlay and the boot-time AST-021 picker already apply to each other
+// (renderAssistantPicker's Escape-defaultPrevented handshake, above) --
+// the T-key chat overlay (#ast-chat-overlay, issue #320) and the boot
+// picker (#ast-picker-wrap, issue #318/#402's Cmd+K boot-palette gating).
+// Cmd/Ctrl+F is deliberately never bound here (or anywhere else in this
+// file) -- reserved for a future in-graph find feature.
+function focusSearchInput(){
+  const input = document.getElementById("search-input");
+  if(input && input.focus) input.focus();
+}
+function isKeyboardOwnedByOverlay(){
+  return !!(document.getElementById("ast-chat-overlay") || document.getElementById("ast-picker-wrap"));
+}
+function handleSearchFocusKeydown(ev){
+  if((ev.key !== "l" && ev.key !== "L") || !(ev.metaKey || ev.ctrlKey)) return;
+  if(isKeyboardOwnedByOverlay()) return;
+  if(ev.preventDefault) ev.preventDefault();
+  focusSearchInput();
+}
+// A named function (not inline) so a test harness can eval/drive it
+// directly, same pattern as wireAssistantSwitchUi/wireAssistantChatUi.
+function wireSearchShortcutUi(){
+  const kbd = document.getElementById("search-kbd");
+  if(kbd){
+    kbd.innerHTML = astShortcutKeys("L").map(k => `<kbd class="ast-kbd">${k}</kbd>`).join("");
+    kbd.onclick = ()=> focusSearchInput();
+    kbd.title = `Focus search (${astShortcutKeys("L").join("+")})`;
+  }
+  addEventListener("keydown", handleSearchFocusKeydown);
+}
+wireSearchShortcutUi();
 
 // ---- T-key chat overlay (AST-023, SPEC-ASSISTANT.md §8.6, §5, §8.3, §8.5,
 // issue #320) ----

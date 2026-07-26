@@ -92,6 +92,7 @@ SECTIONS=(
     section-preflight.sh
     section-ui-hub.sh
     section-neural-view-template.sh
+    section-neural-view-search-shortcut.sh
     section-neural-view-lifecycle.sh
     section-neural-view-rescan.sh
     section-neural-view-projects.sh
