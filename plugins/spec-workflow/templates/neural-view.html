@@ -833,6 +833,8 @@ canvas.grabbing{cursor:grabbing}
   max-height:calc(100vh - 86px - var(--voice-below) - var(--log-space));overflow:auto;z-index:66;padding:.8rem .9rem;display:none;
   flex-direction:column;gap:.65rem}
 #voice-settings-panel.open{display:flex}
+/* #428: header row -- title left, × close right */
+#voice-settings-panel .vs-head{display:flex;justify-content:space-between;align-items:center}
 #voice-settings-panel .vs-row{display:flex;flex-direction:column;gap:.3rem}
 #voice-settings-panel .vs-opts{display:flex;gap:.3rem;flex-wrap:wrap}
 #voice-settings-panel .vs-hint{font-size:.58rem;color:var(--muted);line-height:1.4}
@@ -862,7 +864,7 @@ canvas.grabbing{cursor:grabbing}
 /* user-dragged position: left/top set inline; the docked slide-in animation
    is relative to the docked spot, so fall back to a small fade instead.
    .dragging suspends the transition so the panel tracks the pointer 1:1. */
-#inspect .close,.note-window .close{float:right;cursor:pointer;color:var(--muted);border:0;background:none;font-size:1rem;font-family:var(--mono)}
+#inspect .close,.note-window .close,#voice-settings-panel .close{float:right;cursor:pointer;color:var(--muted);border:0;background:none;font-size:1rem;font-family:var(--mono)}
 /* pin: dimmed/grayscale until active (emoji glyph ignores color) */
 #inspect-pin{filter:grayscale(1);opacity:.55;font-size:.85rem}
 #inspect-pin.on{filter:none;opacity:1}
@@ -1197,7 +1199,12 @@ canvas.grabbing{cursor:grabbing}
 </div>
 
 <div class="hud" id="voice-settings-panel" role="dialog" aria-label="Voice settings">
-  <div class="label">Voice settings</div>
+  <!-- #428 (human-directed, screenshot-backed): the panel had no visible
+       close control once open -- header row pairs the title with a × that
+       calls the SAME close path the ⚙ toggle uses (closeVoiceSettingsPanel(),
+       see the JS below), reusing the house .close class shared with
+       #inspect/.note-window rather than a bespoke button. -->
+  <div class="vs-head"><span class="label">Voice settings</span><button class="close" id="voice-settings-close" aria-label="Close voice settings">✕</button></div>
   <div class="vs-row"><span class="label">Direction</span>
     <div class="vs-opts" role="group" aria-label="Direction, in detail">
       <button class="iconbtn" id="vs-dir-in" aria-pressed="false">IN — microphone</button>
@@ -3695,18 +3702,54 @@ for(const d of ["in","out","both"]){
 document.getElementById("voice-mic").onclick = ()=>{ uiState.micMode = uiState.micMode==="always" ? "ptt" : "always"; saveUiState(); applyUiState(); };
 document.getElementById("vs-mic-ptt").onclick = ()=>{ uiState.micMode = "ptt"; saveUiState(); applyUiState(); };
 document.getElementById("vs-mic-always").onclick = ()=>{ uiState.micMode = "always"; saveUiState(); applyUiState(); };
+// #428: single open/close path for the ⚙ panel -- the cog toggle, the ×
+// close button, and Escape (below) all route through these two functions
+// rather than each poking .open/aria-expanded/the keydown listener
+// separately. window.__voiceSettingsKeydown mirrors the AST-044/#405
+// pattern (window.astInspectorWin/window.changelogWin's __<x>Keydown
+// siblings): register on open, unregister on close, so the listener never
+// outlives the panel it answers for.
+window.__voiceSettingsKeydown = window.__voiceSettingsKeydown || null;
+function openVoiceSettingsPanel(){
+  const p = document.getElementById("voice-settings-panel");
+  p.classList.add("open");
+  document.getElementById("voice-settings").setAttribute("aria-expanded", "true");
+  if(!window.__voiceSettingsKeydown){
+    window.__voiceSettingsKeydown = handleVoiceSettingsKeydown;
+    addEventListener("keydown", window.__voiceSettingsKeydown);
+  }
+}
+function closeVoiceSettingsPanel(){
+  const p = document.getElementById("voice-settings-panel");
+  p.classList.remove("open");
+  document.getElementById("voice-settings").setAttribute("aria-expanded", "false");
+  if(window.__voiceSettingsKeydown){
+    removeEventListener("keydown", window.__voiceSettingsKeydown);
+    window.__voiceSettingsKeydown = null;
+  }
+}
+function handleVoiceSettingsKeydown(ev){
+  if(ev.key !== "Escape") return;
+  // ownership handshake: defer to whatever already claimed this Escape
+  // (T-key chat overlay, the AST-021 picker, an open inspector/changelog
+  // window) -- same ev.defaultPrevented check those handlers use.
+  if(ev.defaultPrevented) return;
+  if(ev.preventDefault) ev.preventDefault();
+  closeVoiceSettingsPanel();
+}
 // cog: the settings context panel REPLACES the note preview slot while open
 document.getElementById("voice-settings").onclick = ()=>{
   const p = document.getElementById("voice-settings-panel");
   const open = !p.classList.contains("open");
-  p.classList.toggle("open", open);
-  document.getElementById("voice-settings").setAttribute("aria-expanded", String(open));
-  if(open) document.getElementById("inspect-close").click();
+  if(!open){ closeVoiceSettingsPanel(); return; }
+  openVoiceSettingsPanel();
+  document.getElementById("inspect-close").click();
   // AST-022 (§7.5): refresh the switcher/ask-again UI against the LATEST
   // server state every time the panel opens, not just at boot -- a switch
   // made from another tab must show up here without a full page reload.
-  if(open && typeof refreshAssistantSettingsUi === "function") refreshAssistantSettingsUi();
+  if(typeof refreshAssistantSettingsUi === "function") refreshAssistantSettingsUi();
 };
+document.getElementById("voice-settings-close").onclick = ()=>closeVoiceSettingsPanel();
 // AST-022 (§7.5): the ⚙ panel's "ask again on load" toggle -- flips the
 // PERSISTED setting for the NEXT boot (see engine.py's _settings docstring
 // for why this does not change the CURRENT selection).
@@ -5473,12 +5516,12 @@ async function openNote(nd, opts){
   renderNoteInto(panel, nd, d);
   panel.classList.add("open"); panel.setAttribute("aria-hidden","false"); panel.removeAttribute("inert");
   // the note card and the voice settings panel share the same slot — opening
-  // one closes the other (the cog handler does the reverse)
+  // one closes the other (the cog handler does the reverse). Routed through
+  // closeVoiceSettingsPanel() (#428) rather than poking .open/aria-expanded
+  // here directly, so the Escape-ownership keydown listener it may have
+  // registered is unregistered too -- an inline close here would leak it.
   const vsp = document.getElementById("voice-settings-panel");
-  if(vsp && vsp.classList.contains("open")){
-    vsp.classList.remove("open");
-    document.getElementById("voice-settings").setAttribute("aria-expanded","false");
-  }
+  if(vsp && vsp.classList.contains("open")) closeVoiceSettingsPanel();
 }
 
 // ---- picking self-check (?hoverprobe) ----

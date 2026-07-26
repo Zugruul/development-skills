@@ -1373,3 +1373,129 @@ check "the relocated digest panel is positioned out of #voicebar's normal flow (
 check "the digest panel has a click-to-dismiss close control (#399)" ".ast-digest-close{" "$(cat "$NVHTML")"
 check_absent "the old docked .ast-switcher-* row CSS no longer exists (#399)" ".ast-switcher-row{" "$(cat "$NVHTML")"
 
+echo "== voice settings panel (⚙): × close control (#428) =="
+# #428 (human-directed, screenshot-backed): the ⚙ voice settings panel (DIRECTION/
+# IN/OUT/BOTH chips + the AST-051 STT engine setting) had no visible close
+# control once open. Add a header-row × that closes it through the SAME path
+# the cog toggle already uses (not a parallel path), and wire it into the
+# Escape-ownership handshake AST-044/#405 established, since the panel did not
+# already participate in it.
+check "the panel gains a header row pairing the title with a close ×" '<div class="vs-head"><span class="label">Voice settings</span>' "$(cat "$NVHTML")"
+check "the × control reuses the house .close class (same family as #inspect/.note-window)" '<button class="close" id="voice-settings-close" aria-label="Close voice settings">✕</button>' "$(cat "$NVHTML")"
+check "the panel's .close is styled by the shared close-button rule, not a bespoke one" "#inspect .close,.note-window .close,#voice-settings-panel .close{float:right;cursor:pointer;color:var(--muted);border:0;background:none;font-size:1rem;font-family:var(--mono)}" "$(cat "$NVHTML")"
+check "the header row is a flex line, title left / × right" "#voice-settings-panel .vs-head{display:flex;justify-content:space-between;align-items:center}" "$(cat "$NVHTML")"
+check "closeVoiceSettingsPanel() exists as the single close path" "function closeVoiceSettingsPanel(){" "$(cat "$NVHTML")"
+check "openVoiceSettingsPanel() exists as the single open path" "function openVoiceSettingsPanel(){" "$(cat "$NVHTML")"
+check "the × button calls the shared close function, not a parallel path" 'document.getElementById("voice-settings-close").onclick = ()=>closeVoiceSettingsPanel();' "$(cat "$NVHTML")"
+check "the cog toggle's close branch also calls the shared close function" "closeVoiceSettingsPanel();" "$(cat "$NVHTML")"
+echo "-- Escape: newly wired through the AST-044/#405 ownership-handshake pattern (register on open, unregister on close, defer on defaultPrevented) --"
+check "handleVoiceSettingsKeydown(ev) exists" "function handleVoiceSettingsKeydown(ev){" "$(cat "$NVHTML")"
+check "Escape handler defers to an already-claimed event, same handshake as the inspector/changelog windows" "if(ev.defaultPrevented) return;" "$(cat "$NVHTML")"
+
+echo "-- template behavior: extract() + eval() harness (section-assistant-stt.sh/section-changelog-ui.sh style) -- open registers the Escape listener, close/× unregisters it, Escape defers on defaultPrevented --"
+_vs_node="$(mktemp).cjs"
+cat >"$_vs_node" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+
+function extract(name) {
+    const re = new RegExp("(?:async )?function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\n\\}\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find function " + name + "() in template");
+    return m[0];
+}
+
+const elements = {};
+function mkEl(initialId) {
+    const el = {
+        _classes: new Set(),
+        classList: {
+            add(c){ this._parent._classes.add(c); },
+            remove(c){ this._parent._classes.delete(c); },
+            contains(c){ return this._parent._classes.has(c); },
+        },
+        setAttribute(k, v){ this["_attr_" + k] = String(v); },
+        getAttribute(k){ return this["_attr_" + k] !== undefined ? this["_attr_" + k] : null; },
+    };
+    el.classList._parent = el;
+    if (initialId) elements[initialId] = el;
+    return el;
+}
+mkEl("voice-settings-panel");
+mkEl("voice-settings");
+global.document = { getElementById(id) { return elements[id] || null; } };
+global.window = global;
+
+// keydown listener stub -- same "stub addEventListener, drive it with
+// fireKeydown()" harness style as section-changelog-ui.sh/section-assistant-inspector.sh.
+global.__listeners = { keydown: [] };
+global.addEventListener = (type, fn) => { global.__listeners[type] = global.__listeners[type] || []; global.__listeners[type].push(fn); };
+global.removeEventListener = (type, fn) => {
+    const arr = global.__listeners[type] || [];
+    const i = arr.indexOf(fn);
+    if (i !== -1) arr.splice(i, 1);
+};
+function fireKeydown(props) {
+    const ev = Object.assign({ defaultPrevented: false, preventDefault(){ this.defaultPrevented = true; } }, props);
+    for (const fn of [...(global.__listeners.keydown || [])]) fn(ev);
+    return ev;
+}
+
+eval(extract("closeVoiceSettingsPanel"));
+eval(extract("openVoiceSettingsPanel"));
+eval(extract("handleVoiceSettingsKeydown"));
+
+const panel = elements["voice-settings-panel"];
+const cog = elements["voice-settings"];
+
+// ---- open registers the Escape listener ----
+openVoiceSettingsPanel();
+if (!panel.classList.contains("open")) throw new Error("openVoiceSettingsPanel() must add .open");
+if (cog.getAttribute("aria-expanded") !== "true") throw new Error("openVoiceSettingsPanel() must set aria-expanded=true on the cog");
+if ((global.__listeners.keydown || []).length !== 1) throw new Error("openVoiceSettingsPanel() must register exactly one keydown listener, got " + (global.__listeners.keydown || []).length);
+console.log("OPEN_REGISTERS_OK true");
+
+// ---- Escape closes it AND unregisters the listener (symmetric) ----
+const ev1 = fireKeydown({ key: "Escape" });
+if (panel.classList.contains("open")) throw new Error("Escape must close the panel when it owns the keypress");
+if (!ev1.defaultPrevented) throw new Error("Escape must call preventDefault when this panel handles it");
+if (cog.getAttribute("aria-expanded") !== "false") throw new Error("Escape-close must set aria-expanded=false on the cog");
+if ((global.__listeners.keydown || []).length !== 0) throw new Error("closing must unregister the keydown listener (leak otherwise)");
+console.log("ESCAPE_CLOSES_AND_UNREGISTERS_OK true");
+
+// ---- × (closeVoiceSettingsPanel directly) also closes + unregisters ----
+openVoiceSettingsPanel();
+closeVoiceSettingsPanel();
+if (panel.classList.contains("open")) throw new Error("closeVoiceSettingsPanel() (the × path) must close the panel");
+if ((global.__listeners.keydown || []).length !== 0) throw new Error("closeVoiceSettingsPanel() (the × path) must also unregister the keydown listener");
+console.log("CLOSE_FN_CLOSES_AND_UNREGISTERS_OK true");
+
+// ---- ownership handshake: defer when another handler already claimed Escape ----
+openVoiceSettingsPanel();
+handleVoiceSettingsKeydown({ key: "Escape", defaultPrevented: true, preventDefault(){ throw new Error("must not preventDefault an already-claimed event"); } });
+if (!panel.classList.contains("open")) throw new Error("must NOT close when ev.defaultPrevented is already true (another handler owns it)");
+console.log("ESC_DEFERS_WHEN_ALREADY_CLAIMED_OK true");
+closeVoiceSettingsPanel();
+
+// ---- non-Escape keys are ignored ----
+handleVoiceSettingsKeydown({ key: "a", defaultPrevented: false, preventDefault(){ throw new Error("must not preventDefault a non-Escape key"); } });
+console.log("NON_ESCAPE_IGNORED_OK true");
+
+console.log("ALL_OK true");
+NODEJS
+tmpl_vs_out="$(node "$_vs_node" "$NVHTML" 2>&1)"
+tmpl_vs_rc=$?
+rm -f "$_vs_node"
+check_rc "voice-settings-close template script exits 0" 0 "$tmpl_vs_rc"
+check "opening the panel registers exactly one keydown listener" "OPEN_REGISTERS_OK true" "$tmpl_vs_out"
+check "Escape closes the panel and unregisters its listener (symmetric register/unregister)" "ESCAPE_CLOSES_AND_UNREGISTERS_OK true" "$tmpl_vs_out"
+check "the shared close function (the × path) closes and unregisters too" "CLOSE_FN_CLOSES_AND_UNREGISTERS_OK true" "$tmpl_vs_out"
+check "Escape defers to an already-claimed event instead of double-closing" "ESC_DEFERS_WHEN_ALREADY_CLAIMED_OK true" "$tmpl_vs_out"
+check "non-Escape keys are ignored" "NON_ESCAPE_IGNORED_OK true" "$tmpl_vs_out"
+check "the whole voice-settings-close template script completes" "ALL_OK true" "$tmpl_vs_out"
+if [[ "$tmpl_vs_rc" -ne 0 ]]; then echo "$tmpl_vs_out" >&2; fi
+
+echo "-- template: NV_VERSION bumped for this change (#428) --"
+check_absent "NV_VERSION is no longer the pre-#428 value" 'const NV_VERSION = "0.28.9";' "$(cat "$NVHTML")"
+check "NV_VERSION bumped to the new patch" 'const NV_VERSION = "0.28.10";' "$(cat "$NVHTML")"
+
