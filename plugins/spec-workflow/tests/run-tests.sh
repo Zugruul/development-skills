@@ -164,6 +164,7 @@ section-semver.sh
     section-agents-claude.sh
     section-codex-parity-walkthrough.sh
     section-assistant-marker.sh
+    section-capability-index.sh
     section-setup-assistant.sh
     section-assistant-preflight.sh
     section-assistant-default.sh
