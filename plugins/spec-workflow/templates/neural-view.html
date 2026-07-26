@@ -729,7 +729,15 @@ canvas.grabbing{cursor:grabbing}
 .changelog-window .clw-body{display:flex;flex-direction:column;gap:.5rem;font-family:var(--mono);font-size:.65rem;color:var(--fg)}
 .changelog-window .clw-error{color:#e0453a}
 .cl-version{border:1px solid var(--border);border-radius:3px;padding:.3rem .4rem}
-.cl-version-head{display:flex;align-items:baseline;gap:.4rem;cursor:pointer}
+.cl-version-head{display:flex;align-items:baseline;gap:.4rem}
+/* two separate hit targets (#411): the caret bulk-expands/collapses every
+   entry body in this version (own cursor/hover so it reads as distinct from
+   the text's section-only toggle below it), same ▾/▸ glyph convention as
+   .cl-disclosure/.sf-collapse-btn -- ▸ = something still collapsed (click
+   expands all), ▾ = everything already expanded (click collapses all). */
+.cl-version-caret{display:inline-block;width:1em;flex:none;color:var(--muted);cursor:pointer}
+.cl-version-caret:hover{color:var(--cyan)}
+.cl-version-text{display:flex;align-items:baseline;gap:.4rem;cursor:pointer;flex:1}
 .cl-version-num{color:var(--cyan)}
 .cl-version-date{color:var(--muted);font-size:.6rem}
 .cl-version-body{margin-top:.4rem;display:flex;flex-direction:column;gap:.4rem}
@@ -6491,17 +6499,22 @@ function changelogEntryHtml(e){
 // newest-expanded default (#405): idx 0 (the newest version -- versions
 // arrive newest-first straight from changelog.py's own output order) opens
 // with cl-open + aria-expanded="true" and its body visible; every other
-// version starts collapsed (hidden).
+// version starts collapsed (hidden). Every entry body always starts
+// collapsed regardless (changelogEntryHtml), so the bulk caret (#411)
+// always renders "▸" (expand-all is the available action) at initial
+// render -- its state only diverges from that once entries get toggled.
 function changelogVersionHtml(v, idx){
   const secId = "cl-ver-" + idx;
   const open = idx === 0;
   const groups = v.groups.map(g => `<div class="cl-group"><h4>${escapeHtml(g.name)}</h4>`
     + g.entries.map(changelogEntryHtml).join("") + `</div>`).join("");
   return `<section class="cl-version${open ? " cl-open" : ""}">`
-    + `<div class="cl-version-head" data-cl-section="${secId}" role="button" tabindex="0" aria-expanded="${open}">`
+    + `<div class="cl-version-head">`
+    + `<span class="cl-version-caret" data-cl-caret="${secId}" role="button" tabindex="0" aria-label="Expand or collapse all entries in this version">▸</span>`
+    + `<span class="cl-version-text" data-cl-section="${secId}" role="button" tabindex="0" aria-expanded="${open}">`
     + `<span class="cl-disclosure">${open ? "▾" : "▸"}</span>`
     + `<span class="cl-version-num">v${escapeHtml(v.version)}</span>`
-    + `<span class="cl-version-date">${escapeHtml(v.date)}</span></div>`
+    + `<span class="cl-version-date">${escapeHtml(v.date)}</span></span></div>`
     + `<div class="cl-version-body" id="${secId}"${open ? "" : " hidden"}>${groups}</div></section>`;
 }
 function buildChangelogWindow(){
@@ -6537,33 +6550,76 @@ function buildChangelogWindow(){
   win.appendChild(body);
 
   closeBtn.onclick = () => closeChangelogWindow();
-  // one delegated listener for both disclosure levels (version header +
-  // per-entry body toggle) -- same rationale as the statusEl delegation
-  // above: the body's innerHTML is replaced wholesale once the fetch
-  // resolves, so per-node listeners would never even get attached to the
-  // real (post-fetch) content.
-  body.addEventListener("click", (ev) => {
-    const secEl = ev.target.closest("[data-cl-section]");
-    if(secEl){
-      const panel = document.getElementById(secEl.getAttribute("data-cl-section"));
-      if(!panel) return;
-      const wasOpen = !panel.hidden;
-      panel.hidden = wasOpen;
-      secEl.setAttribute("aria-expanded", String(!wasOpen));
-      const disc = secEl.querySelector(".cl-disclosure");
-      if(disc) disc.textContent = wasOpen ? "▸" : "▾";
-      return;
-    }
-    const row = ev.target.closest("[data-cl-toggle]");
-    if(row){
-      const panel = document.getElementById(row.getAttribute("data-cl-toggle"));
-      if(!panel) return;
-      panel.hidden = !panel.hidden;
-      const disc = row.querySelector(".cl-disclosure");
-      if(disc) disc.textContent = panel.hidden ? "▸" : "▾";
-    }
-  });
+  // one delegated listener for all three disclosure levels (bulk caret +
+  // version header + per-entry body toggle) -- same rationale as the
+  // statusEl delegation above: the body's innerHTML is replaced wholesale
+  // once the fetch resolves, so per-node listeners would never even get
+  // attached to the real (post-fetch) content. Extracted to a named
+  // function (handleChangelogBodyClick) for the same reason
+  // handleChangelogKeydown is extracted -- so tests can drive it directly.
+  body.addEventListener("click", handleChangelogBodyClick);
   return win;
+}
+// #411: the version-row caret is a bulk control over that version's entry
+// bodies, decoupled from the header TEXT's section-only toggle (data-cl-
+// section, handled below) -- checked first since the caret sits inside the
+// same .cl-version-head as the text and must not fall through to it.
+// Expand wins on a mixed state (some entries open, some not): clicking
+// expands the rest rather than collapsing what's already open. Expanding
+// also opens the section itself if it was collapsed, since there is
+// nothing useful to "expand all entries" into if the section holding them
+// is hidden; collapsing all entries never touches the section state.
+function handleChangelogBodyClick(ev){
+  const caretEl = ev.target.closest("[data-cl-caret]");
+  if(caretEl){
+    const panel = document.getElementById(caretEl.getAttribute("data-cl-caret"));
+    if(!panel) return;
+    const entries = Array.from(panel.querySelectorAll(".cl-entry.cl-has-body"));
+    const bodies = entries.map(e => e.querySelector(".cl-body")).filter(Boolean);
+    const allOpen = bodies.length > 0 && bodies.every(b => !b.hidden);
+    const expand = !allOpen;
+    entries.forEach((entry) => {
+      const eBody = entry.querySelector(".cl-body");
+      const row = entry.querySelector(".cl-entry-row");
+      if(eBody) eBody.hidden = !expand;
+      const disc = row && row.querySelector(".cl-disclosure");
+      if(disc) disc.textContent = expand ? "▾" : "▸";
+    });
+    if(expand && panel.hidden){
+      panel.hidden = false;
+      const section = caretEl.closest(".cl-version");
+      const textEl = section && section.querySelector("[data-cl-section]");
+      if(textEl){
+        textEl.setAttribute("aria-expanded", "true");
+        const secDisc = textEl.querySelector(".cl-disclosure");
+        if(secDisc) secDisc.textContent = "▾";
+      }
+      if(section) section.classList.add("cl-open");
+    }
+    caretEl.textContent = expand ? "▾" : "▸";
+    return;
+  }
+  const secEl = ev.target.closest("[data-cl-section]");
+  if(secEl){
+    const panel = document.getElementById(secEl.getAttribute("data-cl-section"));
+    if(!panel) return;
+    const wasOpen = !panel.hidden;
+    panel.hidden = wasOpen;
+    secEl.setAttribute("aria-expanded", String(!wasOpen));
+    const disc = secEl.querySelector(".cl-disclosure");
+    if(disc) disc.textContent = wasOpen ? "▸" : "▾";
+    const section = secEl.closest(".cl-version");
+    if(section) section.classList.toggle("cl-open", !wasOpen);
+    return;
+  }
+  const row = ev.target.closest("[data-cl-toggle]");
+  if(row){
+    const panel = document.getElementById(row.getAttribute("data-cl-toggle"));
+    if(!panel) return;
+    panel.hidden = !panel.hidden;
+    const disc = row.querySelector(".cl-disclosure");
+    if(disc) disc.textContent = panel.hidden ? "▸" : "▾";
+  }
 }
 function closeChangelogWindow(){
   if(window.changelogWin){

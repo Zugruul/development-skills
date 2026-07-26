@@ -34,6 +34,11 @@ function mkEl(initialId) {
             add(c){ this._parent._classes.add(c); },
             remove(c){ this._parent._classes.delete(c); },
             contains(c){ return this._parent._classes.has(c); },
+            toggle(c, force){
+                const on = force === undefined ? !this._parent._classes.has(c) : !!force;
+                if (on) this._parent._classes.add(c); else this._parent._classes.delete(c);
+                return on;
+            },
         },
         title: "",
         textContent: "",
@@ -47,7 +52,12 @@ function mkEl(initialId) {
                 },
             });
         },
-        appendChild(child){ this._items.push(child); },
+        // parentNode is set on appendChild below -- backs closest() (#411:
+        // the caret-click handler walks up from ev.target via .closest()
+        // exactly like real DOM, so the stub needs a real parent chain to
+        // exercise it, not just the downward queryAll() the pre-#411 tests
+        // relied on).
+        appendChild(child){ this._items.push(child); child._parentNode = this; },
         get innerHTML(){ return this._innerHTML || ""; },
         set innerHTML(v){ this._items.length = 0; this._innerHTML = v; },
         get id(){ return this._id; },
@@ -62,6 +72,14 @@ function mkEl(initialId) {
         getAttribute(k){ return this["_attr_" + k] !== undefined ? this["_attr_" + k] : null; },
         querySelector(sel){ return queryAll(this, sel)[0] || null; },
         querySelectorAll(sel){ return queryAll(this, sel); },
+        closest(sel){
+            let el = this;
+            while (el) {
+                if (matchesSel(el, sel)) return el;
+                el = el._parentNode || null;
+            }
+            return null;
+        },
         addEventListener(){},
         removeEventListener(){},
         setPointerCapture(){},
@@ -70,10 +88,16 @@ function mkEl(initialId) {
     if (initialId) elements[initialId] = el;
     return el;
 }
+// tokenized so compound selectors (".cl-entry.cl-has-body") match same as
+// real CSS -- the pre-#411 stub only ever needed single-part selectors.
 function matchesSel(el, sel) {
-    if (sel[0] === ".") return !!(el.classList && el.classList.contains(sel.slice(1)));
-    if (sel[0] === "[" && sel[sel.length - 1] === "]") return el.getAttribute && el.getAttribute(sel.slice(1, -1)) !== null;
-    return false;
+    const tokens = sel.match(/\.[\w-]+|\[[^\]]+\]/g) || [];
+    if (tokens.length === 0) return false;
+    return tokens.every((t) => {
+        if (t[0] === ".") return !!(el.classList && el.classList.contains(t.slice(1)));
+        if (t[0] === "[") return el.getAttribute && el.getAttribute(t.slice(1, -1)) !== null;
+        return false;
+    });
 }
 function queryAll(el, sel) {
     const out = [];
@@ -132,6 +156,7 @@ eval(extract("wireWinDrag"));
 eval(extract("parseChangelog"));
 eval(extract("changelogEntryHtml"));
 eval(extract("changelogVersionHtml"));
+eval(extract("handleChangelogBodyClick"));
 eval(extract("buildChangelogWindow"));
 eval(extract("closeChangelogWindow"));
 eval(extract("handleChangelogKeydown"));
@@ -217,6 +242,127 @@ const FIXTURE = [
     if (html1.includes("cl-open") || !html1.includes('id="cl-ver-1" hidden')) throw new Error("non-newest version must render collapsed (hidden body, no cl-open): " + html1);
     if (!html0.includes("adb7735")) throw new Error("rendered version must include its entry hash");
     console.log("RENDER_DEFAULT_EXPANSION_OK true");
+
+    // ---- #411: bulk caret is its own element, separate from the header
+    // text's data-cl-section hit target, on BOTH the open (idx 0) and
+    // collapsed (idx 1) version renders -- entry bodies always start
+    // collapsed regardless of section state, so the caret always renders
+    // "expand available" (▸) at initial render, same glyph convention as
+    // the per-entry disclosure. ----
+    for (const [html, label] of [[html0, "open version"], [html1, "collapsed version"]]) {
+        if (!/<span class="cl-version-caret" data-cl-caret="cl-ver-\d+"[^>]*>▸<\/span>/.test(html)) {
+            throw new Error(`${label}: expected a state-aware bulk caret (cl-version-caret + data-cl-caret, starting "▸" since all entries start collapsed): ` + html);
+        }
+        if (!/<span class="cl-version-text" data-cl-section="cl-ver-\d+"/.test(html)) {
+            throw new Error(`${label}: expected the header TEXT to carry its own data-cl-section hit target, separate from the caret: ` + html);
+        }
+    }
+    console.log("CARET_RENDER_SEPARATE_STATE_AWARE_OK true");
+
+    // ---- #411: hand-built fake DOM exercising handleChangelogBodyClick
+    // directly -- the innerHTML setter in this stub (like the real one)
+    // just stores a string, it never parses markup into a live tree, so
+    // exercising click behavior on "rendered" content requires building
+    // the equivalent node structure by hand, same shape changelogVersionHtml
+    // /changelogEntryHtml produce. ----
+    function buildFakeVersionSection(secId, sectionOpen, entryBodyHiddenStates) {
+        const section = document.createElement("section");
+        section.className = "cl-version" + (sectionOpen ? " cl-open" : "");
+        const head = document.createElement("div");
+        head.className = "cl-version-head";
+        const caret = document.createElement("span");
+        caret.className = "cl-version-caret";
+        caret.setAttribute("data-cl-caret", secId);
+        caret.textContent = "▸";
+        const text = document.createElement("span");
+        text.className = "cl-version-text";
+        text.setAttribute("data-cl-section", secId);
+        text.setAttribute("aria-expanded", String(sectionOpen));
+        const textDisc = document.createElement("span");
+        textDisc.className = "cl-disclosure";
+        textDisc.textContent = sectionOpen ? "▾" : "▸";
+        text.appendChild(textDisc);
+        head.appendChild(caret);
+        head.appendChild(text);
+        section.appendChild(head);
+        const panel = document.createElement("div");
+        panel.className = "cl-version-body";
+        panel.id = secId;
+        panel.hidden = !sectionOpen;
+        const bodies = [];
+        entryBodyHiddenStates.forEach((bodyHidden, i) => {
+            const entry = document.createElement("div");
+            entry.className = "cl-entry cl-has-body";
+            const row = document.createElement("div");
+            row.className = "cl-entry-row";
+            const rowDisc = document.createElement("span");
+            rowDisc.className = "cl-disclosure";
+            rowDisc.textContent = bodyHidden ? "▸" : "▾";
+            row.appendChild(rowDisc);
+            const body = document.createElement("div");
+            body.className = "cl-body";
+            body.id = secId + "-body-" + i;
+            body.hidden = bodyHidden;
+            entry.appendChild(row);
+            entry.appendChild(body);
+            panel.appendChild(entry);
+            bodies.push(body);
+        });
+        section.appendChild(panel);
+        return { section, head, caret, text, textDisc, panel, bodies };
+    }
+    function fireClick(target) {
+        handleChangelogBodyClick({ target });
+    }
+
+    // caret click on a COLLAPSED section: opens the section AND expands
+    // every entry body, and flips the caret to the "collapse" glyph.
+    {
+        const f = buildFakeVersionSection("cl-ver-t1", false, [true, true]);
+        fireClick(f.caret);
+        if (f.panel.hidden) throw new Error("caret click on a collapsed section must open it");
+        if (!f.bodies.every((b) => !b.hidden)) throw new Error("caret click must expand every entry body");
+        if (f.textDisc.textContent !== "▾") throw new Error("opening the section via the caret must also flip the section's own disclosure glyph to ▾");
+        if (f.text.getAttribute("aria-expanded") !== "true") throw new Error("opening the section via the caret must set aria-expanded=true on the header text");
+        if (!f.section.classList.contains("cl-open")) throw new Error("opening the section via the caret must add cl-open to the section");
+        if (f.caret.textContent !== "▾") throw new Error("caret must flip to the state-aware \"collapse\" glyph (▾) once everything is expanded");
+    }
+    console.log("CARET_COLLAPSED_SECTION_EXPANDS_ALL_OK true");
+
+    // caret click when everything is ALREADY expanded: collapses all entry
+    // bodies, flips the caret back to "expand", and never touches the
+    // section's own open/hidden state (collapsing entries != collapsing
+    // the section).
+    {
+        const f = buildFakeVersionSection("cl-ver-t2", true, [false, false]);
+        fireClick(f.caret);
+        if (!f.bodies.every((b) => b.hidden)) throw new Error("caret click on a fully-expanded version must collapse every entry body");
+        if (f.panel.hidden) throw new Error("collapsing all entries via the caret must NOT collapse the section itself");
+        if (f.caret.textContent !== "▸") throw new Error("caret must flip back to the state-aware \"expand\" glyph (▸) once everything is collapsed");
+    }
+    console.log("CARET_ALL_EXPANDED_COLLAPSES_ALL_OK true");
+
+    // caret click on a MIXED state (some entries open, some not): expand
+    // wins -- it expands the rest rather than collapsing what's open.
+    {
+        const f = buildFakeVersionSection("cl-ver-t3", true, [true, false]);
+        fireClick(f.caret);
+        if (!f.bodies.every((b) => !b.hidden)) throw new Error("caret click on a mixed-state version must expand the rest (expand wins), got hidden=" + JSON.stringify(f.bodies.map((b) => b.hidden)));
+        if (f.caret.textContent !== "▾") throw new Error("caret must show the \"collapse\" glyph once the mixed state resolves to fully expanded");
+        console.log("CARET_MIXED_STATE_EXPAND_WINS_OK true");
+    }
+
+    // header TEXT click still only toggles the section -- it must not
+    // touch any entry-body state or the caret's own glyph, even when that
+    // state is mixed.
+    {
+        const f = buildFakeVersionSection("cl-ver-t4", false, [true, false]);
+        fireClick(f.text);
+        if (f.panel.hidden) throw new Error("header text click must still open the section");
+        if (f.bodies[0].hidden !== true || f.bodies[1].hidden !== false) throw new Error("header text click must NOT touch entry-body states: " + JSON.stringify(f.bodies.map((b) => b.hidden)));
+        if (f.caret.textContent !== "▸") throw new Error("header text click must NOT touch the bulk caret's own glyph");
+    }
+    console.log("HEADER_TEXT_CLICK_SECTION_ONLY_OK true");
 
     // ---- open builds the window, fetches once, binds one keydown listener ----
     resetChangelogWindow();
@@ -315,6 +461,11 @@ if command -v node >/dev/null 2>&1; then
     check "parser: fixture changelog string -> versions/groups/entries/bodies, newest first" "PARSER_STRUCTURE_OK true" "$cl_tmpl_out"
     check "parser: CRLF input (Windows autocrlf checkout) still parses body lines, no stray \\r leaks into any field" "CRLF_INPUT_OK true" "$cl_tmpl_out"
     check "render: newest version expanded by default, older versions collapsed" "RENDER_DEFAULT_EXPANSION_OK true" "$cl_tmpl_out"
+    check "render (#411): the bulk caret is its own element (cl-version-caret/data-cl-caret) separate from the header text's data-cl-section, and starts state-aware (▸, since entry bodies always start collapsed)" "CARET_RENDER_SEPARATE_STATE_AWARE_OK true" "$cl_tmpl_out"
+    check "#411: caret click on a collapsed version opens the section AND expands every entry body, flipping the caret to the collapse glyph" "CARET_COLLAPSED_SECTION_EXPANDS_ALL_OK true" "$cl_tmpl_out"
+    check "#411: caret click when every entry is already expanded collapses them all without touching the section's own open state" "CARET_ALL_EXPANDED_COLLAPSES_ALL_OK true" "$cl_tmpl_out"
+    check "#411: caret click on a mixed state (some entries open, some not) expands the rest -- expand wins" "CARET_MIXED_STATE_EXPAND_WINS_OK true" "$cl_tmpl_out"
+    check "#411: header TEXT click still only toggles the section -- it never touches entry-body state or the bulk caret's glyph" "HEADER_TEXT_CLICK_SECTION_ONLY_OK true" "$cl_tmpl_out"
     check "open builds the detached window, fetches /changelog once, binds one keydown listener" "OPEN_BUILDS_AND_LOADS_OK true" "$cl_tmpl_out"
     check "reopening while open focuses (same window, raised z-index, no re-fetch, no dup listener)" "REOPEN_FOCUSES_OK true" "$cl_tmpl_out"
     check "closing removes the window AND unbinds its keydown listener" "CLOSE_TEARS_DOWN_OK true" "$cl_tmpl_out"
@@ -355,6 +506,16 @@ check "the plugin-version tooltip demotes NV_VERSION to naming the template buil
 # template-literal ${...} source text, not a shell expansion.
 check "the plugin-version segment still carries the chip-changelog clickable marker class" 'this tab'"'"'s template build is ${NV_VERSION} — click to view the changelog`, "chip-changelog"];' "$(cat "$NVHTML_CL")"
 check "the /version repaint guard fires on either a non-null plugin OR a branch (not branch alone) -- #410 needs the plugin-only case to repaint too" 'if(statusEl && !webglOK && base && (base.plugin || base.branch)){' "$(cat "$NVHTML_CL")"
+
+echo "-- template (#411): version-row bulk caret is its own element/class, decoupled from the header text's section-only toggle, pinned in source --"
+# shellcheck disable=SC2016  # single-quoted on purpose -- pinning the literal
+# template source text (including its own template-literal ${...}), not a
+# shell expansion.
+check "the bulk caret is a dedicated element (cl-version-caret) carrying its own data-cl-caret bulk-toggle marker" 'class="cl-version-caret" data-cl-caret="${secId}"' "$(cat "$NVHTML_CL")"
+# shellcheck disable=SC2016  # single-quoted on purpose -- same as above.
+check "the header TEXT keeps data-cl-section (section-only toggle) on its own separate element (cl-version-text), not shared with the caret" 'class="cl-version-text" data-cl-section="${secId}"' "$(cat "$NVHTML_CL")"
+check "the delegated click handler checks the bulk caret (data-cl-caret) before the section text (data-cl-section), since the caret sits inside the same header and must not fall through" 'const caretEl = ev.target.closest("[data-cl-caret]");' "$(cat "$NVHTML_CL")"
+check "the caret bulk-toggle CSS gives it its own cursor/hover affordance, separate from the header text" '.cl-version-caret:hover{color:var(--cyan)}' "$(cat "$NVHTML_CL")"
 
 echo "== changelog overlay (#405): GET /changelog route =="
 NV_CL="$PLUGIN/scripts/neural-view.py"
