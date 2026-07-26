@@ -11,6 +11,61 @@
 # section file.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# --- private per-run TMPDIR (development-skills#412) ---------------------
+# ROOT CAUSE (proven 2026-07-26): the recurring 43-fail setup-assistant
+# cluster was NOT (directly) caused by concurrent suites -- a solo, locked
+# full-suite run reproduced it 3x, and the ambient $TMPDIR held 5,638 stale
+# entries accumulated across a session's many agent lanes. An otherwise
+# identical run given a fresh, empty TMPDIR passed 0-fail immediately after.
+# Concurrent suites merely accelerate the accumulation.
+#
+# Fix: mint a private tmp root for THIS run and export it as TMPDIR before
+# any section-*.sh is sourced (indeed before _lib.sh itself, so even its
+# helpers see the private root from their first mktemp call onward). Every
+# section's existing mktemp/mktemp -d calls then land inside it by
+# construction -- no call-site changes needed anywhere else. The root is
+# removed on every exit path: normal completion, `exit` from a fatal error
+# below, and the common terminating signals (INT/TERM/HUP) -- each signal
+# handler exits explicitly, which in turn fires the EXIT trap, so cleanup
+# runs exactly once either way; rm -rf on an already-removed dir is a
+# harmless no-op if it somehow ran twice. mktemp -d's XXXXXX template and the
+# trap/signal handling below are both bash-3.2-safe (macOS's shipped bash).
+_RUN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/sw-suite-XXXXXX")" || {
+    echo "FATAL: could not create a private TMPDIR root" >&2
+    exit 1
+}
+export TMPDIR="$_RUN_TMP"
+
+# macOS/BSD's mktemp(1), called bare ("mktemp" / "mktemp -d" / "mktemp -u",
+# the only forms used anywhere in this suite), prefers the platform's
+# per-user temp dir (_CS_DARWIN_USER_TEMP_DIR) over $TMPDIR -- so exporting
+# TMPDIR alone does NOT redirect those calls on macOS the way it does with
+# GNU mktemp on Linux CI. Shadow mktemp with a thin wrapper that supplies an
+# explicit template under $TMPDIR for those three bare forms (any other
+# invocation -- already given its own path/template -- passes through
+# untouched). `export -f` propagates the shadow into every section file
+# (sourced into this same shell) AND into any `bash somescript.sh` child
+# process this suite spawns (board.sh, gate.sh, etc. also call bare
+# mktemp), since bash re-imports exported functions from its environment.
+mktemp() {
+    local _tdir="${TMPDIR:-/tmp}"
+    if [[ $# -eq 0 ]]; then
+        command mktemp "${_tdir%/}/tmp.XXXXXXXXXX"
+    elif [[ $# -eq 1 && ( "$1" == "-d" || "$1" == "-u" ) ]]; then
+        command mktemp "$1" "${_tdir%/}/tmp.XXXXXXXXXX"
+    else
+        command mktemp "$@"
+    fi
+}
+export -f mktemp
+
+_cleanup_run_tmp() { rm -rf "$_RUN_TMP" 2>/dev/null || true; }
+trap _cleanup_run_tmp EXIT
+trap '_cleanup_run_tmp; exit 130' INT
+trap '_cleanup_run_tmp; exit 143' TERM
+trap '_cleanup_run_tmp; exit 129' HUP
+
 # shellcheck disable=SC2034  # PLUGIN/FIX are used by the section-*.sh files
 # sourced below via a variable path, which defeats shellcheck's static
 # cross-file analysis of "source $f" in a loop.
@@ -157,6 +212,7 @@ section-semver.sh
     section-diff-symbols.sh
     section-gh-failures-corpus.sh
     section-runner-filter.sh
+    section-tmpdir-isolation.sh
     section-section-guard.sh
     section-local-state-manifest.sh
     section-gitignore-sync.sh

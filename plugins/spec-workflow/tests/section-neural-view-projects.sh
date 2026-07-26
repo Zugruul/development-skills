@@ -199,7 +199,8 @@ python3 "$NV" stop >/dev/null
 # scenario 5: a hanging board.sh call never blocks another route (/graph)
 LOG5="$(mktemp)"; CC5="$(mktemp)"
 lifecycle_start "neural-view starts (hang scenario)" NEURAL_VIEW_PORT 'PATH="$NVP_GH:$PATH" FAKE_GH_LOG="$LOG5" FAKE_GH_CALLCOUNT="$CC5" FAKE_GH_HANG=1 FAKE_GH_HANG_SECS=4 python3 "$NV" start --dir "$NVP_REPO"'
-curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/projects" >/tmp/nv-hang-out.$$ &
+_nvhangout="$(mktemp)"
+curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/projects" >"$_nvhangout" &
 _hangpid=$!
 sleep 0.5   # let the hanging /projects request actually start (past the fake gh's sleep having begun)
 t0=$(date +%s)
@@ -210,7 +211,7 @@ elapsed=$(( t1 - t0 ))
 if [[ "$elapsed" -le 2 ]]; then echo "ok   projects: /graph was not blocked by the hanging board.sh call (${elapsed}s)"
 else echo "FAIL projects: /graph took ${elapsed}s while board.sh hung -- looks blocked"; fails=$((fails + 1)); fi
 wait "$_hangpid" 2>/dev/null || true
-rm -f /tmp/nv-hang-out.$$
+rm -f "$_nvhangout"
 python3 "$NV" stop >/dev/null
 unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_SCAN
 rm -rf "$NVP_REPO" "$NVP_NOBOARD" "$NVP_GH" "$_nvpstate" "$_nvpscan_empty" "$LOG1" "$CC1" "$LOG2" "$CC2" "$LOG3" "$CC3" "$LOG3B" "$CC3B" "$LOG3C" "$CC3C" "$LOG3D" "$CC3D" "$LOG5" "$CC5" "$LOG5B" "$CC5B"

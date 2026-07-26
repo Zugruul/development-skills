@@ -120,13 +120,14 @@ m = re.search(r'<script type=\"module\">(.*)</script>', html, re.S)
 print(m.group(1) if m else '')
 ")"
     _nvmodule="$(mktemp).mjs"
+    _nvnodecheck="$(mktemp)"
     printf '%s' "$script" >"$_nvmodule"
-    if node --check "$_nvmodule" 2>/tmp/nv-node-check.$$; then
+    if node --check "$_nvmodule" 2>"$_nvnodecheck"; then
         echo "ok   neural-view.html inline module script has no syntax errors (node --check)"
     else
-        echo "FAIL neural-view.html inline module script has syntax errors"; cat /tmp/nv-node-check.$$; fails=$((fails + 1))
+        echo "FAIL neural-view.html inline module script has syntax errors"; cat "$_nvnodecheck"; fails=$((fails + 1))
     fi
-    rm -f /tmp/nv-node-check.$$ "$_nvmodule"
+    rm -f "$_nvnodecheck" "$_nvmodule"
 
     # layout: region size ∝ note count (empty repo floors at MIN_REGION), and
     # fitDistance() actually frames every repo region's bounding sphere within
