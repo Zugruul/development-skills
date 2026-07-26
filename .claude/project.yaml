@@ -401,7 +401,7 @@ paths:
     specDeltaDir: docs/spec-deltas
 methodology:
     tdd: true
-    serialDelivery: true
+    serialDelivery: false
     maxInProgress: 4
     autoMerge: true
     mergeMethod: squash
