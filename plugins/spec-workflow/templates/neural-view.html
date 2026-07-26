@@ -707,6 +707,39 @@ canvas.grabbing{cursor:grabbing}
 .ast-inspector-window .aiw-title{font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:var(--cyan);flex:1}
 .ast-inspector-window .aiw-top{display:flex;flex-direction:column;gap:.3rem;padding-bottom:.5rem;border-bottom:1px dashed var(--border)}
 .ast-inspector-window .aiw-bottom{display:flex;flex-direction:column;gap:.3rem;margin-top:.5rem}
+/* status chip (#status-txt): the version/branch segments (chip-changelog,
+   see chipHtml()) open the changelog overlay below -- a plain pointer
+   cursor is the only affordance needed, same as any other clickable chip
+   text on this page. */
+.chip-changelog{cursor:pointer}
+.chip-changelog:hover{color:var(--cyan)}
+/* changelog overlay (#405): same detached-window chrome family as
+   .ast-inspector-window above (compound selector for the same reason --
+   see the comment on that rule: a bare .changelog-window declared here
+   would tie on specificity with the later single-class .note-window{width:
+   var(--colw);...} rule and lose on source order). Opened from the status
+   chip's version/branch segments (openChangelogWindow(), near the AST-044
+   inspector further down this file); same wireWinDrag/noteWinZ chrome and
+   Escape-ownership handshake as that inspector. */
+.note-window.changelog-window{width:min(480px,92vw);max-height:80vh}
+.changelog-window .clw-bar{display:flex;align-items:center;gap:.4rem;margin:.1rem 0 .55rem}
+.changelog-window .clw-bar .close{float:none;display:inline-flex;align-items:center;justify-content:center;
+  min-width:24px;min-height:24px;padding:0 .2rem}
+.changelog-window .clw-title{font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:var(--cyan);flex:1}
+.changelog-window .clw-body{display:flex;flex-direction:column;gap:.5rem;font-family:var(--mono);font-size:.65rem;color:var(--fg)}
+.changelog-window .clw-error{color:#e0453a}
+.cl-version{border:1px solid var(--border);border-radius:3px;padding:.3rem .4rem}
+.cl-version-head{display:flex;align-items:baseline;gap:.4rem;cursor:pointer}
+.cl-version-num{color:var(--cyan)}
+.cl-version-date{color:var(--muted);font-size:.6rem}
+.cl-version-body{margin-top:.4rem;display:flex;flex-direction:column;gap:.4rem}
+.cl-group h4{margin:0 0 .2rem;font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.cl-entry-row{display:flex;align-items:baseline;gap:.3rem;padding:.1rem 0}
+.cl-entry.cl-has-body .cl-entry-row{cursor:pointer}
+.cl-desc{flex:1}
+.cl-hash{color:var(--muted);font-size:.6rem}
+.cl-body{margin:.2rem 0 .2rem 1rem;padding:.3rem .4rem;border-left:2px solid var(--border);color:var(--muted);white-space:pre-wrap}
+.cl-disclosure{display:inline-block;width:1em;color:var(--muted)}
 .ast-metrics{display:flex;flex-direction:column;gap:.3rem;margin-top:.3rem;
   font-family:var(--mono);font-size:.6rem;color:var(--fg)}
 .ast-metrics-row{display:flex;justify-content:space-between;gap:.5rem;
@@ -2748,19 +2781,25 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // dev repo / marketplace clone / plugin cache — and "why does it look old"
 // has burned real debugging time). Bump the PATCH on every template change
 // within an increment of work; bump the MINOR when the increment ships.
-const NV_VERSION = "0.28.2";
+const NV_VERSION = "0.28.4";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
 const METRICS_ID = Math.random().toString(36).slice(2, 8);
 // status chip segments carry native title tooltips explaining what each
 // readout means (hover "live", the version, the fps, the DPR marker, ...).
+// A segment may carry an optional 3rd element -- an extra CSS class -- so
+// specific segments (the version/branch pair, #405) can be made clickable
+// without every chip segment becoming one.
 function chipHtml(segs){
-  return segs.filter(Boolean).map(([text, title]) =>
-    `<span title="${title.replace(/"/g,"&quot;")}">${text}</span>`).join(" · ");
+  return segs.filter(Boolean).map(([text, title, cls]) =>
+    `<span${cls ? ` class="${cls}"` : ""} title="${title.replace(/"/g,"&quot;")}">${text}</span>`).join(" · ");
 }
 const CHIP_LIVE = ["live", "Connected — the page re-reads the brains every 15s and streams recall activations in as they happen"];
-const CHIP_VER = [`v${NV_VERSION}`, "neural-view template version — confirms which build this tab is rendering (bumped on every template change)"];
+// chip-changelog (#405): clicking this segment (or the branch/commit one
+// below) opens the changelog overlay -- see openChangelogWindow() near the
+// AST-044 inspector further down this file.
+const CHIP_VER = [`v${NV_VERSION}`, "neural-view template version — confirms which build this tab is rendering (bumped on every template change) — click to view the changelog", "chip-changelog"];
 // git branch of the serving repo — filled by the /version probe at boot
 // (falsy until then; chipHtml drops it, frame()'s per-second rebuild picks
 // it up as soon as it lands).
@@ -2778,6 +2817,16 @@ const perfMs = {step:0, vis:0, render:0};
 function ema(k, ms){ perfMs[k] += (ms - perfMs[k]) * 0.08; }
 const statusEl = document.getElementById("status-txt");
 if(statusEl) statusEl.innerHTML = chipHtml([CHIP_LIVE, CHIP_VER]);   // fps appended once the first second of frames is measured
+// #405: the chip is rebuilt every second by frame() (statusEl.innerHTML =
+// chipHtml([...])) -- per-render listeners on the <span>s would leak/no-op
+// against stale nodes, so this binds ONCE, delegated, on the stable
+// container. Any click that lands on (or inside) a .chip-changelog segment
+// (CHIP_VER, CHIP_BRANCH once the /version probe fills it in) toggles the
+// changelog overlay open/closed.
+if(statusEl) statusEl.addEventListener("click", (ev) => {
+  if(!(ev.target && ev.target.closest && ev.target.closest(".chip-changelog"))) return;
+  if(window.changelogWin) closeChangelogWindow(); else openChangelogWindow();
+});
 function frame(){
   requestAnimationFrame(frame);   // re-arm first: any exception below must never permanently kill the render loop
   tick++;
@@ -5151,7 +5200,7 @@ const PROBE = location.search.includes("hoverprobe");
 (async function(){
   let base; try{ base = await (await fetch("/version")).json(); }catch{ return; }
   if(base && base.branch){
-    CHIP_BRANCH = [base.branch, "git branch the serving repo is on (read at server boot probe)"];
+    CHIP_BRANCH = [base.branch, "git branch the serving repo is on (read at server boot probe) — click to view the changelog", "chip-changelog"];
     // frame() rebuilds the chip every second; repaint now for the non-WebGL path
     if(statusEl && !webglOK) statusEl.innerHTML = chipHtml([CHIP_LIVE, CHIP_VER, CHIP_BRANCH, CHIP_NO3D]);
   }
@@ -6338,6 +6387,209 @@ function openAstInspectorWindow(){
   return win;
 }
 document.getElementById("ast-inspect-open").onclick = () => { openAstInspectorWindow(); };
+
+// ---- changelog overlay (#405): opened from the status chip's version/
+// branch segments (chip-changelog, see chipHtml()/the click delegation
+// wired on statusEl above). Same chrome family (note-window, wireWinDrag,
+// noteWinZ raise-to-front) and one-window-max + Escape-ownership handshake
+// (window.<x>Win / __<x>Keydown / ev.defaultPrevented deference) as the
+// AST-044 trace inspector directly above -- read that block's comments for
+// the full rationale; this repeats the same shape rather than generalizing
+// it, since the two windows' bodies have nothing else in common. ----
+window.changelogWin = window.changelogWin || null;
+
+// Hand-rolled parser for changelog.py's OUTPUT FORMAT (see that script's
+// module docstring, plugins/spec-workflow/scripts/changelog.py) -- this is
+// NOT a general markdown parser and must never become one: it only ever
+// renders THIS repo's own generator's output, which is deliberately
+// line-based and strict. Grammar (fixed, no nesting):
+//   ## vX.Y.Z — YYYY-MM-DD        version header, exactly one per version
+//   ### <Group>                   type-group header (Features/Fixes/...)
+//   - **scope:** desc (`hash`)    entry bullet -- **scope:** is optional
+//   >  body line                  2-space-indented blockquote, follows its
+//                                  bullet directly; zero or more per entry
+// Any other line (blank lines, the "# Changelog" title, the generator's
+// own "<!-- GENERATED ... -->" comment) is ignored, never an error --
+// forward-compatible with whatever surrounds the versions.
+function parseChangelog(text){
+  const versionRe = /^## v(\S+) — (\d{4}-\d{2}-\d{2})\s*$/;
+  const groupRe = /^### (.+?)\s*$/;
+  const entryRe = /^- (?:\*\*([^*]+):\*\* )?(.+?) \(`([0-9a-f]+)`\)\s*$/;
+  const bodyRe = /^ {2}> (.*)$/;
+  const versions = [];
+  let curVersion = null, curGroup = null, curEntry = null;
+  // split on \r?\n, not a bare \n: a CRLF checkout (Windows autocrlf) would
+  // otherwise leave a trailing \r on every line, and bodyRe -- unlike
+  // versionRe/entryRe/groupRe above, which all end in \s*$ and so happen to
+  // tolerate it -- has no trailing whitespace slack; its $ anchor would
+  // never reach past that \r, silently dropping every body line.
+  for(const raw of String(text).split(/\r?\n/)){
+    let m;
+    if((m = versionRe.exec(raw))){
+      curVersion = {version: m[1], date: m[2], groups: []};
+      versions.push(curVersion);
+      curGroup = null; curEntry = null;
+      continue;
+    }
+    if(!curVersion) continue;   // nothing seen yet -- title/comment/blank lines before the first version header
+    if((m = groupRe.exec(raw))){
+      curGroup = {name: m[1], entries: []};
+      curVersion.groups.push(curGroup);
+      curEntry = null;
+      continue;
+    }
+    if((m = entryRe.exec(raw))){
+      curEntry = {scope: m[1] || "", desc: m[2], hash: m[3], body: []};
+      if(curGroup) curGroup.entries.push(curEntry);
+      continue;
+    }
+    if((m = bodyRe.exec(raw)) && curEntry){
+      curEntry.body.push(m[1]);
+    }
+  }
+  return versions;
+}
+function changelogEntryHtml(e){
+  const scope = e.scope ? `<strong>${escapeHtml(e.scope)}:</strong> ` : "";
+  const hasBody = e.body.length > 0;
+  const bodyId = "cl-body-" + Math.random().toString(36).slice(2, 8);
+  return `<div class="cl-entry${hasBody ? " cl-has-body" : ""}">`
+    + `<div class="cl-entry-row"${hasBody ? ` data-cl-toggle="${bodyId}" role="button" tabindex="0"` : ""}>`
+    + `<span class="cl-disclosure">${hasBody ? "▸" : ""}</span>`
+    + `<span class="cl-desc">${scope}${escapeHtml(e.desc)}</span>`
+    + `<span class="cl-hash">${escapeHtml(e.hash)}</span></div>`
+    + (hasBody ? `<div class="cl-body" id="${bodyId}" hidden>${e.body.map(escapeHtml).join("<br>")}</div>` : "")
+    + `</div>`;
+}
+// newest-expanded default (#405): idx 0 (the newest version -- versions
+// arrive newest-first straight from changelog.py's own output order) opens
+// with cl-open + aria-expanded="true" and its body visible; every other
+// version starts collapsed (hidden).
+function changelogVersionHtml(v, idx){
+  const secId = "cl-ver-" + idx;
+  const open = idx === 0;
+  const groups = v.groups.map(g => `<div class="cl-group"><h4>${escapeHtml(g.name)}</h4>`
+    + g.entries.map(changelogEntryHtml).join("") + `</div>`).join("");
+  return `<section class="cl-version${open ? " cl-open" : ""}">`
+    + `<div class="cl-version-head" data-cl-section="${secId}" role="button" tabindex="0" aria-expanded="${open}">`
+    + `<span class="cl-disclosure">${open ? "▾" : "▸"}</span>`
+    + `<span class="cl-version-num">v${escapeHtml(v.version)}</span>`
+    + `<span class="cl-version-date">${escapeHtml(v.date)}</span></div>`
+    + `<div class="cl-version-body" id="${secId}"${open ? "" : " hidden"}>${groups}</div></section>`;
+}
+function buildChangelogWindow(){
+  const win = document.createElement("aside");
+  win.id = "changelog-window";
+  win.className = "hud note-window changelog-window";
+
+  const bar = document.createElement("div");
+  bar.className = "clw-bar";
+  bar.setAttribute("data-drag", "");
+  const grip = document.createElement("button");
+  grip.className = "close grip";
+  grip.title = "Drag to move window";
+  grip.setAttribute("aria-label", "Drag to move window");
+  grip.textContent = "⠿";
+  const title = document.createElement("span");
+  title.className = "clw-title";
+  title.textContent = "Changelog";
+  const closeBtn = document.createElement("button");
+  closeBtn.id = "changelog-close";
+  closeBtn.className = "close";
+  closeBtn.setAttribute("aria-label", "Close changelog");
+  closeBtn.textContent = "✕";
+  bar.appendChild(grip);
+  bar.appendChild(title);
+  bar.appendChild(closeBtn);
+  win.appendChild(bar);
+
+  const body = document.createElement("div");
+  body.id = "changelog-body";
+  body.className = "clw-body";
+  body.textContent = "loading changelog…";
+  win.appendChild(body);
+
+  closeBtn.onclick = () => closeChangelogWindow();
+  // one delegated listener for both disclosure levels (version header +
+  // per-entry body toggle) -- same rationale as the statusEl delegation
+  // above: the body's innerHTML is replaced wholesale once the fetch
+  // resolves, so per-node listeners would never even get attached to the
+  // real (post-fetch) content.
+  body.addEventListener("click", (ev) => {
+    const secEl = ev.target.closest("[data-cl-section]");
+    if(secEl){
+      const panel = document.getElementById(secEl.getAttribute("data-cl-section"));
+      if(!panel) return;
+      const wasOpen = !panel.hidden;
+      panel.hidden = wasOpen;
+      secEl.setAttribute("aria-expanded", String(!wasOpen));
+      const disc = secEl.querySelector(".cl-disclosure");
+      if(disc) disc.textContent = wasOpen ? "▸" : "▾";
+      return;
+    }
+    const row = ev.target.closest("[data-cl-toggle]");
+    if(row){
+      const panel = document.getElementById(row.getAttribute("data-cl-toggle"));
+      if(!panel) return;
+      panel.hidden = !panel.hidden;
+      const disc = row.querySelector(".cl-disclosure");
+      if(disc) disc.textContent = panel.hidden ? "▸" : "▾";
+    }
+  });
+  return win;
+}
+function closeChangelogWindow(){
+  if(window.changelogWin){
+    window.changelogWin.remove();
+    window.changelogWin = null;
+  }
+  if(window.__changelogKeydown){
+    removeEventListener("keydown", window.__changelogKeydown);
+    window.__changelogKeydown = null;
+  }
+}
+function handleChangelogKeydown(ev){
+  if(ev.key !== "Escape") return;
+  // ownership handshake: defer to whatever already claimed this Escape
+  // (T-key chat overlay, the AST-021 picker, the AST-044 inspector) --
+  // same defaultPrevented check those handlers use for each other.
+  if(ev.defaultPrevented) return;
+  if(ev.preventDefault) ev.preventDefault();
+  closeChangelogWindow();
+}
+async function openChangelogWindow(){
+  if(window.changelogWin){
+    window.changelogWin.style.zIndex = ++noteWinZ;   // already open -- focus, don't duplicate
+    return window.changelogWin;
+  }
+  const win = buildChangelogWindow();
+  win.style.left = "30vw";
+  win.style.top = "16vh";
+  win.style.zIndex = ++noteWinZ;
+  document.body.appendChild(win);
+  win.addEventListener("pointerdown", () => { win.style.zIndex = ++noteWinZ; }, true);
+  wireWinDrag(win);
+  window.changelogWin = win;
+  window.__changelogKeydown = handleChangelogKeydown;
+  addEventListener("keydown", handleChangelogKeydown);
+  const body = document.getElementById("changelog-body");
+  try{
+    const res = await fetch("/changelog");
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const text = await res.text();
+    const versions = parseChangelog(text);
+    if(body){
+      body.innerHTML = versions.length
+        ? versions.map(changelogVersionHtml).join("")
+        : `<div class="clw-error">changelog unavailable: no versions found</div>`;
+    }
+  }catch(err){
+    // never a broken/empty panel and never console-only (#405) -- the
+    // overlay itself always shows the reason.
+    if(body) body.innerHTML = `<div class="clw-error">changelog unavailable: ${escapeHtml(String((err && err.message) || err))}</div>`;
+  }
+  return win;
+}
 
 // ---- boot ----
 (async function(){

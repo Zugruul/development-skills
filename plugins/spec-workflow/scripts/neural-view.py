@@ -1446,6 +1446,20 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/version":
             tmpl = TEMPLATE.stat().st_mtime_ns if TEMPLATE.is_file() else 0
             return self._send(200, {"boot": BOOT_ID, "template": tmpl, "dev": DEV_MODE, "branch": git_branch()})
+        if path == "/changelog":
+            # #405: raw CHANGELOG.md at the serving repo's root, rendered
+            # client-side into the changelog overlay opened from the status
+            # chip's version/branch segments. Read-only: git_root() already
+            # shells out once (reused, not re-invoked here); no other
+            # subprocess call is made. #404's generator keeps the file
+            # current on every push to main -- this route just serves
+            # whatever's on disk right now, byte for byte.
+            changelog = Path(git_root()) / "CHANGELOG.md"
+            try:
+                text = changelog.read_text()
+            except OSError:
+                return self._send(404, "changelog not found\n", "text/plain")
+            return self._send(200, text, "text/plain")
         if path == "/fetch":
             # CORS-bypass download proxy for the media viewer (#289): remote
             # note images usually lack ACAO headers, so the page can't read

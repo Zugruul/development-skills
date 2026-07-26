@@ -97,6 +97,7 @@ SECTIONS=(
     section-neural-view-projects.sh
     section-neural-view-sessions.sh
     section-neural-view-render-body.sh
+    section-changelog-ui.sh
     section-lifecycle-retry.sh
     section-gate-core.sh
     section-guard-brain-access.sh
