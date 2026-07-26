@@ -1254,6 +1254,16 @@ canvas.grabbing{cursor:grabbing}
     </div>
     <div class="vs-hint">On: the picker shows every time this page loads, even if an assistant was chosen before. Off: the last choice loads automatically. Switch anytime by clicking the assistant name beside the bars, or Cmd+K/Ctrl+K.</div>
   </div>
+  <!-- AST-051 (SPEC-ASSISTANT.md §13.2, docs/spec-deltas/ast-051.md, issue
+       #333): the recorded STT decision -- both engines ship, selectable
+       here, whisper.cpp (fully local) is the default. -->
+  <div class="vs-row"><span class="label">Speech-to-text engine</span>
+    <div class="vs-opts" role="group" aria-label="Speech-to-text engine">
+      <button class="iconbtn" id="vs-stt-whisper" aria-pressed="false">whisper.cpp (local)</button>
+      <button class="iconbtn" id="vs-stt-webspeech" aria-pressed="false">Web Speech (browser)</button>
+    </div>
+    <div class="vs-hint">whisper.cpp is the default -- fully local via a separate sidecar process (its own install/model capability, not yet provisioned by this template). Web Speech needs no install but sends audio to the browser vendor. If the whisper sidecar isn't running, switch here to keep using voice input.</div>
+  </div>
   <div class="vs-row">
     <button class="iconbtn" id="vs-reset" aria-live="polite">Reset settings</button>
     <div class="vs-hint">Back to defaults: direction OUT, press to speak, echo guard on, suppression/shimmer/gains at stock. Asks to confirm first.</div>
@@ -2811,7 +2821,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // matches what the changelog overlay documents) -- it now lives in the
 // chip's tooltip, and as the fallback chip text when the plugin version
 // can't be read (see CHIP_VER_FALLBACK below).
-const NV_VERSION = "0.28.7";
+const NV_VERSION = "0.28.8";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -3706,6 +3716,153 @@ document.getElementById("ast-ask-again").onclick = async ()=>{
   try{ await fetch("/assistant/settings", {method:"POST", body: JSON.stringify({askAgain: next})}); }catch{}
   setAskAgainUi(next);
 };
+
+// ---- STT engine setting (AST-051, SPEC-ASSISTANT.md §13.2, the decision
+// recorded in docs/spec-deltas/ast-051.md, issue #333): "whisper" (the
+// DEFAULT -- fully local via a sidecar client, see WhisperSttEngine below)
+// or "web-speech" (zero-install, the browser's own SpeechRecognition).
+// Persisted in uiState like every other voice-panel setting (vdir,
+// micMode, ...) -- same localStorage key (nv-ui), same saveUiState() path. ----
+function sttEngineChoice(){
+  return uiState.sttEngine === "web-speech" ? "web-speech" : "whisper";
+}
+function setSttEngineChoice(choice){
+  uiState.sttEngine = choice === "web-speech" ? "web-speech" : "whisper";
+  saveUiState();
+  applySttEngineUi();
+}
+function applySttEngineUi(){
+  const choice = sttEngineChoice();
+  for(const [id,val] of [["vs-stt-whisper","whisper"],["vs-stt-webspeech","web-speech"]]){
+    const b = document.getElementById(id);
+    if(!b) continue;
+    b.classList.toggle("active", val===choice);
+    b.setAttribute("aria-pressed", String(val===choice));
+  }
+}
+document.getElementById("vs-stt-whisper").onclick = ()=>setSttEngineChoice("whisper");
+document.getElementById("vs-stt-webspeech").onclick = ()=>setSttEngineChoice("web-speech");
+applySttEngineUi();
+
+// ---- STT engine abstraction (AST-051): a shared {start(onResult,onError),
+// stop()} contract with two implementations, selected at USE time by
+// sttEngineChoice() -- never cached across a start/stop cycle, so a
+// setting change takes effect on the NEXT start without a page reload.
+// Both engines funnel recognized text through the SAME onSttText(text)
+// hook, which today routes into the existing chat-send path
+// (queueOrSendChat) -- AST-052 owns the full voice-turn UX; this task's
+// contract ends at that one hook, per the design doc (docs/design/ast-E5.md). ----
+class WebSpeechSttEngine{
+  constructor(){ this.recog = null; }
+  start(onResult, onError){
+    const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!Ctor){
+      onError("web-speech-unavailable: this browser has no SpeechRecognition support -- switch to whisper.cpp (if the sidecar is installed) or use a browser that supports Web Speech.");
+      return;
+    }
+    const r = this.recog = new Ctor();
+    r.continuous = true;
+    r.interimResults = false;
+    r.onresult = ev=>{
+      const res = ev.results[ev.results.length-1];
+      const text = res && res[0] && res[0].transcript;
+      if(text) onResult(text.trim());
+    };
+    r.onerror = ev=>{ onError("web-speech-error: " + ((ev && ev.error) || "unknown")); };
+    r.start();
+  }
+  stop(){ if(this.recog){ this.recog.stop(); this.recog = null; } }
+}
+// Documented local sidecar contract this client assumes (the sidecar
+// process itself -- install, model download, lifecycle -- is a
+// capability-shaped concern this task does NOT build; deferred to the
+// whisper capability that lands with E6's provisioning machinery,
+// AST-060/061; see docs/spec-deltas/ast-051.md's implementation notes):
+//   POST http://127.0.0.1:8737/transcribe
+//   multipart/form-data, field "audio" = a Blob (audio/webm)
+//   -> 200 {"text": "<transcript>"} on success
+// Any network failure or non-2xx response is read as "the sidecar isn't
+// running/installed", never as a transcription error -- WhisperSttEngine
+// surfaces the honest unavailable message instead of a generic one.
+const STT_WHISPER_ENDPOINT = "http://127.0.0.1:8737/transcribe";
+const STT_WHISPER_UNAVAILABLE_MSG = "whisper sidecar not available -- install via the whisper capability (follow-up) or switch to Web Speech in Settings";
+class WhisperSttEngine{
+  constructor(){ this.mediaRecorder = null; this.chunks = []; this.stream = null; }
+  async start(onResult, onError){
+    try{
+      this.stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    }catch{
+      onError(STT_WHISPER_UNAVAILABLE_MSG);
+      return;
+    }
+    this.chunks = [];
+    const mr = this.mediaRecorder = new MediaRecorder(this.stream);
+    mr.ondataavailable = ev=>{ if(ev.data && ev.data.size) this.chunks.push(ev.data); };
+    mr.onstop = async ()=>{
+      this.stream.getTracks().forEach(t=>t.stop());
+      const blob = new Blob(this.chunks, {type:"audio/webm"});
+      const form = new FormData();
+      form.append("audio", blob);
+      try{
+        const resp = await fetch(STT_WHISPER_ENDPOINT, {method:"POST", body: form});
+        if(!resp.ok) throw new Error("sidecar-http-" + resp.status);
+        const data = await resp.json();
+        if(data && data.text) onResult(data.text.trim());
+        else onError(STT_WHISPER_UNAVAILABLE_MSG);
+      }catch{
+        onError(STT_WHISPER_UNAVAILABLE_MSG);
+      }
+    };
+    mr.start();
+  }
+  stop(){ if(this.mediaRecorder && this.mediaRecorder.state !== "inactive") this.mediaRecorder.stop(); }
+}
+const sttEngines = { whisper: new WhisperSttEngine(), "web-speech": new WebSpeechSttEngine() };
+
+// AST-052 owns the full voice-turn UX; today the only downstream consumer
+// of recognized STT text is the existing chat-send path.
+function onSttText(text){
+  if(!text) return;
+  queueOrSendChat(text);
+}
+
+// §13.3: stt-start/stt-end spans, engine name in the payload, over the
+// SAME trace-event path TTS spans use -- a thin bridge route added to
+// engine.py (`POST /assistant/voice-event`, enqueue-only over the
+// existing `_emit_trace`, no new writer, §10.2's single-writer rule holds).
+function emitVoiceSpan(kind, engineName, spanId, status, payload){
+  const body = Object.assign({kind, engine: engineName}, status ? {status} : {}, {payload: Object.assign({spanId}, payload||{})});
+  try{ fetch("/assistant/voice-event", {method:"POST", body: JSON.stringify(body)}); }catch{}
+}
+window.__sttSpanId = null;
+// §17.9 hard gate: voice (STT included) is hard-gated off with no
+// assistant selected -- checked FIRST, before either engine's start() ever
+// runs, via the SAME window.assistantGate the mic/IN/OUT/BOTH header
+// buttons already check (gateVoiceAndChat, AST-021).
+function startStt(){
+  if(window.assistantGate && window.assistantGate.gated) return false;
+  const engineName = sttEngineChoice();
+  const engine = sttEngines[engineName];
+  const spanId = window.__sttSpanId = Math.random().toString(36).slice(2);
+  emitVoiceSpan("stt-start", engineName, spanId);
+  engine.start(
+    text=>{ onSttText(text); },
+    err=>{
+      console.warn("[stt]", err);
+      window.__lastSttError = String(err);
+      emitVoiceSpan("stt-end", engineName, spanId, "error", {error: String(err)});
+      window.__sttSpanId = null;
+    }
+  );
+  return true;
+}
+function stopStt(){
+  const engineName = sttEngineChoice();
+  const engine = sttEngines[engineName];
+  if(engine && engine.stop) engine.stop();
+  if(window.__sttSpanId){ emitVoiceSpan("stt-end", engineName, window.__sttSpanId, "ok"); window.__sttSpanId = null; }
+}
+
 // press-to-speak: holding Space in the 3D view keeps the mic open;
 // Shift+Space toggles between press-to-speak and mic-always-on
 window.voicePTT = false;

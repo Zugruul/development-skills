@@ -189,6 +189,7 @@ section-semver.sh
     section-assistant-traces.sh
     section-assistant-metrics.sh
     section-assistant-inspector.sh
+    section-assistant-stt.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then

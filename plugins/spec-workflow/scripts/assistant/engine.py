@@ -57,6 +57,12 @@ def _now_iso():
 # named slot (thread + stop_event + queue) each of those tasks plugs into.
 WORKER_NAMES = ("distiller", "tasks", "traces", "index")
 
+# AST-051 (SPEC-ASSISTANT.md §13.3): the kinds POST /assistant/voice-event
+# accepts. TTS spans (tts-start/tts-end) are included so AST-050's speak
+# path can reuse this SAME bridge route rather than growing a second one --
+# this task only ever posts stt-start/stt-end itself.
+_VOICE_EVENT_KINDS = frozenset({"stt-start", "stt-end", "tts-start", "tts-end"})
+
 # AST-014 /assistant/history?n=N: default window + hard cap so a client
 # cannot force an unbounded read of the transcript (SessionStore.history's
 # tail-read is a full-file read at v1 -- see store.py's docstring).
@@ -534,6 +540,8 @@ class AssistantEngine:
             return 200, {"askAgain": self._ask_again}, "application/json"
         if method == "POST" and path == "/assistant/settings":
             return self._settings(body)
+        if method == "POST" and path == "/assistant/voice-event":
+            return self._voice_event(body)
         return None
 
     def _persist_selection(self):
@@ -939,7 +947,8 @@ class AssistantEngine:
                 pass
 
     def _emit_trace(self, root, kind, turn_id=None, span_id=None,
-                     parent_span_id=None, status=None, payload=None):
+                     parent_span_id=None, status=None, payload=None,
+                     modality="text"):
         """AST-040 (SPEC-ASSISTANT.md §10.1): a thin, enqueue-only wrapper
         over `observability.emit` bound to THIS engine's traces queue --
         every `_chat` call site below goes through this one spot rather
@@ -947,14 +956,18 @@ class AssistantEngine:
         each site. `session_id` is `os.path.realpath(root)` (the same
         canonicalization `_chat_lock_for` already uses to key a root) --
         one session per assistant per §7.5, so the root IS the session
-        identity; there is no separate session table/id to look up."""
+        identity; there is no separate session table/id to look up.
+        `modality` defaults to "text" (every turn-shaped event); AST-051's
+        `_voice_event` passes "voice" for tts/stt spans -- same envelope,
+        same writer, just a different tag on the same events table
+        (§10.1's `modality` column exists for exactly this)."""
         observability.emit(self.queues["traces"], root, {
             "kind": kind,
             "session_id": os.path.realpath(root),
             "turn_id": turn_id,
             "span_id": span_id,
             "parent_span_id": parent_span_id,
-            "modality": "text",
+            "modality": modality,
             "status": status,
             "payload": payload or {},
         })
@@ -1085,6 +1098,66 @@ class AssistantEngine:
             "warnings": warnings,
         }, "application/json"
 
+    def _voice_event(self, body):
+        """POST /assistant/voice-event -- {"kind": "stt-start"|"stt-end"|
+        "tts-start"|"tts-end", "assistant"?: str, "engine"?: str,
+        "status"?: str, "payload"?: dict} -> {"ok": true}
+        (SPEC-ASSISTANT.md §13.3, AST-051, issue #333).
+
+        The voice panel (TTS AND STT alike) times its own spans entirely
+        client-side -- the page is the only thing that knows an utterance's
+        or a recognition session's real start/end. This route is a thin,
+        enqueue-only bridge into the SAME `_emit_trace` -> traces.sqlite
+        path every other span already uses (§10.1/§10.2's single-writer
+        rule holds: no new writer, no new table, just a new way IN for the
+        page to hand a span to the one writer that already exists).
+
+        §17.9 (checked FIRST, exactly like `_chat` above): a gated session
+        (assistant selection was skipped, or none exists) refuses every
+        voice-event post with the same 403 shape `_chat` uses -- a stray
+        client-side start (e.g. a race against the gate) never gets a
+        span recorded, matching "voice is hard-gated off with no assistant
+        selected" taken to its logical end: nothing to correlate the span
+        to, and nothing should have started in the first place.
+
+        `kind` is validated against `_VOICE_EVENT_KINDS` -- an unrecognized
+        kind is a clean 400, never a silently-dropped or best-effort
+        write. `engine` (when given) rides into the emitted event's
+        `payload` dict alongside whatever the caller already supplied,
+        keyed `engine` -- e.g. AST-051's stt-start/stt-end carry the chosen
+        STT engine name ("whisper" | "web-speech") there, which is how a
+        trace query can tell WHICH engine a given span belongs to.
+        """
+        body = body if isinstance(body, dict) else {}
+        if self._gated:
+            return 403, {
+                "error": "voice is gated off for this session (assistant "
+                          "selection was skipped) -- see /assistant/select",
+            }, "application/json"
+        kind = body.get("kind")
+        if kind not in _VOICE_EVENT_KINDS:
+            return 400, {
+                "error": "kind must be one of: " + ", ".join(sorted(_VOICE_EVENT_KINDS)),
+            }, "application/json"
+
+        assistant_flag = body.get("assistant")
+        candidates = default_store.discover_candidates(
+            root for _, root in self._repos_getter()
+        )
+        try:
+            root, _section = default_store.resolve_assistant(
+                candidates, flag=assistant_flag, state_dir=self.state_dir)
+        except default_store.ResolutionError as exc:
+            return 400, {"error": str(exc)}, "application/json"
+
+        payload = body.get("payload") if isinstance(body.get("payload"), dict) else {}
+        engine_name = body.get("engine")
+        if engine_name:
+            payload = dict(payload, engine=engine_name)
+
+        self._emit_trace(root, kind, status=body.get("status"),
+                          payload=payload, modality="voice")
+        return 200, {"ok": True}, "application/json"
 
 def _parse_history_n(query):
     raw = None
