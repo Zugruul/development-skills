@@ -96,6 +96,18 @@ const document = {
 };
 global.window = global;
 
+// AST-050 (#332): dispatchNextChat's success branch now calls
+// speakReply(payload.text, newClientTurnId()) -- stub the voice-wiring
+// dependencies it transitively needs (uiState.vdir for voiceDir/voiceOn,
+// window.assistantGate for the §17.9 gate check, window.neuralVoice as
+// the outbound adapter) so this harness's extracted dispatchNextChat
+// doesn't ReferenceError. neuralSpeakCalls lets a couple of assertions
+// below confirm the wire-up actually fires on a rendered reply.
+let uiState = {};
+window.assistantGate = { gated: false };
+let neuralSpeakCalls = [];
+window.neuralVoice = { speakChunks(chunks, onDone){ neuralSpeakCalls.push({chunks, onDone}); } };
+
 let fetchCalls = [];
 let statusResponse = null;
 let statusThrows = false;
@@ -136,6 +148,13 @@ eval(extract("renderChatGated"));
 eval(extract("renderChatOffline"));
 eval(extract("startChatElapsed"));
 eval(extract("stopChatElapsed"));
+eval(extract("voiceDir"));
+eval(extract("voiceOn"));
+eval(extract("chunkSpeechText"));
+eval(extract("emitVoiceSpan"));
+eval(extract("trackLocalVoiceSpan"));
+eval(extract("newClientTurnId"));
+eval(extract("speakReply"));
 eval(extract("dispatchNextChat"));
 eval(extract("queueOrSendChat"));
 eval(extract("chatInputKeydown"));
@@ -159,6 +178,10 @@ function resetChat() {
     statusResponse = {outcome: "one", candidates: [{name: "jarvis", aliases: [], root: "/r"}], selected: "jarvis", gated: false, askAgain: false};
     historyResponse = { exchanges: [], warnings: [] };
     window.assistantChat = { queue: [], inFlight: false, exchanges: [], lastX: 2, elapsedTimer: null, elapsedStart: 0 };
+    uiState = {};
+    window.assistantGate = { gated: false };
+    neuralSpeakCalls = [];
+    window.assistantVoiceSpans = [];
 }
 
 (async () => {
@@ -214,6 +237,11 @@ function resetChat() {
     if (!chip || chip.textContent !== "foo-bar [3]") throw new Error("chip text mismatch: " + (chip && chip.textContent));
     if (document.getElementById("ast-chat-state").textContent !== "") throw new Error("elapsed state did not clear after the turn resolved");
     console.log("CHIPS_AND_CLEAR_OK true");
+
+    // ---- AST-050 (#332): a rendered reply wires through speakReply ----
+    if (neuralSpeakCalls.length !== 1) throw new Error("rendered reply should have called speakReply -> window.neuralVoice.speakChunks once, got " + neuralSpeakCalls.length);
+    if (JSON.stringify(neuralSpeakCalls[0].chunks) !== JSON.stringify(["hi there"])) throw new Error("speakReply chunks mismatch: " + JSON.stringify(neuralSpeakCalls[0].chunks));
+    console.log("VOICE_WIRED_OK true");
 
     // ---- queued-while-thinking dispatch order ----
     resetChat();
@@ -308,6 +336,7 @@ check "template: T does not open the overlay while focus is in an input" "NO_OPE
 check "template: Esc closes the overlay" "ESC_CLOSE_OK true" "$tmpl_chat_out"
 check "template: Enter POSTs the message and shows the elapsed state" "ENTER_SEND_OK true" "$tmpl_chat_out"
 check "template: reply renders with recall chips and clears the elapsed state" "CHIPS_AND_CLEAR_OK true" "$tmpl_chat_out"
+check "template (AST-050, #332): a rendered reply wires through speakReply into the outbound adapter" "VOICE_WIRED_OK true" "$tmpl_chat_out"
 check "template: a send while thinking queues and dispatches FIFO in order" "QUEUE_ORDER_OK true" "$tmpl_chat_out"
 check "template: gated (skip) refuses input and shows the reason" "GATED_SKIP_OK true" "$tmpl_chat_out"
 check "template: gated (outcome none) refuses input and shows the reason" "GATED_NONE_OK true" "$tmpl_chat_out"

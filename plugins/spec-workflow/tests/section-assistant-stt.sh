@@ -9,11 +9,22 @@ declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tes
 echo "== assistant STT (AST-051: STT decision + implementation, SPEC-ASSISTANT.md §13.2/§13.3/§17.9, issue #333) =="
 
 NVHTML_STT="$PLUGIN/templates/neural-view.html"
-DELTA_STT="$(cd "$PLUGIN/../.." && pwd)/docs/spec-deltas/ast-051.md"
+DELTA_STT_ROOT="$(cd "$PLUGIN/../.." && pwd)"
+DELTA_STT="$DELTA_STT_ROOT/docs/spec-deltas/ast-051.md"
+# Path fix-up (unrelated cross-branch fix-up, discovered while chasing
+# sw/332-tts-wiring green post-rebase, not an AST-050 concern): the fold
+# step (docs(spec): fold AST-051 + AST-061 deltas into SPEC-ASSISTANT)
+# relocates an applied delta to docs/spec-deltas/applied/<name>.md (same
+# convention section-kb-seed.sh already checks pending-or-applied for) --
+# this test still only looked at the pending path, so it false-failed on
+# main once AST-051's delta was folded.
+DELTA_STT_APPLIED="$DELTA_STT_ROOT/docs/spec-deltas/applied/ast-051.md"
 
 echo "-- spec delta: exists, registered before implementation, decision wording pinned --"
 if [[ -f "$DELTA_STT" ]]; then
     DELTA_STT_BODY="$(cat "$DELTA_STT")"
+elif [[ -f "$DELTA_STT_APPLIED" ]]; then
+    DELTA_STT_BODY="$(cat "$DELTA_STT_APPLIED")"
 else
     DELTA_STT_BODY=""
 fi

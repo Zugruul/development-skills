@@ -2821,7 +2821,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // matches what the changelog overlay documents) -- it now lives in the
 // chip's tooltip, and as the fallback chip text when the plugin version
 // can't be read (see CHIP_VER_FALLBACK below).
-const NV_VERSION = "0.28.8";
+const NV_VERSION = "0.28.9";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -3934,14 +3934,48 @@ class MicSource{
   }
 }
 class SpeechSynthSource{
-  constructor(){ this.speaking = false; this.t = 0; }
+  constructor(){ this.speaking = false; this.t = 0; this._finishCurrent = null; }
   async start(){}
-  stop(){ speechSynthesis.cancel(); this.speaking = false; }
+  // AST-050 (docs/design/ast-E5.md): never-latch guard -- cancelling
+  // mid-utterance (page-hide, a fresh reply interrupting an older one)
+  // must still resolve whatever speakChunks() sequence is in flight, not
+  // leave its onDone (and therefore the echo guard) hanging.
+  stop(){
+    if(this._finishCurrent) this._finishCurrent("cancel");
+    speechSynthesis.cancel();
+    this.speaking = false;
+  }
   speak(text){
     const u = new SpeechSynthesisUtterance(text);
     u.onstart = ()=>{ this.speaking = true; };
     u.onend = u.onerror = ()=>{ this.speaking = false; };
     speechSynthesis.speak(u);
+  }
+  // AST-050: speaks a chunked reply (sentence-boundary split, see
+  // chunkSpeechText) as ONE logical utterance for echo-guard purposes --
+  // `speaking` stays true across the whole sequence, including the
+  // native gap speechSynthesis leaves between queued utterances, and
+  // drops exactly once via `finish`: on the LAST chunk's end, ANY
+  // chunk's error, or an external stop()/cancel racing in. `onDone
+  // (status)` fires exactly once no matter which path gets there first
+  // -- the epic's never-latch invariant.
+  speakChunks(chunks, onDone){
+    if(!chunks || !chunks.length){ if(onDone) onDone("empty"); return; }
+    this.speaking = true;
+    const finish = (status)=>{
+      if(this._finishCurrent !== finish) return;
+      this._finishCurrent = null;
+      this.speaking = false;
+      if(onDone) onDone(status);
+    };
+    this._finishCurrent = finish;
+    chunks.forEach((chunk, i)=>{
+      const u = new SpeechSynthesisUtterance(chunk);
+      const isLast = i === chunks.length - 1;
+      u.onerror = ()=>{ finish("error"); };
+      u.onend = ()=>{ if(isLast) finish("end"); };
+      speechSynthesis.speak(u);
+    });
   }
   getBins(out){
     if(!this.speaking){ out.fill(0); return; }
@@ -3956,7 +3990,16 @@ class SpeechSynthSource{
 const voiceSources = { inbound: new MicSource(), outbound: new SpeechSynthSource() };
 window.neuralVoice = {
   setSource(dir, src){ const old = voiceSources[dir]; if(old && old.stop) old.stop(); voiceSources[dir] = src; },
-  speak(text){ const s = voiceSources.outbound; if(s && s.speak) s.speak(text); }
+  speak(text){ const s = voiceSources.outbound; if(s && s.speak) s.speak(text); },
+  // AST-050: speakReply()'s ONLY entry point into the outbound adapter --
+  // forwards to whatever's currently plugged into voiceSources.outbound
+  // (pluggable per the comment above), so a swapped-in adapter keeps
+  // working with TTS wiring for free.
+  speakChunks(chunks, onDone){
+    const s = voiceSources.outbound;
+    if(s && s.speakChunks) s.speakChunks(chunks, onDone);
+    else if(onDone) onDone("unsupported");
+  },
 };
 for(const [id, phrase] of [["vs-say-1","Neural view online"],["vs-say-2","Recall complete"],["vs-say-3","All brains nominal"]])
   document.getElementById(id).onclick = ()=>window.neuralVoice.speak(phrase);
@@ -3999,6 +4042,94 @@ document.getElementById("vs-echo-on").onclick = ()=>{ uiState.vEchoGuard = true;
 document.getElementById("vs-echo-off").onclick = ()=>{ uiState.vEchoGuard = false; saveUiState(); applyEchoUi(); };
 applyVoiceTuneUi();
 applyEchoUi();
+// ---- AST-050 (SPEC-ASSISTANT.md §13.1/§13.3, issue #332, docs/design/
+// ast-E5.md): TTS wiring -- replies become speakable through the EXISTING
+// speechSynthesis pipeline above (SpeechSynthSource/window.neuralVoice),
+// never a second speech stack. ----
+// voiceOn() mirrors the header OUT/BOTH buttons (the same "direction"
+// state that already drives the outbound bars) -- TTS only ever fires
+// when the visualizer would actually show outbound speech.
+function voiceOn(){
+  const d = voiceDir();
+  return d === "out" || d === "both";
+}
+// Sentence-boundary chunking: a known speechSynthesis reliability quirk
+// with long single utterances (some engines truncate or drop very long
+// strings) -- chunks feed SpeechSynthSource.speakChunks as ONE logical
+// utterance (its `speaking` flag spans the whole sequence); the §13.3
+// span still covers the whole reply, not per chunk.
+function chunkSpeechText(text){
+  const s = String(text || "").trim();
+  if(!s) return [];
+  const parts = s.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) || [];
+  return parts.map(p => p.trim()).filter(Boolean);
+}
+// §13.3 voice spans, PAGE-LOCAL half: joins the SAME stream the
+// metrics/trace inspector already renders (see loadAssistantInspector's
+// groupTurnsById call below, merging window.assistantVoiceSpans alongside
+// GET /assistant/traces' events) -- a client-only convenience merge, kept
+// separate from the REAL server-recorded span (posted via emitVoiceSpan()
+// below, AST-051's POST /assistant/voice-event bridge) because that route
+// carries no turn_id -- only this local copy can tag a span to the
+// client-minted turn id a reply's tts-start/tts-end pair share. Named
+// distinctly from emitVoiceSpan (AST-051, #333) to avoid the two
+// same-named top-level functions silently shadowing one another (the
+// collision this fix-up exists to resolve).
+function trackLocalVoiceSpan(kind, turnId, payload){
+  const ev = Object.assign({turn_id: turnId, kind, ts: new Date().toISOString()}, payload || {});
+  (window.assistantVoiceSpans = window.assistantVoiceSpans || []).push(ev);
+  return ev;
+}
+// Client-generated turn id: POST /assistant/chat's response carries no
+// turn_id (engine.py's `_chat` never returns one, and §13.2 keeps the
+// engine text-in/text-out -- adding one would be an engine change this
+// task is not scoped for), so the page mints its own id purely to link a
+// reply's tts-start/tts-end span pair together (both the local copy above
+// and the spanId passed to the real emitVoiceSpan() POST below).
+function newClientTurnId(){
+  if(typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return "voice-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+}
+// speakReply(text, turnId): the ONE hook that queues an assistant reply
+// through the existing speech pipeline -- AST-050 wiring, not a new
+// speech stack. Voice-off (direction doesn't include OUT) or the §17.9
+// hard gate (window.assistantGate.gated -- no assistant selected, the
+// SAME gate gateVoiceAndChat() already applies to the voice buttons) is a
+// silent no-op, checked HERE at the call site. Named (not inlined) so
+// E6's task-completion announce (§12.5) can call this exact function
+// later -- E5 owns the hook, E6 calls it. Each span is reported TWICE: to
+// the real trace store via emitVoiceSpan() (AST-051's POST
+// /assistant/voice-event bridge -- already anticipates "tts-start"/
+// "tts-end" in _VOICE_EVENT_KINDS) and locally via trackLocalVoiceSpan()
+// (turn-id-tagged, for the inspector's own merge) -- no second writer,
+// same single traces.sqlite the STT spans already land in.
+function speakReply(text, turnId){
+  if(!voiceOn()) return;
+  if(window.assistantGate && window.assistantGate.gated) return;
+  const trimmed = String(text || "").trim();
+  if(!trimmed) return;
+  const chunks = chunkSpeechText(trimmed);
+  if(!chunks.length) return;
+  const chars = trimmed.length;
+  const t0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+  emitVoiceSpan("tts-start", "speechSynthesis", turnId, null, {chars});
+  trackLocalVoiceSpan("tts-start", turnId, {chars});
+  window.neuralVoice.speakChunks(chunks, (status)=>{
+    const t1 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+    const durationMs = Math.round(t1 - t0);
+    emitVoiceSpan("tts-end", "speechSynthesis", turnId, status, {chars, durationMs});
+    trackLocalVoiceSpan("tts-end", turnId, {chars, durationMs, status});
+  });
+}
+// Never-latch guard, page-hide path (docs/design/ast-E5.md's "worst
+// failure mode"): if the tab is hidden/closed mid-utterance, stop() both
+// cancels the pending speech AND resolves any in-flight speakChunks
+// sequence (see SpeechSynthSource.stop()) so the echo guard can never
+// stay raised past the page's own lifetime.
+function handleVoicePageHide(){
+  voiceSources.outbound.stop();
+}
+addEventListener("pagehide", handleVoicePageHide);
 // reset (two-step: click arms "Confirm?", second click within 4s resets)
 let resetArmed = null;
 const resetBtn = document.getElementById("vs-reset");
@@ -6098,6 +6229,9 @@ async function dispatchNextChat(){
   } else {
     appendChatRow(log, "assistant", payload.text, payload.chips);
     window.assistantChat.exchanges.push({user: text, assistant: payload.text, chips: payload.chips});
+    // AST-050 (§13.1): a rendered reply speaks when voice is on -- no-ops
+    // internally (voice off / gated) via speakReply's own gate checks.
+    speakReply(payload.text, newClientTurnId());
   }
   dispatchNextChat();
 }
@@ -6490,7 +6624,10 @@ async function loadAssistantInspector(){
     return;
   }
   renderAstMetrics(astMetricsRootFor(metricsData, status.selected));
-  const turns = groupTurnsById((tracesData && tracesData.events) || []);
+  // §13.3: AST-050's page-local voice spans (tts-start/tts-end) join the
+  // SAME trace stream this waterfall renders -- no engine/HTTP change, the
+  // page merely merges its own timing in alongside the server's events.
+  const turns = groupTurnsById([...((tracesData && tracesData.events) || []), ...(window.assistantVoiceSpans || [])]);
   window.assistantInspector.turns = turns;
   window.assistantInspector.selectedTurnId = null;
   renderAstTurnlist(turns, null);
