@@ -113,6 +113,32 @@ out="$(aa_run auth "$AA_TMPPY/auth.py" 2>&1)"
 check "auth-expired: raises adapters.AuthExpired (corpus-sourced 401 fixture)" "GOT_AUTH_EXPIRED" "$out"
 check "auth-expired: message instructs codex login" "MESSAGE_HAS_LOGIN_INSTRUCTION True" "$out"
 
+# ---------------------------------------------------------- missing binary (issue #408)
+# No stub-codex on PATH at all here -- an empty directory, so the real
+# `codex` executable genuinely cannot be found by Popen. This is exactly
+# the runner-vs-local divergence behind #408: a dev machine with the real
+# codex CLI installed never exercises this path, but a CI runner without
+# it does, and previously that FileNotFoundError escaped invoke_cli as a
+# raw traceback instead of a clean adapters.AdapterError.
+AA_EMPTY_PATH_DIR="$(mktemp -d)"
+AA_PYTHON3="$(command -v python3)"
+cat >"$AA_TMPPY/missing.py" <<PYEOF
+from assistant import adapters, codex
+
+context = {"model": "gpt-5.6-sol", "system": None, "input": "hi"}
+try:
+    codex.complete(context, timeout=10)
+    print("NO_ERROR_RAISED")
+except adapters.NotFound as exc:
+    print("GOT_NOT_FOUND")
+    print("MESSAGE_NAMES_CODEX", "codex" in str(exc))
+PYEOF
+out="$(PATH="$AA_EMPTY_PATH_DIR" PYTHONPATH="$AA_SCRIPTS" "$AA_PYTHON3" "$AA_TMPPY/missing.py" 2>&1)"
+check "missing binary: raises adapters.NotFound instead of an escaping FileNotFoundError (issue #408)" "GOT_NOT_FOUND" "$out"
+check "missing binary: message names codex" "MESSAGE_NAMES_CODEX True" "$out"
+check_absent "missing binary: no raw Python traceback leaked" "Traceback (most recent call last)" "$out"
+rm -rf "$AA_EMPTY_PATH_DIR"
+
 # ---------------------------------------------------------- argv: pinned flags + single-element injection
 cat >"$AA_TMPPY/argv.py" <<PYEOF
 from assistant import codex

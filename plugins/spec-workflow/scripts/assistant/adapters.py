@@ -8,7 +8,8 @@ subprocess call through `invoke_cli()` below so the argv-array-only
 (Sec17.3), mandatory-timeout (Sec8.5), and structured-error (Sec8.5)
 invariants are enforced in exactly one place instead of per-adapter.
 
-Error taxonomy (Sec8.5): the provider CLI exiting nonzero, timing out, or
+Error taxonomy (Sec8.5): the provider CLI exiting nonzero, timing out,
+never even starting (binary missing/unexecutable -- issue #408), or
 emitting output the adapter cannot parse SHALL surface a bounded-time,
 specific error -- never a bare stack trace or an indefinite hang. An
 auth-expired state instructs the login command (`codex login` for the
@@ -42,6 +43,17 @@ class UnparseableOutput(AdapterError):
 class AuthExpired(AdapterError):
     """The provider CLI's exit/output indicates the stored credential is
     missing or expired. Message always instructs the login command."""
+
+
+class NotFound(AdapterError):
+    """The provider CLI binary itself could not be located or executed --
+    FileNotFoundError/PermissionError/NotADirectoryError from the OS at
+    Popen time (e.g. the CLI is not installed, or a stale/bogus path was
+    configured). Distinct from NonzeroExit: the CLI process never even
+    started, so there is no exit code or output to report (issue #408 --
+    this divergence between a dev machine with the CLI installed and a
+    CI runner without it must surface as a clean AdapterError, never an
+    escaping OSError traceback)."""
 
 
 def invoke_cli(argv, *, timeout=DEFAULT_TIMEOUT_SECONDS, env=None, cwd=None):
@@ -78,6 +90,18 @@ def invoke_cli(argv, *, timeout=DEFAULT_TIMEOUT_SECONDS, env=None, cwd=None):
         raise Timeout(
             f"provider CLI '{argv[0]}' did not complete within {timeout}s "
             f"(killed after {elapsed:.1f}s)"
+        ) from exc
+    except OSError as exc:
+        # Popen itself failed -- the binary named in argv[0] does not
+        # exist, is not executable, or a directory component is bogus
+        # (issue #408: a dev machine with the real CLI on PATH never hits
+        # this, so it must be exercised deliberately -- see
+        # section-assistant-adapter.sh's "missing binary" case). Wrapped
+        # into an AdapterError so every caller's `except adapters.
+        # AdapterError` (e.g. engine._chat) already handles it cleanly,
+        # matching Sec8.5's "never a bare stack trace" invariant.
+        raise NotFound(
+            f"provider CLI '{argv[0]}' could not be executed: {exc}"
         ) from exc
 
 
