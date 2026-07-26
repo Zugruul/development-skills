@@ -2287,6 +2287,59 @@ def zombie_diagnosis(port, zombie):
     return f"port {port} held by {who}"
 
 
+def _pid_gone(pid):
+    """True once `pid` no longer exists (os.kill(pid, 0) raising means gone or
+    unreachable — either way there's nothing left for us to signal)."""
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return True
+    return False
+
+
+def kill_and_verify(pid, port, tries=20, interval=0.1):
+    """#416: a killed-and-verified escalation for a zombie process that may be
+    ignoring SIGTERM entirely (the live incident: a stuck server survived two
+    consecutive `stop --force` runs, each of which printed "killed" after
+    sending exactly one signal and never checking whether it worked).
+
+    SIGTERM -> bounded wait (polling os.kill(pid, 0), ~`tries*interval`
+    seconds, default ~2s) -> if still alive, SIGKILL -> the same bounded wait
+    again. Success is never claimed on the strength of "a signal was sent" --
+    only once BOTH the PID is confirmed gone AND the configured port has
+    actually freed (a lingering listener could in principle outlive the
+    process from the caller's point of view; checking both is cheap and
+    matches the existing zombie probe).
+
+    Returns the escalation label that actually worked ("SIGTERM" or "SIGKILL
+    after TERM ignored") on success, or None if the PID is still alive after
+    SIGKILL (permissions, wedged kernel state) -- callers must report that as
+    an honest failure, never as "killed"."""
+    def _dead():
+        return _pid_gone(pid) and port_zombie(port) is None
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        pass  # already gone; the loop below will confirm and return "SIGTERM"
+    for _ in range(tries):
+        if _dead():
+            return "SIGTERM"
+        time.sleep(interval)
+    if _dead():
+        return "SIGTERM"
+
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+    for _ in range(tries):
+        if _dead():
+            return "SIGKILL after TERM ignored"
+        time.sleep(interval)
+    return "SIGKILL after TERM ignored" if _dead() else None
+
+
 def arg_val(args, flag, default):
     return args[args.index(flag) + 1] if flag in args and args.index(flag) + 1 < len(args) else default
 
@@ -2588,8 +2641,11 @@ def main():
                 # actually being one of ours -- exactly what this refusal
                 # check exists to prevent.
                 if zpid is not None and zcmd and SCRIPT_NAME in zcmd:
-                    os.kill(zpid, signal.SIGTERM)
-                    print(f"killed zombie PID {zpid} holding port {port}")
+                    escalation = kill_and_verify(zpid, port)
+                    if escalation is None:
+                        print(f"FAILED to kill PID {zpid} — still alive after SIGKILL")
+                        sys.exit(1)
+                    print(f"killed zombie PID {zpid} holding port {port} ({escalation})")
                 else:
                     print(f"refusing to kill {zombie_diagnosis(port, zombie)} — its command line does "
                           f"not look like {SCRIPT_NAME}; kill it yourself if that's intended")

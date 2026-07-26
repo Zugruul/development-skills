@@ -216,6 +216,56 @@ python3 "$NV" stop >/dev/null
 unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_SCAN
 rm -rf "$_scanbase" "$_scanstate"
 
+# (c) #416: a zombie that IGNORES SIGTERM entirely (a stuck/wedged server, the
+# live incident) must not be reported "killed" on the strength of sending a
+# signal alone -- stop --force must escalate to SIGKILL and VERIFY actual
+# death (+ the port freeing) before claiming success, and must name which
+# signal it took. Built the same way #67's zombie fixtures are: a bare
+# stdlib socket bound to the configured port, its cmdline salted with
+# "neural-view.py" so the "only kill things that look like us" guard (#67)
+# still authorizes killing it.
+_zstate3="$(mktemp -d)"
+_zport3="$(_rand_port)"
+NVBIND_PORT="$_zport3" python3 - neural-view.py-ignores-sigterm-fixture <<'PY' &
+import os, signal, socket, time
+signal.signal(signal.SIGTERM, signal.SIG_IGN)   # the whole point: TERM alone must not work
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", int(os.environ["NVBIND_PORT"])))
+s.listen(1)
+time.sleep(20)
+PY
+_zpid3=$!
+sleep 0.3   # let it actually bind before racing neural-view for the port
+export NEURAL_VIEW_STATE="$_zstate3" NEURAL_VIEW_PORT="$_zport3"
+out="$(python3 "$NV" stop --force 2>&1)"; rc=$?
+check "SIGTERM-ignoring zombie: stop --force actually kills it (process no longer alive)" "ok" "$(kill -0 "$_zpid3" 2>/dev/null && echo FAIL || echo ok)"
+check "SIGTERM-ignoring zombie: success message names the SIGKILL escalation" "SIGKILL after TERM ignored" "$out"
+check "SIGTERM-ignoring zombie: success message still names the PID" "$_zpid3" "$out"
+check_rc "SIGTERM-ignoring zombie: stop --force exits 0 once it actually killed it" 0 "$rc"
+_freed3=0
+for _ in $(seq 1 30); do
+    if ! (exec 3<>"/dev/tcp/127.0.0.1/$_zport3") 2>/dev/null; then _freed3=1; break; fi
+    sleep 0.1
+done
+check "SIGTERM-ignoring zombie: stop --force actually freed the port" "1" "$_freed3"
+# a REPEATED stop --force on an already-dead PID must never re-print "killed"
+# for the same PID (the exact lying-twice repro from the live incident) --
+# with the process gone the port is free, so this is just the ordinary
+# nothing-to-do path.
+out2="$(python3 "$NV" stop --force 2>&1)"
+check_absent "SIGTERM-ignoring zombie: a second stop --force does not re-claim killing the dead PID" "killed zombie PID $_zpid3" "$out2"
+wait "$_zpid3" 2>/dev/null || true
+unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT
+rm -rf "$_zstate3"
+
+# honest-failure message: pinned per source (per the house style for a path
+# that can't be feasibly forced in a portable test -- we cannot manufacture a
+# PID that survives SIGKILL without root/wedged-kernel-state tricks that
+# aren't safe to run in CI). This guards the message text itself so the
+# escalation path can never silently regress to "killed" on a false claim.
+check "source pins the honest post-SIGKILL failure message" 'FAILED to kill PID {zpid} — still alive after SIGKILL' "$(cat "$NV")"
+
 if [[ "$(id -u)" != "0" ]]; then   # permission tests are meaningless as root (bypasses all checks)
     echo "== neural-view (scan base with an unreadable child directory) =="
     _permbase="$(mktemp -d)"
