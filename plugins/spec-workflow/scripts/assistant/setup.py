@@ -35,8 +35,16 @@ import sys
 import tempfile
 
 _SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _SCRIPTS_DIR not in sys.path:
-    sys.path.insert(0, _SCRIPTS_DIR)
+# #437 PYTHONPATH-shadowing trap: gate.sh exports PYTHONPATH=scripts/, which
+# can put _SCRIPTS_DIR in sys.path already -- but BEHIND sys.path[0] (this
+# file's own dir, scripts/assistant/). A plain `if _SCRIPTS_DIR not in
+# sys.path` guard then sees it "already present" and skips the insert,
+# leaving scripts/assistant/ ahead of scripts/ and shadowing `import config`
+# with the wrong module. Remove-then-insert makes scripts/ deterministically
+# win regardless of what PYTHONPATH already put there.
+while _SCRIPTS_DIR in sys.path:
+    sys.path.remove(_SCRIPTS_DIR)
+sys.path.insert(0, _SCRIPTS_DIR)
 
 import config as project_config  # noqa: E402  scripts/config.py, the shared loader
 from assistant.config import validate_assistant  # noqa: E402

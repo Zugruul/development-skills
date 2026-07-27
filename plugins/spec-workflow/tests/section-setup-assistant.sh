@@ -344,6 +344,7 @@ sa_d="$(mktemp -d)"
 sa_pp_out="$(PYTHONPATH="$PLUGIN/scripts" bash "$SA_SCRIPT" --root "$sa_d" scaffold --name jarvis 2>&1)"
 sa_pp_rc=$?
 check_rc "#437: scaffold exits 0 under gate.sh's PYTHONPATH=scripts/ env (scripts/ must still win over scripts/assistant/)" 0 "$sa_pp_rc"
+check_absent "#437: no AttributeError from the shadowed engine-config module leaks out" "AttributeError" "$sa_pp_out"
 [[ -f "$sa_d/.claude/project.yaml" ]] && r=yes || r=no
 check "#437: scaffold under PYTHONPATH=scripts/ still creates .claude/project.yaml" "yes" "$r"
 rm -rf "$sa_d"

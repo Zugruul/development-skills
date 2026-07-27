@@ -89,8 +89,17 @@ PLUGIN_DIR = os.path.dirname(SCRIPTS_DIR)                     # plugins/spec-wor
 NEURAL_VIEW = os.path.join(SCRIPTS_DIR, "neural-view.py")
 DEFAULT_STUB_CODEX_DIR = os.path.join(PLUGIN_DIR, "tests", "fixtures", "stub-codex")
 
-if SCRIPTS_DIR not in sys.path:
-    sys.path.insert(0, SCRIPTS_DIR)  # so `import brain` / `from assistant import ...` work when run standalone
+# #437 PYTHONPATH-shadowing trap: gate.sh exports PYTHONPATH=scripts/, which
+# can put SCRIPTS_DIR in sys.path already -- but BEHIND sys.path[0] (this
+# file's own dir, scripts/assistant/). A plain `if SCRIPTS_DIR not in
+# sys.path` guard then sees it "already present" and skips the insert,
+# leaving scripts/assistant/ ahead of scripts/ and shadowing imports with
+# the wrong module. Remove-then-insert makes scripts/ deterministically win
+# regardless of what PYTHONPATH already put there -- so `import brain` /
+# `from assistant import ...` work when run standalone.
+while SCRIPTS_DIR in sys.path:
+    sys.path.remove(SCRIPTS_DIR)
+sys.path.insert(0, SCRIPTS_DIR)
 
 from assistant import adapters  # noqa: E402  -- import-time is subprocess-free (Sec17.1), see adapters.py's own docstring
 
