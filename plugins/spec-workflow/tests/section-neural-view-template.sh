@@ -1502,11 +1502,13 @@ check_absent "NV_VERSION is no longer the pre-#428 value" 'const NV_VERSION = "0
 # updated to match rather than left pointing at an intermediate value no
 # build will ever have again. The 0.28.9-absent guard above is untouched:
 # that's still a true statement at any later version.
-check "NV_VERSION bumped to the new patch" 'const NV_VERSION = "0.28.11";' "$(cat "$NVHTML")"
+check_absent "NV_VERSION is no longer the pre-#431 value" 'const NV_VERSION = "0.28.11";' "$(cat "$NVHTML")"
+check "NV_VERSION bumped to the new patch (#431)" 'const NV_VERSION = "0.28.12";' "$(cat "$NVHTML")"
 
 echo "== neural-view note media: audio + mermaid (#430) =="
-check "NV_VERSION bumped for #430" 'const NV_VERSION = "0.28.11";' "$(cat "$NVHTML")"
-check "template imports mermaid via a dynamic import of the vendored file (no CDN)" 'import("/vendor/mermaid.min.js")' "$(cat "$NVHTML")"
+check "NV_VERSION bumped for #430/#431" 'const NV_VERSION = "0.28.12";' "$(cat "$NVHTML")"
+check_absent "mermaid is no longer loaded via a bare dynamic import() of the vendored bundle -- that runs it as an ES module, and the bundle's own top-level var-then-globalThis-read tail throws under module scoping (#431 real-browser repro)" 'import("/vendor/mermaid.min.js")' "$(cat "$NVHTML")"
+check "mermaid is loaded via a classic <script> tag instead, so its top-level var actually leaks onto the global object the way the bundle's tail-end globalThis lookup requires" 's.src = "/vendor/mermaid.min.js";' "$(cat "$NVHTML")"
 check "mermaid is initialized with securityLevel strict -- note-derived diagram source must not get raw HTML passthrough" 'securityLevel: "strict"' "$(cat "$NVHTML")"
 check "AUD_EXT recognizes the audio extensions FILE_TYPES allowlists server-side" "const AUD_EXT = /\\.(mp3|wav|ogg|m4a)\$/i;" "$(cat "$NVHTML")"
 check "a linked audio file becomes a live audio block, mirroring the video branch" 'a.replaceWith(makeAudioBlock(href, url));' "$(cat "$NVHTML")"
@@ -1527,6 +1529,51 @@ check "mermaid rendering routes through mermaid.render() with the vendored lib's
 check "mermaid block detach action opens its own window" 'box.querySelector(".nmmd-pop").onclick = ()=>openMermaidWindow(src);' "$(cat "$NVHTML")"
 check "the detached mermaid window uses the same .note-window/.media-window chrome family" 'win.className = "hud note-window media-window mw-mmd";' "$(cat "$NVHTML")"
 check "detachNote rebuilds cloned mermaid blocks from their stashed source so handlers are live again" 'win.querySelectorAll(".nmmd").forEach(box=>{ box.replaceWith(makeMermaidBlock(box.dataset.mmd)); });' "$(cat "$NVHTML")"
+
+echo "== neural-view mermaid import shape (#431): stub mirrors the REAL vendored bundle's contract -- a classic-script IIFE that assigns globalThis[\"mermaid\"] via a top-level var it reads back from globalThis, and exports nothing. Empirically confirmed (node -e / vm.runInThisContext + a real Chrome tab): loading that bundle with import() runs it as an ES module, its own top-level 'var' stays module-local instead of leaking onto globalThis, and its tail-end 'globalThis.__esbuild_esm_mermaid_nm[\"mermaid\"]' read throws -- the EXACT 'Cannot read properties of undefined (reading (mermaid))' from the human's report, before ensureMermaid() even runs. A classic <script src> tag keeps the var-leak working, matching the fix. This replaces #430's string-only check (which only asserted 'import(...)' appeared in the source text and could never have caught this) with one that actually executes ensureMermaid()/loadMermaidScript() against a stub bundle sharing the real one's var-leak shape. =="
+_mmd_node="$(mktemp).cjs"
+cat >"$_mmd_node" <<'NODEJS'
+const fs = require("fs"), vm = require("vm");
+const html = fs.readFileSync(process.argv[2], "utf8");
+function extract(name) {
+    const re = new RegExp("(?:async )?function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\n\\}\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find function " + name + "() in template");
+    return m[0];
+}
+// stub bundle: mirrors mermaid.min.js's REAL contract -- a classic-script
+// tail that leaks a top-level var onto the global, then reads it back off
+// globalThis. No ES `export` anywhere (verified: zero matches for /^export/
+// in the real vendored file), so a module-scoped load can never see it.
+global.__STUB_BUNDLE_SRC = '"use strict";var __stub_esm_mermaid_nm;' +
+  '(__stub_esm_mermaid_nm||={}).mermaid=(()=>({render:(id,src)=>({svg:"<svg data-src=\\""+src+"\\"/>"}),initialize:(opts)=>{global.__mmdInitOpts=opts;}}))();' +
+  'globalThis["mermaid"]=globalThis.__stub_esm_mermaid_nm["mermaid"];';
+global.window = global;
+global.document = {
+  createElement(tag){ return { tagName: tag }; },
+  head: { appendChild(el){
+    // classic <script src> semantics: run in true global scope so the
+    // stub's top-level var actually lands on globalThis, same as a real
+    // browser <script> tag (confirmed against a real Chrome tab for #431).
+    try { vm.runInThisContext(global.__STUB_BUNDLE_SRC, {filename: "mermaid.min.js"}); el.onload(); }
+    catch(e){ el.onerror(e); }
+  } },
+};
+let mermaidReady = null;
+eval(extract("loadMermaidScript"));
+eval(extract("ensureMermaid"));
+ensureMermaid().then((api) => {
+    if (typeof api.render !== "function") throw new Error("resolved API has no render()");
+    if (global.__mmdInitOpts?.securityLevel !== "strict") throw new Error("initialize() must be called with securityLevel:strict");
+    console.log("ENSURE_MERMAID_RESOLVES_FROM_GLOBAL_OK true");
+}).catch((e) => { console.error("ENSURE_MERMAID FAILED:", e.message); process.exitCode = 1; });
+NODEJS
+mmd_out="$(node "$_mmd_node" "$NVHTML" 2>&1)"
+mmd_rc=$?
+rm -f "$_mmd_node"
+check_rc "ensureMermaid() against a stub bundle sharing the real bundle's var-leak contract exits 0" 0 "$mmd_rc"
+check "ensureMermaid() resolves the API off the global after a classic-script load (not a broken import())" "ENSURE_MERMAID_RESOLVES_FROM_GLOBAL_OK true" "$mmd_out"
+if [[ "$mmd_rc" -ne 0 ]]; then echo "$mmd_out" >&2; fi
 
 echo "== neural-view note media: audio block hover-zone must not blind the native controls (#430 review round 1) =="
 # .mw-zone is an absolutely-positioned overlay covering 60%x70% of the audio

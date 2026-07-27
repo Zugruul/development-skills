@@ -2853,7 +2853,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // matches what the changelog overlay documents) -- it now lives in the
 // chip's tooltip, and as the fallback chip text when the plugin version
 // can't be read (see CHIP_VER_FALLBACK below).
-const NV_VERSION = "0.28.11";
+const NV_VERSION = "0.28.12";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -5064,16 +5064,42 @@ function openAudioWindow(name, url){
 // ---- mermaid diagrams (#430): text|graph toggle (same segmented .iconbtn
 // group idiom as the header's IN/OUT/BOTH chips), a copy button that always
 // copies the SOURCE text (either mode), and a detach action. mermaid.min.js
-// is dynamically imported only the first time a note actually has one --
-// it's a large vendored bundle, no reason to pay for it on every note.
+// is loaded only the first time a note actually has one -- it's a large
+// vendored bundle, no reason to pay for it on every note.
+//
+// #431 (real-browser repro, confirmed against the actual vendored file and
+// a real Chrome tab): mermaid.min.js is a classic-script IIFE bundle with
+// no ES `export` anywhere -- its tail assigns
+// `globalThis["mermaid"] = globalThis.__esbuild_esm_mermaid_nm["mermaid"].default`
+// where `__esbuild_esm_mermaid_nm` is itself a top-level `var` the bundle
+// relies on leaking onto the global object. That leak only happens for a
+// classic <script>; loading the same file with `import()` runs it as an ES
+// module, where top-level `var` stays module-local, so the bundle's own
+// tail-end globalThis read throws "Cannot read properties of undefined
+// (reading 'mermaid')" -- before any of this file's code even runs. A
+// plain <script src> tag keeps it a classic script so the leak works, and
+// the API is then read off the global (never off an import() module
+// namespace, which this bundle never populates).
 let mermaidReady = null;
+function loadMermaidScript(){
+  return new Promise((resolve, reject)=>{
+    const s = document.createElement("script");
+    s.src = "/vendor/mermaid.min.js";
+    s.onload = ()=> resolve();
+    s.onerror = ()=> reject(new Error("failed to load /vendor/mermaid.min.js"));
+    document.head.appendChild(s);
+  });
+}
 function ensureMermaid(){
-  if(window.mermaid) return Promise.resolve(window.mermaid);
-  if(!mermaidReady) mermaidReady = import("/vendor/mermaid.min.js").then(()=>{
+  const existing = globalThis.mermaid ?? window.mermaid;
+  if(existing) return Promise.resolve(existing);
+  if(!mermaidReady) mermaidReady = loadMermaidScript().then(()=>{
+    const api = globalThis.mermaid ?? window.mermaid;
+    if(!api) throw new Error("mermaid global missing after script load");
     // securityLevel:"strict" -- mermaid sanitizes node/edge label text
     // itself; note-derived diagram source never gets raw HTML passthrough
-    window.mermaid.initialize({startOnLoad: false, securityLevel: "strict"});
-    return window.mermaid;
+    api.initialize({startOnLoad: false, securityLevel: "strict"});
+    return api;
   });
   return mermaidReady;
 }
