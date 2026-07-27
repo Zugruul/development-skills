@@ -17,6 +17,14 @@
   > 
   > Closes #431
 
+### Documentation
+- **readme:** Live activations section — watching memories fire in real time (`7e01d0b`)
+  > - Dedicated Tooling section for the activation visuals: expanding rings on
+  >   the exact recalled notes, the activation log narration, spreading
+  >   activation along synapses, and live session markers
+  > - Assistant-observability section now cross-links it instead of the bare
+  >   image (human-directed, merged directly on approval)
+
 ## v0.43.0 — 2026-07-26
 
 ### Features
