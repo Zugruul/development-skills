@@ -959,7 +959,14 @@ canvas.grabbing{cursor:grabbing}
 /* audio blocks (#430): same hover-revealed action zone as the 3D block --
    New tab / Save to / Detach, just no Spin (nothing to rotate) */
 .naud{position:relative;margin:.4rem 0;padding:.3rem;border:1px solid var(--border);border-radius:8px;background:rgba(4,7,13,.5)}
-.naud audio.nm{width:100%;display:block}
+/* #434: width alone leaves no established HEIGHT at first paint -- WebKit
+   picks its compact pill (play + 0:00, no scrubber) whenever <audio
+   controls> has no explicit height to lay out yet, and only relayouts
+   (e.g. pressing play) to the full control strip afterward. An explicit
+   min-height removes that first-paint ambiguity so first paint already
+   matches post-interaction. Covers the detached window too: openAudioWindow
+   builds its player through this same makeAudioBlock()/.naud markup. */
+.naud audio.nm{width:100%;min-height:32px;display:block}
 /* review round 1 (#430): the zone must not blind the native <audio controls>
    scrubber/volume/menu underneath it -- pointer-events:none lets clicks pass
    through, .mw-actions opts back in so its buttons stay clickable, and the
@@ -974,13 +981,19 @@ canvas.grabbing{cursor:grabbing}
 .nmmd{margin:.4rem 0;border:1px solid var(--border);border-radius:8px;background:rgba(4,7,13,.5);overflow:hidden}
 .nmmd-bar{display:flex;align-items:center;gap:.4rem;padding:.35rem .5rem;border-bottom:1px solid var(--border)}
 .nmmd-opts{display:flex;gap:.25rem}
-.nmmd-bar .nmmd-copy,.nmmd-bar .nmmd-pop{margin-left:auto}
+.nmmd-bar .nmmd-reset,.nmmd-bar .nmmd-copy,.nmmd-bar .nmmd-pop{margin-left:auto}
 .nmmd-bar .nmmd-pop{margin-left:.25rem}
 .nmmd-src-view{margin:0;padding:.6rem;font-size:.7rem;line-height:1.5;overflow:auto;max-height:340px;white-space:pre-wrap;word-break:break-word}
-.nmmd-graph-view{padding:.6rem;overflow:auto;max-height:60vh}
-.nmmd-graph-view svg{max-width:100%;height:auto;display:block;margin:0 auto}
-.media-window.mw-mmd .nmmd{border:0;border-radius:0}
-.media-window.mw-mmd .nmmd-graph-view{max-height:none}
+/* graph mode NEVER scrolls (#433): a diagram larger than the block used to
+   overflow into a scrollbar, fighting both reading and the detached-window
+   use. Fixed-size viewport + overflow:hidden; pan/zoom (mmdFit/mmdZoomAt/
+   mmdPanBy below) move the <svg> inside it via a CSS transform instead. */
+.nmmd-graph-view{position:relative;padding:0;overflow:hidden;height:340px;cursor:grab;touch-action:none}
+.nmmd-graph-view.grabbing{cursor:grabbing}
+.nmmd-graph-view svg{display:block;transform-origin:0 0}
+.media-window.mw-mmd{display:flex;flex-direction:column}
+.media-window.mw-mmd .nmmd{border:0;border-radius:0;display:flex;flex-direction:column;flex:1;min-height:0;margin:0}
+.media-window.mw-mmd .nmmd-graph-view{flex:1;min-height:0;height:auto}
 #links{margin-top:.6rem;font-size:.66rem;color:var(--muted)}
 #links .ln{display:flex;justify-content:space-between;gap:.5rem;padding:.15rem 0}
 #links .ln-click{cursor:pointer;margin:0 -.4rem;padding-left:.4rem;padding-right:.4rem;border-radius:4px}
@@ -2853,7 +2866,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // matches what the changelog overlay documents) -- it now lives in the
 // chip's tooltip, and as the fallback chip text when the plugin version
 // can't be read (see CHIP_VER_FALLBACK below).
-const NV_VERSION = "0.28.12";
+const NV_VERSION = "0.28.13";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -5113,6 +5126,7 @@ function makeMermaidBlock(src){
         '<button class="iconbtn nmmd-text" type="button" aria-pressed="false">Text</button>' +
         '<button class="iconbtn nmmd-graph active" type="button" aria-pressed="true">Graph</button>' +
       '</div>' +
+      '<button class="iconbtn nmmd-reset" type="button" title="Reset zoom/pan to fit">⤢</button>' +
       '<button class="iconbtn nmmd-copy" type="button">Copy</button>' +
       '<button class="iconbtn nmmd-pop" type="button">Detach</button></div>' +
     '<pre class="nmmd-src-view" hidden><code></code></pre>' +
@@ -5141,6 +5155,52 @@ function wireMermaidBlock(box, src){
     setTimeout(()=>{ btn.textContent = "Copy"; }, 1200);
   };
   box.querySelector(".nmmd-pop").onclick = ()=>openMermaidWindow(src);
+  // pan/zoom (#433): wired ONCE on the persistent .nmmd-graph-view container
+  // (not the <svg>, which renderMermaidGraph replaces wholesale on every
+  // render) -- this is why the SAME wiring covers both the inline block and
+  // the detached window: openMermaidWindow builds a fresh block through
+  // makeMermaidBlock too, so it runs through this exact code path again.
+  let mmdDrag = null;
+  graphView.addEventListener("pointerdown", ev=>{
+    if(!graphView.querySelector("svg")) return;
+    mmdDrag = {x: ev.clientX, y: ev.clientY};
+    graphView.classList.add("grabbing");
+    graphView.setPointerCapture(ev.pointerId);
+    ev.preventDefault();
+  });
+  graphView.addEventListener("pointermove", ev=>{
+    if(!mmdDrag) return;
+    const svgEl = graphView.querySelector("svg");
+    const dx = ev.clientX - mmdDrag.x, dy = ev.clientY - mmdDrag.y;
+    mmdDrag.x = ev.clientX; mmdDrag.y = ev.clientY;
+    if(svgEl) mmdPanBy(graphView, svgEl, dx, dy);
+  });
+  const mmdEndDrag = ev=>{ mmdDrag = null; graphView.classList.remove("grabbing"); try{ graphView.releasePointerCapture(ev.pointerId); }catch{} };
+  graphView.addEventListener("pointerup", mmdEndDrag);
+  graphView.addEventListener("pointercancel", mmdEndDrag);
+  // wheel-zoom: same Math.exp(deltaY*k) normalization idiom as the main
+  // canvas/3D block viewers, inverted so scroll-down zooms OUT (consistent
+  // with the "bigger camera distance = zoomed out" sense those use).
+  graphView.addEventListener("wheel", ev=>{
+    const svgEl = graphView.querySelector("svg");
+    if(!svgEl) return;
+    ev.preventDefault();
+    mmdZoomAt(graphView, svgEl, ev.clientX, ev.clientY, Math.exp(-ev.deltaY*.0015));
+  }, {passive: false});
+  // double-click re-fits, reusing the app's existing dblclick-to-reset
+  // convention (main canvas resetView(), 3D block viewer's dblclick handler)
+  graphView.addEventListener("dblclick", ()=>{
+    const svgEl = graphView.querySelector("svg");
+    if(svgEl) mmdFit(graphView, svgEl);
+  });
+  graphView.title = "drag: pan · wheel: zoom · double-click: fit";
+  // ⤢ reset button: a visible, discoverable affordance so a diagram panned/
+  // zoomed off-canvas is never permanently lost (double-click alone has no
+  // visible affordance to find it by)
+  box.querySelector(".nmmd-reset").onclick = ()=>{
+    const svgEl = graphView.querySelector("svg");
+    if(svgEl) mmdFit(graphView, svgEl);
+  };
   renderMermaidGraph(graphView, src);   // graph is the default view
 }
 async function renderMermaidGraph(view, src){
@@ -5151,9 +5211,58 @@ async function renderMermaidGraph(view, src){
     const {svg} = await mermaid.render(id, src);
     view.innerHTML = svg;   // mermaid's own sanitized output (securityLevel:"strict")
     view.dataset.rendered = src;
+    const svgEl = view.querySelector("svg");
+    if(svgEl) mmdFitToNewSvg(view, svgEl);
   }catch(err){
     view.textContent = "Diagram failed to render: " + (err && err.message || err);
   }
+}
+// pan/zoom transform state lives on the container (view._pz), NOT the <svg>
+// -- renderMermaidGraph replaces the <svg> wholesale on every distinct
+// source, but the container persists for the block's lifetime.
+const MMD_MIN_SCALE = .1, MMD_MAX_SCALE = 8;
+function mmdFitToNewSvg(view, svgEl){
+  svgEl.style.transformOrigin = "0 0";
+  const r = svgEl.getBoundingClientRect();
+  const natW = r.width || parseFloat(svgEl.getAttribute("width")) || 300;
+  const natH = r.height || parseFloat(svgEl.getAttribute("height")) || 150;
+  view._pz = {natW, natH, scale: 1, tx: 0, ty: 0};
+  mmdFit(view, svgEl);
+}
+// fit-to-container (#433): centers the diagram and scales it to fit the
+// block on first render, and again whenever the reset affordance (⤢ button
+// or double-click) fires.
+function mmdFit(view, svgEl){
+  const st = view._pz; if(!st) return;
+  const cw = view.clientWidth || 1, ch = view.clientHeight || 1;
+  const scale = Math.max(MMD_MIN_SCALE, Math.min(MMD_MAX_SCALE, Math.min(cw/st.natW, ch/st.natH) || 1));
+  st.scale = scale;
+  st.tx = (cw - st.natW*scale)/2;
+  st.ty = (ch - st.natH*scale)/2;
+  mmdApplyTransform(view, svgEl);
+}
+function mmdApplyTransform(view, svgEl){
+  const st = view._pz; if(!st) return;
+  svgEl.style.transform = "translate(" + st.tx + "px," + st.ty + "px) scale(" + st.scale + ")";
+}
+// zoom-at-cursor: the point under the pointer stays fixed while scale
+// changes -- same wheel-normalization idiom (Math.exp(deltaY*k)) the main
+// canvas and 3D block viewers use.
+function mmdZoomAt(view, svgEl, clientX, clientY, factor){
+  const st = view._pz; if(!st) return;
+  const rect = view.getBoundingClientRect();
+  const px = clientX - rect.left, py = clientY - rect.top;
+  const newScale = Math.max(MMD_MIN_SCALE, Math.min(MMD_MAX_SCALE, st.scale*factor));
+  const k = newScale/st.scale;
+  st.tx = px - k*(px - st.tx);
+  st.ty = py - k*(py - st.ty);
+  st.scale = newScale;
+  mmdApplyTransform(view, svgEl);
+}
+function mmdPanBy(view, svgEl, dx, dy){
+  const st = view._pz; if(!st) return;
+  st.tx += dx; st.ty += dy;
+  mmdApplyTransform(view, svgEl);
 }
 // a mermaid block's Detach action: the diagram in its own window (✕ close)
 function openMermaidWindow(src){

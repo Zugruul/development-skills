@@ -1503,10 +1503,17 @@ check_absent "NV_VERSION is no longer the pre-#428 value" 'const NV_VERSION = "0
 # build will ever have again. The 0.28.9-absent guard above is untouched:
 # that's still a true statement at any later version.
 check_absent "NV_VERSION is no longer the pre-#431 value" 'const NV_VERSION = "0.28.11";' "$(cat "$NVHTML")"
-check "NV_VERSION bumped to the new patch (#431)" 'const NV_VERSION = "0.28.12";' "$(cat "$NVHTML")"
+# #433 (this branch) re-steps it once more, past #431's 0.28.12, to 0.28.13 --
+# same convention: the pin moves with the head version.
+check_absent "NV_VERSION is no longer the pre-#433 value" 'const NV_VERSION = "0.28.12";' "$(cat "$NVHTML")"
+check "NV_VERSION bumped to the new patch (#433)" 'const NV_VERSION = "0.28.13";' "$(cat "$NVHTML")"
 
 echo "== neural-view note media: audio + mermaid (#430) =="
-check "NV_VERSION bumped for #430/#431" 'const NV_VERSION = "0.28.12";' "$(cat "$NVHTML")"
+# version-stepping pin moves with the head version again: #433 (this branch)
+# re-steps NV_VERSION once more, past #430/#431's 0.28.12 -- this pin is
+# updated to match rather than left pointing at an intermediate value no
+# build will ever have again (same convention as the #428->#431 update above).
+check "NV_VERSION bumped since #430/#431" 'const NV_VERSION = "0.28.13";' "$(cat "$NVHTML")"
 check_absent "mermaid is no longer loaded via a bare dynamic import() of the vendored bundle -- that runs it as an ES module, and the bundle's own top-level var-then-globalThis-read tail throws under module scoping (#431 real-browser repro)" 'import("/vendor/mermaid.min.js")' "$(cat "$NVHTML")"
 check "mermaid is loaded via a classic <script> tag instead, so its top-level var actually leaks onto the global object the way the bundle's tail-end globalThis lookup requires" 's.src = "/vendor/mermaid.min.js";' "$(cat "$NVHTML")"
 check "mermaid is initialized with securityLevel strict -- note-derived diagram source must not get raw HTML passthrough" 'securityLevel: "strict"' "$(cat "$NVHTML")"
@@ -1586,3 +1593,159 @@ check "the action buttons opt back into pointer events (they must stay clickable
 # pointer-events:none (it stops receiving hover), so the audio block's own
 # reveal trigger must hang off the block, not the now-inert zone
 check "the audio block's action reveal is triggered by hovering the block itself, not the now pointer-events:none zone" '.naud:hover .mw-actions{opacity:1}' "$(cat "$NVHTML")"
+
+echo "== neural-view mermaid pan/zoom (#433): graph mode never scrolls -- zoom/pan a CSS transform on the <svg> instead, fit-to-container on first render, reset affordance =="
+check_absent "the graph viewport no longer scrolls its own content (that's the bug: a diagram larger than the block used to overflow into a scrollbar)" '.nmmd-graph-view{padding:.6rem;overflow:auto;max-height:60vh}' "$(cat "$NVHTML")"
+check_absent "the detached window's graph viewport no longer just removes the height cap (still scrolled if bigger than the window) -- it now flex-fills instead" '.media-window.mw-mmd .nmmd-graph-view{max-height:none}' "$(cat "$NVHTML")"
+check "graph viewport is a fixed-size, non-scrolling window onto the diagram -- pan/zoom move the SVG inside it via transform, never the container's own scrollbars" '.nmmd-graph-view{position:relative;padding:0;overflow:hidden;height:340px;cursor:grab;touch-action:none}' "$(cat "$NVHTML")"
+check "dragging shows a grabbing cursor, same idiom as the main canvas (canvas.grabbing) and note-window drag handles" '.nmmd-graph-view.grabbing{cursor:grabbing}' "$(cat "$NVHTML")"
+check "the SVG itself is transformed (not the container scrolled) -- transform-origin pinned to the top-left so translate/scale math stays simple" '.nmmd-graph-view svg{display:block;transform-origin:0 0}' "$(cat "$NVHTML")"
+check "detached mermaid window is a flex column, same layout idiom as the 3D block's detached window (.media-window.mw-3d), so the graph viewport can flex-fill it instead of scrolling" '.media-window.mw-mmd{display:flex;flex-direction:column}' "$(cat "$NVHTML")"
+check "the .nmmd box itself flex-fills the detached window" '.media-window.mw-mmd .nmmd{border:0;border-radius:0;display:flex;flex-direction:column;flex:1;min-height:0;margin:0}' "$(cat "$NVHTML")"
+check "the graph viewport flex-fills the .nmmd box in the detached window, replacing the old unbounded max-height:none" '.media-window.mw-mmd .nmmd-graph-view{flex:1;min-height:0;height:auto}' "$(cat "$NVHTML")"
+check "bar right-alignment group grows to include the new reset button, same margin-left:auto idiom already used for copy/detach" '.nmmd-bar .nmmd-reset,.nmmd-bar .nmmd-copy,.nmmd-bar .nmmd-pop{margin-left:auto}' "$(cat "$NVHTML")"
+
+echo "-- reset affordance: a visible button (chosen over double-click-only, which has no discoverable affordance) -- double-click is ALSO wired as a bonus, matching the app-wide dblclick-to-reset convention (main canvas resetView(), 3D block viewer) --"
+check "mermaid bar gets a reset (fit-to-view) button, same .iconbtn idiom as Text/Graph/Copy/Detach" '<button class="iconbtn nmmd-reset" type="button" title="Reset zoom/pan to fit">⤢</button>' "$(cat "$NVHTML")"
+check "reset button re-fits the current SVG" 'box.querySelector(".nmmd-reset").onclick = ()=>{' "$(cat "$NVHTML")"
+check "double-click over the diagram also re-fits it, reusing the app's existing dblclick-to-reset convention (main canvas + 3D block viewer)" 'graphView.addEventListener("dblclick", ()=>{' "$(cat "$NVHTML")"
+
+echo "-- wheel = zoom, drag = pan, wired once on the persistent viewport container (not the <svg>, which gets replaced wholesale on every render) so the SAME wiring covers both the inline block and the detached window (openMermaidWindow builds through makeMermaidBlock too) --"
+check "wheel gesture zooms via mmdZoomAt, same Math.exp(deltaY*k) wheel-normalization idiom the main canvas and 3D block viewers already use" 'mmdZoomAt(graphView, svgEl, ev.clientX, ev.clientY, Math.exp(-ev.deltaY*.0015));' "$(cat "$NVHTML")"
+check "wheel handler prevents the page from scrolling and is registered non-passive, same convention as the main canvas/3D wheel handlers" 'ev.preventDefault();
+    mmdZoomAt(graphView, svgEl, ev.clientX, ev.clientY, Math.exp(-ev.deltaY*.0015));
+  }, {passive: false});' "$(cat "$NVHTML")"
+check "pointerdown starts a drag-pan and captures the pointer, same idiom as the 3D block viewer's orbit rig" 'mmdDrag = {x: ev.clientX, y: ev.clientY};
+    graphView.classList.add("grabbing");
+    graphView.setPointerCapture(ev.pointerId);' "$(cat "$NVHTML")"
+check "pointermove during a drag pans the diagram via mmdPanBy" 'if(svgEl) mmdPanBy(graphView, svgEl, dx, dy);' "$(cat "$NVHTML")"
+check "pointerup/pointercancel release the pointer capture and drop the grabbing cursor" 'const mmdEndDrag = ev=>{ mmdDrag = null; graphView.classList.remove("grabbing"); try{ graphView.releasePointerCapture(ev.pointerId); }catch{} };' "$(cat "$NVHTML")"
+
+echo "-- fit-to-container on first render --"
+check "renderMermaidGraph fits the diagram to the container immediately after building the SVG -- the first-render fit (#433)" 'const svgEl = view.querySelector("svg");
+    if(svgEl) mmdFitToNewSvg(view, svgEl);' "$(cat "$NVHTML")"
+check "mmdFitToNewSvg measures the SVG's own natural (untransformed) size before any pan/zoom state exists, then hands off to mmdFit" 'view._pz = {natW, natH, scale: 1, tx: 0, ty: 0};
+  mmdFit(view, svgEl);' "$(cat "$NVHTML")"
+check "mmdFit computes a centered scale-to-fit transform, clamped to the same min/max the wheel-zoom clamps to" 'const scale = Math.max(MMD_MIN_SCALE, Math.min(MMD_MAX_SCALE, Math.min(cw/st.natW, ch/st.natH) || 1));' "$(cat "$NVHTML")"
+check "the fit centers the diagram in the container (not top-left aligned)" 'st.tx = (cw - st.natW*scale)/2;
+  st.ty = (ch - st.natH*scale)/2;' "$(cat "$NVHTML")"
+check "pan/zoom clamps share one pair of constants across fit and wheel-zoom, so they can never drift apart" 'const MMD_MIN_SCALE = .1, MMD_MAX_SCALE = 8;' "$(cat "$NVHTML")"
+
+echo "== neural-view mermaid pan/zoom math (#433): hardened stubs -- the #431 lesson applied to pointer/wheel/getBoundingClientRect contracts (stubs carry exactly the fields the code reads, nothing invented, nothing omitted) =="
+_pz_node="$(mktemp).cjs"
+cat >"$_pz_node" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+function extractFn(name) {
+  const re = new RegExp("(?:async )?function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\n\\}\\n");
+  const m = html.match(re);
+  if (!m) throw new Error("could not find function " + name + "() in template");
+  return m[0];
+}
+function extractConst(re, label) {
+  const m = html.match(re);
+  if (!m) throw new Error("could not find " + label + " in template");
+  return m[0];
+}
+// direct eval()'s const/let bindings are scoped to the eval call itself and
+// never leak into the surrounding script scope (only var/function
+// declarations do) -- rewrite to var so MMD_MIN_SCALE/MMD_MAX_SCALE are
+// visible to the mmd* functions evaluated afterward.
+eval(extractConst(/const MMD_MIN_SCALE[^\n]*\n/, "MMD_MIN_SCALE/MMD_MAX_SCALE constants").replace(/^const /, "var "));
+eval(extractFn("mmdApplyTransform"));
+eval(extractFn("mmdFit"));
+eval(extractFn("mmdZoomAt"));
+eval(extractFn("mmdPanBy"));
+
+// stub view/svg: carry ONLY the fields the real functions actually read
+// (clientWidth/clientHeight, style, getBoundingClientRect(), a plain _pz
+// data bag) -- no invented DOM API, mirroring the #431 lesson about stubs
+// matching the real browser contract.
+function mkView(cw, ch) { return { clientWidth: cw, clientHeight: ch, style: {}, _pz: null }; }
+function mkSvg() { return { style: {} }; }
+
+// -- fit-to-container: centered scale-to-fit on first render --
+let view = mkView(400, 300), svg = mkSvg();
+view._pz = { natW: 800, natH: 400, scale: 1, tx: 0, ty: 0 };
+mmdFit(view, svg);
+if (Math.abs(view._pz.scale - 0.5) > 1e-9) throw new Error("FIT_SCALE_WRONG: " + view._pz.scale);
+if (Math.abs(view._pz.tx - 0) > 1e-9) throw new Error("FIT_TX_WRONG: " + view._pz.tx);
+if (Math.abs(view._pz.ty - 50) > 1e-9) throw new Error("FIT_TY_WRONG: " + view._pz.ty);
+if (!svg.style.transform.includes("scale(0.5)")) throw new Error("FIT_TRANSFORM_STRING_WRONG: " + svg.style.transform);
+console.log("MMD_FIT_OK true");
+
+// -- wheel-zoom clamps to MMD_MIN_SCALE/MMD_MAX_SCALE regardless of gesture size --
+view = mkView(400, 300); svg = mkSvg();
+view._pz = { natW: 800, natH: 400, scale: 1, tx: 0, ty: 0 };
+view.getBoundingClientRect = () => ({ left: 0, top: 0 });
+mmdZoomAt(view, svg, 200, 150, 1e9);
+if (view._pz.scale !== MMD_MAX_SCALE) throw new Error("ZOOM_MAX_CLAMP_FAILED: " + view._pz.scale);
+mmdZoomAt(view, svg, 200, 150, 1e-9);
+if (view._pz.scale !== MMD_MIN_SCALE) throw new Error("ZOOM_MIN_CLAMP_FAILED: " + view._pz.scale);
+console.log("MMD_ZOOM_CLAMP_OK true");
+
+// -- wheel-zoom keeps the point under the cursor fixed, honoring the
+// container's OWN getBoundingClientRect offset (a real browser's rect is
+// never (0,0) once the window has any chrome around it -- a stub that
+// omitted left/top, or a real function that ignored them, would both pass
+// a same-origin-only test and still be wrong in production) --
+view = mkView(400, 300); svg = mkSvg();
+view._pz = { natW: 800, natH: 400, scale: 1, tx: 0, ty: 0 };
+view.getBoundingClientRect = () => ({ left: 20, top: 10 });
+mmdZoomAt(view, svg, 220, 160, 2);
+if (Math.abs(view._pz.tx - (-200)) > 1e-9) throw new Error("ZOOM_AT_CURSOR_TX_WRONG: " + view._pz.tx);
+if (Math.abs(view._pz.ty - (-150)) > 1e-9) throw new Error("ZOOM_AT_CURSOR_TY_WRONG: " + view._pz.ty);
+console.log("MMD_ZOOM_AT_CURSOR_OK true");
+
+// -- drag pan translates the transform by the raw pointer delta --
+view = mkView(400, 300); svg = mkSvg();
+view._pz = { natW: 800, natH: 400, scale: 0.5, tx: 10, ty: 20 };
+mmdPanBy(view, svg, 15, -7);
+if (view._pz.tx !== 25 || view._pz.ty !== 13) throw new Error("PAN_DELTA_WRONG: tx=" + view._pz.tx + " ty=" + view._pz.ty);
+if (!svg.style.transform.includes("translate(25px,13px)")) throw new Error("PAN_TRANSFORM_STRING_WRONG: " + svg.style.transform);
+console.log("MMD_PAN_OK true");
+NODEJS
+pz_out="$(node "$_pz_node" "$NVHTML" 2>&1)"
+pz_rc=$?
+rm -f "$_pz_node"
+check_rc "mermaid pan/zoom pure-function harness exits 0" 0 "$pz_rc"
+check "fit-to-container computes a centered scale-to-fit transform" "MMD_FIT_OK true" "$pz_out"
+check "wheel-zoom clamps to min/max scale regardless of gesture magnitude" "MMD_ZOOM_CLAMP_OK true" "$pz_out"
+check "wheel-zoom is zoom-AT-cursor (the point under the pointer stays fixed), honoring the container's own getBoundingClientRect offset" "MMD_ZOOM_AT_CURSOR_OK true" "$pz_out"
+check "drag pan translates the transform by the pointer delta" "MMD_PAN_OK true" "$pz_out"
+if [[ "$pz_rc" -ne 0 ]]; then echo "$pz_out" >&2; fi
+
+echo "-- template: NV_VERSION bumped for this change (#433) --"
+check_absent "NV_VERSION is no longer the pre-#433 value" 'const NV_VERSION = "0.28.12";' "$(cat "$NVHTML")"
+check "NV_VERSION bumped to the new patch (#433)" 'const NV_VERSION = "0.28.13";' "$(cat "$NVHTML")"
+
+echo "== neural-view audio block first-paint sizing (#434): WebKit renders <audio controls> as a squished compact pill (play + 0:00, no scrubber) at first paint when the element has no explicit height established yet -- only a subsequent relayout (e.g. after a play interaction forces one) picks the full control strip. An explicit width AND min-height on the <audio> element itself removes that first-paint ambiguity. The SAME .naud CSS covers the inline block and the detached window (openAudioWindow's box is built through the exact same makeAudioBlock()), so one fix covers both. =="
+check_absent "the audio element no longer relies on width alone -- that ambiguity (no established height at first paint) is exactly the #434 bug" '.naud audio.nm{width:100%;display:block}' "$(cat "$NVHTML")"
+check "the audio element gets an explicit width AND a min-height, so WebKit never has a zero/ambiguous first-paint height to fall back to its compact-pill rendering for" '.naud audio.nm{width:100%;min-height:32px;display:block}' "$(cat "$NVHTML")"
+
+_audcss_node="$(mktemp).cjs"
+cat >"$_audcss_node" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+const m = html.match(/\.naud audio\.nm\{([^}]*)\}/);
+if (!m) { console.error("AUDIO_RULE_NOT_FOUND"); process.exit(1); }
+const decls = Object.fromEntries(m[1].split(";").filter(Boolean).map(d => {
+  const i = d.indexOf(":");
+  return [d.slice(0, i).trim(), d.slice(i + 1).trim()];
+}));
+if (decls.width !== "100%") { console.error("WIDTH_NOT_100PCT: " + decls.width); process.exit(1); }
+const mh = parseFloat(decls["min-height"] || "");
+if (!(mh > 0)) { console.error("MIN_HEIGHT_MISSING_OR_ZERO: " + decls["min-height"]); process.exit(1); }
+console.log("AUDIO_CSS_OK true minHeight=" + mh);
+NODEJS
+audcss_out="$(node "$_audcss_node" "$NVHTML" 2>&1)"
+audcss_rc=$?
+rm -f "$_audcss_node"
+check_rc "audio-element sizing rule parses and exits 0" 0 "$audcss_rc"
+check "parsed .naud audio.nm rule declares width:100% plus a positive min-height -- a semantic check on the actual declarations, not just a string match on the CSS text (no jsdom available in this repo's test harness for a true computed-style assertion)" "AUDIO_CSS_OK true" "$audcss_out"
+if [[ "$audcss_rc" -ne 0 ]]; then echo "$audcss_out" >&2; fi
+# NOTE: the detached audio window (openAudioWindow) builds its player through
+# this exact same makeAudioBlock(), and there is no separate .mw-audio audio
+# override anywhere in the template -- so the .naud audio.nm rule just
+# checked above is the ENTIRE fix, and it already covers the detached
+# window too, with no window-specific test needed.
