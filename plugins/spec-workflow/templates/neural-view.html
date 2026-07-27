@@ -981,8 +981,15 @@ canvas.grabbing{cursor:grabbing}
 .nmmd{margin:.4rem 0;border:1px solid var(--border);border-radius:8px;background:rgba(4,7,13,.5);overflow:hidden}
 .nmmd-bar{display:flex;align-items:center;gap:.4rem;padding:.35rem .5rem;border-bottom:1px solid var(--border)}
 .nmmd-opts{display:flex;gap:.25rem}
-.nmmd-bar .nmmd-reset,.nmmd-bar .nmmd-copy,.nmmd-bar .nmmd-pop{margin-left:auto}
-.nmmd-bar .nmmd-pop{margin-left:.25rem}
+/* #438 review round 2: margin-left:auto on MULTIPLE flex siblings does NOT
+   stack -- each auto margin splits the row's free space among however many
+   auto margins exist, so with three/four of them the bar visibly scatters
+   (measured: Copy/Detach displaced ~240px off the right edge of a 900px
+   bar, a 211px gap before ⛶). auto belongs on the FIRST group member only
+   -- that alone pushes the whole [reset][copy][pop][fs] group flush right,
+   spaced by the bar's own gap:.4rem. This also fixes the pre-existing #433
+   scatter (reset/copy/pop each had their own auto margin too). */
+.nmmd-bar .nmmd-reset{margin-left:auto}
 .nmmd-src-view{margin:0;padding:.6rem;font-size:.7rem;line-height:1.5;overflow:auto;max-height:340px;white-space:pre-wrap;word-break:break-word}
 /* graph mode NEVER scrolls (#433): a diagram larger than the block used to
    overflow into a scrollbar, fighting both reading and the detached-window
@@ -994,6 +1001,16 @@ canvas.grabbing{cursor:grabbing}
 .media-window.mw-mmd{display:flex;flex-direction:column}
 .media-window.mw-mmd .nmmd{border:0;border-radius:0;display:flex;flex-direction:column;flex:1;min-height:0;margin:0}
 .media-window.mw-mmd .nmmd-graph-view{flex:1;min-height:0;height:auto}
+/* fullscreen (#438): the DETACHED case fullscreens the .media-window itself
+   (the .mw-fs idiom other detached viewers use) -- already covered by the
+   generic .media-window:fullscreen rule above plus the two unconditional
+   .mw-mmd rules right above this comment, which flex-fill regardless of
+   fullscreen state. The INLINE case fullscreens the .nmmd block directly
+   (no .media-window ancestor exists there), so it needs its own rule,
+   modeled on that same .media-window:fullscreen treatment. */
+.nmmd:fullscreen{display:flex;flex-direction:column;background:var(--bg);
+  border:0;border-radius:0;padding:1rem 1.2rem}
+.nmmd:fullscreen .nmmd-graph-view{flex:1;min-height:0;height:auto}
 #links{margin-top:.6rem;font-size:.66rem;color:var(--muted)}
 #links .ln{display:flex;justify-content:space-between;gap:.5rem;padding:.15rem 0}
 #links .ln-click{cursor:pointer;margin:0 -.4rem;padding-left:.4rem;padding-right:.4rem;border-radius:4px}
@@ -2866,7 +2883,7 @@ let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
 // matches what the changelog overlay documents) -- it now lives in the
 // chip's tooltip, and as the fallback chip text when the plugin version
 // can't be read (see CHIP_VER_FALLBACK below).
-const NV_VERSION = "0.28.13";
+const NV_VERSION = "0.28.14";
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -5128,7 +5145,8 @@ function makeMermaidBlock(src){
       '</div>' +
       '<button class="iconbtn nmmd-reset" type="button" title="Reset zoom/pan to fit">⤢</button>' +
       '<button class="iconbtn nmmd-copy" type="button">Copy</button>' +
-      '<button class="iconbtn nmmd-pop" type="button">Detach</button></div>' +
+      '<button class="iconbtn nmmd-pop" type="button">Detach</button>' +
+      '<button class="iconbtn nmmd-fs" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button></div>' +
     '<pre class="nmmd-src-view" hidden><code></code></pre>' +
     '<div class="nmmd-graph-view"></div>';
   box.querySelector(".nmmd-src-view code").textContent = src;   // textContent, never innerHTML -- raw source can't inject markup even before mermaid sees it
@@ -5201,8 +5219,36 @@ function wireMermaidBlock(box, src){
     const svgEl = graphView.querySelector("svg");
     if(svgEl) mmdFit(graphView, svgEl);
   };
+  // ⛶ fullscreen (#438): fullscreens the DETACHED WINDOW when this block is
+  // inside one (box.closest(".media-window") -- the openMediaViewer/
+  // open3dWindow .mw-fs idiom, already covered by the existing generic
+  // .media-window:fullscreen CSS), or the .nmmd block itself for the inline
+  // case (new .nmmd:fullscreen rule, modeled on that same media-window
+  // treatment). Resolved at CLICK time, not here, because at wiring time
+  // (openMermaidWindow calls makeMermaidBlock BEFORE appending it into the
+  // window) box has no .media-window ancestor yet.
+  box.querySelector(".nmmd-fs").onclick = ()=>{
+    const target = box.closest(".media-window") || box;
+    if(document.fullscreenElement === target) document.exitFullscreen();
+    else target.requestFullscreen().catch(()=>{});
+  };
   renderMermaidGraph(graphView, src);   // graph is the default view
 }
+// #438 review round 2: a document-level fullscreenchange listener must be a
+// TOP-LEVEL SINGLETON (file convention), never registered per-block inside
+// wireMermaidBlock -- that would add one permanent listener (retaining
+// graphView + its whole subtree) per block EVER created, since
+// hydrateNoteMedia/openMermaidWindow/detachNote's clone-rebuild all call
+// wireMermaidBlock repeatedly over a session. ONE listener re-fits every
+// still-live block on any fullscreenchange (enter and exit); a block that's
+// since been removed from the DOM just has no querySelectorAll match, so
+// there's nothing to leak or re-fit for it.
+document.addEventListener("fullscreenchange", ()=>{
+  document.querySelectorAll(".nmmd .nmmd-graph-view").forEach(v=>{
+    const s = v.querySelector("svg");
+    if(s) mmdFit(v, s);
+  });
+});
 async function renderMermaidGraph(view, src){
   if(view.dataset.rendered === src) return;   // already showing this exact source
   try{

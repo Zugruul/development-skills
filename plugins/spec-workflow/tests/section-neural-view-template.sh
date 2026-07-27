@@ -1503,17 +1503,19 @@ check_absent "NV_VERSION is no longer the pre-#428 value" 'const NV_VERSION = "0
 # build will ever have again. The 0.28.9-absent guard above is untouched:
 # that's still a true statement at any later version.
 check_absent "NV_VERSION is no longer the pre-#431 value" 'const NV_VERSION = "0.28.11";' "$(cat "$NVHTML")"
-# #433 (this branch) re-steps it once more, past #431's 0.28.12, to 0.28.13 --
-# same convention: the pin moves with the head version.
+# #433 re-stepped it once more, past #431's 0.28.12, to 0.28.13 -- same
+# convention: the pin moves with the head version.
 check_absent "NV_VERSION is no longer the pre-#433 value" 'const NV_VERSION = "0.28.12";' "$(cat "$NVHTML")"
-check "NV_VERSION bumped to the new patch (#433)" 'const NV_VERSION = "0.28.13";' "$(cat "$NVHTML")"
+# #438 (this branch) re-steps it once more, past #433's 0.28.13, to 0.28.14.
+check_absent "NV_VERSION is no longer the pre-#438 value" 'const NV_VERSION = "0.28.13";' "$(cat "$NVHTML")"
+check "NV_VERSION bumped to the new patch (#438)" 'const NV_VERSION = "0.28.14";' "$(cat "$NVHTML")"
 
 echo "== neural-view note media: audio + mermaid (#430) =="
-# version-stepping pin moves with the head version again: #433 (this branch)
-# re-steps NV_VERSION once more, past #430/#431's 0.28.12 -- this pin is
+# version-stepping pin moves with the head version again: #438 (this branch)
+# re-steps NV_VERSION once more, past #430/#431/#433's 0.28.13 -- this pin is
 # updated to match rather than left pointing at an intermediate value no
 # build will ever have again (same convention as the #428->#431 update above).
-check "NV_VERSION bumped since #430/#431" 'const NV_VERSION = "0.28.13";' "$(cat "$NVHTML")"
+check "NV_VERSION bumped since #430/#431/#433" 'const NV_VERSION = "0.28.14";' "$(cat "$NVHTML")"
 check_absent "mermaid is no longer loaded via a bare dynamic import() of the vendored bundle -- that runs it as an ES module, and the bundle's own top-level var-then-globalThis-read tail throws under module scoping (#431 real-browser repro)" 'import("/vendor/mermaid.min.js")' "$(cat "$NVHTML")"
 check "mermaid is loaded via a classic <script> tag instead, so its top-level var actually leaks onto the global object the way the bundle's tail-end globalThis lookup requires" 's.src = "/vendor/mermaid.min.js";' "$(cat "$NVHTML")"
 check "mermaid is initialized with securityLevel strict -- note-derived diagram source must not get raw HTML passthrough" 'securityLevel: "strict"' "$(cat "$NVHTML")"
@@ -1603,7 +1605,15 @@ check "the SVG itself is transformed (not the container scrolled) -- transform-o
 check "detached mermaid window is a flex column, same layout idiom as the 3D block's detached window (.media-window.mw-3d), so the graph viewport can flex-fill it instead of scrolling" '.media-window.mw-mmd{display:flex;flex-direction:column}' "$(cat "$NVHTML")"
 check "the .nmmd box itself flex-fills the detached window" '.media-window.mw-mmd .nmmd{border:0;border-radius:0;display:flex;flex-direction:column;flex:1;min-height:0;margin:0}' "$(cat "$NVHTML")"
 check "the graph viewport flex-fills the .nmmd box in the detached window, replacing the old unbounded max-height:none" '.media-window.mw-mmd .nmmd-graph-view{flex:1;min-height:0;height:auto}' "$(cat "$NVHTML")"
-check "bar right-alignment group grows to include the new reset button, same margin-left:auto idiom already used for copy/detach" '.nmmd-bar .nmmd-reset,.nmmd-bar .nmmd-copy,.nmmd-bar .nmmd-pop{margin-left:auto}' "$(cat "$NVHTML")"
+# #438 review round 2: multiple margin-left:auto on one flex row SPLIT the
+# free space instead of stacking -- with reset/copy/pop/fs each carrying
+# their own auto, the bar visibly scattered (measured on a 900px bar: Copy/
+# Detach displaced ~240px off the right edge, a 211px gap before the new ⛶).
+# auto now lives on the FIRST group member only, which alone pushes the
+# whole trailing group flush right; this #433 pin (which pinned the old,
+# now-provably-wrong multi-auto rule) is updated to match, since #438
+# deliberately fixes the pre-existing #433 scatter too.
+check "bar right-alignment group is anchored by a SINGLE margin-left:auto on the first trailing button (reset) -- not one auto per button, which doesn't stack" '.nmmd-bar .nmmd-reset{margin-left:auto}' "$(cat "$NVHTML")"
 
 echo "-- reset affordance: a visible button (chosen over double-click-only, which has no discoverable affordance) -- double-click is ALSO wired as a bonus, matching the app-wide dblclick-to-reset convention (main canvas resetView(), 3D block viewer) --"
 check "mermaid bar gets a reset (fit-to-view) button, same .iconbtn idiom as Text/Graph/Copy/Detach" '<button class="iconbtn nmmd-reset" type="button" title="Reset zoom/pan to fit">⤢</button>' "$(cat "$NVHTML")"
@@ -1715,9 +1725,10 @@ check "wheel-zoom is zoom-AT-cursor (the point under the pointer stays fixed), h
 check "drag pan translates the transform by the pointer delta" "MMD_PAN_OK true" "$pz_out"
 if [[ "$pz_rc" -ne 0 ]]; then echo "$pz_out" >&2; fi
 
-echo "-- template: NV_VERSION bumped for this change (#433) --"
+echo "-- template: NV_VERSION bumped for this change (#438, continuing #433's pin) --"
 check_absent "NV_VERSION is no longer the pre-#433 value" 'const NV_VERSION = "0.28.12";' "$(cat "$NVHTML")"
-check "NV_VERSION bumped to the new patch (#433)" 'const NV_VERSION = "0.28.13";' "$(cat "$NVHTML")"
+check_absent "NV_VERSION is no longer the pre-#438 value" 'const NV_VERSION = "0.28.13";' "$(cat "$NVHTML")"
+check "NV_VERSION bumped to the new patch (#438)" 'const NV_VERSION = "0.28.14";' "$(cat "$NVHTML")"
 
 echo "== neural-view audio block first-paint sizing (#434): WebKit renders <audio controls> as a squished compact pill (play + 0:00, no scrubber) at first paint when the element has no explicit height established yet -- only a subsequent relayout (e.g. after a play interaction forces one) picks the full control strip. An explicit width AND min-height on the <audio> element itself removes that first-paint ambiguity. The SAME .naud CSS covers the inline block and the detached window (openAudioWindow's box is built through the exact same makeAudioBlock()), so one fix covers both. =="
 check_absent "the audio element no longer relies on width alone -- that ambiguity (no established height at first paint) is exactly the #434 bug" '.naud audio.nm{width:100%;display:block}' "$(cat "$NVHTML")"
@@ -1749,3 +1760,43 @@ if [[ "$audcss_rc" -ne 0 ]]; then echo "$audcss_out" >&2; fi
 # override anywhere in the template -- so the .naud audio.nm rule just
 # checked above is the ENTIRE fix, and it already covers the detached
 # window too, with no window-specific test needed.
+
+echo "== neural-view mermaid fullscreen (#438): a ⛶ button on the shared nmmd-bar -- fullscreens the .media-window when this block is inside a DETACHED mermaid window (openMermaidWindow, same .mw-fs idiom openMediaViewer/open3dWindow already use), or the .nmmd block itself for the INLINE case; either way the same wireMermaidBlock() code path wires it, since openMermaidWindow builds through makeMermaidBlock too =="
+check "the mermaid bar gets a ⛶ fullscreen button, positioned last in the bar (right after Detach, before the bar's own closing tag), same .iconbtn idiom and title/aria-label convention as the media-window's .mw-fs button" '<button class="iconbtn nmmd-fs" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button></div>' "$(cat "$NVHTML")"
+# #438 review round 2: margin-left:auto on multiple flex siblings SPLITS the
+# free space instead of stacking (measured scatter on a 900px bar). The fix
+# puts auto on the FIRST trailing button (reset) only -- see the #433 pin
+# update above for that positive assertion. This is the matching regression
+# guard: nmmd-fs must NEVER grow its own margin-left override, or the same
+# scatter bug comes back.
+check_absent "the fullscreen button never gets its own margin-left override -- it rides the single anchoring auto margin on nmmd-reset, not a second auto that would re-introduce the scatter bug" '.nmmd-bar .nmmd-fs{margin-left' "$(cat "$NVHTML")"
+check "the fullscreen target is the closest .media-window (the detached-window case) or the .nmmd block itself (the inline case) -- resolved lazily at click time, since box has no .media-window ancestor yet when wireMermaidBlock runs inside makeMermaidBlock" 'const target = box.closest(".media-window") || box;' "$(cat "$NVHTML")"
+check "the toggle follows the established media-window .mw-fs idiom exactly: document.fullscreenElement identity check to decide enter vs exit" 'if(document.fullscreenElement === target) document.exitFullscreen();' "$(cat "$NVHTML")"
+check "entering fullscreen goes through requestFullscreen with a swallowed-rejection .catch(()=>{}), same as .mw-fs elsewhere (a user-gesture/permission rejection must never throw an unhandled promise rejection)" 'else target.requestFullscreen().catch(()=>{});' "$(cat "$NVHTML")"
+echo "-- #438 review round 2 (MAJOR 1): the fullscreenchange listener must be a TOP-LEVEL SINGLETON, never registered per-block inside wireMermaidBlock -- that would add one permanent listener (retaining graphView + its whole subtree) per block EVER created, since hydrateNoteMedia/openMermaidWindow/detachNote's clone-rebuild all call wireMermaidBlock repeatedly over a session --"
+check "a fullscreenchange listener is wired to re-fit EVERY still-live mermaid block's graph on any fullscreenchange (enter and exit both fire this event)" 'document.addEventListener("fullscreenchange", ()=>{' "$(cat "$NVHTML")"
+check "the listener re-fits by querying ALL live .nmmd-graph-view containers, not just the block that triggered fullscreen -- one listener covers every block" 'document.querySelectorAll(".nmmd .nmmd-graph-view").forEach(v=>{' "$(cat "$NVHTML")"
+_wireBody="$(sed -n '/^function wireMermaidBlock(box, src){/,/^}/p' "$NVHTML")"
+check_absent "the fullscreenchange listener is NOT registered inside wireMermaidBlock (that's the leak this round fixes) -- it must live at top level instead" 'document.addEventListener("fullscreenchange"' "$_wireBody"
+# the listener body's two lines (querySelector("svg") then mmdFit) already
+# exist verbatim elsewhere (the reset button and dblclick handlers do the
+# same re-fit) -- a multi-line grep -F pattern spanning them would match on
+# EITHER line alone (false positive even with the listener absent, verified
+# against the pre-#438 tree), so the listener's own unique opening line
+# above is the check, not the shared body.
+# #438 review round 2 (MINOR): a multi-line grep -F pattern was reintroduced
+# here too -- grep -F ORs the lines of a multi-line pattern, so a future
+# edit to JUST the selector line (or just the declarations line) would keep
+# this check green via the other line alone. Split into two single-line
+# checks instead, each independently unique against the file (in particular
+# against .media-window:fullscreen's own two, differently-worded lines).
+check "the inline case gets its own .nmmd:fullscreen selector (no .media-window ancestor there), modeled on the existing .media-window:fullscreen treatment" '.nmmd:fullscreen{display:flex;flex-direction:column;background:var(--bg);' "$(cat "$NVHTML")"
+check "the .nmmd:fullscreen rule strips chrome and pads like the media-window treatment (its own declarations line, distinct from .media-window:fullscreen's, which additionally sets max-height:none;resize:none)" '  border:0;border-radius:0;padding:1rem 1.2rem}' "$(cat "$NVHTML")"
+check "the graph viewport flex-fills the fullscreened .nmmd block, same flex:1/min-height:0/height:auto idiom already used inside the detached window" '.nmmd:fullscreen .nmmd-graph-view{flex:1;min-height:0;height:auto}' "$(cat "$NVHTML")"
+# NOTE: the detached-window case needs no new CSS beyond the margin-left:auto
+# addition above -- .media-window:fullscreen (image viewer, ~line 935) and
+# the two unconditional .media-window.mw-mmd rules (flex:1 on both .nmmd and
+# .nmmd-graph-view, already unconditional -- not scoped to a non-fullscreen
+# state) already make the detached mermaid window's graph flex to full
+# height the moment the WHOLE WINDOW (not the .nmmd block) is what goes
+# fullscreen, exactly like the image/3D detached viewers.
