@@ -160,18 +160,76 @@ def git_branch():
 def plugin_version():
     """Plugin semver -- plugins/spec-workflow/.claude-plugin/plugin.json's
     `version`, read fresh per call (like git_branch()) so a merge that bumps
-    it (semver.sh) shows up on the page's next /version probe without a
-    server restart (#410: this is the ONE user-facing version number now --
-    the changelog overlay (#405) documents plugin semver, not the template
+    it (semver.sh) shows up on the page's next request without a server
+    restart (#410: this is the ONE user-facing version number now -- the
+    changelog overlay (#405) documents plugin semver, not the template
     build). Relative to the serving repo root; read-only, stdlib json.
     Missing file, unparseable JSON, or a non-string `version` -> None, never
-    an exception -- the chip falls back to NV_VERSION client-side."""
+    an exception -- render_index() (#441) substitutes "dev" for the status
+    chip in that case, rather than leaving a raw placeholder in the page."""
     try:
         p = Path(git_root()) / "plugins" / "spec-workflow" / ".claude-plugin" / "plugin.json"
         v = json.loads(p.read_text()).get("version")
         return v if isinstance(v, str) else None
     except Exception:  # noqa: BLE001
         return None
+
+
+# #441: the status chip used to render a template-baked NV_VERSION on first
+# paint, then swap to the real plugin version once the async /version probe
+# resolved -- a visible flash, and a manual-bump number nobody wanted to
+# maintain. Fixed at the source instead: the template ships this literal
+# placeholder (WITH its surrounding double quotes, matching the JS string
+# literal it sits inside) in place of the version string, and render_index()
+# below substitutes json.dumps() of the CURRENT plugin_version() (or "dev"
+# if unreadable) into the HTML before it's ever sent -- json.dumps() emits
+# its own quotes AND escapes any embedded quote/backslash/control character,
+# so the replacement is always a well-formed, inert JS string literal, never
+# raw text spliced into the page. plugin.json comes from whatever repo is
+# being served (not necessarily one the user wrote), and this is the same
+# injection class the #410 chipHtml() review already fixed on the escaping
+# path -- substituting plugin_version() RAW here would have reopened it
+# (e.g. a plugin.json version of `1.0" ; alert(1) ; "` would otherwise
+# execute on the served page). The chip is correct from first paint with no
+# async dependency for the number itself, and never executable either way.
+#
+# #441 review round 3: json.dumps() alone is NOT enough. It defeats a JS-
+# string-context breakout, but the HTML PARSER closes an inline <script>
+# element the moment it sees the literal byte sequence "</script" ANYWHERE
+# inside it -- including inside a JS string literal, since the HTML parser
+# tokenizes the script element's raw text before the JS parser ever runs.
+# A plugin.json version of `</script><script>alert(1)</script>` therefore
+# still executes (confirmed against a real served page: __PWNED became 1,
+# a second <script> element appeared, NV_PLUGIN_VERSION never got assigned
+# because ITS OWN <script> element was severed mid-statement). The
+# standard defense -- and the reason JSON.stringify(x).replace(/</g,
+# "\\u003c")-equivalent is a well-known idiom for JSON-in-HTML embedding --
+# is to escape the forward slash in "</" so the three-byte sequence the
+# HTML tokenizer matches on never appears verbatim: "<\/" is a valid JSON
+# string escape (backslash-before-any-char is legal JSON) that round-trips
+# to the exact same JS string value, but reads as inert text to the HTML
+# parser.
+NV_PLUGIN_PLACEHOLDER = b'"__NV_PLUGIN_VERSION__"'
+
+
+def render_index():
+    """The served index HTML: TEMPLATE's bytes with NV_PLUGIN_PLACEHOLDER
+    (the placeholder INCLUDING its surrounding double quotes) substituted
+    for json.dumps() of the current plugin_version() (same source
+    /version's `plugin` field reports), or of "dev" if plugin_version() is
+    None (#441), with every "</" in that JSON further escaped to "<\\/" so
+    an embedded "</script" sequence can never terminate the surrounding
+    <script> element (the HTML parser tokenizes on this BEFORE the JS
+    parser ever sees a string literal -- json.dumps()'s own quote/backslash
+    escaping alone defeats a JS-string breakout but not this one). Returns
+    None if TEMPLATE itself is missing, same as the pre-#441 "template
+    missing" placeholder page -- the caller is unchanged there."""
+    if not TEMPLATE.is_file():
+        return None
+    html = TEMPLATE.read_bytes()
+    pv = plugin_version() or "dev"
+    escaped = json.dumps(pv).replace("</", "<\\/")
+    return html.replace(NV_PLUGIN_PLACEHOLDER, escaped.encode())
 
 
 def state_dir():
@@ -1413,8 +1471,9 @@ class Handler(BaseHTTPRequestHandler):
             status, payload, ctype = result
             return self._send(status, payload, ctype)
         if path == "/" or path.startswith("/index"):
-            if TEMPLATE.is_file():
-                return self._send(200, TEMPLATE.read_bytes(), "text/html; charset=utf-8")
+            html = render_index()  # #441: injects the real plugin version -- see its own docstring
+            if html is not None:
+                return self._send(200, html, "text/html; charset=utf-8")
             return self._send(200, "<h1>neural-view</h1><p>template missing</p>", "text/html; charset=utf-8")
         if path == "/favicon.ico":
             return self._send(200, FAVICON, "image/svg+xml")
@@ -1507,8 +1566,10 @@ class Handler(BaseHTTPRequestHandler):
             # #410: `plugin` is the plugin semver (plugins/spec-workflow/
             # .claude-plugin/plugin.json's `version`) -- the one user-facing
             # version number, matching the changelog overlay's latest
-            # section. null when plugin.json is missing/unparseable; the
-            # chip falls back to NV_VERSION client-side in that case.
+            # section. #441: the status chip no longer reads this field --
+            # render_index() already injects the same plugin_version() (or
+            # "dev") into the served HTML on first paint, so this field is
+            # kept only for external tooling that polls /version directly.
             return self._send(200, {"boot": BOOT_ID, "template": tmpl, "dev": DEV_MODE, "branch": git_branch(), "plugin": plugin_version()})
         if path == "/changelog":
             # #405: raw CHANGELOG.md at the serving repo's root, rendered

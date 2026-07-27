@@ -71,9 +71,6 @@ check "emitVoiceSpan posts to the voice-event trace bridge" '"/assistant/voice-e
 check "startStt emits stt-start with the engine name" '"stt-start"' "$NVHTML_STT_BODY"
 check "stopStt emits stt-end with the engine name" '"stt-end"' "$NVHTML_STT_BODY"
 
-echo "-- template: NV_VERSION bumped for this change --"
-check_absent "NV_VERSION is no longer the pre-AST-051 value" 'const NV_VERSION = "0.28.6";' "$NVHTML_STT_BODY"
-
 echo "-- template behavior: extract() + eval() against a stubbed DOM/fetch/SpeechRecognition (section-assistant-chat.sh's harness style) --"
 _ast_node="$(mktemp).cjs"
 cat >"$_ast_node" <<'NODEJS'

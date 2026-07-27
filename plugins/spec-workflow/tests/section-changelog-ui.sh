@@ -570,27 +570,26 @@ echo "-- template: chip segments carry the clickable marker class + overlay clas
 # shellcheck disable=SC2016  # single-quoted on purpose -- pinning the literal
 # template source text (including its own template-literal backticks), not a
 # shell expansion.
-check "CHIP_VER_FALLBACK carries the chip-changelog clickable marker class (chipHtml's optional 3rd segment element)" 'const CHIP_VER_FALLBACK = [`v${NV_VERSION}`,' "$(cat "$NVHTML_CL")"
+check "CHIP_VER_FALLBACK carries the chip-changelog clickable marker class (chipHtml's optional 3rd segment element) -- #441: built from NV_PLUGIN_VERSION, the server-injected real plugin version, not a client-side fallback number" 'const CHIP_VER_FALLBACK = [`v${NV_PLUGIN_VERSION}`,' "$(cat "$NVHTML_CL")"
 check "CHIP_VER_FALLBACK's chip-changelog class is present" '"chip-changelog"];' "$(cat "$NVHTML_CL")"
-check "CHIP_VER starts on the NV_VERSION-based fallback (deterministic pre-probe state, #410)" 'let CHIP_VER = CHIP_VER_FALLBACK;' "$(cat "$NVHTML_CL")"
+# #441 review round 3: this pin used to target the async-probe CHIP_VER
+# reassignment (now gone -- see the check_absent below); the same tooltip
+# text lives on in CHIP_VER_FALLBACK itself, since the chip's version
+# segment is correct (and carries this tooltip) from first paint now,
+# never just after an async swap.
+check "the version tooltip names semver.sh as the bump mechanism (matches what the changelog overlay documents)" 'bumped by semver.sh at every merge' "$(cat "$NVHTML_CL")"
+check "CHIP_VER starts on the (already-correct, server-injected) fallback -- #441: no longer just a deterministic pre-probe placeholder, since NV_PLUGIN_VERSION is the real value from first paint" 'let CHIP_VER = CHIP_VER_FALLBACK;' "$(cat "$NVHTML_CL")"
 check "CHIP_BRANCH is assigned with the chip-changelog clickable marker class" 'CHIP_BRANCH = [base.branch, "git branch the serving repo is on (read at server boot probe) — click to view the changelog", "chip-changelog"];' "$(cat "$NVHTML_CL")"
 check "status chip click delegation opens/closes the changelog overlay via .chip-changelog" 'ev.target.closest(".chip-changelog")' "$(cat "$NVHTML_CL")"
 check "changelog overlay reuses the note-window chrome family via the compound selector .note-window.changelog-window (same specificity-tie defense as .note-window.ast-inspector-window)" ".note-window.changelog-window{width:min(480px,92vw);max-height:80vh}" "$(cat "$NVHTML_CL")"
 check "chipHtml() accepts an optional 3rd element (extra CSS class) per segment" 'map(([text, title, cls]) =>' "$(cat "$NVHTML_CL")"
 
-echo "-- template: #410 -- CHIP_VER swaps to the plugin semver once /version delivers a non-null plugin field, keeping the chip-changelog clickable marker class and mentioning the template build number in its tooltip --"
-# shellcheck disable=SC2016  # single-quoted on purpose -- pinning the literal
-# template source text (including its own template-literal backticks/${...}),
-# not a shell expansion.
-check "CHIP_VER is reassigned from the /version probe's plugin field, with the chip-changelog clickable marker class" 'CHIP_VER = [`v${base.plugin}`, `plugin release version' "$(cat "$NVHTML_CL")"
-check "the plugin-version tooltip names semver.sh as the bump mechanism (matches what the changelog overlay documents)" 'bumped by semver.sh at every merge' "$(cat "$NVHTML_CL")"
+echo "-- template: #441 -- the async /version probe no longer reassigns CHIP_VER from a plugin field (NV_PLUGIN_VERSION is already the real plugin version from first paint, server-injected -- nothing left for the probe to swap in); it still fills in CHIP_BRANCH, and the repaint guard is narrowed to branch-only --"
 # shellcheck disable=SC2016  # single-quoted on purpose -- pinning literal
 # template-literal ${...} source text, not a shell expansion.
-check "the plugin-version tooltip demotes NV_VERSION to naming the template build" 'this tab'"'"'s template build is ${NV_VERSION}' "$(cat "$NVHTML_CL")"
-# shellcheck disable=SC2016  # single-quoted on purpose -- pinning literal
-# template-literal ${...} source text, not a shell expansion.
-check "the plugin-version segment still carries the chip-changelog clickable marker class" 'this tab'"'"'s template build is ${NV_VERSION} — click to view the changelog`, "chip-changelog"];' "$(cat "$NVHTML_CL")"
-check "the /version repaint guard fires on either a non-null plugin OR a branch (not branch alone) -- #410 needs the plugin-only case to repaint too" 'if(statusEl && !webglOK && base && (base.plugin || base.branch)){' "$(cat "$NVHTML_CL")"
+check_absent "the /version probe no longer reassigns CHIP_VER from base.plugin -- that swap is gone" 'CHIP_VER = [`v${base.plugin}`' "$(cat "$NVHTML_CL")"
+check_absent "the old plugin-version tooltip naming NV_VERSION as the template build is gone (NV_VERSION itself no longer exists)" 'this tab'"'"'s template build is' "$(cat "$NVHTML_CL")"
+check "the /version repaint guard is narrowed to base.branch alone -- #441: the plugin-only repaint case is gone along with the CHIP_VER reassignment it used to guard" 'if(statusEl && !webglOK && base && base.branch){' "$(cat "$NVHTML_CL")"
 
 echo "-- template (#411): version-row bulk caret is its own element/class, decoupled from the header text's section-only toggle, pinned in source --"
 # shellcheck disable=SC2016  # single-quoted on purpose -- pinning the literal

@@ -1495,27 +1495,54 @@ check "non-Escape keys are ignored" "NON_ESCAPE_IGNORED_OK true" "$tmpl_vs_out"
 check "the whole voice-settings-close template script completes" "ALL_OK true" "$tmpl_vs_out"
 if [[ "$tmpl_vs_rc" -ne 0 ]]; then echo "$tmpl_vs_out" >&2; fi
 
-echo "-- template: NV_VERSION bumped for this change (#428) --"
-check_absent "NV_VERSION is no longer the pre-#428 value" 'const NV_VERSION = "0.28.9";' "$(cat "$NVHTML")"
-# version-stepping pins move with the head version: #428 landed 0.28.10 on
-# main, #430 (this branch) re-steps it once more to 0.28.11 -- this pin is
-# updated to match rather than left pointing at an intermediate value no
-# build will ever have again. The 0.28.9-absent guard above is untouched:
-# that's still a true statement at any later version.
-check_absent "NV_VERSION is no longer the pre-#431 value" 'const NV_VERSION = "0.28.11";' "$(cat "$NVHTML")"
-# #433 re-stepped it once more, past #431's 0.28.12, to 0.28.13 -- same
-# convention: the pin moves with the head version.
-check_absent "NV_VERSION is no longer the pre-#433 value" 'const NV_VERSION = "0.28.12";' "$(cat "$NVHTML")"
-# #438 (this branch) re-steps it once more, past #433's 0.28.13, to 0.28.14.
-check_absent "NV_VERSION is no longer the pre-#438 value" 'const NV_VERSION = "0.28.13";' "$(cat "$NVHTML")"
-check "NV_VERSION bumped to the new patch (#438)" 'const NV_VERSION = "0.28.14";' "$(cat "$NVHTML")"
+echo "-- template: the NV_VERSION manual-bump convention is REMOVED (#441) -- the status chip briefly showed a template-baked build number before the async /version probe swapped it for the real plugin version; the number is now injected server-side (neural-view.py's render_index()) so it's correct from first paint, with nothing left to bump by hand --"
+check_absent "NV_VERSION is gone entirely -- no manual-bump const left anywhere in the template" 'const NV_VERSION' "$(cat "$NVHTML")"
+check_absent "the chip's old two-stage naming (template build vs plugin release) is gone -- CHIP_VER_FALLBACK is no longer described as a fallback awaiting an async swap" 'confirms which build this tab is rendering' "$(cat "$NVHTML")"
+check "the template ships a literal placeholder for the server to substitute, never a baked-in number" 'const v = "__NV_PLUGIN_VERSION__";' "$(cat "$NVHTML")"
+check "an unsubstituted placeholder degrades to plain \"dev\" client-side -- the only way this const can still hold the literal placeholder is a genuinely serverless file:// open that never runs neural-view.py's substitution" 'return v.startsWith("__NV_") ? "dev" : v;' "$(cat "$NVHTML")"
+# shellcheck disable=SC2016  # TEMPLATE JS source text pinned verbatim,
+# including its own literal ${...} interpolation -- never shell-expanded here.
+check "the chip's version segment is built from the (server-injected) NV_PLUGIN_VERSION, not a client-side fallback number" 'const CHIP_VER_FALLBACK = [`v${NV_PLUGIN_VERSION}`,' "$(cat "$NVHTML")"
+check "the metrics payload's v: field reports the same injected plugin version, not the old template-build number" 'id: METRICS_ID, v: NV_PLUGIN_VERSION, fps, dpr: dprCur,' "$(cat "$NVHTML")"
+# shellcheck disable=SC2016  # same: literal ${...} inside the pinned pattern
+check_absent "the async /version probe no longer sets CHIP_VER from base.plugin -- the version is already correct by the time this probe resolves, so there's nothing left for it to swap in" 'CHIP_VER = [`v${base.plugin}`' "$(cat "$NVHTML")"
+check "the async probe still fills in CHIP_BRANCH (branch has no server-side injection path -- it's genuinely async-only, unlike the version)" 'CHIP_BRANCH = [base.branch, "git branch the serving repo is on (read at server boot probe) — click to view the changelog", "chip-changelog"];' "$(cat "$NVHTML")"
+
+_nvpv_node="$(mktemp).cjs"
+cat >"$_nvpv_node" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+const startMarker = "const NV_PLUGIN_VERSION = (() => {";
+const endMarker = "})();";
+const startIdx = html.indexOf(startMarker);
+if (startIdx < 0) throw new Error("could not find the NV_PLUGIN_VERSION IIFE in the template");
+const endIdx = html.indexOf(endMarker, startIdx);
+if (endIdx < 0) throw new Error("could not find the NV_PLUGIN_VERSION IIFE's closing })();");
+const block = html.slice(startIdx, endIdx + endMarker.length);
+
+// case 1: never substituted (simulates a genuinely serverless file:// open,
+// which never runs neural-view.py's render_index()) -- must degrade to "dev"
+const v1 = new Function(block + "\nreturn NV_PLUGIN_VERSION;")();
+if (v1 !== "dev") throw new Error("UNSUBSTITUTED_NOT_DEV: " + v1);
+console.log("UNSUBSTITUTED_DEGRADES_TO_DEV_OK true");
+
+// case 2: server-substituted (simulates what render_index() does before this
+// script would ever run in a real browser: replace the placeholder with the
+// real plugin version) -- the substituted value must pass straight through
+const substituted = block.replace("__NV_PLUGIN_VERSION__", "1.2.3");
+const v2 = new Function(substituted + "\nreturn NV_PLUGIN_VERSION;")();
+if (v2 !== "1.2.3") throw new Error("SUBSTITUTED_VALUE_WRONG: " + v2);
+console.log("SUBSTITUTED_VALUE_PASSES_THROUGH_OK true");
+NODEJS
+nvpv_out="$(node "$_nvpv_node" "$NVHTML" 2>&1)"
+nvpv_rc=$?
+rm -f "$_nvpv_node"
+check_rc "NV_PLUGIN_VERSION degrade-path script exits 0" 0 "$nvpv_rc"
+check "an unsubstituted placeholder (serverless file:// open) degrades to \"dev\"" "UNSUBSTITUTED_DEGRADES_TO_DEV_OK true" "$nvpv_out"
+check "a server-substituted value passes straight through, unmodified" "SUBSTITUTED_VALUE_PASSES_THROUGH_OK true" "$nvpv_out"
+if [[ "$nvpv_rc" -ne 0 ]]; then echo "$nvpv_out" >&2; fi
 
 echo "== neural-view note media: audio + mermaid (#430) =="
-# version-stepping pin moves with the head version again: #438 (this branch)
-# re-steps NV_VERSION once more, past #430/#431/#433's 0.28.13 -- this pin is
-# updated to match rather than left pointing at an intermediate value no
-# build will ever have again (same convention as the #428->#431 update above).
-check "NV_VERSION bumped since #430/#431/#433" 'const NV_VERSION = "0.28.14";' "$(cat "$NVHTML")"
 check_absent "mermaid is no longer loaded via a bare dynamic import() of the vendored bundle -- that runs it as an ES module, and the bundle's own top-level var-then-globalThis-read tail throws under module scoping (#431 real-browser repro)" 'import("/vendor/mermaid.min.js")' "$(cat "$NVHTML")"
 check "mermaid is loaded via a classic <script> tag instead, so its top-level var actually leaks onto the global object the way the bundle's tail-end globalThis lookup requires" 's.src = "/vendor/mermaid.min.js";' "$(cat "$NVHTML")"
 check "mermaid is initialized with securityLevel strict -- note-derived diagram source must not get raw HTML passthrough" 'securityLevel: "strict"' "$(cat "$NVHTML")"
@@ -1724,11 +1751,10 @@ check "wheel-zoom clamps to min/max scale regardless of gesture magnitude" "MMD_
 check "wheel-zoom is zoom-AT-cursor (the point under the pointer stays fixed), honoring the container's own getBoundingClientRect offset" "MMD_ZOOM_AT_CURSOR_OK true" "$pz_out"
 check "drag pan translates the transform by the pointer delta" "MMD_PAN_OK true" "$pz_out"
 if [[ "$pz_rc" -ne 0 ]]; then echo "$pz_out" >&2; fi
-
-echo "-- template: NV_VERSION bumped for this change (#438, continuing #433's pin) --"
-check_absent "NV_VERSION is no longer the pre-#433 value" 'const NV_VERSION = "0.28.12";' "$(cat "$NVHTML")"
-check_absent "NV_VERSION is no longer the pre-#438 value" 'const NV_VERSION = "0.28.13";' "$(cat "$NVHTML")"
-check "NV_VERSION bumped to the new patch (#438)" 'const NV_VERSION = "0.28.14";' "$(cat "$NVHTML")"
+# NOTE: the NV_VERSION manual-bump pin that used to live here (re-asserted
+# once per feature branch, #433/#438) is gone -- #441 removes NV_VERSION
+# entirely; see the single "NV_VERSION is gone entirely" guard earlier in
+# this file for the one check that now covers every branch going forward.
 
 echo "== neural-view audio block first-paint sizing (#434): WebKit renders <audio controls> as a squished compact pill (play + 0:00, no scrubber) at first paint when the element has no explicit height established yet -- only a subsequent relayout (e.g. after a play interaction forces one) picks the full control strip. An explicit width AND min-height on the <audio> element itself removes that first-paint ambiguity. The SAME .naud CSS covers the inline block and the detached window (openAudioWindow's box is built through the exact same makeAudioBlock()), so one fix covers both. =="
 check_absent "the audio element no longer relies on width alone -- that ambiguity (no established height at first paint) is exactly the #434 bug" '.naud audio.nm{width:100%;display:block}' "$(cat "$NVHTML")"

@@ -2874,16 +2874,28 @@ function updateVisuals(){
 // trajectory, played quickly while the scene is still forming, landing in
 // the same final layout.
 let simStepMs = 0, lastStepMs = -1e9, simCalibratedN = -1, simFastForward = 0;
-// Template version -- disambiguates WHICH build a given tab is rendering
-// (three copies of this file exist on disk — dev repo / marketplace clone /
-// plugin cache — and "why does it look old" has burned real debugging
-// time). Bump the PATCH on every template change within an increment of
-// work; bump the MINOR when the increment ships. #410: this is no longer
-// the headline number in the status chip (that's the PLUGIN semver, which
-// matches what the changelog overlay documents) -- it now lives in the
-// chip's tooltip, and as the fallback chip text when the plugin version
-// can't be read (see CHIP_VER_FALLBACK below).
-const NV_VERSION = "0.28.14";
+// Plugin version (#441): injected SERVER-SIDE by neural-view.py's
+// render_index() -- the same source /version's `plugin` field reports,
+// plugins/spec-workflow/.claude-plugin/plugin.json's `version` -- so the
+// status chip already shows the CORRECT number on FIRST PAINT. This
+// replaces the old NV_VERSION manual-bump convention (a template-baked
+// build number that briefly flashed before the async /version probe
+// swapped it for the real plugin version): there is nothing left to bump
+// by hand, and nothing left to flash. The QUOTED string literal on the
+// very next line is neural-view.py's NV_PLUGIN_PLACEHOLDER sentinel --
+// spelled out fully only there, deliberately NOT repeated here (a repeat
+// would itself be a substitution target, mangling this comment on every
+// served page) -- render_index() replaces it with json.dumps() of the
+// real value (or "dev" if plugin.json is missing/unparseable) before the
+// response is sent; the only way this const can still hold the literal
+// sentinel is a genuinely serverless open of this raw HTML file (file://,
+// bypassing neural-view.py's substitution entirely) -- degrade to "dev"
+// client-side too in that one case, so the chip never shows raw template
+// plumbing.
+const NV_PLUGIN_VERSION = (() => {
+  const v = "__NV_PLUGIN_VERSION__";
+  return v.startsWith("__NV_") ? "dev" : v;
+})();
 // every tab reports its live numbers to the server about once a second
 // (POST /metrics) so `neural-view.py status` — and any agent driving it —
 // can read the page's real frame rate without screenshots.
@@ -2909,12 +2921,12 @@ const CHIP_LIVE = ["live", "Connected — the page re-reads the brains every 15s
 // AST-044 inspector further down this file.
 // #410: the chip's headline version is the PLUGIN semver -- the number
 // bumped by semver.sh at every merge and the one the changelog overlay
-// documents (one user-facing version, not two). CHIP_VER starts as this
-// NV_VERSION-based fallback (deterministic before the async /version probe
-// below resolves) and is replaced with the plugin version once that probe
-// delivers a non-null `plugin` field; if it's null (plugin.json missing or
-// unparseable) the chip simply stays on this fallback, same as today.
-const CHIP_VER_FALLBACK = [`v${NV_VERSION}`, "neural-view template version — confirms which build this tab is rendering (bumped on every template change) — click to view the changelog", "chip-changelog"];
+// documents (one user-facing version, not two). #441: CHIP_VER is built
+// from NV_PLUGIN_VERSION, which is ALREADY the real plugin version by the
+// time this line runs (server-injected, see the const's own comment above)
+// -- so this is the chip's one and only version segment, correct from
+// first paint, not a "fallback" awaiting an async probe to replace it.
+const CHIP_VER_FALLBACK = [`v${NV_PLUGIN_VERSION}`, "plugin release version — the number the changelog documents (bumped by semver.sh at every merge) — click to view the changelog", "chip-changelog"];
 let CHIP_VER = CHIP_VER_FALLBACK;
 // git branch of the serving repo — filled by the /version probe at boot
 // (falsy until then; chipHtml drops it, frame()'s per-second rebuild picks
@@ -2967,7 +2979,7 @@ function frame(){
         REDUCED && ["reduced motion", "prefers-reduced-motion is on: ambient throb and pulse dots are disabled"],
       ]);
       fetch("/metrics", {method:"POST", body: JSON.stringify({
-        id: METRICS_ID, v: NV_VERSION, fps, dpr: dprCur,
+        id: METRICS_ID, v: NV_PLUGIN_VERSION, fps, dpr: dprCur,
         sim: +perfMs.step.toFixed(1), vis: +perfMs.vis.toFixed(1), draw: +perfMs.render.toFixed(1),
         notes: nodes.length, links: links.length,
         spd: +simAvgSpeed.toFixed(3), asleep: simAsleep, p: simPhaseP,
@@ -5942,19 +5954,18 @@ const PROBE = location.search.includes("hoverprobe");
 // /version carries {boot, template, dev, branch, plugin}: boot changes on
 // every server process, template on every template edit. Polled ONLY when
 // dev is true — a normal server costs one probe at boot, then silence.
-// #410: `plugin` (plugins/spec-workflow/.claude-plugin/plugin.json's
-// version, or null if unreadable) becomes the chip's headline version --
-// CHIP_VER swaps off CHIP_VER_FALLBACK once it lands; null leaves the
-// fallback in place, so the chip is never text-less.
+// #441: `plugin` is no longer read here -- NV_PLUGIN_VERSION (and so
+// CHIP_VER) is already the real plugin version from FIRST PAINT, injected
+// server-side into the HTML itself (see NV_PLUGIN_VERSION's own comment),
+// so there is nothing left for this probe to swap in for the version
+// number. `branch` still only arrives via this async round trip (nothing
+// server-side injects it into the initial HTML), so that part is unchanged.
 (async function(){
   let base; try{ base = await (await fetch("/version")).json(); }catch{ return; }
-  if(base && base.plugin){
-    CHIP_VER = [`v${base.plugin}`, `plugin release version — the number the changelog documents (bumped by semver.sh at every merge); this tab's template build is ${NV_VERSION} — click to view the changelog`, "chip-changelog"];
-  }
   if(base && base.branch){
     CHIP_BRANCH = [base.branch, "git branch the serving repo is on (read at server boot probe) — click to view the changelog", "chip-changelog"];
   }
-  if(statusEl && !webglOK && base && (base.plugin || base.branch)){
+  if(statusEl && !webglOK && base && base.branch){
     // frame() rebuilds the chip every second; repaint now for the non-WebGL path
     statusEl.innerHTML = chipHtml([CHIP_LIVE, CHIP_VER, CHIP_BRANCH, CHIP_NO3D]);
   }
