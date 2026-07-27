@@ -327,3 +327,23 @@ check "orphaned END marker: exactly one END delimiter survives (debris dropped)"
 check "orphaned END marker: prose before it survives" "Some prose." "$sa_orphan_agents"
 check "orphaned END marker: prose after it survives" "More prose." "$sa_orphan_agents"
 rm -rf "$sa_d"
+
+# --- development-skills#437 regression: gate.sh exports PYTHONPATH=scripts/
+# before invoking setup.py. That puts scripts/ in sys.path at position 1 --
+# BEHIND sys.path[0] (scripts/assistant/, setup.py's own dir) -- so a naive
+# `if _SCRIPTS_DIR not in sys.path` guard sees it already present and skips
+# the insert(0, ...) that's supposed to make scripts/ win. Without that,
+# `import config as project_config` resolves scripts/assistant/config.py
+# (the engine config module, no ConfigError/dig) instead of the intended
+# scripts/config.py shared loader, and every setup.py invocation dies with
+# an AttributeError -- this was #412's real root cause, deterministic under
+# gate.sh's env and invisible under a plain run-tests.sh run (which never
+# sets PYTHONPATH itself). Explicitly set PYTHONPATH here to reproduce
+# gate.sh's shadowing env for this one check. ------------------------------
+sa_d="$(mktemp -d)"
+sa_pp_out="$(PYTHONPATH="$PLUGIN/scripts" bash "$SA_SCRIPT" --root "$sa_d" scaffold --name jarvis 2>&1)"
+sa_pp_rc=$?
+check_rc "#437: scaffold exits 0 under gate.sh's PYTHONPATH=scripts/ env (scripts/ must still win over scripts/assistant/)" 0 "$sa_pp_rc"
+[[ -f "$sa_d/.claude/project.yaml" ]] && r=yes || r=no
+check "#437: scaffold under PYTHONPATH=scripts/ still creates .claude/project.yaml" "yes" "$r"
+rm -rf "$sa_d"
