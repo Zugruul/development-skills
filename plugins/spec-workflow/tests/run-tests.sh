@@ -224,6 +224,7 @@ section-semver.sh
     section-assistant-marker.sh
     section-capability-index.sh
     section-capability-roster.sh
+    section-capability-provisioning.sh
     section-setup-assistant.sh
     section-assistant-preflight.sh
     section-assistant-default.sh

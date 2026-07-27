@@ -371,7 +371,11 @@ class AssistantEngine:
         Turn contract (design doc's "the turn side of this task ends at
         roster injected + ambiguous -> the turn's reply asks"): a plain
         list of entries renders via `turns._render_roster_entries`'s
-        existing `{"name", "one-liner", "available"}` shape unchanged. An
+        `{"name", "one-liner", "available", "reason"}` shape (AST-062,
+        issue #337, adds `reason` -- the compiled entry's
+        `unavailable_reason` -- so an unavailable-but-enabled capability's
+        SPECIFIC reason reaches the persona prompt, per Sec11.4's "never
+        present an unavailable ability as usable"). An
         `AskInsteadOfGuess` sentinel is surfaced as ONE synthetic roster
         entry whose one-liner states the ambiguity -- this is a rendering
         choice, not a control-flow branch: the ambiguity note becomes part
@@ -394,7 +398,12 @@ class AssistantEngine:
                     "available": False,
                 }]
             return [
-                {"name": e.name, "one-liner": e.one_liner, "available": e.provisioned_ok}
+                {
+                    "name": e.name,
+                    "one-liner": e.one_liner,
+                    "available": e.provisioned_ok,
+                    "reason": e.unavailable_reason,
+                }
                 for e in result
             ]
         return _provider

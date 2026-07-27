@@ -52,11 +52,15 @@ the schema/version-negotiation library above:
         disabled or version-incompatible skills are invisible: no entry,
         no roster, no prompt, never executed (design doc's "two
         invisibility tiers" decision). `provisioned_ok`/`unavailable_reason`
-        model AST-062's (not this task's) provisioning-check outcome via an
-        injectable `provisioning_checker` seam on `compile_index` --
-        defaulting to "unknown/assumed ok" (`provisioned_ok=True,
-        unavailable_reason=None`) so AST-062 can plug in its TTL-cached
-        checker later without reshaping this entry.
+        model AST-062's provisioning-check outcome via an injectable
+        `provisioning_checker` seam on `compile_index` -- defaulting to
+        `assistant.provisioning.real_provisioning_checker` (AST-062, issue
+        #337: a TTL-cached checker that actually runs `provisioning.check`
+        via `adapters.invoke_cli`, imported lazily inside `compile_index`
+        so this module stays a pure library with no subprocess dependency
+        at import time). Tests (and any caller wanting a hermetic/
+        synthetic outcome) override `provisioning_checker` explicitly;
+        that seam itself is unchanged from AST-061.
 
     CapabilityIndex(entries) -- an immutable snapshot (a tuple of
         CapabilityIndexEntry, sorted by name for deterministic iteration)
@@ -335,12 +339,14 @@ def _read_skill_meta(skill_dir):
 
 
 def default_provisioning_checker(name, capability, skill_dir):
-    """AST-061's provisioning seam, defaulting to "unknown/assumed ok"
-    (`provisioned_ok=True, unavailable_reason=None`) -- this task does NOT
-    execute `capability.provisioning.check` (that is AST-062's TTL-cached
-    checker). `compile_index`'s `provisioning_checker` parameter exists so
-    AST-062 can swap this default out for a real checker without changing
-    `compile_index`'s call site or CapabilityIndexEntry's shape."""
+    """AST-061's original "unknown/assumed ok" provisioning seam
+    (`provisioned_ok=True, unavailable_reason=None`), NEVER executing
+    `capability.provisioning.check`. No longer `compile_index`'s default
+    (AST-062 replaced that with `assistant.provisioning.
+    real_provisioning_checker`, which runs the real check) -- kept as a
+    named, importable placeholder for any caller that deliberately wants
+    the old always-ok behavior (e.g. a test exercising something upstream
+    of provisioning that would rather not depend on a real subprocess)."""
     return True, None
 
 
@@ -408,7 +414,17 @@ def compile_index(skills_root, assistant_cfg, provisioning_checker=None, embed_f
     invisibility-tiers rule (disabled/version-incompatible skills never get
     an entry at all)."""
     assistant_cfg = assistant_cfg or {}
-    provisioning_checker = provisioning_checker or default_provisioning_checker
+    if provisioning_checker is None:
+        # Local import (AST-062, issue #337): keeps capability_index.py free
+        # of assistant.provisioning's adapters.py/subprocess dependency
+        # chain at MODULE import time (design doc: "Pure library: no HTTP,
+        # no subprocess spawning of its own"). `real_provisioning_checker`
+        # is a module-level singleton in assistant.provisioning, so its TTL
+        # cache persists across repeated compile_index calls within one
+        # process -- import caching returns the SAME module object every
+        # time, this local import never resets it.
+        from assistant import provisioning as provisioning_module
+        provisioning_checker = provisioning_module.real_provisioning_checker
     caps_cfg = assistant_cfg.get("capabilities")
     caps_cfg = caps_cfg if isinstance(caps_cfg, dict) else {}
 

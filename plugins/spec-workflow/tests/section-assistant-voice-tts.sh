@@ -278,7 +278,7 @@ check "template: stop() (the page-hide path) resolves the guard and cancels spee
 check "template: an empty chunk list never raises the guard" "EMPTY_CHUNKS_OK true" "$tmpl_ss_out"
 if [[ "$tmpl_ss_rc" -ne 0 ]]; then echo "$tmpl_ss_out" >&2; fi
 
-echo "-- template: chat-overlay wiring, page-hide never-latch hook, hook name pinned, trace-stream join, engine untouched --"
+echo "-- template: chat-overlay wiring, page-hide never-latch hook, hook name pinned, trace-stream join --"
 check "template pins the speakReply(text, turnId) hook signature (E5 owns it, E6's §12.5 announce calls it later)" "function speakReply(text, turnId)" "$(cat "$NVHTML_VOICE")"
 check "template wires a rendered chat reply to speakReply (AST-023 overlay -> AST-050 TTS)" "speakReply(payload.text" "$(cat "$NVHTML_VOICE")"
 check "template's page-hide path drops the echo guard via the same stop() never-latch route" "voiceSources.outbound.stop()" "$(cat "$NVHTML_VOICE")"
@@ -286,19 +286,20 @@ check "template binds handleVoicePageHide to the pagehide event" 'addEventListen
 check "template joins §13.3 voice spans into the SAME trace stream the inspector renders (groupTurnsById)" "assistantVoiceSpans" "$(cat "$NVHTML_VOICE")"
 check "speakReply routes both spans through the REAL emitVoiceSpan bridge (AST-051, #333), not a second writer" 'emitVoiceSpan("tts-start"' "$(cat "$NVHTML_VOICE")"
 check "the template defines emitVoiceSpan exactly once (no re-introduced 050/051 name collision)" "1" "$(grep -c '^function emitVoiceSpan' "$NVHTML_VOICE")"
-# AST-051 (#333) legitimately added tts-start/tts-end to engine.py's
-# _VOICE_EVENT_KINDS, so a plain content grep for "tts-start" no longer
-# proves AST-050 stayed engine-side-untouched. The real invariant this
-# branch owes (§13.2, text-in/text-out) is that IT adds no further
-# engine.py changes on top of whatever's already on origin/main -- i.e.
-# this branch's own diff against origin/main touches engine.py not at
-# all. Skips gracefully (rather than false-failing) if origin/main isn't
-# reachable in this checkout.
-ROOT_FOR_DIFF="$(git -C "$PLUGIN" rev-parse --show-toplevel 2>/dev/null || true)"
-if [[ -n "$ROOT_FOR_DIFF" ]] && git -C "$ROOT_FOR_DIFF" rev-parse origin/main >/dev/null 2>&1; then
-    ENGINE_DIFF_VS_MAIN="$(git -C "$ROOT_FOR_DIFF" diff origin/main -- plugins/spec-workflow/scripts/assistant/engine.py 2>/dev/null)"
-    if [[ -z "$ENGINE_DIFF_VS_MAIN" ]]; then engine_diff_rc=0; else engine_diff_rc=1; fi
-    check_rc "this branch (AST-050) adds no further engine.py changes vs origin/main -- §13.2 stays text-in/text-out, AST-051 already owns the /assistant/voice-event writer" 0 "$engine_diff_rc"
-else
-    echo "skip (origin/main unreachable in this checkout): AST-050 engine.py diff-vs-main check"
-fi
+# issue #337 (AST-062) review: the "this branch adds no further engine.py
+# changes vs origin/main" check that used to live here was a ONE-TIME PR
+# review assertion for AST-050's own diff (proving AST-050 itself didn't
+# sneak engine.py changes in beyond what AST-051 already added) -- valid
+# only at AST-050's own merge time, which is long since settled history
+# now that AST-050/2a8277a is on origin/main. Implemented as a live "git
+# diff origin/main -- engine.py" on WHATEVER branch happens to be checked
+# out, it silently became a permanent "no branch may ever touch engine.py
+# again" gate -- which is false and directly contradicts
+# docs/design/ast-E6.md's own plan ("engine.py -- E6 tasks ... route
+# capability-invocation requests from turns.py through the index +
+# adapters"). AST-062 (issue #337) is the first branch to need a
+# legitimate engine.py change since AST-050 merged (threading
+# unavailable_reason into `_roster_provider_for`'s roster dict) and was
+# wrongly blocked by this stale, over-broad invariant. Removed rather than
+# reimplemented scoped-to-AST-050, since that historical fact is already
+# permanently recorded in origin/main and has nothing further to verify.

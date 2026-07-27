@@ -307,14 +307,27 @@ def _render_persona(persona_cfg):
 
 
 def _render_roster_entries(entries):
+    """Renders `roster_provider()`'s entry dicts into system-prompt lines.
+
+    AST-062 (SPEC-ASSISTANT.md Sec11.4, issue #337): "never present an
+    unavailable ability as usable" -- an entry with `available` falsy
+    renders its `reason` (`unavailable_reason` from the compiled
+    CapabilityIndexEntry, threaded through by engine.py's
+    `_roster_provider_for`) inline, so the persona's own system context
+    states WHY a plausible-looking capability can't be used right now,
+    never just a bare "(unavailable)" tag a model could talk past."""
     if not entries:
         return ["(no roster entries -- capability roster compilation lands in AST-061/E6)"]
     lines = ["Available capabilities:"]
     for entry in entries:
         name = entry.get("name", "?")
         one_liner = entry.get("one-liner") or entry.get("one_liner") or ""
-        avail = "available" if entry.get("available") else "unavailable"
-        lines.append("- %s (%s): %s" % (name, avail, one_liner))
+        if entry.get("available"):
+            lines.append("- %s (available): %s" % (name, one_liner))
+        else:
+            reason = entry.get("reason") or entry.get("unavailable_reason")
+            suffix = " -- %s" % reason if reason else ""
+            lines.append("- %s (unavailable%s): %s" % (name, suffix, one_liner))
     return lines
 
 

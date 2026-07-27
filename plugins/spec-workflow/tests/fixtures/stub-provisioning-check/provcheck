@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Stub provisioning.check binary for section-capability-provisioning.sh
+(AST-062, SPEC-ASSISTANT.md Sec11.1/Sec11.4, issue #337). Never touches the
+network or a real skill's actual dependency -- this is the ONLY "provcheck"
+contract tests put on PATH, mirroring section-assistant-adapter.sh's
+stub-codex convention (a stub on a controlled PATH, never an ambient
+binary).
+
+Behavior is entirely env-driven so one binary covers every outcome the
+real provisioning.ProvisioningChecker must classify:
+  PROVCHECK_MODE=ok      (default) -- exit 0, no output.
+  PROVCHECK_MODE=fail    -- exit $PROVCHECK_EXIT_CODE (default 3), writing
+                            $PROVCHECK_STDERR (default "not ready") to
+                            stderr so the reason-string test can assert
+                            the exit code AND the stderr tail both surface.
+  PROVCHECK_MODE=hang    -- sleeps $PROVCHECK_HANG_SECONDS (default 30),
+                            well past any short test timeout, to exercise
+                            the timeout-named reason path.
+
+Every invocation appends one line to $PROVCHECK_CALL_LOG (if set) so TTL
+caching tests can assert exactly how many times the check actually ran
+(the whole point of the cache: a fresh call per invocation would defeat
+it).
+"""
+import os
+import sys
+import time
+
+log_path = os.environ.get("PROVCHECK_CALL_LOG")
+if log_path:
+    with open(log_path, "a", encoding="utf-8") as fh:
+        fh.write("call\n")
+
+mode = os.environ.get("PROVCHECK_MODE", "ok")
+
+if mode == "hang":
+    time.sleep(float(os.environ.get("PROVCHECK_HANG_SECONDS", "30")))
+    sys.exit(0)
+
+if mode == "fail":
+    sys.stderr.write(os.environ.get("PROVCHECK_STDERR", "not ready") + "\n")
+    sys.exit(int(os.environ.get("PROVCHECK_EXIT_CODE", "3")))
+
+sys.exit(0)

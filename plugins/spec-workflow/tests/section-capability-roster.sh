@@ -62,6 +62,13 @@ cr_repo() {
 
 # ------------------------------------------------------------------------
 echo "-- unit: compile_index -- enabled + version-ok skill compiles with SKILL.md metadata --"
+# NOTE (AST-062, issue #337): compile_index's default provisioning_checker is
+# now the REAL TTL-cached checker (assistant.provisioning), not the AST-061
+# placeholder that always assumed ok -- so this fixture's `check:` argv must
+# be something that GENUINELY exits 0 (["true"], present on every POSIX
+# system this suite runs on) for PROVISIONED_OK_DEFAULT to still read True.
+# The real default's actual pass/fail/missing-binary/timeout behavior is
+# pinned in section-capability-provisioning.sh, not here.
 out="$(SCRIPTS_DIR="$CR_SCRIPTS" python3 - <<'PY'
 import os, sys, tempfile
 sys.path.insert(0, os.environ["SCRIPTS_DIR"])
@@ -74,7 +81,7 @@ os.makedirs(skills_root, exist_ok=True)
 dir_ = os.path.join(skills_root, "render3d")
 os.makedirs(dir_, exist_ok=True)
 with open(os.path.join(dir_, "capability.yaml"), "w") as fh:
-    fh.write("version: 1\nprovisioning:\n    check: [\"which\", \"x\"]\n    ttlSeconds: 60\n"
+    fh.write("version: 1\nprovisioning:\n    check: [\"true\"]\n    ttlSeconds: 60\n"
               "permissions: []\ninvoke:\n    exec: [\"x\"]\n")
 with open(os.path.join(dir_, "SKILL.md"), "w") as fh:
     fh.write("---\nname: render3d\ndescription: renders 3D duck models for artifacts\n---\nbody\n")
@@ -97,8 +104,8 @@ check "compile_index: entry name matches the skill dir" "NAME render3d" "$out"
 check "compile_index: entry is enabled" "ENABLED True" "$out"
 check "compile_index: one_liner comes from SKILL.md description" "ONE_LINER renders 3D duck models for artifacts" "$out"
 check "compile_index: keywords are derived, non-empty" "KEYWORDS_NONEMPTY True" "$out"
-check "compile_index: default provisioning seam assumes ok" "PROVISIONED_OK_DEFAULT True" "$out"
-check "compile_index: default provisioning seam has no unavailable reason" "UNAVAILABLE_REASON_DEFAULT None" "$out"
+check "compile_index: real default checker: a genuinely passing check reports provisioned_ok True" "PROVISIONED_OK_DEFAULT True" "$out"
+check "compile_index: real default checker: a genuinely passing check has no reason" "UNAVAILABLE_REASON_DEFAULT None" "$out"
 check "compile_index: embedding is None when the embeddings capability is unavailable" "EMBEDDING_NONE_WHEN_UNAVAILABLE True" "$out"
 
 # ------------------------------------------------------------------------
