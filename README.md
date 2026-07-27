@@ -30,6 +30,34 @@ Or per-repo (shared with everyone opening the repo) via `.claude/settings.json`:
 
 Visualization of "brains" that help guide development and knowledge base over each project. With help of RAG in addition to semantic search we are able to probe it for information.
 
+### Live activations — watch the memories fire
+
+![Recall activations lighting up in real time](./docs/activations.png)
+
+When an agent recalls a lesson, you see it happen. Every `brain.sh recall` an
+orchestrator runs — while briefing a dev agent, reviewing a diff, or answering
+a question — emits activation events, and the neural view renders them the
+moment they occur:
+
+- **Expanding rings** pulse around the exact notes being accessed, right where
+  they sit in their repo's cluster — in the screenshot, a live
+  `development-skills` session is seeding three orchestrator memories and the
+  ripples radiate out from each one.
+- **The activation log** (bottom right) narrates the same events as text:
+  timestamp, repo, role, event kind, and the note's slug — so a glowing neuron
+  is never anonymous.
+- **Spreading activation is visible too**: after the seeded notes light up,
+  energy flows along their synapses to related notes (the `hop` events), which
+  is literally the recall ranking algorithm drawing itself.
+- **Live session markers** (`· 1 LIVE` next to a repo name) show which brains
+  currently have an agent thinking against them.
+
+Nothing is replayed or simulated — the page tails each brain's
+`.activation.jsonl` feed, so what you're watching is the actual memory traffic
+of agents working, as it happens. Leave it on a second monitor and you can
+tell at a glance *what the loop is thinking about* without reading a single
+transcript.
+
 ### UI Mode
 
 ![](./docs/ui-mode-example.png)
@@ -73,6 +101,10 @@ Both knobs default to `30`/`500` when omitted. Retention only ever touches
 `traces.sqlite` — it never deletes the embeddings index, `session.jsonl`, or
 any other local-state file. Full observability epic tracked in
 [`docs/design/ast-E4.md`](docs/design/ast-E4.md).
+
+Memory access is fully observable too — see
+[Live activations](#live-activations--watch-the-memories-fire) under Tooling
+for the real-time view of recalls lighting up the network.
 
 ## Testing
 
