@@ -25,6 +25,11 @@
   >   leaks (fixes a shellcheck SC2034 unused-var warning on the captured
   >   output).
 
+### Chores
+- **feedback:** emit + route iteration feedback for AST-062 close (`11f810b`)
+  > - 5 items: env-divergence incident (-> #439), suite-context replay ask (-> #440), recall-injection gap, reviewer-reproduces win, hotfix-stacking win
+  > - 2 orchestrator notes minted from routed items; feed archived (2026-07)
+
 ### Other
 - retro(#109): PR-close retro for #337 + hotfixes #435/#437 (`1bbf230`)
   > - dev: 4 notes (presence-vs-position guards, forwarded error strings, monotonic TTL clocks, reproduce the failing env)
