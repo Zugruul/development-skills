@@ -1529,3 +1529,26 @@
 {"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "ping-gated-lane-sequencing", "strength": 1, "ts": "2026-07-26T22:34:46+00:00", "type": "NoteMinted", "v": 1}
 {"key": "ping-gated-lane-sequencing->version-const-collisions-hand-step", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-26T22:34:46+00:00", "type": "LinkFormed", "v": 1}
 {"key": "ping-gated-lane-sequencing->brief-collisions-and-inflight-siblings", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-26T22:34:46+00:00", "type": "LinkFormed", "v": 1}
+{"injected": 24, "links_fired": 1, "repo": "Zugruul/development-skills", "role": "orchestrator", "seeds": 57, "ts": "2026-07-27T02:17:49+00:00", "type": "RecallPerformed", "v": 1}
+{"key": "demo-note-media->bisect-before-blaming-tracked-flakiness", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T02:17:49+00:00", "type": "LinkFired", "v": 1}
+{"injected": 18, "links_fired": 1, "repo": "Zugruul/development-skills", "role": "orchestrator", "seeds": 69, "ts": "2026-07-27T02:20:43+00:00", "type": "RecallPerformed", "v": 1}
+{"key": "demo-note-media->bisect-before-blaming-tracked-flakiness", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T02:20:43+00:00", "type": "LinkFired", "v": 1}
+{"injected": 18, "links_fired": 1, "repo": "Zugruul/development-skills", "role": "orchestrator", "seeds": 69, "ts": "2026-07-27T02:20:47+00:00", "type": "RecallPerformed", "v": 1}
+{"key": "demo-note-media->bisect-before-blaming-tracked-flakiness", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T02:20:47+00:00", "type": "LinkFired", "v": 1}
+{"injected": 18, "links_fired": 1, "repo": "Zugruul/development-skills", "role": "orchestrator", "seeds": 69, "ts": "2026-07-27T02:20:51+00:00", "type": "RecallPerformed", "v": 1}
+{"key": "demo-note-media->bisect-before-blaming-tracked-flakiness", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T02:20:51+00:00", "type": "LinkFired", "v": 1}
+{"injected": 18, "links_fired": 1, "repo": "Zugruul/development-skills", "role": "orchestrator", "seeds": 69, "ts": "2026-07-27T02:21:34+00:00", "type": "RecallPerformed", "v": 1}
+{"key": "demo-note-media->bisect-before-blaming-tracked-flakiness", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T02:21:34+00:00", "type": "LinkFired", "v": 1}
+{"injected": 18, "links_fired": 1, "repo": "Zugruul/development-skills", "role": "orchestrator", "seeds": 69, "ts": "2026-07-27T02:21:38+00:00", "type": "RecallPerformed", "v": 1}
+{"key": "demo-note-media->bisect-before-blaming-tracked-flakiness", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T02:21:38+00:00", "type": "LinkFired", "v": 1}
+{"injected": 18, "links_fired": 1, "repo": "Zugruul/development-skills", "role": "orchestrator", "seeds": 69, "ts": "2026-07-27T02:21:43+00:00", "type": "RecallPerformed", "v": 1}
+{"key": "demo-note-media->bisect-before-blaming-tracked-flakiness", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T02:21:43+00:00", "type": "LinkFired", "v": 1}
+{"idx": 0, "itemTs": "2026-07-27T03:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T03:20:26+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 1, "itemTs": "2026-07-27T03:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T03:20:26+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 2, "itemTs": "2026-07-27T03:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T03:20:26+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 3, "itemTs": "2026-07-27T03:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T03:20:26+00:00", "type": "FeedbackEmitted", "v": 1}
+{"itemCount": 4, "itemTs": "2026-07-27T03:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T03:20:26+00:00", "type": "FeedbackArchived", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "live-browser-verify-before-ui-merges", "strength": 1, "ts": "2026-07-27T03:20:26+00:00", "type": "NoteMinted", "v": 1}
+{"key": "live-browser-verify-before-ui-merges->ping-gated-lane-sequencing", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T03:20:26+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "vendored-bundles-load-by-build-mechanism", "strength": 1, "ts": "2026-07-27T03:20:26+00:00", "type": "NoteMinted", "v": 1}
+{"key": "vendored-bundles-load-by-build-mechanism->stub-failure-semantics", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T03:20:26+00:00", "type": "LinkFormed", "v": 1}

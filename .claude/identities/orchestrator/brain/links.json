@@ -15,8 +15,8 @@
     "weight": 0.5
   },
   "demo-note-media->bisect-before-blaming-tracked-flakiness": {
-    "fires": 0,
-    "last": null,
+    "fires": 7,
+    "last": "2026-07-26",
     "weight": 0.5
   },
   "direct-mode-standdown-and-sweep->live-tweaks-as-brief-amendments": {
@@ -25,6 +25,11 @@
     "weight": 0.5
   },
   "direct-mode-standdown-and-sweep->prescription-ack-closes-round-cap": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "live-browser-verify-before-ui-merges->ping-gated-lane-sequencing": {
     "fires": 0,
     "last": null,
     "weight": 0.5

@@ -5487,3 +5487,77 @@ items:
   routing:
     action: backlog
     ref: Zugruul/development-skills#418
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-27T03:40:00Z'
+iteration:
+  task: session-close 2026-07-27
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-sonnet-5
+items:
+- category: worked-well
+  area: review
+  severity: low
+  summary: 'Live-in-browser verification before merge (driving the real page: rendering,
+    gesture math, first-paint layout) caught nothing the reviews missed this wave
+    but proved two fixes end-to-end and once caught an entire masked bug class earlier'
+  generalized: For template/UI changes, orchestrator-driven verification in a real
+    browser against a per-branch server instance is a cheap final gate that catches
+    harness-vs-browser divergence (module scoping, layout modes) that no stubbed test
+    can; pair it with hardening the stub to the real contract each time a divergence
+    is found
+  evidence:
+  - Zugruul/development-skills#431
+  - Zugruul/development-skills#433
+  - Zugruul/development-skills#434
+  routing:
+    action: brain-note
+    ref: ''
+- category: incident
+  area: testing
+  severity: medium
+  summary: A dynamic import ran a vendored classic-script bundle in module scope,
+    crashing in every real browser while the string-pin test stayed green; a stub
+    honoring the real bundle contract now pins the class
+  generalized: Vendored browser bundles must be loaded by the mechanism they were
+    built for (classic script vs ES module — top-level var scoping differs), and test
+    stubs for loader code must reproduce the real artifact's contract (global side
+    effects, no exports), not the loader's assumed shape
+  evidence:
+  - Zugruul/development-skills#431
+  routing:
+    action: brain-note
+    ref: ''
+- category: friction
+  area: other
+  severity: low
+  summary: Telemetry review-round records silently failed twice inside compound shell
+    commands with suppressed stdout, blocking QA moves until re-recorded
+  generalized: Recording commands whose success gates later workflow steps should
+    never run with suppressed output inside long compound commands; run them visibly
+    and check the OK line, or the failure surfaces much later as a confusing hook
+    block
+  evidence:
+  - Zugruul/development-skills#431
+  - Zugruul/development-skills#433
+  routing:
+    action: ignore
+    ref: ''
+- category: incident
+  area: concurrency
+  severity: medium
+  summary: A second app instance crash-wedged on a metrics-port collision instead
+    of degrading, and the half-started process accepted TCP without responding, hanging
+    clients
+  generalized: Optional subsystems (metrics exporters, side servers) must degrade
+    with a logged notice when their port is taken, never abort the main service into
+    a half-started state that accepts connections it will never answer
+  evidence:
+  - Zugruul/development-skills#432
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#432

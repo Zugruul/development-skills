@@ -559,6 +559,11 @@
     "last": "2026-07-26",
     "weight": 0.5
   },
+  "vendored-bundles-load-by-build-mechanism->stub-failure-semantics": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "vendored-split-build-import-guard->red-static-vs-wiring-checks": {
     "fires": 11,
     "last": "2026-07-22",
