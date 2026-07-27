@@ -46,6 +46,11 @@ rm -f "$_tdi_probe"
 # the path the parent asked for and stop -- no further recursion.
 if [[ -n "${_TMPDIR_ISOLATION_PROBE:-}" ]]; then
     printf '%s\n' "${TMPDIR:-}" >"$_TMPDIR_ISOLATION_PROBE"
+    # Dual-exit idiom: `return` succeeds when this file is sourced (the
+    # normal run-tests.sh path) and only `exit` runs when it's executed
+    # directly; shellcheck's reachability analysis flags the `exit 0` as
+    # unreachable, which is a false positive for this idiom.
+    # shellcheck disable=SC2317
     return 0 2>/dev/null || exit 0
 fi
 
