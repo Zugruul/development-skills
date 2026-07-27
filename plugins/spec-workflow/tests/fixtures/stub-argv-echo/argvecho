@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""Stub invoke.exec binary for section-capability-invoke.sh (AST-063,
+SPEC-ASSISTANT.md Sec11.5/Sec17.3, issue #338). Never touches the network or
+a real skill's actual command -- this is the ONLY "argvecho" contract tests
+put on PATH, mirroring section-capability-provisioning.sh's stub-provcheck
+convention (a stub on a controlled PATH, never an ambient binary -- house
+lesson hermetic-path-fixtures-for-cli-tests).
+
+Prints each argv element it actually received (excluding argv[0] itself) on
+its own line, prefixed with its index, e.g.:
+    ARGV[0]=--city=New York; DROP TABLE users;
+    ARGV[1]=--unit=celsius
+
+This is the ONLY reliable way to prove `adapters.invoke_argv` never routes
+through a shell: if a shell metacharacter (`;`, `|`, `$()`, `&&`, a
+backtick) had been interpreted anywhere in the invoke path, it would have
+been split into extra argv elements, expanded, or executed as a
+sub-command -- none of which would round-trip back out through this stub
+byte-for-byte. A test asserting `ARGV[0]=--city=New York; DROP TABLE
+users;` appears VERBATIM and that exactly ONE ARGV line was printed for
+that placeholder is proof the metacharacters arrived as inert literal
+text in a single argv slot.
+
+Every invocation appends one line to $ARGVECHO_CALL_LOG (if set) so a
+validation-must-precede-execution test can assert the subprocess was never
+even spawned when param validation fails.
+
+$ARGVECHO_MODE=hang (default "ok") sleeps $ARGVECHO_HANG_SECONDS (default
+30) before ever printing anything, so a test can prove `invoke_argv` still
+honors `adapters.invoke_cli`'s mandatory timeout rather than being some new,
+unbounded invocation path.
+"""
+import os
+import sys
+import time
+
+log_path = os.environ.get("ARGVECHO_CALL_LOG")
+if log_path:
+    with open(log_path, "a", encoding="utf-8") as fh:
+        fh.write("call\n")
+
+if os.environ.get("ARGVECHO_MODE") == "hang":
+    time.sleep(float(os.environ.get("ARGVECHO_HANG_SECONDS", "30")))
+    sys.exit(0)
+
+for i, arg in enumerate(sys.argv[1:]):
+    print(f"ARGV[{i}]={arg}")
+
+sys.exit(int(os.environ.get("ARGVECHO_EXIT_CODE", "0")))
