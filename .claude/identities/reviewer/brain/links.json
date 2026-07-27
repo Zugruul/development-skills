@@ -9,16 +9,6 @@
     "last": "2026-07-26",
     "weight": 0.5
   },
-  "delta-jurisprudence->covenant-grep-and-execute": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "delta-jurisprudence->reproduce-red-first-claims": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "distinguish-missed-vs-uncatchable-findings->verify-portability-claims-in-target-environment": {
     "fires": 3,
     "last": "2026-07-26",
@@ -44,6 +34,11 @@
     "last": "2026-07-26",
     "weight": 0.5
   },
+  "grep-for-the-third-site->reproduce-before-verdict": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "mutation-test-verify-suite-discriminates->reproduce-claimed-bug-fix-before-and-after": {
     "fires": 3,
     "last": "2026-07-26",
@@ -59,19 +54,9 @@
     "last": "2026-07-26",
     "weight": 0.5
   },
-  "prescribe-contract-not-code->measure-geometry-not-strings": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "probe-spec-silent-input-categories->trace-boundary-operators-by-hand": {
     "fires": 3,
     "last": "2026-07-26",
-    "weight": 0.5
-  },
-  "red-check-precision->prescribe-contract-not-code": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "red-commit-worktree-verify->recompute-hashes-never-eyeball": {
@@ -94,6 +79,11 @@
     "last": null,
     "weight": 0.5
   },
+  "reproduce-before-verdict->grep-for-the-third-site": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "reproduce-claimed-bug-fix-before-and-after->verify-backcompat-claims-algebraically": {
     "fires": 3,
     "last": "2026-07-26",
@@ -112,26 +102,6 @@
   "rerun-the-red-empirically->reproduce-then-verify-fix": {
     "fires": 2,
     "last": "2026-07-26",
-    "weight": 0.5
-  },
-  "static-specificity-tie-check->measure-geometry-not-strings": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "static-specificity-tie-check->stub-harness-blindspot": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "stub-harness-blindspot->measure-geometry-not-strings": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "stub-harness-blindspot->prescribe-contract-not-code": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "trace-boundary-operators-by-hand->equality-guards-invite-ordering-probes": {

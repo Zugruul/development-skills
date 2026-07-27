@@ -34,16 +34,6 @@
     "last": "2026-07-26",
     "weight": 0.5
   },
-  "backdrop-filter-traps-popovers->compound-selector-for-shared-base": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "backdrop-filter-traps-popovers->render-states-before-asserting-layout": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "bash32-empty-array-set-u->budget-count-join-separators": {
     "fires": 20,
     "last": "2026-07-26",
@@ -92,11 +82,6 @@
   "claims-point-at-diff-lines->flag-safety-language-removal": {
     "fires": 19,
     "last": "2026-07-26",
-    "weight": 0.5
-  },
-  "compound-selector-for-shared-base->render-states-before-asserting-layout": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "copy-exact-strings-tests-assert-against->copy-not-eyeball-format-parity": {
@@ -202,6 +187,11 @@
   "flag-safety-language-removal->present-vs-demanding-policy-rules": {
     "fires": 19,
     "last": "2026-07-26",
+    "weight": 0.5
+  },
+  "guard-presence-vs-position->reproduce-the-failing-env": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "guards-are-not-cache-targets->second-order-after-concurrency-fix": {
@@ -397,6 +387,11 @@
   "rehearse-migration-on-real-copy->surgical-yaml-edits": {
     "fires": 19,
     "last": "2026-07-26",
+    "weight": 0.5
+  },
+  "reproduce-the-failing-env->guard-presence-vs-position": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "resolve-enforcement-ambiguity-toward-stricter->acceptance-criterion-outranks-test-spec-paraphrase": {

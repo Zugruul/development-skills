@@ -4,7 +4,7 @@
     "last": null,
     "weight": 0.5
   },
-  "brief-load-bearing-lines->live-tweaks-as-brief-amendments": {
+  "cheap-ab-before-10min-runs->discriminator-over-hypothesis": {
     "fires": 0,
     "last": null,
     "weight": 0.5
@@ -19,12 +19,7 @@
     "last": "2026-07-26",
     "weight": 0.5
   },
-  "direct-mode-standdown-and-sweep->live-tweaks-as-brief-amendments": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "direct-mode-standdown-and-sweep->prescription-ack-closes-round-cap": {
+  "discriminator-over-hypothesis->cheap-ab-before-10min-runs": {
     "fires": 0,
     "last": null,
     "weight": 0.5
