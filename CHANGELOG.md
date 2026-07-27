@@ -25,6 +25,13 @@
   >   leaks (fixes a shellcheck SC2034 unused-var warning on the captured
   >   output).
 
+### Other
+- retro(#109): PR-close retro for #337 + hotfixes #435/#437 (`1bbf230`)
+  > - dev: 4 notes (presence-vs-position guards, forwarded error strings, monotonic TTL clocks, reproduce the failing env)
+  > - reviewer: 4 notes (one-time assertions as live gates, reproduce before verdict, grep for the third site, silent invariants need negative tests)
+  > - orchestrator: 2 notes (discriminator analysis over hypothesis chasing, cheap A/B before 10-minute runs)
+  > - pruned aged never-fired links, regenerated DIRECTORY.md
+
 ## v0.43.2 — 2026-07-27
 
 ### Features
