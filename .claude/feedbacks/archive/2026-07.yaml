@@ -5561,3 +5561,90 @@ items:
   routing:
     action: backlog
     ref: Zugruul/development-skills#432
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-27T22:30:00Z'
+iteration:
+  task: AST-062
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: testing
+  component: plugins/spec-workflow/scripts/gate.sh
+  severity: high
+  summary: A long-lived deterministic environment bug masqueraded as flaky tests because
+    the gate wrapper and the direct test runner had different environments
+  detail: 'gate.sh exports PYTHONPATH; run-tests.sh direct does not. Every gate run
+    red, every direct run green — misread as flakiness/concurrency for multiple sessions
+    (#412), fixed as #437.'
+  evidence:
+  - Zugruul/development-skills#412
+  - Zugruul/development-skills#437
+  generalized: A gate wrapper must not export environment variables the underlying
+    test runner does not itself set — any env divergence between the wrapper and the
+    direct runner makes a deterministic bug look flaky, because red and green runs
+    differ by invoker, not by code. Keep wrapper env additive-neutral or make the
+    runner set the same env itself.
+  proposal:
+    target: plugins/spec-workflow/scripts/gate.sh
+    change: Move any needed PYTHONPATH/env setup into run-tests.sh (or a shared env
+      file both source) so wrapper and direct invocations are environment-identical;
+      add a check that diffs the two envs.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#439
+- category: friction
+  area: testing
+  severity: medium
+  summary: Diagnosing a full-suite-only failure cost several ten-minute runs because
+    there was no fast path to reproduce suite context for one section
+  detail: Bisecting 113 sections at ~10 min per full run; the 30-second direct A/B
+    (simulate the suspect env against the single failing command) is what actually
+    cracked it.
+  generalized: When a test fails only in full-suite context, prefer simulating the
+    suspected contaminating condition directly against the failing command over bisecting
+    the suite — a runner flag that replays one section under the accumulated env of
+    a prior run would make this class of diagnosis minutes instead of hours.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#440
+- category: friction
+  area: brains
+  severity: low
+  summary: Agent briefs were assembled without injecting recalled brain notes, so
+    the recall-outcome loop recorded nothing this iteration
+  detail: Orchestrator spawned dev/reviewer without brain.sh recall output in the
+    briefs; no outcomes to record at close.
+  generalized: The brief-assembly step should mechanically include the role's recalled
+    lessons; when recall injection is skipped, the outcome-recording loop silently
+    records nothing and the ranking signals never improve.
+  routing:
+    action: brain-note
+    ref: orchestrator/recall-injection-is-part-of-the-brief
+- category: worked-well
+  area: review
+  severity: low
+  summary: The reviewer independently reproducing each claimed root cause before verdict
+    caught real issues and prevented a confidently-wrong finding
+  generalized: Requiring reviewers to empirically reproduce a fix's claimed root cause
+    (rather than reviewing against the commit message) is cheap and repeatedly catches
+    both bad fixes and bad findings; keep it as a standing review-brief instruction.
+  routing:
+    action: brain-note
+    ref: reviewer/reproduce-before-verdict
+- category: worked-well
+  area: merge
+  severity: low
+  summary: Stacking gate-unblocking hotfixes with the feature merge under one recorded
+    gate kept the loop honest without parking approved work
+  generalized: When a merge is blocked by unrelated pre-existing gate breakage, filing
+    the blockers as their own reviewed micro-tasks and landing them in the same pushed
+    stack under one recorded green gate preserves both honesty and momentum.
+  routing:
+    action: brain-note
+    ref: orchestrator/stack-hotfixes-under-one-gate
