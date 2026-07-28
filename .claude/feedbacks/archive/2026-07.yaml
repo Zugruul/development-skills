@@ -5648,3 +5648,80 @@ items:
   routing:
     action: brain-note
     ref: orchestrator/stack-hotfixes-under-one-gate
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-28T03:00:00Z'
+iteration:
+  task: AST-063
+  outcome: merged
+  reviewRounds: 3
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: low
+  summary: Browser-level verification by the reviewer caught two defects that every
+    code-level artifact agreed were fixed
+  generalized: Reviews of changes that cross rendering layers should include loading
+    the real served output in the engine that actually renders it - in one batch,
+    a layout regression and an HTML-parser injection both survived green suites, thorough
+    eval harnesses, and sound reasoning, and were caught only in a real browser.
+  routing:
+    action: brain-note
+    ref: reviewer/test-at-the-observed-layer
+- category: friction
+  area: merge
+  severity: medium
+  summary: A CI auto-commit that regenerates a doc after every push races the next
+    merge's recorded gate pass, taxing every merge with a full re-run
+  detail: chore(changelog) lands on main after each push; pulling it invalidates the
+    recorded pass. Filed as a board item.
+  evidence:
+  - Zugruul/development-skills#443
+  generalized: Generated-documentation commits produced by CI after each push should
+    be excluded from the gate's tree fingerprint (like other derived state already
+    is), otherwise every merge pays a full gate re-run just to acknowledge a doc regeneration.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#443
+- category: friction
+  area: board
+  severity: low
+  summary: The board-move guard hook rejects comment commands whose heredoc bodies
+    contain certain phrases, forcing trial-and-error rewording
+  detail: Three comment attempts blocked with could-not-safely-parse; body-from-file
+    worked. The guard should ignore stdin content entirely.
+  generalized: A safety hook that parses shell commands should not reject based on
+    content arriving via stdin or heredoc bodies - the payload text of a comment is
+    not part of the command surface being guarded, and false rejections push users
+    toward workarounds.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#444
+- category: worked-well
+  area: concurrency
+  severity: low
+  summary: Two parallel implementation lanes with non-overlapping file ownership merged
+    cleanly through the serialized dance with zero conflicts
+  generalized: Parallel lanes work well when lane assignment respects file ownership
+    boundaries and merges stay strictly serialized with a fresh rebase plus gate per
+    landing - the discipline cost is one gate run per merge, the payoff is genuinely
+    concurrent implementation.
+  routing:
+    action: brain-note
+    ref: orchestrator/stack-hotfixes-under-one-gate
+- category: worked-well
+  area: brains
+  severity: low
+  summary: Recall injection into briefs plus outcome recording at close completed
+    the learning loop for the first time
+  generalized: Injecting recalled lessons into agent briefs and recording a useful/dead-end/corrected
+    outcome for each injected note at task close makes the ranking signals real -
+    two injected lessons were demonstrably applied by agents in their flagged design
+    calls.
+  routing:
+    action: brain-note
+    ref: orchestrator/recall-injection-is-part-of-the-brief
