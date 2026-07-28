@@ -1,0 +1,16 @@
+{
+  "applied": {
+    "appliedDate": null,
+    "commit": "d3ad88c",
+    "note": "restyle AST-044 inspector as detached window -- Option B final (#330); no archived docs/ui-options page was ever committed for this design"
+  },
+  "createdDate": null,
+  "designId": "AST-044",
+  "finalizedOption": "B",
+  "page": "docs/ui-options/AST-044.html",
+  "pickDate": null,
+  "round": 1,
+  "tags": [
+    "trace-inspector"
+  ]
+}

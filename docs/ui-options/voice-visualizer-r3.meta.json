@@ -1,0 +1,16 @@
+{
+  "applied": {
+    "appliedDate": null,
+    "commit": "4d017c4",
+    "note": "round 3 of 3 (final round) -- voice visualizer panel + right-column layout + note media (#288); the finalized option letter (C1/C2/C3) is not recorded in git history or the archived page, so finalizedOption is left unset rather than guessed"
+  },
+  "createdDate": null,
+  "designId": "voice-visualizer",
+  "finalizedOption": null,
+  "page": "docs/ui-options/voice-visualizer-r3.html",
+  "pickDate": null,
+  "round": 3,
+  "tags": [
+    "voice-visualizer"
+  ]
+}

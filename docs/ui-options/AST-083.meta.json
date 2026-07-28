@@ -1,0 +1,20 @@
+{
+  "applied": {
+    "appliedDate": "2026-07-28",
+    "commit": "5645113",
+    "note": null
+  },
+  "createdDate": null,
+  "designId": "AST-083",
+  "finalizedOption": "Inline rail UI",
+  "issue": null,
+  "pageSource": "tracked",
+  "pickDate": null,
+  "round": 1,
+  "tags": [
+    "chat",
+    "chat-composer",
+    "chat-instance",
+    "artifact-panel"
+  ]
+}

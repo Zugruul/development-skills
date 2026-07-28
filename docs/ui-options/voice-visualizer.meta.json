@@ -1,0 +1,16 @@
+{
+  "applied": {
+    "appliedDate": null,
+    "commit": "4d017c4",
+    "note": "round 1 of 3 -- voice visualizer panel + right-column layout + note media (#288); which option this specific round favored is not recorded in git history"
+  },
+  "createdDate": null,
+  "designId": "voice-visualizer",
+  "finalizedOption": null,
+  "page": "docs/ui-options/voice-visualizer-r1.html",
+  "pickDate": null,
+  "round": 1,
+  "tags": [
+    "voice-visualizer"
+  ]
+}

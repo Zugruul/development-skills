@@ -290,7 +290,7 @@ def evaluate(command, depth):
         if base == "board.sh" and i + 3 < n:
             subcmd, num, status = tokens[i + 1], tokens[i + 2], tokens[i + 3]
             if subcmd == "move" and norm(status) == REVIEW_STATUS:
-                results.append("review-move")
+                results.append("review-move:" + num)
             elif subcmd == "move" and norm(status) == PROGRESS_STATUS:
                 results.append("progress-move:" + num)
         i += 1
@@ -380,10 +380,12 @@ else:
 # on any one of them blocks the whole command), and a review-move anywhere
 # on the line still routes through gate-preflight below.
 HAS_REVIEW=0
+REVIEW_NUMS=()
 while IFS= read -r LINE; do
     case "$LINE" in
-        review-move)
+        review-move:*)
             HAS_REVIEW=1
+            REVIEW_NUMS+=("${LINE#review-move:}")
             ;;
         progress-move:*)
             NUM="${LINE#progress-move:}"
@@ -407,8 +409,18 @@ if [[ "$HAS_REVIEW" -eq 1 ]]; then
     # source of truth for "is the gate green for this tree" (docs/design/cdx-E3.md
     # Decisions). Defense in depth: this hook still intercepts before board.sh
     # even starts, but the actual marker+fingerprint check lives in one place.
-    bash "$HERE/gate-preflight.sh"
-    exit $?
+    bash "$HERE/gate-preflight.sh" || exit $?
+    # #461 (team-lead round-2 review item 1): same defense-in-depth
+    # relationship as gate-preflight.sh above -- board-queue.sh's _do_move
+    # is the actual single source of truth (it runs for every entrypoint,
+    # including flush replay and Codex, which have no hook-equivalent
+    # lifecycle event at all); this hook is the fast, Claude-specific layer
+    # on top of it. One check per review-move number found on the line (a
+    # compound command can move more than one issue to In review).
+    for NUM in "${REVIEW_NUMS[@]}"; do
+        bash "$HERE/design-registry-preflight.sh" --root "$ROOT" --issue "$NUM" || exit $?
+    done
+    exit 0
 fi
 
 exit 0

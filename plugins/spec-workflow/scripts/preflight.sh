@@ -130,3 +130,41 @@ if diverged:
         + " plugin to pick up recent changes."
     )
 PY
+
+# design-registry: surface finalized UI designs that are STALE (the UI
+# surface changed after the design was picked) or UNAPPLIED (finalized but
+# never marked applied) every iteration, so they cannot silently rot the way
+# four finalized designs already did before this check existed -- decisions
+# were made and then quietly never wired in. Advisory only, mirrors PLUGIN
+# CACHE WARN above: never blocks, silent when the registry script is missing
+# (older cache copy) or there is nothing to flag.
+DESIGN_REGISTRY="$HERE/design-registry.py"
+if [[ -f "$DESIGN_REGISTRY" ]]; then
+    python3 - "$DESIGN_REGISTRY" "$ROOT" <<'PY'
+import subprocess
+import sys
+
+script, root = sys.argv[1], sys.argv[2]
+try:
+    out = subprocess.run(
+        [sys.executable, script, "staleness"],
+        cwd=root, capture_output=True, text=True, timeout=15,
+    ).stdout
+except Exception:
+    sys.exit(0)  # advisory only -- never let a registry hiccup block preflight
+
+flagged = [
+    line for line in out.splitlines()
+    if "staleness=STALE" in line or "staleness=UNAPPLIED" in line
+]
+if flagged:
+    print(
+        "DESIGN REGISTRY WARN: " + str(len(flagged))
+        + " finalized UI design(s) need attention -- "
+        + "; ".join(flagged)
+        + " -- run `design-registry.py find --tags <surface>` before doing"
+        + " related UI work; a STALE design needs human re-confirmation,"
+        + " an UNAPPLIED one may just need `design-registry.py applied`."
+    )
+PY
+fi

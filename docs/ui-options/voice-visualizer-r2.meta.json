@@ -1,0 +1,16 @@
+{
+  "applied": {
+    "appliedDate": null,
+    "commit": "4d017c4",
+    "note": "round 2 of 3 -- voice visualizer panel + right-column layout + note media (#288)"
+  },
+  "createdDate": null,
+  "designId": "voice-visualizer",
+  "finalizedOption": null,
+  "page": "docs/ui-options/voice-visualizer-r2.html",
+  "pickDate": null,
+  "round": 2,
+  "tags": [
+    "voice-visualizer"
+  ]
+}

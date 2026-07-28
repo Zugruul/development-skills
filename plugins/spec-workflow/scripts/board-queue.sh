@@ -296,6 +296,13 @@ _do_move() {
         # a structural heuristic (commit order only, no test execution), see
         # red-first-preflight.sh's own header comment for the full rationale.
         bash "$HERE/red-first-preflight.sh" || return 1
+        # #461 (team-lead round-2 review item 1): mechanical enforcement
+        # that a finalized UI design registered against this issue was
+        # actually APPLIED before the task can go to review -- same
+        # precondition point/failure contract as the two checks above.
+        # See design-registry-preflight.sh's own header for the known
+        # forward-enforcing-only limitation.
+        bash "$HERE/design-registry-preflight.sh" --root "$ROOT" --issue "$num" || return 1
     fi
     # #236 (CDX-031 gap #4): a move to "QA" requires both documented review
     # passes (spec-compliance, code-quality) to be recorded in telemetry for

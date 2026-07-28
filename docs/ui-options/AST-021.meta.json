@@ -1,0 +1,18 @@
+{
+  "applied": {
+    "appliedDate": null,
+    "commit": "b30ba52",
+    "note": "fix(395): assistant name beside the voice bars -- title stays plain Voice; corrects the earlier placeholder in 8d225cb (the original #318 apply commit shipped an incomplete restyle -- name rendered inside the section title instead of beside the voice bars per the finalized r1 mockup), #395 (filed after AST-021 reached released status) tracked the gap until this commit actually closed it"
+  },
+  "createdDate": null,
+  "designId": "AST-021",
+  "finalizedOption": "C",
+  "issue": "395",
+  "page": "docs/ui-options/AST-021.html",
+  "pickDate": null,
+  "round": 1,
+  "tags": [
+    "assistant-picker",
+    "voice-visualizer"
+  ]
+}
