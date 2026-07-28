@@ -243,6 +243,41 @@ function resetChat() {
     if (JSON.stringify(neuralSpeakCalls[0].chunks) !== JSON.stringify(["hi there"])) throw new Error("speakReply chunks mismatch: " + JSON.stringify(neuralSpeakCalls[0].chunks));
     console.log("VOICE_WIRED_OK true");
 
+    // #453 (#454 P0 live-bug batch): the session's selected assistant
+    // (window.__assistantSelected, mirrored by setVoiceHeaderName) must
+    // thread through as engine.py's `assistant` flag on every chat
+    // dispatch -- without it, a session with an assistant selected but no
+    // MACHINE-level default and 2+ discovered candidates fell through to
+    // a "no local default set" error even though the human had already
+    // picked one and could see it in the voice-panel header.
+    resetChat();
+    await openChatOverlay();
+    window.__assistantSelected = "megabrain";
+    const selInput = document.getElementById("ast-chat-input");
+    selInput.value = "with selection";
+    selInput.disabled = false;
+    chatInputKeydown({key: "Enter", target: selInput, preventDefault(){}});
+    const selCall = chatFetchCalls()[chatFetchCalls().length - 1];
+    if (JSON.parse(selCall.opts.body).assistant !== "megabrain") throw new Error("chat POST body must carry assistant: <selected> when window.__assistantSelected is set, got " + selCall.opts.body);
+    console.log("SELECTED_ASSISTANT_THREADED_OK true");
+    resolveChat(chatFetchCalls().length - 1, 200, {text: "ok", chips: [], warnings: []});
+    await flush();
+
+    // ---- backward compat: no selection known -> no `assistant` key at all (matches ENTER_SEND_OK above, asserted explicitly here too) ----
+    window.__assistantSelected = null;
+    resetChat();
+    await openChatOverlay();
+    const noSelInput = document.getElementById("ast-chat-input");
+    noSelInput.value = "no selection";
+    noSelInput.disabled = false;
+    chatInputKeydown({key: "Enter", target: noSelInput, preventDefault(){}});
+    const noSelCall = chatFetchCalls()[chatFetchCalls().length - 1];
+    const noSelBody = JSON.parse(noSelCall.opts.body);
+    if ("assistant" in noSelBody) throw new Error("chat POST body must NOT carry an assistant key when nothing is selected (backward compat with the terminal's own flag/default resolution), got " + noSelCall.opts.body);
+    console.log("NO_SELECTION_NO_ASSISTANT_KEY_OK true");
+    resolveChat(chatFetchCalls().length - 1, 200, {text: "ok", chips: [], warnings: []});
+    await flush();
+
     // ---- queued-while-thinking dispatch order ----
     resetChat();
     await openChatOverlay();
@@ -337,6 +372,8 @@ check "template: Esc closes the overlay" "ESC_CLOSE_OK true" "$tmpl_chat_out"
 check "template: Enter POSTs the message and shows the elapsed state" "ENTER_SEND_OK true" "$tmpl_chat_out"
 check "template: reply renders with recall chips and clears the elapsed state" "CHIPS_AND_CLEAR_OK true" "$tmpl_chat_out"
 check "template (AST-050, #332): a rendered reply wires through speakReply into the outbound adapter" "VOICE_WIRED_OK true" "$tmpl_chat_out"
+check "template (#453, #454 P0): the session's selected assistant threads through as the chat POST body's assistant field" "SELECTED_ASSISTANT_THREADED_OK true" "$tmpl_chat_out"
+check "template (#453, #454 P0): with no selection known, the chat POST body carries no assistant key at all -- backward compat with the terminal's own flag/default resolution" "NO_SELECTION_NO_ASSISTANT_KEY_OK true" "$tmpl_chat_out"
 check "template: a send while thinking queues and dispatches FIFO in order" "QUEUE_ORDER_OK true" "$tmpl_chat_out"
 check "template: gated (skip) refuses input and shows the reason" "GATED_SKIP_OK true" "$tmpl_chat_out"
 check "template: gated (outcome none) refuses input and shows the reason" "GATED_NONE_OK true" "$tmpl_chat_out"

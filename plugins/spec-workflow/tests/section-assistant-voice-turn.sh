@@ -70,7 +70,75 @@ check "speakReply pauses STT (stops recognition, releases the full capture state
 echo "-- template: span correlation -- startStt uses a passed turnId as the span id, joining window.assistantVoiceSpans --"
 check "startStt(turnId) uses the turnId as the span id (same trick speakReply already applies)" "const spanId = window.__sttSpanId = turnId || Math.random().toString(36).slice(2);" "$NVHTML_VT_BODY"
 check "startStt tracks stt-start locally, turn_id-tagged, joining the SAME array TTS spans use" 'trackLocalVoiceSpan("stt-start", spanId, {engine: engineName});' "$NVHTML_VT_BODY"
-check "stopStt tracks stt-end locally, turn_id-tagged" 'trackLocalVoiceSpan("stt-end", window.__sttSpanId, {status: "ok"});' "$NVHTML_VT_BODY"
+# #452 (#454 P0 live-bug batch): this pin moved WITH the emission itself --
+# stopStt() no longer touches spans at all (see #452's dedicated section
+# below); the "ok" terminal span is now emitted from onSttText, only once
+# the real outcome (a transcript) is actually known.
+check "onSttText tracks the ok stt-end locally, turn_id-tagged, once the outcome is actually known" 'trackLocalVoiceSpan("stt-end", turnId, {status: "ok"});' "$NVHTML_VT_BODY"
+
+echo "-- template: #452 (#454 P0 live-bug batch) -- stopStt() no longer touches spans at all; the terminal span is emitted exactly once, only when the outcome is known --"
+check "stopStt()'s function body no longer contains an emitVoiceSpan call -- span emission moved entirely to onSttText/startStt's error path" "function stopStt(){" "$NVHTML_VT_BODY"
+_stopStt_body="$(sed -n '/^function stopStt(){/,/^}/p' "$NVHTML_VT")"
+check_absent "stopStt()'s own body never calls emitVoiceSpan (verified against JUST its extracted body, not the whole file, since emitVoiceSpan legitimately appears elsewhere)" "emitVoiceSpan(" "$_stopStt_body"
+check_absent "stopStt()'s own body never touches window.__sttSpanId either -- it has nothing left to null out" "__sttSpanId" "$_stopStt_body"
+
+echo "-- template: #454 (P0 live-bug batch) -- silence-timeout endpointing, named constant --"
+check "STT_WEBSPEECH_SILENCE_MS is a named constant, not a magic number inline" "const STT_WEBSPEECH_SILENCE_MS = 1300;" "$NVHTML_VT_BODY"
+check "WebSpeechSttEngine accumulates final segments into a buffer instead of finalizing on the first one" "if(text) this.buffer += (this.buffer ? \" \" : \"\") + text.trim();" "$NVHTML_VT_BODY"
+check "a manual stop() flushes the buffered segment immediately rather than losing it" "if(this.silenceTimer) this._finalize();" "$NVHTML_VT_BODY"
+
+echo "-- template: #451 (P0 live-bug batch) -- a failed voice turn must SAY why --"
+check "reportSttFailure() exists" "async function reportSttFailure(message){" "$NVHTML_VT_BODY"
+check "startStt's engine-error path calls reportSttFailure with the honest message" "reportSttFailure(String(err));" "$NVHTML_VT_BODY"
+check "reportSttFailure auto-opens the overlay if it's closed (a pure STT failure never produces text, so queueOrSendChat never gets the chance to)" 'if(!document.getElementById("ast-chat-overlay")) await openChatOverlay();' "$NVHTML_VT_BODY"
+check "reportSttFailure reuses the SAME red system-row treatment a failed /assistant/chat reply already gets" 'appendChatRow(log, "system", message, null);' "$NVHTML_VT_BODY"
+
+echo "-- template: #453 (P0 live-bug batch) -- the session's selected assistant threads through into the chat dispatch --"
+check "setVoiceHeaderName mirrors the current selection into window.__assistantSelected, the one choke point every selection change already runs through" "window.__assistantSelected = name || null;" "$NVHTML_VT_BODY"
+check "dispatchNextChat threads it into the chat POST body's assistant field when known" "if(window.__assistantSelected) chatBody.assistant = window.__assistantSelected;" "$NVHTML_VT_BODY"
+
+echo "-- template: #464 (P0, human hit it live) -- voice input required SHOUTING at normal speaking volume; fixed at the root, not by telling the human to raise a slider --"
+# Investigated in the order the report demanded, real cause not guessed:
+#   1. two CONCURRENT getUserMedia() captures on the same physical mic --
+#      MicSource's own visualizer stream (echoCancellation/noiseSuppression/
+#      autoGainControl all explicitly true) opening at the SAME time
+#      WhisperSttEngine's own getUserMedia({audio:true})+MediaRecorder
+#      capture (or the browser's internal Web Speech capture) is already
+#      live -- CONFIRMED as the real cause and fixed in micHot() below.
+#   2. the noise-suppression floor slider (vs-gate, default 34) -- verified
+#      structurally scoped to MicSource.getBins() alone (the visualizer's
+#      bar-height clamp), never read by either STT engine -- pinned below,
+#      not a contributor.
+#   3. echo-guard ducking (inBins.fill(0)) -- verified keyed strictly on
+#      voiceSources.outbound.speaking (TTS playback), never on the user's
+#      own speech or the recognition path -- not a contributor.
+check "micHot() refuses the visualizer's own capture while STT is actively listening -- the #464 fix itself" "if(window.__sttListening) return false;" "$NVHTML_VT_BODY"
+check "MicSource's own getUserMedia call is the ONLY explicit AGC/NS/EC request in the template -- confirms it's the visualizer's private stream, distinct from either STT engine's capture" "{audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true}}" "$NVHTML_VT_BODY"
+# Structural check (item 2, required by #464's brief): the noise floor
+# (voiceTune().gate / GATE) must be UNREACHABLE from either STT engine's
+# own source -- scoped to just their class bodies, not the whole file,
+# since "gate"/"GATE" legitimately appear elsewhere (visualizer, §17.9's
+# unrelated assistantGate).
+_webSpeechEngine_body="$(sed -n '/^class WebSpeechSttEngine{/,/^}/p' "$NVHTML_VT")"
+_whisperEngine_body="$(sed -n '/^class WhisperSttEngine{/,/^}/p' "$NVHTML_VT")"
+# #454 review round 2 correction 3: an EMPTY sed extraction would also
+# pass the check_absent calls below (nothing to find "voiceTune" in) --
+# if either class's signature ever changes, this would silently stop
+# checking anything instead of failing loudly. Assert non-empty first.
+if [ -z "$_webSpeechEngine_body" ]; then
+    echo "FAIL WebSpeechSttEngine extraction is non-empty -- sed range /^class WebSpeechSttEngine{/,/^}/ found nothing in $NVHTML_VT (signature changed?)"
+    fails=$((fails + 1))
+else
+    echo "ok   WebSpeechSttEngine extraction is non-empty"
+fi
+if [ -z "$_whisperEngine_body" ]; then
+    echo "FAIL WhisperSttEngine extraction is non-empty -- sed range /^class WhisperSttEngine{/,/^}/ found nothing in $NVHTML_VT (signature changed?)"
+    fails=$((fails + 1))
+else
+    echo "ok   WhisperSttEngine extraction is non-empty"
+fi
+check_absent "WebSpeechSttEngine's own body never reads the noise-suppression floor (voiceTune/GATE/vGate) -- the floor cannot gate recognition" "voiceTune" "$_webSpeechEngine_body"
+check_absent "WhisperSttEngine's own body never reads the noise-suppression floor (voiceTune/GATE/vGate) -- the floor cannot gate recognition" "voiceTune" "$_whisperEngine_body"
 
 # NOTE: no NV_VERSION bump pin here -- #441 (already on main by the time this
 # branch rebased) removed the NV_VERSION manual-bump convention entirely;
@@ -88,6 +156,31 @@ function extract(name) {
     const m = html.match(re);
     if (!m) throw new Error("could not find function " + name + "() in template");
     return m[0];
+}
+// #454 (P0 live-bug batch): pulled in from section-assistant-stt.sh's
+// harness -- needed here too so this file can eval the REAL
+// WebSpeechSttEngine class (with its now-real endpointing) instead of a
+// hand-rolled stub that predates the fix and would never exercise it (the
+// #431 lesson this file's own header already cites: mirror the real
+// contract, nothing invented/omitted).
+function extractClass(name) {
+    const re = new RegExp("class " + name + "\\{[\\s\\S]*?\\n\\}\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find class " + name + " in template");
+    return m[0];
+}
+function extractConst(name) {
+    const re = new RegExp("const " + name + " = [^\\n]*\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find const " + name + " in template");
+    return m[0];
+}
+function defineClass(name) {
+    global[name] = eval("(" + extractClass(name).trim() + ")");
+}
+function defineConst(name) {
+    const src = extractConst(name).trim().replace(/^const\s+\S+\s*=\s*/, "").replace(/;$/, "");
+    global[name] = eval("(" + src + ")");
 }
 
 // DOM stub -- same shape as section-assistant-chat.sh's (real Array-backed
@@ -173,6 +266,14 @@ window.assistantGate = { gated: false };
 window.assistantVoiceSpans = [];
 let queuedChatCalls = [];
 global.queueOrSendChat = (text, turnId, source) => { queuedChatCalls.push({text, turnId, source}); };
+// #454 review round 2 MAJOR regression test: startStt's engine-error path
+// calls reportSttFailure(...), which this harness does not eval (it lives
+// in section-assistant-voice-turn.sh's SECOND harness, below) -- stubbed
+// here the same way queueOrSendChat is, so the onerror path under test can
+// actually run instead of ReferenceError-ing on a function this harness
+// never defined.
+let reportSttFailureCalls = [];
+global.reportSttFailure = async (message) => { reportSttFailureCalls.push(message); };
 eval(extract("emitVoiceSpan"));
 eval(extract("trackLocalVoiceSpan"));
 eval(extract("newClientTurnId"));
@@ -185,23 +286,34 @@ global.window.SpeechRecognition = function () {
     this.start = () => {};
     this.stop = () => {};
 };
-class WebSpeechSttEngine{
-    constructor(){ this.recog = null; }
-    start(onResult, onError){
-        const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!Ctor) { onError("web-speech-unavailable"); return; }
-        const r = this.recog = new Ctor();
-        r.onresult = ev=>{ const res = ev.results[ev.results.length-1]; const text = res && res[0] && res[0].transcript; if (text) onResult(text.trim()); };
-        r.onerror = ev=>{ onError("web-speech-error: " + ((ev && ev.error) || "unknown")); };
-        r.start();
-    }
-    stop(){ if (this.recog){ this.recog.stop(); this.recog = null; } }
+// #454 (P0 live-bug batch): the REAL WebSpeechSttEngine class, not a
+// hand-rolled stub -- so this "same journey" harness actually exercises
+// the real silence-timeout endpointing, not a pre-fix stand-in that would
+// never catch a regression here. setTimeout/clearTimeout are stubbed the
+// same deterministic way section-assistant-stt.sh's harness drives them.
+let scheduledTimers = new Map();
+let nextTimerId = 1;
+global.setTimeout = (fn, ms) => { const id = nextTimerId++; scheduledTimers.set(id, {fn, ms}); return id; };
+global.clearTimeout = (id) => { scheduledTimers.delete(id); };
+function fireLatestTimer(){
+    const ids = [...scheduledTimers.keys()];
+    if (!ids.length) throw new Error("fireLatestTimer: no timer scheduled");
+    const id = ids[ids.length - 1];
+    const entry = scheduledTimers.get(id);
+    scheduledTimers.delete(id);
+    entry.fn();
 }
+defineConst("STT_WEBSPEECH_SILENCE_MS");
+defineClass("WebSpeechSttEngine");
 global.sttEngines = { "web-speech": new WebSpeechSttEngine() };
 eval(extract("startStt"));
 eval(extract("stopStt"));
 function voiceDir(){ return ["in","out","both"].includes(uiState.vdir) ? uiState.vdir : "out"; }
 function applyVoiceState(){}
+// #464: the real micHot(), not a hand-rolled stand-in -- this harness
+// already tracks everything it reads (uiState.micMode, window.voicePTT,
+// window.__sttListening via setSttListening, and voiceDir() above).
+eval(extract("micHot"));
 // #334 review round 2 (MAJOR 2): the ONE teardown function all four stop
 // paths (manual toggle, onSttText auto-stop, startStt's error path,
 // speakReply's interlock) now call to release voicePTT/vdir together with
@@ -219,11 +331,26 @@ if (window.voicePTT !== true) throw new Error("toggleSttListening must engage wi
 if (uiState.vdir !== "both") throw new Error("an OUT-only direction must widen to both while listening, so the IN bar is actually visible, got " + uiState.vdir);
 console.log("MIC_STARTS_AND_WIRES_IN_BAR_OK true");
 
+// ---- #464 (P0, human hit it live): micHot() must refuse the visualizer's
+// own competing getUserMedia capture while STT is actively listening,
+// even though voicePTT is true and vdir is "both" -- exactly the state
+// this test is in right now. Before the fix, this returned true here,
+// meaning the visualizer's independent capture WAS opening concurrently
+// with STT's own capture on the same physical mic -- the root cause of
+// "voice input requires shouting".
+if (micHot() !== false) throw new Error("micHot() must return false while STT owns the mic (window.__sttListening), even with voicePTT/vdir both indicating the visualizer would otherwise want it -- this is the #464 two-consumers-one-device bug");
+console.log("MIC_HOT_REFUSES_DURING_STT_OK true");
+
 const mintedTurnId = window.__sttSpanId;
 if (!mintedTurnId) throw new Error("starting via the mic control must mint and record a turn id");
 
 // ---- final transcript: auto-stop-on-final, forwards into queueOrSendChat tagged voice with the SAME turn id, restores direction ----
+// #454 (P0 live-bug batch): with the REAL WebSpeechSttEngine now wired in,
+// a single final segment schedules the silence timer instead of finalizing
+// immediately -- fire it to reach the same "turn actually finalized" point
+// this test already asserts on.
 startedInstance.onresult({ results: [[{ transcript: "hello assistant " }]] });
+fireLatestTimer();
 if (queuedChatCalls.length !== 1) throw new Error("a final transcript must forward exactly once into queueOrSendChat, got " + queuedChatCalls.length);
 if (queuedChatCalls[0].text !== "hello assistant") throw new Error("expected the trimmed transcript, got " + JSON.stringify(queuedChatCalls[0].text));
 if (queuedChatCalls[0].source !== "voice") throw new Error("a voice-driven turn must tag source 'voice' so the overlay/turn pipeline knows its origin");
@@ -250,10 +377,49 @@ console.log("AUTOSTOP_RESTORES_CAPTURE_STATE_OK true");
 
 // ---- a manual second press (re-armed) also stops early and restores direction, same teardown, different trigger ----
 toggleSttListening(); // re-arm
-toggleSttListening(); // press again to stop early
+const noSpeechTurnId = window.__sttSpanId;
+toggleSttListening(); // press again to stop early -- crucially, WITHOUT ever speaking (no onresult fired in between)
 if (uiState.vdir !== "out") throw new Error("stopping via a second press must restore the user's original direction, got " + uiState.vdir);
 if (window.voicePTT !== false) throw new Error("stopping must release window.voicePTT");
 console.log("STOP_RESTORES_DIRECTION_OK true");
+
+// #454 review round 2 MINOR 1: a turn started then manually stopped with
+// NO speech ever captured used to leave its stt-start span permanently
+// open -- neither onSttText's success emission nor startStt's error
+// callback ever ran, so window.__sttSpanId (and the span itself) just
+// hung forever, a null-duration open span same as the onerror bug above
+// degraded the inspector. "cancelled without speaking" is a known,
+// honest outcome; assert it is emitted, not left dangling.
+const noSpeechEnd = window.assistantVoiceSpans.find(e => e.kind === "stt-end" && e.turn_id === noSpeechTurnId);
+if (!noSpeechEnd) throw new Error("a turn manually stopped with no speech must still get a terminal stt-end span, not be left permanently open");
+if (noSpeechEnd.status !== "no-speech") throw new Error("expected an honest no-speech status, got " + JSON.stringify(noSpeechEnd.status));
+if (window.__sttSpanId !== null) throw new Error("window.__sttSpanId must be cleared once the no-speech terminal span is emitted, got " + window.__sttSpanId);
+console.log("NO_SPEECH_STOP_EMITS_TERMINAL_SPAN_OK true");
+
+// ---- #454 review round 2 MAJOR: an error mid-turn must not leave the
+// silence timer armed. The reported bug shape: a segment is already
+// buffered (the human said "Are you there?"), the browser then fires
+// onerror (permission revoked mid-listen, a network hiccup, whatever) --
+// the OLD onerror handler only forwarded the error message and never
+// touched silenceTimer/buffer, so the timer armed by the earlier onresult
+// was still live and fired ~1.3s later anyway, pushing the half-sentence
+// through onResult -> onSttText -> queueOrSendChat. The human would see
+// the honest red error row, then get answered for a stray partial
+// utterance a moment later. Drives the REAL WebSpeechSttEngine (same
+// reason the rest of this harness does): fire a segment, fire onerror,
+// then try to advance past the silence window -- there must be nothing
+// left to advance, and nothing must reach queueOrSendChat either.
+toggleSttListening(); // start a fresh turn
+queuedChatCalls = [];
+startedInstance.onresult({ results: [[{ transcript: "Are you" }]] });
+startedInstance.onerror({ error: "network" });
+if (scheduledTimers.size !== 0) throw new Error("onerror must clear the armed silence timer, found " + scheduledTimers.size + " still scheduled -- the stale-timer-fires-after-error bug");
+if (queuedChatCalls.length !== 0) throw new Error("no buffered segment may reach queueOrSendChat once the turn has errored, got " + queuedChatCalls.length + " call(s)");
+if (reportSttFailureCalls.length !== 1) throw new Error("the error must still surface honestly via reportSttFailure, got " + reportSttFailureCalls.length + " call(s)");
+console.log("ONERROR_CLEARS_ARMED_TIMER_OK true");
+// stop the now-errored turn's listening state so it does not bleed into
+// span-correlation assertions below, which key off the EARLIER turn's id.
+if (window.__sttListening) toggleSttListening();
 delete global.window.SpeechRecognition;
 
 // ---- span correlation: stt-start/stt-end for this turn joined window.assistantVoiceSpans under the SAME turn_id ----
@@ -271,10 +437,13 @@ rm -f "$_avt_node"
 check_rc "voice-turn template script exits 0" 0 "$tmpl_vt_rc"
 check "voice-stt is disabled+reasoned when gated, re-enabled with the normal hint when not" "GATE_REASONED_OK true" "$tmpl_vt_out"
 check "the mic control starts listening and wires the real IN-bar capture path" "MIC_STARTS_AND_WIRES_IN_BAR_OK true" "$tmpl_vt_out"
+check "#464 (P0, human hit it live): micHot() refuses the visualizer's own competing capture while STT actively owns the mic" "MIC_HOT_REFUSES_DURING_STT_OK true" "$tmpl_vt_out"
 check "a final transcript routes into queueOrSendChat tagged voice, carrying the SAME turn id startStt minted" "FINAL_TRANSCRIPT_ROUTES_WITH_TURN_ID_OK true" "$tmpl_vt_out"
 check "onSttText auto-stops listening and clears the visible UI state" "AUTOSTOP_CLEARS_UI_OK true" "$tmpl_vt_out"
 check "onSttText's auto-stop (the common path) releases voicePTT and restores the prior voice direction, not just a manual second press" "AUTOSTOP_RESTORES_CAPTURE_STATE_OK true" "$tmpl_vt_out"
 check "a manual second press stops early and restores the prior voice direction" "STOP_RESTORES_DIRECTION_OK true" "$tmpl_vt_out"
+check "#454 review round 2 MINOR 1: a turn manually stopped with no speech still gets an honest terminal stt-end span instead of hanging open" "NO_SPEECH_STOP_EMITS_TERMINAL_SPAN_OK true" "$tmpl_vt_out"
+check "#454 review round 2 MAJOR: onerror clears the armed silence timer instead of letting a buffered segment fire late into queueOrSendChat" "ONERROR_CLEARS_ARMED_TIMER_OK true" "$tmpl_vt_out"
 check "stt-start/stt-end join window.assistantVoiceSpans under the turn's shared id" "SPAN_CORRELATION_LOCAL_OK true" "$tmpl_vt_out"
 check "the whole voice-turn template script completes" "ALL_OK true" "$tmpl_vt_out"
 if [[ "$tmpl_vt_rc" -ne 0 ]]; then echo "$tmpl_vt_out" >&2; fi
@@ -387,6 +556,7 @@ eval(extract("chatInputKeydown"));
 eval(extract("loadChatHistory"));
 eval(extract("openChatOverlay"));
 eval(extract("closeChatOverlay"));
+eval(extract("reportSttFailure"));
 
 window.assistantChat = { queue: [], inFlight: false, exchanges: [], lastX: 2, elapsedTimer: null, elapsedStart: 0 };
 window.assistantVoiceSpans = [];
@@ -459,6 +629,25 @@ console.log("TYPED_CHAT_UNAFFECTED_OK true");
 resolveChat(0, 200, {text: "typed reply", chips: [], warnings: []});
 await flush();
 
+// #451 (#454 P0 live-bug batch): a failed voice turn must SAY why. This is
+// the exact reported scenario -- the human pressed the mic twice with
+// NOTHING ever reaching the chat overlay, because a pure STT failure
+// never produces a transcript, so it never reaches queueOrSendChat (the
+// only OTHER auto-open trigger). Start from a closed overlay (mirroring
+// what the human actually saw) and drive reportSttFailure() the same way
+// startStt's engine-error callback does.
+if (elements["ast-chat-overlay"]) elements["ast-chat-overlay"].remove();
+delete elements["ast-chat-overlay"]; delete elements["ast-chat-log"];
+if (document.getElementById("ast-chat-overlay")) throw new Error("setup: overlay must start closed for the STT-failure test");
+await reportSttFailure("web-speech-unavailable: this browser has no SpeechRecognition support -- switch to whisper.cpp (if the sidecar is installed) or use a browser that supports Web Speech.");
+if (!document.getElementById("ast-chat-overlay")) throw new Error("a pure STT failure (no transcript ever produced) must still auto-open the overlay -- otherwise the human sees nothing at all, the exact #451 bug");
+const failLog = document.getElementById("ast-chat-log");
+if (!failLog || failLog.children.length !== 1) throw new Error("expected exactly one row rendering the failure, got " + (failLog ? failLog.children.length : "no log"));
+const failRow = failLog.children[0];
+if (failRow.getAttribute("data-role") !== "system") throw new Error("an STT failure must render with the SAME 'system' role a failed /assistant/chat reply already gets (the red-row treatment), got " + failRow.getAttribute("data-role"));
+if (failRow.textContent.indexOf("web-speech-unavailable") === -1) throw new Error("the row must show the actual honest engine message, not a generic one, got " + JSON.stringify(failRow.textContent));
+console.log("STT_FAILURE_SURFACES_IN_OVERLAY_OK true");
+
 console.log("ALL_OK true");
 })().catch(e => { console.error("FAIL", e.message); process.exit(1); });
 NODEJS
@@ -471,5 +660,6 @@ check "the reply's tts span reuses the turn's own id -- stt and tts spans correl
 check "the overlay still shows both the user row and the assistant reply after the round trip resolves -- the history-load race is closed, not just avoided at send time" "OVERLAY_SURVIVES_REPLY_RESOLUTION_OK true" "$tmpl_vt2_out"
 check "speakReply's echo-guard interlock pauses STT if it's still listening when a reply starts" "ECHO_GUARD_INTERLOCK_OK true" "$tmpl_vt2_out"
 check "typed chat (no turnId/source) is unaffected -- fully backward compatible" "TYPED_CHAT_UNAFFECTED_OK true" "$tmpl_vt2_out"
+check "#451 (P0 live-bug batch): a pure STT failure (no transcript ever produced) auto-opens the overlay and renders the honest message as a red system row -- the human's silent-failure bug" "STT_FAILURE_SURFACES_IN_OVERLAY_OK true" "$tmpl_vt2_out"
 check "the whole voice-turn full-pipeline script completes" "ALL_OK true" "$tmpl_vt2_out"
 if [[ "$tmpl_vt2_rc" -ne 0 ]]; then echo "$tmpl_vt2_out" >&2; fi

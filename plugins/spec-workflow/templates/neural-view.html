@@ -1307,7 +1307,7 @@ canvas.grabbing{cursor:grabbing}
            the IN/OUT bars" placement call. -->
       <button class="iconbtn" id="voice-stt" aria-pressed="false"
         aria-label="Voice-driven chat turn: press to speak"
-        title="Press to speak — sends the transcript as a chat turn (auto-stops on the final result)"><span class="micdot"></span></button>
+        title="Press to speak — sends the transcript as a chat turn (finalizes after a pause in speech, or press again to send now)"><span class="micdot"></span></button>
       <span id="voice-dir" role="group" aria-label="Voice direction">
         <button class="iconbtn" id="voice-in" aria-pressed="false" title="Inbound — microphone">IN</button>
         <button class="iconbtn" id="voice-out" aria-pressed="true" title="Outbound — speech synthesis">OUT</button>
@@ -3961,26 +3961,57 @@ applySttEngineUi();
 // hook, which today routes into the existing chat-send path
 // (queueOrSendChat) -- AST-052 owns the full voice-turn UX; this task's
 // contract ends at that one hook, per the design doc (docs/design/ast-E5.md). ----
+// #454 (P0 live-bug batch): the browser's own SpeechRecognition fires a
+// SEPARATE final `onresult` per natural pause in speech even in continuous
+// mode -- "Are you-- <pause> --there" segments into two finals. The old
+// code called onResult() (== onSttText, which auto-stops the whole turn)
+// on the very FIRST one, truncating any sentence with a mid-utterance
+// pause down to its first fragment. Endpointing fix: accumulate every
+// final segment's text and only finalize the WHOLE turn once
+// STT_WEBSPEECH_SILENCE_MS passes with no new segment -- 1300ms sits
+// comfortably above a normal breath/thinking pause (typically <800ms)
+// while staying well under the ~2s a listener starts reading as "they've
+// stopped talking", the usual range cited for endpointing silence
+// thresholds in speech-UX guidance. Press-again (manual stop, still the
+// override) flushes whatever's been captured so far immediately rather
+// than losing it.
+const STT_WEBSPEECH_SILENCE_MS = 1300;
 class WebSpeechSttEngine{
-  constructor(){ this.recog = null; }
+  constructor(){ this.recog = null; this.buffer = ""; this.silenceTimer = null; this.onResult = null; }
   start(onResult, onError){
     const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
     if(!Ctor){
       onError("web-speech-unavailable: this browser has no SpeechRecognition support -- switch to whisper.cpp (if the sidecar is installed) or use a browser that supports Web Speech.");
       return;
     }
+    this.buffer = "";
+    this.onResult = onResult;
     const r = this.recog = new Ctor();
     r.continuous = true;
     r.interimResults = false;
     r.onresult = ev=>{
       const res = ev.results[ev.results.length-1];
       const text = res && res[0] && res[0].transcript;
-      if(text) onResult(text.trim());
+      if(text) this.buffer += (this.buffer ? " " : "") + text.trim();
+      // reset the silence timer on every new final segment -- only
+      // finalize once the turn actually goes quiet.
+      clearTimeout(this.silenceTimer);
+      this.silenceTimer = setTimeout(()=>this._finalize(), STT_WEBSPEECH_SILENCE_MS);
     };
-    r.onerror = ev=>{ onError("web-speech-error: " + ((ev && ev.error) || "unknown")); };
+    r.onerror = ev=>{ clearTimeout(this.silenceTimer); this.silenceTimer = null; this.buffer = ""; onError("web-speech-error: " + ((ev && ev.error) || "unknown")); };
     r.start();
   }
-  stop(){ if(this.recog){ this.recog.stop(); this.recog = null; } }
+  _finalize(){
+    clearTimeout(this.silenceTimer); this.silenceTimer = null;
+    const text = this.buffer; this.buffer = "";
+    if(text && this.onResult) this.onResult(text);
+  }
+  stop(){
+    // manual override: flush whatever's already been captured instead of
+    // silently discarding it, THEN actually stop the recognizer.
+    if(this.silenceTimer) this._finalize();
+    if(this.recog){ this.recog.stop(); this.recog = null; }
+  }
 }
 // Documented local sidecar contract this client assumes (the sidecar
 // process itself -- install, model download, lifecycle -- is a
@@ -4042,13 +4073,30 @@ const sttEngines = { whisper: new WhisperSttEngine(), "web-speech": new WebSpeec
 function onSttText(text, turnId){
   if(!text) return;
   // auto-stop-on-final: every onResult call from either engine already
-  // means "this utterance is done" (web-speech's interimResults=false /
-  // whisper's onstop-then-transcribe), so the mic control's "press again
-  // OR auto-on-final to stop" contract is satisfied here unconditionally.
+  // means "this utterance is done" (web-speech's own silence-timeout
+  // endpointing / whisper's onstop-then-transcribe), so the mic control's
+  // "press again OR auto-on-final to stop" contract is satisfied here
+  // unconditionally.
+  // #454 (P0 live-bug batch) review: the terminal stt-end span used to be
+  // emitted eagerly from stopStt() the instant it was called -- BEFORE the
+  // async transcription outcome was even known, which is wrong for
+  // whisper (transcribe happens AFTER stop()) and produced a SECOND,
+  // contradictory stt-end if that later transcription failed. Emitting it
+  // HERE instead -- the point where success is actually confirmed (a
+  // non-empty transcript arrived) -- means there is exactly one terminal
+  // span per turn, emitted only once the real outcome is known. Guarded by
+  // `window.__sttSpanId === turnId` so a stray/duplicate onResult call (or
+  // a race with the error path) can never double-emit for the same span.
+  if(window.__sttSpanId === turnId){
+    const engineName = sttEngineChoice();
+    emitVoiceSpan("stt-end", engineName, turnId, "ok");
+    trackLocalVoiceSpan("stt-end", turnId, {status: "ok"});
+    window.__sttSpanId = null;
+  }
+  stopStt();
   // releaseSttCapture() (not just setSttListening(false)) -- this is the
   // COMMON stop path, so it's the one most likely to leave voicePTT/vdir
   // behind if it only cleared the visible flag (#334 review round 2).
-  stopStt();
   releaseSttCapture();
   queueOrSendChat(text, turnId, "voice");
 }
@@ -4088,28 +4136,58 @@ function startStt(turnId){
     err=>{
       console.warn("[stt]", err);
       window.__lastSttError = String(err);
-      emitVoiceSpan("stt-end", engineName, spanId, "error", {error: String(err)});
-      trackLocalVoiceSpan("stt-end", spanId, {status: "error", error: String(err)});
-      window.__sttSpanId = null;
+      // #454 (P0 live-bug batch) review, #452: the terminal span for a
+      // FAILED turn -- guarded the same way onSttText's success emission
+      // is, so this and a (structurally impossible, but defensive) success
+      // emission for the same span can never both fire.
+      if(window.__sttSpanId === spanId){
+        emitVoiceSpan("stt-end", engineName, spanId, "error", {error: String(err)});
+        trackLocalVoiceSpan("stt-end", spanId, {status: "error", error: String(err)});
+        window.__sttSpanId = null;
+      }
       // releaseSttCapture() (not just setSttListening(false)) -- the
       // engine already failed to start, so there's no live recognition
       // to stopStt(), but the mic control's start branch already flipped
       // voicePTT/widened vdir before the engine ever got a chance to
       // fail; those must still be released here (#334 review round 2).
       releaseSttCapture();
+      // #451 (P0 live-bug batch): a failed voice turn must SAY why -- this
+      // used to only console.warn + set window.__lastSttError, both
+      // invisible to the human staring at the page. reportSttFailure()
+      // (below) surfaces the SAME honest, human-readable message (sidecar
+      // unavailable / web-speech-unavailable / mic denied / recognition
+      // error) in the chat overlay, reusing the existing red system-row
+      // treatment a failed /assistant/chat reply already gets.
+      reportSttFailure(String(err));
     }
   );
   return true;
 }
 function stopStt(){
+  // #454 (P0 live-bug batch) review, #452: stopStt() no longer emits (or
+  // touches) any span itself -- see onSttText's and startStt's error
+  // callback's own comments for why: the terminal span must be emitted
+  // exactly once, at whichever point the real outcome (success or
+  // failure) actually becomes known, which for whisper is ALWAYS after
+  // this function returns (transcription happens async, post-stop()).
+  // stopStt()'s only remaining job is telling the current engine to
+  // physically stop capturing.
   const engineName = sttEngineChoice();
   const engine = sttEngines[engineName];
   if(engine && engine.stop) engine.stop();
-  if(window.__sttSpanId){
-    emitVoiceSpan("stt-end", engineName, window.__sttSpanId, "ok");
-    trackLocalVoiceSpan("stt-end", window.__sttSpanId, {status: "ok"});
-    window.__sttSpanId = null;
-  }
+}
+// #451 (#454 P0 live-bug batch): a failed voice turn must SAY why. A pure
+// STT failure (mic denied, no browser support, whisper sidecar down) never
+// produces any transcript, so it never reaches queueOrSendChat -- the only
+// other place the overlay auto-opens -- which is exactly why the human's
+// first two presses failed SILENTLY. Auto-opens the overlay here too (if
+// closed) and renders the SAME red system-row treatment a failed
+// /assistant/chat reply already gets (appendChatRow(log, "system", ...)),
+// so a voice failure is exactly as visible as a chat failure.
+async function reportSttFailure(message){
+  if(!document.getElementById("ast-chat-overlay")) await openChatOverlay();
+  const log = document.getElementById("ast-chat-log");
+  if(log) appendChatRow(log, "system", message, null);
 }
 // AST-052 (#334): the mic control's visible listening state -- lit red
 // (same language #voice-mic.talking already uses) while STT is actually
@@ -4165,8 +4243,32 @@ function releaseSttCapture(){
 }
 function toggleSttListening(){
   if(window.__sttListening){
+    // #454 review round 2 MINOR 1: a turn started then manually stopped
+    // with NO speech ever captured (silenceTimer never fired, so neither
+    // onSttText's success emission nor startStt's error-callback emission
+    // ever ran) used to leave window.__sttSpanId set and its stt-start
+    // span permanently open -- start with no end, null duration, a
+    // silent state that degrades the inspector the same way the onerror
+    // armed-timer bug did. "the user cancelled without speaking" is a
+    // known outcome (same rationale as #452's error-path fix), so emit
+    // it honestly instead of leaving the span hanging. Guarded by
+    // spanId's own truthiness, snapshotted BEFORE stopStt()/
+    // releaseSttCapture() run below -- neither of those touches
+    // window.__sttSpanId (#452's own fix moved span emission entirely
+    // out of stopStt()), so nothing between the snapshot and this check
+    // can invalidate it. #454 review round 2 correction: this used to
+    // ALSO re-compare against window.__sttSpanId, which was always true
+    // (comparing the live value to a snapshot taken one line earlier)
+    // and read as a race guard while doing nothing -- dropped.
+    const spanId = window.__sttSpanId;
     stopStt();
     releaseSttCapture();
+    if(spanId){
+      const engineName = sttEngineChoice();
+      emitVoiceSpan("stt-end", engineName, spanId, "no-speech");
+      trackLocalVoiceSpan("stt-end", spanId, {status: "no-speech"});
+      window.__sttSpanId = null;
+    }
     return;
   }
   const started = startStt(newClientTurnId());
@@ -4487,6 +4589,39 @@ let micWanted = false, micBusy = false;
 function voiceDir(){ return ["in","out","both"].includes(uiState.vdir) ? uiState.vdir : "out"; }
 function micHot(){
   if(voiceDir()==="out") return false;
+  // #464 (P0, human hit it live): "voice input requires SHOUTING" at
+  // normal speaking volume. Pressing the mic control sets
+  // window.voicePTT true, which used to ALSO make this function report
+  // the mic "hot" for the visualizer, opening MicSource's own
+  // independent getUserMedia({echoCancellation,noiseSuppression,
+  // autoGainControl:true}) stream (below) at the exact same time
+  // WhisperSttEngine already has its own getUserMedia({audio:true}) +
+  // MediaRecorder capture open (or, for web-speech, while the browser's
+  // own internal recognition capture is live) -- two CONCURRENT
+  // getUserMedia() captures on the SAME physical microphone.
+  // #454 review round 2 correction: recording only what is actually
+  // known here, per the #424 lesson that a wrong recorded premise is
+  // worse than none. What IS verified from source: MicSource's
+  // constraints and WhisperSttEngine's bare {audio:true} (which Chrome
+  // resolves to those SAME three defaults) are effectively IDENTICAL --
+  // so "mismatched constraints causing the browser to clamp AGC" is NOT
+  // supported by the code it would describe, and is not being claimed.
+  // What IS demonstrated: two concurrent captures on one physical
+  // device was the trigger, and eliminating the second capture removed
+  // the symptom. The precise audio-pipeline reason two same-constraint
+  // captures on one device degraded input level is a HYPOTHESIS (AGC/
+  // gain contention at the OS or driver layer is one candidate), not
+  // demonstrated, and cannot be demonstrated in a headless test
+  // harness -- treat it as unproven, not as the recorded cause.
+  // The visualizer must never open a competing capture while STT owns
+  // the mic; it simply does not animate for the duration of an active
+  // voice turn. This is a FUNCTIONAL feedback loss accepted for
+  // correctness, not a cosmetic tradeoff: the IN bars are the user's
+  // only "it is actually hearing me" signal (input LEVEL), which the
+  // mic control's red dot does not convey (listening STATE, not level).
+  // Applies before either the "always on" or press-to-speak checks
+  // below so neither can re-open the contention.
+  if(window.__sttListening) return false;
   return uiState.micMode==="always" || window.voicePTT;
 }
 async function syncMic(){
@@ -6235,10 +6370,19 @@ function gateVoiceAndChat(gated){
   if(sttBtn){
     sttBtn.title = gated
       ? "Voice is gated -- no assistant selected (pick one, or /setup-assistant if none exists)"
-      : "Press to speak — sends the transcript as a chat turn (auto-stops on the final result)";
+      : "Press to speak — sends the transcript as a chat turn (finalizes after a pause in speech, or press again to send now)";
   }
 }
 function setVoiceHeaderName(name){
+  // #453 (#454 P0 live-bug batch): this is the ONE choke point every
+  // selection change already runs through -- boot auto-select, the AST-021
+  // picker, the post-boot switch dropdown/cycle, and the periodic status
+  // refresh all call this immediately after learning/changing the
+  // session's selected assistant. Mirroring it into window.__assistantSelected
+  // here means dispatchNextChat (below) can thread the CURRENT selection
+  // into every chat turn without a second, parallel tracking mechanism
+  // that could drift out of sync with this one.
+  window.__assistantSelected = name || null;
   // #395: the finalized voice-visualizer layout puts the assistant name
   // BESIDE the in/out bars, not in the section title (where a long name
   // wraps the header to two lines). The title stays plain "Voice".
@@ -6869,9 +7013,20 @@ async function dispatchNextChat(){
   const log = document.getElementById("ast-chat-log");
   appendChatRow(log, "user", text, null);
   startChatElapsed();
+  // #453 (#454 P0 live-bug batch): thread the SESSION's already-selected
+  // assistant (window.__assistantSelected, mirrored by setVoiceHeaderName
+  // -- see its own comment) through as engine.py's existing `assistant`
+  // flag on _chat's resolution order (flag -> sole assistant -> machine-
+  // level default -> error). Without this, a session with an assistant
+  // selected but no MACHINE-level default (setup-assistant.sh set-
+  // default) and 2+ discovered candidates fell through to that error --
+  // exactly the "no local default set and multiple assistants found" the
+  // human hit with megabrain already selected and showing in the header.
+  const chatBody = {message: text};
+  if(window.__assistantSelected) chatBody.assistant = window.__assistantSelected;
   let resp, payload;
   try{
-    resp = await fetch("/assistant/chat", {method: "POST", body: JSON.stringify({message: text})});
+    resp = await fetch("/assistant/chat", {method: "POST", body: JSON.stringify(chatBody)});
     payload = await resp.json();
   }catch{
     stopChatElapsed();

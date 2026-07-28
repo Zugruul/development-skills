@@ -69,7 +69,26 @@ check "startStt() checks window.assistantGate.gated before starting either engin
 echo "-- template: §13.3 -- stt-start/stt-end spans carry the engine name over the existing trace path --"
 check "emitVoiceSpan posts to the voice-event trace bridge" '"/assistant/voice-event"' "$NVHTML_STT_BODY"
 check "startStt emits stt-start with the engine name" '"stt-start"' "$NVHTML_STT_BODY"
-check "stopStt emits stt-end with the engine name" '"stt-end"' "$NVHTML_STT_BODY"
+# #454 review round 2 MINOR 2: this used to read "stopStt emits stt-end
+# with the engine name" and pass only because "stt-end" appears ANYWHERE
+# in the whole template body (onSttText's and startStt's error-callback's
+# own emissions) -- not because stopStt() itself emits anything. That
+# directly contradicted #452's fix (below, and section-assistant-voice-
+# turn.sh's matching scoped pin): stopStt() emits no span at all now.
+# Retargeted to the same scoped-body check_absent that file already
+# established, so the two files can no longer assert opposite things.
+_stopStt_stt_body="$(sed -n '/^function stopStt(){/,/^}/p' "$NVHTML_STT")"
+# #454 review round 2 correction 3: an EMPTY sed extraction would also
+# pass the check_absent below (nothing to find "emitVoiceSpan" in) -- if
+# stopStt()'s signature ever changes, this would silently stop checking
+# anything instead of failing loudly. Assert non-empty first.
+if [ -z "$_stopStt_stt_body" ]; then
+    echo "FAIL stopStt() extraction is non-empty -- sed range /^function stopStt(){/,/^}/ found nothing in $NVHTML_STT (signature changed?)"
+    fails=$((fails + 1))
+else
+    echo "ok   stopStt() extraction is non-empty"
+fi
+check_absent "stopStt()'s own body never calls emitVoiceSpan -- span emission moved entirely to onSttText/startStt's error path (#452)" "emitVoiceSpan(" "$_stopStt_stt_body"
 
 echo "-- template behavior: extract() + eval() against a stubbed DOM/fetch/SpeechRecognition (section-assistant-chat.sh's harness style) --"
 _ast_node="$(mktemp).cjs"
@@ -151,6 +170,12 @@ global.fetch = async (url, opts) => {
 
 let queuedChatMessages = [];
 global.queueOrSendChat = (text) => { queuedChatMessages.push(text); };
+// #451 (#454 P0 live-bug batch): stubbed once, up front, since startStt's
+// engine-error callback calls this unconditionally on any failure --
+// several blocks below (whisper's async-after-stop failure included)
+// trigger it well before the dedicated REPORTS_STT_FAILURE_OK test does.
+let reportedFailures = [];
+global.reportSttFailure = (msg) => { reportedFailures.push(msg); };
 
 (async () => {
 // ---- setting: default whisper, toggle persists ----
@@ -182,8 +207,26 @@ setSttEngineChoice("whisper");
 if (sttEngineChoice() !== "whisper") throw new Error("setSttEngineChoice(whisper) did not take effect");
 console.log("SWITCH_BACK_OK true");
 
+// #454 (P0 live-bug batch): WebSpeechSttEngine's silence-timeout
+// endpointing uses real setTimeout/clearTimeout -- stub both so the tests
+// below drive the timer deterministically (fire it manually) instead of
+// waiting real milliseconds.
+let scheduledTimers = new Map();
+let nextTimerId = 1;
+global.setTimeout = (fn, ms) => { const id = nextTimerId++; scheduledTimers.set(id, {fn, ms}); return id; };
+global.clearTimeout = (id) => { scheduledTimers.delete(id); };
+function fireLatestTimer(){
+    const ids = [...scheduledTimers.keys()];
+    if (!ids.length) throw new Error("fireLatestTimer: no timer scheduled");
+    const id = ids[ids.length - 1];
+    const entry = scheduledTimers.get(id);
+    scheduledTimers.delete(id);
+    entry.fn();
+}
+
 // ---- Web Speech engine: wires recognition events -> onResult, degrades honestly ----
 defineClass("WebSpeechSttEngine");
+defineConst("STT_WEBSPEECH_SILENCE_MS");
 {
     // no SpeechRecognition ctor on this stubbed window at all
     delete global.SpeechRecognition;
@@ -195,7 +238,12 @@ defineClass("WebSpeechSttEngine");
     console.log("WEBSPEECH_DEGRADE_OK true");
 }
 {
-    // a fake SpeechRecognition constructor wired the way the real browser API is
+    // #454 (P0 live-bug batch): the browser fires a SEPARATE final
+    // `onresult` per natural pause even in continuous mode -- "Are you"
+    // <pause> "there" segments into two finals. The old code called
+    // onResult() on the FIRST one, truncating the turn. Endpointing fix:
+    // accumulate every segment and only finalize once the silence timeout
+    // elapses with no new segment.
     let startedInstance = null;
     global.window.SpeechRecognition = function () {
         startedInstance = this;
@@ -203,11 +251,57 @@ defineClass("WebSpeechSttEngine");
         this.stop = () => {};
     };
     const engine = new WebSpeechSttEngine();
-    let gotResult = null;
-    engine.start((text) => { gotResult = text; }, () => {});
-    startedInstance.onresult({ results: [[{ transcript: "hello world " }]] });
-    if (gotResult !== "hello world") throw new Error("expected trimmed transcript 'hello world', got " + JSON.stringify(gotResult));
-    console.log("WEBSPEECH_RESULT_OK true");
+    let gotResult = null, resultCalls = 0;
+    engine.start((text) => { gotResult = text; resultCalls++; }, () => {});
+    startedInstance.onresult({ results: [[{ transcript: "Are you" }]] });
+    if (resultCalls !== 0) throw new Error("a single final segment must not finalize the turn immediately -- that is the #454 truncation bug");
+    if (scheduledTimers.size !== 1) throw new Error("a final segment must schedule exactly one silence timer, got " + scheduledTimers.size);
+    if ([...scheduledTimers.values()][0].ms !== STT_WEBSPEECH_SILENCE_MS) throw new Error("the scheduled delay must be STT_WEBSPEECH_SILENCE_MS, got " + [...scheduledTimers.values()][0].ms);
+    // speech resumes before the silence timeout elapses -- must EXTEND, not truncate
+    startedInstance.onresult({ results: [[{ transcript: "there" }]] });
+    if (resultCalls !== 0) throw new Error("a second segment arriving before the silence timeout must not have finalized yet either");
+    if (scheduledTimers.size !== 1) throw new Error("the second segment must reset (not add to) the pending timer, got " + scheduledTimers.size + " pending");
+    // the turn actually goes quiet now
+    fireLatestTimer();
+    if (resultCalls !== 1) throw new Error("the silence timeout must finalize the turn exactly once, got " + resultCalls + " calls");
+    if (gotResult !== "Are you there") throw new Error("expected the ACCUMULATED transcript across both segments, got " + JSON.stringify(gotResult));
+    console.log("WEBSPEECH_ENDPOINTING_ACCUMULATES_OK true");
+    delete global.window.SpeechRecognition;
+}
+{
+    // manual override (press-again): flushes whatever's buffered
+    // immediately rather than losing it, then actually stops.
+    let startedInstance = null;
+    let nativeStopCalls = 0;
+    global.window.SpeechRecognition = function () {
+        startedInstance = this;
+        this.start = () => {};
+        this.stop = () => { nativeStopCalls++; };
+    };
+    const engine = new WebSpeechSttEngine();
+    let gotResult = null, resultCalls = 0;
+    engine.start((text) => { gotResult = text; resultCalls++; }, () => {});
+    startedInstance.onresult({ results: [[{ transcript: "partial" }]] });
+    engine.stop(); // manual stop BEFORE the silence timeout fires
+    if (resultCalls !== 1) throw new Error("stop() must flush the buffered segment immediately, got " + resultCalls + " calls");
+    if (gotResult !== "partial") throw new Error("expected the buffered text to be flushed on manual stop, got " + JSON.stringify(gotResult));
+    if (nativeStopCalls !== 1) throw new Error("stop() must still stop the native recognizer, got " + nativeStopCalls + " calls");
+    console.log("WEBSPEECH_MANUAL_STOP_FLUSHES_OK true");
+    delete global.window.SpeechRecognition;
+}
+{
+    // a manual stop with NOTHING captured yet must never call onResult
+    // with empty text.
+    global.window.SpeechRecognition = function () {
+        this.start = () => {};
+        this.stop = () => {};
+    };
+    const engine = new WebSpeechSttEngine();
+    let resultCalls = 0;
+    engine.start(() => { resultCalls++; }, () => {});
+    engine.stop();
+    if (resultCalls !== 0) throw new Error("stop() with nothing captured must never call onResult");
+    console.log("WEBSPEECH_EMPTY_STOP_NO_RESULT_OK true");
     delete global.window.SpeechRecognition;
 }
 
@@ -274,7 +368,8 @@ delete global.window.SpeechRecognition;
     global.window.assistantVoiceSpans = [];
     fetchCalls = [];
     setSttEngineChoice("web-speech");
-    global.window.SpeechRecognition = function () { this.start = () => {}; this.stop = () => {}; };
+    let startedInstance = null;
+    global.window.SpeechRecognition = function () { startedInstance = this; this.start = () => {}; this.stop = () => {}; };
     const sharedTurnId = "turn-shared-abc";
     const startedWithTurnId = startStt(sharedTurnId);
     if (startedWithTurnId !== true) throw new Error("startStt(turnId) must start when not gated");
@@ -283,11 +378,73 @@ delete global.window.SpeechRecognition;
     if (startEvBody.payload.spanId !== sharedTurnId) throw new Error("startStt(turnId) must use turnId as the span id, got " + startEvBody.payload.spanId);
     const localStart = window.assistantVoiceSpans.find(e => e.kind === "stt-start");
     if (!localStart || localStart.turn_id !== sharedTurnId) throw new Error("stt-start must join window.assistantVoiceSpans tagged with turn_id");
+
+    // #452 (#454 P0 live-bug batch): stopStt() ALONE, before the outcome
+    // is known, used to eagerly emit "stt-end ok" here -- the exact
+    // "lying span" bug (a failed transcription still rendered green in
+    // the inspector). It must now emit NOTHING.
     stopStt();
-    const localEnd = window.assistantVoiceSpans.find(e => e.kind === "stt-end");
-    if (!localEnd || localEnd.turn_id !== sharedTurnId) throw new Error("stt-end must join window.assistantVoiceSpans tagged with the SAME turn_id");
+    if (window.assistantVoiceSpans.some(e => e.kind === "stt-end")) throw new Error("stopStt() alone (outcome not yet known) must NOT emit a terminal span");
+    if (fetchCalls.some(c => c.url === "/assistant/voice-event" && JSON.parse(c.opts.body).kind === "stt-end")) throw new Error("stopStt() alone must not POST a stt-end voice-event either");
+    console.log("STOPSTT_ALONE_EMITS_NOTHING_OK true");
+
+    // the REAL outcome (a transcript) arrives now -- exactly ONE stt-end,
+    // "ok", tagged with the SAME turn_id, emitted only once success is
+    // actually known.
+    startedInstance.onresult({ results: [[{ transcript: "final phrase" }]] });
+    fireLatestTimer();
+    const endSpans = window.assistantVoiceSpans.filter(e => e.kind === "stt-end");
+    if (endSpans.length !== 1) throw new Error("expected exactly ONE stt-end span for this turn, got " + endSpans.length);
+    if (endSpans[0].turn_id !== sharedTurnId || endSpans[0].status !== "ok") throw new Error("stt-end must be status ok, tagged with the shared turn_id, got " + JSON.stringify(endSpans[0]));
     console.log("SPAN_CORRELATION_OK true");
     delete global.window.SpeechRecognition;
+}
+
+// #452 (#454 P0 live-bug batch): the EXACT reported bug shape -- whisper's
+// transcription outcome is only known ASYNCHRONOUSLY, well after stop()
+// has already returned (mediaRecorder.onstop -> POST /transcribe -> maybe
+// fails). A minimal fake stands in for WhisperSttEngine (its own class
+// needs getUserMedia/MediaRecorder, not worth restubbing just to prove
+// startStt/stopStt's span-TIMING contract, which is engine-agnostic): its
+// stop() does nothing synchronously, mirroring the real class's actual
+// contract -- the async outcome arrives later via the SAME onError
+// callback startStt registered.
+{
+    global.window.assistantGate = { gated: false };
+    global.window.assistantVoiceSpans = [];
+    fetchCalls = [];
+    setSttEngineChoice("whisper");
+    let registeredError = null;
+    global.sttEngines["whisper"] = {
+        start(onResult, onError){ registeredError = onError; },
+        stop(){ /* real whisper: synchronous, no outcome yet */ },
+    };
+    const failTurnId = "turn-fail-async";
+    if (startStt(failTurnId) !== true) throw new Error("startStt must start when not gated");
+    stopStt();
+    if (window.assistantVoiceSpans.some(e => e.kind === "stt-end")) throw new Error("stopStt() must not emit a terminal span while the async outcome is still pending");
+    registeredError("whisper-http-500");
+    const endSpans2 = window.assistantVoiceSpans.filter(e => e.kind === "stt-end");
+    if (endSpans2.length !== 1) throw new Error("expected exactly ONE stt-end span once the async failure arrives, got " + endSpans2.length + " (this is the #452 duplicate/lying-span bug if not 1)");
+    if (endSpans2[0].status !== "error" || endSpans2[0].turn_id !== failTurnId) throw new Error("the single terminal span must be status error, tagged with the turn id, got " + JSON.stringify(endSpans2[0]));
+    console.log("ASYNC_FAILURE_AFTER_STOP_SINGLE_SPAN_OK true");
+}
+
+// #451 (#454 P0 live-bug batch): a failed voice turn must SAY why -- this
+// used to only console.warn + set window.__lastSttError, both invisible to
+// the human. Full overlay-rendering coverage lives in section-assistant-
+// voice-turn.sh (needs the chat-overlay DOM this file doesn't stub); here
+// we just prove startStt's error path CALLS reportSttFailure with the
+// honest message.
+{
+    global.window.assistantGate = { gated: false };
+    reportedFailures = []; // reset the shared tracking array (stubbed once, near the top)
+    setSttEngineChoice("web-speech");
+    delete global.window.SpeechRecognition; // -> web-speech-unavailable
+    startStt("turn-report-fail");
+    if (reportedFailures.length !== 1) throw new Error("startStt's engine-error path must call reportSttFailure exactly once, got " + reportedFailures.length);
+    if (reportedFailures[0].indexOf("web-speech-unavailable") === -1) throw new Error("reportSttFailure must receive the honest engine error message, got " + JSON.stringify(reportedFailures[0]));
+    console.log("REPORTS_STT_FAILURE_OK true");
 }
 
 // ---- onSttText -> queueOrSendChat (today's downstream, AST-052 owns the rest) ----
@@ -323,11 +480,16 @@ check "toggle applies to the settings-panel buttons" "TOGGLE_APPLIES_OK true" "$
 check "toggle persists in the nv-ui localStorage key" "PERSIST_OK true" "$tmpl_stt_out"
 check "switching back to whisper works" "SWITCH_BACK_OK true" "$tmpl_stt_out"
 check "Web Speech engine degrades honestly when unavailable" "WEBSPEECH_DEGRADE_OK true" "$tmpl_stt_out"
-check "Web Speech engine wires recognition results -> onResult" "WEBSPEECH_RESULT_OK true" "$tmpl_stt_out"
+check "#454 (P0 live-bug batch): silence-timeout endpointing accumulates final segments across a mid-sentence pause into ONE turn, instead of truncating on the first" "WEBSPEECH_ENDPOINTING_ACCUMULATES_OK true" "$tmpl_stt_out"
+check "#454: a manual stop (press again) flushes whatever's buffered immediately, never losing it" "WEBSPEECH_MANUAL_STOP_FLUSHES_OK true" "$tmpl_stt_out"
+check "#454: a manual stop with nothing captured yet never calls onResult with empty text" "WEBSPEECH_EMPTY_STOP_NO_RESULT_OK true" "$tmpl_stt_out"
 check "whisper engine surfaces an honest unavailable-sidecar state" "WHISPER_DEGRADE_OK true" "$tmpl_stt_out"
 check "the §17.9 gate blocks STT start with no assistant selected" "GATE_BLOCKS_START_OK true" "$tmpl_stt_out"
 check "a span's payload carries the engine name" "SPAN_ENGINE_NAME_OK true" "$tmpl_stt_out"
+check "#452 (P0 live-bug batch): stopStt() alone, before the outcome is known, emits no terminal span at all -- the old eager-ok lying-span bug" "STOPSTT_ALONE_EMITS_NOTHING_OK true" "$tmpl_stt_out"
 check "AST-052 (#334): startStt(turnId) uses turnId as the span id and both stt spans join window.assistantVoiceSpans tagged with it" "SPAN_CORRELATION_OK true" "$tmpl_stt_out"
+check "#452: whisper's async-after-stop outcome (the exact reported bug shape) still produces exactly ONE terminal span, not a duplicate ok-then-error pair" "ASYNC_FAILURE_AFTER_STOP_SINGLE_SPAN_OK true" "$tmpl_stt_out"
+check "#451 (P0 live-bug batch): startStt's engine-error path calls reportSttFailure with the honest message" "REPORTS_STT_FAILURE_OK true" "$tmpl_stt_out"
 check "onSttText routes transcript text into the existing chat-send path" "ONSTTTEXT_ROUTES_TO_CHAT_OK true" "$tmpl_stt_out"
 check "AST-052 (#334): onSttText auto-stops recognition on a final result" "ONSTTTEXT_AUTOSTOPS_OK true" "$tmpl_stt_out"
 check "the whole STT template script completes" "ALL_OK true" "$tmpl_stt_out"
