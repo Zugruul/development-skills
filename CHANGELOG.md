@@ -19,6 +19,13 @@
   > - the /version probe now only fills the branch chip (the version is
   >   already right at first paint)
 
+### Other
+- retro(#110): batched PR-close retro for #438 + #338 + #441 (`d62a0d8`)
+  > - dev: 4 notes (two parsers one byte stream, grep -F OR semantics, sweep all pin sites, validate the declaration not just values)
+  > - reviewer: 2 new notes (test at the observed layer, knowledge attaches to the line) + reproduce-before-verdict re-minted to strength 2
+  > - 4 recall outcomes recorded (all useful) — first fully-closed learning loop
+  > - pruned, DIRECTORY.md regenerated
+
 ## v0.46.0 — 2026-07-27
 
 ### Features
