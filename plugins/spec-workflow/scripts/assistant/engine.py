@@ -48,7 +48,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 
-from assistant import (adapters, capability_index, default_store, digest as digest_module,
+from assistant import (adapters, artifacts, capability_index, default_store, digest as digest_module,
                         discovery, distill, observability, selection_store, tasks, turns)
 from assistant.store import SessionStore
 
@@ -589,6 +589,14 @@ class AssistantEngine:
             return self._traces(query)
         if method == "GET" and path == "/assistant/tasks":
             return self._tasks(query)
+        if method == "GET" and path.startswith("/assistant/artifact/"):
+            # AST-068 (Sec12.2, issue #343): the ONE route whose id lives
+            # in the URL PATH, not the query string -- see `_artifact`'s
+            # own docstring for why that parsing stays here rather than
+            # leaking into do_GET, and for this route's distinct success-
+            # payload shape (an absolute file path, not JSON/text -- the
+            # caller must stream it, never `_send()` it as a literal body).
+            return self._artifact(path, query)
         if method == "POST" and path == "/assistant/chat":
             return self._chat(body)
         if method == "POST" and path == "/assistant/select":
@@ -987,6 +995,79 @@ class AssistantEngine:
                 "warnings": [f"tasks temporarily unavailable, retry shortly: {exc}"],
             }, "application/json"
         return 200, {"tasks": task_rows}, "application/json"
+
+    def _artifact(self, path, query):
+        """GET /assistant/artifact/<task-id>?assistant= -- SPEC-ASSISTANT.md
+        Sec12.2 (AST-068, issue #343): resolves a task id to its
+        completed artifact's safe absolute path on disk, scoped to the
+        resolved assistant's OWN artifacts directory. This method never
+        touches a socket or reads file content -- do_GET (neural-view.py)
+        streams the actual bytes with real Range support; matches every
+        other `_<name>` handler's "engine package stays HTTP-framework-
+        agnostic" posture (see this module's own top-of-file convention).
+
+        Path parsing: the task id lives in the URL PATH, not the query
+        string -- unlike every other route here. Parsed in THIS method
+        (not do_GET) so path-segment parsing for `/assistant/*` routes
+        stays centralized in one place, same division of labor
+        `_history`/`_traces`'s own docstrings describe for query-string
+        parsing (`do_GET` reads the query string once; each route's OWN
+        method interprets it). A task id containing `/` is rejected
+        immediately -- real ids are `uuid.uuid4().hex` (tasks.py's
+        `enqueue`), which never contain one; this also means a
+        `../`-shaped path segment never reaches `artifacts.resolve` at
+        all, let alone the filesystem.
+
+        `assistant` is the SAME optional Sec7.6 resolution flag `_traces`/
+        `_tasks` already accept, resolved via the identical
+        `discover_candidates`/`resolve_assistant` pattern.
+
+        Returns (status, payload, ctype):
+          - success: `(200, <absolute file path str>, <ignored — do_GET
+            recomputes the real media type from the resolved path>)` --
+            the payload is NOT the response body; do_GET recognizes this
+            route (see `handle()`'s own routing comment) and streams from
+            that path instead of calling `_send()` on it.
+          - every failure -- unresolved assistant, malformed task id, no
+            such task, task not completed, no artifact recorded, a path
+            that would escape the artifacts root, or a missing file --
+            is the SAME generic `(404, {"error": "artifact not found"},
+            "application/json")`. Deliberately undifferentiated (issue
+            #343 review: "treat it as a traversal surface") -- a crafted
+            id gets no more signal back than a legitimate but
+            not-yet-completed one would.
+          - a transient sqlite lock overrun (the same condition `_traces`/
+            `_tasks` already degrade) is `(503, {"error": "..."},
+            "application/json")` -- honestly retryable, unlike `_traces`/
+            `_tasks`'s own degrade: those two have a sane "empty success"
+            shape to fall back to (a list can legitimately be empty), an
+            artifact request does not (there is nothing to return), so
+            faking a 200 or a 404 here would be dishonest either way --
+            a 503 is the one status that says "not this response's
+            fault, ask again"."""
+        task_id = path[len("/assistant/artifact/"):].strip("/")
+        if not task_id or "/" in task_id:
+            return 404, {"error": "artifact not found"}, "application/json"
+        assistant_flag = None
+        if query:
+            values = query.get("assistant")
+            if values:
+                assistant_flag = values[0]
+        candidates = default_store.discover_candidates(
+            root for _, root in self._repos_getter()
+        )
+        try:
+            root, _section = default_store.resolve_assistant(
+                candidates, flag=assistant_flag, state_dir=self.state_dir)
+        except default_store.ResolutionError:
+            return 404, {"error": "artifact not found"}, "application/json"
+        try:
+            abs_path, _size = artifacts.resolve(root, task_id)
+        except artifacts.ArtifactError:
+            return 404, {"error": "artifact not found"}, "application/json"
+        except sqlite3.OperationalError as exc:
+            return 503, {"error": f"artifact temporarily unavailable, retry shortly: {exc}"}, "application/json"
+        return 200, abs_path, "application/octet-stream"
 
     def _chat_lock_for(self, root):
         """One `threading.Lock` per resolved assistant root, canonicalized

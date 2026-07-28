@@ -102,6 +102,7 @@ Port: --port, else $NEURAL_VIEW_PORT, else 4748. Binds 127.0.0.1 only.
 import atexit
 import base64
 import json
+import mimetypes
 import os
 import re
 import shlex
@@ -126,6 +127,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # import config (proje
 from assistant.engine import AssistantEngine  # noqa: E402  the /assistant/* engine (AST-010, SPEC-ASSISTANT.md §5a)
 from assistant import default_store  # noqa: E402  §7.6 resolution + machine-local default store, for `assistant default` (AST-016)
 from assistant import observability  # noqa: E402  issue #391: `assistant prune`'s direct (non-HTTP) traces.sqlite retention pass
+from assistant.artifacts import MAX_ARTIFACT_BYTES  # noqa: E402  AST-068 (issue #343): the streamed /assistant/artifact/<id> route's size cap
 
 ENGINE = None  # set by the `serve` branch of main(); route dispatch below checks for None so `import neural_view` alone (e.g. from a test) never needs a live engine
 
@@ -1454,6 +1456,76 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(chunk)
 
+    _ARTIFACT_CHUNK_SIZE = 256 * 1024  # 256 KiB reads -- bounded memory regardless of file size (AST-068)
+
+    def _send_file_streamed_ranged(self, abs_path):
+        """Serves a file from DISK honoring a single-range Range header,
+        same RFC 9110 semantics as `_send_ranged` above (206/416/
+        Accept-Ranges, multi-range falls back to a full body) -- but
+        reads it in bounded `_ARTIFACT_CHUNK_SIZE` chunks instead of
+        loading it into RAM first. This is the whole reason AST-068
+        (SPEC-ASSISTANT.md Sec12.2) exists as a SEPARATE endpoint from
+        `/file`: `_send_ranged` above takes already-in-RAM `data` by
+        design (fine for the small note attachments `/file` serves);
+        this method takes a PATH and never holds more than one chunk in
+        memory, suitable for the large video/3D-model artifacts Sec12.1
+        names. `engine.py`'s `_artifact` already did the safe path
+        resolution (task lookup, traversal containment, existence check)
+        -- this method trusts `abs_path` completely, the same way
+        `_send`'s callers trust their own already-validated inputs."""
+        try:
+            size = os.path.getsize(abs_path)
+        except OSError:
+            return self._send(404, {"error": "artifact not found"})
+        if size > MAX_ARTIFACT_BYTES:
+            return self._send(413, {"error": "artifact too large to serve"})
+        ctype = mimetypes.guess_type(abs_path)[0] or "application/octet-stream"
+        rng = self.headers.get("Range", "")
+        m = re.match(r"bytes=(\d*)-(\d*)$", rng.strip())
+        if not m or (not m.group(1) and not m.group(2)):
+            start, end, status = 0, size - 1, 200
+        else:
+            if m.group(1):
+                start = int(m.group(1))
+                end = min(int(m.group(2)), size - 1) if m.group(2) else size - 1
+            else:                              # suffix form: bytes=-K (last K bytes)
+                start = max(0, size - int(m.group(2)))
+                end = size - 1
+            if start >= size or start > end:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            status = 206
+        length = end - start + 1
+        try:
+            with open(abs_path, "rb") as fh:
+                self.send_response(status)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(length))
+                self.send_header("Accept-Ranges", "bytes")
+                if status == 206:
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+                self.end_headers()
+                fh.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk = fh.read(min(self._ARTIFACT_CHUNK_SIZE, remaining))
+                    if not chunk:
+                        break  # file shrank mid-stream -- stop rather than loop forever on an empty read
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            # client aborted mid-stream (seek, tab close) -- nothing to
+            # send to anymore, nothing to log, same posture `_send` documents (#379)
+            return
+        except OSError:
+            # the file vanished/became unreadable AFTER getsize succeeded
+            # above (a genuine but rare race) -- headers may already be
+            # sent, so there is nothing honest left to do but stop.
+            return
+
     def log_message(self, *a):  # quiet
         pass
 
@@ -1469,6 +1541,13 @@ class Handler(BaseHTTPRequestHandler):
             if result is None:
                 return self._send(404, {"error": "not found"})
             status, payload, ctype = result
+            # AST-068 (Sec12.2, issue #343): the ONE /assistant/* route
+            # whose success payload is a FILE PATH to stream, not a
+            # literal response body -- `_artifact`'s own docstring in
+            # engine.py explains why. Every other route's 200 still goes
+            # through `_send` unchanged below.
+            if status == 200 and path.startswith("/assistant/artifact/"):
+                return self._send_file_streamed_ranged(payload)
             return self._send(status, payload, ctype)
         if path == "/" or path.startswith("/index"):
             html = render_index()  # #441: injects the real plugin version -- see its own docstring

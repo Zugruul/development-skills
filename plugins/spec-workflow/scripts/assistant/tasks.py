@@ -197,6 +197,16 @@ Library:
         `tasks.sqlite` yet. Newest-first (`ORDER BY created_at DESC`) --
         a queue indicator cares about what's happening NOW, not the
         oldest historical task.
+    get_task(root, task_id) -> dict | None
+        Single-row read path (AST-068, issue #343: `/assistant/artifact/
+        <task-id>` needs to look up ONE task's `state`/`artifact_path` by
+        its id, not a bounded/filtered list). Same short-lived-connection,
+        never-raises-for-a-missing-db shape as `list_tasks`; returns
+        `None` for a missing db, a missing row, OR a malformed table --
+        every "nothing usable here" case collapses to the SAME `None`
+        result, since a caller resolving an artifact treats all three
+        identically (see `artifacts.py`'s `ArtifactError`, which
+        deliberately never distinguishes them either).
 """
 import json
 import os
@@ -693,3 +703,21 @@ def list_tasks(root, state=None, limit=200):
     finally:
         conn.close()
     return [_row_to_dict(row) for row in rows]
+
+
+def get_task(root, task_id):
+    """See module docstring's Library entry (AST-068, issue #343)."""
+    path = _db_path(root)
+    if not os.path.exists(path):
+        return None
+    conn = sqlite3.connect(path, timeout=5.0)
+    try:
+        conn.execute("PRAGMA busy_timeout=5000")
+        sql = "SELECT " + ", ".join(_SELECT_COLUMNS) + " FROM tasks WHERE id = ?"
+        try:
+            row = conn.execute(sql, (task_id,)).fetchone()
+        except sqlite3.OperationalError:
+            return None  # same "no such table" degrade as list_tasks
+    finally:
+        conn.close()
+    return _row_to_dict(row) if row is not None else None
