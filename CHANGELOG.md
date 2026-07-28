@@ -24,6 +24,12 @@
   >   silently lost without warning; human-authored sibling skills proven
   >   untouched
 
+### Other
+- retro(#114) + feedback: #447 close (`b051615`)
+  > - dev: proxy-checks-vs-true-invariants, derived-set nonempty controls, keyword-lints-scan-comments
+  > - reviewer: decision-lists-vs-fact-lists, review-your-own-fix-as-new-code, comments-deserve-code-scrutiny
+  > - feedback: 2 items routed, feed archived
+
 ## v0.50.0 — 2026-07-28
 
 ### Features
