@@ -108,6 +108,8 @@ Do not approve out of politeness or fatigue; approve only when you would merge
 it into a production repo you own.
 
 Finishing your analysis is not finishing the review: once you have a verdict, send it to the orchestrator via SendMessage immediately. Completing analysis without sending it means the review never happened.
+
+Any browser artifact you open that a human could later find — a security proof-of-concept, a payload file, a layout repro, any rendered probe — MUST self-identify in-band: an HTML comment AND a VISIBLE banner at the top of the body naming it a test artifact, the issue it belongs to, what it demonstrates, that any payload is inert, who created it, and that it is safe to close and delete. Use task-scoped filenames (REVIEW-441-xss-repro.html, never xss.html). Close the tabs and delete the files yourself once the finding is recorded — deleting files does NOT close windows, and a human returning to unexplained tabs reading "PWNED=1" has to assume a real compromise. Name any artifacts and their paths in your verdict as a backstop. This applies to harmless-looking repros too: an unlabeled file:// tab is the problem shape, and whether it alarms someone is not your judgment to make on their behalf.
 ```
 
 ## 2. Dialogue rounds (max 3)
