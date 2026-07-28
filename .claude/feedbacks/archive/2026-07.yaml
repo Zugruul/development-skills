@@ -5725,3 +5725,67 @@ items:
   routing:
     action: brain-note
     ref: orchestrator/recall-injection-is-part-of-the-brief
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-28T07:30:00Z'
+iteration:
+  task: AST-052
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: briefing
+  severity: low
+  summary: Pasting the previous related task's retro lesson into the next brief produced
+    the first zero-escape review round of the stretch
+  generalized: When briefing a task in the same problem family as a recently-retroed
+    one, paste that retro's specific lesson into the brief as an explicit apply-this
+    step - the follow-up task shipped with zero findings on the previously-weak axis,
+    making the review itself cheaper.
+  routing:
+    action: brain-note
+    ref: orchestrator/lessons-compound-when-briefed-forward
+- category: friction
+  area: concurrency
+  severity: low
+  summary: A persistent shell cwd caused a worktree to be created nested inside another
+    lane's worktree, and later made a safety hook evaluate against the wrong repo
+    root
+  detail: worktree add resolved a relative path against a stale cwd; guard-board-move
+    later read the worktree's missing gate-pass instead of the main repo's. Both recovered
+    (worktree move; cd reset) but each cost a confused round.
+  generalized: Orchestration shells whose working directory persists across steps
+    should treat every repo-relative operation as requiring an explicit absolute-path
+    prefix - a stale cwd silently redirects worktree creation and root-relative safety
+    checks to the wrong repository.
+  routing:
+    action: brain-note
+    ref: orchestrator/stack-hotfixes-under-one-gate
+- category: friction
+  area: merge
+  severity: low
+  summary: Post-merge board moves were blocked once by a stale recorded pass and once
+    by a wrong-root hook evaluation, each costing an extra gate run or retry
+  generalized: Safety hooks that bind a recorded pass to an exact tree state interact
+    badly with any post-pass tree mutation, including rebases onto generated-doc commits
+    - the recorded-pass fingerprint should exclude generated docs and the hook should
+    resolve its root from the repo the command targets, not the shell's current directory.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#443
+- category: worked-well
+  area: review
+  severity: low
+  summary: The reviewer probing with the section's own harnesses made findings undeniable
+    and rounds comparable
+  generalized: Reviewers should reproduce findings by extracting and instrumenting
+    the project's own test harnesses rather than writing independent mocks - the evidence
+    inherits the dev's setup, and re-running the identical probe next round turns
+    the fix verification into a direct before/after.
+  routing:
+    action: brain-note
+    ref: reviewer/reuse-the-projects-own-harness
