@@ -169,7 +169,8 @@ global.fetch = async (url, opts) => {
 };
 
 let queuedChatMessages = [];
-global.queueOrSendChat = (text) => { queuedChatMessages.push(text); };
+let queuedChatCalls = [];
+global.queueOrSendChat = (text, turnId, source) => { queuedChatMessages.push(text); queuedChatCalls.push({text, turnId, source}); };
 // #451 (#454 P0 live-bug batch): stubbed once, up front, since startStt's
 // engine-error callback calls this unconditionally on any failure --
 // several blocks below (whisper's async-after-stop failure included)
@@ -227,6 +228,7 @@ function fireLatestTimer(){
 // ---- Web Speech engine: wires recognition events -> onResult, degrades honestly ----
 defineClass("WebSpeechSttEngine");
 defineConst("STT_WEBSPEECH_SILENCE_MS");
+defineConst("STT_WEBSPEECH_LIVENESS_MS");
 {
     // no SpeechRecognition ctor on this stubbed window at all
     delete global.SpeechRecognition;
@@ -305,6 +307,175 @@ defineConst("STT_WEBSPEECH_SILENCE_MS");
     delete global.window.SpeechRecognition;
 }
 
+// ---- #474 (P0, issue #474): "talks non-stop, hears nothing at all" --
+// four hypotheses to investigate (per-instance below), plus the hard
+// liveness requirement regardless of which hypotheses confirm. ----
+{
+    // hyp 1 + hyp 4: a race where start() is called again before the
+    // PREVIOUS native recognizer has actually finished stopping (the
+    // browser's own SpeechRecognition.stop() is asynchronous) must never
+    // let the stale instance's events corrupt the NEW session's buffer/
+    // outcome -- and repeated start/stop cycles must never leak a live
+    // handler that can still fire into shared state.
+    let instanceA = null, instanceB = null;
+    global.window.SpeechRecognition = function () {
+        if (!instanceA) instanceA = this; else instanceB = this;
+        this.start = () => {};
+        this.stop = () => {};
+    };
+    const engine = new WebSpeechSttEngine();
+    let resultsA = [];
+    engine.start((text) => resultsA.push(text), () => {});
+    // capture the handler reference up front (stop() does NOT null it --
+    // see WEBSPEECH_LATE_RESULT_AFTER_STOP_SAME_GEN_OK's own comment for
+    // why) so it can still be invoked below exactly as a real browser
+    // would, delivering a queued event into a since-superseded session.
+    const staleOnResult = instanceA.onresult;
+    engine.stop(); // asks the native recognizer to stop -- NOT synchronous in a real browser
+    let resultsB = [];
+    engine.start((text) => resultsB.push(text), () => {});
+    // instanceA's browser-side session is STILL delivering a queued event
+    // even though JS already moved on to session B -- this is the race.
+    staleOnResult({ results: [[{ transcript: "stale from A" }]] });
+    if (resultsA.length !== 0 || resultsB.length !== 0) throw new Error("a stale instance's onresult must be a no-op, not deliver into either session's onResult -- got A=" + JSON.stringify(resultsA) + " B=" + JSON.stringify(resultsB));
+    // session B still works normally afterward
+    instanceB.onresult({ results: [[{ transcript: "from B" }]] });
+    fireLatestTimer();
+    if (resultsB.length !== 1 || resultsB[0] !== "from B") throw new Error("session B must still finalize normally after the stale A event was ignored, got " + JSON.stringify(resultsB));
+    console.log("WEBSPEECH_STALE_INSTANCE_IGNORED_OK true");
+    delete global.window.SpeechRecognition;
+}
+{
+    // hyp 4, contrast case: stop() must clear this.recog (this engine
+    // holds no lingering reference to the old instance)...
+    let startedInstance = null;
+    global.window.SpeechRecognition = function () { startedInstance = this; this.start = () => {}; this.stop = () => {}; };
+    const engine = new WebSpeechSttEngine();
+    engine.start(() => {}, () => {});
+    engine.stop();
+    if (engine.recog !== null) throw new Error("stop() must clear this.recog");
+    // ...but deliberately does NOT null the old instance's own handlers --
+    // a real SpeechRecognition can still deliver ONE more onresult for
+    // audio already captured before stop() was called (stop() means
+    // "capture nothing new", not "discard what's pending"), and that
+    // legitimate late result (same generation, no start() since) must
+    // still reach onResult normally rather than being silently dropped.
+    let resultCalls = 0;
+    engine.onResult = () => { resultCalls++; }; // _finalize reads this.onResult directly
+    startedInstance.onresult({ results: [[{ transcript: "captured before stop" }]] });
+    fireLatestTimer();
+    if (resultCalls !== 1) throw new Error("a legitimate late result on the SAME generation (no new start() yet) must still deliver, got " + resultCalls + " calls");
+    console.log("WEBSPEECH_LATE_RESULT_AFTER_STOP_SAME_GEN_OK true");
+    delete global.window.SpeechRecognition;
+}
+{
+    // hyp 2 (the primary reported bug shape): the browser's own
+    // recognition SERVICE can end a continuous session on its own --
+    // `onend` fires (per spec, the one guaranteed terminal event) but
+    // NEITHER onerror NOR our own stop() was ever called. Previously
+    // nothing listened for onend at all, so the mic control stayed
+    // "listening" forever against a dead engine -- exactly "talks
+    // non-stop, hears nothing at all".
+    let startedInstance = null;
+    global.window.SpeechRecognition = function () { startedInstance = this; this.start = () => {}; this.stop = () => {}; };
+    const engine = new WebSpeechSttEngine();
+    let gotError = null, resultCalls = 0;
+    engine.start(() => { resultCalls++; }, (err) => { gotError = err; });
+    // the service ends the session with no error and no manual stop
+    startedInstance.onend();
+    if (!gotError || gotError.indexOf("web-speech-ended") === -1) throw new Error("an unexpected onend (no manual stop, no prior onerror) must report an honest 'engine died' error, got " + gotError);
+    if (resultCalls !== 0) throw new Error("onend must never call onResult");
+    console.log("WEBSPEECH_ONEND_TREATED_AS_DEATH_OK true");
+    delete global.window.SpeechRecognition;
+}
+{
+    // onend firing AFTER onerror (the normal, spec-compliant sequence for
+    // an errored session) must not double-report -- onerror already told
+    // the caller.
+    let startedInstance = null;
+    global.window.SpeechRecognition = function () { startedInstance = this; this.start = () => {}; this.stop = () => {}; };
+    const engine = new WebSpeechSttEngine();
+    let errorCalls = 0;
+    engine.start(() => {}, () => { errorCalls++; });
+    startedInstance.onerror({ error: "network" });
+    startedInstance.onend(); // spec-guaranteed to fire after onerror too
+    if (errorCalls !== 1) throw new Error("onend after an already-reported onerror must not report a second error, got " + errorCalls + " calls");
+    console.log("WEBSPEECH_ONEND_AFTER_ONERROR_NOT_DOUBLE_REPORTED_OK true");
+    delete global.window.SpeechRecognition;
+}
+{
+    // onend firing after a MANUAL stop() (the expected, healthy shutdown
+    // path) must not be treated as a death either.
+    let startedInstance = null;
+    global.window.SpeechRecognition = function () { startedInstance = this; this.start = () => {}; this.stop = () => {}; };
+    const engine = new WebSpeechSttEngine();
+    let errorCalls = 0;
+    engine.start(() => {}, () => { errorCalls++; });
+    engine.stop(); // stop() does not null onend -- see WEBSPEECH_LATE_RESULT_AFTER_STOP_SAME_GEN_OK
+    startedInstance.onend();
+    if (errorCalls !== 0) throw new Error("onend after a deliberate stop() must never report an error, got " + errorCalls + " calls");
+    console.log("WEBSPEECH_ONEND_AFTER_MANUAL_STOP_HONEST_OK true");
+    delete global.window.SpeechRecognition;
+}
+{
+    // liveness requirement (hard, regardless of hypothesis confirmation):
+    // a bounded watchdog -- if the recognition service never shows ANY
+    // sign of life (no onaudiostart, no onresult, no onerror, no onend)
+    // within STT_WEBSPEECH_LIVENESS_MS of start(), the engine must be
+    // declared dead outright rather than sit there "listening"
+    // indefinitely -- this is the truly-silent case the issue also asks
+    // about, where nothing native fires at all.
+    global.window.SpeechRecognition = function () { this.start = () => {}; this.stop = () => {}; };
+    const engine = new WebSpeechSttEngine();
+    let gotError = null;
+    engine.start(() => {}, (err) => { gotError = err; });
+    if (![...scheduledTimers.values()].some(t => t.ms === STT_WEBSPEECH_LIVENESS_MS)) throw new Error("start() must arm a liveness watchdog of exactly STT_WEBSPEECH_LIVENESS_MS");
+    const watchdogEntry = [...scheduledTimers.entries()].find(([, t]) => t.ms === STT_WEBSPEECH_LIVENESS_MS);
+    scheduledTimers.delete(watchdogEntry[0]);
+    watchdogEntry[1].fn();
+    if (!gotError || gotError.indexOf("web-speech-dead") === -1) throw new Error("a fully silent engine (no native events at all) must be declared dead within the bounded watchdog window, got " + gotError);
+    if (engine.recog !== null) throw new Error("the watchdog must clear this.recog once the engine is declared dead");
+    console.log("WEBSPEECH_LIVENESS_WATCHDOG_OK true");
+    delete global.window.SpeechRecognition;
+}
+{
+    // the watchdog must NOT false-positive during ordinary silence once
+    // the engine has proven it's alive (onaudiostart -- fires the moment
+    // mic audio reaches the recognizer, well before any speech is heard).
+    let startedInstance = null;
+    global.window.SpeechRecognition = function () { startedInstance = this; this.start = () => {}; this.stop = () => {}; };
+    const engine = new WebSpeechSttEngine();
+    let gotError = null;
+    engine.start(() => {}, (err) => { gotError = err; });
+    startedInstance.onaudiostart();
+    if ([...scheduledTimers.values()].some(t => t.ms === STT_WEBSPEECH_LIVENESS_MS)) throw new Error("onaudiostart must cancel the liveness watchdog -- proof of life arrived");
+    if (gotError) throw new Error("a live engine sitting in ordinary silence must never be reported as dead, got " + gotError);
+    console.log("WEBSPEECH_LIVENESS_CLEARED_BY_AUDIOSTART_OK true");
+    delete global.window.SpeechRecognition;
+}
+{
+    // hyp 3: investigate whether the silence-timeout endpointing can
+    // finalize an EMPTY buffer and leave the engine stopped while the UI
+    // still shows listening. Evidence this is NOT what happens: _finalize
+    // never calls engine.stop()/clears this.recog, and never calls
+    // onResult with empty text -- an empty finalize is a harmless no-op,
+    // the engine keeps running exactly as before. RULED OUT.
+    let startedInstance = null;
+    global.window.SpeechRecognition = function () { startedInstance = this; this.start = () => {}; this.stop = () => {}; };
+    const engine = new WebSpeechSttEngine();
+    let resultCalls = 0;
+    engine.start(() => { resultCalls++; }, () => {});
+    // an onresult event carrying no usable transcript still arms the
+    // silence timer (existing accumulation behavior) -- firing it must be
+    // a no-op, and critically must NOT stop/clear the engine.
+    startedInstance.onresult({ results: [[{ transcript: "" }]] });
+    fireLatestTimer();
+    if (resultCalls !== 0) throw new Error("an empty-buffer finalize must never call onResult");
+    if (engine.recog !== startedInstance) throw new Error("hyp 3 is ruled out only if an empty finalize leaves the engine's recog untouched -- it must NOT stop/clear it");
+    console.log("WEBSPEECH_HYP3_EMPTY_FINALIZE_RULED_OUT_OK true");
+    delete global.window.SpeechRecognition;
+}
+
 // ---- whisper engine: honest unavailable-sidecar state when unreachable ----
 defineConst("STT_WHISPER_ENDPOINT");
 defineConst("STT_WHISPER_UNAVAILABLE_MSG");
@@ -316,6 +487,37 @@ defineClass("WhisperSttEngine");
     await engine.start(() => {}, (err) => { gotError = err; });
     if (!gotError || gotError.indexOf("whisper sidecar not available") === -1) throw new Error("expected honest whisper-unavailable message, got " + gotError);
     console.log("WHISPER_DEGRADE_OK true");
+}
+{
+    // #474: "for BOTH engines" -- MediaRecorder (or its underlying mic
+    // track) can die on its own, e.g. device unplugged/permission revoked
+    // mid-capture, without ever reaching onstop. Previously nothing
+    // listened for MediaRecorder's own `error` event, which left the mic
+    // control "listening" against a dead recorder, the same silent-death
+    // shape as WebSpeech's unhandled onend.
+    let stoppedTracks = 0;
+    // modern Node ships a built-in, non-writable `navigator` global (user-
+    // agent info) -- a bare `global.navigator = {...}` silently no-ops
+    // against it (unlike every OTHER stub in this harness), so getUserMedia
+    // below would otherwise resolve against the REAL (mediaDevices-less)
+    // navigator and always take the catch branch. Delete it first (it IS
+    // configurable) so this stub actually takes effect -- needed here,
+    // unlike the getUserMedia-throws test above, because THIS test needs
+    // getUserMedia to actually SUCCEED.
+    delete global.navigator;
+    global.navigator = { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop(){ stoppedTracks++; } }] }) } };
+    let recorderInstance = null;
+    global.MediaRecorder = function () { recorderInstance = this; this.state = "recording"; };
+    global.MediaRecorder.prototype.start = function () {};
+    global.MediaRecorder.prototype.stop = function () {};
+    const engine = new WhisperSttEngine();
+    let gotError = null, resultCalls = 0;
+    await engine.start(() => { resultCalls++; }, (err) => { gotError = err; });
+    recorderInstance.onerror({ error: { name: "InvalidStateError" } });
+    if (!gotError || gotError.indexOf("whisper-recorder-error") === -1) throw new Error("MediaRecorder's own error event must be surfaced honestly, got " + gotError);
+    if (resultCalls !== 0) throw new Error("a recorder error must never call onResult");
+    if (stoppedTracks !== 1) throw new Error("a recorder error must release the mic stream (stop its tracks), got " + stoppedTracks);
+    console.log("WHISPER_RECORDER_ERROR_OK true");
 }
 
 // ---- §17.9 hard gate + span emission ----
@@ -430,6 +632,57 @@ delete global.window.SpeechRecognition;
     console.log("ASYNC_FAILURE_AFTER_STOP_SINGLE_SPAN_OK true");
 }
 
+// #474 (confirmed via reviewer-454's retroactive review of the merged #454
+// batch, folded into this lane as a concrete instance of hypothesis 1):
+// onSttText's `window.__sttSpanId === turnId` guard used to gate ONLY the
+// span emission -- stopStt()/releaseSttCapture()/queueOrSendChat() ran
+// UNCONDITIONALLY even for an ALREADY-SUPERSEDED turnId. Reachable via
+// whisper's async /transcribe: start turn A, manually stop it (turn A's
+// span closes, e.g. an honest no-speech/cancel) before the response
+// arrives, start turn B -- then A's late response arrives and used to
+// STOP B'S LIVE ENGINE, TEAR DOWN B'S CAPTURE STATE, and forward A's
+// STALE text as if it were freshly spoken. Net: the user's live turn is
+// silently killed ("talks, hears nothing") plus a ghost message sent on
+// their behalf. A minimal fake WhisperSttEngine captures each start()
+// call's own onResult callback so this ordering can be driven exactly.
+{
+    global.window.assistantGate = { gated: false };
+    global.window.assistantVoiceSpans = [];
+    fetchCalls = [];
+    queuedChatMessages = [];
+    queuedChatCalls = [];
+    setSttEngineChoice("whisper");
+    let stopCalls = 0;
+    let capturedOnResults = [];
+    global.sttEngines["whisper"] = {
+        start(onResult, onError){ capturedOnResults.push(onResult); },
+        stop(){ stopCalls++; },
+    };
+    const turnA = "turn-A-superseded";
+    if (startStt(turnA) !== true) throw new Error("startStt must start turn A");
+    const onResultA = capturedOnResults[capturedOnResults.length - 1];
+    // turn A gets closed out from under it -- matches what
+    // toggleSttListening's own no-speech manual-stop path does (clears
+    // window.__sttSpanId once a turn is considered done) -- BEFORE A's
+    // async transcription resolves.
+    window.__sttSpanId = null;
+    const turnB = "turn-B-live";
+    if (startStt(turnB) !== true) throw new Error("startStt must start turn B");
+    const onResultB = capturedOnResults[capturedOnResults.length - 1];
+    stopCalls = 0; // isolate: only count stop() calls from THIS point on
+    // A's delayed /transcribe response finally arrives -- for a now-STALE turn.
+    onResultA("stale text from A");
+    if (queuedChatMessages.length !== 0) throw new Error("a stale/superseded turn's late result must never reach queueOrSendChat, got " + JSON.stringify(queuedChatMessages));
+    if (stopCalls !== 0) throw new Error("a stale turn's late result must NOT stop the engine -- turn B is live and must not be killed out from under the user, got " + stopCalls + " stop() call(s)");
+    if (window.__sttSpanId !== turnB) throw new Error("a stale turn's late result must not touch the CURRENTLY active turn's span id, got " + window.__sttSpanId);
+    console.log("STALE_TURN_RESULT_DROPPED_OK true");
+
+    // turn B, the one actually still live, must still work completely normally.
+    onResultB("hello from B");
+    if (queuedChatCalls.length !== 1 || queuedChatCalls[0].text !== "hello from B" || queuedChatCalls[0].turnId !== turnB) throw new Error("the CURRENTLY active turn must still deliver normally once its own result arrives, got " + JSON.stringify(queuedChatCalls));
+    console.log("LIVE_TURN_STILL_DELIVERS_OK true");
+}
+
 // #451 (#454 P0 live-bug batch): a failed voice turn must SAY why -- this
 // used to only console.warn + set window.__lastSttError, both invisible to
 // the human. Full overlay-rendering coverage lives in section-assistant-
@@ -448,7 +701,16 @@ delete global.window.SpeechRecognition;
 }
 
 // ---- onSttText -> queueOrSendChat (today's downstream, AST-052 owns the rest) ----
-onSttText("transcribed text");
+// #474: onSttText is ALWAYS invoked in production via the closure startStt
+// wires up (`text=>{ onSttText(text, spanId); }`), where spanId is always
+// a real, currently-active turn id -- calling it with no turnId at all
+// (as this test used to) does not reflect any reachable production path,
+// and with the stale-turn guard below now gating the WHOLE handler (not
+// just span emission), a mismatched/absent turnId is correctly treated as
+// stale and dropped. Set up the matching active span first, same as every
+// other onSttText call site in this file.
+window.__sttSpanId = "turn-routes-to-chat";
+onSttText("transcribed text", "turn-routes-to-chat");
 if (queuedChatMessages[queuedChatMessages.length - 1] !== "transcribed text") throw new Error("onSttText must forward into queueOrSendChat");
 console.log("ONSTTTEXT_ROUTES_TO_CHAT_OK true");
 
@@ -483,12 +745,23 @@ check "Web Speech engine degrades honestly when unavailable" "WEBSPEECH_DEGRADE_
 check "#454 (P0 live-bug batch): silence-timeout endpointing accumulates final segments across a mid-sentence pause into ONE turn, instead of truncating on the first" "WEBSPEECH_ENDPOINTING_ACCUMULATES_OK true" "$tmpl_stt_out"
 check "#454: a manual stop (press again) flushes whatever's buffered immediately, never losing it" "WEBSPEECH_MANUAL_STOP_FLUSHES_OK true" "$tmpl_stt_out"
 check "#454: a manual stop with nothing captured yet never calls onResult with empty text" "WEBSPEECH_EMPTY_STOP_NO_RESULT_OK true" "$tmpl_stt_out"
+check "#474 hyp1/hyp4: a stale (pre-teardown) recognizer instance's events never corrupt the new session, and a new session finalizes normally afterward" "WEBSPEECH_STALE_INSTANCE_IGNORED_OK true" "$tmpl_stt_out"
+check "#474 hyp4: stop() clears this.recog, but a legitimate late result on the SAME generation (captured before stop, no new start() since) still delivers -- the generation guard, not blanket nulling, is what distinguishes stale from legitimate" "WEBSPEECH_LATE_RESULT_AFTER_STOP_SAME_GEN_OK true" "$tmpl_stt_out"
+check "#474 hyp2 (the reported bug shape): an unexpected onend (no manual stop, no prior onerror) reports an honest engine-died error instead of leaving the UI listening forever" "WEBSPEECH_ONEND_TREATED_AS_DEATH_OK true" "$tmpl_stt_out"
+check "#474: onend after an already-reported onerror does not double-report" "WEBSPEECH_ONEND_AFTER_ONERROR_NOT_DOUBLE_REPORTED_OK true" "$tmpl_stt_out"
+check "#474: onend after a deliberate stop() is never treated as a death" "WEBSPEECH_ONEND_AFTER_MANUAL_STOP_HONEST_OK true" "$tmpl_stt_out"
+check "#474 liveness requirement: a fully silent engine (no native events at all) is declared dead within the bounded watchdog window" "WEBSPEECH_LIVENESS_WATCHDOG_OK true" "$tmpl_stt_out"
+check "#474 liveness requirement: onaudiostart proves life and cancels the watchdog -- ordinary silence is never mistaken for death" "WEBSPEECH_LIVENESS_CLEARED_BY_AUDIOSTART_OK true" "$tmpl_stt_out"
+check "#474 hyp3 investigated and RULED OUT: an empty-buffer silence-timeout finalize never stops/clears the engine and never calls onResult" "WEBSPEECH_HYP3_EMPTY_FINALIZE_RULED_OUT_OK true" "$tmpl_stt_out"
 check "whisper engine surfaces an honest unavailable-sidecar state" "WHISPER_DEGRADE_OK true" "$tmpl_stt_out"
+check "#474 (BOTH engines): MediaRecorder's own error event is surfaced honestly instead of leaving the engine dead-but-listening" "WHISPER_RECORDER_ERROR_OK true" "$tmpl_stt_out"
 check "the §17.9 gate blocks STT start with no assistant selected" "GATE_BLOCKS_START_OK true" "$tmpl_stt_out"
 check "a span's payload carries the engine name" "SPAN_ENGINE_NAME_OK true" "$tmpl_stt_out"
 check "#452 (P0 live-bug batch): stopStt() alone, before the outcome is known, emits no terminal span at all -- the old eager-ok lying-span bug" "STOPSTT_ALONE_EMITS_NOTHING_OK true" "$tmpl_stt_out"
 check "AST-052 (#334): startStt(turnId) uses turnId as the span id and both stt spans join window.assistantVoiceSpans tagged with it" "SPAN_CORRELATION_OK true" "$tmpl_stt_out"
 check "#452: whisper's async-after-stop outcome (the exact reported bug shape) still produces exactly ONE terminal span, not a duplicate ok-then-error pair" "ASYNC_FAILURE_AFTER_STOP_SINGLE_SPAN_OK true" "$tmpl_stt_out"
+check "#474 (reviewer-454 finding): a stale/superseded turn's late result is dropped outright -- never stops the CURRENTLY live engine, never touches its span id" "STALE_TURN_RESULT_DROPPED_OK true" "$tmpl_stt_out"
+check "#474 (reviewer-454 finding): the currently active turn still delivers completely normally once its own result arrives" "LIVE_TURN_STILL_DELIVERS_OK true" "$tmpl_stt_out"
 check "#451 (P0 live-bug batch): startStt's engine-error path calls reportSttFailure with the honest message" "REPORTS_STT_FAILURE_OK true" "$tmpl_stt_out"
 check "onSttText routes transcript text into the existing chat-send path" "ONSTTTEXT_ROUTES_TO_CHAT_OK true" "$tmpl_stt_out"
 check "AST-052 (#334): onSttText auto-stops recognition on a final result" "ONSTTTEXT_AUTOSTOPS_OK true" "$tmpl_stt_out"

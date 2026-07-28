@@ -66,7 +66,11 @@ echo "-- template: STT/TTS echo-guard interlock -- recognition pauses when a rep
 # #334 review round 2 (MAJOR 2): the interlock now calls releaseSttCapture()
 # (not just setSttListening(false)) -- it must also release voicePTT and
 # restore the voice direction, same as the other three stop paths.
-check "speakReply pauses STT (stops recognition, releases the full capture state) if it's still listening when a reply starts" "if(window.__sttListening){ stopStt(); releaseSttCapture(); }" "$NVHTML_VT_BODY"
+# #474: the interlock's body grew a span-closing branch (see the dedicated
+# section below), so the old exact single-line pin no longer matches --
+# repinned on the condition + the two calls it must still make, in order.
+check "speakReply pauses STT (stops recognition) if it's still listening when a reply starts" "if(window.__sttListening){" "$NVHTML_VT_BODY"
+check "speakReply's interlock still calls stopStt() then releaseSttCapture() to release the full capture state" "stopStt(); releaseSttCapture();" "$NVHTML_VT_BODY"
 
 echo "-- template: span correlation -- startStt uses a passed turnId as the span id, joining window.assistantVoiceSpans --"
 check "startStt(turnId) uses the turnId as the span id (same trick speakReply already applies)" "const spanId = window.__sttSpanId = turnId || Math.random().toString(36).slice(2);" "$NVHTML_VT_BODY"
@@ -331,6 +335,7 @@ function fireLatestTimer(){
     entry.fn();
 }
 defineConst("STT_WEBSPEECH_SILENCE_MS");
+defineConst("STT_WEBSPEECH_LIVENESS_MS");
 defineClass("WebSpeechSttEngine");
 global.sttEngines = { "web-speech": new WebSpeechSttEngine() };
 eval(extract("startStt"));
@@ -348,6 +353,19 @@ eval(extract("micHot"));
 // before onSttText, eval'd above) since both call it.
 eval(extract("releaseSttCapture"));
 eval(extract("toggleSttListening"));
+// #474 review round 1, FINDING 1 (MAJOR, reviewer-454's retroactive
+// review): speakReply's own echo-guard interlock needs the SAME real
+// WebSpeechSttEngine wired in above -- the SECOND harness in this file
+// (below) stubs stopStt() as a no-op counter for its own, lighter
+// interlock coverage, which is exactly why it could not reproduce
+// _finalize()'s SYNCHRONOUS flush-through-onSttText. Wired here instead,
+// alongside toggleSttListening, so both interrupted-turn paths can be
+// driven through the real flush.
+let neuralSpeakCalls = [];
+window.neuralVoice = { speakChunks(chunks, onDone){ neuralSpeakCalls.push({chunks, onDone}); } };
+eval(extract("voiceOn"));
+eval(extract("chunkSpeechText"));
+eval(extract("speakReply"));
 
 uiState.vdir = "out"; // the default -- OUT-only hides the IN bar by design
 window.voicePTT = false;
@@ -461,6 +479,55 @@ console.log("ONERROR_CLEARS_VISIBLE_DOT_OK true");
 // stop the now-errored turn's listening state so it does not bleed into
 // span-correlation assertions below, which key off the EARLIER turn's id.
 if (window.__sttListening) toggleSttListening();
+
+// #474 review round 1, FINDING 2 (MAJOR, reviewer-454's retroactive
+// review): the SAME "one honest ending per turn" contract this delta
+// introduces was already violated by #454 round 2's OWN no-speech fix.
+// toggleSttListening's manual-stop branch snapshots spanId BEFORE
+// stopStt(), on the stated assumption that "nothing between the
+// snapshot and this check can invalidate it" -- true when that comment
+// was written, false now: stopStt() -> engine.stop() -> _finalize() can
+// flush a BUFFERED segment SYNCHRONOUSLY through onResult -> onSttText,
+// which already closes the span "ok" (and sends the text) and nulls
+// window.__sttSpanId, all before stopStt() even returns. The stale
+// snapshot then still read truthy, so a SECOND "no-speech" span for the
+// SAME already-closed turn used to get emitted. Repro: speak "Are you"
+// (buffered, silence timer armed, NOT yet finalized), press again to
+// stop BEFORE the 1300ms timeout elapses.
+toggleSttListening(); // start a fresh turn
+const doubleSpanTurnId = window.__sttSpanId;
+queuedChatCalls = [];
+startedInstance.onresult({ results: [[{ transcript: "Are you" }]] }); // buffers, arms the silence timer -- does NOT finalize yet
+toggleSttListening(); // press again to stop early -- stopStt() flushes the buffer SYNCHRONOUSLY
+const doubleSpanTerminals = window.assistantVoiceSpans.filter(e => e.kind === "stt-end" && e.turn_id === doubleSpanTurnId);
+if (doubleSpanTerminals.length !== 1) throw new Error("a manual stop that synchronously flushes a buffered segment must produce EXACTLY ONE terminal span, not " + doubleSpanTerminals.length + " (" + JSON.stringify(doubleSpanTerminals.map(e => e.status)) + ") -- the #454-round-2 double-span bug (reviewer-454 finding 2)");
+if (doubleSpanTerminals[0].status !== "ok") throw new Error("the flushed segment legitimately completed the turn -- expected status ok, got " + JSON.stringify(doubleSpanTerminals[0].status));
+if (queuedChatCalls.length !== 1 || queuedChatCalls[0].text !== "Are you") throw new Error("the flushed segment must still be sent exactly once, got " + JSON.stringify(queuedChatCalls));
+if (window.__sttSpanId !== null) throw new Error("window.__sttSpanId must be cleared, not left pointing at an already-closed turn");
+console.log("MANUAL_STOP_FLUSH_SINGLE_SPAN_OK true");
+
+// #474 review round 1, FINDING 1 (MAJOR, reviewer-454's retroactive
+// review): speakReply's interlock has the IDENTICAL bug -- snapshots
+// interruptedSpanId BEFORE stopStt(), which can synchronously flush a
+// buffered segment through onSttText (status "ok", text sent) before the
+// interlock's own re-check ever runs. Repro: an unrelated reply resolves
+// and speakReply fires while a turn is mid-buffer (spoke "Are you",
+// silence timer still armed, hasn't gone quiet yet).
+toggleSttListening(); // start a fresh turn
+const interlockTurnId = window.__sttSpanId;
+queuedChatCalls = [];
+startedInstance.onresult({ results: [[{ transcript: "Are you" }]] }); // buffers, does not finalize yet
+neuralSpeakCalls = [];
+speakReply("an unrelated reply", "reply-turn-unrelated");
+const interlockTerminals = window.assistantVoiceSpans.filter(e => e.kind === "stt-end" && e.turn_id === interlockTurnId);
+if (interlockTerminals.length !== 1) throw new Error("speakReply's interlock pausing a turn with a synchronously-flushed buffered segment must produce EXACTLY ONE terminal span, not " + interlockTerminals.length + " (" + JSON.stringify(interlockTerminals.map(e => e.status)) + ") -- reviewer-454 finding 1");
+if (interlockTerminals[0].status !== "ok") throw new Error("the flushed segment legitimately completed the turn before the interlock's own close ran -- expected status ok, got " + JSON.stringify(interlockTerminals[0].status));
+if (queuedChatCalls.length !== 1 || queuedChatCalls[0].text !== "Are you" || queuedChatCalls[0].turnId !== interlockTurnId) throw new Error("the flushed segment must still be sent exactly once, tagged with ITS OWN turn id (not the reply's), got " + JSON.stringify(queuedChatCalls));
+if (neuralSpeakCalls.length !== 1) throw new Error("the reply must still speak after the interlock runs, regardless of which path closed the interrupted turn's span");
+if (window.__sttSpanId !== null) throw new Error("window.__sttSpanId must be cleared, not left pointing at an already-closed turn");
+console.log("INTERLOCK_FLUSH_SINGLE_SPAN_OK true");
+if (window.__sttListening) toggleSttListening(); // cleanup: leave nothing listening for the assertions below
+
 delete global.window.SpeechRecognition;
 
 // ---- span correlation: stt-start/stt-end for this turn joined window.assistantVoiceSpans under the SAME turn_id ----
@@ -486,6 +553,8 @@ check "a manual second press stops early and restores the prior voice direction"
 check "#454 review round 2 MINOR 1: a turn manually stopped with no speech still gets an honest terminal stt-end span instead of hanging open" "NO_SPEECH_STOP_EMITS_TERMINAL_SPAN_OK true" "$tmpl_vt_out"
 check "#454 review round 2 MAJOR: onerror clears the armed silence timer instead of letting a buffered segment fire late into queueOrSendChat" "ONERROR_CLEARS_ARMED_TIMER_OK true" "$tmpl_vt_out"
 check "#475: the engine-error stop path clears the VISIBLE mic dot (classList + aria-pressed), not just the internal __sttListening flag" "ONERROR_CLEARS_VISIBLE_DOT_OK true" "$tmpl_vt_out"
+check "#474 review round 1 finding 2 (reviewer-454): a manual stop that synchronously flushes a buffered segment emits exactly ONE terminal span (ok), not a duplicate ok-then-no-speech pair" "MANUAL_STOP_FLUSH_SINGLE_SPAN_OK true" "$tmpl_vt_out"
+check "#474 review round 1 finding 1 (reviewer-454): speakReply's interlock pausing a turn with a synchronously-flushed buffered segment emits exactly ONE terminal span (ok), not a duplicate ok-then-interrupted pair" "INTERLOCK_FLUSH_SINGLE_SPAN_OK true" "$tmpl_vt_out"
 check "stt-start/stt-end join window.assistantVoiceSpans under the turn's shared id" "SPAN_CORRELATION_LOCAL_OK true" "$tmpl_vt_out"
 check "the whole voice-turn template script completes" "ALL_OK true" "$tmpl_vt_out"
 if [[ "$tmpl_vt_rc" -ne 0 ]]; then echo "$tmpl_vt_out" >&2; fi
@@ -604,6 +673,11 @@ eval(extract("setSttListening"));
 eval(extract("releaseSttCapture"));
 let stopSttCalls = 0;
 global.stopStt = () => { stopSttCalls++; };
+// #474: speakReply's echo-guard interlock now closes an interrupted
+// turn's open span, which calls emitVoiceSpan(engineName, ...) via
+// sttEngineChoice() -- stubbed here the same way section-assistant-stt.sh's
+// harness does, since this file doesn't exercise engine selection itself.
+function sttEngineChoice(){ return "web-speech"; }
 eval(extract("speakReply"));
 eval(extract("dispatchNextChat"));
 eval(extract("queueOrSendChat"));
@@ -684,6 +758,38 @@ if (elements["voice-stt"].classList.contains("listening") !== false) throw new E
 if (elements["voice-stt"].getAttribute("aria-pressed") !== "false") throw new Error("#475: aria-pressed must read false once the echo-guard interlock pauses recognition, got " + elements["voice-stt"].getAttribute("aria-pressed"));
 console.log("ECHO_GUARD_INTERLOCK_OK true");
 
+// #474: the echo-guard interlock pausing an ACTIVE stt turn (spanId still
+// open, e.g. a task-completion reply speaking over an in-progress user
+// turn) used to leave that turn's stt-start span permanently open -- no
+// terminal span ever emitted, since stopStt() itself emits nothing
+// (#452) and this interlock never checked window.__sttSpanId the way
+// toggleSttListening's manual-stop path already does. A dead/hanging
+// span is exactly the "engine looks like it's still alive" failure mode
+// #474's liveness requirement targets -- fixed by mirroring
+// toggleSttListening's own pattern here too.
+window.assistantChat.exchanges = [];
+window.assistantVoiceSpans = [];
+neuralSpeakCalls = [];
+stopSttCalls = 0;
+window.__sttListening = true;
+window.__sttSpanId = "interrupted-span-1";
+speakReply("interrupting reply", "shared-turn-3");
+if (window.__sttSpanId !== null) throw new Error("the interlock must clear window.__sttSpanId once it honestly closes the interrupted turn's span");
+const interruptedSpan = window.assistantVoiceSpans.find(e => e.kind === "stt-end" && e.turn_id === "interrupted-span-1");
+if (!interruptedSpan) throw new Error("the interlock must emit a terminal stt-end span for the turn it just interrupted instead of leaving it hanging open");
+if (interruptedSpan.status !== "interrupted") throw new Error("the interrupted turn's stt-end span must carry status 'interrupted', got " + JSON.stringify(interruptedSpan.status));
+console.log("ECHO_GUARD_INTERLOCK_CLOSES_OPEN_SPAN_OK true");
+
+// the interlock must stay a no-op when there was no open span to begin
+// with (the common case, per ECHO_GUARD_INTERLOCK_OK above) -- this
+// re-asserts that after adding the span-closing branch.
+window.assistantVoiceSpans = [];
+window.__sttListening = true;
+window.__sttSpanId = null;
+speakReply("yet another reply", "shared-turn-4");
+if (window.assistantVoiceSpans.some(e => e.kind === "stt-end")) throw new Error("the interlock must never emit a stt-end span when there was no open turn to begin with");
+console.log("ECHO_GUARD_INTERLOCK_NO_SPAN_NO_OP_OK true");
+
 // ---- typed chat (no turnId/source args) is entirely unaffected -- backward compatible ----
 window.assistantChat = { queue: [], inFlight: false, exchanges: [], lastX: 2, elapsedTimer: null, elapsedStart: 0 };
 fetchCalls = []; pendingChat = [];
@@ -731,6 +837,8 @@ check "a voice send with the overlay closed auto-opens it and mirrors the spoken
 check "the reply's tts span reuses the turn's own id -- stt and tts spans correlate under one turn_id" "REPLY_REUSES_TURN_ID_OK true" "$tmpl_vt2_out"
 check "the overlay still shows both the user row and the assistant reply after the round trip resolves -- the history-load race is closed, not just avoided at send time" "OVERLAY_SURVIVES_REPLY_RESOLUTION_OK true" "$tmpl_vt2_out"
 check "speakReply's echo-guard interlock pauses STT if it's still listening when a reply starts, and #475: clears the VISIBLE mic dot (classList + aria-pressed), pinned lit beforehand so the assertion isn't vacuous" "ECHO_GUARD_INTERLOCK_OK true" "$tmpl_vt2_out"
+check "#474: the interlock closes an interrupted turn's open span honestly (status interrupted) instead of leaving it hanging" "ECHO_GUARD_INTERLOCK_CLOSES_OPEN_SPAN_OK true" "$tmpl_vt2_out"
+check "#474: the interlock's span-closing branch is a no-op when there was no open span" "ECHO_GUARD_INTERLOCK_NO_SPAN_NO_OP_OK true" "$tmpl_vt2_out"
 check "typed chat (no turnId/source) is unaffected -- fully backward compatible" "TYPED_CHAT_UNAFFECTED_OK true" "$tmpl_vt2_out"
 check "#451 (P0 live-bug batch): a pure STT failure (no transcript ever produced) auto-opens the overlay and renders the honest message as a red system row -- the human's silent-failure bug" "STT_FAILURE_SURFACES_IN_OVERLAY_OK true" "$tmpl_vt2_out"
 check "the whole voice-turn full-pipeline script completes" "ALL_OK true" "$tmpl_vt2_out"

@@ -4096,8 +4096,34 @@ applySttEngineUi();
 // override) flushes whatever's been captured so far immediately rather
 // than losing it.
 const STT_WEBSPEECH_SILENCE_MS = 1300;
+// #474 (P0 live-bug batch, issue #474): "talks non-stop, hears nothing at
+// all" -- investigation found the browser's continuous recognition
+// session can go dead in ways that leave NOTHING for the mic control to
+// react to: the service can end the session on its own (see r.onend
+// below), or -- the fully silent case this watchdog exists for -- never
+// engage at all, with no onaudiostart/onresult/onerror/onend ever firing.
+// A dead engine must not be indistinguishable from a live one, so this
+// bounded timer is the backstop: if NOTHING native proves the engine is
+// alive within this window, it's declared dead outright. Generous enough
+// to never fire during ordinary "hasn't started talking yet" silence --
+// onaudiostart (or any result) proves life and cancels it long before a
+// real user would notice anything.
+const STT_WEBSPEECH_LIVENESS_MS = 8000;
 class WebSpeechSttEngine{
-  constructor(){ this.recog = null; this.buffer = ""; this.silenceTimer = null; this.onResult = null; }
+  constructor(){
+    this.recog = null; this.buffer = ""; this.silenceTimer = null; this.onResult = null;
+    // #474: monotonic session generation. The native recognizer's own
+    // stop() is ASYNCHRONOUS -- the browser can keep delivering queued
+    // events for a brief window after stop() returns. If start() is
+    // called again inside that window (the "next start races the
+    // previous teardown" hypothesis), the OLD instance's late events must
+    // never touch the NEW session's buffer/timer/outcome. Every handler
+    // below closes over the generation it was created for and no-ops the
+    // instant it's no longer current.
+    this._gen = 0;
+    this._livenessTimer = null;
+    this._manualStop = false;
+  }
   start(onResult, onError){
     const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
     if(!Ctor){
@@ -4106,10 +4132,19 @@ class WebSpeechSttEngine{
     }
     this.buffer = "";
     this.onResult = onResult;
+    this._manualStop = false;
+    let settled = false; // this session already reported a terminal outcome (error/dead) -- guards onend from double-reporting after onerror/the watchdog already did
+    const gen = ++this._gen;
     const r = this.recog = new Ctor();
     r.continuous = true;
     r.interimResults = false;
+    r.onaudiostart = ()=>{
+      if(gen !== this._gen) return; // #474: stale instance, ignore
+      clearTimeout(this._livenessTimer); this._livenessTimer = null;
+    };
     r.onresult = ev=>{
+      if(gen !== this._gen) return; // #474: stale instance, ignore
+      clearTimeout(this._livenessTimer); this._livenessTimer = null;
       const res = ev.results[ev.results.length-1];
       const text = res && res[0] && res[0].transcript;
       if(text) this.buffer += (this.buffer ? " " : "") + text.trim();
@@ -4118,7 +4153,44 @@ class WebSpeechSttEngine{
       clearTimeout(this.silenceTimer);
       this.silenceTimer = setTimeout(()=>this._finalize(), STT_WEBSPEECH_SILENCE_MS);
     };
-    r.onerror = ev=>{ clearTimeout(this.silenceTimer); this.silenceTimer = null; this.buffer = ""; onError("web-speech-error: " + ((ev && ev.error) || "unknown")); };
+    r.onerror = ev=>{
+      if(gen !== this._gen) return; // #474: stale instance, ignore
+      settled = true;
+      clearTimeout(this._livenessTimer); this._livenessTimer = null;
+      clearTimeout(this.silenceTimer); this.silenceTimer = null; this.buffer = "";
+      onError("web-speech-error: " + ((ev && ev.error) || "unknown"));
+    };
+    // #474: `onend` is the ONE event the spec guarantees fires last no
+    // matter how recognition stopped -- a deliberate stop(), an error, or
+    // the service just giving up on its own. Nothing listened for it
+    // before, so a self-ended session left the mic control showing
+    // "listening" forever against a dead `this.recog` -- exactly this
+    // issue's reported shape. Guarded against double-reporting after a
+    // manual stop() (expected, healthy) or an onerror that already fired
+    // (already reported).
+    r.onend = ()=>{
+      if(gen !== this._gen) return; // #474: stale instance, ignore
+      clearTimeout(this._livenessTimer); this._livenessTimer = null;
+      if(this._manualStop || settled) return;
+      settled = true;
+      clearTimeout(this.silenceTimer); this.silenceTimer = null; this.buffer = "";
+      onError("web-speech-ended: recognition ended unexpectedly with no result and no error -- the browser's speech service likely dropped the session");
+    };
+    // #474 liveness watchdog -- see STT_WEBSPEECH_LIVENESS_MS's own
+    // comment. Cleared by ANY native evidence of life: onaudiostart above,
+    // or onresult/onerror/onend, all of which clear it too.
+    this._livenessTimer = setTimeout(()=>{
+      if(gen !== this._gen || settled) return;
+      settled = true;
+      clearTimeout(this.silenceTimer); this.silenceTimer = null; this.buffer = "";
+      const stale = this.recog;
+      if(stale){
+        stale.onresult = stale.onerror = stale.onend = stale.onaudiostart = null;
+        try{ stale.abort ? stale.abort() : stale.stop(); }catch{}
+      }
+      this.recog = null;
+      onError("web-speech-dead: no response from the recognition service within " + STT_WEBSPEECH_LIVENESS_MS + "ms -- treating the engine as dead");
+    }, STT_WEBSPEECH_LIVENESS_MS);
     r.start();
   }
   _finalize(){
@@ -4129,6 +4201,17 @@ class WebSpeechSttEngine{
   stop(){
     // manual override: flush whatever's already been captured instead of
     // silently discarding it, THEN actually stop the recognizer.
+    // #474: deliberately does NOT null the recognizer's own handlers here
+    // -- a real SpeechRecognition can still deliver one more onresult for
+    // audio it had already captured before stop() was called (stop()
+    // means "capture no more new audio", not "discard what's pending").
+    // That legitimate late result must still reach onSttText normally
+    // (see the STOPSTT_ALONE_EMITS_NOTHING/SPAN_CORRELATION tests), so the
+    // generation guard above -- not blanket nulling -- is what tells a
+    // legitimate late result (same gen, no new start() yet) apart from a
+    // truly stale one (gen bumped by a subsequent start()).
+    this._manualStop = true;
+    clearTimeout(this._livenessTimer); this._livenessTimer = null;
     if(this.silenceTimer) this._finalize();
     if(this.recog){ this.recog.stop(); this.recog = null; }
   }
@@ -4158,6 +4241,17 @@ class WhisperSttEngine{
     this.chunks = [];
     const mr = this.mediaRecorder = new MediaRecorder(this.stream);
     mr.ondataavailable = ev=>{ if(ev.data && ev.data.size) this.chunks.push(ev.data); };
+    // #474 ("for BOTH engines"): the recorder (or its underlying mic
+    // track) can die on its own -- device unplugged, permission revoked
+    // mid-capture -- without ever reaching onstop. MediaRecorder's own
+    // `error` event is the honest signal for that; previously unhandled,
+    // which left the mic control showing "listening" against a dead
+    // recorder, the same silent-death shape onend fixes for Web Speech.
+    mr.onerror = ev=>{
+      onError("whisper-recorder-error: " + ((ev && ev.error && ev.error.name) || "unknown"));
+      if(this.stream){ this.stream.getTracks().forEach(t=>t.stop()); this.stream = null; }
+      this.mediaRecorder = null;
+    };
     mr.onstop = async ()=>{
       this.stream.getTracks().forEach(t=>t.stop());
       const blob = new Blob(this.chunks, {type:"audio/webm"});
@@ -4192,6 +4286,24 @@ const sttEngines = { whisper: new WhisperSttEngine(), "web-speech": new WebSpeec
 // trackLocalVoiceSpan below and groupTurnsById's merge.
 function onSttText(text, turnId){
   if(!text) return;
+  // #474 (confirmed via reviewer-454's retroactive review of the merged
+  // #454 batch, a concrete instance of the "start races the previous
+  // teardown" hypothesis): `window.__sttSpanId === turnId` used to gate
+  // ONLY the span emission below -- stopStt()/releaseSttCapture()/
+  // queueOrSendChat() ran UNCONDITIONALLY even when turnId belonged to an
+  // ALREADY-SUPERSEDED turn. Reachable via whisper's async /transcribe:
+  // start turn A, manually stop it (closing its span) before the response
+  // arrives, start turn B -- A's late response would then stop the
+  // SHARED engine singleton mid-B, tear down B's live capture state, and
+  // forward A's STALE text as if it were freshly spoken. The whole
+  // handler is now gated on the SAME check the span emission always
+  // used: a turnId that no longer matches the active span belongs to a
+  // turn that's already been closed out from under it, and its result is
+  // dropped outright rather than acting on the CURRENT (unrelated) turn.
+  if(window.__sttSpanId !== turnId){
+    console.warn("[stt] dropping a stale result for a turn that is no longer active", turnId);
+    return;
+  }
   // auto-stop-on-final: every onResult call from either engine already
   // means "this utterance is done" (web-speech's own silence-timeout
   // endpointing / whisper's onstop-then-transcribe), so the mic control's
@@ -4204,15 +4316,11 @@ function onSttText(text, turnId){
   // contradictory stt-end if that later transcription failed. Emitting it
   // HERE instead -- the point where success is actually confirmed (a
   // non-empty transcript arrived) -- means there is exactly one terminal
-  // span per turn, emitted only once the real outcome is known. Guarded by
-  // `window.__sttSpanId === turnId` so a stray/duplicate onResult call (or
-  // a race with the error path) can never double-emit for the same span.
-  if(window.__sttSpanId === turnId){
-    const engineName = sttEngineChoice();
-    emitVoiceSpan("stt-end", engineName, turnId, "ok");
-    trackLocalVoiceSpan("stt-end", turnId, {status: "ok"});
-    window.__sttSpanId = null;
-  }
+  // span per turn, emitted only once the real outcome is known.
+  const engineName = sttEngineChoice();
+  emitVoiceSpan("stt-end", engineName, turnId, "ok");
+  trackLocalVoiceSpan("stt-end", turnId, {status: "ok"});
+  window.__sttSpanId = null;
   stopStt();
   // releaseSttCapture() (not just setSttListening(false)) -- this is the
   // COMMON stop path, so it's the one most likely to leave voicePTT/vdir
@@ -4372,18 +4480,26 @@ function toggleSttListening(){
     // armed-timer bug did. "the user cancelled without speaking" is a
     // known outcome (same rationale as #452's error-path fix), so emit
     // it honestly instead of leaving the span hanging. Guarded by
-    // spanId's own truthiness, snapshotted BEFORE stopStt()/
-    // releaseSttCapture() run below -- neither of those touches
-    // window.__sttSpanId (#452's own fix moved span emission entirely
-    // out of stopStt()), so nothing between the snapshot and this check
-    // can invalidate it. #454 review round 2 correction: this used to
-    // ALSO re-compare against window.__sttSpanId, which was always true
-    // (comparing the live value to a snapshot taken one line earlier)
-    // and read as a race guard while doing nothing -- dropped.
+    // spanId, snapshotted BEFORE stopStt()/releaseSttCapture() run below.
+    // #454 review round 2 correction: this used to ALSO re-compare
+    // against window.__sttSpanId, which at the time was always true
+    // (comparing the live value to a snapshot taken one line earlier,
+    // with nothing in between that could change it) and read as a race
+    // guard while doing nothing -- dropped. #474 review round 1, finding
+    // 2 (reviewer-454's retroactive review): that is no longer true.
+    // stopStt() -> engine.stop() -> _finalize() can flush a BUFFERED
+    // segment SYNCHRONOUSLY through onResult -> onSttText, which already
+    // closes THIS SAME span (status "ok", text sent) and nulls
+    // window.__sttSpanId before stopStt() even returns. The re-compare
+    // dropped above is back, for a different, now-real reason: it is
+    // what tells "still open, this really is a no-speech cancel" apart
+    // from "already closed by the synchronous flush" -- one honest
+    // ending per turn, per this delta's own contract
+    // (docs/spec-deltas/474.md).
     const spanId = window.__sttSpanId;
     stopStt();
     releaseSttCapture();
-    if(spanId){
+    if(spanId && window.__sttSpanId === spanId){
       const engineName = sttEngineChoice();
       emitVoiceSpan("stt-end", engineName, spanId, "no-speech");
       trackLocalVoiceSpan("stt-end", spanId, {status: "no-speech"});
@@ -4671,7 +4787,38 @@ function speakReply(text, turnId){
   // (not just setSttListening(false)) also releases voicePTT/vdir here --
   // otherwise this path leaves the real mic capture hot with the
   // listening dot off (#334 review round 2).
-  if(window.__sttListening){ stopStt(); releaseSttCapture(); }
+  // #474: if this interlock is pausing an ACTIVE stt turn (window.
+  // __sttSpanId still open -- e.g. a reply speaking over an in-progress
+  // user turn), the interrupted turn's span used to hang open forever:
+  // stopStt() itself emits nothing (#452) and this interlock never
+  // checked __sttSpanId the way toggleSttListening's own manual-stop path
+  // already does. A permanently-open span is exactly the "engine looks
+  // like it's still alive" failure mode #474's liveness requirement
+  // targets, so close it honestly here too, snapshotted BEFORE stopStt()/
+  // releaseSttCapture() run.
+  // #474 review round 1, finding 1 (reviewer-454's retroactive review):
+  // the snapshot's own truthiness is not enough. stopStt() -> engine.
+  // stop() -> _finalize() can flush a BUFFERED segment SYNCHRONOUSLY
+  // through onResult -> onSttText, which already closes THIS SAME span
+  // (status "ok", text sent) and nulls window.__sttSpanId before
+  // stopStt() even returns. Re-comparing the LIVE value against the
+  // snapshot AFTER stopStt() is what tells "still open, this really was
+  // interrupted" apart from "already closed by the synchronous flush" --
+  // one honest ending per turn, per this delta's own contract
+  // (docs/spec-deltas/474.md). Buffer disposition on interrupt: kept as
+  // flush-then-ok (same as a manual stop) rather than discarding the
+  // buffer -- see docs/spec-deltas/474.md for why silently discarding
+  // captured speech was rejected.
+  if(window.__sttListening){
+    const interruptedSpanId = window.__sttSpanId;
+    stopStt(); releaseSttCapture();
+    if(interruptedSpanId && window.__sttSpanId === interruptedSpanId){
+      const engineName = sttEngineChoice();
+      emitVoiceSpan("stt-end", engineName, interruptedSpanId, "interrupted");
+      trackLocalVoiceSpan("stt-end", interruptedSpanId, {status: "interrupted"});
+      window.__sttSpanId = null;
+    }
+  }
   const chars = trimmed.length;
   const t0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
   emitVoiceSpan("tts-start", "speechSynthesis", turnId, null, {chars});
