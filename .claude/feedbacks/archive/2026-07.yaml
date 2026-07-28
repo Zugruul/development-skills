@@ -5918,3 +5918,111 @@ items:
   routing:
     action: brain-note
     ref: reviewer/review-your-own-fix-as-new-code
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-28T18:35:00Z'
+iteration:
+  task: '344'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: concurrency
+  component: scripts/gate.sh
+  severity: high
+  summary: Shared last-writer-wins gate-pass marker plus session-cwd tree fingerprinting
+    forced three redundant full-suite runs to move already-merged work
+  detail: 'With four lanes gating concurrently, every gate.sh completion overwrote
+    the single .claude/gate-pass marker while guard-board-move fingerprinted whichever
+    tree the ORCHESTRATOR session cwd happened to be in (it drifted across worktrees,
+    see issue 465). Board moves for merged, reviewed work blocked repeatedly until
+    the sequence pin-session-to-gated-tree, gate, move-immediately was discovered.
+    Design input recorded on issue 458: key pass records by tree fingerprint, keep
+    N recent.'
+  generalized: A single shared mutex-free completion marker is unusable under concurrent
+    lanes; key completion records by the thing they certify, not by recency.
+  routing:
+    action: backlog
+    ref: '458'
+- category: incident
+  area: concurrency
+  component: harness/worktree-pinning
+  severity: high
+  summary: Session and subagent cwd pinning drifted across worktrees three separate
+    times, blocking one lane entirely (fix relayed by patch text)
+  detail: dev-475 launched pinned to sw-474; dev-461 could cd into ui-registry but
+    write isolation stayed pinned to sw-474, making its assigned fix impossible in-place
+    (the orchestrator applied its patch on-behalf); reviewer-344 lost an Edit call
+    to a reset mid-mutation-test. All recorded on issue 465 with the differing shapes.
+  generalized: Brief every agent with the absolute worktree path AND require a git-branch-show-current
+    check before its first write; treat write-isolation pin and shell cwd as independently
+    drifting state.
+  routing:
+    action: backlog
+    ref: '465'
+- category: friction
+  area: board
+  component: scripts/guard-board-move.sh
+  severity: medium
+  summary: DESIGN_REGISTRY_OVERRIDE escape hatch is unreachable through the Claude
+    hook layer (filed as issue 478); resolved by merge-first-record-applied-then-move
+    reordering
+  detail: The PreToolUse hook runs design-registry-preflight in the hook environment,
+    so a per-command env prefix never reaches it; the documented hatch only works
+    for direct board-queue callers. The reorder flow proved clean and is arguably
+    the more honest sequence for squash delivery (anchor exists before the move).
+  generalized: An escape hatch implemented as an environment variable must be readable
+    at EVERY enforcement layer, or the layers diverge on policy.
+  routing:
+    action: backlog
+    ref: '478'
+- category: worked-well
+  area: review
+  component: skills/implement-task
+  severity: low
+  summary: Reviewer extraction of real production functions into standalone repros
+    caught two MAJOR bug pairs invisible to stubbed harnesses, twice
+  generalized: A green suite proves only what its stubs can express; reviews of side-effectful
+    code must drive the real functions.
+  detail: The issue-474 double-terminal-span pair and the issue-344 real-call-site
+    bugs (hardcoded queue count, vw-as-px origin math) were all invisible to green
+    suites; both reviews reproduced against real code and mutation-tested the fixes.
+    Minted as stub-shaped-blind-spots and tested-through-which-caller.
+  routing:
+    action: brain-note
+    ref: stub-shaped-blind-spots
+- category: worked-well
+  area: briefing
+  component: skills/build-next
+  severity: low
+  summary: Relay-apply pattern (blocked dev sends full patch text, orchestrator applies
+    on-behalf with red-first preserved) rescued a write-pinned lane without losing
+    TDD discipline or attribution
+  generalized: A blocked lane can hand over exact patch text for on-behalf application
+    without losing red-first discipline or attribution.
+  detail: dev-461 corrupt-sidecar fix was applied verbatim from message text, red
+    test verified failing before the fix landed, commits authored as the dev with
+    reviewer co-author. Zero deviation from the patch as reviewed.
+  routing:
+    action: brain-note
+    ref: relay-apply-on-behalf
+- category: friction
+  area: briefing
+  component: skills/implement-task
+  severity: medium
+  summary: Dev lanes repeatedly idled without delivering their report (three nudges
+    across two lanes); report-on-commit should be the default, gate result following
+    separately
+  detail: dev-344 twice and dev-475 once went idle with work done but no report, each
+    costing a round-trip. The eventual pattern that worked - report the moment commits
+    land, send the gate line separately when it finishes - should be in the brief
+    template.
+  generalized: Brief agents to report at the earliest meaningful milestone, explicitly
+    decoupled from long-running verification they can follow up on.
+  routing:
+    action: brain-note
+    ref: brief-report-on-commit

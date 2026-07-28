@@ -4,6 +4,11 @@
     "last": null,
     "weight": 0.5
   },
+  "brief-report-on-commit->relay-apply-on-behalf": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "cheap-ab-before-10min-runs->discriminator-over-hypothesis": {
     "fires": 0,
     "last": null,
@@ -45,6 +50,11 @@
     "weight": 0.5
   },
   "ping-gated-lane-sequencing->version-const-collisions-hand-step": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "relay-apply-on-behalf->serialize-moves-behind-matching-gate": {
     "fires": 0,
     "last": null,
     "weight": 0.5
