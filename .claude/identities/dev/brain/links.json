@@ -104,6 +104,16 @@
     "last": "2026-07-28",
     "weight": 0.5
   },
+  "css-length-strings-never-roundtrip->stop-can-flush-synchronously": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "css-length-strings-never-roundtrip->tested-through-which-caller": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "deterministic-repro-fast->hotfix-repro-incident-sequence": {
     "fires": 23,
     "last": "2026-07-28",
