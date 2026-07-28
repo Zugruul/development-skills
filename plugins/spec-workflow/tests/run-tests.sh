@@ -247,6 +247,7 @@ section-semver.sh
     section-assistant-chat.sh
     section-assistant-switch.sh
     section-assistant-distill.sh
+    section-assistant-tasks.sh
     section-assistant-continuation.sh
     section-assistant-traces.sh
     section-assistant-metrics.sh

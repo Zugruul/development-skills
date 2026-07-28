@@ -14,8 +14,12 @@ lives in neural-view.py itself. `AssistantEngine` owns:
     tests can assert clean start/stop without an HTTP server. v1 (AST-010)
     workers were all no-op heartbeats parked on `stop_event.wait()`; AST-030
     replaces the `distiller` slot's body with the real batching loop
-    (`distill.run_worker`) without touching this registry's shape --
-    tasks stays a heartbeat until its own E6 task lands. AST-061
+    (`distill.run_worker`) without touching this registry's shape. AST-066
+    (SPEC-ASSISTANT.md Sec12.3) replaces the `tasks` slot's body the same
+    way: `tasks.run_worker` drains the tasks queue, running each queued
+    task's registered executor through the queued/started/progress/
+    completed/failed state machine (every transition also a trace event
+    via the traces queue -- see that module's docstring). AST-061
     (SPEC-ASSISTANT.md Sec11.3) replaces the `index` slot's body the same
     way: `capability_index.run_worker` compiles a per-root
     CapabilityIndex on start and recompiles on config/skill-set change
@@ -45,7 +49,7 @@ import uuid
 from datetime import datetime, timezone
 
 from assistant import (adapters, capability_index, default_store, digest as digest_module,
-                        discovery, distill, observability, selection_store, turns)
+                        discovery, distill, observability, selection_store, tasks, turns)
 from assistant.store import SessionStore
 
 
@@ -75,6 +79,12 @@ HISTORY_MAX_N = 500
 # is the traces-table analogue of that same guard).
 TRACES_DEFAULT_LIMIT = 200
 TRACES_MAX_LIMIT = 1000
+
+# AST-066 (SPEC-ASSISTANT.md §12.3/§12.5, issue #341): GET /assistant/tasks?
+# limit=N -- same "bounded read" rationale as TRACES_DEFAULT_LIMIT/
+# TRACES_MAX_LIMIT above, for the queue-indicator's own read path.
+TASKS_DEFAULT_LIMIT = 50
+TASKS_MAX_LIMIT = 500
 
 # AST-030 (SPEC-ASSISTANT.md Sec9.2/Sec9.5): the distiller queue is bounded
 # so a stalled/slow distiller worker can never grow unbounded memory off a
@@ -147,10 +157,17 @@ class AssistantEngine:
         self.state_dir = state_dir
         self.queues = {name: queue.Queue() for name in WORKER_NAMES}
         # AST-030: the distiller's queue is bounded -- see
-        # DISTILLER_QUEUE_MAXSIZE's docstring for the overflow policy. The
-        # other three subsystems' queues stay unbounded no-op placeholders
-        # (AST-010: nothing drains them yet; E4/E6 give them their own real
-        # workers and bounding decisions later).
+        # DISTILLER_QUEUE_MAXSIZE's docstring for the overflow policy.
+        # "index" stays an unbounded no-op placeholder (AST-061's worker
+        # never drains a queue of its own). "tasks" (AST-066, issue #341)
+        # is DELIBERATELY LEFT UNBOUNDED even though it now has a real
+        # worker: tasks.sqlite is a MUST-SURVIVE store (tasks.py's own
+        # docstring), and a bounded queue's drop-on-full path means
+        # `tasks.enqueue` returning a task_id with NO row ever created for
+        # it (round-2 review, issue #341) -- `enqueue` already returns
+        # `None` instead of a phantom id on that path, but bounding this
+        # queue is still a real, load-bearing decision a future task
+        # would need to make deliberately, not inherit by accident.
         self.queues["distiller"] = queue.Queue(maxsize=DISTILLER_QUEUE_MAXSIZE)
         # issue #390: bounded the same way -- see TRACES_QUEUE_MAXSIZE's
         # docstring for why the OVERFLOW POLICY differs from the
@@ -466,6 +483,25 @@ class AssistantEngine:
                         name=f"assistant-{name}",
                         daemon=False,
                     )
+                elif name == "tasks":
+                    # AST-066 (SPEC-ASSISTANT.md §12.3, issue #341): the
+                    # tasks slot runs the real single-writer tasks.sqlite
+                    # queue/worker loop instead of the v1 heartbeat no-op --
+                    # see tasks.run_worker's docstring. Hands it the traces
+                    # queue (same reuse-not-a-second-writer pattern AST-040
+                    # already gave the distiller slot) so every state
+                    # transition also lands as a trace event. `executors`
+                    # is deliberately empty here: no real task kind ships
+                    # with THIS task (AST-070 registers the first one) --
+                    # an enqueued kind with no executor fails specifically
+                    # and immediately rather than hanging.
+                    thread = threading.Thread(
+                        target=tasks.run_worker,
+                        args=(self.queues["tasks"], stop_event),
+                        kwargs={"traces_queue": self.queues["traces"]},
+                        name=f"assistant-{name}",
+                        daemon=False,
+                    )
                 else:
                     thread = threading.Thread(
                         target=_heartbeat_worker,
@@ -539,6 +575,8 @@ class AssistantEngine:
             return 200, self._metrics(), "application/json"
         if method == "GET" and path == "/assistant/traces":
             return self._traces(query)
+        if method == "GET" and path == "/assistant/tasks":
+            return self._tasks(query)
         if method == "POST" and path == "/assistant/chat":
             return self._chat(body)
         if method == "POST" and path == "/assistant/select":
@@ -889,6 +927,54 @@ class AssistantEngine:
             }, "application/json"
         truncated = limit > 0 and len(events) == limit
         return 200, {"events": events, "truncated": truncated}, "application/json"
+
+    def _tasks(self, query):
+        """GET /assistant/tasks?assistant=&state=&limit= -- SPEC-ASSISTANT.md
+        §12.5's "queue indicator" data endpoint (AST-066, issue #341):
+        `(200, {"tasks": [...]}, "application/json")` from
+        `tasks.list_tasks` against ONE resolved assistant -- the same
+        per-session resolution shape `_history`/`_traces` already use
+        (a voice panel's queue indicator is about the CURRENTLY ACTIVE
+        assistant, not a fleet-wide view like `_metrics`), never a
+        4xx/500 on an unresolved assistant (mirrors `_history`'s/
+        `_traces`'s own ResolutionError handling exactly: an empty,
+        explained 200).
+
+        `state` (optional) filters to one of `tasks.STATES`; an
+        unrecognized value is a clean 400 (same "a present-and-invalid
+        value is a caller mistake worth surfacing" posture `_traces`
+        already applies to its own `order` param, not the "malformed ->
+        silently degrade" posture `since`/`limit` get -- there is no
+        sane state name meant to be a typo). `limit` defaults to
+        `TASKS_DEFAULT_LIMIT`, clamped to `[0, TASKS_MAX_LIMIT]`, same
+        `_parse_history_n`-style bounded-read shape as everywhere else.
+
+        A task queue that hasn't been created yet (`tasks.sqlite` absent)
+        is NEVER an error -- `list_tasks` already returns `[]` for that
+        case, so this method's only job is resolving WHICH root and
+        WHICH state filter to read, same posture `_metrics` documents for
+        an absent `traces.sqlite`."""
+        state, limit, assistant_flag, state_error = _parse_tasks_query(query)
+        if state_error:
+            return 400, {"error": state_error}, "application/json"
+        candidates = default_store.discover_candidates(
+            root for _, root in self._repos_getter()
+        )
+        try:
+            root, _section = default_store.resolve_assistant(
+                candidates, flag=assistant_flag, state_dir=self.state_dir)
+        except default_store.ResolutionError as exc:
+            return 200, {"tasks": [], "warnings": [f"no assistant resolved: {exc}"]}, "application/json"
+        try:
+            task_rows = tasks.list_tasks(root, state=state, limit=limit)
+        except sqlite3.OperationalError as exc:
+            # Same transient-lock-overrun degrade `_traces` applies for
+            # `observability.query` -- clean and retryable, never a crash.
+            return 200, {
+                "tasks": [],
+                "warnings": [f"tasks temporarily unavailable, retry shortly: {exc}"],
+            }, "application/json"
+        return 200, {"tasks": task_rows}, "application/json"
 
     def _chat_lock_for(self, root):
         """One `threading.Lock` per resolved assistant root, canonicalized
@@ -1247,3 +1333,39 @@ def _parse_traces_query(query):
     if limit < 0:
         limit = 0
     return since, turn, min(limit, TRACES_MAX_LIMIT), assistant_flag, order, order_error
+
+
+def _parse_tasks_query(query):
+    """Parses `GET /assistant/tasks`'s `state`/`limit`/`assistant` query
+    params into `(state, limit, assistant_flag, state_error)` -- mirrors
+    `_parse_traces_query`'s exact shape: `limit`/`assistant` degrade
+    permissively on malformed input (same as `since`/`limit` there),
+    `state` behaves like `order` there -- absent is fine (`None`, no
+    filter), but a PRESENT-and-invalid value (not one of `tasks.STATES`)
+    is reported back as `state_error` for `_tasks` to turn into a clean
+    400, rather than silently returning zero rows for a typo'd state
+    name."""
+    state = None
+    limit = TASKS_DEFAULT_LIMIT
+    assistant_flag = None
+    state_error = None
+    if query:
+        state_values = query.get("state")
+        if state_values:
+            state = state_values[0]
+            if state not in tasks.STATES:
+                state_error = (
+                    f"invalid state {state!r} (expected one of {list(tasks.STATES)})"
+                )
+        limit_values = query.get("limit")
+        if limit_values:
+            try:
+                limit = int(limit_values[0])
+            except (TypeError, ValueError):
+                limit = TASKS_DEFAULT_LIMIT
+        assistant_values = query.get("assistant")
+        if assistant_values:
+            assistant_flag = assistant_values[0]
+    if limit < 0:
+        limit = 0
+    return state, min(limit, TASKS_MAX_LIMIT), assistant_flag, state_error
