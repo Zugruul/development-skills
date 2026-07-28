@@ -222,7 +222,7 @@ const document = {
 // #399: ast-switcher is gone (dock removed); ast-digest-panel/
 // ast-digest-close are its digest-relocation replacement, wired by
 // wireAssistantSwitchUi below.
-const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-picker-anchor", "ast-ask-again", "ast-digest-panel", "ast-digest-close", "ast-digest", "voice-viz-name", "ast-switch-dropdown", "ast-switch-list", "ast-switch-hint"];
+const STATIC_IDS = ["sect-voice", "voice-stt", "voice-in", "voice-out", "voice-both", "voicebar", "ast-picker-anchor", "ast-ask-again", "ast-digest-panel", "ast-digest-close", "ast-digest", "voice-viz-name", "ast-switch-dropdown", "ast-switch-list", "ast-switch-hint"];
 for (const id of STATIC_IDS) {
     const el = mkEl(id);
     el.classList._parent = el;
@@ -330,7 +330,7 @@ async function run(outcome, candidates, selected, askAgain) {
     // ---- remembered selection (askAgain false): no picker, applies directly ----
     await run("multiple", [{name: "jarvis", aliases: [], root: "/a"}, {name: "friday", aliases: [], root: "/b"}], "friday", false);
     if (document.getElementById("ast-picker")) throw new Error("a remembered selection must not re-show the picker");
-    if (document.getElementById("voice-mic").disabled) throw new Error("a remembered selection must un-gate voice");
+    if (document.getElementById("voice-stt").disabled) throw new Error("a remembered selection must un-gate voice");
     if (document.getElementById("voice-viz-name").textContent !== "friday") throw new Error("remembered selection did not render the name beside the bars (395)");
     console.log("REMEMBERED_OK true");
 

@@ -399,7 +399,7 @@ const document = {
 // #399: ast-switcher is gone (the label/⌘K palette replaced the docked
 // switcher) -- ast-picker-anchor + voice-viz-name are its STATIC_IDS
 // replacements, and ast-digest now lives inside ast-digest-panel.
-const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-ask-again", "ast-picker-anchor", "voice-viz-name", "ast-digest-panel", "ast-digest", "ast-switch-dropdown", "ast-switch-list", "ast-switch-hint"];
+const STATIC_IDS = ["sect-voice", "voice-stt", "voice-in", "voice-out", "voice-both", "voicebar", "ast-ask-again", "ast-picker-anchor", "voice-viz-name", "ast-digest-panel", "ast-digest", "ast-switch-dropdown", "ast-switch-list", "ast-switch-hint"];
 for (const id of STATIC_IDS) {
     const el = mkEl(id);
     el.classList._parent = el;

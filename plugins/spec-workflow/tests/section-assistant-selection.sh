@@ -279,7 +279,7 @@ const document = {
 // other STATIC_IDS do.
 // #399: ast-switcher is gone (dock removed) -- voice-viz-name (the label
 // selector) is already a STATIC_ID above; nothing else to add here.
-const STATIC_IDS = ["sect-voice", "voice-mic", "voice-in", "voice-out", "voice-both", "voicebar", "ast-picker-anchor", "ast-ask-again", "voice-viz-name"];
+const STATIC_IDS = ["sect-voice", "voice-stt", "voice-in", "voice-out", "voice-both", "voicebar", "ast-picker-anchor", "ast-ask-again", "voice-viz-name"];
 for (const id of STATIC_IDS) {
     const el = mkEl(id);
     el.classList._parent = el;
@@ -393,7 +393,7 @@ const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
     if (JSON.parse(autoSelect.opts.body).name !== "jarvis") throw new Error("outcome one selected the wrong candidate");
     if (document.getElementById("sect-voice").textContent !== "Voice") throw new Error("title must stay plain Voice (395): " + document.getElementById("sect-voice").textContent);
     if (document.getElementById("voice-viz-name").textContent !== "jarvis") throw new Error("name did not render beside the bars (395): " + document.getElementById("voice-viz-name").textContent);
-    if (document.getElementById("voice-mic").disabled) throw new Error("outcome one left voice-mic disabled");
+    if (document.getElementById("voice-stt").disabled) throw new Error("outcome one left voice-stt disabled");
     console.log("ONE_OK true");
 
     // ---- outcome multiple: picker rendered, rows wired, gated until a pick ----
@@ -406,7 +406,7 @@ const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
     for (const r of rows) if (!r.className.includes("ast-picker-row")) throw new Error("picker row missing ast-picker-row class");
     const skipBtn = picker.children[2];
     if (!skipBtn.className.includes("ast-skip")) throw new Error("skip control missing ast-skip class");
-    if (!document.getElementById("voice-mic").disabled) throw new Error("outcome multiple must gate voice before a pick");
+    if (!document.getElementById("voice-stt").disabled) throw new Error("outcome multiple must gate voice before a pick");
     console.log("MULTIPLE_OK true");
 
     // ---- AST-021 restyle (Option C command palette, issue #318): the
@@ -440,7 +440,7 @@ const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
     const kbSelect = fetchCalls.find(c => c.url === "/assistant/select");
     if (!kbSelect || JSON.parse(kbSelect.opts.body).name !== "friday") throw new Error("Enter did not select the active (friday) row");
     if (document.getElementById("ast-picker-wrap")) throw new Error("palette did not close after a keyboard select");
-    if (document.getElementById("voice-mic").disabled) throw new Error("keyboard select did not un-gate voice");
+    if (document.getElementById("voice-stt").disabled) throw new Error("keyboard select did not un-gate voice");
     // exactly ONE listener should remain: handleAssistantChatKeydown, bound
     // unconditionally at module load in production and never torn down --
     // see the identical note on the Esc-skip check below.
@@ -455,7 +455,7 @@ const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
     await mouseRows[0].onclick();
     const pickSelect = fetchCalls.find(c => c.url === "/assistant/select");
     if (!pickSelect || JSON.parse(pickSelect.opts.body).name !== "jarvis") throw new Error("picker row click did not select jarvis");
-    if (document.getElementById("voice-mic").disabled) throw new Error("picking a candidate did not un-gate voice");
+    if (document.getElementById("voice-stt").disabled) throw new Error("picking a candidate did not un-gate voice");
     console.log("PICK_OK true");
 
     // Skip disables voice
@@ -464,7 +464,7 @@ const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
     await document.getElementById("ast-picker").children[2].onclick();
     const skipCall = fetchCalls.find(c => c.url === "/assistant/skip");
     if (!skipCall) throw new Error("Skip did not POST /assistant/skip");
-    if (!document.getElementById("voice-mic").disabled) throw new Error("Skip did not gate voice-mic");
+    if (!document.getElementById("voice-stt").disabled) throw new Error("Skip did not gate voice-stt");
     console.log("SKIP_OK true");
 
     // ---- Esc = Skip (keyboard escape hatch), and the picker's OWN listener
@@ -477,7 +477,7 @@ const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
     await flushMicrotasks();
     const escSkip = fetchCalls.find(c => c.url === "/assistant/skip");
     if (!escSkip) throw new Error("Esc did not POST /assistant/skip");
-    if (!document.getElementById("voice-mic").disabled) throw new Error("Esc-skip did not gate voice-mic");
+    if (!document.getElementById("voice-stt").disabled) throw new Error("Esc-skip did not gate voice-stt");
     if ((global.__listeners.keydown || []).length !== 1) throw new Error("picker keydown handler leaked after Esc-skip (expected only the chat handler left)");
     if (window.__astPickerKeydown) throw new Error("window.__astPickerKeydown was not cleared after Esc-skip");
     console.log("ESC_SKIP_OK true");
@@ -495,7 +495,7 @@ const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
     if (document.getElementById("ast-chat-overlay")) throw new Error("Esc did not close the chat overlay");
     if (fetchCalls.some(c => c.url === "/assistant/skip")) throw new Error("Esc double-fired: picker skipped even though the chat overlay owned this keypress");
     if (!document.getElementById("ast-picker-wrap")) throw new Error("picker must still be open -- Esc only closed the chat overlay, it did not skip");
-    if (document.getElementById("voice-mic").disabled !== true) throw new Error("voice-mic gating must be unchanged (still gated, picker still pending)");
+    if (document.getElementById("voice-stt").disabled !== true) throw new Error("voice-stt gating must be unchanged (still gated, picker still pending)");
     console.log("ESC_NO_DOUBLE_FIRE_OK true");
 
     // ---- review round 1 (#318), finding 3: Skip is a real <button> (native
@@ -512,7 +512,7 @@ const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
     if (!overlay.className.includes("ast-none-overlay")) throw new Error("overlay missing ast-none-overlay class");
     if (overlay.textContent !== "set up an assistant") throw new Error("overlay text mismatch: " + overlay.textContent);
     if (!overlay.title || overlay.title.indexOf("/setup-assistant") === -1) throw new Error("overlay hover title missing /setup-assistant explainer: " + overlay.title);
-    if (!document.getElementById("voice-mic").disabled) throw new Error("outcome none did not gate voice-mic");
+    if (!document.getElementById("voice-stt").disabled) throw new Error("outcome none did not gate voice-stt");
     console.log("NONE_OK true");
 })().catch(e => { console.error("FAIL", e.message); process.exit(1); });
 NODEJS

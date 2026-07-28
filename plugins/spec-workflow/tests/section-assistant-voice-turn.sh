@@ -20,13 +20,14 @@ echo "== assistant voice-driven turn UX (AST-052: full voice loop, SPEC-ASSISTAN
 NVHTML_VT="$PLUGIN/templates/neural-view.html"
 NVHTML_VT_BODY="$(cat "$NVHTML_VT")"
 
-echo "-- template: a dedicated mic control sits near the IN/OUT bars, distinct from #voice-mic's mode toggle --"
+echo "-- template: #448 -- ONE mic control at top level (voice-stt), #voice-mic's separate mode toggle is gone --"
 check "voice-stt mic control exists in the voicebar header" 'id="voice-stt"' "$NVHTML_VT_BODY"
 check "voice-stt starts unpressed" 'id="voice-stt" aria-pressed="false"' "$NVHTML_VT_BODY"
 check "voice-stt sits in the same iconbtn/house style as the other voice buttons" 'class="iconbtn" id="voice-stt"' "$NVHTML_VT_BODY"
+check_absent "#voice-mic no longer exists as a top-level button -- collapsed into voice-stt (#448, human hit it live: two nearly-identical mic buttons)" 'id="voice-mic"' "$NVHTML_VT_BODY"
 
 echo "-- template: §17.9 gate -- voice-stt joins the same gated set the other voice buttons already disable through --"
-check "gateVoiceAndChat disables voice-stt alongside voice-mic/in/out/both" 'for(const id of ["voice-mic","voice-in","voice-out","voice-both","voice-stt"]){' "$NVHTML_VT_BODY"
+check "gateVoiceAndChat disables voice-stt alongside in/out/both (#448: voice-mic dropped from this set, it no longer exists)" 'for(const id of ["voice-in","voice-out","voice-both","voice-stt"]){' "$NVHTML_VT_BODY"
 check "voice-stt is disabled+reasoned when gated (title explains why)" "Voice is gated -- no assistant selected" "$NVHTML_VT_BODY"
 
 echo "-- template: mic control wiring -- press to start/stop via the configured sttEngine --"
@@ -139,6 +140,32 @@ else
 fi
 check_absent "WebSpeechSttEngine's own body never reads the noise-suppression floor (voiceTune/GATE/vGate) -- the floor cannot gate recognition" "voiceTune" "$_webSpeechEngine_body"
 check_absent "WhisperSttEngine's own body never reads the noise-suppression floor (voiceTune/GATE/vGate) -- the floor cannot gate recognition" "voiceTune" "$_whisperEngine_body"
+
+echo "-- template: #448 (P1, human hit it live: \"why are there two buttons?\") -- ONE mic control, not two --"
+check_absent "the top-level #voice-mic mode-toggle button markup is gone (aria-label pin, since \"voice-mic\" itself is already checked above)" 'aria-label="Microphone mode: press to speak' "$NVHTML_VT_BODY"
+check_absent "the #voice-mic CSS block (.ptt/.always/.talking dot language) is gone -- dead rules for a removed element" '#voice-mic.always .micdot' "$NVHTML_VT_BODY"
+check_absent "applyVoiceState() no longer touches a removed #voice-mic element" 'const micBtn = document.getElementById("voice-mic")' "$NVHTML_VT_BODY"
+check "the settings panel's Press to speak / Mic always on pair is the ONLY surviving surface for mic mode -- confirmed genuinely redundant with the removed top-level toggle, both write the same uiState.micMode field" 'document.getElementById("vs-mic-ptt").onclick = ()=>{ uiState.micMode = "ptt"; saveUiState(); applyUiState(); };' "$NVHTML_VT_BODY"
+check "Space-held press-to-speak still drives the real capture path (window.voicePTT unchanged) -- only the now-homeless .talking visual side effect was dropped, not the underlying mechanism" 'window.voicePTT = true;' "$NVHTML_VT_BODY"
+
+echo "-- template: #449 (P2, human-directed) -- Inspect trigger moved into the settings panel; the detached inspector window itself is untouched (#460 just restyled it) --"
+# Scoped extractions (not a multi-line grep -F pattern, which ORs its
+# lines instead of requiring the whole block) -- voicebar-head's own
+# markup range, and the settings panel's own markup range, checked
+# independently so "moved FROM X TO Y" is asserted structurally rather
+# than by a single fragile multi-line literal.
+_voicebarHead_body="$(sed -n '/<div id="voicebar-head">/,/<div id="voice-viz">/p' "$NVHTML_VT")"
+_voiceSettingsPanel_body="$(sed -n '/<div class="hud" id="voice-settings-panel"/,/^<div class="hud" id="rightbar">/p' "$NVHTML_VT")"
+check_absent "the Inspect button no longer sits in voicebar-head" 'id="ast-inspect-open"' "$_voicebarHead_body"
+check "the Inspect button now lives inside the settings panel as its own vs-row" '<span class="label">Inspector</span>' "$_voiceSettingsPanel_body"
+check "the Inspect button itself, scoped to inside the settings panel now" 'id="ast-inspect-open"' "$_voiceSettingsPanel_body"
+check "the Inspect button's identity (id, title, aria-label, aria-haspopup) is unchanged by the #449 move" 'id="ast-inspect-open" title="Open the metrics/trace inspector" aria-label="Open the metrics/trace inspector" aria-haspopup="true"' "$NVHTML_VT_BODY"
+check "the click handler still targets the SAME function -- the detached window/open-close/one-window-max/Esc handshake is untouched by this move" 'document.getElementById("ast-inspect-open").onclick = () => { openAstInspectorWindow(); };' "$NVHTML_VT_BODY"
+
+echo "-- template: #466 -- Inspect restyled to the mockup's .minivoice .inspect pill (AST-044-r1 Option B), not a plain .iconbtn --"
+check "Inspect carries the new pill class, ported from this app's OWN .iconbtn.active look (near-identical cyan values to the mockup's pill) rather than invented values" 'class="iconbtn ast-inspect-pill" id="ast-inspect-open"' "$NVHTML_VT_BODY"
+check "the pill class gives it a permanent (not state-toggled) cyan border/background/color treatment" '.ast-inspect-pill{color:var(--cyan);border-color:var(--cyan-dim);background:rgba(70,230,255,.08)}' "$NVHTML_VT_BODY"
+check "the button carries the mockup's chevron, same label idiom -- Inspect with a trailing chevron" 'aria-haspopup="true">Inspect ▸</button>' "$NVHTML_VT_BODY"
 
 # NOTE: no NV_VERSION bump pin here -- #441 (already on main by the time this
 # branch rebased) removed the NV_VERSION manual-bump convention entirely;

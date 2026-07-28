@@ -93,6 +93,21 @@ canvas.grabbing{cursor:grabbing}
   font-family:var(--mono);font-size:.8rem;line-height:1;padding:.25rem .4rem;cursor:pointer}
 .iconbtn:hover{color:var(--cyan);border-color:var(--cyan-dim)}
 .iconbtn.active{color:var(--cyan);border-color:var(--cyan-dim);background:rgba(70,230,255,.1)}
+/* #466: the Inspect trigger as the mockup's .minivoice .inspect pill
+   (.claude/ui-hub/html/AST-044-r1.html, Option B) -- background
+   rgba(70,230,255,.08)/border var(--cyan-dim)/color var(--cyan) is,
+   near-exactly, what .iconbtn.active (above) ALREADY uses for this
+   app's own "lit" segmented-button state -- ported as an UNCONDITIONAL
+   look for this one button (not a toggled state) rather than inventing
+   new values. #466 FLAG: the mockup shows this pill living alone beside
+   a compact voice mini-panel; #449 moved it into a standard vs-row
+   alongside plain-gray sibling .iconbtns in the same settings panel, a
+   context the mockup never had to reconcile with -- applying the pill
+   here means Inspect visually pops out from its row-mates. Judged
+   correct (it is still the one action that opens a whole separate
+   window, arguably earning the emphasis) but flagged as a genuine
+   adaptation call, not a mechanical port. */
+.ast-inspect-pill{color:var(--cyan);border-color:var(--cyan-dim);background:rgba(70,230,255,.08)}
 
 /* search bar (below topbar, centered — search notes/synapses + a brains/fields filter popover),
    and the results panel that opens directly under it while a search is active. Both share
@@ -621,17 +636,16 @@ canvas.grabbing{cursor:grabbing}
 .ast-digest-close:hover{color:var(--cyan)}
 /* cog rides directly right of the VOICE heading, sized as a real target */
 #voice-settings{font-size:1rem;line-height:1;padding:.25rem .5rem}
-/* mic-mode dot: press-to-speak = dark red with a slash; always-on = solid red;
-   .talking (Space held / mic hot) lights it regardless of mode */
-#voice-mic{display:inline-flex;align-items:center;justify-content:center}
-#voice-mic .micdot{position:relative;width:9px;height:9px;border-radius:50%;background:#7a2a24;display:block}
-#voice-mic.ptt .micdot::after{content:"";position:absolute;left:-2px;right:-2px;top:50%;height:1.5px;
-  background:#c96a5e;transform:rotate(-45deg)}
-#voice-mic.always .micdot,#voice-mic.talking .micdot{background:#e0453a;box-shadow:0 0 8px rgba(224,69,58,.7)}
-#voice-mic.talking .micdot::after{display:none}
-/* AST-052 (#334): #voice-stt's listening state -- same lit-red language as
-   #voice-mic.talking (a live mic is a live mic), kept as its own class so
-   it's driven purely by setSttListening(), independent of mic MODE. */
+/* #448: #voice-mic (the visualizer-only capture-mode toggle -- press-to-
+   speak = dark red with a slash, always-on = solid red, .talking lit
+   regardless of mode) is GONE from the top-level bar -- collapsed into
+   the single #voice-stt control below. The mode distinction survives
+   only in the settings panel (.vs-opts .iconbtn.active there carries its
+   own styling already, unrelated to this dot language).
+   #voice-stt's listening state keeps the same lit-red language
+   #voice-mic.talking used to use (a live mic is a live mic), driven
+   purely by setSttListening(), independent of the mode this button no
+   longer exposes. */
 #voice-stt{display:inline-flex;align-items:center;justify-content:center}
 #voice-stt .micdot{position:relative;width:9px;height:9px;border-radius:50%;background:#7a2a24;display:block}
 #voice-stt.listening .micdot{background:#e0453a;box-shadow:0 0 8px rgba(224,69,58,.7)}
@@ -703,14 +717,16 @@ canvas.grabbing{cursor:grabbing}
 .ast-digest-empty{opacity:.6;font-style:italic}
 /* AST-044 restyle (Option B -- detached inspector window, SPEC-ASSISTANT.md
    §10.5, issue #330, FINAL pick): the metrics/turns fold no longer lives
-   inside the ⚙ voice-settings panel -- it's its own detached, draggable HUD
-   window (.ast-inspector-window, same chrome family as .note-window/
-   .media-window above: wireWinDrag, noteWinZ raise-to-front, resize/scroll),
-   opened/focused from the small Inspect button in the voice panel
-   (#ast-inspect-open). The pinned fold classes below (.ast-metrics/
-   .ast-metrics-row/.ast-metrics-graph/.ast-turnlist-row/.ast-waterfall/
-   .ast-waterfall-error/.ast-truncated) are unchanged -- only their container
-   moved. */
+   inline in a panel -- it's its own detached, draggable HUD window
+   (.ast-inspector-window, same chrome family as .note-window/.media-window
+   above: wireWinDrag, noteWinZ raise-to-front, resize/scroll), opened/
+   focused from the small Inspect button (#ast-inspect-open). #449: that
+   button itself moved INTO the ⚙ voice-settings panel (top-level voice
+   bar now carries only what a voice turn uses) -- the window this opens,
+   and everything below, is unchanged by that move. The pinned fold
+   classes below (.ast-metrics/.ast-metrics-row/.ast-metrics-graph/
+   .ast-turnlist-row/.ast-waterfall/.ast-waterfall-error/.ast-truncated)
+   are unchanged -- only the trigger's container moved, twice now. */
 /* compound selector (not bare .ast-inspector-window): .note-window{width:
    var(--colw);max-height:70vh} below is an EQUAL-specificity single-class
    rule declared LATER in source (review round 1, #330) -- a bare
@@ -1376,21 +1392,23 @@ canvas.grabbing{cursor:grabbing}
   <div id="voicebar-head">
     <div style="display:flex;align-items:center;gap:.35rem">
       <button class="secthead" id="sect-voice">Voice</button>
-      <!-- AST-044 restyle (Option B, issue #330): opens/focuses the detached
-           metrics/trace inspector window -- see .ast-inspector-window below. -->
-      <button class="iconbtn" id="ast-inspect-open" title="Open the metrics/trace inspector" aria-label="Open the metrics/trace inspector" aria-haspopup="true">Inspect</button>
     </div>
     <div style="display:flex;align-items:center;gap:.3rem">
-      <button class="iconbtn" id="voice-mic" aria-pressed="false"
-        aria-label="Microphone mode: press to speak — click for always on"
-        title="Press to speak (hold Space) — click for mic always on"><span class="micdot"></span></button>
-      <!-- AST-052 (SPEC-ASSISTANT.md §13, issue #334): the voice-driven-turn
-           mic control -- distinct from #voice-mic above (that one only
-           toggles the VISUALIZER's capture mode). Press to start listening
+      <!-- #448 (P1, human hit it live: "why are there two buttons?"):
+           #voice-mic (the visualizer-only capture-mode toggle) and
+           #voice-stt (the AST-052 voice-driven chat turn, below) used to
+           sit side by side rendering the same .micdot, distinguishable
+           only by state -- collapsed into this ONE control. The human
+           named the SOLID-dot treatment (this button's .listening state)
+           as the one they like; it survives unchanged. Press to speak
            via the configured sttEngine (startStt); press again OR the
-           engine's own final transcript (onSttText) stops it. Sits right
-           next to #voice-mic, before the IN/OUT/BOTH group, per the "near
-           the IN/OUT bars" placement call. -->
+           engine's own final transcript (onSttText) stops it. The
+           press-to-speak/mic-always-on MODE distinction that #voice-mic
+           used to expose here is not a top-level concern (per the human)
+           -- it already lives in ⚙ Voice settings (vs-mic-ptt/
+           vs-mic-always, unchanged, and confirmed genuinely redundant
+           with the removed button: both wrote the exact same
+           uiState.micMode field). -->
       <button class="iconbtn" id="voice-stt" aria-pressed="false"
         aria-label="Voice-driven chat turn: press to speak"
         title="Press to speak — sends the transcript as a chat turn (finalizes after a pause in speech, or press again to send now)"><span class="micdot"></span></button>
@@ -1510,6 +1528,23 @@ canvas.grabbing{cursor:grabbing}
       <button class="iconbtn" id="vs-stt-webspeech" aria-pressed="false">Web Speech (browser)</button>
     </div>
     <div class="vs-hint">whisper.cpp is the default -- fully local via a separate sidecar process (its own install/model capability, not yet provisioned by this template). Web Speech needs no install but sends audio to the browser vendor. If the whisper sidecar isn't running, switch here to keep using voice input.</div>
+  </div>
+  <!-- #449 (P2, human-directed): the top-level voice bar should carry
+       only what is used DURING a voice turn -- inspection is a
+       settings-level concern, so the Inspect trigger moved here from
+       voicebar-head. The detached inspector window itself
+       (.ast-inspector-window below, its open/close behavior, and the
+       one-window-max + Esc ownership handshake) is UNTOUCHED -- #460
+       just restyled that window and this is not its region. -->
+  <div class="vs-row"><span class="label">Inspector</span>
+    <div class="vs-opts">
+      <!-- #466: restyled to the mockup's .minivoice .inspect pill (its
+           own cyan border/background treatment, not a plain .iconbtn)
+           plus its chevron -- see the .ast-inspect-pill CSS comment
+           above for the settings-row adaptation this required. -->
+      <button class="iconbtn ast-inspect-pill" id="ast-inspect-open" title="Open the metrics/trace inspector" aria-label="Open the metrics/trace inspector" aria-haspopup="true">Inspect ▸</button>
+    </div>
+    <div class="vs-hint">Opens the detached metrics/trace window -- span counts, recent turns, waterfall timing. One window at a time; a second click focuses the existing one instead of opening a duplicate.</div>
   </div>
   <div class="vs-row">
     <button class="iconbtn" id="vs-reset" aria-live="polite">Reset settings</button>
@@ -3933,13 +3968,13 @@ function applyVoiceState(){
       b.setAttribute("aria-pressed", String(d===vdir));
     }
   }
+  // #448: the top-level #voice-mic mode toggle is gone -- mic mode
+  // (press-to-speak vs always-on) now surfaces ONLY in the settings
+  // panel below, which already carried its own vs-mic-ptt/vs-mic-always
+  // pair (confirmed genuinely redundant with the removed button before
+  // it was removed, since both wrote this exact same uiState.micMode
+  // field).
   const mic = uiState.micMode === "always" ? "always" : "ptt";
-  const micBtn = document.getElementById("voice-mic");
-  micBtn.classList.toggle("always", mic==="always");
-  micBtn.classList.toggle("ptt", mic==="ptt");
-  micBtn.setAttribute("aria-pressed", String(mic==="always"));
-  micBtn.title = mic==="always" ? "Mic always on — click for press to speak"
-                                : "Press to speak (hold Space) — click for mic always on";
   for(const [id,m] of [["vs-mic-ptt","ptt"],["vs-mic-always","always"]]){
     const b = document.getElementById(id);
     b.classList.toggle("active", m===mic);
@@ -3951,7 +3986,6 @@ for(const d of ["in","out","both"]){
   document.getElementById("voice-"+d).onclick = set;
   document.getElementById("vs-dir-"+d).onclick = set;
 }
-document.getElementById("voice-mic").onclick = ()=>{ uiState.micMode = uiState.micMode==="always" ? "ptt" : "always"; saveUiState(); applyUiState(); };
 document.getElementById("vs-mic-ptt").onclick = ()=>{ uiState.micMode = "ptt"; saveUiState(); applyUiState(); };
 document.getElementById("vs-mic-always").onclick = ()=>{ uiState.micMode = "always"; saveUiState(); applyUiState(); };
 // #428: single open/close path for the ⚙ panel -- the cog toggle, the ×
@@ -4276,10 +4310,10 @@ async function reportSttFailure(message){
   if(log) appendChatRow(log, "system", message, null);
 }
 // AST-052 (#334): the mic control's visible listening state -- lit red
-// (same language #voice-mic.talking already uses) while STT is actually
-// listening. window.__sttListening is the flag speakReply's echo-guard
-// interlock reads (below) to decide whether to pause recognition before a
-// reply speaks.
+// (#448: the ONLY mic dot at top level now, since #voice-mic is gone).
+// window.__sttListening is the flag speakReply's echo-guard interlock
+// reads (below) to decide whether to pause recognition before a reply
+// speaks.
 window.__sttListening = false;
 function setSttListening(on){
   window.__sttListening = !!on;
@@ -4381,13 +4415,19 @@ addEventListener("keydown", ev=>{
     saveUiState(); applyUiState();
     return;
   }
+  // #448: window.voicePTT still drives the real visualizer capture path
+  // (micHot() -> syncMic(), unchanged) -- only the .talking VISUAL side
+  // effect is dropped here, since #voice-mic (the button it used to
+  // paint) no longer exists at top level. Not repointed onto #voice-stt:
+  // that dot means "an actual voice-driven chat turn is listening", a
+  // different, mutually-exclusive state from this ad hoc visualizer
+  // preview (#464 already makes micHot() return false while an STT turn
+  // owns the mic, so the two can never be simultaneously true anyway).
   window.voicePTT = true;
-  document.getElementById("voice-mic").classList.add("talking");
 });
 addEventListener("keyup", ev=>{
   if(ev.code!=="Space") return;
   window.voicePTT = false;
-  document.getElementById("voice-mic").classList.remove("talking");
 });
 
 // ---- voice visualizer: Split Halves — outbound cyan grows up from the axis,
@@ -6446,9 +6486,10 @@ function gateVoiceAndChat(gated){
   // §17.9 gated set the other voice buttons already disable through --
   // startStt() itself also checks window.assistantGate.gated, this is
   // just the visible half. Disabled+reasoned: the title explains why,
-  // since (unlike #voice-mic/IN/OUT/BOTH) this control's whole job is a
-  // single deliberate press, not a passive mode toggle.
-  for(const id of ["voice-mic","voice-in","voice-out","voice-both","voice-stt"]){
+  // since (unlike IN/OUT/BOTH) this control's whole job is a single
+  // deliberate press, not a passive mode toggle. #448: #voice-mic is
+  // gone from this set -- it no longer exists at top level.
+  for(const id of ["voice-in","voice-out","voice-both","voice-stt"]){
     const el = document.getElementById(id);
     if(el) el.disabled = !!gated;
   }
@@ -7794,7 +7835,9 @@ async function loadAssistantInspector(){
 // lives in its own detached, draggable HUD window -- same chrome family
 // (and the same wireWinDrag/noteWinZ raise-to-front plumbing) as the note/
 // media detached windows further up this file, opened from the small
-// Inspect button in the voice panel (#ast-inspect-open). Built with
+// Inspect button (#ast-inspect-open, #449: relocated back into the ⚙
+// settings panel as its TRIGGER's home -- the window built below is
+// unaffected). Built with
 // document.createElement rather than the innerHTML+querySelector pattern
 // those older windows use, so the fold's own ids (ast-metrics/ast-turnlist/
 // ast-waterfall/...) stay individually addressable the instant they're
