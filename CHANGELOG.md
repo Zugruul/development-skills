@@ -20,6 +20,12 @@
   > - the finalized Option C design landed in product code with feat(AST-069) immediately below
   > - anchor is the on-main squash SHA (branch SHAs do not survive a squash merge — the AST-083 lesson)
 
+### Other
+- retro(late): dev-344 interview folded in — 1 note minted, 2 outcomes recorded (`7ac4fe5`)
+  > - dev: css-length-strings-never-roundtrip (the vw-as-px parseFloat trap)
+  > - outcome corrected: anonymous-listener-slice-eval (eval const/let scoping gotcha)
+  > - outcome useful-with-caveat: acceptance-criterion-outranks-test-spec-paraphrase (pair with grep-every-enumerated-member habit)
+
 ## v0.55.1 — 2026-07-28
 
 ### Fixes
