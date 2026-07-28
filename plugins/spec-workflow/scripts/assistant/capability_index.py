@@ -113,6 +113,35 @@ the schema/version-negotiation library above:
         hop, if any, already happened when `query` was built via
         `embed_query`). See the function's own docstring for the precise
         scoring/tie/low-confidence rule.
+
+AST-065 (SPEC-ASSISTANT.md Sec11.2, Sec17.2, issue #340, docs/design/
+ast-E6.md) closes enablement gating end to end on top of the above:
+
+    is_enabled(name, assistant_cfg) -> bool
+        Sec11.2's enablement rule, extracted out of `compile_index` into
+        its own function so `compile_index`'s index-compile-time filter
+        and `invoke_capability`'s execution-time gate share ONE rule.
+
+    _merge_provisioning_override(base_provisioning, override) ->
+        provisioning dict
+        Sec11.2 "project.yaml provisioning overrides localize the skill's
+        defaults": `compile_index` now field-merges an enabled
+        capability's `assistant.capabilities.<name>.provisioning`
+        (project.yaml) over the skill's shipped capability.yaml
+        `provisioning` block before running the provisioning check --
+        see the function's own docstring for the exact merge rule and a
+        flagged alternative reading this task's report also documents.
+
+    CapabilityDisabledError(Exception), invoke_capability(name,
+        capability, params, assistant_cfg, *, timeout=None, env=None,
+        cwd=None)
+        Sec17.2 "a disabled capability is never invoked by the engine":
+        the single choke point a NAMED capability's invocation must pass
+        through, gating on `is_enabled` before dispatching to
+        `adapters.invoke_argv`/`invoke_mcp` (auto-detected from
+        `capability.invoke`'s exec/mcp shape). See the function's own
+        docstring for why the gate lives here rather than inside
+        `adapters.py` itself (a flagged design call).
 """
 import collections
 import os
@@ -407,6 +436,69 @@ def _iter_skill_dirs(skills_root):
     return out
 
 
+def is_enabled(name, assistant_cfg):
+    """Sec11.2's exact enablement rule: `assistant.capabilities.<name>.
+    enabled` must be literally `True` -- absent, missing, or any other
+    (even truthy) value means disabled. Extracted as its own function
+    (issue #340, AST-065) so `compile_index`'s index-compile-time filter
+    and `invoke_capability`'s execution-time gate below share ONE
+    enablement rule instead of two independently-maintained copies that
+    could drift out of sync (Sec17.2 "a disabled capability is never
+    invoked by the engine" only holds if every gate agrees on what
+    'enabled' means)."""
+    assistant_cfg = assistant_cfg or {}
+    caps_cfg = assistant_cfg.get("capabilities")
+    caps_cfg = caps_cfg if isinstance(caps_cfg, dict) else {}
+    entry_cfg = caps_cfg.get(name)
+    return isinstance(entry_cfg, dict) and entry_cfg.get("enabled") is True
+
+
+# Provisioning-override keys this module understands, and the type each
+# must satisfy to be accepted -- anything else (wrong type, or a key
+# capability.yaml's own provisioning schema doesn't have) is silently
+# IGNORED for that key rather than raising (Sec11.3/Sec17: an index
+# compile never blocks/crashes over a malformed project.yaml override; a
+# badly-typed override key just falls back to the skill's own shipped
+# default for that key).
+def _merge_provisioning_override(base_provisioning, override):
+    """Field-level merge of project.yaml's `assistant.capabilities.<name>.
+    provisioning` OVER the skill's shipped `capability.yaml` `provisioning`
+    block (issue #340, AST-065, Sec11.2 "project.yaml provisioning
+    overrides localize the skill's defaults"). Deliberately field-level,
+    not a whole-block replace: 'localizes the skill's DEFAULTS' reads as
+    "override the specific values that differ for this repo/machine (e.g.
+    a locally-installed binary path, a shorter TTL) while the rest keeps
+    inheriting the skill's own shipped default" -- a whole-block replace
+    would instead require every project.yaml override to restate the
+    entire provisioning block, which is not what "localize defaults"
+    describes. (Flagged in this task's report as a two-way reading --
+    see the PR description for the alternative "whole-block replace"
+    interpretation this function deliberately does NOT implement.)
+
+    `override.check`, if present, replaces `check` ONLY when it is itself
+    a valid non-empty argv array of strings (matching capability_index.
+    _check_argv's own shape rule) -- an override that fails that shape
+    check is ignored for `check` (the skill's own shipped `check` wins),
+    never a compile failure.
+
+    `override.ttlSeconds`, if present, replaces `ttlSeconds` ONLY when it
+    is a genuine int (bool-before-int-guard: `isinstance(True, int)` is
+    `True`, so the bool check runs first, same house lesson `provisioning.
+    _ttl_seconds` already applies) -- otherwise ignored, same
+    fall-back-to-shipped-default posture as `check` above."""
+    if not isinstance(override, dict):
+        return base_provisioning
+    merged = dict(base_provisioning)
+    check = override.get("check")
+    if isinstance(check, list) and check and all(isinstance(a, str) for a in check):
+        merged["check"] = check
+    if "ttlSeconds" in override:
+        ttl = override["ttlSeconds"]
+        if not isinstance(ttl, bool) and isinstance(ttl, int):
+            merged["ttlSeconds"] = ttl
+    return merged
+
+
 def compile_index(skills_root, assistant_cfg, provisioning_checker=None, embed_fn=None):
     """One pass over `skills_root` -> `CapabilityIndex` (Sec11.3's "Index
     compile" sequence, docs/design/ast-E6.md). See the module docstring for
@@ -430,9 +522,7 @@ def compile_index(skills_root, assistant_cfg, provisioning_checker=None, embed_f
 
     pending = []  # [(name, one_liner, keywords, capability, skill_dir), ...]
     for name, skill_dir in _iter_skill_dirs(skills_root):
-        entry_cfg = caps_cfg.get(name)
-        enabled = isinstance(entry_cfg, dict) and entry_cfg.get("enabled") is True
-        if not enabled:
+        if not is_enabled(name, assistant_cfg):
             # Sec11.2: disabled (or never configured at all) -- invisible.
             # No entry, no roster, no prompt, never executed.
             continue
@@ -460,7 +550,24 @@ def compile_index(skills_root, assistant_cfg, provisioning_checker=None, embed_f
 
     entries = []
     for (name, one_liner, keywords, capability, skill_dir), embedding in zip(pending, embeddings):
-        provisioned_ok, unavailable_reason = provisioning_checker(name, capability, skill_dir)
+        # Sec11.2 "project.yaml provisioning overrides localize the skill's
+        # defaults" (issue #340, AST-065): an ENABLED capability's own
+        # project.yaml entry may carry a `provisioning` mapping that
+        # field-merges over the skill's shipped capability.yaml
+        # `provisioning` block -- see `_merge_provisioning_override`'s
+        # docstring for the exact merge rule and why it's field-level, not
+        # whole-block replace. Only reachable here because we're already
+        # past the enablement filter above; a disabled capability's
+        # override (if any) is simply never read, matching Sec11.2's
+        # "invisible" contract for disabled skills.
+        entry_cfg = caps_cfg.get(name)
+        override = entry_cfg.get("provisioning") if isinstance(entry_cfg, dict) else None
+        effective_capability = capability
+        if override is not None:
+            effective_capability = capability._replace(
+                provisioning=_merge_provisioning_override(capability.provisioning, override)
+            )
+        provisioned_ok, unavailable_reason = provisioning_checker(name, effective_capability, skill_dir)
         entries.append(CapabilityIndexEntry(
             name=name,
             one_liner=one_liner,
@@ -654,3 +761,77 @@ def run_worker(repos_getter, stop_event, on_compile, skills_subpath=(".claude", 
             except Exception:
                 continue
         stop_event.wait(poll_interval)
+
+
+# ------------------------------------------------------------------------
+# AST-065 (Sec11.2, Sec17.2): execution-time enablement gate.
+# ------------------------------------------------------------------------
+
+
+class CapabilityDisabledError(Exception):
+    """Raised by `invoke_capability` when the named capability is not
+    enabled (Sec17.2: "a disabled capability is never invoked by the
+    engine"). Deliberately its own exception, not folded into `adapters.
+    AdapterError` -- this is a POLICY-level refusal that fires BEFORE
+    anything reaches `adapters.py`'s subprocess-execution taxonomy (which
+    exists to classify failures of an ALREADY-authorized invocation, e.g.
+    a timeout or a malformed response); a disabled capability is refused
+    before that taxonomy is even relevant. (Flagged in this task's report:
+    an alternative design would fold this into `adapters.py` as e.g.
+    `adapters.CapabilityGatingError(AdapterError)` for a single catch
+    surface -- not done here, see the report for the tradeoff.)"""
+
+
+def invoke_capability(name, capability, params, assistant_cfg, *, timeout=None, env=None, cwd=None):
+    """The SINGLE choke point every invocation of a NAMED capability must
+    pass through (issue #340, AST-065) -- enforces Sec17.2 ("a disabled
+    capability is never invoked by the engine") and then dispatches to
+    `adapters.invoke_argv`/`adapters.invoke_mcp`.
+
+    WHY the gate lives HERE and not inside `adapters.invoke_argv`/
+    `invoke_mcp` themselves (flagged design call, see this task's report
+    for the full writeup): those two functions take a bare `Capability`
+    namedtuple with NO `name` and NO `enabled` field at all -- enablement
+    is compile-time-filtered state that only `capability_index.py` (via
+    `is_enabled`, the SAME rule `compile_index` already applies) knows how
+    to evaluate; `adapters.py` is deliberately a name-agnostic, pure
+    execution primitive shared by provisioning checks AND invoke (per
+    docs/design/ast-E6.md's layering), and giving it capability-name/
+    enablement awareness would blur that boundary and require changing
+    AST-063/064's already-landed, already-reviewed signatures. Putting the
+    gate in `capability_index.py` instead keeps ONE place owning "what
+    does enabled mean" (shared with `compile_index`) and keeps
+    `adapters.py` unchanged.
+
+    Dispatch: auto-detects the invoke flavor from `capability.invoke`'s
+    shape (`exec` vs `mcp` -- capability_index.validate_capability already
+    guarantees exactly one is present for a structurally valid
+    capability), so callers never have to pass a flavor flag themselves.
+    `timeout=None` forwards to each adapter function's own default
+    (`adapters.DEFAULT_TIMEOUT_SECONDS`) rather than duplicating that
+    constant here.
+
+    Raises `CapabilityDisabledError` (never touching `adapters.py` at all,
+    including never spawning a subprocess) when `is_enabled(name,
+    assistant_cfg)` is false; otherwise raises/returns exactly whatever
+    the dispatched `adapters.invoke_argv`/`invoke_mcp` call raises/
+    returns."""
+    if not is_enabled(name, assistant_cfg):
+        raise CapabilityDisabledError(
+            f"capability {name!r} is disabled (assistant.capabilities.{name}.enabled is not "
+            "true) -- SPEC-ASSISTANT.md Sec17.2: a disabled capability is never invoked"
+        )
+
+    from assistant import adapters  # local import: keeps this module's "pure library,
+    # no subprocess dependency at import time" posture (same rationale as
+    # compile_index's lazy provisioning-module import above) -- importing
+    # capability_index.py alone never imports adapters.py's subprocess
+    # dependency chain.
+
+    invoke = capability.invoke if isinstance(capability.invoke, dict) else {}
+    kwargs = {"env": env, "cwd": cwd}
+    if timeout is not None:
+        kwargs["timeout"] = timeout
+    if "mcp" in invoke:
+        return adapters.invoke_mcp(capability, params, **kwargs)
+    return adapters.invoke_argv(capability, params, **kwargs)
