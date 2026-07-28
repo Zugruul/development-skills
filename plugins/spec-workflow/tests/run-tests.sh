@@ -226,6 +226,7 @@ section-semver.sh
     section-capability-roster.sh
     section-capability-provisioning.sh
     section-capability-invoke.sh
+    section-capability-invoke-mcp.sh
     section-setup-assistant.sh
     section-assistant-preflight.sh
     section-assistant-default.sh

@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""Stub MCP server for section-capability-invoke-mcp.sh (AST-064,
+SPEC-ASSISTANT.md Sec11.7, issue #339). Never touches the network or a real
+MCP server -- this is the ONLY "mcpserver" contract tests put on PATH,
+mirroring section-capability-invoke.sh's stub-argv-echo convention (a stub
+on a controlled PATH, never an ambient binary -- house lesson
+hermetic-path-fixtures-for-cli-tests).
+
+Reads exactly ONE line of JSON-RPC 2.0 request from stdin, writes exactly
+ONE JSON-RPC 2.0 response to stdout, then exits -- this is the one-shot
+"one round trip" contract `adapters.invoke_mcp` implements (never a
+persistent, multi-call server session; see that function's docstring for
+why).
+
+Env-driven modes, mirroring stub-argv-echo's/stub-provisioning-check's
+convention (one binary covers every outcome `invoke_mcp` must classify):
+  MCP_MODE=ok (default) -- replies with a `result` object that echoes back
+      the requested tool name and arguments VERBATIM (so a test can prove
+      params reached the server intact, same "prove exact receipt" idiom
+      as stub-argv-echo's raw-argv echo):
+      {"jsonrpc":"2.0","id":<req id>,"result":{"echoedTool":<tool>,"echoedArguments":<arguments>}}
+  MCP_MODE=tool_error   -- replies with an `error` object instead of
+      `result` (code $MCP_ERROR_CODE, default -32000; message
+      $MCP_ERROR_MESSAGE, default "tool failed") -- the server accepted the
+      round trip but the tool call itself failed.
+  MCP_MODE=garbage      -- writes non-JSON text to stdout.
+  MCP_MODE=bad_shape    -- writes syntactically valid JSON with NEITHER a
+      `result` nor an `error` key (JSON-RPC 2.0 requires exactly one).
+  MCP_MODE=both_fields  -- writes a response with BOTH `result` AND
+      `error` (also protocol-invalid -- exactly one, never both).
+  MCP_MODE=wrong_id     -- replies with an `id` that does not match the
+      request's `id`.
+  MCP_MODE=nonzero      -- exits nonzero (after writing $MCP_STDERR,
+      default "server crashed", to stderr) without ever reading stdin or
+      replying.
+  MCP_MODE=tool_error_nonzero -- writes the SAME error reply as
+      MCP_MODE=tool_error to stdout, THEN ALSO exits nonzero (real stdio
+      servers sometimes do both: reply with a structured tool error AND
+      exit nonzero) -- exercises the parse-before-returncode ordering
+      (issue #339 round 2 MINOR 2): the error reply must win.
+  MCP_MODE=ok_after_notification -- writes a JSON-RPC NOTIFICATION line
+      (valid JSON, no `id` -- e.g. a progress update) BEFORE the real
+      `ok`-shaped reply line -- exercises line-by-line, id-correlated
+      response parsing (issue #339 round 2 MINOR 1) against protocol
+      noise a real stdio server may legitimately emit.
+  MCP_MODE=ok_after_log_line -- writes a plain, NON-JSON banner/log line
+      (e.g. "[mcpserver] ready on stdio") BEFORE the real `ok`-shaped
+      reply line -- same MINOR 1 exercise, against non-JSON noise instead
+      of a JSON-RPC notification.
+  MCP_MODE=hang         -- sleeps $MCP_HANG_SECONDS (default 30) before
+      ever reading stdin or replying.
+
+Every invocation appends one line to $MCP_CALL_LOG (if set) so a
+validation-must-precede-execution test can assert the server was never
+even spawned when the capability's MCP declaration or params are invalid.
+"""
+import json
+import os
+import sys
+import time
+
+log_path = os.environ.get("MCP_CALL_LOG")
+if log_path:
+    with open(log_path, "a", encoding="utf-8") as fh:
+        fh.write("call\n")
+
+mode = os.environ.get("MCP_MODE", "ok")
+
+if mode == "hang":
+    time.sleep(float(os.environ.get("MCP_HANG_SECONDS", "30")))
+    sys.exit(0)
+
+if mode == "nonzero":
+    sys.stderr.write(os.environ.get("MCP_STDERR", "server crashed") + "\n")
+    sys.exit(int(os.environ.get("MCP_EXIT_CODE", "1")))
+
+line = sys.stdin.readline()
+try:
+    request = json.loads(line)
+except json.JSONDecodeError:
+    request = {}
+req_id = request.get("id", 1) if isinstance(request, dict) else 1
+rpc_params = request.get("params", {}) if isinstance(request, dict) else {}
+rpc_params = rpc_params if isinstance(rpc_params, dict) else {}
+tool = rpc_params.get("name")
+arguments = rpc_params.get("arguments")
+
+if mode == "garbage":
+    print("this is not json")
+elif mode == "bad_shape":
+    print(json.dumps({"jsonrpc": "2.0", "id": req_id}))
+elif mode == "both_fields":
+    print(json.dumps({
+        "jsonrpc": "2.0", "id": req_id,
+        "result": {"ok": True}, "error": {"code": -1, "message": "protocol-invalid: both fields"},
+    }))
+elif mode == "wrong_id":
+    print(json.dumps({"jsonrpc": "2.0", "id": req_id + 999, "result": {"ok": True}}))
+elif mode == "tool_error":
+    code = int(os.environ.get("MCP_ERROR_CODE", "-32000"))
+    message = os.environ.get("MCP_ERROR_MESSAGE", "tool failed")
+    print(json.dumps({"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}))
+elif mode == "tool_error_nonzero":
+    code = int(os.environ.get("MCP_ERROR_CODE", "-32000"))
+    message = os.environ.get("MCP_ERROR_MESSAGE", "tool failed")
+    print(json.dumps({"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}))
+    sys.stdout.flush()
+    sys.exit(int(os.environ.get("MCP_EXIT_CODE", "1")))
+elif mode == "ok_after_notification":
+    print(json.dumps({"jsonrpc": "2.0", "method": "notifications/progress", "params": {"pct": 50}}))
+    print(json.dumps({
+        "jsonrpc": "2.0", "id": req_id,
+        "result": {"echoedTool": tool, "echoedArguments": arguments},
+    }))
+elif mode == "ok_after_log_line":
+    print("[mcpserver] ready on stdio")
+    print(json.dumps({
+        "jsonrpc": "2.0", "id": req_id,
+        "result": {"echoedTool": tool, "echoedArguments": arguments},
+    }))
+else:
+    print(json.dumps({
+        "jsonrpc": "2.0", "id": req_id,
+        "result": {"echoedTool": tool, "echoedArguments": arguments},
+    }))
+
+sys.exit(0)

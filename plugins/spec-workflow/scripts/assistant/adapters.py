@@ -46,9 +46,33 @@ neither §11 nor docs/design/ast-E6.md's Data Models section names where
 that schema lives -- `invoke.params` is this task's concrete answer, kept
 entirely inside adapters.py (never touching capability_index.py's frozen
 AST-060 structural validation) so this stays a same-lane, additive change.
+
+AST-064 (SPEC-ASSISTANT.md Sec11.7, issue #339, docs/design/ast-E6.md)
+adds `invoke_mcp`: MCP servers are the OTHER invoke flavor (`invoke: {mcp:
+...}`, sibling to AST-063's `invoke: {exec: ...}`). `invoke.mcp` is this
+task's concrete schema (same interpretation-note posture as
+`invoke.params` above -- capability_index.py's AST-060 validation only
+checks `isinstance(invoke["mcp"], dict)` and names nothing further, so this
+is additive, adapters.py-only): `{server: argv-array, tool: string,
+params?: same schema shape as invoke.params}`. `invoke_mcp` spawns
+`server` via the SAME `invoke_cli` primitive `invoke_argv` uses
+(`shell=False`, mandatory timeout -- no second subprocess mechanism),
+writes ONE JSON-RPC 2.0 `tools/call` request to its stdin, and reads ONE
+JSON-RPC response from its stdout before the process exits -- a single
+round trip per call, never a persistent, multi-call server session (a real
+MCP client's `initialize`/`initialized` handshake and long-lived stdio
+session are out of scope for this task's "one round-trip invocation
+fixture" acceptance criterion; a future task can grow a persistent-session
+flavor on top of this one without changing `invoke_mcp`'s public shape).
+Params reuse `validate_params` verbatim -- no forked validation logic --
+and are sent as the JSON-RPC request's structured `arguments` object
+(never argv-templated: unlike `invoke.exec`, `invoke.mcp.server` is a
+FIXED launch argv with no placeholders, since params travel as JSON data,
+not as shell-adjacent string substitution).
 """
 import collections
 import importlib
+import json
 import re
 import subprocess
 import time
@@ -90,11 +114,20 @@ class NotFound(AdapterError):
     escaping OSError traceback)."""
 
 
-def invoke_cli(argv, *, timeout=DEFAULT_TIMEOUT_SECONDS, env=None, cwd=None):
+def invoke_cli(argv, *, timeout=DEFAULT_TIMEOUT_SECONDS, env=None, cwd=None, input=None):
     """Runs one provider-CLI turn. `argv` MUST be a list/tuple (never a
     shell string -- Sec17.3): every element travels to the OS as one literal
     argument, so an injection attempt inside a context message can never be
     reinterpreted by a shell (there is no shell in the invocation path).
+
+    `input` (AST-064, issue #339) is optional text written to the child's
+    stdin before it's closed -- `None` (the default, every pre-existing
+    caller) preserves the original `stdin=DEVNULL` behavior exactly;
+    `invoke_mcp` is the first caller to pass one, for its single JSON-RPC
+    request. Still exactly one subprocess primitive for every invoke path
+    (provider adapters, `provisioning.run_check`, `invoke_argv`,
+    `invoke_mcp`) -- `shell=False` and the mandatory `timeout` apply
+    identically regardless of `input`.
 
     Returns a `subprocess.CompletedProcess` (returncode/stdout/stderr) on
     any exit, or raises `Timeout` if the process outlives `timeout`. Never
@@ -108,17 +141,13 @@ def invoke_cli(argv, *, timeout=DEFAULT_TIMEOUT_SECONDS, env=None, cwd=None):
             "(SPEC-ASSISTANT.md Sec17.3)"
         )
     start = time.monotonic()
+    run_kwargs = dict(capture_output=True, text=True, timeout=timeout, env=env, cwd=cwd, shell=False)
+    if input is None:
+        run_kwargs["stdin"] = subprocess.DEVNULL
+    else:
+        run_kwargs["input"] = input
     try:
-        return subprocess.run(
-            list(argv),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            stdin=subprocess.DEVNULL,
-            env=env,
-            cwd=cwd,
-            shell=False,
-        )
+        return subprocess.run(list(argv), **run_kwargs)
     except subprocess.TimeoutExpired as exc:
         elapsed = time.monotonic() - start
         raise Timeout(
@@ -278,8 +307,31 @@ def validate_params(param_schema, params):
     Each error names the offending param, the constraint kind (missing/
     type/pattern/allowlist/not declared), and the offending value's shape
     -- Sec11.5's "schema-validated parameters" only means something if a
-    validation failure is actionable, not a bare boolean."""
+    validation failure is actionable, not a bare boolean.
+
+    Two declaration-shape checks run FIRST and short-circuit the rest
+    (issue #339 round 2 MINORs 3/4 -- shared by both invoke flavors,
+    `invoke_argv`'s `invoke.params` AND `invoke_mcp`'s `invoke.mcp.params`,
+    since both funnel through this one function):
+      - `param_schema` itself must be `None` (no schema declared) or a
+        mapping. A capability-authoring typo like `params: ["city"]` (a
+        list, not a mapping) used to silently coerce to `{}`, which then
+        misreported every supplied param as "not declared" -- pointing the
+        blame at the CALLER for what is actually a malformed SCHEMA.
+      - `params` (the caller-supplied values) itself must be `None` (no
+        params supplied) or a mapping. A non-mapping `params` argument
+        (e.g. a list) used to silently coerce to `{}` and the call would
+        proceed as if no params were supplied at all -- closing that
+        silent-success gap here covers both `invoke_argv` and
+        `invoke_mcp`."""
     errs = []
+    if param_schema is not None and not isinstance(param_schema, dict):
+        errs.append(f"params schema: must be a mapping (got {type(param_schema).__name__})")
+    if params is not None and not isinstance(params, dict):
+        errs.append(f"params: must be a mapping (got {type(params).__name__})")
+    if errs:
+        return errs
+
     schema = param_schema if isinstance(param_schema, dict) else {}
     params = params if isinstance(params, dict) else {}
 
@@ -411,3 +463,200 @@ def invoke_argv(capability, params, *, timeout=DEFAULT_TIMEOUT_SECONDS, env=None
     argv = substitute_argv(exec_argv, supplied)
     result = invoke_cli(argv, timeout=timeout, env=env, cwd=cwd)
     return InvokeResult(argv=argv, returncode=result.returncode, stdout=result.stdout, stderr=result.stderr)
+
+
+# ------------------------------------------------------------------------
+# AST-064 (Sec11.7): MCP invoke flavor -- one JSON-RPC round trip per call.
+# ------------------------------------------------------------------------
+
+McpInvokeResult = collections.namedtuple(
+    "McpInvokeResult", ["argv", "request", "response", "result", "returncode", "stdout", "stderr"]
+)
+
+
+class McpError(AdapterError):
+    """Base class for round-trip-level MCP invocation failures (Sec11.7) --
+    distinct from `ParamValidationError` (a bad `invoke.mcp` declaration or
+    a bad params value, caught before anything spawns) and from
+    `invoke_cli`'s own `Timeout`/`NotFound` (spawn-time failures, reused
+    as-is -- an MCP server IS just another subprocess `invoke_cli` runs)."""
+
+
+class McpUnparseableOutput(McpError):
+    """The MCP server's stdout could not be parsed as a single, well-formed
+    JSON-RPC 2.0 response for THIS call: not valid JSON, not a JSON object,
+    missing/duplicating the mutually-exclusive `result`/`error` pair
+    (JSON-RPC 2.0 requires exactly one), or carrying an `id` that does not
+    match the request's `id` (this is a one-shot, one-round-trip call --
+    a mismatched id means the reply cannot be trusted to be THIS call's
+    reply). Never a raw `json.JSONDecodeError`/`KeyError` escaping to the
+    caller."""
+
+
+class McpToolError(McpError):
+    """The MCP server accepted the round trip (valid JSON-RPC, matching
+    id) but its response carries an `error` object -- the tool call itself
+    failed server-side. Message names the tool, the JSON-RPC error code,
+    and the error message, never just the raw response dict."""
+
+
+def _parse_mcp_response(stdout, expected_id):
+    """Scans `stdout` line by line for the first line that parses as a JSON
+    object whose `id` matches `expected_id` (issue #339 round 2 MINOR 1).
+    A real stdio MCP server may emit notifications (JSON-RPC objects with
+    no `id`) or plain log/banner lines before the actual `tools/call`
+    reply -- `json.loads(entire stdout)` breaks on either shape. This is
+    what a real stdio client does: read line by line, ignore anything that
+    doesn't parse as JSON or doesn't carry OUR request's `id`, and treat
+    the first id-matching object as THIS call's reply (correlating by id
+    is also what makes this scanning approach a safe, extensible seam for
+    a future persistent-session flavor -- multiple in-flight ids on one
+    connection would resolve the same way).
+
+    Returns that object, or `None` if no line matches (either truly
+    unparseable stdout, or a reply whose id never matches -- both read as
+    "no usable reply for this call" to the caller, which raises
+    `McpUnparseableOutput` with a message naming the expected id)."""
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            candidate = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(candidate, dict) and candidate.get("id") == expected_id:
+            return candidate
+    return None
+
+
+def _validate_mcp_declaration(mcp, errs):
+    server = mcp.get("server")
+    if not isinstance(server, list) or not server or not all(isinstance(a, str) for a in server):
+        errs.append(
+            "invoke.mcp.server: must be a non-empty argv array of strings "
+            "(SPEC-ASSISTANT.md Sec11.7/Sec17.3)"
+        )
+    tool = mcp.get("tool")
+    if not isinstance(tool, str) or not tool:
+        errs.append("invoke.mcp.tool: must be a non-empty string naming the MCP tool to call")
+
+
+def invoke_mcp(capability, params, *, timeout=DEFAULT_TIMEOUT_SECONDS, env=None, cwd=None):
+    """Runs ONE JSON-RPC 2.0 `tools/call` round trip against `capability`'s
+    `invoke.mcp` server (Sec11.7): validates the `invoke.mcp` DECLARATION
+    itself (`server`/`tool` shape -- a malformed capability.yaml, never a
+    caller-supplied-value problem) and `params` against `invoke.mcp.params`
+    (via `validate_params` -- the SAME schema/validation machinery
+    `invoke_argv` uses, not a forked implementation) BEFORE spawning
+    anything; an invalid call raises `ParamValidationError` and never
+    touches `invoke_cli`, exactly like `invoke_argv`.
+
+    Once valid, spawns `invoke.mcp.server` through `invoke_cli` (`shell=
+    False`, mandatory timeout -- the SAME primitive `invoke_argv`/
+    `provisioning.run_check`/every provider adapter already funnels
+    through), writing one `{"jsonrpc":"2.0","id":1,"method":"tools/call",
+    "params":{"name":<tool>,"arguments":<params>}}` request to its stdin
+    and reading its stdout after it exits -- a single round trip, never a
+    persistent session (see module docstring). The reply is located via
+    `_parse_mcp_response` (line-by-line, id-correlated -- tolerates
+    notification/log-line noise before the actual reply, issue #339 round
+    2 MINOR 1).
+
+    Response classification is PARSE-BEFORE-RETURNCODE (issue #339 round 2
+    MINOR 2): a well-formed, id-matching JSON-RPC ERROR reply is
+    authoritative even if the server ALSO happened to exit nonzero -- the
+    richer `McpToolError` (tool name, JSON-RPC code, JSON-RPC message)
+    beats a bare `NonzeroExit` whose stderr tail would otherwise be empty
+    (the actual detail lived in stdout, not stderr). Only once that check
+    finds nothing does a nonzero exit get treated as authoritative.
+
+    Returns `McpInvokeResult(argv, request, response, result, returncode,
+    stdout, stderr)` on a genuinely successful round trip (`result` is the
+    JSON-RPC response's `result` field, already extracted for
+    convenience). Raises, all inside the `AdapterError` taxonomy, never a
+    bare stack trace:
+      - `ParamValidationError` -- malformed `invoke.mcp` declaration, or a
+        params violation (missing/type/pattern/allowlist/undeclared/
+        non-mapping schema or params).
+      - `invoke_cli`'s own `Timeout`/`NotFound` -- spawn-time failures.
+      - `McpToolError` -- a well-formed, id-matching reply carries an
+        `error` object -- the tool call itself failed (checked BEFORE
+        returncode, see above).
+      - `NonzeroExit` -- the server process exited nonzero and no
+        id-matching error reply was found.
+      - `McpUnparseableOutput` -- no line of stdout parsed as a single,
+        well-formed, id-matching JSON-RPC response (the server exited 0
+        but never sent a usable reply)."""
+    invoke = _capability_invoke(capability)
+    mcp = invoke.get("mcp")
+    mcp = mcp if isinstance(mcp, dict) else {}
+
+    decl_errs = []
+    _validate_mcp_declaration(mcp, decl_errs)
+    if decl_errs:
+        raise ParamValidationError(decl_errs)
+
+    param_schema = mcp.get("params")
+    param_errs = validate_params(param_schema, params)
+    if param_errs:
+        raise ParamValidationError(param_errs)
+
+    server_argv = list(mcp["server"])
+    tool = mcp["tool"]
+    supplied = params if isinstance(params, dict) else {}
+
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": tool, "arguments": supplied},
+    }
+    result = invoke_cli(server_argv, timeout=timeout, env=env, cwd=cwd, input=json.dumps(request) + "\n")
+
+    response = _parse_mcp_response(result.stdout, request["id"])
+    has_result = has_error = False
+    if response is not None:
+        has_result = "result" in response
+        has_error = "error" in response
+
+    # Parse-before-returncode (MINOR 2): a well-formed, id-matching ERROR
+    # reply wins even over a nonzero exit -- checked first, before the
+    # returncode gate below.
+    if response is not None and has_error and not has_result:
+        err = response["error"]
+        code = err.get("code") if isinstance(err, dict) else None
+        message = err.get("message") if isinstance(err, dict) else str(err)
+        raise McpToolError(
+            f"MCP server {server_argv[0]!r} tool {tool!r} returned an error (code={code}): {message}"
+        )
+
+    if result.returncode != 0:
+        stderr_tail = (result.stderr or "").strip()[-240:]
+        raise NonzeroExit(
+            f"MCP server {server_argv[0]!r} exited {result.returncode} calling tool {tool!r}"
+            + (f": {stderr_tail}" if stderr_tail else "")
+        )
+
+    if response is None:
+        raise McpUnparseableOutput(
+            f"MCP server {server_argv[0]!r} tool {tool!r}: no line of stdout parsed as a JSON-RPC "
+            f"response object with id={request['id']!r} matching this call"
+        )
+
+    if has_result == has_error:
+        raise McpUnparseableOutput(
+            f"MCP server {server_argv[0]!r} tool {tool!r}: JSON-RPC 2.0 response (id={request['id']!r}) "
+            f"must carry exactly one of 'result'/'error', got has_result={has_result} has_error={has_error}"
+        )
+
+    # has_result True, has_error False, returncode == 0 here -- genuine success.
+    return McpInvokeResult(
+        argv=server_argv,
+        request=request,
+        response=response,
+        result=response["result"],
+        returncode=result.returncode,
+        stdout=result.stdout,
+        stderr=result.stderr,
+    )
