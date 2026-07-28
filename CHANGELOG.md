@@ -22,6 +22,13 @@
   >   inspector groups, end to end
   > - new section-assistant-voice-turn test section (two Node harnesses)
 
+### Other
+- retro(#111): PR-close retro for #339 + #334 (`d4787e4`)
+  > - dev: 5 notes (assert after the round trip, test-comment-admitting-gap is a fail, enumerate state-machine exits, protocol-layer failure enumeration, assertions vs process exit)
+  > - reviewer: 3 notes (when does the test observe, test-avoidance comment is a bug report, reuse the project's own harness)
+  > - orchestrator: 1 note (lessons compound when briefed forward — proven by the zero-escape round)
+  > - pruned, DIRECTORY.md regenerated
+
 ## v0.47.0 — 2026-07-28
 
 ### Features
