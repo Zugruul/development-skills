@@ -552,6 +552,10 @@ global.stopStt = () => { stopSttCalls++; };
 eval(extract("speakReply"));
 eval(extract("dispatchNextChat"));
 eval(extract("queueOrSendChat"));
+// AST-083 (#459): chatInputKeydown now calls the shared sendChatInput()
+// dispatch -- extract it first (same fix as section-assistant-chat.sh's
+// harness).
+eval(extract("sendChatInput"));
 eval(extract("chatInputKeydown"));
 eval(extract("loadChatHistory"));
 eval(extract("openChatOverlay"));

@@ -532,6 +532,14 @@ canvas.grabbing{cursor:grabbing}
 .ast-voice-name:empty::before{content:"SELECT"}
 #voice-viz-kbd{flex:0 0 auto;cursor:pointer;display:inline-flex;gap:.15rem}
 #voice-viz-kbd .ast-kbd{font-size:.48rem;padding:.03rem .24rem}
+/* #459 flagged extension 3 (visible affordance for opening chat): mirrors
+   voice-viz-kbd/search-kbd's own pattern exactly -- a clickable .ast-kbd
+   chip sitting beside the assistant name, advertising the PLAIN T
+   shortcut (the human explicitly rejected a Cmd+T reading; there never
+   was a modifier binding here, see handleAssistantChatKeydown -- this
+   chip only makes the existing plain-T binding discoverable). */
+#ast-chat-kbd{flex:0 0 auto;cursor:pointer;display:inline-flex;gap:.15rem}
+#ast-chat-kbd .ast-kbd{font-size:.48rem;padding:.03rem .24rem}
 /* #399: the post-boot switch dropdown, visually anchored AT the label.
    It CANNOT live inside #voicebar: .hud's backdrop-filter makes the panel
    its own stacking context and the containing block even for fixed
@@ -878,17 +886,69 @@ canvas.grabbing{cursor:grabbing}
 .ast-waterfall-bar.ast-waterfall-instant{width:2px!important;opacity:1;background:var(--fg)}
 .ast-waterfall-bar.ast-waterfall-error{background:#e0453a;opacity:1}
 .ast-waterfall-label{font-size:.55rem;color:var(--muted)}
-/* AST-023 T-key chat overlay (SPEC-ASSISTANT.md §8.6, §5, §8.3, §8.5,
-   issue #320): minimal HUD-consistent placeholder styling only, matching
-   .hud's panel/border language at the structural level -- the real look
-   is a pending human choice on the issue, same restyle-later note as
-   AST-021/022 above. */
+/* AST-083 (issue #459, human-directed): the FINALIZED chat design --
+   Option A "Inline rail" (.claude/ui-hub/html decision, human pick
+   confirmed by docs/ui-options/screenshots/AST-083/AST-083-A-*.png),
+   applied here as the shipped overlay. AST-023's original placeholder
+   styling (see git history) is gone -- this replaces it, not layers on
+   top. Colors/spacing below are the SAME design tokens the mockup itself
+   sampled from this app (:root above): var(--cyan)=#46e6ff,
+   var(--amber)=#ffb347, var(--border)=rgba(90,190,255,.28), var(--slate)
+   =#8fa6bd, var(--panel-solid)=#0a1422 -- the mockup's hardcoded hex
+   values (mockups must be self-contained, see the ui-options template's
+   own doc comment) are these exact numbers, not independently invented
+   ones, so porting the mockup's rgba() literals here keeps the chat
+   overlay in the SAME token system as the rest of the app rather than
+   introducing a parallel one.
+   Design element -> implementation map (see the #459 commit message for
+   the full point-by-point table):
+     .mk-bub (rounded, asymmetric tail corner, role-colored) -> .ast-chat-row
+     .mk-composer/.mk-input/.mk-send                          -> .ast-chat-inputrow/.ast-chat-input/.ast-chat-send
+     "linear one-thread flow" (Option A's own aspect label)   -> renderChatLog still appends one row per turn, never rewrites past ones in place
+   NOT ported from the mockup (out of scope -- no async job/artifact-
+   panel feature exists in this app's actual chat, which is synchronous
+   text-in/text-out): the queued/progress-ring states, the inline
+   progress bar, the "opened in panel" chip, the artifact stage. Only the
+   message-bubble + composer visual language applies; the mockup's
+   trace-link-on-failure concept doesn't exist here either -- system rows
+   stay in the app's own established red error color (#e0453a, matching
+   #451's STT-failure rows and every other error surface in this app),
+   not the mockup's amber .mk-bub.fail, since the mockup's amber failure
+   is a per-message TASK failure (an assistant bubble reporting its own
+   job died), not this app's distinct "system announcement" row kind --
+   flagged in the #459 report as a design-silent judgment call. */
 .ast-chat-overlay{position:fixed;left:50%;bottom:1rem;transform:translateX(-50%);
   width:min(560px,90vw);max-height:60vh;display:flex;flex-direction:column;
-  background:var(--panel-solid);border:1px solid var(--border);border-radius:8px;
+  background:var(--panel-solid);border:1px solid var(--border);border-radius:10px;
+  backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+  box-shadow:0 10px 28px rgba(0,0,0,.45);
   z-index:60;font-family:var(--mono);font-size:.68rem;color:var(--fg)}
-.ast-chat-header{display:flex;align-items:center;justify-content:space-between;
-  padding:.35rem .5rem;border-bottom:1px solid var(--border)}
+.ast-chat-header{display:flex;align-items:center;gap:.5rem;
+  padding:.4rem .55rem;border-bottom:1px solid var(--border)}
+/* #459 flagged extension 2 (WHO AM I TALKING TO): the voice panel already
+   names the selected assistant (#voice-viz-name) but the chat overlay
+   never did -- set from GET /assistant/status's own selected field in
+   openChatOverlay(), the same source setVoiceHeaderName uses, so this
+   can never drift from the voice panel's own name. */
+/* #459 review (visual pass): the mockup's chat surface lives inside
+   .mk-side, whose header (.mk-side-hd) is a cyan .mk-dot followed by the
+   label -- the ship dropped the dot when the literal "ASSISTANT" text
+   became the real assistant name (an approved improvement, kept). Same
+   dot idiom this app's OWN top #status bar already uses (#status .dot),
+   scaled to the chat header's smaller type -- it is what visually ties
+   this header to the rest of the HUD, not a mockup-only detail. */
+.ast-chat-dot{flex:0 0 auto;display:inline-block;width:.4rem;height:.4rem;
+  border-radius:50%;background:var(--cyan);box-shadow:0 0 6px var(--cyan)}
+.ast-chat-assistant-name{flex:0 0 auto;font-size:.62rem;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--cyan);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:40%}
+/* #459 flagged extension 1 (the 1/2/3 control read as unlabeled tabs): a
+   proper visible name, not just an aria-label -- role="group" carries the
+   same semantic the app's other segmented controls already use
+   (#voice-dir's "Voice direction", #theme-toggle's "Theme"). */
+.ast-chat-lastx-wrap{display:flex;align-items:center;gap:.3rem;margin-left:auto}
+.ast-chat-lastx-label{font-size:.5rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);white-space:nowrap}
 .ast-chat-lastx{display:flex;gap:.2rem}
 .ast-chat-lastx-btn{font-family:var(--mono);font-size:.6rem;padding:.1rem .4rem;
   border:1px solid var(--border);border-radius:3px;cursor:pointer;color:var(--fg);
@@ -896,21 +956,47 @@ canvas.grabbing{cursor:grabbing}
 .ast-chat-lastx-btn.ast-chat-lastx-active{border-color:var(--cyan);color:var(--cyan)}
 .ast-chat-close{font-family:var(--mono);font-size:.7rem;border:1px solid var(--border);
   border-radius:3px;cursor:pointer;color:var(--fg);background:transparent}
-.ast-chat-log{flex:1;overflow-y:auto;padding:.4rem .5rem;display:flex;
-  flex-direction:column;gap:.3rem}
-.ast-chat-row{border:1px solid var(--border);border-radius:3px;padding:.25rem .4rem;
-  white-space:pre-wrap;max-width:85%}
-.ast-chat-row[data-role="user"]{align-self:flex-end;border-color:var(--cyan)}
-.ast-chat-row[data-role="assistant"]{align-self:flex-start}
-.ast-chat-row[data-role="system"]{align-self:stretch;border-color:#e0453a;color:#e0453a}
-.ast-chat-chips{display:flex;flex-wrap:wrap;gap:.2rem;margin-top:.25rem}
+.ast-chat-log{flex:1;overflow-y:auto;padding:.55rem .6rem;display:flex;
+  flex-direction:column;gap:.4rem}
+/* .mk-bub -> .ast-chat-row: rounded bubble, asymmetric "tail" corner per
+   role (border-bottom-*-radius pulled in), role-colored bg/border. */
+.ast-chat-row{border-radius:.7rem;padding:.45rem .6rem;
+  white-space:pre-wrap;max-width:88%;line-height:1.45;font-size:.7rem}
+.ast-chat-row[data-role="user"]{align-self:flex-end;
+  background:rgba(70,230,255,.12);border:1px solid var(--border);
+  border-bottom-right-radius:.2rem}
+.ast-chat-row[data-role="assistant"]{align-self:flex-start;
+  background:#0d1826;border:1px solid rgba(90,190,255,.18);
+  border-bottom-left-radius:.2rem}
+/* system rows: the app's OWN established error color (#451's STT-failure
+   rows, the existing failed-/assistant/chat-reply row) -- see the
+   comment on this whole block for why this stays red, not the mockup's
+   amber .mk-bub.fail. */
+.ast-chat-row[data-role="system"]{align-self:stretch;border-radius:.5rem;
+  border:1px solid #e0453a;background:rgba(224,69,58,.08);color:#e0453a}
+/* #459 flagged extension 4 (blank panel after switching to an assistant
+   with no stored exchanges): an explicit named empty state instead of
+   nothing -- see renderChatLog(). */
+.ast-chat-empty{align-self:center;color:var(--muted);font-size:.62rem;
+  text-align:center;padding:.6rem .5rem;max-width:90%}
+.ast-chat-chips{display:flex;flex-wrap:wrap;gap:.2rem;margin-top:.3rem}
 .ast-chat-chip{font-size:.55rem;border:1px solid var(--border);border-radius:3px;
   padding:.05rem .3rem;color:var(--fg)}
-.ast-chat-state{padding:.2rem .5rem;font-size:.6rem;color:var(--muted);min-height:1em}
+.ast-chat-state{padding:.2rem .55rem;font-size:.6rem;color:var(--muted);min-height:1em}
 .ast-chat-state-gated,.ast-chat-state-offline{color:#e0453a}
-.ast-chat-inputrow{display:flex;gap:.3rem;padding:.4rem .5rem;border-top:1px solid var(--border)}
-.ast-chat-input{flex:1;font-family:var(--mono);font-size:.65rem;background:transparent;
-  color:var(--fg);border:1px solid var(--border);border-radius:3px;padding:.25rem .4rem}
+.ast-chat-inputrow{display:flex;gap:.4rem;align-items:center;
+  padding:.5rem .55rem;border-top:1px solid rgba(90,190,255,.16)}
+/* .mk-input/.mk-send -> .ast-chat-input/.ast-chat-send */
+.ast-chat-input{flex:1;font-family:var(--mono);font-size:.68rem;
+  background:var(--panel-solid);color:var(--fg);border:1px solid var(--border);
+  border-radius:.55rem;padding:.4rem .55rem}
+.ast-chat-input::placeholder{color:#7d94a8;opacity:1}
+.ast-chat-send{flex:0 0 auto;min-width:1.6rem;min-height:1.6rem;
+  display:inline-flex;align-items:center;justify-content:center;
+  border-radius:.55rem;background:rgba(70,230,255,.14);
+  border:1px solid rgba(90,190,255,.4);color:var(--cyan);
+  font-family:var(--mono);font-size:.75rem;cursor:pointer}
+.ast-chat-send:hover{background:rgba(70,230,255,.24)}
 .ast-chat-retry{font-family:var(--mono);font-size:.6rem;border:1px solid var(--border);
   border-radius:3px;cursor:pointer;color:var(--fg);background:transparent}
 .ast-chat-hidden{display:none}
@@ -1328,7 +1414,7 @@ canvas.grabbing{cursor:grabbing}
        yet). Same Cmd+K/Ctrl+K shortcut opens/toggles the same dropdown --
        see the JS below. -->
   <div id="voice-viz"><button type="button" id="voice-viz-name" class="ast-voice-name"
-      aria-haspopup="listbox" aria-expanded="false" title="Switch assistant"></button><span id="voice-viz-kbd" aria-hidden="true"></span><canvas id="voice-viz-canvas"></canvas><span id="voice-viz-status" hidden></span></div>
+      aria-haspopup="listbox" aria-expanded="false" title="Switch assistant"></button><span id="voice-viz-kbd" aria-hidden="true"></span><span id="ast-chat-kbd" aria-hidden="true"></span><canvas id="voice-viz-canvas"></canvas><span id="voice-viz-status" hidden></span></div>
   <!-- AST-024 digest (#321): relocated out of the removed #voice-dock into
        a transient, click-to-dismiss overlay -- see the #ast-digest-panel
        CSS comment above. hidden until renderAssistantDigest has something
@@ -6842,6 +6928,24 @@ function wireSearchShortcutUi(){
 }
 wireSearchShortcutUi();
 
+// AST-083 (#459) flagged extension 3: a visible affordance for opening
+// chat -- mirrors wireAssistantSwitchUi/wireSearchShortcutUi's own
+// pattern exactly (a named function, so a test harness can eval/drive it
+// directly). Renders a single PLAIN "T" keycap chip, not a modifier
+// combo -- unlike astShortcutKeys()'s Cmd/Ctrl+letter chips, T has never
+// had a modifier (see handleAssistantChatKeydown further below, which
+// only ever checked bare ev.key); the human explicitly rejected a Cmd+T
+// reading, so this chip must never suggest one.
+function wireAssistantChatUi(){
+  const kbd = document.getElementById("ast-chat-kbd");
+  if(kbd){
+    kbd.innerHTML = '<kbd class="ast-kbd">T</kbd>';
+    kbd.onclick = ()=> openChatOverlay();
+    kbd.title = "Open chat (T)";
+  }
+}
+wireAssistantChatUi();
+
 // ---- T-key chat overlay (AST-023, SPEC-ASSISTANT.md §8.6, §5, §8.3, §8.5,
 // issue #320) ----
 // T (outside any input/textarea/contenteditable) opens a bottom-center
@@ -6870,6 +6974,17 @@ function isChatTypingTarget(t){
 }
 function appendChatRow(log, role, text, chips){
   if(!log) return null;
+  // AST-083 (#459): a row about to be added -- from ANY caller
+  // (dispatchNextChat's new turn, reportSttFailure's error row, a future
+  // one) -- must clear renderChatLog's empty-state placeholder first, or
+  // it lingers alongside the real row(s). Checked via a data attribute
+  // on the log itself (set/cleared by renderChatLog, below) rather than
+  // querying for the placeholder element, since this app's DOM stub in
+  // the test harnesses doesn't implement querySelector.
+  if(log.getAttribute && log.getAttribute("data-chat-empty") === "1"){
+    log.innerHTML = "";
+    log.setAttribute("data-chat-empty", "");
+  }
   const row = document.createElement("div");
   row.className = "ast-chat-row";
   row.setAttribute("data-role", role);
@@ -6893,6 +7008,21 @@ function renderChatLog(){
   if(!log) return;
   log.innerHTML = "";
   const take = window.assistantChat.exchanges.slice(-window.assistantChat.lastX);
+  // #459 flagged extension 4: an assistant with no stored exchanges used
+  // to render a blank log (the reported bug: switching to fab-io showed
+  // nothing at all) -- name the assistant explicitly instead of leaving
+  // the human guessing whether anything loaded. data-chat-empty flags
+  // this row for appendChatRow (above) to clear before adding a real one.
+  if(!take.length){
+    log.setAttribute("data-chat-empty", "1");
+    const empty = document.createElement("div");
+    empty.className = "ast-chat-empty";
+    const name = window.__assistantSelected;
+    empty.textContent = name ? `No messages yet with ${name} -- say something to start.` : "No messages yet -- say something to start.";
+    log.appendChild(empty);
+    return;
+  }
+  log.setAttribute("data-chat-empty", "");
   for(const ex of take){
     appendChatRow(log, "user", ex.user, null);
     appendChatRow(log, "assistant", ex.assistant, ex.chips || null);
@@ -6921,13 +7051,43 @@ function buildChatOverlay(){
   overlay.className = "ast-chat-overlay";
   const header = document.createElement("div");
   header.className = "ast-chat-header";
+  // #459 review (visual pass): the mockup's header is a status dot THEN
+  // the label (.mk-side-hd's .mk-dot) -- present always, not tied to any
+  // particular state, same as this app's own #status dot at the top of
+  // the page. Placed before the name, never removed/toggled.
+  const dotEl = document.createElement("span");
+  dotEl.className = "ast-chat-dot";
+  dotEl.setAttribute("aria-hidden", "true");
+  header.appendChild(dotEl);
+  // #459 flagged extension 2: WHO AM I TALKING TO -- populated from GET
+  // /assistant/status's own `selected` field once openChatOverlay's status
+  // fetch resolves (see there); starts empty so a gated/offline open never
+  // shows a stale or made-up name.
+  const nameEl = document.createElement("span");
+  nameEl.id = "ast-chat-assistant-name";
+  nameEl.className = "ast-chat-assistant-name";
+  header.appendChild(nameEl);
+  // #459 flagged extension 1: the 1/2/3 control is a last-N-exchanges
+  // selector, not tabs -- role="group" + a visible label name it, same
+  // pattern #voice-dir ("Voice direction") and #theme-toggle ("Theme")
+  // already use elsewhere in this app.
+  const lastxWrap = document.createElement("div");
+  lastxWrap.className = "ast-chat-lastx-wrap";
+  lastxWrap.setAttribute("role", "group");
+  lastxWrap.setAttribute("aria-label", "Number of recent exchanges shown");
+  const lastxLabel = document.createElement("span");
+  lastxLabel.className = "ast-chat-lastx-label";
+  lastxLabel.textContent = "Show last";
+  lastxWrap.appendChild(lastxLabel);
   const lastx = document.createElement("div");
   lastx.id = "ast-chat-lastx";
   lastx.className = "ast-chat-lastx";
-  header.appendChild(lastx);
+  lastxWrap.appendChild(lastx);
+  header.appendChild(lastxWrap);
   const close = document.createElement("button");
   close.className = "ast-chat-close";
   close.textContent = "×";
+  close.setAttribute("aria-label", "Close chat");
   close.onclick = ()=>{ closeChatOverlay(); };
   header.appendChild(close);
   overlay.appendChild(header);
@@ -6944,8 +7104,28 @@ function buildChatOverlay(){
   const input = document.createElement("input");
   input.id = "ast-chat-input";
   input.className = "ast-chat-input";
+  input.type = "text";
+  input.autocomplete = "off";
+  // AST-083 Option A's composer contract: aria-label "Message the
+  // assistant" (pinned verbatim in the mockup) plus a placeholder --
+  // AST-023's original input had neither.
+  input.setAttribute("aria-label", "Message the assistant");
+  input.placeholder = "Message the assistant…";
   input.onkeydown = chatInputKeydown;
   inputrow.appendChild(input);
+  // AST-083 Option A's composer also has an explicit send affordance
+  // (.mk-send, aria-label "Send message") -- AST-023's placeholder only
+  // ever supported Enter-to-send. sendChatInput() (below) is the shared
+  // dispatch both this click and chatInputKeydown's Enter path call, so
+  // there is exactly one place that reads the input and clears it.
+  const send = document.createElement("button");
+  send.id = "ast-chat-send";
+  send.className = "ast-chat-send";
+  send.type = "button";
+  send.setAttribute("aria-label", "Send message");
+  send.textContent = "➤";
+  send.onclick = ()=>{ sendChatInput(); };
+  inputrow.appendChild(send);
   const retry = document.createElement("button");
   retry.id = "ast-chat-retry";
   retry.className = "ast-chat-retry ast-chat-hidden";
@@ -7088,15 +7268,22 @@ async function queueOrSendChat(text, turnId, source){
   window.assistantChat.queue.push({text, turnId: turnId || null, source: src});
   dispatchNextChat();
 }
-function chatInputKeydown(ev){
-  if(ev.key !== "Enter") return;
-  if(ev.preventDefault) ev.preventDefault();
+// AST-083 (#459): the shared dispatch both the composer's Send button
+// (buildChatOverlay, above) and Enter (chatInputKeydown, below) call --
+// one place reads the input and clears it, so the two triggers can never
+// drift (e.g. one clearing the input and the other not).
+function sendChatInput(){
   const input = document.getElementById("ast-chat-input");
   if(!input || input.disabled) return;
   const text = (input.value || "").trim();
   if(!text) return;
   input.value = "";
   queueOrSendChat(text);
+}
+function chatInputKeydown(ev){
+  if(ev.key !== "Enter") return;
+  if(ev.preventDefault) ev.preventDefault();
+  sendChatInput();
 }
 async function loadChatHistory(){
   let data;
@@ -7118,6 +7305,14 @@ async function openChatOverlay(){
     renderChatOffline();
     return;
   }
+  // #459 flagged extension 2: WHO AM I TALKING TO -- read straight off
+  // this response's OWN `selected` field (the same source
+  // setVoiceHeaderName uses for the voice panel), rather than trusting
+  // window.__assistantSelected to already be current -- this fetch is the
+  // freshest data this function has.
+  window.__assistantSelected = (status && status.selected) || null;
+  const nameEl = document.getElementById("ast-chat-assistant-name");
+  if(nameEl) nameEl.textContent = window.__assistantSelected || "";
   if(!status || status.gated || status.outcome === "none"){
     renderChatGated(overlay, status);
     return;

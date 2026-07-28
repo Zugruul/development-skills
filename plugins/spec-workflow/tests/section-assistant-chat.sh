@@ -157,6 +157,9 @@ eval(extract("newClientTurnId"));
 eval(extract("speakReply"));
 eval(extract("dispatchNextChat"));
 eval(extract("queueOrSendChat"));
+// AST-083 (#459): chatInputKeydown now calls the shared sendChatInput()
+// dispatch (also used by the composer's Send button) -- extract it first.
+eval(extract("sendChatInput"));
 eval(extract("chatInputKeydown"));
 eval(extract("loadChatHistory"));
 eval(extract("openChatOverlay"));
@@ -264,8 +267,13 @@ function resetChat() {
     await flush();
 
     // ---- backward compat: no selection known -> no `assistant` key at all (matches ENTER_SEND_OK above, asserted explicitly here too) ----
-    window.__assistantSelected = null;
+    // AST-083 (#459): openChatOverlay() now syncs window.__assistantSelected
+    // from ITS OWN /assistant/status fetch every time it runs (see the
+    // "who am I talking to" header, above) -- so the no-selection case must
+    // be driven by the status STUB reporting no selection, not by presetting
+    // the global and hoping openChatOverlay leaves it alone.
     resetChat();
+    statusResponse.selected = null;
     await openChatOverlay();
     const noSelInput = document.getElementById("ast-chat-input");
     noSelInput.value = "no selection";
@@ -390,3 +398,165 @@ check "template pins the ast-chat-chip class name in source" '"ast-chat-chip"' "
 check "template pins the ast-chat-input class name in source" '"ast-chat-input"' "$(cat "$NVHTML_CHAT")"
 check "template pins the ast-chat-state class name in source" '"ast-chat-state"' "$(cat "$NVHTML_CHAT")"
 check "template pins the ast-chat-lastx class name in source" '"ast-chat-lastx"' "$(cat "$NVHTML_CHAT")"
+
+echo "-- template: AST-083 (#459) design elements -- Option A composer contract, labeled last-N selector, assistant-name header, source-level pins --"
+check "composer input carries the design-mandated aria-label, pinned verbatim from the mockup" 'input.setAttribute("aria-label", "Message the assistant");' "$(cat "$NVHTML_CHAT")"
+check "composer input carries placeholder text" 'input.placeholder = "Message the assistant' "$(cat "$NVHTML_CHAT")"
+check "an explicit Send button exists (AST-023 had Enter-only), aria-label Send message" 'send.setAttribute("aria-label", "Send message");' "$(cat "$NVHTML_CHAT")"
+check "459 flagged extension 1: the 1/2/3 control gets role=group" 'lastxWrap.setAttribute("role", "group");' "$(cat "$NVHTML_CHAT")"
+check "459 flagged extension 1: the 1/2/3 control gets an accessible-name aria-label" 'lastxWrap.setAttribute("aria-label", "Number of recent exchanges shown");' "$(cat "$NVHTML_CHAT")"
+check "459 flagged extension 1: the 1/2/3 control ALSO gets a visible label -- not just aria-label, since the human complained it visually read as tabs" 'lastxLabel.textContent = "Show last";' "$(cat "$NVHTML_CHAT")"
+check "459 flagged extension 2: the chat header gets an assistant-name element" 'ast-chat-assistant-name' "$(cat "$NVHTML_CHAT")"
+# #459 review (visual pass): the mockup's header is a cyan status dot
+# THEN the label (.mk-side-hd's .mk-dot) -- the ship dropped the dot
+# when the literal "ASSISTANT" text became the real name. Same idiom
+# this app's own top #status bar already uses (#status .dot).
+check "459 review: the chat header carries a status dot, same idiom as this app's own #status .dot" 'dotEl.className = "ast-chat-dot";' "$(cat "$NVHTML_CHAT")"
+
+_ac2_node="$(mktemp).cjs"
+cat >"$_ac2_node" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+
+function extract(name) {
+    const re = new RegExp("(?:async )?function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\n\\}\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find function " + name + "() in template");
+    return m[0];
+}
+
+const elements = {};
+function mkEl(initialId) {
+    const el = {
+        _id: initialId,
+        _classes: new Set(),
+        classList: {
+            add(c){ this._parent._classes.add(c); },
+            remove(c){ this._parent._classes.delete(c); },
+            contains(c){ return this._parent._classes.has(c); },
+        },
+        disabled: false,
+        title: "",
+        textContent: "",
+        value: "",
+        _attrs: {},
+        _items: [],
+        get children(){
+            return new Proxy(this._items, {
+                set(_target, prop){
+                    throw new TypeError("Cannot set property " + String(prop) + " of Array which has only a getter");
+                },
+            });
+        },
+        appendChild(child){ this._items.push(child); return child; },
+        get innerHTML(){ return this._innerHTML || ""; },
+        set innerHTML(v){ this._items.length = 0; this._innerHTML = v; this._attrs["data-chat-empty"] = undefined; },
+        get id(){ return this._id; },
+        set id(v){ this._id = v; if (v) elements[v] = this; },
+        remove(){ if (this._id && elements[this._id] === this) delete elements[this._id]; },
+        get className(){ return [...this._classes].join(" "); },
+        set className(v){ this._classes = new Set(v.split(" ").filter(Boolean)); },
+        setAttribute(k, v){ if (k === "class") { this.className = v; } this._attrs[k] = String(v); },
+        getAttribute(k){ return this._attrs[k] !== undefined ? this._attrs[k] : null; },
+    };
+    el.classList._parent = el;
+    if (initialId) elements[initialId] = el;
+    return el;
+}
+const bodyEl = mkEl(null);
+global.document = {
+    body: bodyEl,
+    getElementById(id) { return elements[id] || null; },
+    createElement(_tag) { return mkEl(null); },
+};
+global.window = global;
+window.__assistantSelected = null;
+window.neuralVoice = { speakChunks(){} };
+window.__sttListening = false;
+
+let fetchCalls = [];
+let pendingChat = [];
+global.fetch = async (url, opts) => {
+    fetchCalls.push({ url, opts });
+    if (url === "/assistant/status") return { status: 200, json: async () => ({ outcome: "one", candidates: [{name:"fab-io", aliases:[], root:"/r"}], selected: "fab-io", gated: false, askAgain: false }) };
+    if (url.indexOf("/assistant/history") === 0) return { status: 200, json: async () => ({ exchanges: [], warnings: [] }) };
+    if (url === "/assistant/chat") return new Promise((resolve) => { pendingChat.push({url, opts, resolve}); });
+    return { status: 200, json: async () => ({}) };
+};
+function resolveChat(i, status, payload) { pendingChat[i].resolve({ status, json: async () => payload }); }
+async function flush() { for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r)); }
+
+let store = {};
+let uiState = {};
+global.localStorage = { getItem(){ return null; }, setItem(){}, removeItem(){} };
+window.assistantChat = { queue: [], inFlight: false, exchanges: [], lastX: 2, elapsedTimer: null, elapsedStart: 0 };
+
+eval(extract("appendChatRow"));
+eval(extract("renderChatLog"));
+eval(extract("renderChatLastXToggle"));
+eval(extract("setChatLastX"));
+eval(extract("buildChatOverlay"));
+eval(extract("renderChatGated"));
+eval(extract("renderChatOffline"));
+eval(extract("chatElapsedText"));
+eval(extract("startChatElapsed"));
+eval(extract("stopChatElapsed"));
+eval(extract("voiceDir"));
+eval(extract("voiceOn"));
+eval(extract("chunkSpeechText"));
+eval(extract("emitVoiceSpan"));
+eval(extract("trackLocalVoiceSpan"));
+eval(extract("newClientTurnId"));
+eval(extract("speakReply"));
+eval(extract("dispatchNextChat"));
+eval(extract("queueOrSendChat"));
+eval(extract("sendChatInput"));
+eval(extract("chatInputKeydown"));
+eval(extract("loadChatHistory"));
+eval(extract("openChatOverlay"));
+eval(extract("closeChatOverlay"));
+
+(async () => {
+// ---- 459 flagged extension 2: WHO AM I TALKING TO -- an assistant with NO stored exchanges yet (the reported blank-panel bug) still names itself in the header ----
+await openChatOverlay();
+const nameEl = document.getElementById("ast-chat-assistant-name");
+if (!nameEl || nameEl.textContent !== "fab-io") throw new Error("expected the chat header to name the selected assistant fab-io, got " + (nameEl && nameEl.textContent));
+console.log("ASSISTANT_NAME_IN_HEADER_OK true");
+
+// ---- 459 flagged extension 4: empty-state names the assistant instead of blank space ----
+const log = document.getElementById("ast-chat-log");
+const emptyRow = log.children.find(c => c.className === "ast-chat-empty");
+if (!emptyRow || emptyRow.textContent.indexOf("fab-io") === -1) throw new Error("expected an empty-state row naming fab-io, got " + (emptyRow && emptyRow.textContent));
+console.log("EMPTY_STATE_NAMES_ASSISTANT_OK true");
+
+// ---- the Send button dispatches the same as Enter, and clears the empty state ----
+const input = document.getElementById("ast-chat-input");
+const send = document.getElementById("ast-chat-send");
+input.value = "hello via send button";
+input.disabled = false;
+send.onclick();
+const sendCalls = fetchCalls.filter(c => c.url === "/assistant/chat");
+if (sendCalls.length !== 1) throw new Error("clicking Send must dispatch exactly one /assistant/chat POST, got " + sendCalls.length);
+if (JSON.parse(sendCalls[0].opts.body).message !== "hello via send button") throw new Error("Send button did not carry the input's text");
+if (input.value !== "") throw new Error("Send button must clear the input, same as Enter does");
+console.log("SEND_BUTTON_DISPATCHES_OK true");
+
+const logAfterSend = document.getElementById("ast-chat-log");
+if (logAfterSend.children.length !== 1 || logAfterSend.children[0].className !== "ast-chat-row") throw new Error("the empty-state row must be cleared once a real turn starts, got " + logAfterSend.children.length + " children");
+console.log("EMPTY_STATE_CLEARS_ON_SEND_OK true");
+resolveChat(0, 200, {text: "hi", chips: [], warnings: []});
+await flush();
+
+console.log("ALL_OK true");
+})().catch(e => { console.error("FAIL", e.message); process.exit(1); });
+NODEJS
+tmpl_ac2_out="$(node "$_ac2_node" "$NVHTML_CHAT" 2>&1)"
+tmpl_ac2_rc=$?
+rm -f "$_ac2_node"
+check_rc "AST-083 chat-design template script exits 0" 0 "$tmpl_ac2_rc"
+check "459 flagged extension 2: the chat header names the selected assistant even with no stored exchanges yet" "ASSISTANT_NAME_IN_HEADER_OK true" "$tmpl_ac2_out"
+check "459 flagged extension 4: the empty-state row names the assistant instead of blank space (the reported fab-io bug)" "EMPTY_STATE_NAMES_ASSISTANT_OK true" "$tmpl_ac2_out"
+check "the composer Send button dispatches identically to Enter and clears the input" "SEND_BUTTON_DISPATCHES_OK true" "$tmpl_ac2_out"
+check "the empty-state placeholder row is cleared once a real turn starts (no lingering row)" "EMPTY_STATE_CLEARS_ON_SEND_OK true" "$tmpl_ac2_out"
+check "the whole AST-083 chat-design template script completes" "ALL_OK true" "$tmpl_ac2_out"
+if [[ "$tmpl_ac2_rc" -ne 0 ]]; then echo "$tmpl_ac2_out" >&2; fi
