@@ -60,7 +60,7 @@ check "WhisperSttEngine's unavailable message offers the Web Speech alternative"
 check "sttEngines registry wires both engine names to their implementations" 'const sttEngines = { whisper: new WhisperSttEngine(), "web-speech": new WebSpeechSttEngine() };' "$NVHTML_STT_BODY"
 
 echo "-- template: onSttText hook routes into the existing chat-send path --"
-check "onSttText(text) exists" "function onSttText(text){" "$NVHTML_STT_BODY"
+check "onSttText(text, turnId) exists -- AST-052 (#334) threads a turnId through for span correlation" "function onSttText(text, turnId){" "$NVHTML_STT_BODY"
 check "onSttText forwards into queueOrSendChat (AST-052's future consumer, chat input today)" "queueOrSendChat(text)" "$NVHTML_STT_BODY"
 
 echo "-- template: §17.9 hard gate -- STT cannot start with no assistant selected --"
@@ -225,8 +225,22 @@ defineClass("WhisperSttEngine");
 }
 
 // ---- §17.9 hard gate + span emission ----
+// AST-052 (#334): startStt/stopStt now also call trackLocalVoiceSpan
+// (span-correlation, same client-local array TTS spans already join) and
+// setSttListening (the mic control's visible state) -- both extracted
+// here too so this harness's eval'd startStt/stopStt/onSttText don't
+// ReferenceError; window.assistantVoiceSpans starts empty like the real
+// boot sequence's. releaseSttCapture (review round 2): onSttText's auto-
+// stop and startStt's error path both call it now -- global.uiState/
+// saveUiState below already exist for it; window.__sttPrevVdir stays
+// undefined in this harness (falsy), so its restore branch simply never
+// fires here, same as a turn that never widened the direction.
+window.assistantVoiceSpans = [];
 eval(extract("onSttText"));
 eval(extract("emitVoiceSpan"));
+eval(extract("trackLocalVoiceSpan"));
+eval(extract("setSttListening"));
+eval(extract("releaseSttCapture"));
 defineConst("sttEngines");
 eval(extract("startStt"));
 eval(extract("stopStt"));
@@ -250,10 +264,52 @@ if (startBody.engine !== "web-speech") throw new Error("expected engine web-spee
 console.log("SPAN_ENGINE_NAME_OK true");
 delete global.window.SpeechRecognition;
 
+// ---- AST-052 (#334) span correlation: passing a turnId to startStt uses
+// it AS the span id (same trick speakReply already applies to tts spans),
+// and both stt-start/stt-end join window.assistantVoiceSpans (local,
+// turn_id-tagged) the same way TTS spans already do -- so groupTurnsById
+// can merge a full stt+chat+tts turn under one id. ----
+{
+    global.window.assistantGate = { gated: false };
+    global.window.assistantVoiceSpans = [];
+    fetchCalls = [];
+    setSttEngineChoice("web-speech");
+    global.window.SpeechRecognition = function () { this.start = () => {}; this.stop = () => {}; };
+    const sharedTurnId = "turn-shared-abc";
+    const startedWithTurnId = startStt(sharedTurnId);
+    if (startedWithTurnId !== true) throw new Error("startStt(turnId) must start when not gated");
+    const startEv = fetchCalls.find(c => c.url === "/assistant/voice-event");
+    const startEvBody = JSON.parse(startEv.opts.body);
+    if (startEvBody.payload.spanId !== sharedTurnId) throw new Error("startStt(turnId) must use turnId as the span id, got " + startEvBody.payload.spanId);
+    const localStart = window.assistantVoiceSpans.find(e => e.kind === "stt-start");
+    if (!localStart || localStart.turn_id !== sharedTurnId) throw new Error("stt-start must join window.assistantVoiceSpans tagged with turn_id");
+    stopStt();
+    const localEnd = window.assistantVoiceSpans.find(e => e.kind === "stt-end");
+    if (!localEnd || localEnd.turn_id !== sharedTurnId) throw new Error("stt-end must join window.assistantVoiceSpans tagged with the SAME turn_id");
+    console.log("SPAN_CORRELATION_OK true");
+    delete global.window.SpeechRecognition;
+}
+
 // ---- onSttText -> queueOrSendChat (today's downstream, AST-052 owns the rest) ----
 onSttText("transcribed text");
 if (queuedChatMessages[queuedChatMessages.length - 1] !== "transcribed text") throw new Error("onSttText must forward into queueOrSendChat");
 console.log("ONSTTTEXT_ROUTES_TO_CHAT_OK true");
+
+// ---- AST-052 (#334): onSttText auto-stops listening on a final result --
+// the mic control's "press again OR auto-on-final to stop" contract ----
+{
+    global.window.assistantVoiceSpans = [];
+    fetchCalls = [];
+    setSttEngineChoice("web-speech");
+    global.window.SpeechRecognition = function () { this.start = () => {}; this.stop = () => {}; };
+    startStt("turn-autostop");
+    onSttText("final phrase", "turn-autostop");
+    const endEv = fetchCalls.find(c => c.url === "/assistant/voice-event" && JSON.parse(c.opts.body).kind === "stt-end");
+    if (!endEv) throw new Error("onSttText must auto-stop -- expected an stt-end span after a final result");
+    if (window.__sttSpanId !== null) throw new Error("onSttText must clear __sttSpanId after auto-stopping");
+    console.log("ONSTTTEXT_AUTOSTOPS_OK true");
+    delete global.window.SpeechRecognition;
+}
 
 console.log("ALL_OK true");
 })().catch(e => { console.error("FAIL", e.message); process.exit(1); });
@@ -271,7 +327,9 @@ check "Web Speech engine wires recognition results -> onResult" "WEBSPEECH_RESUL
 check "whisper engine surfaces an honest unavailable-sidecar state" "WHISPER_DEGRADE_OK true" "$tmpl_stt_out"
 check "the §17.9 gate blocks STT start with no assistant selected" "GATE_BLOCKS_START_OK true" "$tmpl_stt_out"
 check "a span's payload carries the engine name" "SPAN_ENGINE_NAME_OK true" "$tmpl_stt_out"
+check "AST-052 (#334): startStt(turnId) uses turnId as the span id and both stt spans join window.assistantVoiceSpans tagged with it" "SPAN_CORRELATION_OK true" "$tmpl_stt_out"
 check "onSttText routes transcript text into the existing chat-send path" "ONSTTTEXT_ROUTES_TO_CHAT_OK true" "$tmpl_stt_out"
+check "AST-052 (#334): onSttText auto-stops recognition on a final result" "ONSTTTEXT_AUTOSTOPS_OK true" "$tmpl_stt_out"
 check "the whole STT template script completes" "ALL_OK true" "$tmpl_stt_out"
 if [[ "$tmpl_stt_rc" -ne 0 ]]; then echo "$tmpl_stt_out" >&2; fi
 

@@ -251,6 +251,7 @@ section-semver.sh
     section-assistant-inspector.sh
     section-assistant-stt.sh
     section-assistant-voice-tts.sh
+    section-assistant-voice-turn.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then

@@ -621,6 +621,12 @@ canvas.grabbing{cursor:grabbing}
   background:#c96a5e;transform:rotate(-45deg)}
 #voice-mic.always .micdot,#voice-mic.talking .micdot{background:#e0453a;box-shadow:0 0 8px rgba(224,69,58,.7)}
 #voice-mic.talking .micdot::after{display:none}
+/* AST-052 (#334): #voice-stt's listening state -- same lit-red language as
+   #voice-mic.talking (a live mic is a live mic), kept as its own class so
+   it's driven purely by setSttListening(), independent of mic MODE. */
+#voice-stt{display:inline-flex;align-items:center;justify-content:center}
+#voice-stt .micdot{position:relative;width:9px;height:9px;border-radius:50%;background:#7a2a24;display:block}
+#voice-stt.listening .micdot{background:#e0453a;box-shadow:0 0 8px rgba(224,69,58,.7)}
 /* AST-021 startup selection (SPEC-ASSISTANT.md §7.2-§7.4, issue #318):
    finalized as Option C "command palette" (docs/ui-options/AST-021-r1.html,
    human pick recorded on the issue) -- a top-center dropdown anchored
@@ -1209,6 +1215,16 @@ canvas.grabbing{cursor:grabbing}
       <button class="iconbtn" id="voice-mic" aria-pressed="false"
         aria-label="Microphone mode: press to speak — click for always on"
         title="Press to speak (hold Space) — click for mic always on"><span class="micdot"></span></button>
+      <!-- AST-052 (SPEC-ASSISTANT.md §13, issue #334): the voice-driven-turn
+           mic control -- distinct from #voice-mic above (that one only
+           toggles the VISUALIZER's capture mode). Press to start listening
+           via the configured sttEngine (startStt); press again OR the
+           engine's own final transcript (onSttText) stops it. Sits right
+           next to #voice-mic, before the IN/OUT/BOTH group, per the "near
+           the IN/OUT bars" placement call. -->
+      <button class="iconbtn" id="voice-stt" aria-pressed="false"
+        aria-label="Voice-driven chat turn: press to speak"
+        title="Press to speak — sends the transcript as a chat turn (auto-stops on the final result)"><span class="micdot"></span></button>
       <span id="voice-dir" role="group" aria-label="Voice direction">
         <button class="iconbtn" id="voice-in" aria-pressed="false" title="Inbound — microphone">IN</button>
         <button class="iconbtn" id="voice-out" aria-pressed="true" title="Outbound — speech synthesis">OUT</button>
@@ -3929,11 +3945,29 @@ class WhisperSttEngine{
 }
 const sttEngines = { whisper: new WhisperSttEngine(), "web-speech": new WebSpeechSttEngine() };
 
-// AST-052 owns the full voice-turn UX; today the only downstream consumer
-// of recognized STT text is the existing chat-send path.
-function onSttText(text){
+// AST-052 (SPEC-ASSISTANT.md §13, issue #334): the full voice-turn UX --
+// a final transcript flows into the SAME send path typed chat uses
+// (queueOrSendChat), tagged "voice" so the overlay renders it exactly
+// like a typed message (same appendChatRow("user", ...) call, no separate
+// styling) while still letting queueOrSendChat auto-open the overlay if
+// it's closed (§13/docs/design/ast-E5.md: "chat overlay mirrors the whole
+// exchange" -- a voice turn must stay visible even if T was never
+// pressed). `turnId` (minted by toggleSttListening() alongside startStt())
+// threads through unchanged so the reply's tts-start/tts-end spans share
+// the SAME turn_id as this turn's stt-start/stt-end spans -- see
+// trackLocalVoiceSpan below and groupTurnsById's merge.
+function onSttText(text, turnId){
   if(!text) return;
-  queueOrSendChat(text);
+  // auto-stop-on-final: every onResult call from either engine already
+  // means "this utterance is done" (web-speech's interimResults=false /
+  // whisper's onstop-then-transcribe), so the mic control's "press again
+  // OR auto-on-final to stop" contract is satisfied here unconditionally.
+  // releaseSttCapture() (not just setSttListening(false)) -- this is the
+  // COMMON stop path, so it's the one most likely to leave voicePTT/vdir
+  // behind if it only cleared the visible flag (#334 review round 2).
+  stopStt();
+  releaseSttCapture();
+  queueOrSendChat(text, turnId, "voice");
 }
 
 // §13.3: stt-start/stt-end spans, engine name in the payload, over the
@@ -3949,19 +3983,37 @@ window.__sttSpanId = null;
 // assistant selected -- checked FIRST, before either engine's start() ever
 // runs, via the SAME window.assistantGate the mic/IN/OUT/BOTH header
 // buttons already check (gateVoiceAndChat, AST-021).
-function startStt(){
+//
+// AST-052 (#334): `turnId`, when passed (the voice-turn mic control always
+// passes one, minted by toggleSttListening() via newClientTurnId()), is
+// used AS the span id instead of a random one -- the same thing speakReply
+// already does (its `spanId` arg to emitVoiceSpan IS the turnId). That's
+// the whole correlation trick: stt-start/stt-end and the reply's
+// tts-start/tts-end all carry the identical id, so groupTurnsById's
+// window.assistantVoiceSpans merge groups the full turn together. Calling
+// startStt() with no turnId (unrelated callers, existing tests) keeps the
+// old random-id behavior exactly as before.
+function startStt(turnId){
   if(window.assistantGate && window.assistantGate.gated) return false;
   const engineName = sttEngineChoice();
   const engine = sttEngines[engineName];
-  const spanId = window.__sttSpanId = Math.random().toString(36).slice(2);
+  const spanId = window.__sttSpanId = turnId || Math.random().toString(36).slice(2);
   emitVoiceSpan("stt-start", engineName, spanId);
+  trackLocalVoiceSpan("stt-start", spanId, {engine: engineName});
   engine.start(
-    text=>{ onSttText(text); },
+    text=>{ onSttText(text, spanId); },
     err=>{
       console.warn("[stt]", err);
       window.__lastSttError = String(err);
       emitVoiceSpan("stt-end", engineName, spanId, "error", {error: String(err)});
+      trackLocalVoiceSpan("stt-end", spanId, {status: "error", error: String(err)});
       window.__sttSpanId = null;
+      // releaseSttCapture() (not just setSttListening(false)) -- the
+      // engine already failed to start, so there's no live recognition
+      // to stopStt(), but the mic control's start branch already flipped
+      // voicePTT/widened vdir before the engine ever got a chance to
+      // fail; those must still be released here (#334 review round 2).
+      releaseSttCapture();
     }
   );
   return true;
@@ -3970,8 +4022,81 @@ function stopStt(){
   const engineName = sttEngineChoice();
   const engine = sttEngines[engineName];
   if(engine && engine.stop) engine.stop();
-  if(window.__sttSpanId){ emitVoiceSpan("stt-end", engineName, window.__sttSpanId, "ok"); window.__sttSpanId = null; }
+  if(window.__sttSpanId){
+    emitVoiceSpan("stt-end", engineName, window.__sttSpanId, "ok");
+    trackLocalVoiceSpan("stt-end", window.__sttSpanId, {status: "ok"});
+    window.__sttSpanId = null;
+  }
 }
+// AST-052 (#334): the mic control's visible listening state -- lit red
+// (same language #voice-mic.talking already uses) while STT is actually
+// listening. window.__sttListening is the flag speakReply's echo-guard
+// interlock reads (below) to decide whether to pause recognition before a
+// reply speaks.
+window.__sttListening = false;
+function setSttListening(on){
+  window.__sttListening = !!on;
+  const btn = document.getElementById("voice-stt");
+  if(btn){
+    btn.classList.toggle("listening", !!on);
+    btn.setAttribute("aria-pressed", String(!!on));
+  }
+}
+// AST-052 (#334): press to start a voice-driven turn, press again to stop
+// early (auto-stop-on-final in onSttText handles the common case). Mints
+// ONE turn id up front and threads it through startStt -> stt spans ->
+// onSttText -> queueOrSendChat -> the reply's speakReply call, per the
+// span-correlation contract documented on startStt() above.
+//
+// Also wires the mic control into the SAME real capture path Space-held
+// press-to-speak already uses (window.voicePTT -> micHot() -> syncMic(),
+// polled every drawViz() frame, defined further below) -- "verify and
+// wire if not" for the IN bar: it's real getUserMedia/AnalyserNode data
+// (MicSource, not a stub) once micHot() says yes. Direction "out" (the
+// default) hides the IN bar by design (voiceDir()==="out" short-circuits
+// micHot()) -- widen to "both" for the duration of the listen so the
+// visualizer is actually active while the mic is, restoring the user's
+// chosen direction the moment listening stops (never left silently
+// switched for them).
+window.__sttPrevVdir = null;
+// AST-052 (#334) review round 2: recognition can stop via FOUR paths --
+// a manual second press (toggleSttListening below), onSttText's auto-
+// stop-on-final (the COMMON case), the engine's own error callback
+// (startStt), and speakReply's echo-guard interlock -- and every one of
+// them must release the SAME capture state the start branch below set:
+// window.voicePTT (the real getUserMedia capture switch) and the
+// possibly-widened voice direction. Only the manual-stop branch used to
+// do this; the other three left the mic capture HOT with the listening
+// dot OFF and the user's persisted direction preference silently
+// changed. One function, called from all four sites, so they can't
+// drift apart again. (stopStt() itself -- and any span emission -- stays
+// at each call site, since that part legitimately differs: the error
+// path never calls stopStt(), the engine already failed.)
+function releaseSttCapture(){
+  setSttListening(false);
+  window.voicePTT = false;
+  if(window.__sttPrevVdir){
+    uiState.vdir = window.__sttPrevVdir; window.__sttPrevVdir = null;
+    saveUiState(); applyVoiceState();
+  }
+}
+function toggleSttListening(){
+  if(window.__sttListening){
+    stopStt();
+    releaseSttCapture();
+    return;
+  }
+  const started = startStt(newClientTurnId());
+  if(started){
+    window.voicePTT = true;
+    if(voiceDir() === "out"){
+      window.__sttPrevVdir = uiState.vdir;
+      uiState.vdir = "both"; saveUiState(); applyVoiceState();
+    }
+  }
+  setSttListening(!!started);
+}
+document.getElementById("voice-stt").onclick = ()=>{ toggleSttListening(); };
 
 // press-to-speak: holding Space in the 3D view keeps the mic open;
 // Shift+Space toggles between press-to-speak and mic-always-on
@@ -4220,6 +4345,22 @@ function speakReply(text, turnId){
   if(!trimmed) return;
   const chunks = chunkSpeechText(trimmed);
   if(!chunks.length) return;
+  // AST-052 (#334) echo-guard interlock, docs/design/ast-E5.md's contract:
+  // "during speech, either pause recognition or duck it". drawViz already
+  // DUCKS the IN *meter* (inBins.fill(0), above) -- that's cosmetic, the
+  // real microphone capture behind an actual STT engine keeps running.
+  // Recognition is the one that needs to actually stop, so here we PAUSE
+  // it (stopStt()) rather than duck it: ducking a real SpeechRecognition
+  // stream isn't a thing, and leaving it running risks the assistant
+  // hearing (and transcribing) its own reply. This never latches anything
+  // -- the guard-never-latch invariant is about not muting the USER
+  // permanently, and pausing here doesn't: nothing stops them pressing
+  // the mic control again the instant they want to speak next; we simply
+  // don't auto-resume for them after the reply finishes. releaseSttCapture()
+  // (not just setSttListening(false)) also releases voicePTT/vdir here --
+  // otherwise this path leaves the real mic capture hot with the
+  // listening dot off (#334 review round 2).
+  if(window.__sttListening){ stopStt(); releaseSttCapture(); }
   const chars = trimmed.length;
   const t0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
   emitVoiceSpan("tts-start", "speechSynthesis", turnId, null, {chars});
@@ -5997,9 +6138,21 @@ const PROBE = location.search.includes("hoverprobe");
 // hint strip, and Up/Down/Enter/Esc wiring bound only while it's open.
 function gateVoiceAndChat(gated){
   window.assistantGate = { gated: !!gated };
-  for(const id of ["voice-mic","voice-in","voice-out","voice-both"]){
+  // AST-052 (#334): voice-stt (the voice-turn mic control) joins the SAME
+  // §17.9 gated set the other voice buttons already disable through --
+  // startStt() itself also checks window.assistantGate.gated, this is
+  // just the visible half. Disabled+reasoned: the title explains why,
+  // since (unlike #voice-mic/IN/OUT/BOTH) this control's whole job is a
+  // single deliberate press, not a passive mode toggle.
+  for(const id of ["voice-mic","voice-in","voice-out","voice-both","voice-stt"]){
     const el = document.getElementById(id);
     if(el) el.disabled = !!gated;
+  }
+  const sttBtn = document.getElementById("voice-stt");
+  if(sttBtn){
+    sttBtn.title = gated
+      ? "Voice is gated -- no assistant selected (pick one, or /setup-assistant if none exists)"
+      : "Press to speak — sends the transcript as a chat turn (auto-stops on the final result)";
   }
 }
 function setVoiceHeaderName(name){
@@ -6621,8 +6774,14 @@ function stopChatElapsed(){
 }
 async function dispatchNextChat(){
   if(window.assistantChat.inFlight) return;
-  const text = window.assistantChat.queue.shift();
-  if(text === undefined) return;
+  const item = window.assistantChat.queue.shift();
+  if(item === undefined) return;
+  // AST-052 (#334): queue items are {text, turnId, source} -- turnId is
+  // null for typed sends (a fresh one is minted below, same as always)
+  // and the voice-turn-minted id for voice sends, so the reply's
+  // speakReply(..., turnId) shares the SAME id its stt-start/stt-end
+  // spans already carry (see startStt's span-correlation comment).
+  const {text, turnId} = item;
   window.assistantChat.inFlight = true;
   const log = document.getElementById("ast-chat-log");
   appendChatRow(log, "user", text, null);
@@ -6655,12 +6814,40 @@ async function dispatchNextChat(){
     window.assistantChat.exchanges.push({user: text, assistant: payload.text, chips: payload.chips});
     // AST-050 (§13.1): a rendered reply speaks when voice is on -- no-ops
     // internally (voice off / gated) via speakReply's own gate checks.
-    speakReply(payload.text, newClientTurnId());
+    // AST-052 (#334): reuse the turn's own id (voice sends) instead of
+    // always minting a fresh one, so stt and tts spans correlate.
+    speakReply(payload.text, turnId || newClientTurnId());
   }
   dispatchNextChat();
 }
-function queueOrSendChat(text){
-  window.assistantChat.queue.push(text);
+// AST-052 (#334): `turnId`/`source` are optional so every existing typed-
+// chat call site (chatInputKeydown, tests) keeps working unchanged --
+// turnId defaults to null (dispatchNextChat mints one for the reply, same
+// as before AST-052), source defaults "typed". Voice turns (onSttText)
+// pass both explicitly. A voice send auto-opens the chat overlay if it's
+// closed -- the AC's "overlay mirrors the exchange" holds even when the
+// user never pressed T; least-invasive per docs/design/ast-E5.md's
+// "chat overlay mirrors the whole exchange" -- the SAME appendChatRow
+// call renders it, so it's visually identical to a typed message.
+//
+// #334 review round 2 (MAJOR): this function is now ASYNC and AWAITS
+// openChatOverlay() before pushing/dispatching -- openChatOverlay awaits
+// loadChatHistory(), whose renderChatLog() does `log.innerHTML = ""` and
+// wholesale-replaces window.assistantChat.exchanges from the server. That
+// history round trip races the turn: fire-and-forget openChatOverlay()
+// let dispatchNextChat's appendChatRow(user row) run immediately, then
+// EITHER lost the just-appended row to the history repaint (if the
+// history fetch won) OR silently discarded the completed exchange once
+// it landed (if the history fetch resolved after the chat call). Awaiting
+// openChatOverlay() first means the wholesale exchanges replace has
+// already happened by the time this turn pushes/dispatches, so nothing
+// downstream can race it. Callers that don't await (chatInputKeydown,
+// onSttText) are unaffected -- an unawaited async call just runs to
+// completion on its own schedule, same as before.
+async function queueOrSendChat(text, turnId, source){
+  const src = source || "typed";
+  if(src === "voice" && !document.getElementById("ast-chat-overlay")) await openChatOverlay();
+  window.assistantChat.queue.push({text, turnId: turnId || null, source: src});
   dispatchNextChat();
 }
 function chatInputKeydown(ev){
