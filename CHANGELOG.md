@@ -24,6 +24,16 @@
   >   silently lost without warning; human-authored sibling skills proven
   >   untouched
 
+### Documentation
+- **build-next:** status tables must carry an Agent column (`fc7cf13`)
+  > - step 6's state-first report rule now requires naming the agent per item
+  > - table-form reports carry an explicit Agent column (dev-NNN, reviewer-NNN, orchestrator, human, or em dash when unassigned)
+  > - human feedback 2026-07-28: with several agents running at once, a status table without an agent per row cannot be mapped to the processes doing the work
+- **build-next:** fold private-memory rules into the skills (`d15bc67`)
+  > - step 6 gains the ad-hoc status shape (Current state / Implemented so far / Remaining) alongside the round-report rule
+  > - auto-review reviewer brief now mandates self-identifying browser artifacts: in-band banner, task-scoped filename, close the tabs AND delete the files, name them in the verdict
+  > - human directive 2026-07-28: durable rules belong in versioned skills, not in private per-project memory
+
 ### Other
 - retro(#114) + feedback: #447 close (`b051615`)
   > - dev: proxy-checks-vs-true-invariants, derived-set nonempty controls, keyword-lints-scan-comments
