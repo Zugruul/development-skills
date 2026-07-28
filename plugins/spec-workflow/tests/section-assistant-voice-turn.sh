@@ -444,6 +444,20 @@ if (scheduledTimers.size !== 0) throw new Error("onerror must clear the armed si
 if (queuedChatCalls.length !== 0) throw new Error("no buffered segment may reach queueOrSendChat once the turn has errored, got " + queuedChatCalls.length + " call(s)");
 if (reportSttFailureCalls.length !== 1) throw new Error("the error must still surface honestly via reportSttFailure, got " + reportSttFailureCalls.length + " call(s)");
 console.log("ONERROR_CLEARS_ARMED_TIMER_OK true");
+
+// #475 (P0, human hit it live: reported the mic dot lit while NOT
+// listening): the checks above only asserted __sttListening, the timer,
+// and reportSttFailureCalls -- never the layer a human actually looks
+// at. releaseSttCapture() -> setSttListening(false) already ran as part
+// of the onerror path above (startStt's error callback calls it
+// unconditionally); this pins that result at the SAME layer
+// setSttListening() writes to (classList + aria-pressed), asserted
+// BEFORE the workaround toggle below, which would otherwise mask a
+// dot stuck lit by manually turning it off.
+if (elements["voice-stt"].classList.contains("listening") !== false) throw new Error("#475: the mic dot must NOT show 'listening' after an engine error -- an engine failure is a stop path, same as a manual press or auto-stop-on-final");
+if (elements["voice-stt"].getAttribute("aria-pressed") !== "false") throw new Error("#475: aria-pressed must read false after an engine error, got " + elements["voice-stt"].getAttribute("aria-pressed"));
+console.log("ONERROR_CLEARS_VISIBLE_DOT_OK true");
+
 // stop the now-errored turn's listening state so it does not bleed into
 // span-correlation assertions below, which key off the EARLIER turn's id.
 if (window.__sttListening) toggleSttListening();
@@ -471,6 +485,7 @@ check "onSttText's auto-stop (the common path) releases voicePTT and restores th
 check "a manual second press stops early and restores the prior voice direction" "STOP_RESTORES_DIRECTION_OK true" "$tmpl_vt_out"
 check "#454 review round 2 MINOR 1: a turn manually stopped with no speech still gets an honest terminal stt-end span instead of hanging open" "NO_SPEECH_STOP_EMITS_TERMINAL_SPAN_OK true" "$tmpl_vt_out"
 check "#454 review round 2 MAJOR: onerror clears the armed silence timer instead of letting a buffered segment fire late into queueOrSendChat" "ONERROR_CLEARS_ARMED_TIMER_OK true" "$tmpl_vt_out"
+check "#475: the engine-error stop path clears the VISIBLE mic dot (classList + aria-pressed), not just the internal __sttListening flag" "ONERROR_CLEARS_VISIBLE_DOT_OK true" "$tmpl_vt_out"
 check "stt-start/stt-end join window.assistantVoiceSpans under the turn's shared id" "SPAN_CORRELATION_LOCAL_OK true" "$tmpl_vt_out"
 check "the whole voice-turn template script completes" "ALL_OK true" "$tmpl_vt_out"
 if [[ "$tmpl_vt_rc" -ne 0 ]]; then echo "$tmpl_vt_out" >&2; fi
@@ -497,6 +512,12 @@ function mkEl(initialId) {
             add(c){ this._parent._classes.add(c); },
             remove(c){ this._parent._classes.delete(c); },
             contains(c){ return this._parent._classes.has(c); },
+            // #475: this harness never needed toggle() before -- nothing
+            // in it eval'd setSttListening's DOM branch against a real
+            // "voice-stt" element (see the interlock section below, which
+            // now does). add/remove alone can't express setSttListening's
+            // `classList.toggle("listening", !!on)` call.
+            toggle(c, on){ if (on === undefined) on = !this.contains(c); if (on) this.add(c); else this.remove(c); return on; },
         },
         disabled: false,
         title: "",
@@ -525,6 +546,13 @@ function mkEl(initialId) {
     if (initialId) elements[initialId] = el;
     return el;
 }
+// #475: this harness eval's setSttListening (below) and, new in this
+// change, drives its DOM branch directly via the echo-guard interlock
+// test -- the "voice-stt" element must exist for that branch to run at
+// all (setSttListening's `if(btn){...}` guard would otherwise silently
+// skip it, which is exactly how a visible-state regression could hide
+// behind a passing __sttListening-only assertion).
+mkEl("voice-stt");
 const bodyEl = mkEl(null);
 global.document = {
     body: bodyEl,
@@ -636,11 +664,24 @@ window.assistantChat.exchanges = [];
 window.assistantVoiceSpans = [];
 neuralSpeakCalls = [];
 stopSttCalls = 0;
-window.__sttListening = true;
+// #475: driven through setSttListening() itself (not a bare
+// `window.__sttListening = true` assignment, as before) so the visible
+// dot is actually LIT going into the interlock -- otherwise the
+// classList assertion below would trivially "pass" by never having been
+// lit in the first place (a non-effect masquerading as a fix).
+setSttListening(true);
+if (elements["voice-stt"].classList.contains("listening") !== true) throw new Error("setup: the mic dot must be visibly lit before the interlock test means anything");
 speakReply("another reply", "shared-turn-2");
 if (stopSttCalls !== 1) throw new Error("speakReply must pause STT (call stopStt) when a reply starts while recognition is still listening, got " + stopSttCalls + " calls");
 if (window.__sttListening !== false) throw new Error("speakReply's interlock must clear the listening flag (setSttListening(false)) after pausing");
 if (neuralSpeakCalls.length !== 1) throw new Error("the reply must still speak after the interlock pauses recognition");
+// #475 (P0, human hit it live: reported the mic dot lit while NOT
+// listening): the flag-level assertion above was the only thing pinned
+// here before -- never the visible layer. releaseSttCapture() (called
+// from speakReply's interlock) already drives setSttListening(false);
+// this pins the result at the SAME layer a human actually looks at.
+if (elements["voice-stt"].classList.contains("listening") !== false) throw new Error("#475: the mic dot must NOT show 'listening' once the TTS echo-guard interlock pauses recognition");
+if (elements["voice-stt"].getAttribute("aria-pressed") !== "false") throw new Error("#475: aria-pressed must read false once the echo-guard interlock pauses recognition, got " + elements["voice-stt"].getAttribute("aria-pressed"));
 console.log("ECHO_GUARD_INTERLOCK_OK true");
 
 // ---- typed chat (no turnId/source args) is entirely unaffected -- backward compatible ----
@@ -689,7 +730,7 @@ check_rc "voice-turn full-pipeline template script exits 0" 0 "$tmpl_vt2_rc"
 check "a voice send with the overlay closed auto-opens it and mirrors the spoken prompt as a normal user row" "OVERLAY_AUTO_OPENS_AND_MIRRORS_USER_OK true" "$tmpl_vt2_out"
 check "the reply's tts span reuses the turn's own id -- stt and tts spans correlate under one turn_id" "REPLY_REUSES_TURN_ID_OK true" "$tmpl_vt2_out"
 check "the overlay still shows both the user row and the assistant reply after the round trip resolves -- the history-load race is closed, not just avoided at send time" "OVERLAY_SURVIVES_REPLY_RESOLUTION_OK true" "$tmpl_vt2_out"
-check "speakReply's echo-guard interlock pauses STT if it's still listening when a reply starts" "ECHO_GUARD_INTERLOCK_OK true" "$tmpl_vt2_out"
+check "speakReply's echo-guard interlock pauses STT if it's still listening when a reply starts, and #475: clears the VISIBLE mic dot (classList + aria-pressed), pinned lit beforehand so the assertion isn't vacuous" "ECHO_GUARD_INTERLOCK_OK true" "$tmpl_vt2_out"
 check "typed chat (no turnId/source) is unaffected -- fully backward compatible" "TYPED_CHAT_UNAFFECTED_OK true" "$tmpl_vt2_out"
 check "#451 (P0 live-bug batch): a pure STT failure (no transcript ever produced) auto-opens the overlay and renders the honest message as a red system row -- the human's silent-failure bug" "STT_FAILURE_SURFACES_IN_OVERLAY_OK true" "$tmpl_vt2_out"
 check "the whole voice-turn full-pipeline script completes" "ALL_OK true" "$tmpl_vt2_out"
