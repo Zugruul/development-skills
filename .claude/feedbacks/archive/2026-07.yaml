@@ -5879,3 +5879,42 @@ items:
   routing:
     action: brain-note
     ref: dev/heredoc-apostrophe-bash32
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-28T15:40:00Z'
+iteration:
+  task: '447'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: testing
+  severity: low
+  summary: The gate's own lint caught a portability token the dev believed removed,
+    at the cost of one extra gate cycle
+  detail: The floor scanner flags the literal builtin name even in a comment explaining
+    its avoidance; orchestrator hot-fixed the wording and re-gated rather than bouncing
+    a one-word change back to the dev.
+  generalized: Keyword-matching gate lints cannot distinguish use from documented
+    avoidance - teams should phrase avoidance comments around the concept rather than
+    the banned token, and orchestrators can apply one-word comment fixes directly
+    rather than spending a full agent round-trip.
+  routing:
+    action: brain-note
+    ref: dev/keyword-lints-scan-comments-too
+- category: worked-well
+  area: review
+  severity: low
+  summary: A reviewer-requested fix was itself reviewed as new code and found to introduce
+    a fresh hole
+  generalized: Fixes a reviewer specified deserve the same scrutiny as original code
+    in the confirmation round - a requested change can introduce failure modes the
+    original could not, and the box-checking temptation in round 2 is exactly where
+    they slip through.
+  routing:
+    action: brain-note
+    ref: reviewer/review-your-own-fix-as-new-code

@@ -369,6 +369,11 @@
     "last": null,
     "weight": 0.5
   },
+  "proxy-checks-vs-true-invariants->contract-invariant-preservation": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "read-config-live-not-hardcoded-in-tests->verify-design-doc-quotes-against-live-file": {
     "fires": 17,
     "last": "2026-07-27",

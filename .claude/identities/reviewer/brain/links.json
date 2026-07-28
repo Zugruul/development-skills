@@ -1,4 +1,9 @@
 {
+  "comments-deserve-code-scrutiny->record-why-safe-not-just-that": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "conditional-correctness-premise-edges->record-why-safe-not-just-that": {
     "fires": 0,
     "last": null,
@@ -100,6 +105,11 @@
     "weight": 0.5
   },
   "reuse-the-projects-own-harness->reproduce-before-verdict": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "review-your-own-fix-as-new-code->missing-test-twin-marks-the-bug": {
     "fires": 0,
     "last": null,
     "weight": 0.5
