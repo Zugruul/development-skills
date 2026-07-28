@@ -6026,3 +6026,83 @@ items:
   routing:
     action: brain-note
     ref: brief-report-on-commit
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-28T20:38:00Z'
+iteration:
+  task: '480'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: board
+  component: plugins/spec-workflow/scripts/gate.sh
+  severity: medium
+  summary: Recorded gate passes and review-round telemetry landed in the session worktree
+    while the board guard hooks resolved the primary checkout, blocking two status
+    moves in a row.
+  detail: Gate ran in the task worktree (pass recorded there), but the In-review move
+    ran from the main checkout and was BLOCKED; then review-round telemetry written
+    to the worktree's .claude/telemetry.jsonl caused the QA move to be BLOCKED until
+    re-recorded against the main checkout root.
+  evidence:
+  - Zugruul/development-skills#480
+  generalized: When a session works in a git worktree but guard hooks resolve a different
+    checkout, recorded gate passes and telemetry must be written against the root
+    the hooks read; otherwise green work gets BLOCKED at status moves and has to be
+    re-recorded after the fact.
+  proposal:
+    target: plugins/spec-workflow/scripts/gate.sh
+    change: Record the gate pass (and have telemetry.py default) keyed to the repository's
+      common git dir (git rev-parse --git-common-dir) instead of the invoking working
+      tree, so worktree sessions and primary-checkout hooks agree on one location.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#483
+- category: worked-well
+  area: review
+  severity: low
+  summary: Two parallel independent review passes with real-browser reproduction paid
+    off even on a tiny diff, catching a factually wrong test comment and an untested
+    branch.
+  generalized: Running spec-compliance and code-quality review passes in parallel
+    as read-only agents, each required to reproduce claims in the real runtime rather
+    than trusting the diff, catches comment-level falsehoods and coverage gaps even
+    on very small changes.
+  routing:
+    action: ignore
+    ref: reviewer standing rules already encode this; usefulness outcomes recorded
+      on the existing notes this task
+- category: recommendation
+  area: briefing
+  severity: medium
+  summary: The implement-task brief template hardcodes push-and-open-a-PR delivery
+    wording that the orchestrator must hand-patch whenever work.type is local.
+  detail: The skill's brief template step 4 says push the branch and open a PR; with
+    work.type local the orchestrator must remember to override that wording in every
+    brief, which is an error-prone manual step.
+  generalized: Skill brief templates that embed delivery instructions should branch
+    on the configured work type instead of relying on the orchestrator to hand-edit
+    the pasted template each time.
+  proposal:
+    target: plugins/spec-workflow/skills/implement-task/SKILL.md
+    change: Make the brief template's delivery step conditional on work.type (pr vs
+      local) so the correct instruction is pasted from the start.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#484
+- category: worked-well
+  area: concurrency
+  severity: low
+  summary: The merge-dance lock staleness rule identified and safely reclaimed an
+    abandoned lock from a crashed earlier session.
+  generalized: An atomic mkdir lock with an owner file and an explicit staleness-steal
+    rule lets a later session safely reclaim an abandoned merge lock without racing
+    a live one.
+  routing:
+    action: ignore
+    ref: the documented lock protocol worked exactly as designed; nothing to change
