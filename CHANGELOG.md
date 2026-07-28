@@ -24,6 +24,12 @@
   > - provisioning.py restored byte-identical to its reviewed AST-062
   >   contract; hermetic 60-check section with orphan-free cleanup
 
+### Other
+- retro(#113) + feedback: #424 close (`663cf3d`)
+  > - dev: contract-invariant-preservation, resolve-into-the-keyed-value, heredoc-apostrophe-bash32 (team rule)
+  > - reviewer: conditional-correctness premise edges, record-why-safe, offer-both-fixes, missing-test-twin
+  > - feedback: 3 items routed, feed archived
+
 ## v0.49.0 — 2026-07-28
 
 ### Features
