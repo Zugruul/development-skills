@@ -190,6 +190,13 @@ eval(extract("astMetricsBucketKey"));
 eval(extract("astEstimatePercentile"));
 eval(extract("astMetricsRootFor"));
 eval(extract("astMetricsRow"));
+// #460: the Per-area block's vertical bar columns, and the percentile
+// marker-line position helper the bucket graph uses (the "percentile
+// sparkline (p50/p95 lines)" half of the recorded #330 Option B decision
+// text) -- both extracted here too, same "real production wiring" posture
+// as the rest of this file's extract() list.
+eval(extract("astMetricsBarCol"));
+eval(extract("astMetricsValuePosition"));
 eval(extract("buildAstMetricsGraphMarkup"));
 eval(extract("renderAstMetrics"));
 eval(extract("groupTurnsById"));
@@ -345,13 +352,49 @@ const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
     // rows are built from two child <span>s (label, value) -- the stub's
     // `textContent` is a plain field (unlike a real DOM's auto-aggregating
     // one), so read it off the children the way the stub actually supports.
-    const metricsRows = metricsEl.children.map(r => (r.children || []).map(c => c.textContent).join(" "));
+    // #460: rows now nest inside the Latency/Per-area blocks (mockup's real
+    // two-column .wtop composition), so this uses querySelectorAll(".ast-
+    // metrics-row") (recursive, unlike raw .children) instead of assuming
+    // every row is a direct child of #ast-metrics.
+    const metricsRowEls = metricsEl.querySelectorAll(".ast-metrics-row");
+    const metricsRows = metricsRowEls.map(r => (r.children || []).map(c => c.textContent).join(" "));
     if (!metricsRows.some(t => t.indexOf("p50 turn duration") !== -1 && t.indexOf("1.50s") !== -1)) throw new Error("p50 row wrong: " + JSON.stringify(metricsRows));
     if (!metricsRows.some(t => t.indexOf("p95 turn duration") !== -1 && t.indexOf("1.95s") !== -1)) throw new Error("p95 row wrong: " + JSON.stringify(metricsRows));
     if (!metricsRows.some(t => t.indexOf("turns ok") !== -1 && t.indexOf("1") !== -1)) throw new Error("turns-ok row wrong: " + JSON.stringify(metricsRows));
-    const graphHost = metricsEl.children.find(c => c.innerHTML && c.innerHTML.indexOf("ast-metrics-graph") !== -1);
-    if (!graphHost) throw new Error("expected a structural ast-metrics-graph SVG placeholder to render");
+    const graphHost = metricsEl.querySelectorAll(".ast-metrics-graph-host")[0];
+    if (!graphHost || graphHost.innerHTML.indexOf("ast-metrics-graph") === -1) throw new Error("expected a structural ast-metrics-graph SVG placeholder to render");
     console.log("LOAD_METRICS_OK true");
+
+    // ---- #460: real Option B composition, cross-checked against the
+    // finalized mockup (.claude/ui-hub/html/AST-044-r1.html) after an
+    // earlier pass of this fix had only gone by the recorded decision text
+    // -- two side-by-side blocks (Latency, Per area), percentile marker
+    // lines on the bucket graph, and eventsTotal-bound vertical bar columns
+    // for the per-area breakdown (turn/recall/provider from the fixture
+    // above), not the flat text-row list the shipped restyle regressed to.
+    const blocks = metricsEl.querySelectorAll(".ast-metrics-block");
+    if (blocks.length !== 2) throw new Error("expected 2 top-level blocks (Latency, Per area), got " + blocks.length);
+    const blabs = metricsEl.querySelectorAll(".ast-metrics-blab").map(b => b.textContent);
+    if (blabs.indexOf("Latency") === -1) throw new Error("Latency block label missing: " + JSON.stringify(blabs));
+    if (blabs.indexOf("Per area") === -1) throw new Error("Per area block label missing: " + JSON.stringify(blabs));
+    const legends = metricsEl.querySelectorAll(".ast-metrics-legend").map(l => l.className + ":" + l.textContent);
+    if (!legends.some(l => l.indexOf("ast-metrics-legend-p50") !== -1 && l.indexOf("p50") !== -1)) throw new Error("p50 legend chip missing: " + JSON.stringify(legends));
+    if (!legends.some(l => l.indexOf("ast-metrics-legend-p95") !== -1 && l.indexOf("p95") !== -1)) throw new Error("p95 legend chip missing: " + JSON.stringify(legends));
+    if (graphHost.innerHTML.indexOf("ast-metrics-marker-p50") === -1) throw new Error("bucket graph missing the p50 marker line");
+    if (graphHost.innerHTML.indexOf("ast-metrics-marker-p95") === -1) throw new Error("bucket graph missing the p95 marker line");
+    const barcols = metricsEl.querySelectorAll(".ast-metrics-barcol");
+    if (barcols.length !== 3) throw new Error("expected 3 per-area bar columns (turn/recall/provider from the eventsTotal fixture), got " + barcols.length);
+    const barByLabel = {};
+    for (const col of barcols) {
+        const lab = col.querySelectorAll(".ast-metrics-barlab")[0];
+        const val = col.querySelectorAll(".ast-metrics-barval")[0];
+        const fill = col.querySelectorAll(".ast-metrics-barfill")[0];
+        barByLabel[lab.textContent] = { value: val.textContent, height: fill.style.height };
+    }
+    if (!barByLabel.turn || barByLabel.turn.value !== "4" || barByLabel.turn.height !== "100%") throw new Error("turn bar wrong (eventsTotal max=4): " + JSON.stringify(barByLabel));
+    if (!barByLabel.recall || barByLabel.recall.value !== "1" || barByLabel.recall.height !== "25%") throw new Error("recall bar wrong: " + JSON.stringify(barByLabel));
+    if (!barByLabel.provider || barByLabel.provider.value !== "2" || barByLabel.provider.height !== "50%") throw new Error("provider bar wrong: " + JSON.stringify(barByLabel));
+    console.log("METRICS_BARS_AND_MARKERS_OK true");
 
     const turnlistEl = document.getElementById("ast-turnlist");
     if (turnlistEl.children.length !== 2) throw new Error("expected 2 turn rows, got " + turnlistEl.children.length);
@@ -370,6 +413,16 @@ const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
     const rowBAfter = turnlistEl.children.find(r => r.getAttribute("data-turn-id") === "B");
     if (!rowBAfter.className.includes("ast-turnlist-selected")) throw new Error("clicked row must be marked selected");
     console.log("TURN_CLICK_WIRING_OK true");
+
+    // ---- #460, second conformance pass (mockup `.mB2 .wbot .blab`): a
+    // turn-context header above the waterfall, missing from the shipped
+    // restyle entirely -- built from real fields (id/status/duration), not
+    // the mockup's own illustrative wording ("provider call"), which this
+    // data does not carry. ----
+    const turnlab = wfAfterClick.children.find(c => c.className && c.className.includes("ast-waterfall-turnlab"));
+    if (!turnlab) throw new Error("waterfall missing its ast-waterfall-turnlab header");
+    if (turnlab.textContent !== "Turn B · error · 0.40s") throw new Error("turn-context header wrong: " + JSON.stringify(turnlab.textContent));
+    console.log("WATERFALL_TURNLAB_OK true");
 
     // ---- #393: truncated marker reveals/hides on the endpoint's own truncated flag ----
     resetInspector();
@@ -411,6 +464,18 @@ const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
     if ((global.__listeners.keydown || []).length !== 1) throw new Error("open must bind exactly one keydown listener, got " + (global.__listeners.keydown || []).length);
     if (window.__astInspectorKeydown !== handleAstInspectorKeydown) throw new Error("window.__astInspectorKeydown must reference the bound handler");
     console.log("OPEN_BUILDS_AND_LOADS_OK true");
+
+    // ---- #460: the dot row from the finalized mockup (.claude/ui-hub/
+    // html/AST-044-r1.html, Option B `.mB2 .dots i`, 3 dots) -- missing
+    // from the shipped restyle entirely; the grip also carries the
+    // mockup's own "⠿ drag" label, not the bare-icon convention this app's
+    // OTHER detached windows use. ----
+    const dotsEl = win1.querySelectorAll(".aiw-dots")[0];
+    if (!dotsEl) throw new Error("title bar missing the .aiw-dots row");
+    if ((dotsEl.children || []).length !== 3) throw new Error("expected 3 dots in the title bar, got " + (dotsEl.children || []).length);
+    const gripEl = win1.querySelectorAll(".grip")[0];
+    if (!gripEl || gripEl.textContent !== "⠿ drag") throw new Error("grip must carry the mockup's own label, got: " + JSON.stringify(gripEl && gripEl.textContent));
+    console.log("DOTS_AND_GRIP_OK true");
 
     // reopening while already open FOCUSES (same reference, raised z-index,
     // no duplicate fetch, no second listener) instead of opening a duplicate
@@ -551,10 +616,13 @@ check "template: gated (skip) shows the gate reason" "GATED_SKIP_OK true" "$tmpl
 check "template: gated (outcome none) shows the gate reason" "GATED_NONE_OK true" "$tmpl_inspector_out"
 check "template: offline (fetch failure) shows a specific message with a retry hook" "OFFLINE_OK true" "$tmpl_inspector_out"
 check "template: loading fetches metrics+traces once and renders percentile/counter rows + graph placeholder" "LOAD_METRICS_OK true" "$tmpl_inspector_out"
+check "template (#460, cross-checked against the finalized AST-044-r1.html Option B mockup): the top section is a Latency block (legend chips + graph w/ p50/p95 markers) and a Per-area block (eventsTotal-bound vertical bar columns), not a flat text-row list" "METRICS_BARS_AND_MARKERS_OK true" "$tmpl_inspector_out"
 check "template: turn list renders grouped turns with an error hook class" "TURNLIST_OK true" "$tmpl_inspector_out"
 check "template: clicking a turn wires the waterfall render" "TURN_CLICK_WIRING_OK true" "$tmpl_inspector_out"
+check "template (#460): waterfall carries a turn-context header (id/status/duration) above the spans, matching the mockup's .wbot .blab" "WATERFALL_TURNLAB_OK true" "$tmpl_inspector_out"
 check "template (#393): fetches /assistant/traces?order=desc, and the truncated marker follows the endpoint's own flag" "TRUNCATED_MARKER_OK true" "$tmpl_inspector_out"
 check "template (#330 Option B): opening the inspector builds the detached window, loads once, binds one keydown listener" "OPEN_BUILDS_AND_LOADS_OK true" "$tmpl_inspector_out"
+check "template (#460): title bar carries the mockup's dot row (3 dots) and the grip's own drag label" "DOTS_AND_GRIP_OK true" "$tmpl_inspector_out"
 check "template (#330 Option B): reopening while already open focuses (same window, raised z-index) instead of duplicating" "REOPEN_FOCUSES_OK true" "$tmpl_inspector_out"
 check "template (#330 Option B): closing removes the window AND unbinds its keydown listener" "CLOSE_TEARS_DOWN_OK true" "$tmpl_inspector_out"
 check "template (#330 Option B): reopening after a close fetches fresh data again" "REOPEN_AFTER_CLOSE_REFETCHES_OK true" "$tmpl_inspector_out"
@@ -583,18 +651,24 @@ check_absent "template: AST-044's inspector placeholder-restyle note is gone (Op
 # some DIFFERENTLY-worded rule with equal-or-higher specificity (a
 # different selector matching the same element) doesn't also apply --
 # that would need an actual browser or a full CSS specificity calculator.
-check "template (review round 1, #330): inspector window sizing uses the higher-specificity compound selector .note-window.ast-inspector-window (wins the cascade regardless of source order against .note-window's own later, equal-specificity rule)" ".note-window.ast-inspector-window{width:min(420px,92vw);max-height:80vh}" "$(cat "$NVHTML_INSPECTOR")"
-_aiw_sizing_decl_count="$(grep -c 'width:min(420px,92vw);max-height:80vh' "$NVHTML_INSPECTOR")"
+check "template (review round 1, #330; #460 third pass conforms width to the mockup's own stated 340px): inspector window sizing uses the higher-specificity compound selector .note-window.ast-inspector-window (wins the cascade regardless of source order against .note-window's own later, equal-specificity rule)" ".note-window.ast-inspector-window{width:min(340px,92vw);max-height:80vh}" "$(cat "$NVHTML_INSPECTOR")"
+_aiw_sizing_decl_count="$(grep -c 'width:min(340px,92vw);max-height:80vh' "$NVHTML_INSPECTOR")"
 if [[ "$_aiw_sizing_decl_count" -eq 1 ]]; then
-    echo "ok   template (review round 1, #330): the Option B sizing declaration (width:min(420px,92vw);max-height:80vh) appears exactly once -- not duplicated/shadowed by a second copy"
+    echo "ok   template (#460 third pass): the Option B sizing declaration (width:min(340px,92vw);max-height:80vh, conforming to the mockup's stated 340px) appears exactly once -- not duplicated/shadowed by a second copy"
 else
-    echo "FAIL template (review round 1, #330): expected exactly 1 declaration of width:min(420px,92vw);max-height:80vh, found $_aiw_sizing_decl_count"
+    echo "FAIL template (#460 third pass): expected exactly 1 declaration of width:min(340px,92vw);max-height:80vh, found $_aiw_sizing_decl_count"
     fails=$((fails + 1))
 fi
 
 check "template pins the ast-metrics class name in source" '"ast-metrics"' "$(cat "$NVHTML_INSPECTOR")"
 check "template pins the ast-metrics-row class name in source" '"ast-metrics-row"' "$(cat "$NVHTML_INSPECTOR")"
 check "template pins the ast-metrics-graph class name in source" '"ast-metrics-graph"' "$(cat "$NVHTML_INSPECTOR")"
+check "template (#460): pins the ast-metrics-block / ast-metrics-blab class names in source (Latency + Per-area side-by-side blocks, matching the mockup's .wtop)" '.ast-metrics-block{' "$(cat "$NVHTML_INSPECTOR")"
+check "template (#460): pins the ast-metrics-marker-p50/p95 class names in source (percentile marker lines on the graph)" '.ast-metrics-marker-p50{' "$(cat "$NVHTML_INSPECTOR")"
+check "template (#460): pins the ast-metrics-barcol / ast-metrics-barfill class names in source (per-area vertical bar columns, matching the mockup's .barcol/.barfill)" '.ast-metrics-barcol{' "$(cat "$NVHTML_INSPECTOR")"
+check "template (#460): pins the aiw-dots class name in source (title-bar dot row from the finalized mockup)" '.aiw-dots{' "$(cat "$NVHTML_INSPECTOR")"
+check "template (#460): pins the title-bar strip background (mockup .mB2 .wtitle's own #0d1a2c header, distinct from the window body)" 'background:#0d1a2c' "$(cat "$NVHTML_INSPECTOR")"
+check "template (#460): pins the ast-waterfall-turnlab class name in source (turn-context header above the waterfall)" '.ast-waterfall-turnlab{' "$(cat "$NVHTML_INSPECTOR")"
 check "template pins the ast-turnlist-row class name in source" '"ast-turnlist-row"' "$(cat "$NVHTML_INSPECTOR")"
 check "template pins the ast-waterfall class name in source" '"ast-waterfall"' "$(cat "$NVHTML_INSPECTOR")"
 check "template pins the ast-waterfall-error class name in source" "ast-waterfall-error" "$(cat "$NVHTML_INSPECTOR")"

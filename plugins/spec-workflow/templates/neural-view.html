@@ -708,17 +708,44 @@ canvas.grabbing{cursor:grabbing}
    rule declared LATER in source (review round 1, #330) -- a bare
    .ast-inspector-window rule up here would lose that cascade tie and the
    window would render at .note-window's docked-sidebar size instead of
-   Option B's own geometry (measured: ~19% under). .note-window.
-   ast-inspector-window has strictly higher specificity (two classes), so
-   it wins regardless of source order -- robust to .note-window ever
-   moving/reordering, unlike relying on .media-window's own fix below it
-   (which only wins because it happens to come AFTER .note-window). */
-.note-window.ast-inspector-window{width:min(420px,92vw);max-height:80vh}
-.ast-inspector-window .aiw-bar{display:flex;align-items:center;gap:.4rem;margin:.1rem 0 .55rem}
+   Option B's own geometry. .note-window.ast-inspector-window has strictly
+   higher specificity (two classes), so it wins regardless of source order
+   -- robust to .note-window ever moving/reordering, unlike relying on
+   .media-window's own fix below it (which only wins because it happens to
+   come AFTER .note-window). */
+/* #460, third conformance pass: width conforms to the mockup's own
+   explicit `.mB2 .win{width:340px}` -- round 1's "measured: ~19% under"
+   note claimed 420px was Option B's real geometry, but the actual mockup
+   file states 340px outright, not by implication; per the human/team
+   lead's call, a stated number in a finalized, binding mockup wins over an
+   earlier round's own measurement note. If real span labels prove this
+   cramped, that is the human's call to widen it, not ours to take on their
+   behalf. */
+.note-window.ast-inspector-window{width:min(340px,92vw);max-height:80vh}
+/* #460, second conformance pass against the mockup's `.mB2 .wtitle`: a
+   distinct title-bar strip (own background + bottom border), not just a
+   flex row with margin like this app's OTHER detached windows (.mw-bar/
+   note-window bars have none of this -- see the #460 report for why that
+   inconsistency is deliberate here: the mockup is explicit and binding for
+   THIS window, this rule is scoped to .ast-inspector-window only, so it
+   changes nothing for note/media windows). Negative margin pulls the strip
+   flush to the window's own edges (the window's padding is on .note-window
+   itself, applied uniformly to all its content). */
+.ast-inspector-window .aiw-bar{display:flex;align-items:center;gap:.4rem;
+  margin:-.9rem -1rem .55rem;padding:.4rem .7rem;background:#0d1a2c;
+  border-bottom:1px solid var(--border)}
 .ast-inspector-window .aiw-bar .close{float:none;display:inline-flex;align-items:center;justify-content:center;
   min-width:24px;min-height:24px;padding:0 .2rem}
+/* #460: the row of small round dots from the finalized mockup
+   (.claude/ui-hub/html/AST-044-r1.html, Option B, `.mB2 .dots i`) -- a
+   purely decorative HUD ornament in the title bar, left of the title, same
+   position as the mockup. Dimmed cyan (rgba, not the full-bright --cyan
+   text/marker color) so it reads as chrome, not a status indicator. */
+.ast-inspector-window .aiw-dots{display:flex;gap:.3rem;flex:none}
+.ast-inspector-window .aiw-dots i{width:9px;height:9px;border-radius:50%;
+  background:rgba(70,230,255,.55);display:inline-block}
 .ast-inspector-window .aiw-title{font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:var(--cyan);flex:1}
-.ast-inspector-window .aiw-top{display:flex;flex-direction:column;gap:.3rem;padding-bottom:.5rem;border-bottom:1px dashed var(--border)}
+.ast-inspector-window .aiw-top{display:flex;gap:1rem;flex-wrap:wrap;padding-bottom:.5rem;border-bottom:1px dashed var(--border)}
 .ast-inspector-window .aiw-bottom{display:flex;flex-direction:column;gap:.3rem;margin-top:.5rem}
 /* status chip (#status-txt): the version/branch segments (chip-changelog,
    see chipHtml()) open the changelog overlay below -- a plain pointer
@@ -773,9 +800,61 @@ canvas.grabbing{cursor:grabbing}
 .cl-disclosure{display:inline-block;width:1em;color:var(--muted)}
 .ast-metrics{display:flex;flex-direction:column;gap:.3rem;margin-top:.3rem;
   font-family:var(--mono);font-size:.6rem;color:var(--fg)}
+/* #460, corrected against the finalized mockup (.claude/ui-hub/html/
+   AST-044-r1.html, Option B `.mB2 .wtop`): the top section is TWO blocks
+   side by side (Latency, Per area), not one flat column -- ast-metrics-
+   block mirrors the mockup's `.block`/`.blab` (flex:1, min-width so they
+   wrap to their own line in the 420px window at narrow viewports, same as
+   the mockup's `flex-wrap:wrap`). */
+.ast-metrics-block{flex:1;min-width:130px;display:flex;flex-direction:column;gap:.35rem}
+.ast-metrics-blab{font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);display:flex;align-items:center;gap:.5rem}
+/* p50/p95 color-legend chips (mockup `.lg`/`.lg50`/`.lg95`) -- a colored
+   dash swatch + label, cyan for p50 and amber for p95, the SAME two colors
+   buildAstMetricsGraphMarkup's marker lines use below, so the legend and
+   the graph agree. */
+.ast-metrics-legend{font-size:.54rem;letter-spacing:.06em;text-transform:none}
+.ast-metrics-legend::before{content:'';display:inline-block;width:9px;height:2px;
+  vertical-align:middle;margin-right:.25rem}
+.ast-metrics-legend-p50{color:var(--cyan)}
+.ast-metrics-legend-p50::before{background:var(--cyan)}
+.ast-metrics-legend-p95{color:var(--amber)}
+.ast-metrics-legend-p95::before{background:var(--amber)}
 .ast-metrics-row{display:flex;justify-content:space-between;gap:.5rem;
   border:1px solid var(--border);border-radius:3px;padding:.2rem .4rem}
 .ast-metrics-graph{display:block;width:100%;height:2.2rem;fill:var(--cyan)}
+/* percentile markers drawn ON the bucket-distribution graph above (the
+   "percentile sparkline (p50/p95 lines)" half of the recorded #330 Option B
+   decision text) -- vertical lines at the p50/p95 estimate's interpolated
+   position along the same bucket-index x-axis buildAstMetricsGraphMarkup's
+   bars use. The mockup's own sparkline is two dual polylines PLOTTED OVER
+   RECENT TURNS (a time series) -- /assistant/metrics only ever returns
+   aggregate bucket counts (root_metrics()'s own docstring: computed fresh
+   from traces.sqlite, "SHALL NOT own history", no per-turn series kept),
+   so a literal trend line is not buildable without an engine change (out of
+   this template-only task's scope -- flagged in the #460 report). Marking
+   p50/p95 on the REAL distribution, in the mockup's own cyan/amber coding,
+   is the closest honest equivalent. */
+.ast-metrics-graph .ast-metrics-marker{stroke-width:1;vector-effect:non-scaling-stroke}
+.ast-metrics-marker-p50{stroke:var(--cyan)}
+.ast-metrics-marker-p95{stroke:var(--amber)}
+/* Per-area vertical bar columns (mockup `.bars`/`.barcol`/`.barwrap`/
+   `.barfill`/`.barlab`) -- bound to rootMetrics.eventsTotal (root_metrics()
+   in observability.py: per-event-family counts, e.g. turn/recall/provider/
+   distill -- the actual "per-area" breakdown the mockup's labels refer to,
+   already shipped and byte-frozen as DATA in the first AST-044 round,
+   simply never rendered until now). Height-based fill, not a row-width
+   fill -- corrected to match the mockup's real column-bar shape once the
+   mockup was read in full (#460). */
+.ast-metrics-bars{display:flex;gap:.55rem;align-items:flex-end;flex-wrap:wrap}
+.ast-metrics-barcol{display:flex;flex-direction:column;align-items:center;gap:.25rem}
+.ast-metrics-barwrap{height:2.6rem;width:1rem;display:flex;align-items:flex-end;
+  background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:3px;
+  overflow:hidden}
+.ast-metrics-barfill{width:100%;height:0;background:var(--cyan);border-radius:2px 2px 0 0}
+.ast-metrics-barlab{font-size:.5rem;letter-spacing:.05em;color:var(--muted);
+  text-transform:uppercase;text-align:center;max-width:2.8rem}
+.ast-metrics-barval{font-size:.54rem;color:var(--fg)}
 .ast-metrics-state{padding:.2rem .4rem;font-size:.6rem;color:var(--muted);min-height:1em}
 .ast-metrics-state-gated,.ast-metrics-state-offline{color:#e0453a}
 .ast-metrics-retry{font-family:var(--mono);font-size:.6rem;border:1px solid var(--border);
@@ -790,6 +869,10 @@ canvas.grabbing{cursor:grabbing}
 .ast-turnlist-row.ast-turnlist-selected{border-color:var(--cyan);color:var(--cyan)}
 .ast-turnlist-row.ast-turnlist-error{color:#e0453a}
 .ast-waterfall{display:flex;flex-direction:column;gap:.15rem;margin-top:.3rem}
+/* #460, second conformance pass (mockup `.mB2 .wbot .blab`): turn-context
+   header shown above the waterfall once a turn is selected, same label
+   styling as the top-section block labels above. */
+.ast-waterfall-turnlab{font-size:.58rem;letter-spacing:.06em;color:var(--muted)}
 .ast-waterfall-track{position:relative;height:.6rem;border:1px solid var(--border);border-radius:2px}
 .ast-waterfall-bar{position:absolute;top:0;height:100%;background:var(--cyan);opacity:.6}
 .ast-waterfall-bar.ast-waterfall-instant{width:2px!important;opacity:1;background:var(--fg)}
@@ -6986,12 +7069,55 @@ function astMetricsRow(label, value){
   row.appendChild(v);
   return row;
 }
-// Structural placeholder only (hook class ast-metrics-graph): an inline
-// SVG bar per bucket boundary, height proportional to that bucket's OWN
-// (non-cumulative) sample count so the shape reads as a rough distribution
-// rather than a monotonic ramp. No axis/legend/color polish -- that is the
-// pending restyle's job, per this section's own placeholder-only note.
-function buildAstMetricsGraphMarkup(bucketMap, count){
+// #460: one vertical bar column for the "Per area" block (mockup
+// `.barcol`/`.barwrap`/`.barfill`/`.barlab` -- see the CSS above). pct is
+// 0-100, already normalized by the caller against the area group's own
+// max, same convention astMetricsRow's now-removed pct arg used in an
+// earlier pass of this fix before the mockup's real column-bar shape was
+// read in full.
+function astMetricsBarCol(label, value, pct){
+  const col = document.createElement("div");
+  col.className = "ast-metrics-barcol";
+  const wrap = document.createElement("div");
+  wrap.className = "ast-metrics-barwrap";
+  const fill = document.createElement("div");
+  fill.className = "ast-metrics-barfill";
+  fill.style.height = Math.max(0, Math.min(100, pct)) + "%";
+  wrap.appendChild(fill);
+  const lab = document.createElement("span");
+  lab.className = "ast-metrics-barlab";
+  lab.textContent = label;
+  const val = document.createElement("span");
+  val.className = "ast-metrics-barval";
+  val.textContent = String(value);
+  col.appendChild(wrap);
+  col.appendChild(lab);
+  col.appendChild(val);
+  return col;
+}
+// Inline SVG bar per bucket boundary, height proportional to that bucket's
+// OWN (non-cumulative) sample count so the shape reads as a rough
+// distribution rather than a monotonic ramp. p50/p95 (optional, already-
+// estimated seconds) draw as vertical marker lines at their interpolated
+// position along the SAME bucket-index x-axis the bars use (see
+// astMetricsValuePosition) -- the "percentile sparkline (p50/p95 lines)"
+// half of the recorded #330 Option B decision text drawn ON the real
+// distribution instead of as a second, disconnected mini-chart.
+function astMetricsValuePosition(value, boundaries){
+  if(value == null || !Number.isFinite(value)) return null;
+  const n = boundaries.length;
+  let prev = 0;
+  for(let i = 0; i < n; i++){
+    const le = boundaries[i];
+    if(value <= le || i === n - 1){
+      const frac = le > prev ? Math.min(1, (value - prev) / (le - prev)) : 0;
+      return ((i + Math.max(0, frac)) / n) * 100;
+    }
+    prev = le;
+  }
+  return 100;
+}
+function buildAstMetricsGraphMarkup(bucketMap, count, p50, p95){
   const boundaries = astMetricsBucketBoundaries();
   const n = boundaries.length;
   let prevCum = 0;
@@ -7006,7 +7132,12 @@ function buildAstMetricsGraphMarkup(bucketMap, count){
     const w = (1 / n) * 100 - 1;
     rects += `<rect x="${x}" width="${w}" y="${20 - h}" height="${h}"></rect>`;
   }
-  return `<svg class="ast-metrics-graph" viewBox="0 0 100 20" preserveAspectRatio="none">${rects}</svg>`;
+  let markers = "";
+  const p50x = astMetricsValuePosition(p50, boundaries);
+  if(p50x != null) markers += `<line class="ast-metrics-marker ast-metrics-marker-p50" x1="${p50x}" x2="${p50x}" y1="0" y2="20"></line>`;
+  const p95x = astMetricsValuePosition(p95, boundaries);
+  if(p95x != null) markers += `<line class="ast-metrics-marker ast-metrics-marker-p95" x1="${p95x}" x2="${p95x}" y1="0" y2="20"></line>`;
+  return `<svg class="ast-metrics-graph" viewBox="0 0 100 20" preserveAspectRatio="none">${rects}${markers}</svg>`;
 }
 function renderAstMetrics(rootMetrics){
   const el = document.getElementById("ast-metrics");
@@ -7022,17 +7153,64 @@ function renderAstMetrics(rootMetrics){
   const td = rootMetrics.turnDuration || {count: 0, sum: 0, buckets: {}};
   const p50 = astEstimatePercentile(td.buckets, td.count, 0.5);
   const p95 = astEstimatePercentile(td.buckets, td.count, 0.95);
-  el.appendChild(astMetricsRow("p50 turn duration", p50 === null ? "—" : p50.toFixed(2) + "s"));
-  el.appendChild(astMetricsRow("p95 turn duration", p95 === null ? "—" : p95.toFixed(2) + "s"));
+
+  // Latency block (mockup: label + p50/p95 legend chips, then the
+  // sparkline -- see buildAstMetricsGraphMarkup's own comment for why this
+  // is marker lines on the real bucket distribution rather than a literal
+  // dual-polyline trend).
+  const latencyBlock = document.createElement("div");
+  latencyBlock.className = "ast-metrics-block";
+  const latencyLab = document.createElement("div");
+  latencyLab.className = "ast-metrics-blab";
+  latencyLab.textContent = "Latency";
+  const legend50 = document.createElement("span");
+  legend50.className = "ast-metrics-legend ast-metrics-legend-p50";
+  legend50.textContent = "p50";
+  const legend95 = document.createElement("span");
+  legend95.className = "ast-metrics-legend ast-metrics-legend-p95";
+  legend95.textContent = "p95";
+  latencyLab.appendChild(legend50);
+  latencyLab.appendChild(legend95);
+  latencyBlock.appendChild(latencyLab);
+  const graphWrap = document.createElement("div");
+  graphWrap.className = "ast-metrics-graph-host";
+  graphWrap.innerHTML = buildAstMetricsGraphMarkup(td.buckets, td.count, p50, p95);
+  latencyBlock.appendChild(graphWrap);
+  latencyBlock.appendChild(astMetricsRow("p50 turn duration", p50 === null ? "—" : p50.toFixed(2) + "s"));
+  latencyBlock.appendChild(astMetricsRow("p95 turn duration", p95 === null ? "—" : p95.toFixed(2) + "s"));
+  el.appendChild(latencyBlock);
+
+  // Per-area block (mockup: label, then vertical bar columns). Bound to
+  // eventsTotal -- root_metrics()'s per-event-FAMILY counts (turn/recall/
+  // provider/distill/...), the actual "per-area" breakdown the mockup's
+  // bar labels name; already shipped/byte-frozen as data in the first
+  // AST-044 round, simply never rendered until this fix.
+  const areaBlock = document.createElement("div");
+  areaBlock.className = "ast-metrics-block";
+  const areaLab = document.createElement("div");
+  areaLab.className = "ast-metrics-blab";
+  areaLab.textContent = "Per area";
+  areaBlock.appendChild(areaLab);
+  const bars = document.createElement("div");
+  bars.className = "ast-metrics-bars";
+  const eventsTotal = rootMetrics.eventsTotal || {};
+  const areaKeys = Object.keys(eventsTotal);
+  if(areaKeys.length){
+    const areaMax = Math.max(1, ...areaKeys.map(k => eventsTotal[k] || 0));
+    for(const k of areaKeys) bars.appendChild(astMetricsBarCol(k, eventsTotal[k] || 0, ((eventsTotal[k] || 0) / areaMax) * 100));
+  }
+  areaBlock.appendChild(bars);
+  el.appendChild(areaBlock);
+
+  // Supplementary detail the mockup does not cover at all (turn outcome/
+  // error counters, distill/notes activity) -- kept as plain rows, below
+  // both blocks, so nothing this fold already surfaced regresses.
   const byStatus = rootMetrics.turnsByStatus || {};
   el.appendChild(astMetricsRow("turns ok", String(byStatus.ok || 0)));
   el.appendChild(astMetricsRow("turns error", String(byStatus.error || 0)));
   el.appendChild(astMetricsRow("provider errors", String(rootMetrics.providerErrors || 0)));
   el.appendChild(astMetricsRow("distill batches", String(rootMetrics.distillBatches || 0)));
   el.appendChild(astMetricsRow("notes minted", String(rootMetrics.notesMinted || 0)));
-  const graphWrap = document.createElement("div");
-  graphWrap.innerHTML = buildAstMetricsGraphMarkup(td.buckets, td.count);
-  el.appendChild(graphWrap);
 }
 // Groups `/assistant/traces`'s already seq-ordered `events` by `turn_id`
 // (first-seen order preserved -- `turn_id` is a uuid hex string, never an
@@ -7132,6 +7310,20 @@ function renderAstWaterfall(turn){
     return;
   }
   el.classList.remove("ast-metrics-hidden");
+  // #460, second conformance pass: the mockup's `.wbot` shows a turn-
+  // context header ("Turn #11 · provider call · 8.1s") above the
+  // waterfall -- the shipped inspector had none, relying only on the
+  // turnlist row's own selected-highlight to say which turn this is. The
+  // mockup's exact wording ("provider call") describes a turn's dominant
+  // action, which this data does not carry -- using the fields the turn
+  // actually has (id/status/duration) instead of inventing that summary.
+  const turnlab = document.createElement("div");
+  turnlab.className = "ast-waterfall-turnlab";
+  const dur = turnDurationMs(turn);
+  turnlab.textContent = "Turn " + turn.turnId.slice(0, 8)
+    + " · " + (turn.status || "unknown")
+    + " · " + (dur === null ? "—" : (dur / 1000).toFixed(2) + "s");
+  el.appendChild(turnlab);
   const spans = computeWaterfallSpans(turn);
   for(const span of spans){
     const track = document.createElement("div");
@@ -7278,14 +7470,29 @@ function buildAstInspectorWindow(){
   const bar = document.createElement("div");
   bar.className = "aiw-bar";
   bar.setAttribute("data-drag", "");
+  // #460: the mockup's own title-bar order is dots, title, grip, close --
+  // dots is pure ornament (see .aiw-dots CSS above), 3 to match the
+  // mockup's `.dots i` count exactly.
+  const dots = document.createElement("span");
+  dots.className = "aiw-dots";
+  dots.setAttribute("aria-hidden", "true");
+  for(let i = 0; i < 3; i++) dots.appendChild(document.createElement("i"));
   const grip = document.createElement("button");
   grip.className = "close grip";
   grip.title = "Drag to move window";
   grip.setAttribute("aria-label", "Drag to move window");
-  grip.textContent = "⠿";
+  // mockup label is "⠿ drag" (a text word next to the glyph, not the
+  // bare icon this app's OTHER detached windows use) -- kept for THIS
+  // window since it is what the finalized mockup shows.
+  grip.textContent = "⠿ drag";
   const title = document.createElement("span");
   title.className = "aiw-title";
   title.textContent = "Trace inspector";
+  // Refresh/Retry: NOT in the mockup (a static screenshot has no offline/
+  // stale-data state to recover from) -- kept because the window needs a
+  // real way to reload/recover from the gated/offline states below, which
+  // predate this restyle. Placed between title and grip so the mockup's
+  // own dots-title-...-grip-close rhythm stays intact at both ends.
   const refresh = document.createElement("button");
   refresh.id = "ast-metrics-refresh";
   refresh.className = "iconbtn";
@@ -7299,10 +7506,11 @@ function buildAstInspectorWindow(){
   closeBtn.className = "close";
   closeBtn.setAttribute("aria-label", "Close inspector");
   closeBtn.textContent = "✕";
-  bar.appendChild(grip);
+  bar.appendChild(dots);
   bar.appendChild(title);
   bar.appendChild(refresh);
   bar.appendChild(retry);
+  bar.appendChild(grip);
   bar.appendChild(closeBtn);
   win.appendChild(bar);
 
