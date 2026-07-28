@@ -69,9 +69,101 @@ Added two columns: `error` (TEXT, NULL until `failed`) and `result`
 this task for any REAL task kind (no kind ships here) -- exercised only
 by this module's own tests via a synthetic executor.
 
+Restart reconciliation (Sec12.4, AST-067, issue #342, docs/design/ast-E6.md
+sequence 4): the in-memory queue `q` starts EMPTY on every engine restart --
+`tasks.sqlite` is what survives, so any row still `queued`/`started`/
+`progress` when the process last stopped is invisible to the normal drain
+loop forever unless something looks for it. `run_worker` now does exactly
+that ONCE, before entering the drain loop, when given a `repos_getter`
+(same live `{repo_name: root}`-pairs callable `capability_index.run_worker`
+already takes -- engine.py's `self._repos_getter`): for every currently-
+known root, every non-terminal row is re-examined.
+
+Every state a restart can find a row in was already enumerated by the
+state machine itself -- sqlite's own transaction atomicity (`_transition`'s
+`BEGIN IMMEDIATE` / `COMMIT`) means a crash mid-transition never leaves a
+HALF-written state; a row is always exactly one of `STATES`, never
+something in between. So reconciliation only ever needs to ask "is this
+row's real-world work still happening, or not":
+    - `queued` (closure on issue #342's review): never even reached an
+      executor -- Sec12.4's own wording is "unreconcilable tasks become
+      orphaned", and a purely-queued row genuinely IS unreconcilable: no
+      external_job_id, no in-process work, the in-memory queue item that
+      would have run it died with the process. Leaving it `queued`
+      forever would be the one state in this machine that can never
+      progress, and it would still show in the §12.5 queue indicator as
+      pending work that will never run. The fix is nearly free: `_insert`
+      is followed immediately by `_transition(STARTED)` with no I/O in
+      between, so a row only persists as `queued` at rest if the process
+      died between those two adjacent statements -- this is a vocabulary/
+      correctness fix, not something that reconciles meaningful volume.
+      `orphaned` via the same no-`external_job_id` path below, worded for
+      what actually happened (never started, not "was running and is now
+      gone").
+    - no `external_job_id` on a `started`/`progress` row: nothing external
+      to ask. The in-process work that was running when the engine stopped
+      is simply gone (this worker thread died with the process) --
+      unreconcilable, `orphaned`.
+    - `external_job_id` present but no resolver registered for that
+      `kind`: same shape as `run_worker`'s own "no executor registered for
+      kind %r" -- fails specifically, `orphaned`, never silently retried
+      or left forever ambiguous.
+    - resolver raises, or returns something that is not a dict with a
+      recognized `state` (protocol-layer failure enumeration: a resolver
+      is someone else's remote system, its response can legitimately be
+      unreachable, malformed, or simply wrong) -- `orphaned`, distinct
+      error text from the two cases above so `error` always says WHY.
+    - resolver reports `"not_found"` (the remote system has no record of
+      that job at all -- expired, evicted, or never actually existed) --
+      also `orphaned`: this is not the same failure as an unreachable/
+      malformed response, so it gets its own recognized outcome and its
+      own error text, even though the row-level result (orphaned) is the
+      same.
+    - resolver reports `"completed"`/`"failed"`: the remote system's real
+      state wins outright -- `_transition`ed accordingly (never
+      resubmitted, per §12.4's literal wording), same `task.completed`/
+      `task.failed` trace events the normal flow emits, `{"reconciled":
+      True}` added to the payload so a trace consumer can tell the two
+      apart.
+    - resolver reports `"in_progress"`: genuinely still running elsewhere;
+      no state change (nothing about the row is actually different), but
+      a `task.reconcile_checked` trace event still fires so a restart
+      leaves SOME record that this row was looked at, even though nothing
+      moved.
+    One row's reconciliation failing (a bug in a resolver, a query
+    exploding) never stops the rest -- same "park-and-continue" posture
+    `run_worker`'s own drain loop already has -- and one ROOT's
+    reconciliation failing never stops another root's.
+
+    Crash safety is SWEEP idempotence, not per-row atomicity (issue #342's
+    review). Each row reconciles in its own transaction, so dying mid-sweep
+    leaves some rows resolved and others not -- that is harmless because
+    the query that selects candidate rows only ever matches `queued`/
+    `started`/`progress`; already-reconciled rows have moved to a terminal
+    state and dropped out of the candidate set, so the next restart's sweep
+    picks up exactly the remainder, never re-touching what already
+    finished. The one residual gap this does NOT close: a crash between a
+    row's `_transition` commit and its matching `_emit` trace call commits
+    the state change without its trace event -- the database stays
+    authoritative and correct (the next sweep will not revisit that row,
+    since it is no longer a candidate), only the audit trail has a hole.
+    Correctly out of scope: fixing it would need making the state
+    transition and the trace emission one atomic unit across two different
+    storage systems (sqlite + the traces queue), which is a bigger change
+    than this task's reconciliation logic.
+
+    Flagged (issue #342's report): no resolver ships with this task (same
+    "generic infrastructure, no specific business logic" posture the
+    `executors` seam already established for AST-066 -- AST-070 registers
+    the first real one). `resolvers[kind]` is `(external_job_id, payload)
+    -> {"state": ..., **fields}`, deliberately the same shape as
+    `executors[kind]`'s `(payload, report_progress) -> {...}` outcome dict,
+    for the same reason: one convention, not two.
+
 Library:
     STATES -- the exact six state names Sec12.3 lists, in transition
-        order (`orphaned` last -- AST-067's target, never produced here).
+        order. `orphaned` was never produced before AST-067; restart
+        reconciliation (below) is what actually produces it now.
     enqueue(q, root, kind, payload=None, turn_id=None) -> task_id | None
         Enqueue-only; generates `task_id` (uuid4 hex) in the CALLING
         thread (cheap, no I/O) so callers get a referenceable id
@@ -93,10 +185,11 @@ Library:
         correlated back to the turn that spawned it (§12.5: "failures
         surface in-chat with the trace linked").
     run_worker(q, stop_event, executors=None, poll_timeout=...,
-        traces_queue=None)
+        traces_queue=None, repos_getter=None, resolvers=None)
         The `tasks` worker body engine.py's `start()` binds into the
         AST-010 `tasks` slot. See module docstring for the execution
-        model and transition-as-trace-event contract.
+        model, transition-as-trace-event contract, and (AST-067)
+        "Restart reconciliation" sections.
     list_tasks(root, state=None, limit=200) -> list[dict]
         Read path for the queue-indicator endpoint
         (`GET /assistant/tasks`). Opens a fresh, short-lived connection
@@ -129,6 +222,22 @@ STATE_COMPLETED = "completed"
 STATE_FAILED = "failed"
 STATE_ORPHANED = "orphaned"
 STATES = (STATE_QUEUED, STATE_STARTED, STATE_PROGRESS, STATE_COMPLETED, STATE_FAILED, STATE_ORPHANED)
+
+# AST-067 (§12.4, issue #342): the recognized outcomes a reconciliation
+# resolver may report -- see the module docstring's "Restart reconciliation"
+# section for what each one means and what it produces.
+_RESOLVER_STATE_COMPLETED = "completed"
+_RESOLVER_STATE_FAILED = "failed"
+_RESOLVER_STATE_IN_PROGRESS = "in_progress"
+_RESOLVER_STATE_NOT_FOUND = "not_found"
+_RESOLVER_STATES = (_RESOLVER_STATE_COMPLETED, _RESOLVER_STATE_FAILED, _RESOLVER_STATE_IN_PROGRESS, _RESOLVER_STATE_NOT_FOUND)
+# rows this old restart-time reconciliation looks at -- includes `queued`
+# (closure on issue #342's review): Sec12.4's own wording is "unreconcilable
+# tasks become orphaned", and a purely-queued row IS unreconcilable -- no
+# external_job_id, no in-process work, the in-memory queue item that would
+# have run it died with the process. See the module docstring for why this
+# is a vocabulary/correctness fix, not a data-volume one.
+_RECONCILE_TARGET_STATES = (STATE_QUEUED, STATE_STARTED, STATE_PROGRESS)
 
 DEFAULT_POLL_TIMEOUT_SECONDS = 0.5
 
@@ -364,10 +473,158 @@ def _process_create(item, conns, executors, traces_queue):
         _emit(traces_queue, root, "task.failed", task_id, kind, STATE_FAILED, {"error": error}, turn_id=turn_id)
 
 
-def run_worker(q, stop_event, executors=None, poll_timeout=DEFAULT_POLL_TIMEOUT_SECONDS, traces_queue=None):
-    """See module docstring's Library entry and "Execution model" section."""
+def _orphan_row(conn, root, row, reason, traces_queue):
+    """One row -> `orphaned`, `error=reason`, `task.orphaned` trace event.
+    Every unreconcilable path in `_reconcile_row` funnels through here so
+    the state machine's actual "give up, surface it" step is written once.
+    `_transition_safe` (never `_transition`) -- a reconciliation failure
+    recording ITS OWN failure must not raise back out of the reconciliation
+    pass (same posture `_process_create`'s except-branches already use)."""
+    _transition_safe(conn, row["id"], STATE_ORPHANED, error=reason)
+    _emit(traces_queue, root, "task.orphaned", row["id"], row["kind"], STATE_ORPHANED,
+          {"error": reason, "reconciled": True}, turn_id=row.get("turn_id"))
+
+
+def _reconcile_row(conn, root, row, resolvers, traces_queue):
+    """One `queued`/`started`/`progress` row found at restart -> re-polled
+    (never resubmitted, §12.4's literal wording) or `orphaned`. See the
+    module docstring's "Restart reconciliation" section for the full
+    state-by-state rationale; this is that section's implementation."""
+    task_id = row["id"]
+    kind = row["kind"]
+    external_job_id = row.get("external_job_id")
+    turn_id = row.get("turn_id")
+    old_state = row["state"]
+
+    if old_state == STATE_QUEUED:
+        # closure on issue #342's review: a queued row never even reached
+        # an executor, so it can never carry an external_job_id either --
+        # unreconcilable for the same reason a bare no-external_job_id
+        # started/progress row is, just phrased for what actually happened
+        # (never started, not "was running and is now gone").
+        _orphan_row(conn, root, row,
+                    "queued at restart, never started -- the in-memory queue item that would have run it is gone",
+                    traces_queue)
+        return
+
+    if not external_job_id:
+        _orphan_row(conn, root, row, (
+            "no external_job_id at restart -- the in-process work that was "
+            "%s when the engine stopped is gone, nothing to re-poll" % old_state
+        ), traces_queue)
+        return
+
+    resolver = resolvers.get(kind)
+    if resolver is None:
+        _orphan_row(conn, root, row, "no reconciliation resolver registered for kind %r" % (kind,), traces_queue)
+        return
+
+    try:
+        payload = json.loads(row.get("payload") or "{}")
+        if not isinstance(payload, dict):
+            payload = {}
+    except (TypeError, ValueError):
+        payload = {}
+
+    try:
+        outcome = resolver(external_job_id, payload)
+    except Exception as exc:  # protocol-layer failure: the remote system is someone else's -- never trust it, never crash on it
+        _orphan_row(conn, root, row, "reconciliation resolver raised: %s" % exc, traces_queue)
+        return
+
+    if not isinstance(outcome, dict) or outcome.get("state") not in _RESOLVER_STATES:
+        # validate the DECLARATION (a dict with a recognized `state` key),
+        # not just some value inside it -- an unparseable/malformed
+        # response from a remote system is exactly the kind of thing that
+        # must never be silently trusted into a definitive transition.
+        _orphan_row(conn, root, row, "reconciliation resolver returned an unusable status: %r" % (outcome,), traces_queue)
+        return
+
+    resolver_state = outcome["state"]
+    if resolver_state == _RESOLVER_STATE_NOT_FOUND:
+        _orphan_row(conn, root, row, "remote system has no record of external_job_id %r" % (external_job_id,), traces_queue)
+        return
+
+    if resolver_state == _RESOLVER_STATE_IN_PROGRESS:
+        # genuinely still running elsewhere -- nothing about the row
+        # changed, so no _transition (no write for a no-op), but the
+        # restart still gets a record that this row was checked at all.
+        _emit(traces_queue, root, "task.reconcile_checked", task_id, kind, old_state,
+              {"reconciled": True, "still_running": True}, turn_id=turn_id)
+        return
+
+    if resolver_state == _RESOLVER_STATE_COMPLETED:
+        artifact_path = outcome.get("artifact_path")
+        result = outcome.get("result")
+        _transition(
+            conn, task_id, STATE_COMPLETED,
+            artifact_path=artifact_path,
+            result=json.dumps(result, sort_keys=True) if result is not None else None,
+        )
+        extra = {"reconciled": True}
+        if artifact_path:
+            extra["artifact_path"] = artifact_path
+        _emit(traces_queue, root, "task.completed", task_id, kind, STATE_COMPLETED, extra, turn_id=turn_id)
+        return
+
+    # resolver_state == _RESOLVER_STATE_FAILED
+    error = outcome.get("error") or "remote job reported failure (reconciled at restart)"
+    _transition(conn, task_id, STATE_FAILED, error=error)
+    _emit(traces_queue, root, "task.failed", task_id, kind, STATE_FAILED, {"error": error, "reconciled": True}, turn_id=turn_id)
+
+
+def _reconcile_root(conn, root, resolvers, traces_queue):
+    """Every `started`/`progress` row in ONE root's tasks.sqlite, each
+    handled independently -- one row's reconciliation blowing up (a bug in
+    a resolver, a row this function did not anticipate) never stops the
+    rest, same park-and-continue posture `run_worker`'s own drain loop
+    already has for queue items."""
+    placeholders = ", ".join("?" for _ in _RECONCILE_TARGET_STATES)
+    rows = conn.execute(
+        "SELECT " + ", ".join(_SELECT_COLUMNS) + " FROM tasks WHERE state IN (" + placeholders + ")",
+        _RECONCILE_TARGET_STATES,
+    ).fetchall()
+    for raw_row in rows:
+        row = dict(zip(_SELECT_COLUMNS, raw_row))
+        try:
+            _reconcile_row(conn, root, row, resolvers, traces_queue)
+        except Exception as exc:  # never let one row's reconciliation kill the pass
+            sys.stderr.write("tasks worker: reconciliation failed for task %s: %s\n" % (row.get("id"), exc))
+
+
+def _reconcile_all(repos_getter, conns, resolvers, traces_queue):
+    """Called once, before `run_worker`'s drain loop starts. `conns` is
+    `run_worker`'s OWN dict (passed in, not created here) so a connection
+    reconciliation opens for a root is the SAME connection the drain loop
+    reuses afterward -- single writer per root, never a second connection
+    opened just for this pass."""
+    try:
+        repo_pairs = list(repos_getter())
+    except Exception as exc:  # a broken repos_getter must not prevent the worker from starting at all
+        sys.stderr.write("tasks worker: reconciliation could not list roots: %s\n" % exc)
+        return
+    for _repo_name, root in repo_pairs:
+        try:
+            if root not in conns:
+                conns[root] = _open_conn(root)
+            _reconcile_root(conns[root], root, resolvers, traces_queue)
+        except Exception as exc:  # one root's reconciliation failing must not block another root's
+            sys.stderr.write("tasks worker: reconciliation failed for root %s: %s\n" % (root, exc))
+
+
+def run_worker(q, stop_event, executors=None, poll_timeout=DEFAULT_POLL_TIMEOUT_SECONDS, traces_queue=None, repos_getter=None, resolvers=None):
+    """See module docstring's Library entry, "Execution model", and
+    "Restart reconciliation" sections. `repos_getter`/`resolvers` are both
+    optional (default `None`/`{}`) so every existing caller/test that
+    constructs this worker without them keeps working unchanged -- the
+    same convention `traces_queue=None` already established. `repos_getter`
+    omitted means reconciliation simply does not run (there is no way to
+    know which roots to check without it)."""
     executors = executors or {}
+    resolvers = resolvers or {}
     conns = {}
+    if repos_getter is not None:
+        _reconcile_all(repos_getter, conns, resolvers, traces_queue)
     try:
         while not stop_event.is_set():
             try:

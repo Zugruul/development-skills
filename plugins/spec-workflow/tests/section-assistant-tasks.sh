@@ -650,3 +650,489 @@ check "engine wiring: an unresolvable assistant returns an empty tasks list" "UN
 check "engine wiring: an unresolvable assistant explains itself via warnings" "UNRESOLVED_HAS_WARNING True" "$engine_out"
 check "engine wiring: engine.stop() joins the (now real) tasks worker cleanly" "ENGINE_STOPPED_CLEANLY True" "$engine_out"
 rm -rf "$_at_root"
+
+# ==========================================================================
+# AST-067: restart reconciliation (SPEC-ASSISTANT.md §12.4, issue #342,
+# docs/design/ast-E6.md sequence 4). The engine restarts with `q` empty --
+# any row left `started`/`progress` in tasks.sqlite is invisible to the
+# normal drain loop forever unless something looks for it. See
+# tasks.py's own module docstring's "Restart reconciliation" section for
+# the state-by-state rationale this test file pins.
+# ==========================================================================
+echo "-- unit: _reconcile_root -- a started/progress row with NO external_job_id is unreconcilable -> orphaned --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile
+from assistant import tasks
+
+root = tempfile.mkdtemp(prefix="at-reconcile-no-jobid-")
+conn = tasks._open_conn(root)
+tasks._insert(conn, "no-jobid", "echo", {"x": 1}, "turn-1")
+tasks._transition(conn, "no-jobid", tasks.STATE_STARTED)
+
+traces_q = queue.Queue()
+tasks._reconcile_root(conn, root, {}, traces_q)
+conn.close()
+
+rows = {r["id"]: r for r in tasks.list_tasks(root)}
+row = rows["no-jobid"]
+print("STATE", row["state"])
+print("ERROR_NAMES_NO_EXTERNAL_JOBID", "no external_job_id" in (row.get("error") or ""))
+
+trace_kinds = []
+while True:
+    try:
+        item = traces_q.get_nowait()
+    except queue.Empty:
+        break
+    trace_kinds.append((item["event"]["kind"], item["event"].get("turn_id")))
+print("HAS_ORPHANED_EVENT", ("task.orphaned", "turn-1") in trace_kinds)
+PY
+)"
+check "reconcile (no external_job_id): row becomes orphaned" "STATE orphaned" "$out"
+check "reconcile (no external_job_id): error names the actual reason" "ERROR_NAMES_NO_EXTERNAL_JOBID True" "$out"
+check "reconcile (no external_job_id): emits task.orphaned carrying the row's turn_id" "HAS_ORPHANED_EVENT True" "$out"
+
+echo "-- unit: _reconcile_root -- external_job_id present but NO resolver registered for its kind -> orphaned (same shape as run_worker's own no-executor case) --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile
+from assistant import tasks
+
+root = tempfile.mkdtemp(prefix="at-reconcile-no-resolver-")
+conn = tasks._open_conn(root)
+tasks._insert(conn, "no-resolver", "harness", {}, None)
+tasks._transition(conn, "no-resolver", tasks.STATE_STARTED, external_job_id="job-abc")
+
+traces_q = queue.Queue()
+tasks._reconcile_root(conn, root, {}, traces_q)  # empty resolvers, matching the real engine.py wiring today
+conn.close()
+
+row = {r["id"]: r for r in tasks.list_tasks(root)}["no-resolver"]
+print("STATE", row["state"])
+print("ERROR_NAMES_KIND", "harness" in (row.get("error") or ""))
+PY
+)"
+check "reconcile (no resolver for kind): row becomes orphaned" "STATE orphaned" "$out"
+check "reconcile (no resolver for kind): error names the specific kind" "ERROR_NAMES_KIND True" "$out"
+
+echo "-- unit: _reconcile_root -- resolver raises (protocol-layer failure: the remote system is unreachable) -> orphaned, never crashes the pass --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile
+from assistant import tasks
+
+root = tempfile.mkdtemp(prefix="at-reconcile-raises-")
+conn = tasks._open_conn(root)
+tasks._insert(conn, "raiser", "harness", {}, None)
+tasks._transition(conn, "raiser", tasks.STATE_STARTED, external_job_id="job-xyz")
+tasks._insert(conn, "survivor", "harness", {}, None)
+tasks._transition(conn, "survivor", tasks.STATE_STARTED, external_job_id="job-ok")
+
+def flaky_resolver(external_job_id, payload):
+    if external_job_id == "job-xyz":
+        raise ConnectionError("remote host unreachable")
+    return {"state": "in_progress"}  # the SECOND row own resolver call must still run normally
+
+traces_q = queue.Queue()
+tasks._reconcile_root(conn, root, {"harness": flaky_resolver}, traces_q)
+conn.close()
+
+rows = {r["id"]: r for r in tasks.list_tasks(root)}
+print("RAISER_STATE", rows["raiser"]["state"])
+print("RAISER_ERROR_NAMES_RESOLVER", "resolver raised" in (rows["raiser"].get("error") or ""))
+print("SURVIVOR_UNTOUCHED_STATE", rows["survivor"]["state"])  # non-empty control: reconciliation kept running past the raiser
+PY
+)"
+check "reconcile (resolver raises): row becomes orphaned, not stuck/crashed" "RAISER_STATE orphaned" "$out"
+check "reconcile (resolver raises): error names it as a resolver failure" "RAISER_ERROR_NAMES_RESOLVER True" "$out"
+check "reconcile (resolver raises): a second row in the SAME pass is still reached (park-and-continue)" \
+    "SURVIVOR_UNTOUCHED_STATE started" "$out"
+
+echo "-- unit: _reconcile_root -- resolver returns something that is not a usable status dict -> orphaned (validate the declaration, not just a value) --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile
+from assistant import tasks
+
+root = tempfile.mkdtemp(prefix="at-reconcile-malformed-")
+conn = tasks._open_conn(root)
+tasks._insert(conn, "not-a-dict", "harness", {}, None)
+tasks._transition(conn, "not-a-dict", tasks.STATE_STARTED, external_job_id="job-1")
+tasks._insert(conn, "bad-state-value", "harness", {}, None)
+tasks._transition(conn, "bad-state-value", tasks.STATE_STARTED, external_job_id="job-2")
+
+def returns_string(external_job_id, payload):
+    return "completed"  # not a dict at all
+
+def returns_unknown_state(external_job_id, payload):
+    return {"state": "totally-made-up"}
+
+traces_q = queue.Queue()
+tasks._reconcile_root(conn, root, {"harness": returns_string}, traces_q)
+conn.close()
+
+rows = {r["id"]: r for r in tasks.list_tasks(root)}
+print("NOT_A_DICT_STATE", rows["not-a-dict"]["state"])
+print("NOT_A_DICT_ERROR_NAMES_UNUSABLE", "unusable status" in (rows["not-a-dict"].get("error") or ""))
+
+conn2 = tasks._open_conn(root)
+traces_q2 = queue.Queue()
+tasks._reconcile_root(conn2, root, {"harness": returns_unknown_state}, traces_q2)
+conn2.close()
+rows2 = {r["id"]: r for r in tasks.list_tasks(root)}
+print("BAD_STATE_VALUE_STATE", rows2["bad-state-value"]["state"])
+PY
+)"
+check "reconcile (resolver returns a non-dict): row becomes orphaned" "NOT_A_DICT_STATE orphaned" "$out"
+check "reconcile (resolver returns a non-dict): error names it as an unusable status" "NOT_A_DICT_ERROR_NAMES_UNUSABLE True" "$out"
+check "reconcile (resolver returns an unrecognized state value): row becomes orphaned too" "BAD_STATE_VALUE_STATE orphaned" "$out"
+
+echo "-- unit: _reconcile_root -- resolver reports not_found (remote has no record) -> orphaned, with its OWN distinct reason from a malformed response --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile
+from assistant import tasks
+
+root = tempfile.mkdtemp(prefix="at-reconcile-notfound-")
+conn = tasks._open_conn(root)
+tasks._insert(conn, "vanished", "harness", {}, None)
+tasks._transition(conn, "vanished", tasks.STATE_STARTED, external_job_id="job-gone")
+
+def not_found_resolver(external_job_id, payload):
+    return {"state": "not_found"}
+
+traces_q = queue.Queue()
+tasks._reconcile_root(conn, root, {"harness": not_found_resolver}, traces_q)
+conn.close()
+
+row = {r["id"]: r for r in tasks.list_tasks(root)}["vanished"]
+print("STATE", row["state"])
+print("ERROR_NAMES_NO_RECORD", "no record" in (row.get("error") or ""))
+print("ERROR_NAMES_JOBID", "job-gone" in (row.get("error") or ""))
+PY
+)"
+check "reconcile (not_found): row becomes orphaned" "STATE orphaned" "$out"
+check "reconcile (not_found): error names it as the remote having no record (distinct from a malformed-response reason)" \
+    "ERROR_NAMES_NO_RECORD True" "$out"
+check "reconcile (not_found): error names the specific external_job_id" "ERROR_NAMES_JOBID True" "$out"
+
+echo "-- unit: _reconcile_root -- resolver reports completed/failed -> the remote's real state wins, never resubmitted, same trace events as the normal flow plus reconciled=True --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile
+from assistant import tasks
+
+root = tempfile.mkdtemp(prefix="at-reconcile-definitive-")
+conn = tasks._open_conn(root)
+tasks._insert(conn, "done-elsewhere", "harness", {}, "turn-done")
+tasks._transition(conn, "done-elsewhere", tasks.STATE_PROGRESS, external_job_id="job-done")
+tasks._insert(conn, "failed-elsewhere", "harness", {}, "turn-fail")
+tasks._transition(conn, "failed-elsewhere", tasks.STATE_STARTED, external_job_id="job-fail")
+
+def resolver(external_job_id, payload):
+    if external_job_id == "job-done":
+        return {"state": "completed", "artifact_path": "/artifacts/x.glb", "result": {"ok": True}}
+    return {"state": "failed", "error": "harness exited 1"}
+
+traces_q = queue.Queue()
+tasks._reconcile_root(conn, root, {"harness": resolver}, traces_q)
+conn.close()
+
+rows = {r["id"]: r for r in tasks.list_tasks(root)}
+print("DONE_STATE", rows["done-elsewhere"]["state"])
+print("DONE_ARTIFACT", rows["done-elsewhere"]["artifact_path"])
+print("DONE_RESULT", rows["done-elsewhere"]["result"])
+print("FAILED_STATE", rows["failed-elsewhere"]["state"])
+print("FAILED_ERROR", rows["failed-elsewhere"]["error"])
+
+trace_items = []
+while True:
+    try:
+        item = traces_q.get_nowait()
+    except queue.Empty:
+        break
+    trace_items.append(item["event"])
+completed_ev = next((e for e in trace_items if e["kind"] == "task.completed"), None)
+failed_ev = next((e for e in trace_items if e["kind"] == "task.failed"), None)
+print("COMPLETED_EVENT_RECONCILED", bool(completed_ev and completed_ev["payload"].get("reconciled") is True))
+print("COMPLETED_EVENT_TURN_ID", completed_ev.get("turn_id") if completed_ev else None)
+print("FAILED_EVENT_RECONCILED", bool(failed_ev and failed_ev["payload"].get("reconciled") is True))
+PY
+)"
+check "reconcile (resolver says completed): row transitions to completed, never resubmitted" "DONE_STATE completed" "$out"
+check "reconcile (resolver says completed): artifact_path carries through" "DONE_ARTIFACT /artifacts/x.glb" "$out"
+check "reconcile (resolver says completed): result carries through" "DONE_RESULT {'ok': True}" "$out"
+check "reconcile (resolver says failed): row transitions to failed" "FAILED_STATE failed" "$out"
+check "reconcile (resolver says failed): error carries through from the resolver" "FAILED_ERROR harness exited 1" "$out"
+check "reconcile (definitive outcomes): the task.completed trace event is marked reconciled=True" "COMPLETED_EVENT_RECONCILED True" "$out"
+check "reconcile (definitive outcomes): the trace event still carries the row's own turn_id" "COMPLETED_EVENT_TURN_ID turn-done" "$out"
+check "reconcile (definitive outcomes): the task.failed trace event is marked reconciled=True too" "FAILED_EVENT_RECONCILED True" "$out"
+
+echo "-- unit: _reconcile_root -- resolver reports in_progress -> genuinely still running, NO state change, but a reconcile_checked trace event still fires --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile
+from assistant import tasks
+
+root = tempfile.mkdtemp(prefix="at-reconcile-inprogress-")
+conn = tasks._open_conn(root)
+tasks._insert(conn, "still-going", "harness", {}, None)
+tasks._transition(conn, "still-going", tasks.STATE_PROGRESS, external_job_id="job-live")
+
+def resolver(external_job_id, payload):
+    return {"state": "in_progress"}
+
+before = {r["id"]: r for r in tasks.list_tasks(root)}["still-going"]
+
+traces_q = queue.Queue()
+tasks._reconcile_root(conn, root, {"harness": resolver}, traces_q)
+conn.close()
+
+after = {r["id"]: r for r in tasks.list_tasks(root)}["still-going"]
+print("STATE_UNCHANGED", after["state"] == "progress" == before["state"])
+print("UPDATED_AT_UNCHANGED", after["updated_at"] == before["updated_at"])  # no write at all for a genuine no-op
+
+trace_kinds = []
+while True:
+    try:
+        item = traces_q.get_nowait()
+    except queue.Empty:
+        break
+    trace_kinds.append(item["event"]["kind"])
+print("HAS_RECONCILE_CHECKED_EVENT", "task.reconcile_checked" in trace_kinds)
+print("NO_COMPLETED_OR_FAILED_EVENT", "task.completed" not in trace_kinds and "task.failed" not in trace_kinds)
+PY
+)"
+check "reconcile (in_progress): the row's state genuinely does not change" "STATE_UNCHANGED True" "$out"
+check "reconcile (in_progress): no write happens at all for a real no-op (updated_at untouched)" "UPDATED_AT_UNCHANGED True" "$out"
+check "reconcile (in_progress): still emits a task.reconcile_checked trace event (a restart leaves SOME record)" "HAS_RECONCILE_CHECKED_EVENT True" "$out"
+check "reconcile (in_progress): does not ALSO emit a completed/failed event" "NO_COMPLETED_OR_FAILED_EVENT True" "$out"
+
+echo "-- unit: _reconcile_root -- a queued-but-never-started row IS reconciled (closure, issue #342 review: Sec12.4 'unreconcilable -> orphaned' applies to it too); terminal rows are never re-touched --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile
+from assistant import tasks
+
+root = tempfile.mkdtemp(prefix="at-reconcile-scope-")
+conn = tasks._open_conn(root)
+tasks._insert(conn, "never-started", "harness", {}, "turn-never")  # stays queued -- default state _insert leaves it in
+tasks._insert(conn, "already-done", "harness", {}, None)
+tasks._transition(conn, "already-done", tasks.STATE_COMPLETED, result='"pre-existing"')
+tasks._insert(conn, "already-orphaned", "harness", {}, None)
+tasks._transition(conn, "already-orphaned", tasks.STATE_ORPHANED, error="orphaned on a previous restart")
+tasks._insert(conn, "in-flight", "harness", {}, None)
+tasks._transition(conn, "in-flight", tasks.STATE_STARTED, external_job_id="job-real")  # non-empty control: reconciliation DOES run this pass
+
+def resolver(external_job_id, payload):
+    return {"state": "completed", "result": "reconciled"}
+
+traces_q = queue.Queue()
+tasks._reconcile_root(conn, root, {"harness": resolver}, traces_q)
+conn.close()
+
+rows = {r["id"]: r for r in tasks.list_tasks(root)}
+print("NEVER_STARTED_STATE", rows["never-started"]["state"])
+print("NEVER_STARTED_ERROR_NAMES_NEVER_STARTED", "never started" in (rows["never-started"].get("error") or ""))
+print("ALREADY_DONE_UNTOUCHED", rows["already-done"]["state"], rows["already-done"]["result"])
+print("ALREADY_ORPHANED_UNTOUCHED", rows["already-orphaned"]["state"], rows["already-orphaned"]["error"])
+print("IN_FLIGHT_WAS_ACTUALLY_RECONCILED", rows["in-flight"]["state"])  # proves the pass genuinely ran, not a no-op fixture
+
+trace_kinds = []
+while True:
+    try:
+        item = traces_q.get_nowait()
+    except queue.Empty:
+        break
+    trace_kinds.append((item["event"]["kind"], item["event"].get("turn_id")))
+print("HAS_ORPHANED_EVENT_FOR_NEVER_STARTED", ("task.orphaned", "turn-never") in trace_kinds)
+PY
+)"
+check "reconcile (scope, closure): a queued-but-never-started row is orphaned too, not left stuck forever" \
+    "NEVER_STARTED_STATE orphaned" "$out"
+check "reconcile (scope, closure): its error names why (never started, not 'was running and vanished')" \
+    "NEVER_STARTED_ERROR_NAMES_NEVER_STARTED True" "$out"
+check "reconcile (scope, closure): still emits task.orphaned carrying its own turn_id, same as any other orphaning" \
+    "HAS_ORPHANED_EVENT_FOR_NEVER_STARTED True" "$out"
+check "reconcile (scope): an already-completed row is never re-touched" "ALREADY_DONE_UNTOUCHED completed pre-existing" "$out"
+check "reconcile (scope): an already-orphaned row (from a PRIOR restart) is never re-touched either" \
+    "ALREADY_ORPHANED_UNTOUCHED orphaned orphaned on a previous restart" "$out"
+check "reconcile (scope): the one genuinely in-flight row in the same pass WAS reconciled (non-empty control -- the pass really ran)" \
+    "IN_FLIGHT_WAS_ACTUALLY_RECONCILED completed" "$out"
+
+echo "-- integration: run_worker -- repos_getter given, reconciliation runs ONCE at startup, before any queue item is even processed --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile, threading, time
+from assistant import tasks
+
+root = tempfile.mkdtemp(prefix="at-worker-reconcile-")
+conn = tasks._open_conn(root)
+tasks._insert(conn, "leftover", "harness", {}, None)
+tasks._transition(conn, "leftover", tasks.STATE_STARTED, external_job_id="job-leftover")
+conn.close()
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"poll_timeout": 0.1, "repos_getter": lambda: [("jarvis", root)]})
+t.start()
+
+deadline = time.monotonic() + 5.0
+row = {}
+while time.monotonic() < deadline:
+    rows = {r["id"]: r for r in tasks.list_tasks(root)}
+    row = rows.get("leftover", {})
+    if row.get("state") == "orphaned":
+        break
+    time.sleep(0.1)
+stop.set()
+t.join(timeout=3)
+
+print("RECONCILED_AT_STARTUP", row.get("state"))
+print("WORKER_JOINED", not t.is_alive())
+PY
+)"
+check "run_worker (repos_getter given): a leftover started row is reconciled at startup, no resolver registered -> orphaned" \
+    "RECONCILED_AT_STARTUP orphaned" "$out"
+check "run_worker (repos_getter given): the worker thread still joins cleanly afterward" "WORKER_JOINED True" "$out"
+
+echo "-- integration: run_worker -- repos_getter OMITTED (the default) -> reconciliation does NOT run at all, existing callers/tests are unaffected --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile, threading, time
+from assistant import tasks
+
+root = tempfile.mkdtemp(prefix="at-worker-noreconcile-")
+conn = tasks._open_conn(root)
+tasks._insert(conn, "leftover2", "harness", {}, None)
+tasks._transition(conn, "leftover2", tasks.STATE_STARTED, external_job_id="job-leftover2")
+conn.close()
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop), kwargs={"poll_timeout": 0.1})
+t.start()
+time.sleep(0.5)  # give a real (buggy) reconciliation pass every chance to have run if it were going to
+stop.set()
+t.join(timeout=3)
+
+row = {r["id"]: r for r in tasks.list_tasks(root)}["leftover2"]
+print("STATE_UNCHANGED_NO_REPOS_GETTER", row["state"])
+PY
+)"
+check "run_worker (no repos_getter): a leftover started row is left completely untouched -- opt-in, not automatic" \
+    "STATE_UNCHANGED_NO_REPOS_GETTER started" "$out"
+
+echo "-- integration: run_worker -- repos_getter returns MULTIPLE roots, every one gets reconciled, not just the first --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile, threading, time
+from assistant import tasks
+
+root_a = tempfile.mkdtemp(prefix="at-multi-a-")
+root_b = tempfile.mkdtemp(prefix="at-multi-b-")
+for root in (root_a, root_b):
+    conn = tasks._open_conn(root)
+    tasks._insert(conn, "orphan-me", "no-such-kind", {}, None)
+    tasks._transition(conn, "orphan-me", tasks.STATE_STARTED, external_job_id="job-1")
+    conn.close()
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"poll_timeout": 0.1, "repos_getter": lambda: [("a", root_a), ("b", root_b)]})
+t.start()
+
+deadline = time.monotonic() + 5.0
+state_a = state_b = None
+while time.monotonic() < deadline:
+    state_a = tasks.list_tasks(root_a)[0]["state"] if tasks.list_tasks(root_a) else None
+    state_b = tasks.list_tasks(root_b)[0]["state"] if tasks.list_tasks(root_b) else None
+    if state_a == "orphaned" and state_b == "orphaned":
+        break
+    time.sleep(0.1)
+stop.set()
+t.join(timeout=3)
+
+print("ROOT_A_STATE", state_a)
+print("ROOT_B_STATE", state_b)
+PY
+)"
+check "run_worker (multiple roots): the FIRST root's leftover row is reconciled" "ROOT_A_STATE orphaned" "$out"
+check "run_worker (multiple roots): the SECOND root's leftover row is reconciled too, not skipped" "ROOT_B_STATE orphaned" "$out"
+
+echo "-- integration: run_worker -- a broken repos_getter never prevents the worker from starting or draining the live queue --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile, threading, time
+from assistant import tasks
+
+root = tempfile.mkdtemp(prefix="at-broken-reposgetter-")
+
+def broken_repos_getter():
+    raise RuntimeError("config totally unreadable")
+
+def echo_executor(payload, report_progress):
+    return {"result": "still works"}
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"executors": {"echo": echo_executor}, "poll_timeout": 0.1,
+                              "repos_getter": broken_repos_getter})
+t.start()
+tid = tasks.enqueue(q, root, "echo", {})
+
+deadline = time.monotonic() + 5.0
+rows = []
+while time.monotonic() < deadline:
+    rows = tasks.list_tasks(root)
+    if rows and rows[0]["state"] == "completed":
+        break
+    time.sleep(0.1)
+stop.set()
+t.join(timeout=3)
+
+print("WORKER_STILL_PROCESSED_LIVE_QUEUE", bool(rows) and rows[0]["state"] == "completed")
+print("WORKER_JOINED", not t.is_alive())
+PY
+)"
+check "run_worker (broken repos_getter): the worker still starts and drains the live queue normally" \
+    "WORKER_STILL_PROCESSED_LIVE_QUEUE True" "$out"
+check "run_worker (broken repos_getter): the worker thread still joins cleanly" "WORKER_JOINED True" "$out"
+
+# ------------------------------------------------------------------------
+echo "-- integration: engine wiring -- a real restart (fresh engine.start()) reconciles a leftover in-flight row end to end --"
+_at_reconcile_root="$(mktemp -d)"
+at_repo "$_at_reconcile_root" jarvis
+
+engine_out="$(SCRIPTS_DIR="$AT_SCRIPTS" ROOT="$_at_reconcile_root" python3 - <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import engine, tasks
+
+root = os.environ["ROOT"]
+state_dir = os.path.join(root, ".claude", "assistant-engine-state")
+
+# Simulate a PRIOR run that crashed mid-task: a started row with an
+# external_job_id, written directly to tasks.sqlite BEFORE this engine
+# ever starts -- exactly what a restart finds.
+conn = tasks._open_conn(root)
+tasks._insert(conn, "pre-crash-task", "harness", {}, "turn-precrash")
+tasks._transition(conn, "pre-crash-task", tasks.STATE_STARTED, external_job_id="job-precrash")
+conn.close()
+
+e = engine.AssistantEngine(lambda: [("jarvis", root)], state_dir)
+e.start()
+try:
+    deadline = time.monotonic() + 5.0
+    payload = None
+    while time.monotonic() < deadline:
+        status, payload, _ = e.handle("GET", "/assistant/tasks", query={"assistant": ["jarvis"], "state": ["orphaned"]})
+        if payload.get("tasks"):
+            break
+        time.sleep(0.2)
+    print("STATUS", status)
+    print("N_ORPHANED", len(payload.get("tasks", [])))
+    print("ORPHANED_TASK_ID_MATCHES", payload["tasks"][0]["id"] == "pre-crash-task" if payload.get("tasks") else False)
+finally:
+    e.stop()
+    print("ENGINE_STOPPED_CLEANLY", True)
+PY
+)"
+check "engine wiring (restart reconciliation, real e.start()): the endpoint's state=orphaned filter finds it" "STATUS 200" "$engine_out"
+check "engine wiring (restart reconciliation): exactly the one pre-crash row is orphaned" "N_ORPHANED 1" "$engine_out"
+check "engine wiring (restart reconciliation): it is genuinely the SAME row that existed before the engine ever started" \
+    "ORPHANED_TASK_ID_MATCHES True" "$engine_out"
+check "engine wiring (restart reconciliation): engine.stop() still joins cleanly afterward" "ENGINE_STOPPED_CLEANLY True" "$engine_out"
+rm -rf "$_at_reconcile_root"

@@ -495,10 +495,22 @@ class AssistantEngine:
                     # with THIS task (AST-070 registers the first one) --
                     # an enqueued kind with no executor fails specifically
                     # and immediately rather than hanging.
+                    # AST-067 (§12.4, issue #342): also hands it
+                    # `self._repos_getter` (same live getter capability_index's
+                    # own slot already takes) so `run_worker` can reconcile
+                    # every currently-known root's leftover started/progress
+                    # rows ONCE at startup -- see tasks.run_worker's docstring's
+                    # "Restart reconciliation" section. `resolvers` is
+                    # deliberately empty for the same reason `executors` is:
+                    # no real task kind's remote-poll logic ships with THIS
+                    # task either (AST-070 registers the first resolver
+                    # alongside its first executor); an in-flight row whose
+                    # kind has no resolver becomes `orphaned`, specifically
+                    # and immediately, same as the no-executor case.
                     thread = threading.Thread(
                         target=tasks.run_worker,
                         args=(self.queues["tasks"], stop_event),
-                        kwargs={"traces_queue": self.queues["traces"]},
+                        kwargs={"traces_queue": self.queues["traces"], "repos_getter": self._repos_getter},
                         name=f"assistant-{name}",
                         daemon=False,
                     )
