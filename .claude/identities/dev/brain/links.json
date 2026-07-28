@@ -89,6 +89,11 @@
     "last": "2026-07-27",
     "weight": 0.5
   },
+  "contract-invariant-preservation->resolve-into-the-keyed-value": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "copy-exact-strings-tests-assert-against->copy-not-eyeball-format-parity": {
     "fires": 17,
     "last": "2026-07-27",

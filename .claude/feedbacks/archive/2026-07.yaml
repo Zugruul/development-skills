@@ -5825,3 +5825,57 @@ items:
   routing:
     action: brain-note
     ref: reviewer/true-or-merely-true-today
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-28T12:40:00Z'
+iteration:
+  task: '424'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: review
+  severity: medium
+  summary: A well-argued deliberate reversal of a landed contract shipped a silent
+    cross-repo cache collision because nothing represents premise-dependency edges
+  detail: The change flagged itself, cited the original decision, and justified overriding
+    it - all locally. The invalidated premise lived one file over. Caught only because
+    the original review recorded WHY the hazard was benign.
+  generalized: Correctness that is conditional ("X is safe because Y") has no representation
+    in diffs, types, or tests - review protocols should require that any deliberate
+    reversal of a recorded decision first enumerate what the original rationale claimed
+    to depend on, and reviews should record the WHY of every benign-verdict so premises
+    stay re-checkable.
+  routing:
+    action: brain-note
+    ref: reviewer/conditional-correctness-premise-edges
+- category: worked-well
+  area: review
+  severity: low
+  summary: Directing the structural fix over the reviewer's own minimal patch produced
+    a simpler surviving contract
+  generalized: When a review offers both a minimal patch and a structural fix, the
+    orchestrator explicitly choosing the structural one (resolving the missing dimension
+    upstream of the key rather than widening the key) can leave the system provably
+    simpler - reviewers should offer both and name their preference to avoid anchoring.
+  routing:
+    action: brain-note
+    ref: reviewer/offer-both-fixes-name-your-pick
+- category: friction
+  area: testing
+  severity: low
+  summary: A platform shell quirk was independently rediscovered and re-diagnosed
+    by two lanes in one day
+  detail: bash 3.2 heredoc-body apostrophe breaking quote tracking - hit by both devs
+    hours apart. Now minted as a team rule note.
+  generalized: When two independent agents hit and diagnose the same environment quirk
+    within one working period, the cost of the second diagnosis was pure waste - environment
+    hazards should be minted into shared memory at FIRST diagnosis and injected into
+    briefs for any work touching the hazard's file class.
+  routing:
+    action: brain-note
+    ref: dev/heredoc-apostrophe-bash32
