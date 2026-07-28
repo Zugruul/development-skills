@@ -23,6 +23,11 @@
   >   behavior-preserving across 12 config shapes by review)
   > - new section-capability-enablement test section (41 checks)
 
+### Other
+- retro(#112) + feedback: AST-065 close (`198d1f5`)
+  > - dev: audit-before-build-per-ac-clause; reviewer: verify-audited-omissions, structural-constraints-settle-prose-ambiguity, true-or-merely-true-today
+  > - feedback: 2 items routed to the new notes, feed archived
+
 ## v0.48.0 — 2026-07-28
 
 ### Features
