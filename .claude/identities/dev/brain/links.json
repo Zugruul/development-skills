@@ -29,6 +29,11 @@
     "last": "2026-07-27",
     "weight": 0.5
   },
+  "audit-before-build-per-ac-clause->validate-the-declaration-not-just-values": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "audit-new-path-parity-before-writing->verify-fixture-isolates-intended-path": {
     "fires": 18,
     "last": "2026-07-27",

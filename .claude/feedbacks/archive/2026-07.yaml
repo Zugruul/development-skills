@@ -5789,3 +5789,39 @@ items:
   routing:
     action: brain-note
     ref: reviewer/reuse-the-projects-own-harness
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-28T09:40:00Z'
+iteration:
+  task: AST-065
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: briefing
+  severity: low
+  summary: An explicit audit-what-already-holds step in the brief produced a minimal
+    diff and a one-round review
+  generalized: Briefs for multi-clause acceptance criteria should mandate an audit-before-build
+    step naming what prior tasks already landed - the dev then adds only the genuinely
+    open pieces, and the review shifts to verifying the audit, which is cheaper than
+    reviewing a reimplementation.
+  routing:
+    action: brain-note
+    ref: dev/audit-before-build-per-ac-clause
+- category: recommendation
+  area: review
+  severity: medium
+  summary: Reviews increasingly find enforced-but-unpinned invariants rather than
+    code defects, suggesting a standing structural-guard checklist item
+  generalized: As a codebase matures, review findings shift from wrong code to invariants
+    that hold only by current fact - review checklists should include asking whether
+    each spec-stated absolute is pinned by construction or merely true today, and
+    structural guards (no-callers-outside pins) should be the default response.
+  routing:
+    action: brain-note
+    ref: reviewer/true-or-merely-true-today

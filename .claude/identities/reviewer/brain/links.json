@@ -109,6 +109,11 @@
     "last": "2026-07-26",
     "weight": 0.5
   },
+  "true-or-merely-true-today->one-time-assertion-as-live-gate": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "verify-backcompat-claims-algebraically->verify-tdd-empirically-when-log-is-thin": {
     "fires": 3,
     "last": "2026-07-26",
