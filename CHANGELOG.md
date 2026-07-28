@@ -22,6 +22,11 @@
   >   inspector groups, end to end
   > - new section-assistant-voice-turn test section (two Node harnesses)
 
+### Chores
+- **feedback:** emit + route batch feedback for AST-064/AST-052 closes (`f274cf3`)
+  > - 4 items: briefed-forward lessons win (brain), stale-cwd hazards (brain), recorded-pass tree-fingerprint friction (rides #443), own-harness review probing (brain)
+  > - feed archived (2026-07)
+
 ### Other
 - retro(#111): PR-close retro for #339 + #334 (`d4787e4`)
   > - dev: 5 notes (assert after the round trip, test-comment-admitting-gap is a fail, enumerate state-machine exits, protocol-layer failure enumeration, assertions vs process exit)
