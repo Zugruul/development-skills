@@ -17,6 +17,10 @@
   > - Outcomes: 2 dev + 4 reviewer recalled notes marked useful for the T-key focus task.
   > - Minted orchestrator/worktree-root-vs-hook-root (gate/telemetry must be recorded against the root the guard hooks read).
   > - Feedback: 4 items emitted and routed (2 backlog -> #483 #484, 2 ignore), feed archived to 2026-07.
+- retro(480): 3 reviewer notes minted from interviews (`d796792`)
+  > - stub-never-happens-claims-verify: verify "never happens in this harness" stub comments against the same file's other tests.
+  > - truncated-shell-output-not-absence: shell output-rewriting hooks can truncate grep results; redirect to a file before trusting absence.
+  > - red-commit-verify-sequential-harness: adaptation of the red-commit check for single-sequential-eval test files.
 
 ## v0.56.0 — 2026-07-28
 
