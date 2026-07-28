@@ -86,7 +86,19 @@ if [[ "$rc" -eq 0 ]]; then
     mkdir -p "$(dirname "$MARKER")"
     # Explicit `cd "$ROOT"` (TREE_ROOT), not STATE_ROOT: the fingerprint must
     # describe the tree that was actually just tested above.
-    (cd "$ROOT" && bash "$HERE/tree-state.sh") >"$MARKER"
+    # #443 review round 2 (MEDIUM): tree-state.sh now exits nonzero (and
+    # prints nothing) rather than silently degrading to a stable placeholder
+    # when it cannot reliably fingerprint the tree -- checking that exit
+    # status here is what actually makes that fail LOUD end to end. Without
+    # this check, a failed tree-state.sh run would still write an EMPTY
+    # $MARKER and this script would still print "GATE PASS recorded" --
+    # exactly the silent-blind outcome the fix exists to prevent, just moved
+    # one call site up.
+    if ! (cd "$ROOT" && bash "$HERE/tree-state.sh") >"$MARKER"; then
+        rm -f "$MARKER"
+        echo "ERROR: could not fingerprint the tree (tree-state.sh failed) -- no pass recorded. See its stderr above." >&2
+        exit 1
+    fi
     echo "GATE PASS recorded ($MARKER) for the current tree — 'In review' moves are unlocked until the tree changes."
 else
     # Persist the failure signal (SPEC §8.1) before clearing the marker: a

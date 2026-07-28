@@ -159,6 +159,7 @@ SECTIONS=(
     section-gate-core.sh
     section-guard-brain-access.sh
     section-gate-fingerprint.sh
+    section-gate-changelog-race.sh
     section-gate-preflight.sh
     section-repo-root.sh
     section-comment-steering.sh
