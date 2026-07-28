@@ -12,6 +12,12 @@
   > 
   > Closes #480
 
+### Other
+- retro(480): outcomes recorded, 1 orchestrator note minted, feedback routed (`9a22fda`)
+  > - Outcomes: 2 dev + 4 reviewer recalled notes marked useful for the T-key focus task.
+  > - Minted orchestrator/worktree-root-vs-hook-root (gate/telemetry must be recorded against the root the guard hooks read).
+  > - Feedback: 4 items emitted and routed (2 backlog -> #483 #484, 2 ignore), feed archived to 2026-07.
+
 ## v0.56.0 — 2026-07-28
 
 ### Features
