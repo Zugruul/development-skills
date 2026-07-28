@@ -162,6 +162,7 @@ SECTIONS=(
     section-gate-changelog-race.sh
     section-gate-preflight.sh
     section-repo-root.sh
+    section-guard-board-move-parse.sh
     section-comment-steering.sh
     section-red-first-preflight.sh
     section-gate-lessons.sh
