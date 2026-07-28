@@ -89,6 +89,11 @@
     "last": "2026-07-26",
     "weight": 0.5
   },
+  "reuse-the-projects-own-harness->reproduce-before-verdict": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "test-at-the-observed-layer->reproduce-before-verdict": {
     "fires": 0,
     "last": null,
@@ -152,6 +157,11 @@
   "verify-reuse-by-symbol-grep->dual-path-fixture-proves-sharing": {
     "fires": 2,
     "last": "2026-07-26",
+    "weight": 0.5
+  },
+  "when-does-the-test-observe->test-at-the-observed-layer": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   }
 }

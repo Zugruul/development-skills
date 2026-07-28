@@ -24,6 +24,11 @@
     "last": null,
     "weight": 0.5
   },
+  "lessons-compound-when-briefed-forward->recall-injection-is-part-of-the-brief": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "live-browser-verify-before-ui-merges->ping-gated-lane-sequencing": {
     "fires": 0,
     "last": null,

@@ -354,6 +354,11 @@
     "last": "2026-07-27",
     "weight": 0.5
   },
+  "protocol-layer-failure-enumeration->validate-the-declaration-not-just-values": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "read-config-live-not-hardcoded-in-tests->verify-design-doc-quotes-against-live-file": {
     "fires": 17,
     "last": "2026-07-27",
