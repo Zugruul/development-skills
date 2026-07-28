@@ -8064,11 +8064,36 @@ async function loadChatHistory(){
   renderChatLastXToggle();
   renderChatLog();
 }
+// #480: shared by every openChatOverlay() call site (fresh build, an
+// already-open re-press, and the gated/offline early returns) -- the
+// human's live repro was T opening the overlay while activeElement stayed
+// BODY, so typing did nothing until they clicked the input. Never focuses
+// a disabled input (gated/offline): a real browser refuses focus() on a
+// disabled control anyway, and stealing focus onto something the user
+// can't type into would be worse than leaving it alone.
+function focusChatInput(){
+  const input = document.getElementById("ast-chat-input");
+  if(input && !input.disabled) input.focus();
+}
 async function openChatOverlay(){
-  if(document.getElementById("ast-chat-overlay")) return;
+  if(document.getElementById("ast-chat-overlay")){
+    // #480: re-pressing T (or another auto-open path) on an overlay that's
+    // already open still re-focuses the input -- harmless when it's
+    // already focused, and recovers the fast path if the user had clicked
+    // away.
+    focusChatInput();
+    return;
+  }
   const overlay = buildChatOverlay();
   document.body.appendChild(overlay);
   renderChatLastXToggle();
+  // #480: focus the moment the overlay exists in the DOM -- before the
+  // /assistant/status round trip, so "T, type" works even while that
+  // fetch is still in flight. The preventDefault on the keydown that got
+  // us here (handleAssistantChatKeydown, below) already ran synchronously
+  // before this async function was even called, so the "t" itself never
+  // reaches this input either way.
+  focusChatInput();
   let status;
   try{ status = await (await fetch("/assistant/status")).json(); }catch{
     renderChatOffline();

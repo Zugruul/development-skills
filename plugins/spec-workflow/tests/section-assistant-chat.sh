@@ -50,6 +50,15 @@ function mkEl(initialId) {
         title: "",
         textContent: "",
         value: "",
+        // #480: a real disabled control silently refuses focus() -- mirror
+        // just that half here, since it's the half production code
+        // (focusChatInput, see the template) actually branches on. This
+        // stub does NOT model the OTHER real-browser half (disabling the
+        // currently-focused element auto-blurs it back to body) -- the
+        // gated-overlay test below stands in for that manually (the
+        // `document.activeElement = document.body;` line right after the
+        // input gets disabled) rather than teaching the stub to do it.
+        focus(){ if (!this.disabled) document.activeElement = this; },
         // Real DOM `.children` is a LIVE HTMLCollection: `length` is an
         // accessor with a getter and NO setter -- `el.children.length = 0`
         // throws a TypeError, it does not truncate. `_items` is the real
@@ -85,6 +94,10 @@ const bodyEl = mkEl(null);
 bodyEl.classList._parent = bodyEl;
 const document = {
     body: bodyEl,
+    // #480: activeElement starts at body, same as a real page with nothing
+    // focused yet -- the exact starting condition the issue's live repro
+    // described (T pressed with activeElement still BODY).
+    activeElement: bodyEl,
     getElementById(id) {
         return elements[id] || null;
     },
@@ -162,6 +175,8 @@ eval(extract("queueOrSendChat"));
 eval(extract("sendChatInput"));
 eval(extract("chatInputKeydown"));
 eval(extract("loadChatHistory"));
+// #480: openChatOverlay's fix calls focusChatInput() -- extract it first.
+eval(extract("focusChatInput"));
 eval(extract("openChatOverlay"));
 eval(extract("closeChatOverlay"));
 eval(extract("handleAssistantChatKeydown"));
@@ -175,6 +190,7 @@ function resetChat() {
     delete elements["ast-chat-lastx"];
     delete elements["ast-chat-retry"];
     bodyEl._items.length = 0;
+    document.activeElement = bodyEl;
     fetchCalls = [];
     pendingChat = [];
     statusThrows = false;
@@ -204,6 +220,61 @@ function resetChat() {
     await handleAssistantChatKeydown({key: "t", target: {tagName: "INPUT"}, preventDefault(){}});
     if (document.getElementById("ast-chat-overlay")) throw new Error("T inside an input must not open the overlay");
     console.log("NO_OPEN_IN_INPUT_OK true");
+
+    // ---- #480: T-key open leaves keyboard focus in the input, so the user can type immediately ----
+    resetChat();
+    await handleAssistantChatKeydown({key: "t", target: {tagName: "DIV"}, preventDefault(){}});
+    const focusedInput = document.getElementById("ast-chat-input");
+    if (document.activeElement !== focusedInput) throw new Error("T-key open must focus #ast-chat-input, activeElement was " + (document.activeElement && document.activeElement.id));
+    console.log("TKEY_FOCUSES_INPUT_OK true");
+
+    // ---- #480: the "t" that opened the overlay must never land in the input -- preventDefault fires, and the input stays empty ----
+    resetChat();
+    let tKeydownPrevented = false;
+    await handleAssistantChatKeydown({key: "t", target: {tagName: "DIV"}, preventDefault(){ tKeydownPrevented = true; }});
+    if (!tKeydownPrevented) throw new Error("T-key open must call preventDefault so the 't' character never reaches the input");
+    if (document.getElementById("ast-chat-input").value !== "") throw new Error("input must stay empty -- the 't' that opened the overlay must not land in the composer, got " + JSON.stringify(document.getElementById("ast-chat-input").value));
+    console.log("TKEY_PREVENTS_T_IN_INPUT_OK true");
+
+    // ---- #480: re-pressing T on an already-open overlay re-focuses the input (acceptable per the AC; focusing an already-open overlay's input is fine) ----
+    resetChat();
+    await handleAssistantChatKeydown({key: "t", target: {tagName: "DIV"}, preventDefault(){}});
+    const reopenInput = document.getElementById("ast-chat-input");
+    document.activeElement = document.body;
+    handleAssistantChatKeydown({key: "t", target: {tagName: "DIV"}, preventDefault(){}});
+    if (document.activeElement !== reopenInput) throw new Error("re-pressing T on an already-open overlay must re-focus the input, activeElement was " + (document.activeElement && document.activeElement.id));
+    console.log("TKEY_REOPEN_REFOCUSES_OK true");
+
+    // ---- #480: a disabled (gated) input must never be stolen back into focus by a repeated T ----
+    resetChat();
+    statusResponse = {outcome: "multiple", candidates: [], selected: null, gated: true, askAgain: true};
+    await handleAssistantChatKeydown({key: "t", target: {tagName: "DIV"}, preventDefault(){}});
+    const gatedInput = document.getElementById("ast-chat-input");
+    if (!gatedInput.disabled) throw new Error("setup: gated overlay must disable the input");
+    // the stub has no auto-blur-on-disable (a real browser would already
+    // have moved focus off gatedInput the instant it was disabled) -- reset
+    // by hand so the assertion below is testing the repeated-T call, not a
+    // stub gap.
+    document.activeElement = document.body;
+    handleAssistantChatKeydown({key: "t", target: {tagName: "DIV"}, preventDefault(){}});
+    if (document.activeElement === gatedInput) throw new Error("re-pressing T must not focus a disabled (gated) input");
+    console.log("TKEY_SKIPS_FOCUS_ON_DISABLED_INPUT_OK true");
+
+    // ---- #480: focusChatInput() is a no-op (never throws, never touches focus) when #ast-chat-input doesn't exist ----
+    resetChat();
+    document.activeElement = document.body;
+    focusChatInput();
+    if (document.activeElement !== document.body) throw new Error("focusChatInput with no #ast-chat-input element must leave activeElement untouched, got " + (document.activeElement && document.activeElement.id));
+    console.log("FOCUS_HELPER_MISSING_INPUT_NOOP_OK true");
+
+    // ---- #480: queueOrSendChat's voice auto-open path also focuses the input, same as the T-key path ----
+    resetChat();
+    await queueOrSendChat("hello from voice", "turn-1", "voice");
+    const voiceInput = document.getElementById("ast-chat-input");
+    if (document.activeElement !== voiceInput) throw new Error("queueOrSendChat's voice auto-open must focus the input, activeElement was " + (document.activeElement && document.activeElement.id));
+    console.log("VOICE_AUTOOPEN_FOCUSES_INPUT_OK true");
+    resolveChat(chatFetchCalls().length - 1, 200, {text: "ok", chips: [], warnings: []});
+    await flush();
 
     // ---- Esc closes ----
     resetChat();
@@ -376,6 +447,12 @@ check_rc "chat overlay template script exits 0" 0 "$tmpl_chat_rc"
 check "template: pure elapsed-text ticking logic" "ELAPSED_PURE_OK true" "$tmpl_chat_out"
 check "template: T opens the overlay outside inputs" "OPEN_OK true" "$tmpl_chat_out"
 check "template: T does not open the overlay while focus is in an input" "NO_OPEN_IN_INPUT_OK true" "$tmpl_chat_out"
+check "template (#480): T-key open focuses #ast-chat-input so the user can type immediately" "TKEY_FOCUSES_INPUT_OK true" "$tmpl_chat_out"
+check "template (#480): the 't' that opened the overlay is prevented and never lands in the input" "TKEY_PREVENTS_T_IN_INPUT_OK true" "$tmpl_chat_out"
+check "template (#480): re-pressing T on an already-open overlay re-focuses the input" "TKEY_REOPEN_REFOCUSES_OK true" "$tmpl_chat_out"
+check "template (#480): re-pressing T must not steal focus onto a disabled (gated) input" "TKEY_SKIPS_FOCUS_ON_DISABLED_INPUT_OK true" "$tmpl_chat_out"
+check "template (#480): focusChatInput() is a no-op when #ast-chat-input doesn't exist -- never throws, never steals focus" "FOCUS_HELPER_MISSING_INPUT_NOOP_OK true" "$tmpl_chat_out"
+check "template (#480): queueOrSendChat's voice auto-open also focuses the input" "VOICE_AUTOOPEN_FOCUSES_INPUT_OK true" "$tmpl_chat_out"
 check "template: Esc closes the overlay" "ESC_CLOSE_OK true" "$tmpl_chat_out"
 check "template: Enter POSTs the message and shows the elapsed state" "ENTER_SEND_OK true" "$tmpl_chat_out"
 check "template: reply renders with recall chips and clears the elapsed state" "CHIPS_AND_CLEAR_OK true" "$tmpl_chat_out"
@@ -439,6 +516,9 @@ function mkEl(initialId) {
         title: "",
         textContent: "",
         value: "",
+        // #480: same stub as the first script above -- a disabled control
+        // silently refuses focus().
+        focus(){ if (!this.disabled) document.activeElement = this; },
         _attrs: {},
         _items: [],
         get children(){
@@ -466,6 +546,7 @@ function mkEl(initialId) {
 const bodyEl = mkEl(null);
 global.document = {
     body: bodyEl,
+    activeElement: bodyEl,
     getElementById(id) { return elements[id] || null; },
     createElement(_tag) { return mkEl(null); },
 };
@@ -513,6 +594,8 @@ eval(extract("queueOrSendChat"));
 eval(extract("sendChatInput"));
 eval(extract("chatInputKeydown"));
 eval(extract("loadChatHistory"));
+// #480: openChatOverlay's fix calls focusChatInput() -- extract it first.
+eval(extract("focusChatInput"));
 eval(extract("openChatOverlay"));
 eval(extract("closeChatOverlay"));
 

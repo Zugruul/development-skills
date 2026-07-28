@@ -592,6 +592,10 @@ function mkEl(initialId) {
         title: "",
         textContent: "",
         value: "",
+        // #480: openChatOverlay's fix now calls input.focus() -- same stub
+        // as section-assistant-chat.sh's harness (a disabled control
+        // silently refuses focus()).
+        focus(){ if (!this.disabled) document.activeElement = this; },
         _items: [],
         get children(){
             return new Proxy(this._items, {
@@ -625,6 +629,7 @@ mkEl("voice-stt");
 const bodyEl = mkEl(null);
 global.document = {
     body: bodyEl,
+    activeElement: bodyEl,
     getElementById(id) { return elements[id] || null; },
     createElement(_tag) { return mkEl(null); },
 };
@@ -687,6 +692,8 @@ eval(extract("queueOrSendChat"));
 eval(extract("sendChatInput"));
 eval(extract("chatInputKeydown"));
 eval(extract("loadChatHistory"));
+// #480: openChatOverlay's fix calls focusChatInput() -- extract it first.
+eval(extract("focusChatInput"));
 eval(extract("openChatOverlay"));
 eval(extract("closeChatOverlay"));
 eval(extract("reportSttFailure"));
@@ -710,6 +717,11 @@ if (!document.getElementById("ast-chat-overlay")) throw new Error("a voice-sourc
 const log = document.getElementById("ast-chat-log");
 if (!log || log.children.length !== 1 || log.children[0].getAttribute("data-role") !== "user" || log.children[0].textContent !== "hello from voice") throw new Error("the spoken prompt must render as a normal user row, identical to a typed message");
 console.log("OVERLAY_AUTO_OPENS_AND_MIRRORS_USER_OK true");
+
+// #480: a voice auto-open must focus the composer too, same as the T-key
+// open path -- the human should be able to type a follow-up immediately.
+if (document.activeElement !== document.getElementById("ast-chat-input")) throw new Error("queueOrSendChat's voice auto-open must focus #ast-chat-input, activeElement was " + (document.activeElement && document.activeElement.id));
+console.log("VOICE_AUTOOPEN_FOCUSES_INPUT_OK true");
 
 // ---- reply reuses the turn's id for speakReply -- unifying stt and tts spans under one turn_id ----
 const chatCall = fetchCalls.find(c => c.url === "/assistant/chat");
@@ -826,6 +838,13 @@ if (failRow.getAttribute("data-role") !== "system") throw new Error("an STT fail
 if (failRow.textContent.indexOf("web-speech-unavailable") === -1) throw new Error("the row must show the actual honest engine message, not a generic one, got " + JSON.stringify(failRow.textContent));
 console.log("STT_FAILURE_SURFACES_IN_OVERLAY_OK true");
 
+// #480: reportSttFailure's auto-open must focus the composer too -- a
+// voice failure is the exact scenario (#451) where the human had no other
+// path into chat, so the fast path back into typing must not require a
+// click either.
+if (document.activeElement !== document.getElementById("ast-chat-input")) throw new Error("reportSttFailure's auto-open must focus #ast-chat-input, activeElement was " + (document.activeElement && document.activeElement.id));
+console.log("STT_FAILURE_FOCUSES_INPUT_OK true");
+
 console.log("ALL_OK true");
 })().catch(e => { console.error("FAIL", e.message); process.exit(1); });
 NODEJS
@@ -834,6 +853,7 @@ tmpl_vt2_rc=$?
 rm -f "$_avt2_node"
 check_rc "voice-turn full-pipeline template script exits 0" 0 "$tmpl_vt2_rc"
 check "a voice send with the overlay closed auto-opens it and mirrors the spoken prompt as a normal user row" "OVERLAY_AUTO_OPENS_AND_MIRRORS_USER_OK true" "$tmpl_vt2_out"
+check "(#480) a voice auto-open focuses the composer input, same as the T-key path" "VOICE_AUTOOPEN_FOCUSES_INPUT_OK true" "$tmpl_vt2_out"
 check "the reply's tts span reuses the turn's own id -- stt and tts spans correlate under one turn_id" "REPLY_REUSES_TURN_ID_OK true" "$tmpl_vt2_out"
 check "the overlay still shows both the user row and the assistant reply after the round trip resolves -- the history-load race is closed, not just avoided at send time" "OVERLAY_SURVIVES_REPLY_RESOLUTION_OK true" "$tmpl_vt2_out"
 check "speakReply's echo-guard interlock pauses STT if it's still listening when a reply starts, and #475: clears the VISIBLE mic dot (classList + aria-pressed), pinned lit beforehand so the assertion isn't vacuous" "ECHO_GUARD_INTERLOCK_OK true" "$tmpl_vt2_out"
@@ -841,5 +861,6 @@ check "#474: the interlock closes an interrupted turn's open span honestly (stat
 check "#474: the interlock's span-closing branch is a no-op when there was no open span" "ECHO_GUARD_INTERLOCK_NO_SPAN_NO_OP_OK true" "$tmpl_vt2_out"
 check "typed chat (no turnId/source) is unaffected -- fully backward compatible" "TYPED_CHAT_UNAFFECTED_OK true" "$tmpl_vt2_out"
 check "#451 (P0 live-bug batch): a pure STT failure (no transcript ever produced) auto-opens the overlay and renders the honest message as a red system row -- the human's silent-failure bug" "STT_FAILURE_SURFACES_IN_OVERLAY_OK true" "$tmpl_vt2_out"
+check "(#480) a voice-failure auto-open (reportSttFailure) also focuses the composer input" "STT_FAILURE_FOCUSES_INPUT_OK true" "$tmpl_vt2_out"
 check "the whole voice-turn full-pipeline script completes" "ALL_OK true" "$tmpl_vt2_out"
 if [[ "$tmpl_vt2_rc" -ne 0 ]]; then echo "$tmpl_vt2_out" >&2; fi
