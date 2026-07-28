@@ -122,3 +122,21 @@ bash "$GS_SCRIPT" "$gs_gi" >/dev/null 2>&1
 cmp -s "$gs_d/after1" "$gs_gi" && r=SAME || r=DIFF
 check "gitignore-sync: second run is byte-identical (idempotent)" "SAME" "$r"
 rm -rf "$gs_d"
+
+# --- 8. self-check: THIS repo's own root .gitignore has zero drift from
+# local-state.manifest (issue #468). The real bug behind that issue was never
+# a wrong manifest entry -- gitignore-sync.sh only ever runs once, during a
+# NEW repo's setup-project bootstrap (or a target repo's setup-assistant/
+# sync-configs pass); nothing re-syncs an ALREADY-bootstrapped repo's
+# .gitignore when local-state.manifest later gains new ignore entries, so
+# this repo's own committed .gitignore silently fell behind its own
+# manifest (missing .claude/assistant/, .claude/skills/whisper-sidecar/,
+# .claude/merge-dance.lock/ at the time of discovery). This check is the
+# fix for "tomorrow": since it runs in the SAME plugin-tests CI step every
+# manifest/gitignore change already goes through, any future manifest
+# addition landed without a paired .gitignore sync now fails CI here
+# instead of drifting silently again.
+GS_REPO_ROOT="$(cd "$PLUGIN/../.." && pwd)"
+gs_self_diff="$(bash "$GS_SCRIPT" --dry-run "$GS_REPO_ROOT/.gitignore" 2>&1)"
+[[ -z "$gs_self_diff" ]] && r=CLEAN || r=DRIFTED
+check "gitignore-sync: this repo's own root .gitignore has zero drift from local-state.manifest" "CLEAN" "$r"
