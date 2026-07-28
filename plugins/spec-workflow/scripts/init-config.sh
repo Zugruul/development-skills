@@ -16,8 +16,13 @@ set -euo pipefail
 OWNER="${1:?usage: init-config.sh <owner> <owner/repo> <project-number>}"
 REPO="${2:?usage: init-config.sh <owner> <owner/repo> <project-number>}"
 PN="${3:?usage: init-config.sh <owner> <owner/repo> <project-number>}"
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+source "$HERE/lib/repo-root.sh"
+# #463: PRIMARY repo root -- project.yaml is created/updated once per repo,
+# in the main checkout; a worktree-local resolution would write a copy the
+# rest of the loop never reads.
+ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 1; }
 EXISTING="$(PYTHONPATH="$HERE" python3 "$HERE/config.py" "$ROOT" path || true)"
 OUT="${PROJECT_CONFIG:-$ROOT/.claude/project.yaml}"
 TEMPLATE="$HERE/../templates/project.example.yaml"

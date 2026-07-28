@@ -20,7 +20,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
 # shellcheck source=plugins/spec-workflow/scripts/paginate.sh
 source "$HERE/paginate.sh"  # gh_project_items_json / gh_issues_json (SPEC 7.4: no silent page-1 truncation)
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+source "$HERE/lib/repo-root.sh"
+# #463: PRIMARY repo root -- board seeding reads/writes the shared project.yaml.
+ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 1; }
 CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
 [[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .claude/project.yaml (or legacy .json) — run the setup-project skill first" >&2; exit 1; }
 

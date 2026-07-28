@@ -17,7 +17,7 @@ Stdlib only; state is plain files so everything survives restarts.
                                              # pending task's answer too, not just your own
   ui-hub.py serve [--port N]        # run the server in the foreground (internal)
 
-State dir: $UI_HUB_STATE or <git root>/.claude/ui-hub (gitignore it).
+State dir: $UI_HUB_STATE or <PRIMARY repo root>/.claude/ui-hub (gitignore it).
 Port: --port, else $UI_HUB_PORT, else 4747. Binds 127.0.0.1 only.
 """
 import hashlib
@@ -30,16 +30,21 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from repo_root import resolve_repo_root  # noqa: E402
+
 
 def state_dir():
     env = os.environ.get("UI_HUB_STATE")
     if env:
         return Path(env)
-    try:
-        root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True).stdout.strip()
-    except Exception:  # noqa: BLE001
-        root = os.getcwd()
-    return Path(root) / ".claude" / "ui-hub"
+    # #463: PRIMARY repo root, not the current tree's -- .claude/ui-hub/ is
+    # gitignored local state (local-state.manifest), so it must live once
+    # per repo in the main checkout. Before this fix, a hub started from a
+    # linked worktree wrote its state under THAT worktree's own (invisible
+    # to everyone else) path: a design page asked from a worktree landed
+    # there, and the main checkout / design registry never saw it.
+    return Path(resolve_repo_root()) / ".claude" / "ui-hub"
 
 
 S = state_dir()

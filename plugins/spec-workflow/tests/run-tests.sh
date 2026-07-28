@@ -160,6 +160,7 @@ SECTIONS=(
     section-guard-brain-access.sh
     section-gate-fingerprint.sh
     section-gate-preflight.sh
+    section-repo-root.sh
     section-comment-steering.sh
     section-red-first-preflight.sh
     section-gate-lessons.sh

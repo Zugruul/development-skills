@@ -18,11 +18,17 @@
 # cdx-E3.md, "Follow-up: #236").
 #
 # Usage: two-pass-review-preflight.sh [--root <path>] [--task <id>]
-#   --root default: git toplevel (or cwd if not in a git repo).
+#   --root default: the PRIMARY repo root (#463 -- see lib/repo-root.sh; the
+#   main checkout from anywhere, including a linked worktree), or cwd if not
+#   in a git repo at all.
 #   --task required: the task/issue number to check.
 # Exit 0, silent stdout: both passes are recorded for the task.
 # Exit 2, actionable message on stderr: one or both passes are missing.
 set -uo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+source "$HERE/lib/repo-root.sh"
 
 ROOT=""
 TASK=""
@@ -37,7 +43,11 @@ while [[ $# -gt 0 ]]; do
         *) echo "usage: two-pass-review-preflight.sh [--root <path>] [--task <id>]" >&2; exit 2 ;;
     esac
 done
-[[ -n "$ROOT" ]] || ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# #463: default to the PRIMARY repo root, not the current tree's -- the
+# recorded review-round telemetry this checks lives once per repo in the
+# main checkout's .claude/telemetry.jsonl. --root still overrides explicitly
+# (tests, or a caller with a specific root already resolved).
+[[ -n "$ROOT" ]] || ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 2; }
 if [[ -z "$TASK" ]]; then
     echo "usage: two-pass-review-preflight.sh [--root <path>] [--task <id>]" >&2
     exit 2

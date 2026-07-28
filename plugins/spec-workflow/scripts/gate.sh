@@ -14,16 +14,36 @@ if [[ -n "${SPEC_TESTS_SECTION:-}" ]]; then
 fi
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
+# shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+source "$HERE/lib/repo-root.sh"
+# #463: TWO roots, deliberately different.
+#   ROOT (TREE_ROOT)  -- the CURRENT tree, via --show-toplevel, unchanged.
+#     This is the tree actually under test: the gate command below `cd`s
+#     here to run, `commands.gate` is read from ITS project.yaml, and
+#     tree-state.sh (invoked with this same cwd) fingerprints THIS tree.
+#     Testing a worktree's own code must never silently run against the
+#     main checkout's tree instead.
+#   STATE_ROOT (PRIMARY_ROOT) -- via lib/repo-root.sh, the main checkout
+#     from anywhere. The gate-pass marker, red-gate lessons, and gate
+#     telemetry are shared loop state that must live in ONE place so
+#     guard-board-move.sh/gate-preflight.sh can find them regardless of
+#     which worktree they are invoked from.
+# The marker's CONTENT is still the tree-state fingerprint of TREE_ROOT (the
+# tree that was actually tested) -- only its FILE LOCATION moves to
+# STATE_ROOT. gate-preflight.sh mirrors this: it looks the marker up at
+# STATE_ROOT but compares it against a fresh fingerprint of ITS OWN current
+# tree, so the pass is only "valid" from the exact tree it was recorded for.
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
-MARKER="$ROOT/.claude/gate-pass"
+STATE_ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 1; }
+MARKER="$STATE_ROOT/.claude/gate-pass"
 # SPEC §8.1: on a red gate, the failing command's tail output + a timestamp
 # is appended here (as JSONL) before the pass marker is cleared, so the next
 # retro has the richest failure signal the loop produces. Distinct from
 # .claude/telemetry.jsonl (pass/fail bookkeeping only, no output captured).
 # Gitignored like the other local loop-state files (see tree-state.sh, which
 # excludes it from the fingerprint the same way).
-LESSONS="$ROOT/.claude/lessons.jsonl"
+LESSONS="$STATE_ROOT/.claude/lessons.jsonl"
 GATE_OUT_LINES=40
 
 GATE="$(python3 -c 'import sys; import config as C; print(C.load_config(path=sys.argv[1], warn=False)["commands"]["gate"])' "$CONFIG")" ||
@@ -34,7 +54,7 @@ echo "gate: $GATE"
 # (see telemetry.py's module docstring for the record schema).
 TASK="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
 record_gate() { # $1=ok (true|false) — best-effort, must never affect gate.sh's own exit status
-    python3 "$HERE/telemetry.py" "$ROOT" record \
+    python3 "$HERE/telemetry.py" "$STATE_ROOT" record \
         "{\"kind\":\"gate\",\"task\":\"$TASK\",\"ok\":$1,\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
         >/dev/null 2>&1 || true
 }
@@ -63,7 +83,10 @@ if [[ "$rc" -eq 0 ]]; then
     # that a routine status transition — for any task, from any concurrent
     # lane — can never invalidate a still-current, unrelated gate pass.
     record_gate true
-    bash "$HERE/tree-state.sh" >"$MARKER"
+    mkdir -p "$(dirname "$MARKER")"
+    # Explicit `cd "$ROOT"` (TREE_ROOT), not STATE_ROOT: the fingerprint must
+    # describe the tree that was actually just tested above.
+    (cd "$ROOT" && bash "$HERE/tree-state.sh") >"$MARKER"
     echo "GATE PASS recorded ($MARKER) for the current tree — 'In review' moves are unlocked until the tree changes."
 else
     # Persist the failure signal (SPEC §8.1) before clearing the marker: a

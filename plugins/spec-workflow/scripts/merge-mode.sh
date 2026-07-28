@@ -30,7 +30,13 @@
 # ever asking a human which requirement applies — GitHub already knows.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+source "$HERE/lib/repo-root.sh"
+# #463: PRIMARY repo root -- autoMerge/mergeMethod/reviewer-model config and
+# the merge-requirements cache are project-wide state; a worktree-local
+# resolution would edit/cache a copy the main checkout (where the merge
+# dance actually runs) never sees.
+ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 1; }
 
 # preauth / preauth-snippet only inspect/print settings.json content — no
 # project config required, so they run before the CONFIG guard below.

@@ -128,7 +128,12 @@ if [[ "$RESULT" == "unparseable" ]]; then
 fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+source "$HERE/lib/repo-root.sh"
+# #463: PRIMARY repo root -- board-cache.json (serial-delivery slot check)
+# and project.yaml are shared loop state; this hook fires with whatever cwd
+# the PreToolUse Bash command happened to run from, worktree or main.
+ROOT="$(spec_workflow_repo_root)" || exit 0
 
 _serial_check() { # $1=issue-number-being-moved to "In progress" -> "allow"/"override"/"fail-open"/"block:..."
     PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}" python3 -c '

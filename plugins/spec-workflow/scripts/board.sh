@@ -33,7 +33,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"  # inline python readers import config.py
 # shellcheck source=plugins/spec-workflow/scripts/paginate.sh
 source "$HERE/paginate.sh"  # gh_project_items_json / gh_issues_json (SPEC 7.4: no silent page-1 truncation)
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+source "$HERE/lib/repo-root.sh"
+# #463: PRIMARY repo root (not the current tree's) -- board state
+# (board-cache.json, board-comments-seen.json, board-queue.jsonl via
+# board-queue.sh) lives once per repo in the main checkout's gitignored
+# .claude/, invisible from a linked worktree's own path.
+ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 1; }
 CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
 [[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .claude/project.yaml (or legacy .json) found. Run the setup-project skill first." >&2; exit 1; }
 

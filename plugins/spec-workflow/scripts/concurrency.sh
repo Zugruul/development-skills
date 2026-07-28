@@ -9,7 +9,12 @@
 # Like auto-merge, it is a project-wide, versioned config change every clone obeys.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+source "$HERE/lib/repo-root.sh"
+# #463: PRIMARY repo root -- methodology.maxInProgress is a project-wide,
+# versioned config change; toggling it from a worktree must land in the
+# main checkout's project.yaml, not create a divergent worktree-local copy.
+ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 1; }
 CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
 [[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .claude/project.yaml (or legacy .json) — run the setup-project skill first" >&2; exit 1; }
 

@@ -4,7 +4,12 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+source "$HERE/lib/repo-root.sh"
+# #463: PRIMARY repo root -- the CHECKPOINT flag and project config live once
+# per repo in the main checkout; a session started with a worktree cwd must
+# still see them.
+ROOT="$(spec_workflow_repo_root)" || exit 0
 CONFIG="$(python3 "$HERE/config.py" "$ROOT" path 2>/dev/null)"
 [[ -n "$CONFIG" && -f "$CONFIG" ]] || exit 0
 

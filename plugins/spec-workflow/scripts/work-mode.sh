@@ -28,7 +28,10 @@
 # the now-vs-defer question skills consult before deciding to call board.sh.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+source "$HERE/lib/repo-root.sh"
+# #463: PRIMARY repo root -- work.type/work.sync.mode are project-wide config.
+ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 1; }
 
 jget() { python3 "$HERE/config.py" "$ROOT" get "$1" 2>/dev/null; }
 
