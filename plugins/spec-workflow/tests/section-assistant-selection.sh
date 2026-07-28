@@ -133,6 +133,81 @@ PY
 rc=$?
 check_rc "assistant selection script exits 0" 0 "$rc"
 
+echo "-- #462 (P2): durable session-selected chat fallback -- ANY caller that omits the assistant flag, not just dispatchNextChat's own client thread --"
+# Unit test of the exact pure function _chat now calls, isolated from any
+# provider/network concern (see its own docstring in engine.py for the
+# full contract: explicit flag always wins, sole-candidate resolution is
+# never disturbed, session-selected only fills in for the ambiguous 2+
+# candidate/no-flag case).
+_effflag_out="$(SCRIPTS_DIR="$AS_SCRIPTS" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant.engine import _effective_chat_flag
+
+print("EXPLICIT_FLAG_WINS", _effective_chat_flag("jarvis", "friday", 2))
+print("EXPLICIT_FLAG_WINS_EVEN_UNSELECTED", _effective_chat_flag("jarvis", None, 2))
+print("SOLE_CANDIDATE_IGNORES_SELECTED", _effective_chat_flag(None, "stale-name", 1))
+print("SOLE_CANDIDATE_NO_FLAG_NO_SELECTED", _effective_chat_flag(None, None, 1))
+print("MULTI_NO_FLAG_FALLS_BACK_TO_SELECTED", _effective_chat_flag(None, "friday", 2))
+print("MULTI_NO_FLAG_NO_SELECTED_STAYS_NONE", _effective_chat_flag(None, None, 2))
+PY
+)"
+_effflag_rc=$?
+check_rc "_effective_chat_flag unit script exits 0" 0 "$_effflag_rc"
+check "an explicit flag always wins, unchanged, even with a different session selection" "EXPLICIT_FLAG_WINS jarvis" "$_effflag_out"
+check "an explicit flag wins even with nothing selected this session" "EXPLICIT_FLAG_WINS_EVEN_UNSELECTED jarvis" "$_effflag_out"
+check "a sole candidate ignores a stale/mismatched selected name -- that shortcut must keep resolving on its own" "SOLE_CANDIDATE_IGNORES_SELECTED None" "$_effflag_out"
+check "a sole candidate with nothing selected and no flag stays a no-op (unchanged pre-462 behavior)" "SOLE_CANDIDATE_NO_FLAG_NO_SELECTED None" "$_effflag_out"
+check "#462's actual fix: no flag + 2plus candidates falls back to the session's own selected assistant" "MULTI_NO_FLAG_FALLS_BACK_TO_SELECTED friday" "$_effflag_out"
+check "no flag + 2plus candidates + nothing selected stays None -- falls through to the machine-local default exactly as before" "MULTI_NO_FLAG_NO_SELECTED_STAYS_NONE None" "$_effflag_out"
+
+echo "-- #462: real end-to-end proof -- a multi-candidate session selects an assistant, then POSTs /assistant/chat with NO assistant flag, and the RIGHT assistant answers (not the pre-462 resolution error) --"
+STUB_CODEX="$FIX/stub-codex"
+_as_e2e_a="$(mktemp -d)"
+_as_e2e_b="$(mktemp -d)"
+_as_e2e_state="$(mktemp -d)"
+as_repo "$_as_e2e_a" jarvis
+as_repo "$_as_e2e_b" friday
+
+e2e_out="$(PATH="$STUB_CODEX:$PATH" CODEX_STUB_MODE=ok SCRIPTS_DIR="$AS_SCRIPTS" EA="$_as_e2e_a" EB="$_as_e2e_b" ESTATE="$_as_e2e_state" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import engine
+from assistant.store import SessionStore
+
+repos = lambda: [("a", os.environ["EA"]), ("b", os.environ["EB"])]
+e = engine.AssistantEngine(repos, os.environ["ESTATE"])
+
+# no machine-local default was ever written for this state dir -- pre-462,
+# the chat call below (no explicit flag) would 400 with "no local default
+# set and multiple assistants found", the exact error the human hit live.
+sel_code, sel_payload, _ = e.handle("POST", "/assistant/select", body={"name": "friday"})
+print("E2E_SELECT_CODE", sel_code)
+print("E2E_SELECT_SELECTED", sel_payload["selected"])
+
+chat_code, chat_payload, _ = e.handle("POST", "/assistant/chat", body={"message": "hi"})
+print("E2E_CHAT_CODE", chat_code)
+print("E2E_CHAT_TEXT", chat_payload.get("text"))
+print("E2E_CHAT_ERROR", chat_payload.get("error"))
+
+friday_state = SessionStore(os.environ["EB"]).load_state()
+jarvis_state = SessionStore(os.environ["EA"]).load_state()
+print("E2E_FRIDAY_TURN_COUNT", friday_state.get("turn_count", 0))
+print("E2E_JARVIS_TURN_COUNT", jarvis_state.get("turn_count", 0))
+PY
+)"
+e2e_rc=$?
+check_rc "#462 e2e script exits 0" 0 "$e2e_rc"
+check "select succeeds" "E2E_SELECT_CODE 200" "$e2e_out"
+check "select reports friday" "E2E_SELECT_SELECTED friday" "$e2e_out"
+check "#462: chat with NO assistant flag succeeds (200), not the pre-462 400 resolution error" "E2E_CHAT_CODE 200" "$e2e_out"
+check "the stub adapter's reply comes through" "E2E_CHAT_TEXT Hello from stub" "$e2e_out"
+check_absent "the pre-462 resolution error never fires once a session selection exists" "no local default set" "$e2e_out"
+check "#462: the turn landed against the SESSION-SELECTED assistant (friday), not by accident against the other candidate" "E2E_FRIDAY_TURN_COUNT 1" "$e2e_out"
+check "the other candidate's session is untouched" "E2E_JARVIS_TURN_COUNT 0" "$e2e_out"
+
+rm -rf "$_as_e2e_a" "$_as_e2e_b" "$_as_e2e_state"
+
 check "none outcome: status carries outcome none" "NONE_OUTCOME none" "$sel_out"
 check "none outcome: no candidates" "NONE_CANDIDATES []" "$sel_out"
 check "none outcome: nothing selected" "NONE_SELECTED None" "$sel_out"

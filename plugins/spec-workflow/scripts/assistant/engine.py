@@ -1208,6 +1208,23 @@ class AssistantEngine:
         candidates = default_store.discover_candidates(
             root for _, root in self._repos_getter()
         )
+        # #462 (P2, durable hardening of #453's client-side fix): #453
+        # made dispatchNextChat thread window.__assistantSelected as
+        # THIS route's `assistant` flag so a session with an assistant
+        # selected but no machine-level default (setup-assistant.sh
+        # set-default) and 2+ candidates does not hit "no local default
+        # set and multiple assistants found" -- but that fix lived in
+        # ONE client caller. Any future client that POSTs here without
+        # threading the flag hits the exact same error again. Computed
+        # HERE instead, strictly after the explicit flag (a caller-
+        # provided flag, e.g. the terminal's own --assistant, always
+        # wins unchanged) and never applied when there is a sole
+        # candidate (that shortcut must keep working even if
+        # self._selected is stale -- e.g. a repo config change removed
+        # the previously-selected assistant since). See
+        # _effective_chat_flag's own docstring for the exact contract.
+        assistant_flag = _effective_chat_flag(
+            assistant_flag, self._selected, len(candidates))
         try:
             root, section = default_store.resolve_assistant(
                 candidates, flag=assistant_flag, state_dir=self.state_dir)
@@ -1346,6 +1363,40 @@ class AssistantEngine:
         self._emit_trace(root, kind, status=body.get("status"),
                           payload=payload, modality="voice")
         return 200, {"ok": True}, "application/json"
+
+def _effective_chat_flag(explicit_flag, selected, candidate_count):
+    """#462 (P2): the exact `assistant` flag `_chat` should pass into
+    default_store.resolve_assistant(), with the session's OWN selected
+    assistant (engine.AssistantEngine._selected, AST-022 sec7.5 -- set
+    by /assistant/select, DISTINCT from default_store's machine-local
+    default) folded in as a durable fallback for callers that do not
+    thread it themselves (#453 threaded it from ONE client,
+    dispatchNextChat; this is that same fallback made structural).
+
+    Contract, in order:
+    - `explicit_flag` (a caller-provided `assistant` field in the
+      request body -- the terminal's own --assistant flag included)
+      ALWAYS wins unchanged. This function is a no-op whenever it is
+      truthy, so nothing downstream of the explicit-flag branch in
+      resolve_assistant() (ambiguous-match errors, its exact wording,
+      gates.py's own expectations of that path) is touched at all.
+    - A sole candidate (`candidate_count == 1`) returns None
+      unconditionally -- resolve_assistant()'s own "len(candidates) ==
+      1" shortcut must keep resolving on its own, even if `selected`
+      happens to be stale (e.g. a repo config change removed the
+      candidate it used to name) or simply unset. Folding `selected` in
+      here would turn an always-correct single-candidate resolution
+      into a spurious ambiguous-match error for no reason.
+    - Otherwise (no explicit flag, 2+ candidates): `selected` is
+      returned as-is (which may be None -- resolve_assistant() falls
+      through to the machine-local default exactly as before in that
+      case, unchanged from pre-#462 behavior)."""
+    if explicit_flag:
+        return explicit_flag
+    if candidate_count == 1:
+        return None
+    return selected
+
 
 def _parse_history_n(query):
     raw = None
