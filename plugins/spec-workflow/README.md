@@ -157,6 +157,7 @@ on the loop itself), not a bug; it isn't deduped against step 8's emission.
 | ignore | `.claude/identities/*/brain/index.sqlite3` |
 | ignore | `.claude/identities/*/brain/.staleness-cache.json` |
 | ignore | `.claude/assistant/` |
+| ignore | `.claude/skills/whisper-sidecar/` |
 | track | `.claude/feedbacks/` |
 | track | `.claude/identities/` |
 | track | `.claude/brain-events.jsonl` |

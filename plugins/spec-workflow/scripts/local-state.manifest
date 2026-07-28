@@ -26,6 +26,13 @@ ignore	.claude/worktrees/
 ignore	.claude/identities/*/brain/index.sqlite3
 ignore	.claude/identities/*/brain/.staleness-cache.json
 ignore	.claude/assistant/
+# Base capabilities (issue #447, SPEC-ASSISTANT.md §11.1): setup.py's
+# ensure_base_capabilities materializes each BASE_CAPABILITIES entry into
+# .claude/skills/<name>/, always refreshed to match the plugin's shipped
+# copy -- 100% plugin-owned/regenerable, never committed. One explicit
+# line per entry (mirrors BASE_CAPABILITIES' own static-registry
+# posture); add a matching line here whenever a new base capability ships.
+ignore	.claude/skills/whisper-sidecar/
 track	.claude/feedbacks/
 track	.claude/identities/
 track	.claude/brain-events.jsonl

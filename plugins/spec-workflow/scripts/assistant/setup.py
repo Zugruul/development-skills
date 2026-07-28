@@ -8,10 +8,13 @@ Library:
         Idempotent, create-if-absent scaffold: `.claude/.neural-network`
         marker, `assistant:` section of `.claude/project.yaml` (per-leaf
         skip-if-present — never overwrites an existing value), empty brain
-        dirs, and the persona `AGENTS.md` with its GENERATED skills block.
-        Returns {"changed": bool, "errors": list[str]} — errors are from a
-        best-effort post-scaffold validate_assistant() pass (non-fatal: a
-        pre-existing malformed section is reported, never repaired here).
+        dirs, every `BASE_CAPABILITIES` skill materialized into
+        `.claude/skills/<name>/` (issue #447, always refreshed to match
+        the plugin — see `ensure_base_capabilities`), and the persona
+        `AGENTS.md` with its GENERATED skills block. Returns {"changed":
+        bool, "errors": list[str]} — errors are from a best-effort
+        post-scaffold validate_assistant() pass (non-fatal: a pre-existing
+        malformed section is reported, never repaired here).
 
     apply_setting(root, mutator) -> (bool, list[str])
         Snapshot project.yaml, run `mutator(path)` (a `config.set_config`
@@ -91,6 +94,31 @@ def _atomic_write_text(path, text):
         raise
 
 
+def _atomic_write_bytes(path, content, mode=None):
+    """Byte-exact sibling of `_atomic_write_text` (issue #447): write-to-
+    temp-then-`os.replace` so a concurrent reader (or a second, racing
+    scaffold process -- see the concurrency test) never observes a
+    partially-written base-capability file. `mode`, if given, is applied
+    via `os.chmod` to the TEMP file before the atomic rename, so the
+    final path never has a window where it exists with the wrong
+    permissions (e.g. missing the executable bit)."""
+    d = os.path.dirname(path) or "."
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".setup-assistant-tmp-", dir=d)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(content)
+        if mode is not None:
+            os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _lock_path(root):
     claude_dir = os.path.join(root, ".claude")
     os.makedirs(claude_dir, exist_ok=True)
@@ -142,10 +170,35 @@ PROJECT_YAML_REL = os.path.join(".claude", "project.yaml")
 BRAIN_NOTES_REL = os.path.join(".claude", "identities", "assistant", "brain", "notes")
 AGENTS_MD_REL = "AGENTS.md"
 STATE_DEFAULT_REL = os.path.join(".claude", "neural-view")  # already gitignored (manifest)
+SKILLS_DIR_REL = os.path.join(".claude", "skills")
 DEFAULT_FILE_NAME = "assistant-default"
 
 GEN_START = "<!-- >>> spec-workflow generated: enabled skills (SPEC-ASSISTANT.md §11.9) -->"
 GEN_END = "<!-- <<< spec-workflow generated: enabled skills (SPEC-ASSISTANT.md §11.9) -->"
+
+# Base capabilities (issue #447, §11.1 "base capabilities ship in-plugin
+# with the same shape") that `ensure_base_capabilities` materializes into
+# every scaffolded assistant repo's `.claude/skills/<name>/`. A STATIC,
+# explicit registry -- deliberately NOT a live scan of
+# `plugins/spec-workflow/skills/*/capability.yaml` (flagged design call,
+# issue #447's report): a scan would auto-promote any future in-plugin
+# skill that happens to grow a capability.yaml to "copied into every
+# assistant repo" with no reviewed checkpoint; a static tuple keeps
+# shipping a new base capability a one-line, reviewed decision here,
+# matching how `local-state.manifest`'s gitignore rules (below) are also
+# explicit, never derived. `section-setup-assistant.sh` pins that every
+# name here resolves to a real `plugins/spec-workflow/skills/<name>/
+# capability.yaml` in THIS plugin, so the registry can't silently drift.
+BASE_CAPABILITIES = ("whisper-sidecar",)
+
+# plugins/spec-workflow/skills/ -- the plugin's OWN skills directory (NOT
+# an assistant repo's `.claude/skills/`). `_SCRIPTS_DIR` is `plugins/
+# spec-workflow/scripts/`, so its parent is `plugins/spec-workflow/`.
+_PLUGIN_SKILLS_DIR = os.path.join(os.path.dirname(_SCRIPTS_DIR), "skills")
+
+
+def _base_capability_source_dir(name):
+    return os.path.join(_PLUGIN_SKILLS_DIR, name)
 
 
 # --- marker -----------------------------------------------------------------
@@ -273,6 +326,75 @@ def ensure_brain_dirs(root):
     return not existed
 
 
+# --- base capabilities (issue #447, §11.1) -------------------------------------
+
+def ensure_base_capabilities(root):
+    """Materializes every `BASE_CAPABILITIES` skill into `<root>/.claude/
+    skills/<name>/` (issue #447, §11.1: "base capabilities ship in-plugin
+    with the same shape" + "v1 discovery: installed-in-repo only" --
+    `capability_index.compile_index` only ever walks an assistant repo's
+    OWN `.claude/skills/`, never the plugin directly, so a base capability
+    is invisible to a scaffolded repo until this step copies it in).
+
+    ALWAYS refreshes (re-copies) every file: a base capability's entire
+    directory is 100% plugin-owned/generated -- a human is never expected
+    to hand-edit a base capability's SKILL.md/capability.yaml/scripts
+    inside a consumer repo, so unlike project.yaml/AGENTS.md there is no
+    "preserve existing human content" concern, only "keep this in sync
+    with what the plugin ships." Same idempotence discipline as every
+    other `ensure_*` here regardless: content-compared before writing, so
+    a file is touched (and `changed` becomes True) ONLY when its bytes
+    actually differ -- a stable re-run stays byte-identical
+    (section-setup-assistant.sh's existing pin), and a re-run after a
+    plugin update is exactly how a stale copy gets refreshed.
+
+    Never touches any OTHER entry under `.claude/skills/` -- a human's own
+    hand-authored skill living alongside a base one is left completely
+    alone; only the specific `BASE_CAPABILITIES` subdirectories are ever
+    written here.
+
+    Enablement is deliberately NOT touched (§11.2 default-deny):
+    materializing the FILES never implies `enabled: true` -- a human opts
+    in explicitly via `enable_capability(root, name)` (already landed),
+    same as any other capability. `_default_assistant_section` does not
+    list base capabilities either, for the same reason."""
+    changed = False
+    for name in BASE_CAPABILITIES:
+        src_dir = _base_capability_source_dir(name)
+        if not os.path.isdir(src_dir):
+            # Defensive only -- BASE_CAPABILITIES is a reviewed, static
+            # list that should always match a real plugin skill dir;
+            # never let a drifted registry entry crash the scaffold.
+            continue
+        dest_dir = os.path.join(root, SKILLS_DIR_REL, name)
+        for dirpath, _dirnames, filenames in os.walk(src_dir):
+            rel = os.path.relpath(dirpath, src_dir)
+            dest_subdir = dest_dir if rel == "." else os.path.join(dest_dir, rel)
+            for filename in filenames:
+                src_path = os.path.join(dirpath, filename)
+                dest_path = os.path.join(dest_subdir, filename)
+                with open(src_path, "rb") as fh:
+                    content = fh.read()
+                existing = None
+                if os.path.isfile(dest_path):
+                    with open(dest_path, "rb") as fh:
+                        existing = fh.read()
+                if existing == content:
+                    continue
+                # Atomic write (issue #447): mirrors _atomic_write_text's
+                # write-to-temp-then-os.replace discipline -- a concurrent
+                # reader (compile_index's poll loop, or a second, racing
+                # scaffold process, per this section's own 12-concurrent-
+                # scaffolds test) never observes a partially-written
+                # capability file. Preserves the source's executable bit
+                # (e.g. whisper_sidecar.py ships mode 0o755) -- matching
+                # the plugin's own permissions is the least surprising
+                # behavior for a capability script.
+                _atomic_write_bytes(dest_path, content, mode=os.stat(src_path).st_mode)
+                changed = True
+    return changed
+
+
 # --- persona AGENTS.md (§11.9 generated skills block) --------------------------
 
 def _enabled_capabilities(root):
@@ -369,6 +491,7 @@ def scaffold(root, names=None, provider=None, model=None):
     )
     changed |= yaml_changed
     changed |= ensure_brain_dirs(root)
+    changed |= ensure_base_capabilities(root)
     changed |= ensure_agents_md(root)
 
     cfg_path = os.path.join(root, PROJECT_YAML_REL)

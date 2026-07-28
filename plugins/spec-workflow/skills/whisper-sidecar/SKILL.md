@@ -3,6 +3,8 @@ name: whisper-sidecar
 description: Installs, starts, stops, and health-checks the local whisper.cpp speech-to-text sidecar the assistant's voice input relies on when the whisper STT engine is selected. Use for local, private, offline speech transcription -- fully on-machine, no audio leaves the device.
 ---
 
+> Materialized by `/setup-assistant`; refreshed on every scaffold -- edit the plugin copy, local edits are overwritten.
+
 # whisper-sidecar
 
 Manages the local whisper.cpp HTTP sidecar (`127.0.0.1:8737`) that the

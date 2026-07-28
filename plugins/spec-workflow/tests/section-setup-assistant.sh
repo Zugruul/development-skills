@@ -52,10 +52,147 @@ check_absent "scaffold: AGENTS.md does not list the disabled codex capability" "
 check "scaffold: writes .gitignore" "yes" "$r"
 sa_gi="$(cat "$sa_d/.gitignore" 2>/dev/null)"
 check "scaffold: .gitignore ignores .claude/assistant/ local state" ".claude/assistant/" "$sa_gi"
+check "scaffold: .gitignore ignores the materialized whisper-sidecar base capability (issue #447, plugin-owned/regenerable)" \
+    ".claude/skills/whisper-sidecar/" "$sa_gi"
 
 # --- no engine code copied into the scaffolded tree (§6.7) --------------------
-sa_engine_hits="$(find "$sa_d" -name '*.py' 2>/dev/null | wc -l | tr -d ' ')"
-check "scaffold: no .py engine files copied into the assistant repo (§6.7)" "0" "$sa_engine_hits"
+# Refined (issue #447, deliberate, headlined contract-invariant change --
+# not a loosening): §6.7's actual wording is "the assistant repo SHALL
+# contain no ENGINE code", not "no .py files" -- the original blanket
+# find -name '*.py' check was a sound PROXY for that invariant only
+# because, before #447, nothing but engine code was ever .py. #447 ships
+# whisper-sidecar (issue #424) as a base capability materialized into
+# .claude/skills/whisper-sidecar/, and that capability's own invoke
+# script (whisper_sidecar.py) IS legitimately .py -- it is CAPABILITY
+# code (§11.1: a skill's own SKILL.md/capability.yaml/invoke script),
+# executed exclusively as a sandboxed, argv-isolated, timeout-bounded
+# subprocess via adapters.invoke_cli, never imported into or run as part
+# of the assistant engine process itself. This is functionally identical
+# to a human hand-authoring their own skill directly under
+# .claude/skills/ (already implicitly allowed by §11.1, which draws no
+# distinction between plugin-sourced and human-authored skill code).
+#
+# Round-2 correction: the TWO checks below are NOT "stricter than the
+# original" -- set-wise they are strictly WEAKER (they exempt .py inside
+# .claude/skills/, which the blanket check forbade). That's the intended
+# carve-out, not an accident, and claiming otherwise overstated it. The
+# true, honest framing: these checks are better ALIGNED with §6.7's own
+# wording ("no engine code") than the blanket proxy was -- trading
+# accidental over-strictness (the old check also rejected legitimate
+# capability code) for accuracy (checking for the actual thing §6.7
+# forbids: engine modules, by name, anywhere), while check 2 does add ONE
+# genuinely new capability the old check never had: catching an engine
+# module NAME leaking INSIDE .claude/skills/, a location the blanket
+# check never distinguished at all.
+#
+# Stronger argument, also worth stating plainly: the materialized
+# .claude/skills/whisper-sidecar/ is GITIGNORED (local-state.manifest,
+# never committed) -- so the assistant REPOSITORY, i.e. what §6.7/§17.4
+# actually govern (committed content), still contains zero .py either
+# way. whisper_sidecar.py is regenerable local state materialized by
+# `/setup-assistant`, not repo content a human or git ever sees checked
+# in -- §6.7's invariant holds at the level it actually operates on.
+#   1. No .py file anywhere OUTSIDE .claude/skills/ -- capability code is
+#      only ever legitimate INSIDE a skill's own directory.
+#   2. No file NAMED after a real engine module (derived from the
+#      PLUGIN's own scripts/assistant/*.py listing, never hand-enumerated
+#      -- see below) appears ANYWHERE in the tree, INCLUDING inside
+#      .claude/skills/.
+sa_engine_hits="$(find "$sa_d" -name '*.py' -not -path "$sa_d/.claude/skills/*" 2>/dev/null | wc -l | tr -d ' ')"
+check "scaffold: no .py files outside .claude/skills/ (no engine code, §6.7)" "0" "$sa_engine_hits"
+
+# Derived, not hand-maintained (issue #447 round 2): the set of real
+# engine module NAMES is a FACT about the plugin's own scripts/assistant/
+# directory, so it is read from there directly rather than copy-pasted --
+# self-maintaining as the engine grows, never silently drifts out of sync
+# the way a hand-enumerated list could. Contrast with BASE_CAPABILITIES in
+# setup.py, which SHOULD stay hand-maintained: that list encodes a
+# reviewed DECISION (which in-plugin skills get materialized into every
+# assistant repo), not a fact derivable from the filesystem.
+# bash 3.2 compatible (avoids the bash-4-only array-read builtin -- macOS stock bash).
+sa_engine_mods=()
+while IFS= read -r sa_mod_line; do
+    [[ -n "$sa_mod_line" ]] && sa_engine_mods+=("$sa_mod_line")
+done < <(
+    # shellcheck disable=SC2011  # engine module filenames are plain ASCII
+    # (adapters.py, engine.py, ...) -- no spaces/globs/newlines possible, so
+    # ls|xargs is safe here despite the general non-alphanumeric-filename caveat.
+    ls "$PLUGIN/scripts/assistant/"*.py 2>/dev/null | xargs -n1 basename
+)
+
+# Vacuity guard (round-2 advisory, same absence-proof-needs-positive-control
+# class the suite keeps hitting): an empty derived list would make the loop
+# below iterate zero times and report "0 hits" -- a green check that tested
+# NOTHING, if the glob ever misses (wrong PLUGIN path, scripts/assistant/
+# renamed, etc.). Fail loudly and specifically instead of passing vacuously.
+if [[ ${#sa_engine_mods[@]} -eq 0 ]]; then
+    check "scaffold: engine-module list derivation is non-empty (positive control on the absence-proof below)" \
+        "non-empty" "EMPTY -- glob 'scripts/assistant/*.py' matched nothing, check \$PLUGIN"
+else
+    check "scaffold: engine-module list derivation is non-empty (positive control on the absence-proof below)" \
+        "non-empty" "non-empty (${#sa_engine_mods[@]} modules)"
+fi
+
+sa_engine_module_hits=0
+# "${arr[@]}" on an EMPTY array is an unbound-variable error under `set -u`
+# in bash < 4.4 (macOS stock bash 3.2) -- guard the iteration explicitly
+# rather than relying on the array expanding to nothing.
+if [[ ${#sa_engine_mods[@]} -gt 0 ]]; then
+    for sa_mod in "${sa_engine_mods[@]}"; do
+        [[ -z "$sa_mod" ]] && continue
+        sa_hit="$(find "$sa_d" -name "$sa_mod" 2>/dev/null | wc -l | tr -d ' ')"
+        sa_engine_module_hits=$((sa_engine_module_hits + sa_hit))
+    done
+fi
+check "scaffold: no file named after a real assistant engine module appears anywhere, including inside .claude/skills/ (§6.7)" \
+    "0" "$sa_engine_module_hits"
+
+# --- base capabilities (issue #447, §11.1) -------------------------------------
+[[ -f "$sa_d/.claude/skills/whisper-sidecar/capability.yaml" ]] && r=yes || r=no
+check "scaffold: materializes the whisper-sidecar base capability's capability.yaml" "yes" "$r"
+[[ -f "$sa_d/.claude/skills/whisper-sidecar/SKILL.md" ]] && r=yes || r=no
+check "scaffold: materializes the whisper-sidecar base capability's SKILL.md" "yes" "$r"
+[[ -f "$sa_d/.claude/skills/whisper-sidecar/whisper_sidecar.py" ]] && r=yes || r=no
+check "scaffold: materializes the whisper-sidecar base capability's whisper_sidecar.py" "yes" "$r"
+sa_ws_content="$(cat "$sa_d/.claude/skills/whisper-sidecar/capability.yaml" 2>/dev/null)"
+sa_ws_src_content="$(cat "$PLUGIN/skills/whisper-sidecar/capability.yaml" 2>/dev/null)"
+check "scaffold: the materialized capability.yaml matches the plugin's shipped source byte-for-byte" \
+    "$sa_ws_src_content" "$sa_ws_content"
+
+[[ -x "$sa_d/.claude/skills/whisper-sidecar/whisper_sidecar.py" ]] && r=yes || r=no
+check "scaffold: the materialized whisper_sidecar.py keeps its executable bit" "yes" "$r"
+
+sa_ws_cfg="$(sa_get "$sa_d" "assistant.capabilities.whisper-sidecar.enabled")"
+check "scaffold: whisper-sidecar is NOT auto-enabled (§11.2 default-deny) -- materializing files never implies enabled: true" \
+    "" "$sa_ws_cfg"
+
+# a human-authored skill dir alongside the base capability is left alone
+mkdir -p "$sa_d/.claude/skills/my-custom-skill"
+printf 'hand-authored, not a base capability\n' >"$sa_d/.claude/skills/my-custom-skill/NOTES.md"
+bash "$SA_SCRIPT" --root "$sa_d" scaffold --name jarvis >/dev/null 2>&1
+[[ -f "$sa_d/.claude/skills/my-custom-skill/NOTES.md" ]] && r=yes || r=no
+check "scaffold: a human-authored skill dir alongside a base capability is left untouched" "yes" "$r"
+sa_custom_content="$(cat "$sa_d/.claude/skills/my-custom-skill/NOTES.md" 2>/dev/null)"
+check "scaffold: the human-authored skill's content is unchanged" "hand-authored, not a base capability" "$sa_custom_content"
+
+# end-to-end: once a human enables it (setup.py enable-capability, already
+# landed), the materialized whisper-sidecar capability is ACTUALLY
+# discoverable by the real engine machinery, not just present on disk.
+python3 "$PLUGIN/scripts/assistant/setup.py" "$sa_d" enable-capability whisper-sidecar >/dev/null 2>&1
+sa_e2e_out="$(PYTHONPATH="$PLUGIN/scripts" python3 - <<PY
+import sys
+sys.path.insert(0, "$PLUGIN/scripts")
+from assistant import capability_index as ci
+
+skills_root = "$sa_d/.claude/skills"
+cfg = {"capabilities": {"whisper-sidecar": {"enabled": True}}}
+index = ci.compile_index(skills_root, cfg, embed_fn=lambda texts: None)
+names = [e.name for e in index.entries]
+print("IN_INDEX", "whisper-sidecar" in names)
+PY
+)"
+check "end-to-end (issue #447): the scaffolded whisper-sidecar capability is discoverable by compile_index once enabled" \
+    "IN_INDEX True" "$sa_e2e_out"
 
 # --- re-run idempotence: byte-identical tree -----------------------------------
 sa_snap="$(mktemp -d)"
@@ -258,6 +395,25 @@ check "concurrency: project.yaml parses as a mapping after 12 concurrent scaffol
 sa_conc_validate="$(bash "$SA_SCRIPT" --root "$sa_d" validate 2>&1)"
 check "concurrency: assistant: section is still VALID after concurrent scaffolds" \
     "VALID" "$sa_conc_validate"
+
+# Round-2 MINOR 4: pin the atomicity claim ensure_base_capabilities/
+# _atomic_write_bytes make (issue #447) against the SAME 12-concurrent
+# run above, rather than asserting it only in isolation -- 12 processes
+# all racing to write the identical whisper-sidecar bytes is exactly the
+# scenario the write-to-temp-then-os.replace discipline exists for.
+sa_ws_conc="$(cmp -s "$sa_d/.claude/skills/whisper-sidecar/whisper_sidecar.py" \
+    "$PLUGIN/skills/whisper-sidecar/whisper_sidecar.py" && echo SAME || echo DIFFER)"
+check "concurrency: whisper_sidecar.py is byte-identical to the plugin source after 12 concurrent scaffolds" \
+    "SAME" "$sa_ws_conc"
+sa_cy_conc="$(cmp -s "$sa_d/.claude/skills/whisper-sidecar/capability.yaml" \
+    "$PLUGIN/skills/whisper-sidecar/capability.yaml" && echo SAME || echo DIFFER)"
+check "concurrency: capability.yaml is byte-identical to the plugin source after 12 concurrent scaffolds" \
+    "SAME" "$sa_cy_conc"
+[[ -x "$sa_d/.claude/skills/whisper-sidecar/whisper_sidecar.py" ]] && r=yes || r=no
+check "concurrency: whisper_sidecar.py's executable bit survives 12 concurrent scaffolds" "yes" "$r"
+sa_stray_tmp="$(find "$sa_d" -name '.setup-assistant-tmp-*' 2>/dev/null | wc -l | tr -d ' ')"
+check "concurrency: zero stray .setup-assistant-tmp-* files left behind after 12 concurrent scaffolds" "0" "$sa_stray_tmp"
+
 rm -rf "$sa_d"
 
 # --- review r2 finding 2: pre-existing non-mapping assistant: is refused,
