@@ -18,6 +18,12 @@
   > - covered by the four smuggling shapes a review found, each verified to
   >   slip through the previous attempt
 
+### Tests
+- **475:** pin classList-level polarity on engine-error and echo-guard stop paths (#475) (`9388a2b`)
+  > - engine-onerror path now asserted at the DOM layer: class 'listening' absent and aria-pressed false after onerror
+  > - echo-guard interlock harness gains a real voice-stt element, a classList.toggle stub, and a setup guard proving the dot is lit before the interlock fires
+  > - green hardening commit: the reported inversion is unreproducible on the current build (all four stop paths test correct polarity); leading explanation is a stale served page, tracked systemically as #197
+
 ## v0.54.2 — 2026-07-28
 
 ### Fixes
