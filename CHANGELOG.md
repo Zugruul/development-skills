@@ -12,6 +12,10 @@
   > 
   > Closes #480
 
+### Chores
+- **brains:** record dev recall activation from the 481 brief (`1a06067`)
+  > - Activation and link-strength updates fired by the dev brain recall while briefing the show-last task.
+
 ### Other
 - retro(480): outcomes recorded, 1 orchestrator note minted, feedback routed (`9a22fda`)
   > - Outcomes: 2 dev + 4 reviewer recalled notes marked useful for the T-key focus task.
