@@ -19,6 +19,11 @@
   > - the /version probe now only fills the branch chip (the version is
   >   already right at first paint)
 
+### Chores
+- **feedback:** emit + route batch feedback for AST-063/438/441 closes (`aa83b97`)
+  > - 5 items: browser-level review win (brain), changelog-race friction (#443), guard-hook false positives (#444), parallel-lanes win (brain), closed learning loop (brain)
+  > - feed archived (2026-07)
+
 ### Other
 - retro(#110): batched PR-close retro for #438 + #338 + #441 (`d62a0d8`)
   > - dev: 4 notes (two parsers one byte stream, grep -F OR semantics, sweep all pin sites, validate the declaration not just values)
