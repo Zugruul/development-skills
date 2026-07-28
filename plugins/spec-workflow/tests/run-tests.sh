@@ -259,6 +259,7 @@ section-semver.sh
     section-assistant-voice-tts.sh
     section-assistant-voice-turn.sh
     section-assistant-artifacts.sh
+    section-assistant-artifact-panel.sh
     section-design-registry.sh
 )
 
