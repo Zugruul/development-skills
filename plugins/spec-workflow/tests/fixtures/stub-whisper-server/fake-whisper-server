@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""Stub whisper-server binary for section-whisper-sidecar.sh (issue #424).
+Never touches the network or a real whisper.cpp build -- this is the ONLY
+"whisper-server" binary tests ever spawn (via WHISPER_SIDECAR_BINARY_SRC
+pointing straight at this file, "stub everything" per the task brief).
+
+Accepts the SAME argv shape whisper_sidecar.py's cmd_start spawns:
+    fake-whisper-server --port <N> --model <path>
+and binds a bare TCP listener on 127.0.0.1:<N> -- whisper_sidecar.py's own
+health probe is a plain connect-and-close (see its `_port_open` docstring
+for why), so this stub never needs to speak real HTTP to be a faithful
+double for lifecycle testing.
+
+Env-driven modes (WHISPER_STUB_MODE, default "ok"):
+  ok            -- binds the port immediately, accepts connections, runs
+                   until killed.
+  slow_bind     -- sleeps $WHISPER_STUB_SLOW_SECONDS (default 2) before
+                   binding -- simulates a real server whose model is still
+                   loading (exercises STATE_STARTING).
+  never_bind    -- never binds the port at all, sleeps until killed --
+                   exercises `start`'s bounded-timeout give-up path.
+  ignore_sigterm -- binds immediately but installs a SIGTERM handler that
+                   does nothing, forcing `stop`'s SIGKILL escalation path
+                   (mirrors neural-view.py's own SIGTERM-ignoring-zombie
+                   test precedent).
+
+Writes its own pid to $WHISPER_STUB_STARTED_LOG (one line, if set) the
+moment it's about to accept connections (or, for never_bind, never writes
+at all) -- lets a test assert whether THIS process, specifically, ever
+reached a listening state.
+"""
+import os
+import signal
+import socket
+import sys
+import time
+
+mode = os.environ.get("WHISPER_STUB_MODE", "ok")
+
+port = None
+for i, arg in enumerate(sys.argv):
+    if arg == "--port" and i + 1 < len(sys.argv):
+        port = int(sys.argv[i + 1])
+if port is None:
+    sys.stderr.write("fake-whisper-server: --port is required\n")
+    sys.exit(2)
+
+if mode == "ignore_sigterm":
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+if mode == "never_bind":
+    while True:
+        time.sleep(3600)
+
+if mode == "slow_bind":
+    time.sleep(float(os.environ.get("WHISPER_STUB_SLOW_SECONDS", "2")))
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sock.bind(("127.0.0.1", port))
+sock.listen(5)
+
+log_path = os.environ.get("WHISPER_STUB_STARTED_LOG")
+if log_path:
+    with open(log_path, "a", encoding="utf-8") as fh:
+        fh.write(f"{os.getpid()}\n")
+
+while True:
+    try:
+        conn, _addr = sock.accept()
+        conn.close()
+    except OSError:
+        break

@@ -1,0 +1,11 @@
+version: 1
+provisioning:
+    check: ["python3", "{skill_dir}/whisper_sidecar.py", "status"]
+    ttlSeconds: 30
+permissions: []
+invoke:
+    exec: ["python3", "{skill_dir}/whisper_sidecar.py", "{action}"]
+    params:
+        action:
+            type: string
+            allowlist: ["install", "start", "stop", "status"]

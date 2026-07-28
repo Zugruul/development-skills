@@ -394,3 +394,103 @@ check "engine roster provider: entry name is the capability name" "NAME whisper-
 check "engine roster provider: available reflects provisioned_ok (False)" "AVAILABLE False" "$out"
 check "engine roster provider: unavailable_reason flows through as 'reason'" \
     "REASON provisioning check exited 9: sidecar not running" "$out"
+
+# ------------------------------------------------------------------------
+echo "-- unit: capability_index.compile_index -- a {skill_dir} TOKEN in provisioning.check resolves against the capability's own directory (issue #424 round 2) --"
+# Round-2 REPLACEMENT for the reverted cwd=skill_dir approach (a prior
+# version of this test proved cwd-based resolution -- reviewer found that
+# approach broke ProvisioningChecker's (name, argv) cache key: two repos
+# sharing a capability name + check TEMPLATE but resolving against
+# DIFFERENT skill_dirs would collide on the same cache key even though
+# their actual, cwd-resolved commands differ -- a silent Sec11.4
+# violation on run_worker's first multi-repo poll tick).
+# provisioning.py is now back to its ORIGINAL, unmodified AST-062
+# contract (no cwd, cache key exactly `(name, tuple(check))`) --
+# `capability_index.compile_index` substitutes `{skill_dir}` into the
+# check argv itself BEFORE handing it to the checker, so the cache key is
+# correct BY CONSTRUCTION: different skill_dirs produce different
+# substituted argv, hence different cache keys, with no change to
+# ProvisioningChecker's key logic at all. This test proves the
+# substitution end to end against the REAL run_check (not a fake_run
+# stub), using a relative script name that only exists inside a
+# throwaway skill_dir and is unreachable except via {skill_dir}.
+out="$(PYTHONPATH="$CP_SCRIPTS" python3 - <<'PY'
+import os, stat, tempfile
+from assistant import capability_index as ci
+
+root = tempfile.mkdtemp(prefix="cp-token-resolution-")
+skills_root = os.path.join(root, "skills")
+d = os.path.join(skills_root, "whisper-sidecar")
+os.makedirs(d, exist_ok=True)
+script_path = os.path.join(d, "token_check.py")
+with open(script_path, "w") as fh:
+    fh.write("import sys\nsys.exit(0)\n")
+os.chmod(script_path, os.stat(script_path).st_mode | stat.S_IEXEC)
+with open(os.path.join(d, "capability.yaml"), "w") as fh:
+    # {skill_dir} TOKEN, not a bare relative path -- only resolves via
+    # the compile_index substitution step, never via any cwd/PATH fallback.
+    fh.write("version: 1\nprovisioning:\n    check: [\"python3\", \"{skill_dir}/token_check.py\"]\n"
+              "    ttlSeconds: 60\npermissions: []\ninvoke:\n    exec: [\"python3\", \"{skill_dir}/token_check.py\"]\n")
+
+cfg = {"capabilities": {"whisper-sidecar": {"enabled": True}}}
+index = ci.compile_index(skills_root, cfg, embed_fn=lambda texts: None)
+e = index.entries[0]
+print("PROVISIONED_OK", e.provisioned_ok)
+print("REASON", e.unavailable_reason)
+PY
+)"
+check "compile_index: a {skill_dir} token in provisioning.check resolves and the real check passes" "PROVISIONED_OK True" "$out"
+check "compile_index: no reason on a genuine pass" "REASON None" "$out"
+
+# ------------------------------------------------------------------------
+echo "-- unit: capability_index.compile_index + ProvisioningChecker -- TWIN of the argv-edit-invalidates test: skill_dir varies, name+template fixed -- NO cross-repo cache leakage (issue #424 round 2, reviewer-proven collision) --"
+# Mirrors the existing 'cache key is name + check argv -- an argv change
+# never serves a stale result' test above, but for the axis THAT test
+# doesn't cover: two DIFFERENT repos (skill_dirs) sharing the exact same
+# capability NAME and the exact same UNSUBSTITUTED check TEMPLATE,
+# against a SINGLE SHARED ProvisioningChecker instance -- exactly
+# `real_provisioning_checker`'s module-singleton-across-repos shape in
+# production (run_worker calls compile_index once per repo root, all
+# sharing the one checker). Repo A's sidecar genuinely passes; repo B's
+# genuinely fails -- if the cache key were ever repo-blind (the reverted
+# cwd approach's bug), repo B would silently inherit repo A's cached PASS
+# on run_worker's very first multi-repo poll tick.
+out="$(PYTHONPATH="$CP_SCRIPTS" python3 - <<'PY'
+import os, stat, tempfile
+from assistant import capability_index as ci
+from assistant import provisioning as prov
+
+def make_repo(prefix, exit_code):
+    root = tempfile.mkdtemp(prefix=prefix)
+    skills_root = os.path.join(root, "skills")
+    d = os.path.join(skills_root, "whisper-sidecar")
+    os.makedirs(d, exist_ok=True)
+    script_path = os.path.join(d, "token_check.py")
+    with open(script_path, "w") as fh:
+        fh.write(f"import sys\nsys.exit({exit_code})\n")
+    os.chmod(script_path, os.stat(script_path).st_mode | stat.S_IEXEC)
+    with open(os.path.join(d, "capability.yaml"), "w") as fh:
+        # SAME name, SAME unsubstituted template in both repos.
+        fh.write("version: 1\nprovisioning:\n    check: [\"python3\", \"{skill_dir}/token_check.py\"]\n"
+                  "    ttlSeconds: 60\npermissions: []\ninvoke:\n    exec: [\"python3\", \"{skill_dir}/token_check.py\"]\n")
+    return skills_root
+
+skills_root_a = make_repo("cp-collision-a-", 0)   # repo A: genuinely healthy
+skills_root_b = make_repo("cp-collision-b-", 7)   # repo B: genuinely down
+
+shared_checker = prov.ProvisioningChecker()  # ONE checker instance, shared across BOTH compile_index calls
+cfg = {"capabilities": {"whisper-sidecar": {"enabled": True}}}
+
+index_a = ci.compile_index(skills_root_a, cfg, provisioning_checker=shared_checker, embed_fn=lambda texts: None)
+index_b = ci.compile_index(skills_root_b, cfg, provisioning_checker=shared_checker, embed_fn=lambda texts: None)
+
+print("REPO_A_PROVISIONED_OK", index_a.entries[0].provisioned_ok)
+print("REPO_B_PROVISIONED_OK", index_b.entries[0].provisioned_ok)
+print("NO_CROSS_REPO_LEAK", index_a.entries[0].provisioned_ok != index_b.entries[0].provisioned_ok)
+PY
+)"
+check "cache-collision twin: repo A (genuinely healthy) reports provisioned_ok True" "REPO_A_PROVISIONED_OK True" "$out"
+check "cache-collision twin: repo B (genuinely down) reports provisioned_ok False -- NOT repo A's cached verdict" \
+    "REPO_B_PROVISIONED_OK False" "$out"
+check "cache-collision twin: no cross-repo cache leakage between distinct skill_dirs sharing one checker" \
+    "NO_CROSS_REPO_LEAK True" "$out"

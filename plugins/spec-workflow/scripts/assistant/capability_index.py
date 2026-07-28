@@ -133,8 +133,8 @@ ast-E6.md) closes enablement gating end to end on top of the above:
         flagged alternative reading this task's report also documents.
 
     CapabilityDisabledError(Exception), invoke_capability(name,
-        capability, params, assistant_cfg, *, timeout=None, env=None,
-        cwd=None)
+        capability, params, assistant_cfg, *, skill_dir=None,
+        timeout=None, env=None, cwd=None)
         Sec17.2 "a disabled capability is never invoked by the engine":
         the single choke point a NAMED capability's invocation must pass
         through, gating on `is_enabled` before dispatching to
@@ -142,6 +142,17 @@ ast-E6.md) closes enablement gating end to end on top of the above:
         `capability.invoke`'s exec/mcp shape). See the function's own
         docstring for why the gate lives here rather than inside
         `adapters.py` itself (a flagged design call).
+
+    _substitute_skill_dir(argv, skill_dir) -> argv (issue #424 round 2)
+        Replaces the literal `{skill_dir}` token in each argv element
+        with the capability's actual skill_dir -- used by BOTH
+        `compile_index` (for `provisioning.check`, applied BEFORE the
+        provisioning checker's cache-key computation, which is what makes
+        that cache key correct across repos by construction -- see the
+        function's own docstring for the reviewer-proven collision this
+        fixes) and `invoke_capability` (for `invoke.exec`/`invoke.mcp.
+        server`, an earlier, separate substitution pass than `adapters.
+        invoke_argv`'s own `{action}`-style params substitution).
 """
 import collections
 import os
@@ -499,6 +510,45 @@ def _merge_provisioning_override(base_provisioning, override):
     return merged
 
 
+_SKILL_DIR_TOKEN = "{skill_dir}"
+
+
+def _substitute_skill_dir(argv, skill_dir):
+    """Replaces the literal `{skill_dir}` token in each `argv` element with
+    the capability's actual `skill_dir` (issue #424 round 2). A narrow,
+    single-purpose substitution -- DELIBERATELY separate from `adapters.
+    substitute_argv`'s `{name}`-for-any-DECLARED-PARAM machinery (AST-063,
+    reused verbatim for `invoke.params` like `{action}`): `skill_dir` is
+    ENGINE-SUPPLIED COMPILE-TIME CONTEXT a capability author references in
+    their own argv template, not a caller-supplied, schema-validated
+    invoke param -- treating it as one would mean declaring a fake
+    `invoke.params.skill_dir` schema entry purely to satisfy `adapters.
+    substitute_argv`'s "every placeholder must be a declared param" rule,
+    which conflates two different kinds of substitution. So this
+    resolves EARLIER and separately: only the exact `{skill_dir}` token is
+    replaced (plain `str.replace`, not a placeholder-scanning regex) --
+    any OTHER `{name}`-shaped text in the same argv element (e.g.
+    `invoke.exec`'s `{action}`) is left completely untouched for
+    `adapters.invoke_argv`'s own params-based substitution to resolve
+    later, in its own pass. (Flagged design call, issue #424 round 2: this
+    is intentionally NOT built on top of `adapters.substitute_argv` --
+    that function raises on any placeholder without a matching supplied
+    value, which `{action}` would trigger here since this function is
+    never given an `action` value to substitute.)
+
+    Round-2 correctness note (the reviewer-proven bug this replaces): this
+    substitution happens BEFORE `provisioning.ProvisioningChecker` ever
+    computes its `(name, tuple(check))` cache key (`compile_index` below
+    calls this, then hands the ALREADY-SUBSTITUTED argv to the checker) --
+    so the cache key is correct BY CONSTRUCTION: two repos with the same
+    capability name and the same UNSUBSTITUTED check template produce
+    DIFFERENT substituted argv (different `skill_dir`), hence distinct
+    cache entries, with zero changes needed to `ProvisioningChecker`'s key
+    logic itself (which stays exactly as AST-062 shipped it -- no `cwd`,
+    no repo-awareness of its own)."""
+    return [element.replace(_SKILL_DIR_TOKEN, skill_dir) if isinstance(element, str) else element for element in argv]
+
+
 def compile_index(skills_root, assistant_cfg, provisioning_checker=None, embed_fn=None):
     """One pass over `skills_root` -> `CapabilityIndex` (Sec11.3's "Index
     compile" sequence, docs/design/ast-E6.md). See the module docstring for
@@ -566,6 +616,19 @@ def compile_index(skills_root, assistant_cfg, provisioning_checker=None, embed_f
         if override is not None:
             effective_capability = capability._replace(
                 provisioning=_merge_provisioning_override(capability.provisioning, override)
+            )
+        # {skill_dir} token substitution (issue #424 round 2) -- ALWAYS
+        # applied, override or not, to whatever `check` argv is now in
+        # play, BEFORE the checker ever sees it (see `_substitute_skill_dir`'s
+        # docstring for why this must happen here, ahead of the checker's
+        # own cache-key computation).
+        check_argv = effective_capability.provisioning.get("check")
+        if isinstance(check_argv, list):
+            effective_capability = effective_capability._replace(
+                provisioning=dict(
+                    effective_capability.provisioning,
+                    check=_substitute_skill_dir(check_argv, skill_dir),
+                )
             )
         provisioned_ok, unavailable_reason = provisioning_checker(name, effective_capability, skill_dir)
         entries.append(CapabilityIndexEntry(
@@ -782,7 +845,8 @@ class CapabilityDisabledError(Exception):
     surface -- not done here, see the report for the tradeoff.)"""
 
 
-def invoke_capability(name, capability, params, assistant_cfg, *, timeout=None, env=None, cwd=None):
+def invoke_capability(name, capability, params, assistant_cfg, *, skill_dir=None,
+                       timeout=None, env=None, cwd=None):
     """The SINGLE choke point every invocation of a NAMED capability must
     pass through (issue #340, AST-065) -- enforces Sec17.2 ("a disabled
     capability is never invoked by the engine") and then dispatches to
@@ -802,6 +866,18 @@ def invoke_capability(name, capability, params, assistant_cfg, *, timeout=None, 
     gate in `capability_index.py` instead keeps ONE place owning "what
     does enabled mean" (shared with `compile_index`) and keeps
     `adapters.py` unchanged.
+
+    `skill_dir` (issue #424 round 2, optional, `None` by default -- every
+    pre-existing caller is unaffected): when given, `{skill_dir}` tokens
+    in `capability.invoke.exec`/`capability.invoke.mcp.server` are
+    substituted (via `_substitute_skill_dir`, the SAME narrow, non-param
+    substitution `compile_index` applies to `provisioning.check` -- see
+    that function's docstring for why this is a separate, EARLIER pass
+    than `adapters.invoke_argv`'s own `{action}`-style params
+    substitution) before dispatch, so a capability's own co-located
+    invoke script resolves without the caller needing to separately
+    supply `cwd` -- `cwd` remains available as an independent, orthogonal
+    knob for a capability that does not use the token convention.
 
     Dispatch: auto-detects the invoke flavor from `capability.invoke`'s
     shape (`exec` vs `mcp` -- capability_index.validate_capability already
@@ -829,6 +905,18 @@ def invoke_capability(name, capability, params, assistant_cfg, *, timeout=None, 
     # dependency chain.
 
     invoke = capability.invoke if isinstance(capability.invoke, dict) else {}
+    if skill_dir is not None:
+        invoke = dict(invoke)
+        exec_argv = invoke.get("exec")
+        if isinstance(exec_argv, list):
+            invoke["exec"] = _substitute_skill_dir(exec_argv, skill_dir)
+        mcp = invoke.get("mcp")
+        if isinstance(mcp, dict) and isinstance(mcp.get("server"), list):
+            mcp = dict(mcp)
+            mcp["server"] = _substitute_skill_dir(mcp["server"], skill_dir)
+            invoke["mcp"] = mcp
+        capability = capability._replace(invoke=invoke)
+
     kwargs = {"env": env, "cwd": cwd}
     if timeout is not None:
         kwargs["timeout"] = timeout
