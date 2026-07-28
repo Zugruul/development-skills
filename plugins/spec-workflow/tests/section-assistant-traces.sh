@@ -559,6 +559,21 @@ check "retention size: pruning removes rows to come under the cap" "SOME_ROWS_RE
 check "retention size: file size lands near/under the maxMB budget" "SIZE_UNDER_BUDGET True" "$size_out"
 check "retention size: deletion is oldest-first (only the lowest turn_ids are gone)" "OLDEST_FIRST True" "$size_out"
 
+# #420: the size-chunk delete used to be one self-referencing statement
+# (`DELETE FROM events WHERE seq IN (SELECT seq FROM events ORDER BY seq
+# ASC LIMIT ?)`) whose oldest-first guarantee depended on the query
+# planner materializing its own subquery before the delete began -- correct
+# on every machine this repo's tests ran on locally, wrong on the Ubuntu CI
+# runner's SQLite build. Source-level pin, since the behavioral OLDEST_FIRST
+# check above cannot itself prove which SQL form produced a passing result,
+# and this repo cannot reproduce the CI-only failure locally to red/green
+# the fix behaviorally.
+_ret_src="$(cat "$AT_SCRIPTS/assistant/observability.py")"
+check_absent "observability.py: the self-referencing size-prune DELETE (the actual #420 bug) is gone" \
+    "DELETE FROM events WHERE seq IN" "$_ret_src"
+check "observability.py: size-prune deletes by an explicit, already-materialized seq boundary instead" \
+    "DELETE FROM events WHERE seq <= ?" "$_ret_src"
+
 # ------------------------------------------------------------------------
 echo "-- unit: AST-041 retention -- 0 means unlimited for both knobs --"
 unlimited_out="$(SCRIPTS_DIR="$AT_SCRIPTS" python3 - <<'PY'

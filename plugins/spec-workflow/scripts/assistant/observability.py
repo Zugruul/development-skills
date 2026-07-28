@@ -370,10 +370,17 @@ def _prune_conn(conn, root, retain_days, max_mb):
     traces.sqlite files that are, by construction, capped at `max_mb`
     megabytes) and keeps the measurement exact rather than approximate. When
     over budget, the oldest `PRUNE_SIZE_CHUNK` rows (by `seq`, index-backed
-    via `ix_events_seq`) are deleted and the loop re-VACUUMs to re-measure;
-    this repeats until under budget, the table is empty (nothing left to
-    delete -- schema/index overhead alone may exceed max_mb, which is not an
-    error), or `PRUNE_MAX_SIZE_ITERATIONS` is hit as a safety bound.
+    via `ix_events_seq`) are deleted -- as a plain ordered SELECT followed
+    by a `seq <= boundary` DELETE, deliberately NOT a single self-
+    referencing `DELETE ... WHERE seq IN (SELECT ... FROM events ...)`
+    statement (#420: that form's oldest-first guarantee depends on the
+    query planner materializing its own subquery before the delete begins,
+    which is not something every SQLite build makes identically -- it held
+    on every machine that ran this locally and broke on CI's) -- and the
+    loop re-VACUUMs to re-measure; this repeats until under budget, the
+    table is empty (nothing left to delete -- schema/index overhead alone
+    may exceed max_mb, which is not an error), or
+    `PRUNE_MAX_SIZE_ITERATIONS` is hit as a safety bound.
 
     Both passes run under `retain_days == 0` / `max_mb == 0` guards (0 =
     unlimited per Sec10.3) so a caller with both knobs at 0 does zero work
@@ -398,16 +405,43 @@ def _prune_conn(conn, root, retain_days, max_mb):
             size = 0
         if size <= max_bytes:
             return
-        conn.execute("BEGIN IMMEDIATE")
-        cur = conn.execute(
-            "DELETE FROM events WHERE seq IN "
-            "(SELECT seq FROM events ORDER BY seq ASC LIMIT ?)",
-            (PRUNE_SIZE_CHUNK,),
-        )
-        deleted = cur.rowcount
-        conn.execute("COMMIT")
-        if deleted <= 0:
+        # #420: this used to be one self-referencing statement -- a DELETE
+        # against `events` whose own WHERE clause named a `seq IN (...)`
+        # membership test, with the parenthesized subquery itself
+        # SELECT-ing `seq` back out of that same `events` table, ordered
+        # and limited -- querying and deleting from the SAME table in one
+        # statement. SQL semantics require the subquery's own ORDER BY
+        # LIMIT to be fully evaluated before the outer DELETE begins, but
+        # that materialization is a query-planner choice, not something the
+        # language guarantees identically across every SQLite build --
+        # this repo's CI runner (Ubuntu, its own libsqlite3) picked a
+        # different plan than every machine that ran this test locally
+        # (macOS, Homebrew's libsqlite3) and the oldest-first invariant
+        # broke there while every other assertion (row count, size budget)
+        # still passed. Split into two steps that need no planner
+        # cooperation to be correct: read the target seq values as a plain,
+        # ordinary SELECT (no self-reference -- nothing is being deleted
+        # yet), then delete by an explicit `seq <= boundary` bound computed
+        # in Python from that already-materialized result. `seq` values
+        # already present are always the exact set >0 rows (possibly with
+        # gaps from earlier prune passes), so "every currently-present row
+        # with seq <= the fetched chunk's own max" is, by construction,
+        # exactly that fetched chunk -- nothing smaller could exist outside
+        # it, nothing larger could sneak in under the same bound. Also
+        # drops the `cur.rowcount` read after `executemany`-shaped deletes
+        # elsewhere in this codebase have already needed workarounds for --
+        # Python's sqlite3 module has never guaranteed a specific rowcount
+        # value here across versions either; counting the materialized list
+        # in Python needs no such guarantee.
+        chunk = conn.execute(
+            "SELECT seq FROM events ORDER BY seq ASC LIMIT ?", (PRUNE_SIZE_CHUNK,)
+        ).fetchall()
+        if not chunk:
             return  # table is already empty -- nothing left to trim
+        boundary = chunk[-1][0]
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM events WHERE seq <= ?", (boundary,))
+        conn.execute("COMMIT")
 
 
 def _prune_all(conns, retention_config):
