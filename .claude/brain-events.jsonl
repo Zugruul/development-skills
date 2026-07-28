@@ -2161,3 +2161,9 @@
 {"action": "backlog", "idx": 2, "itemTs": "2026-07-28T20:38:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T20:32:47+00:00", "type": "FeedbackRouted", "v": 1}
 {"action": "ignore", "idx": 3, "itemTs": "2026-07-28T20:38:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T20:32:47+00:00", "type": "FeedbackRouted", "v": 1}
 {"itemCount": 4, "itemTs": "2026-07-28T20:38:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T20:32:47+00:00", "type": "FeedbackArchived", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "stub-never-happens-claims-verify", "strength": 1, "ts": "2026-07-28T20:34:42+00:00", "type": "NoteMinted", "v": 1}
+{"key": "stub-never-happens-claims-verify->comments-deserve-code-scrutiny", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T20:34:42+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "truncated-shell-output-not-absence", "strength": 1, "ts": "2026-07-28T20:34:42+00:00", "type": "NoteMinted", "v": 1}
+{"key": "truncated-shell-output-not-absence->reproduce-before-verdict", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T20:34:42+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "red-commit-verify-sequential-harness", "strength": 1, "ts": "2026-07-28T20:34:42+00:00", "type": "NoteMinted", "v": 1}
+{"key": "red-commit-verify-sequential-harness->red-commit-worktree-verify", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T20:34:42+00:00", "type": "LinkFormed", "v": 1}
