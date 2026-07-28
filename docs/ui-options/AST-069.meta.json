@@ -1,10 +1,14 @@
 {
-  "applied": null,
+  "applied": {
+    "appliedDate": "2026-07-28",
+    "commit": "7324e01",
+    "note": null
+  },
   "createdDate": null,
   "designId": "AST-069",
   "finalizedOption": "C",
   "issue": "344",
-  "page": "docs/ui-options/AST-069.html",
+  "pageSource": "tracked",
   "pickDate": null,
   "round": 1,
   "tags": [
