@@ -49,6 +49,16 @@
     "last": null,
     "weight": 0.5
   },
+  "serialize-moves-behind-matching-gate->squash-merge-kills-branch-anchors": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "squash-merge-kills-branch-anchors->decision-lists-vs-fact-lists": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "version-const-collisions-hand-step->locks-need-owner-liveness-and-turns": {
     "fires": 0,
     "last": null,

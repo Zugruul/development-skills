@@ -1552,3 +1552,457 @@
 {"key": "live-browser-verify-before-ui-merges->ping-gated-lane-sequencing", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T03:20:26+00:00", "type": "LinkFormed", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "dev", "slug": "vendored-bundles-load-by-build-mechanism", "strength": 1, "ts": "2026-07-27T03:20:26+00:00", "type": "NoteMinted", "v": 1}
 {"key": "vendored-bundles-load-by-build-mechanism->stub-failure-semantics", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T03:20:26+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "guard-presence-vs-position", "strength": 1, "ts": "2026-07-27T22:02:31+00:00", "type": "NoteMinted", "v": 1}
+{"key": "guard-presence-vs-position->reproduce-the-failing-env", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:02:31+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "forwarded-error-strings-lose-context", "strength": 1, "ts": "2026-07-27T22:02:43+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "monotonic-clock-for-ttl", "strength": 1, "ts": "2026-07-27T22:02:43+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "reproduce-the-failing-env", "strength": 1, "ts": "2026-07-27T22:02:43+00:00", "type": "NoteMinted", "v": 1}
+{"key": "reproduce-the-failing-env->guard-presence-vs-position", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:02:43+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "one-time-assertion-as-live-gate", "strength": 1, "ts": "2026-07-27T22:03:00+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reproduce-before-verdict", "strength": 1, "ts": "2026-07-27T22:03:00+00:00", "type": "NoteMinted", "v": 1}
+{"key": "reproduce-before-verdict->grep-for-the-third-site", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-27T22:03:00+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "grep-for-the-third-site", "strength": 1, "ts": "2026-07-27T22:03:00+00:00", "type": "NoteMinted", "v": 1}
+{"key": "grep-for-the-third-site->reproduce-before-verdict", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-27T22:03:00+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "silent-invariant-needs-negative-test", "strength": 1, "ts": "2026-07-27T22:03:00+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "discriminator-over-hypothesis", "strength": 1, "ts": "2026-07-27T22:03:15+00:00", "type": "NoteMinted", "v": 1}
+{"key": "discriminator-over-hypothesis->cheap-ab-before-10min-runs", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:03:15+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "cheap-ab-before-10min-runs", "strength": 1, "ts": "2026-07-27T22:03:15+00:00", "type": "NoteMinted", "v": 1}
+{"key": "cheap-ab-before-10min-runs->discriminator-over-hypothesis", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:03:15+00:00", "type": "LinkFormed", "v": 1}
+{"key": "backdrop-filter-traps-popovers->compound-selector-for-shared-base", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:03:29+00:00", "type": "LinkPruned", "v": 1}
+{"key": "backdrop-filter-traps-popovers->render-states-before-asserting-layout", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:03:29+00:00", "type": "LinkPruned", "v": 1}
+{"key": "compound-selector-for-shared-base->render-states-before-asserting-layout", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:03:29+00:00", "type": "LinkPruned", "v": 1}
+{"key": "delta-jurisprudence->covenant-grep-and-execute", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-27T22:03:29+00:00", "type": "LinkPruned", "v": 1}
+{"key": "delta-jurisprudence->reproduce-red-first-claims", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-27T22:03:29+00:00", "type": "LinkPruned", "v": 1}
+{"key": "prescribe-contract-not-code->measure-geometry-not-strings", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-27T22:03:29+00:00", "type": "LinkPruned", "v": 1}
+{"key": "red-check-precision->prescribe-contract-not-code", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-27T22:03:29+00:00", "type": "LinkPruned", "v": 1}
+{"key": "static-specificity-tie-check->measure-geometry-not-strings", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-27T22:03:29+00:00", "type": "LinkPruned", "v": 1}
+{"key": "static-specificity-tie-check->stub-harness-blindspot", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-27T22:03:29+00:00", "type": "LinkPruned", "v": 1}
+{"key": "stub-harness-blindspot->measure-geometry-not-strings", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-27T22:03:29+00:00", "type": "LinkPruned", "v": 1}
+{"key": "stub-harness-blindspot->prescribe-contract-not-code", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-27T22:03:29+00:00", "type": "LinkPruned", "v": 1}
+{"key": "brief-load-bearing-lines->live-tweaks-as-brief-amendments", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:03:29+00:00", "type": "LinkPruned", "v": 1}
+{"key": "direct-mode-standdown-and-sweep->live-tweaks-as-brief-amendments", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:03:29+00:00", "type": "LinkPruned", "v": 1}
+{"key": "direct-mode-standdown-and-sweep->prescription-ack-closes-round-cap", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:03:29+00:00", "type": "LinkPruned", "v": 1}
+{"idx": 0, "itemTs": "2026-07-27T22:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:05:08+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 1, "itemTs": "2026-07-27T22:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:05:08+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 2, "itemTs": "2026-07-27T22:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:05:08+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 3, "itemTs": "2026-07-27T22:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:05:08+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 4, "itemTs": "2026-07-27T22:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:05:08+00:00", "type": "FeedbackEmitted", "v": 1}
+{"action": "backlog", "idx": 0, "itemTs": "2026-07-27T22:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:06:17+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "backlog", "idx": 1, "itemTs": "2026-07-27T22:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:06:17+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 2, "itemTs": "2026-07-27T22:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:06:17+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 3, "itemTs": "2026-07-27T22:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:06:17+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 4, "itemTs": "2026-07-27T22:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:06:17+00:00", "type": "FeedbackRouted", "v": 1}
+{"itemCount": 5, "itemTs": "2026-07-27T22:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-27T22:06:17+00:00", "type": "FeedbackArchived", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "recall-injection-is-part-of-the-brief", "strength": 1, "ts": "2026-07-27T22:06:41+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "stack-hotfixes-under-one-gate", "strength": 1, "ts": "2026-07-27T22:06:41+00:00", "type": "NoteMinted", "v": 1}
+{"injected": 6, "links_fired": 92, "repo": "Zugruul/development-skills", "role": "dev", "seeds": 77, "ts": "2026-07-27T22:10:47+00:00", "type": "RecallPerformed", "v": 1}
+{"key": "acceptance-criterion-outranks-test-spec-paraphrase->respect-named-scope-boundaries", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "adapter-contracts-enumerate-os-failures->diff-ambient-binaries-for-env-divergence", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "anonymous-listener-slice-eval->duplicate-with-agreement-pin", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "anonymous-listener-slice-eval->template-extract-anchor-check", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "anonymous-listener-slice-eval->trace-state-mutation-not-named-trigger", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "audit-new-path-parity-before-writing->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "bash32-empty-array-set-u->budget-count-join-separators", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "batch-red-across-surfaces->flag-safety-language-removal", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "batch-red-across-surfaces->single-cause-fixtures", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "bool-excluded-before-int->stdlib-vs-enrichment-split", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "capture-dont-transcribe->deterministic-repro-fast", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "check-concurrent-suites-before-believing-red->deterministic-repro-fast", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "circular-fixture-detector->bool-excluded-before-int", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "circular-fixture-detector->unassumed-full-pipeline-repro", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "claims-point-at-diff-lines->fake-cli-exit-code-is-contract", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "claims-point-at-diff-lines->flag-safety-language-removal", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "copy-exact-strings-tests-assert-against->copy-not-eyeball-format-parity", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "copy-not-eyeball-format-parity->vocab-dict-fake-embedder", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "deterministic-repro-fast->hotfix-repro-incident-sequence", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "deterministic-repro-fast->poll-own-children", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "duplicate-with-agreement-pin->batch-red-across-surfaces", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "duplicate-with-agreement-pin->enumerate-state-writers", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "enumerate-state-writers->raf-rearm-first", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "enumerate-state-writers->trace-state-mutation-not-named-trigger", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "exclude-before-scan->circular-fixture-detector", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "exclude-before-scan->heredoc-commit-messages", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "execute-paste-recipes->circular-fixture-detector", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "execute-paste-recipes->fake-cli-exit-code-is-contract", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "extend-house-fixture-style->test-section-shell-plumbing-risk", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "fake-cli-exit-code-is-contract->circular-fixture-detector", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "fake-cli-exit-code-is-contract->heredoc-commit-messages", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "flag-safety-language-removal->heredoc-commit-messages", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "flag-safety-language-removal->present-vs-demanding-policy-rules", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "guard-presence-vs-position->reproduce-the-failing-env", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "hand-write-links-fixtures->batch-red-across-surfaces", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "hand-write-links-fixtures->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "heredoc-commit-messages->bash32-empty-array-set-u", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "hermetic-path-fixtures-for-cli-tests->adapter-contracts-enumerate-os-failures", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "hermetic-path-fixtures-for-cli-tests->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "hotfix-repro-incident-sequence->stderr-suppression-hides-evidence", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "hotfix-repro-incident-sequence->unassumed-full-pipeline-repro", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "normalize-line-endings-at-split->boundary-test-needs-exact-value-plus-absence-check", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "old-path-repo-wide-sweep->enumerate-state-writers", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "old-path-repo-wide-sweep->hermetic-tmpdir-per-guard-case", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "old-path-repo-wide-sweep->surgical-yaml-edits", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "overlay-hover-zones-pointer-events->normalize-line-endings-at-split", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "poll-own-children->second-order-after-concurrency-fix", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "poll-own-children->stderr-suppression-hides-evidence", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "prefer-posix-single-behavior-over-terse-idioms->pin-external-tool-versions-in-ci", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "read-config-live-not-hardcoded-in-tests->verify-design-doc-quotes-against-live-file", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "red-commit-as-you-go->batch-red-across-surfaces", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "red-commit-as-you-go->claims-point-at-diff-lines", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "red-static-vs-wiring-checks->vendored-split-build-import-guard", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "rehearse-migration-on-real-copy->single-cause-fixtures", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "rehearse-migration-on-real-copy->surgical-yaml-edits", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "reproduce-the-failing-env->guard-presence-vs-position", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "resolve-enforcement-ambiguity-toward-stricter->acceptance-criterion-outranks-test-spec-paraphrase", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "respect-named-scope-boundaries->audit-new-path-parity-before-writing", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "sanity-check-computed-paths-with-ls->verify-cited-paths-from-repo-root", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "self-scan-first-class->circular-fixture-detector", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "self-scan-first-class->exclude-before-scan", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "separate-live-repo-state-tests-from-fixtures->write-fixtures-direct-for-read-path-tests", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "shared-quota-not-for-fixtures->capture-dont-transcribe", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "single-cause-fixtures->bool-excluded-before-int", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "single-cause-fixtures->hermetic-tmpdir-per-guard-case", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "sourced-section-no-brace-cd->batch-red-across-surfaces", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "stderr-suppression-hides-evidence->circular-fixture-detector", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "stderr-suppression-hides-evidence->trace-state-mutation-not-named-trigger", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "strict-identity-assertions->batch-red-across-surfaces", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:47+00:00", "type": "LinkFired", "v": 1}
+{"key": "strict-identity-assertions->single-cause-fixtures", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "surgical-yaml-edits->budget-count-join-separators", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "template-extract-anchor-check->hermetic-tmpdir-per-guard-case", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "test-section-shell-plumbing-risk->bool-before-int-guard", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "test-section-shell-plumbing-risk->extend-house-fixture-style", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "tmpdir-bloat-breaks-full-suites->check-concurrent-suites-before-believing-red", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "tmpdir-bloat-breaks-full-suites->hermetic-path-fixtures-for-cli-tests", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "trace-state-mutation-not-named-trigger->anonymous-listener-slice-eval", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "trace-state-mutation-not-named-trigger->raf-rearm-first", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "trust-completion-signal-not-early-log-read->deterministic-repro-fast", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "ui-bug-may-be-upstream-data-loss->trace-state-mutation-not-named-trigger", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "unassumed-full-pipeline-repro->hermetic-tmpdir-per-guard-case", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "unassumed-full-pipeline-repro->trace-state-mutation-not-named-trigger", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "vendored-bundles-load-by-build-mechanism->stub-failure-semantics", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "vendored-split-build-import-guard->red-static-vs-wiring-checks", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-brief-characterizations-independently->respect-named-scope-boundaries", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-design-doc-quotes-against-live-file->boundary-test-needs-exact-value-plus-absence-check", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-fixture-isolates-intended-path->audit-new-path-parity-before-writing", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-fixture-isolates-intended-path->vocab-dict-fake-embedder", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-pin-mechanism-before-editing-tested-prose->copy-exact-strings-tests-assert-against", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "vocab-dict-fake-embedder->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "worktree-loss-recovery->deterministic-repro-fast", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"key": "write-fixtures-direct-for-read-path-tests->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:10:48+00:00", "type": "LinkFired", "v": 1}
+{"injected": 5, "links_fired": 91, "repo": "Zugruul/development-skills", "role": "dev", "seeds": 75, "ts": "2026-07-27T22:37:24+00:00", "type": "RecallPerformed", "v": 1}
+{"key": "acceptance-criterion-outranks-test-spec-paraphrase->respect-named-scope-boundaries", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "adapter-contracts-enumerate-os-failures->diff-ambient-binaries-for-env-divergence", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "apply-blocks-guard-empty-candidates->type-validate-jsonl-reads", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "audit-new-path-parity-before-writing->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "bash32-empty-array-set-u->budget-count-join-separators", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "batch-red-across-surfaces->flag-safety-language-removal", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "batch-red-across-surfaces->single-cause-fixtures", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "bool-excluded-before-int->stdlib-vs-enrichment-split", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "capture-dont-transcribe->deterministic-repro-fast", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "circular-fixture-detector->bool-excluded-before-int", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "circular-fixture-detector->unassumed-full-pipeline-repro", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "claims-point-at-diff-lines->fake-cli-exit-code-is-contract", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "claims-point-at-diff-lines->flag-safety-language-removal", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "copy-exact-strings-tests-assert-against->copy-not-eyeball-format-parity", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "copy-not-eyeball-format-parity->vocab-dict-fake-embedder", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "deterministic-repro-fast->hotfix-repro-incident-sequence", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "deterministic-repro-fast->poll-own-children", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "diff-ambient-binaries-for-env-divergence->adapter-contracts-enumerate-os-failures", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "diff-ambient-binaries-for-env-divergence->hermetic-path-fixtures-for-cli-tests", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "duplicate-with-agreement-pin->batch-red-across-surfaces", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "duplicate-with-agreement-pin->enumerate-state-writers", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "enumerate-state-writers->raf-rearm-first", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "enumerate-state-writers->trace-state-mutation-not-named-trigger", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "exclude-before-scan->circular-fixture-detector", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "exclude-before-scan->heredoc-commit-messages", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "execute-paste-recipes->circular-fixture-detector", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "execute-paste-recipes->fake-cli-exit-code-is-contract", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "extend-may-mean-prove-and-legible->circular-fixture-detector", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "fake-cli-exit-code-is-contract->circular-fixture-detector", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "fake-cli-exit-code-is-contract->heredoc-commit-messages", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "flag-safety-language-removal->heredoc-commit-messages", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "flag-safety-language-removal->present-vs-demanding-policy-rules", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "guard-presence-vs-position->reproduce-the-failing-env", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "guards-are-not-cache-targets->second-order-after-concurrency-fix", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "heredoc-commit-messages->bash32-empty-array-set-u", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "hotfix-repro-incident-sequence->stderr-suppression-hides-evidence", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "hotfix-repro-incident-sequence->unassumed-full-pipeline-repro", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "naive-counters-need-quotes-first->exclude-before-scan", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "naive-counters-need-quotes-first->self-scan-first-class", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "normalize-after-load-identity-fields->bool-excluded-before-int", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "normalize-after-load-identity-fields->rehearse-migration-on-real-copy", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "old-path-repo-wide-sweep->enumerate-state-writers", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "old-path-repo-wide-sweep->hermetic-tmpdir-per-guard-case", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "old-path-repo-wide-sweep->surgical-yaml-edits", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "pair-every-side-effect-with-undo->behavioral-guard-is-spec-worthy", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "pin-order-not-just-presence->copy-exact-strings-tests-assert-against", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "pin-order-not-just-presence->sentinel-needs-own-render-branch", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "poll-own-children->second-order-after-concurrency-fix", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "poll-own-children->stderr-suppression-hides-evidence", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "prefer-posix-single-behavior-over-terse-idioms->pin-external-tool-versions-in-ci", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "presence-vs-value-claims->bool-excluded-before-int", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "presence-vs-value-claims->present-vs-demanding-policy-rules", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "present-vs-demanding-policy-rules->bool-excluded-before-int", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "present-vs-demanding-policy-rules->circular-fixture-detector", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "read-config-live-not-hardcoded-in-tests->verify-design-doc-quotes-against-live-file", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "red-commit-as-you-go->batch-red-across-surfaces", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "red-commit-as-you-go->claims-point-at-diff-lines", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "rehearse-migration-on-real-copy->single-cause-fixtures", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:24+00:00", "type": "LinkFired", "v": 1}
+{"key": "rehearse-migration-on-real-copy->surgical-yaml-edits", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "reproduce-the-failing-env->guard-presence-vs-position", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "resolve-enforcement-ambiguity-toward-stricter->acceptance-criterion-outranks-test-spec-paraphrase", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "respect-named-scope-boundaries->audit-new-path-parity-before-writing", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "second-order-after-concurrency-fix->normalize-after-load-identity-fields", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "second-order-after-concurrency-fix->pair-every-side-effect-with-undo", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "self-scan-first-class->circular-fixture-detector", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "self-scan-first-class->exclude-before-scan", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "sentinel-needs-own-render-branch->pin-order-not-just-presence", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "shared-quota-not-for-fixtures->capture-dont-transcribe", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "single-cause-fixtures->bool-excluded-before-int", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "single-cause-fixtures->hermetic-tmpdir-per-guard-case", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "stderr-suppression-hides-evidence->circular-fixture-detector", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "stderr-suppression-hides-evidence->trace-state-mutation-not-named-trigger", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "stdlib-vs-enrichment-split->unassumed-full-pipeline-repro", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "strict-identity-assertions->batch-red-across-surfaces", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "strict-identity-assertions->single-cause-fixtures", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "surgical-yaml-edits->budget-count-join-separators", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "trace-state-mutation-not-named-trigger->anonymous-listener-slice-eval", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "trace-state-mutation-not-named-trigger->raf-rearm-first", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "trust-completion-signal-not-early-log-read->deterministic-repro-fast", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "type-validate-jsonl-reads->strict-identity-assertions", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "ui-bug-may-be-upstream-data-loss->trace-state-mutation-not-named-trigger", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "unassumed-full-pipeline-repro->hermetic-tmpdir-per-guard-case", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "unassumed-full-pipeline-repro->trace-state-mutation-not-named-trigger", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-brief-characterizations-independently->respect-named-scope-boundaries", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-design-doc-quotes-against-live-file->boundary-test-needs-exact-value-plus-absence-check", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-fixture-isolates-intended-path->audit-new-path-parity-before-writing", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-fixture-isolates-intended-path->vocab-dict-fake-embedder", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-pin-mechanism-before-editing-tested-prose->copy-exact-strings-tests-assert-against", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "vocab-dict-fake-embedder->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "worktree-loss-recovery->deterministic-repro-fast", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"key": "write-fixtures-direct-for-read-path-tests->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-27T22:37:25+00:00", "type": "LinkFired", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "acceptance-criterion-outranks-test-spec-paraphrase", "task": "438", "ts": "2026-07-28T00:00:35+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "anonymous-listener-slice-eval", "task": "438", "ts": "2026-07-28T00:00:35+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "acceptance-criterion-outranks-test-spec-paraphrase", "task": "338", "ts": "2026-07-28T00:00:35+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "bool-before-int-guard", "task": "338", "ts": "2026-07-28T00:00:35+00:00", "type": "RecallOutcome", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "two-parsers-one-byte-stream", "strength": 1, "ts": "2026-07-28T00:01:44+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "grep-f-multiline-ors-lines", "strength": 1, "ts": "2026-07-28T00:01:44+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "sweep-all-pin-sites-before-done", "strength": 1, "ts": "2026-07-28T00:01:44+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "validate-the-declaration-not-just-values", "strength": 1, "ts": "2026-07-28T00:01:44+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "test-at-the-observed-layer", "strength": 1, "ts": "2026-07-28T00:02:06+00:00", "type": "NoteMinted", "v": 1}
+{"key": "test-at-the-observed-layer->reproduce-before-verdict", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T00:02:06+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "knowledge-attaches-to-the-line", "strength": 1, "ts": "2026-07-28T00:02:07+00:00", "type": "NoteMinted", "v": 1}
+{"key": "knowledge-attaches-to-the-line->test-at-the-observed-layer", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T00:02:07+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reproduce-before-verdict", "strength": 2, "ts": "2026-07-28T00:02:07+00:00", "type": "NoteMinted", "v": 1}
+{"key": "reproduce-before-verdict->test-at-the-observed-layer", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T00:02:07+00:00", "type": "LinkFormed", "v": 1}
+{"key": "binary-less-path-mirror-verification->reproduce-claimed-bug-fix-before-and-after", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T00:02:07+00:00", "type": "LinkPruned", "v": 1}
+{"key": "duplicate-toplevel-symbols-across-branches->trial-merge-and-run-integrated-tree", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T00:02:07+00:00", "type": "LinkPruned", "v": 1}
+{"key": "escape-at-sink-not-caller->probe-spec-silent-input-categories", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T00:02:07+00:00", "type": "LinkPruned", "v": 1}
+{"key": "red-first-requires-history-not-stash->red-commit-worktree-verify", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T00:02:07+00:00", "type": "LinkPruned", "v": 1}
+{"key": "red-first-requires-history-not-stash->rerun-the-red-empirically", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T00:02:07+00:00", "type": "LinkPruned", "v": 1}
+{"key": "trial-merge-and-run-integrated-tree->reports-are-not-the-code", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T00:02:07+00:00", "type": "LinkPruned", "v": 1}
+{"idx": 0, "itemTs": "2026-07-28T03:00:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T00:02:53+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 1, "itemTs": "2026-07-28T03:00:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T00:02:53+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 2, "itemTs": "2026-07-28T03:00:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T00:02:53+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 3, "itemTs": "2026-07-28T03:00:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T00:02:53+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 4, "itemTs": "2026-07-28T03:00:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T00:02:53+00:00", "type": "FeedbackEmitted", "v": 1}
+{"action": "brain-note", "idx": 0, "itemTs": "2026-07-28T03:00:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T00:03:34+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "backlog", "idx": 1, "itemTs": "2026-07-28T03:00:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T00:03:34+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "backlog", "idx": 2, "itemTs": "2026-07-28T03:00:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T00:03:34+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 3, "itemTs": "2026-07-28T03:00:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T00:03:34+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 4, "itemTs": "2026-07-28T03:00:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T00:03:34+00:00", "type": "FeedbackRouted", "v": 1}
+{"itemCount": 5, "itemTs": "2026-07-28T03:00:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T00:03:34+00:00", "type": "FeedbackArchived", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "assert-after-the-round-trip", "strength": 1, "ts": "2026-07-28T01:07:35+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "test-comment-admitting-gap-is-a-fail", "strength": 1, "ts": "2026-07-28T01:07:35+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "enumerate-state-machine-exits", "strength": 1, "ts": "2026-07-28T01:07:35+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "protocol-layer-failure-enumeration", "strength": 1, "ts": "2026-07-28T01:07:35+00:00", "type": "NoteMinted", "v": 1}
+{"key": "protocol-layer-failure-enumeration->validate-the-declaration-not-just-values", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T01:07:35+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "passing-assertions-vs-process-exit", "strength": 1, "ts": "2026-07-28T01:07:35+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "when-does-the-test-observe", "strength": 1, "ts": "2026-07-28T01:07:54+00:00", "type": "NoteMinted", "v": 1}
+{"key": "when-does-the-test-observe->test-at-the-observed-layer", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T01:07:54+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "test-avoidance-comment-is-a-bug-report", "strength": 1, "ts": "2026-07-28T01:07:54+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reuse-the-projects-own-harness", "strength": 1, "ts": "2026-07-28T01:07:54+00:00", "type": "NoteMinted", "v": 1}
+{"key": "reuse-the-projects-own-harness->reproduce-before-verdict", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T01:07:54+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "lessons-compound-when-briefed-forward", "strength": 1, "ts": "2026-07-28T01:07:54+00:00", "type": "NoteMinted", "v": 1}
+{"key": "lessons-compound-when-briefed-forward->recall-injection-is-part-of-the-brief", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:07:55+00:00", "type": "LinkFormed", "v": 1}
+{"idx": 0, "itemTs": "2026-07-28T07:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:08:38+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 1, "itemTs": "2026-07-28T07:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:08:38+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 2, "itemTs": "2026-07-28T07:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:08:38+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 3, "itemTs": "2026-07-28T07:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:08:38+00:00", "type": "FeedbackEmitted", "v": 1}
+{"action": "brain-note", "idx": 0, "itemTs": "2026-07-28T07:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:08:38+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 1, "itemTs": "2026-07-28T07:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:08:38+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "backlog", "idx": 2, "itemTs": "2026-07-28T07:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:08:38+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 3, "itemTs": "2026-07-28T07:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:08:38+00:00", "type": "FeedbackRouted", "v": 1}
+{"itemCount": 4, "itemTs": "2026-07-28T07:30:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:08:38+00:00", "type": "FeedbackArchived", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "audit-before-build-per-ac-clause", "strength": 1, "ts": "2026-07-28T01:55:00+00:00", "type": "NoteMinted", "v": 1}
+{"key": "audit-before-build-per-ac-clause->validate-the-declaration-not-just-values", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T01:55:00+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "verify-audited-omissions-line-level", "strength": 1, "ts": "2026-07-28T01:55:00+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "structural-constraints-settle-prose-ambiguity", "strength": 1, "ts": "2026-07-28T01:55:00+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "true-or-merely-true-today", "strength": 1, "ts": "2026-07-28T01:55:00+00:00", "type": "NoteMinted", "v": 1}
+{"key": "true-or-merely-true-today->one-time-assertion-as-live-gate", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T01:55:00+00:00", "type": "LinkFormed", "v": 1}
+{"idx": 0, "itemTs": "2026-07-28T09:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:55:29+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 1, "itemTs": "2026-07-28T09:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:55:29+00:00", "type": "FeedbackEmitted", "v": 1}
+{"action": "brain-note", "idx": 0, "itemTs": "2026-07-28T09:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:55:29+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 1, "itemTs": "2026-07-28T09:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:55:29+00:00", "type": "FeedbackRouted", "v": 1}
+{"itemCount": 2, "itemTs": "2026-07-28T09:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T01:55:29+00:00", "type": "FeedbackArchived", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "contract-invariant-preservation", "strength": 1, "ts": "2026-07-28T02:46:36+00:00", "type": "NoteMinted", "v": 1}
+{"key": "contract-invariant-preservation->resolve-into-the-keyed-value", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T02:46:36+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "resolve-into-the-keyed-value", "strength": 1, "ts": "2026-07-28T02:46:36+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "heredoc-apostrophe-bash32", "strength": 1, "ts": "2026-07-28T02:46:36+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "conditional-correctness-premise-edges", "strength": 1, "ts": "2026-07-28T02:46:53+00:00", "type": "NoteMinted", "v": 1}
+{"key": "conditional-correctness-premise-edges->true-or-merely-true-today", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T02:46:53+00:00", "type": "LinkFormed", "v": 1}
+{"key": "conditional-correctness-premise-edges->record-why-safe-not-just-that", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T02:46:53+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "record-why-safe-not-just-that", "strength": 1, "ts": "2026-07-28T02:46:53+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "offer-both-fixes-name-your-pick", "strength": 1, "ts": "2026-07-28T02:46:53+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "missing-test-twin-marks-the-bug", "strength": 1, "ts": "2026-07-28T02:46:53+00:00", "type": "NoteMinted", "v": 1}
+{"idx": 0, "itemTs": "2026-07-28T12:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T02:47:21+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 1, "itemTs": "2026-07-28T12:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T02:47:21+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 2, "itemTs": "2026-07-28T12:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T02:47:21+00:00", "type": "FeedbackEmitted", "v": 1}
+{"action": "brain-note", "idx": 0, "itemTs": "2026-07-28T12:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T02:47:21+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 1, "itemTs": "2026-07-28T12:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T02:47:21+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 2, "itemTs": "2026-07-28T12:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T02:47:21+00:00", "type": "FeedbackRouted", "v": 1}
+{"itemCount": 3, "itemTs": "2026-07-28T12:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T02:47:22+00:00", "type": "FeedbackArchived", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "proxy-checks-vs-true-invariants", "strength": 1, "ts": "2026-07-28T03:39:35+00:00", "type": "NoteMinted", "v": 1}
+{"key": "proxy-checks-vs-true-invariants->contract-invariant-preservation", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T03:39:35+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "derived-set-zero-counts-need-nonempty-control", "strength": 1, "ts": "2026-07-28T03:39:35+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "keyword-lints-scan-comments-too", "strength": 1, "ts": "2026-07-28T03:39:35+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "decision-lists-vs-fact-lists", "strength": 1, "ts": "2026-07-28T03:39:35+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "review-your-own-fix-as-new-code", "strength": 1, "ts": "2026-07-28T03:39:35+00:00", "type": "NoteMinted", "v": 1}
+{"key": "review-your-own-fix-as-new-code->missing-test-twin-marks-the-bug", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T03:39:35+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "comments-deserve-code-scrutiny", "strength": 1, "ts": "2026-07-28T03:39:35+00:00", "type": "NoteMinted", "v": 1}
+{"key": "comments-deserve-code-scrutiny->record-why-safe-not-just-that", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T03:39:35+00:00", "type": "LinkFormed", "v": 1}
+{"idx": 0, "itemTs": "2026-07-28T15:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T03:39:56+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 1, "itemTs": "2026-07-28T15:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T03:39:56+00:00", "type": "FeedbackEmitted", "v": 1}
+{"action": "brain-note", "idx": 0, "itemTs": "2026-07-28T15:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T03:39:57+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 1, "itemTs": "2026-07-28T15:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T03:39:57+00:00", "type": "FeedbackRouted", "v": 1}
+{"itemCount": 2, "itemTs": "2026-07-28T15:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T03:39:57+00:00", "type": "FeedbackArchived", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "security-proof-pages-self-identify", "strength": 1, "ts": "2026-07-28T04:00:57+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "security-proof-pages-self-identify", "strength": 1, "ts": "2026-07-28T04:00:57+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "security-proof-pages-self-identify", "strength": 2, "ts": "2026-07-28T04:04:27+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "security-proof-pages-self-identify", "strength": 2, "ts": "2026-07-28T04:04:27+00:00", "type": "NoteMinted", "v": 1}
+{"injected": 5, "links_fired": 70, "repo": "Zugruul/development-skills", "role": "dev", "seeds": 54, "ts": "2026-07-28T16:13:37+00:00", "type": "RecallPerformed", "v": 1}
+{"key": "acceptance-criterion-outranks-test-spec-paraphrase->respect-named-scope-boundaries", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:37+00:00", "type": "LinkFired", "v": 1}
+{"key": "anonymous-listener-slice-eval->duplicate-with-agreement-pin", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:37+00:00", "type": "LinkFired", "v": 1}
+{"key": "anonymous-listener-slice-eval->template-extract-anchor-check", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:37+00:00", "type": "LinkFired", "v": 1}
+{"key": "anonymous-listener-slice-eval->trace-state-mutation-not-named-trigger", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:37+00:00", "type": "LinkFired", "v": 1}
+{"key": "audit-before-build-per-ac-clause->validate-the-declaration-not-just-values", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:37+00:00", "type": "LinkFired", "v": 1}
+{"key": "audit-new-path-parity-before-writing->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:37+00:00", "type": "LinkFired", "v": 1}
+{"key": "bash32-empty-array-set-u->budget-count-join-separators", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:37+00:00", "type": "LinkFired", "v": 1}
+{"key": "batch-red-across-surfaces->flag-safety-language-removal", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "batch-red-across-surfaces->single-cause-fixtures", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "capture-dont-transcribe->deterministic-repro-fast", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "circular-fixture-detector->bool-excluded-before-int", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "circular-fixture-detector->unassumed-full-pipeline-repro", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "claims-point-at-diff-lines->fake-cli-exit-code-is-contract", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "claims-point-at-diff-lines->flag-safety-language-removal", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "contract-invariant-preservation->resolve-into-the-keyed-value", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "copy-exact-strings-tests-assert-against->copy-not-eyeball-format-parity", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "copy-not-eyeball-format-parity->vocab-dict-fake-embedder", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "deterministic-repro-fast->hotfix-repro-incident-sequence", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "deterministic-repro-fast->poll-own-children", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "duplicate-with-agreement-pin->batch-red-across-surfaces", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "duplicate-with-agreement-pin->enumerate-state-writers", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "enumerate-state-writers->raf-rearm-first", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "enumerate-state-writers->trace-state-mutation-not-named-trigger", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "fake-cli-exit-code-is-contract->circular-fixture-detector", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "fake-cli-exit-code-is-contract->heredoc-commit-messages", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "flag-safety-language-removal->heredoc-commit-messages", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "flag-safety-language-removal->present-vs-demanding-policy-rules", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "guard-presence-vs-position->reproduce-the-failing-env", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "heredoc-commit-messages->bash32-empty-array-set-u", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "hotfix-repro-incident-sequence->stderr-suppression-hides-evidence", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "hotfix-repro-incident-sequence->unassumed-full-pipeline-repro", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "normalize-line-endings-at-split->boundary-test-needs-exact-value-plus-absence-check", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "old-path-repo-wide-sweep->enumerate-state-writers", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "old-path-repo-wide-sweep->hermetic-tmpdir-per-guard-case", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "old-path-repo-wide-sweep->surgical-yaml-edits", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "overlay-hover-zones-pointer-events->normalize-line-endings-at-split", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "poll-own-children->second-order-after-concurrency-fix", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "poll-own-children->stderr-suppression-hides-evidence", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "prefer-posix-single-behavior-over-terse-idioms->pin-external-tool-versions-in-ci", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "proxy-checks-vs-true-invariants->contract-invariant-preservation", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "read-config-live-not-hardcoded-in-tests->verify-design-doc-quotes-against-live-file", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "red-commit-as-you-go->batch-red-across-surfaces", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "red-commit-as-you-go->claims-point-at-diff-lines", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "rehearse-migration-on-real-copy->single-cause-fixtures", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "rehearse-migration-on-real-copy->surgical-yaml-edits", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "reproduce-the-failing-env->guard-presence-vs-position", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "resolve-enforcement-ambiguity-toward-stricter->acceptance-criterion-outranks-test-spec-paraphrase", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "respect-named-scope-boundaries->audit-new-path-parity-before-writing", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "shared-quota-not-for-fixtures->capture-dont-transcribe", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "single-cause-fixtures->bool-excluded-before-int", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "single-cause-fixtures->hermetic-tmpdir-per-guard-case", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "stderr-suppression-hides-evidence->circular-fixture-detector", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "stderr-suppression-hides-evidence->trace-state-mutation-not-named-trigger", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "surgical-yaml-edits->budget-count-join-separators", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "template-extract-anchor-check->hermetic-tmpdir-per-guard-case", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "trace-state-mutation-not-named-trigger->anonymous-listener-slice-eval", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "trace-state-mutation-not-named-trigger->raf-rearm-first", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "trust-completion-signal-not-early-log-read->deterministic-repro-fast", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "ui-bug-may-be-upstream-data-loss->trace-state-mutation-not-named-trigger", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "unassumed-full-pipeline-repro->hermetic-tmpdir-per-guard-case", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "unassumed-full-pipeline-repro->trace-state-mutation-not-named-trigger", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "vendored-bundles-load-by-build-mechanism->stub-failure-semantics", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-brief-characterizations-independently->respect-named-scope-boundaries", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-design-doc-quotes-against-live-file->boundary-test-needs-exact-value-plus-absence-check", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-fixture-isolates-intended-path->audit-new-path-parity-before-writing", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-fixture-isolates-intended-path->vocab-dict-fake-embedder", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-pin-mechanism-before-editing-tested-prose->copy-exact-strings-tests-assert-against", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "vocab-dict-fake-embedder->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "worktree-loss-recovery->deterministic-repro-fast", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"key": "write-fixtures-direct-for-read-path-tests->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T16:13:38+00:00", "type": "LinkFired", "v": 1}
+{"injected": 7, "links_fired": 35, "repo": "Zugruul/development-skills", "role": "reviewer", "seeds": 63, "ts": "2026-07-28T16:20:28+00:00", "type": "RecallPerformed", "v": 1}
+{"key": "comments-deserve-code-scrutiny->record-why-safe-not-just-that", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "conditional-correctness-premise-edges->record-why-safe-not-just-that", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "conditional-correctness-premise-edges->true-or-merely-true-today", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "confirm-named-scope-exclusions-respected->note-dont-gate-on-unrelated-findings", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "distinguish-missed-vs-uncatchable-findings->verify-portability-claims-in-target-environment", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "grep-for-known-bug-class-before-deep-analysis->verify-portability-claims-in-target-environment", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "grep-for-the-third-site->reproduce-before-verdict", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "knowledge-attaches-to-the-line->test-at-the-observed-layer", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "mutation-test-verify-suite-discriminates->reproduce-claimed-bug-fix-before-and-after", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "mutation-test-verify-suite-discriminates->verify-proximity-checks-dont-bleed-into-next-record", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "probe-spec-silent-input-categories->trace-boundary-operators-by-hand", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "red-commit-worktree-verify->recompute-hashes-never-eyeball", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "red-commit-worktree-verify->reports-are-not-the-code", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "reproduce-before-verdict->grep-for-the-third-site", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "reproduce-before-verdict->test-at-the-observed-layer", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "reproduce-claimed-bug-fix-before-and-after->verify-backcompat-claims-algebraically", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "reproduce-claimed-bug-fix-before-and-after->verify-tdd-empirically-when-log-is-thin", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "reproduce-then-verify-fix->rerun-the-red-empirically", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "rerun-the-red-empirically->reproduce-then-verify-fix", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "reuse-the-projects-own-harness->reproduce-before-verdict", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "review-your-own-fix-as-new-code->missing-test-twin-marks-the-bug", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "test-at-the-observed-layer->reproduce-before-verdict", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "trace-boundary-operators-by-hand->equality-guards-invite-ordering-probes", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "trace-dict-merge-for-key-collisions->verify-backcompat-claims-algebraically", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "true-or-merely-true-today->one-time-assertion-as-live-gate", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-backcompat-claims-algebraically->verify-tdd-empirically-when-log-is-thin", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-doc-links-and-quotes-against-live-source->confirm-named-scope-exclusions-respected", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-guard-regex-on-real-artifact->match-repo-security-baseline", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-guard-regex-on-real-artifact->recompute-hashes-never-eyeball", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-guard-regex-on-real-artifact->red-commit-worktree-verify", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-ordering-assertions-at-two-levels->trace-boundary-operators-by-hand", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-portability-claims-in-target-environment->local-gate-green-doesnt-imply-ci-green-for-infra", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-proximity-checks-dont-bleed-into-next-record->reproduce-claimed-bug-fix-before-and-after", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "verify-proximity-checks-dont-bleed-into-next-record->trace-dict-merge-for-key-collisions", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"key": "when-does-the-test-observe->test-at-the-observed-layer", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T16:20:28+00:00", "type": "LinkFired", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "anonymous-listener-slice-eval", "task": "474,475", "ts": "2026-07-28T18:25:34+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "deterministic-repro-fast", "task": "474", "ts": "2026-07-28T18:25:34+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reproduce-before-verdict", "task": "454,474,344", "ts": "2026-07-28T18:25:34+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "comments-deserve-code-scrutiny", "task": "474", "ts": "2026-07-28T18:25:34+00:00", "type": "RecallOutcome", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "stub-shaped-blind-spots", "strength": 1, "ts": "2026-07-28T18:26:05+00:00", "type": "NoteMinted", "v": 1}
+{"key": "stub-shaped-blind-spots->reproduce-before-verdict", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T18:26:05+00:00", "type": "LinkFormed", "v": 1}
+{"key": "stub-shaped-blind-spots->tested-through-which-caller", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T18:26:05+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "tested-through-which-caller", "strength": 1, "ts": "2026-07-28T18:26:05+00:00", "type": "NoteMinted", "v": 1}
+{"key": "tested-through-which-caller->stub-shaped-blind-spots", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T18:26:05+00:00", "type": "LinkFormed", "v": 1}
+{"key": "tested-through-which-caller->reproduce-before-verdict", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T18:26:05+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "copied-precedent-needs-fresh-verification", "strength": 1, "ts": "2026-07-28T18:26:05+00:00", "type": "NoteMinted", "v": 1}
+{"key": "copied-precedent-needs-fresh-verification->comments-deserve-code-scrutiny", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T18:26:05+00:00", "type": "LinkFormed", "v": 1}
+{"key": "copied-precedent-needs-fresh-verification->stub-shaped-blind-spots", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-07-28T18:26:05+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "stop-can-flush-synchronously", "strength": 1, "ts": "2026-07-28T18:27:50+00:00", "type": "NoteMinted", "v": 1}
+{"key": "stop-can-flush-synchronously->anonymous-listener-slice-eval", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T18:27:50+00:00", "type": "LinkFormed", "v": 1}
+{"key": "stop-can-flush-synchronously->deterministic-repro-fast", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T18:27:50+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "squash-merge-kills-branch-anchors", "strength": 1, "ts": "2026-07-28T18:27:50+00:00", "type": "NoteMinted", "v": 1}
+{"key": "squash-merge-kills-branch-anchors->decision-lists-vs-fact-lists", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T18:27:50+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "serialize-moves-behind-matching-gate", "strength": 1, "ts": "2026-07-28T18:27:50+00:00", "type": "NoteMinted", "v": 1}
+{"key": "serialize-moves-behind-matching-gate->squash-merge-kills-branch-anchors", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-28T18:27:50+00:00", "type": "LinkFormed", "v": 1}

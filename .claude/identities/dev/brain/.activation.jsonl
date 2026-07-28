@@ -3591,3 +3591,132 @@
 {"event": "inject", "note": "bool-before-int-guard", "activation": 1.21, "ts": "2026-07-27T22:37:24+00:00", "role": "dev"}
 {"event": "inject", "note": "bool-excluded-before-int", "activation": 1.21, "ts": "2026-07-27T22:37:24+00:00", "role": "dev"}
 {"event": "inject", "note": "batch-red-across-surfaces", "activation": 1.2, "ts": "2026-07-27T22:37:24+00:00", "role": "dev"}
+{"event": "seed", "note": "acceptance-criterion-outranks-test-spec-paraphrase", "activation": 1.32, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "after-wait-do-the-mutation", "activation": 0.133, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "anonymous-listener-slice-eval", "activation": 1.32, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "audit-before-build-per-ac-clause", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "backdrop-filter-traps-popovers", "activation": 0.4149, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "batch-red-across-surfaces", "activation": 1.2, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "boundary-test-needs-exact-value-plus-absence-check", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "branch-direction-from-commits", "activation": 0.0, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "capture-dont-transcribe", "activation": 1.2, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "claims-point-at-diff-lines", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "compound-selector-for-shared-base", "activation": 0.4149, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "copy-exact-strings-tests-assert-against", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "copy-not-eyeball-format-parity", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "defaults-need-own-tests", "activation": 0.133, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "detect-branch-mismatch-self-isolate", "activation": 0.0001, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "deterministic-repro-fast", "activation": 1.2, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "duplicate-with-agreement-pin", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "enumerate-state-machine-exits", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "enumerate-state-writers", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "enumerate-the-contract-domain", "activation": 0.0, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "heredoc-commit-messages", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "hotfix-repro-incident-sequence", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "keyword-lints-scan-comments-too", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "normalize-line-endings-at-split", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "old-path-repo-wide-sweep", "activation": 1.3, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "overlay-hover-zones-pointer-events", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "prefer-posix-single-behavior-over-terse-idioms", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "proxy-checks-vs-true-invariants", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "raf-rearm-first", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "raycast-dispatch-by-class", "activation": 0.0, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "read-config-live-not-hardcoded-in-tests", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "red-commit-as-you-go", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "rehearse-migration-on-real-copy", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "render-states-before-asserting-layout", "activation": 0.2548, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "reproduce-the-failing-env", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "resolve-enforcement-ambiguity-toward-stricter", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "respect-named-scope-boundaries", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "same-event-listener-coordination", "activation": 0.4149, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "security-proof-pages-self-identify", "activation": 1.2, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "shared-quota-not-for-fixtures", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "stderr-suppression-hides-evidence", "activation": 1.2, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "sweep-all-pin-sites-before-done", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "three-state-flag-rule", "activation": 0.0, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "trace-state-mutation-not-named-trigger", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "trust-completion-signal-not-early-log-read", "activation": 1.3, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "two-parsers-one-byte-stream", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "ui-bug-may-be-upstream-data-loss", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "vendored-bundles-load-by-build-mechanism", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "verify-branch-state-before-acting-in-shared-checkout", "activation": 0.0014, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "verify-brief-characterizations-independently", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "verify-design-doc-quotes-against-live-file", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "verify-pin-mechanism-before-editing-tested-prose", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "worktree-loss-recovery", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "seed", "note": "write-fixtures-direct-for-read-path-tests", "activation": 1.1, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "respect-named-scope-boundaries", "activation": 0.33, "link": "acceptance-criterion-outranks-test-spec-paraphrase->respect-named-scope-boundaries", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "duplicate-with-agreement-pin", "activation": 0.33, "link": "anonymous-listener-slice-eval->duplicate-with-agreement-pin", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "template-extract-anchor-check", "activation": 0.33, "link": "anonymous-listener-slice-eval->template-extract-anchor-check", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "trace-state-mutation-not-named-trigger", "activation": 0.33, "link": "anonymous-listener-slice-eval->trace-state-mutation-not-named-trigger", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "validate-the-declaration-not-just-values", "activation": 0.275, "link": "audit-before-build-per-ac-clause->validate-the-declaration-not-just-values", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "flag-safety-language-removal", "activation": 0.3, "link": "batch-red-across-surfaces->flag-safety-language-removal", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "single-cause-fixtures", "activation": 0.3, "link": "batch-red-across-surfaces->single-cause-fixtures", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "deterministic-repro-fast", "activation": 0.3, "link": "capture-dont-transcribe->deterministic-repro-fast", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "fake-cli-exit-code-is-contract", "activation": 0.275, "link": "claims-point-at-diff-lines->fake-cli-exit-code-is-contract", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "flag-safety-language-removal", "activation": 0.275, "link": "claims-point-at-diff-lines->flag-safety-language-removal", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "copy-not-eyeball-format-parity", "activation": 0.275, "link": "copy-exact-strings-tests-assert-against->copy-not-eyeball-format-parity", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "vocab-dict-fake-embedder", "activation": 0.275, "link": "copy-not-eyeball-format-parity->vocab-dict-fake-embedder", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "hotfix-repro-incident-sequence", "activation": 0.3, "link": "deterministic-repro-fast->hotfix-repro-incident-sequence", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "poll-own-children", "activation": 0.3, "link": "deterministic-repro-fast->poll-own-children", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "batch-red-across-surfaces", "activation": 0.275, "link": "duplicate-with-agreement-pin->batch-red-across-surfaces", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "enumerate-state-writers", "activation": 0.275, "link": "duplicate-with-agreement-pin->enumerate-state-writers", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "raf-rearm-first", "activation": 0.275, "link": "enumerate-state-writers->raf-rearm-first", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "trace-state-mutation-not-named-trigger", "activation": 0.275, "link": "enumerate-state-writers->trace-state-mutation-not-named-trigger", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "bash32-empty-array-set-u", "activation": 0.275, "link": "heredoc-commit-messages->bash32-empty-array-set-u", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "stderr-suppression-hides-evidence", "activation": 0.275, "link": "hotfix-repro-incident-sequence->stderr-suppression-hides-evidence", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "unassumed-full-pipeline-repro", "activation": 0.275, "link": "hotfix-repro-incident-sequence->unassumed-full-pipeline-repro", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "boundary-test-needs-exact-value-plus-absence-check", "activation": 0.275, "link": "normalize-line-endings-at-split->boundary-test-needs-exact-value-plus-absence-check", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "enumerate-state-writers", "activation": 0.325, "link": "old-path-repo-wide-sweep->enumerate-state-writers", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "hermetic-tmpdir-per-guard-case", "activation": 0.325, "link": "old-path-repo-wide-sweep->hermetic-tmpdir-per-guard-case", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "surgical-yaml-edits", "activation": 0.325, "link": "old-path-repo-wide-sweep->surgical-yaml-edits", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "normalize-line-endings-at-split", "activation": 0.275, "link": "overlay-hover-zones-pointer-events->normalize-line-endings-at-split", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "pin-external-tool-versions-in-ci", "activation": 0.275, "link": "prefer-posix-single-behavior-over-terse-idioms->pin-external-tool-versions-in-ci", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "contract-invariant-preservation", "activation": 0.275, "link": "proxy-checks-vs-true-invariants->contract-invariant-preservation", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "verify-design-doc-quotes-against-live-file", "activation": 0.275, "link": "read-config-live-not-hardcoded-in-tests->verify-design-doc-quotes-against-live-file", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "batch-red-across-surfaces", "activation": 0.275, "link": "red-commit-as-you-go->batch-red-across-surfaces", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "claims-point-at-diff-lines", "activation": 0.275, "link": "red-commit-as-you-go->claims-point-at-diff-lines", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "single-cause-fixtures", "activation": 0.275, "link": "rehearse-migration-on-real-copy->single-cause-fixtures", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "surgical-yaml-edits", "activation": 0.275, "link": "rehearse-migration-on-real-copy->surgical-yaml-edits", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "guard-presence-vs-position", "activation": 0.275, "link": "reproduce-the-failing-env->guard-presence-vs-position", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "acceptance-criterion-outranks-test-spec-paraphrase", "activation": 0.275, "link": "resolve-enforcement-ambiguity-toward-stricter->acceptance-criterion-outranks-test-spec-paraphrase", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "audit-new-path-parity-before-writing", "activation": 0.275, "link": "respect-named-scope-boundaries->audit-new-path-parity-before-writing", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "capture-dont-transcribe", "activation": 0.275, "link": "shared-quota-not-for-fixtures->capture-dont-transcribe", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "circular-fixture-detector", "activation": 0.3, "link": "stderr-suppression-hides-evidence->circular-fixture-detector", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "trace-state-mutation-not-named-trigger", "activation": 0.3, "link": "stderr-suppression-hides-evidence->trace-state-mutation-not-named-trigger", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "anonymous-listener-slice-eval", "activation": 0.275, "link": "trace-state-mutation-not-named-trigger->anonymous-listener-slice-eval", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "raf-rearm-first", "activation": 0.275, "link": "trace-state-mutation-not-named-trigger->raf-rearm-first", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "deterministic-repro-fast", "activation": 0.325, "link": "trust-completion-signal-not-early-log-read->deterministic-repro-fast", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "trace-state-mutation-not-named-trigger", "activation": 0.275, "link": "ui-bug-may-be-upstream-data-loss->trace-state-mutation-not-named-trigger", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "stub-failure-semantics", "activation": 0.275, "link": "vendored-bundles-load-by-build-mechanism->stub-failure-semantics", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "respect-named-scope-boundaries", "activation": 0.275, "link": "verify-brief-characterizations-independently->respect-named-scope-boundaries", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "boundary-test-needs-exact-value-plus-absence-check", "activation": 0.275, "link": "verify-design-doc-quotes-against-live-file->boundary-test-needs-exact-value-plus-absence-check", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "copy-exact-strings-tests-assert-against", "activation": 0.275, "link": "verify-pin-mechanism-before-editing-tested-prose->copy-exact-strings-tests-assert-against", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "deterministic-repro-fast", "activation": 0.275, "link": "worktree-loss-recovery->deterministic-repro-fast", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "verify-fixture-isolates-intended-path", "activation": 0.275, "link": "write-fixtures-direct-for-read-path-tests->verify-fixture-isolates-intended-path", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "hermetic-tmpdir-per-guard-case", "activation": 0.0825, "link": "template-extract-anchor-check->hermetic-tmpdir-per-guard-case", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "heredoc-commit-messages", "activation": 0.075, "link": "flag-safety-language-removal->heredoc-commit-messages", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "present-vs-demanding-policy-rules", "activation": 0.075, "link": "flag-safety-language-removal->present-vs-demanding-policy-rules", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "bool-excluded-before-int", "activation": 0.075, "link": "single-cause-fixtures->bool-excluded-before-int", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "hermetic-tmpdir-per-guard-case", "activation": 0.075, "link": "single-cause-fixtures->hermetic-tmpdir-per-guard-case", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "circular-fixture-detector", "activation": 0.0688, "link": "fake-cli-exit-code-is-contract->circular-fixture-detector", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "heredoc-commit-messages", "activation": 0.0688, "link": "fake-cli-exit-code-is-contract->heredoc-commit-messages", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "verify-fixture-isolates-intended-path", "activation": 0.0688, "link": "vocab-dict-fake-embedder->verify-fixture-isolates-intended-path", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "second-order-after-concurrency-fix", "activation": 0.075, "link": "poll-own-children->second-order-after-concurrency-fix", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "stderr-suppression-hides-evidence", "activation": 0.075, "link": "poll-own-children->stderr-suppression-hides-evidence", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "budget-count-join-separators", "activation": 0.0688, "link": "bash32-empty-array-set-u->budget-count-join-separators", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "hermetic-tmpdir-per-guard-case", "activation": 0.0688, "link": "unassumed-full-pipeline-repro->hermetic-tmpdir-per-guard-case", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "trace-state-mutation-not-named-trigger", "activation": 0.0688, "link": "unassumed-full-pipeline-repro->trace-state-mutation-not-named-trigger", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "budget-count-join-separators", "activation": 0.0813, "link": "surgical-yaml-edits->budget-count-join-separators", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "resolve-into-the-keyed-value", "activation": 0.0688, "link": "contract-invariant-preservation->resolve-into-the-keyed-value", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "reproduce-the-failing-env", "activation": 0.0688, "link": "guard-presence-vs-position->reproduce-the-failing-env", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "verify-fixture-isolates-intended-path", "activation": 0.0688, "link": "audit-new-path-parity-before-writing->verify-fixture-isolates-intended-path", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "bool-excluded-before-int", "activation": 0.075, "link": "circular-fixture-detector->bool-excluded-before-int", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "unassumed-full-pipeline-repro", "activation": 0.075, "link": "circular-fixture-detector->unassumed-full-pipeline-repro", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "audit-new-path-parity-before-writing", "activation": 0.0688, "link": "verify-fixture-isolates-intended-path->audit-new-path-parity-before-writing", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "hop", "note": "vocab-dict-fake-embedder", "activation": 0.0688, "link": "verify-fixture-isolates-intended-path->vocab-dict-fake-embedder", "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "inject", "note": "acceptance-criterion-outranks-test-spec-paraphrase", "activation": 1.32, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "inject", "note": "anonymous-listener-slice-eval", "activation": 1.32, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "inject", "note": "batch-red-across-surfaces", "activation": 1.2, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "inject", "note": "capture-dont-transcribe", "activation": 1.2, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}
+{"event": "inject", "note": "deterministic-repro-fast", "activation": 1.2, "ts": "2026-07-28T16:13:37+00:00", "role": "dev"}

@@ -357,3 +357,108 @@
 {"event": "inject", "note": "settle-conventions-empirically", "activation": 0.5742, "ts": "2026-07-26T05:52:32+00:00", "role": "reviewer"}
 {"event": "inject", "note": "trace-boundary-operators-by-hand", "activation": 0.5742, "ts": "2026-07-26T05:52:32+00:00", "role": "reviewer"}
 {"event": "inject", "note": "trace-dict-merge-for-key-collisions", "activation": 0.5742, "ts": "2026-07-26T05:52:32+00:00", "role": "reviewer"}
+{"event": "seed", "note": "avoid-git-checkout-in-shared-working-directory", "activation": 0.0014, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "comments-deserve-code-scrutiny", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "conditional-correctness-premise-edges", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "confirm-named-scope-exclusions-respected", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "confirmed-broken-only", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "decision-lists-vs-fact-lists", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "diff-against-merge-base", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "distinguish-missed-vs-uncatchable-findings", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "domain-inventory-sweep", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "drive-poll-loops-at-boundary", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "duplicate-toplevel-symbols-across-branches", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "emission-vs-assertion", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "empty-vs-error-probe", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "equality-guards-invite-ordering-probes", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "escape-at-sink-not-caller", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "explicit-cd-every-command", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "fetch-before-merge-forward", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "fixture-provenance-check", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "grep-for-known-bug-class-before-deep-analysis", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "grep-for-the-third-site", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "knowledge-attaches-to-the-line", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "measure-geometry-not-strings", "activation": 0.2548, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "mutation-test-verify-suite-discriminates", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "name-reusable-infra-for-followups-explicitly", "activation": 0.001, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "named-stash-pop-only", "activation": 0.133, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "narrowed-exploit-survives", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "note-dont-gate-on-unrelated-findings", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "offer-both-fixes-name-your-pick", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "outcome-language-marks-unverified-seams", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "own-payload-not-devs", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "principled-vs-accidental-asymmetry", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "probe-spec-silent-input-categories", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "probe-with-real-repos", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "read-beyond-the-diff", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "record-why-safe-not-just-that", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "red-commit-worktree-verify", "activation": 0.6786, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "reports-are-not-the-code", "activation": 0.6264, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "reproduce-before-verdict", "activation": 1.2, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "reproduce-claimed-bug-fix-before-and-after", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "reproduce-then-verify-fix", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "rerun-the-red-empirically", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "reuse-the-projects-own-harness", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "review-your-own-fix-as-new-code", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "security-proof-pages-self-identify", "activation": 1.2, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "settle-conventions-empirically", "activation": 0.133, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "spot-check-large-data-files-at-boundaries", "activation": 0.0001, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "structural-constraints-settle-prose-ambiguity", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "test-at-the-observed-layer", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "trace-boundary-operators-by-hand", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "trace-dict-merge-for-key-collisions", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "true-or-merely-true-today", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "two-pass-review-catches-omissions", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "unnecessary-vs-inconsistent", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-audited-omissions-line-level", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-backcompat-claims-algebraically", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-doc-links-and-quotes-against-live-source", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-guard-regex-on-real-artifact", "activation": 0.7308, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-ordering-assertions-at-two-levels", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-portability-claims-in-target-environment", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-proximity-checks-dont-bleed-into-next-record", "activation": 0.5742, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-tdd-empirically-when-log-is-thin", "activation": 0.6264, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "verify-with-library-own-classes", "activation": 0.0, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "seed", "note": "when-does-the-test-observe", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "record-why-safe-not-just-that", "activation": 0.275, "link": "comments-deserve-code-scrutiny->record-why-safe-not-just-that", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "record-why-safe-not-just-that", "activation": 0.275, "link": "conditional-correctness-premise-edges->record-why-safe-not-just-that", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "true-or-merely-true-today", "activation": 0.275, "link": "conditional-correctness-premise-edges->true-or-merely-true-today", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "note-dont-gate-on-unrelated-findings", "activation": 0.1436, "link": "confirm-named-scope-exclusions-respected->note-dont-gate-on-unrelated-findings", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-portability-claims-in-target-environment", "activation": 0.1436, "link": "distinguish-missed-vs-uncatchable-findings->verify-portability-claims-in-target-environment", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-portability-claims-in-target-environment", "activation": 0.1436, "link": "grep-for-known-bug-class-before-deep-analysis->verify-portability-claims-in-target-environment", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "reproduce-before-verdict", "activation": 0.275, "link": "grep-for-the-third-site->reproduce-before-verdict", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "test-at-the-observed-layer", "activation": 0.275, "link": "knowledge-attaches-to-the-line->test-at-the-observed-layer", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "reproduce-claimed-bug-fix-before-and-after", "activation": 0.1436, "link": "mutation-test-verify-suite-discriminates->reproduce-claimed-bug-fix-before-and-after", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-proximity-checks-dont-bleed-into-next-record", "activation": 0.1436, "link": "mutation-test-verify-suite-discriminates->verify-proximity-checks-dont-bleed-into-next-record", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "trace-boundary-operators-by-hand", "activation": 0.1436, "link": "probe-spec-silent-input-categories->trace-boundary-operators-by-hand", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "recompute-hashes-never-eyeball", "activation": 0.1697, "link": "red-commit-worktree-verify->recompute-hashes-never-eyeball", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "reports-are-not-the-code", "activation": 0.1697, "link": "red-commit-worktree-verify->reports-are-not-the-code", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "grep-for-the-third-site", "activation": 0.3, "link": "reproduce-before-verdict->grep-for-the-third-site", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "test-at-the-observed-layer", "activation": 0.3, "link": "reproduce-before-verdict->test-at-the-observed-layer", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-backcompat-claims-algebraically", "activation": 0.1436, "link": "reproduce-claimed-bug-fix-before-and-after->verify-backcompat-claims-algebraically", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-tdd-empirically-when-log-is-thin", "activation": 0.1436, "link": "reproduce-claimed-bug-fix-before-and-after->verify-tdd-empirically-when-log-is-thin", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "rerun-the-red-empirically", "activation": 0.1436, "link": "reproduce-then-verify-fix->rerun-the-red-empirically", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "reproduce-then-verify-fix", "activation": 0.1436, "link": "rerun-the-red-empirically->reproduce-then-verify-fix", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "reproduce-before-verdict", "activation": 0.275, "link": "reuse-the-projects-own-harness->reproduce-before-verdict", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "missing-test-twin-marks-the-bug", "activation": 0.275, "link": "review-your-own-fix-as-new-code->missing-test-twin-marks-the-bug", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "reproduce-before-verdict", "activation": 0.275, "link": "test-at-the-observed-layer->reproduce-before-verdict", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "equality-guards-invite-ordering-probes", "activation": 0.1436, "link": "trace-boundary-operators-by-hand->equality-guards-invite-ordering-probes", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-backcompat-claims-algebraically", "activation": 0.1436, "link": "trace-dict-merge-for-key-collisions->verify-backcompat-claims-algebraically", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "one-time-assertion-as-live-gate", "activation": 0.275, "link": "true-or-merely-true-today->one-time-assertion-as-live-gate", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "verify-tdd-empirically-when-log-is-thin", "activation": 0.1436, "link": "verify-backcompat-claims-algebraically->verify-tdd-empirically-when-log-is-thin", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "confirm-named-scope-exclusions-respected", "activation": 0.1436, "link": "verify-doc-links-and-quotes-against-live-source->confirm-named-scope-exclusions-respected", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "match-repo-security-baseline", "activation": 0.1827, "link": "verify-guard-regex-on-real-artifact->match-repo-security-baseline", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "recompute-hashes-never-eyeball", "activation": 0.1827, "link": "verify-guard-regex-on-real-artifact->recompute-hashes-never-eyeball", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "red-commit-worktree-verify", "activation": 0.1827, "link": "verify-guard-regex-on-real-artifact->red-commit-worktree-verify", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "trace-boundary-operators-by-hand", "activation": 0.1436, "link": "verify-ordering-assertions-at-two-levels->trace-boundary-operators-by-hand", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "local-gate-green-doesnt-imply-ci-green-for-infra", "activation": 0.1436, "link": "verify-portability-claims-in-target-environment->local-gate-green-doesnt-imply-ci-green-for-infra", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "reproduce-claimed-bug-fix-before-and-after", "activation": 0.1436, "link": "verify-proximity-checks-dont-bleed-into-next-record->reproduce-claimed-bug-fix-before-and-after", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "trace-dict-merge-for-key-collisions", "activation": 0.1436, "link": "verify-proximity-checks-dont-bleed-into-next-record->trace-dict-merge-for-key-collisions", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "hop", "note": "test-at-the-observed-layer", "activation": 0.275, "link": "when-does-the-test-observe->test-at-the-observed-layer", "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "inject", "note": "reproduce-before-verdict", "activation": 1.2, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "inject", "note": "security-proof-pages-self-identify", "activation": 1.2, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "inject", "note": "comments-deserve-code-scrutiny", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "inject", "note": "conditional-correctness-premise-edges", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "inject", "note": "decision-lists-vs-fact-lists", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "inject", "note": "grep-for-the-third-site", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
+{"event": "inject", "note": "knowledge-attaches-to-the-line", "activation": 1.1, "ts": "2026-07-28T16:20:28+00:00", "role": "reviewer"}
