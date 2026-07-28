@@ -1,9 +1,4 @@
 {
-  "binary-less-path-mirror-verification->reproduce-claimed-bug-fix-before-and-after": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "confirm-named-scope-exclusions-respected->note-dont-gate-on-unrelated-findings": {
     "fires": 3,
     "last": "2026-07-26",
@@ -12,16 +7,6 @@
   "distinguish-missed-vs-uncatchable-findings->verify-portability-claims-in-target-environment": {
     "fires": 3,
     "last": "2026-07-26",
-    "weight": 0.5
-  },
-  "duplicate-toplevel-symbols-across-branches->trial-merge-and-run-integrated-tree": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "escape-at-sink-not-caller->probe-spec-silent-input-categories": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "golden-identical-covers-absent-not-present->parity-check-new-vs-existing-path": {
@@ -35,6 +20,11 @@
     "weight": 0.5
   },
   "grep-for-the-third-site->reproduce-before-verdict": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "knowledge-attaches-to-the-line->test-at-the-observed-layer": {
     "fires": 0,
     "last": null,
     "weight": 0.5
@@ -69,17 +59,12 @@
     "last": "2026-07-26",
     "weight": 0.5
   },
-  "red-first-requires-history-not-stash->red-commit-worktree-verify": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "red-first-requires-history-not-stash->rerun-the-red-empirically": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "reproduce-before-verdict->grep-for-the-third-site": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "reproduce-before-verdict->test-at-the-observed-layer": {
     "fires": 0,
     "last": null,
     "weight": 0.5
@@ -104,6 +89,11 @@
     "last": "2026-07-26",
     "weight": 0.5
   },
+  "test-at-the-observed-layer->reproduce-before-verdict": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "trace-boundary-operators-by-hand->equality-guards-invite-ordering-probes": {
     "fires": 3,
     "last": "2026-07-26",
@@ -112,11 +102,6 @@
   "trace-dict-merge-for-key-collisions->verify-backcompat-claims-algebraically": {
     "fires": 3,
     "last": "2026-07-26",
-    "weight": 0.5
-  },
-  "trial-merge-and-run-integrated-tree->reports-are-not-the-code": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "verify-backcompat-claims-algebraically->verify-tdd-empirically-when-log-is-thin": {

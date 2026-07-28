@@ -1,13 +1,13 @@
 ---
 tags: [review, verification, empiricism]
 paths: ["plugins/spec-workflow/**"]
-strength: 1
-source: "PR-close #437 review"
+strength: 2
+source: "PR-close batch #438/#338/#441"
 graduated: false
 created: 2026-07-27
 last-touched: 2026-07-27
 ---
 
-Never review a fix against its own commit message — reproduce the root cause yourself before the verdict. For #437 one python3 -c (set PYTHONPATH, emulate sys.path[0], print config.__file__) converted "plausible" into "the old code provably died at setup.py:70". The same discipline caught my own confidently-wrong bash-3.2 claim before I filed it. The cheap empirical check is almost always under a minute.
+Never review a fix against its own commit message — reproduce the root cause AND the fix yourself, using the branch's REAL output, never a hand-written approximation (a mock proves your fix works; only real output proves theirs does). Verify the fix you recommend before recommending it — hand over "verified: these exact observations" instead of a suggestion the dev must re-derive. When a fix claims to close a class, enumerate the class and probe each member; the escapes that matter are never the first one tried.
 
-Related: [[grep-for-the-third-site]]
+Related: [[grep-for-the-third-site]] [[test-at-the-observed-layer]]
