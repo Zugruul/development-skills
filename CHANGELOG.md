@@ -4,6 +4,10 @@
 
 ## v0.61.4 — 2026-07-29
 
+### Fixes
+- **mermaid:** re-fit on container resize -- maximize/restore reframes the diagram (manual pan/zoom opts out until next Fit) (`982df60`)
+  > Claude-Session: https://claude.ai/code/session_01EzNH8czvn8a1XVxYjsWLMm
+
 ### Tests
 - **485:** tabs harness stubs the sync re-arm the ungate path added (`ae50dc5`)
   > (the prior commit landed with this harness gap red -- caught immediately;
