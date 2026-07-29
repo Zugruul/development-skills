@@ -998,6 +998,16 @@ body.chat-docked #search-filters-panel{height:calc((100vh - 130px)*.66)}
   min-width:320px;min-height:260px;max-width:92vw;max-height:88vh;
   box-shadow:0 18px 50px rgba(0,0,0,.6)}
 .ast-chat-overlay.detached .ast-chat-header{cursor:move}
+/* #485: per-assistant tabs -- pills in the header; the active one mirrors
+   the SERVER-side selection. */
+.ast-chat-tabs{display:flex;align-items:center;gap:.25rem;flex-wrap:wrap;min-width:0}
+.ast-chat-tab{background:transparent;border:1px solid var(--border);border-radius:5px;
+  color:var(--muted);font-family:var(--mono);font-size:.6rem;letter-spacing:.05em;
+  text-transform:uppercase;padding:.16rem .45rem;cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:9rem}
+.ast-chat-tab:hover{border-color:var(--cyan)}
+.ast-chat-tab.ast-chat-tab-active{border-color:var(--cyan);color:var(--cyan);
+  background:rgba(70,230,255,.1)}
 .ast-chat-detach{background:transparent;border:1px solid var(--border);border-radius:5px;
   color:var(--muted);font-family:var(--mono);font-size:.72rem;line-height:1;
   padding:.15rem .4rem;cursor:pointer}
@@ -8475,6 +8485,29 @@ function closeAssistantSwitchDropdown(){
   const label = document.getElementById("voice-viz-name");
   if(label) label.setAttribute("aria-expanded", "false");
 }
+// #485: the ONE switch path every surface shares -- the voice-header
+// dropdown (AST-024) and the chat overlay's per-assistant tabs both land
+// here. Selection stays server-side (§7.5, POST /assistant/select); every
+// dependent surface (voice header, gate, digest, chat tabs + history,
+// media ctx) refreshes from the same call.
+async function switchAssistantTo(name){
+  let resp = null;
+  try{
+    const r = await fetch("/assistant/select", {method: "POST", body: JSON.stringify({name})});
+    resp = await r.json();
+  }catch{}
+  setVoiceHeaderName(name);
+  gateVoiceAndChat(false);
+  // AST-024 (#321): only a REAL switch's response carries `digest`; an
+  // undefined payload is a harmless clear (panel stays hidden).
+  renderAssistantDigest(resp && resp.digest);
+  window.__assistantSelected = name;
+  if(document.getElementById("ast-chat-overlay")){
+    renderChatAssistantTabs();
+    await loadChatHistory();
+  }
+  return resp;
+}
 async function openAssistantSwitchDropdown(){
   const dd = document.getElementById("ast-switch-dropdown");
   const list = document.getElementById("ast-switch-list");
@@ -8502,17 +8535,8 @@ async function openAssistantSwitchDropdown(){
       ? `<span class="ast-switch-row-aliases">${escapeHtml(c.aliases.join(", "))}</span>` : "";
     row.innerHTML = `<span class="ast-switch-row-name">${escapeHtml(c.name)}</span>${aliasesHtml}`;
     row.onclick = async ()=>{
-      let resp = null;
-      try{
-        const r = await fetch("/assistant/select", {method:"POST", body: JSON.stringify({name: c.name})});
-        resp = await r.json();
-      }catch{}
       closeAssistantSwitchDropdown();
-      setVoiceHeaderName(c.name);
-      gateVoiceAndChat(false);
-      // AST-024 (#321): only a REAL switch's response carries `digest`; an
-      // undefined payload is a harmless clear (panel stays hidden).
-      renderAssistantDigest(resp && resp.digest);
+      await switchAssistantTo(c.name);
     };
     list.appendChild(row);
     rows.push(row);
@@ -8929,6 +8953,17 @@ function buildChatOverlay(){
   nameEl.id = "ast-chat-assistant-name";
   nameEl.className = "ast-chat-assistant-name";
   header.appendChild(nameEl);
+  // #485: per-assistant TABS -- rendered whenever 2+ assistants are
+  // discovered (the single name span stays for the sole-assistant case).
+  // Each tab shows ITS assistant's history; clicking one runs the SAME
+  // switch flow the voice-header dropdown uses (switchAssistantTo).
+  const tabsWrap = document.createElement("div");
+  tabsWrap.id = "ast-chat-tabs";
+  tabsWrap.className = "ast-chat-tabs";
+  tabsWrap.setAttribute("role", "tablist");
+  tabsWrap.setAttribute("aria-label", "Assistants");
+  tabsWrap.hidden = true;
+  header.appendChild(tabsWrap);
   // #459 flagged extension 1: the 1/2/3 control is a last-N-exchanges
   // selector, not tabs -- role="group" + a visible label name it, same
   // pattern #voice-dir ("Voice direction") and #theme-toggle ("Theme")
@@ -9226,6 +9261,11 @@ async function openChatOverlay(){
   // the selected assistant's media context so relative media/chat/ links
   // in replies hydrate against its brain via /file/.
   setAssistantMediaCtx(status);
+  // #485: per-assistant tabs from the same response + the keep-in-step
+  // poll for as long as the overlay lives.
+  window.__assistantCandidates = (status && status.candidates) || [];
+  renderChatAssistantTabs();
+  startChatStatusSync();
   const nameEl = document.getElementById("ast-chat-assistant-name");
   if(nameEl) nameEl.textContent = window.__assistantSelected || "";
   if(!status || status.gated || status.outcome === "none"){
@@ -9233,6 +9273,64 @@ async function openChatOverlay(){
     return;
   }
   await loadChatHistory();
+}
+// #485: per-assistant chat tabs. Candidates cache from the latest
+// /assistant/status; tabs render only for 2+ assistants and the ACTIVE
+// tab always mirrors the server-side selection (never a client-only
+// guess -- the #453-family staleness this task closes out).
+window.__assistantCandidates = window.__assistantCandidates || [];
+function renderChatAssistantTabs(){
+  const wrap = document.getElementById("ast-chat-tabs");
+  if(!wrap) return;
+  const cands = window.__assistantCandidates || [];
+  const nameEl = document.getElementById("ast-chat-assistant-name");
+  const multi = cands.length >= 2;
+  wrap.hidden = !multi;
+  if(nameEl) nameEl.hidden = multi;
+  wrap.innerHTML = "";
+  if(!multi) return;
+  for(const c of cands){
+    const active = c.name === window.__assistantSelected;
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.className = "ast-chat-tab" + (active ? " ast-chat-tab-active" : "");
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-selected", String(active));
+    tab.textContent = c.name;
+    tab.title = active ? ("Talking to " + c.name) : ("Switch to " + c.name + " (loads its own history)");
+    tab.onclick = ()=>{ if(!active) switchAssistantTo(c.name); };
+    wrap.appendChild(tab);
+  }
+}
+// #485 (issue comment, the #453 residual): the overlay used to read
+// status.selected ONCE at open and never again -- a server-side switch or
+// restart left the header lying about who answers. While the overlay is
+// open, this poll keeps tabs/name/history in step with the server.
+window.__chatStatusTimer = window.__chatStatusTimer || null;
+function startChatStatusSync(){
+  if(window.__chatStatusTimer) return;
+  window.__chatStatusTimer = setInterval(async ()=>{
+    if(!document.getElementById("ast-chat-overlay")) return;
+    let status;
+    try{ status = await (await fetch("/assistant/status")).json(); }catch{ return; }
+    if(!status || status.gated) return;
+    const prevSelected = window.__assistantSelected;
+    window.__assistantCandidates = status.candidates || [];
+    window.__assistantSelected = status.selected || prevSelected;
+    setAssistantMediaCtx(status);
+    renderChatAssistantTabs();
+    if(status.selected && status.selected !== prevSelected){
+      const nameEl = document.getElementById("ast-chat-assistant-name");
+      if(nameEl) nameEl.textContent = status.selected;
+      loadChatHistory();
+    }
+  }, 10000);
+}
+function stopChatStatusSync(){
+  if(window.__chatStatusTimer){
+    clearInterval(window.__chatStatusTimer);
+    window.__chatStatusTimer = null;
+  }
 }
 // Detach/dock state for the chat overlay (2026-07-29, human-directed).
 // Persisted (uiState.chatDetached + chatWinRect) so a refresh restores the
@@ -9302,6 +9400,7 @@ function setChatDetached(on){
 }
 function closeChatOverlay(){
   stopChatElapsed();
+  stopChatStatusSync();
   const overlay = document.getElementById("ast-chat-overlay");
   if(overlay) overlay.remove();
   // no overlay -> no dock cap; brains/filters get the full column back

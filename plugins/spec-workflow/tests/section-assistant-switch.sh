@@ -449,6 +449,12 @@ eval(extract("astShortcutKeys"));
 eval(extract("renderShortcutKeycaps"));
 eval(extract("unbindAssistantSwitchDropdownKeys"));
 eval(extract("closeAssistantSwitchDropdown"));
+// #485: the dropdown rows route through the shared switchAssistantTo --
+// the REAL function (its chat-overlay branch no-ops here: no overlay in
+// this DOM stub).
+if (typeof global.renderChatAssistantTabs === "undefined") global.renderChatAssistantTabs = () => {};
+if (typeof global.loadChatHistory === "undefined") global.loadChatHistory = async () => {};
+eval(extract("switchAssistantTo"));
 eval(extract("openAssistantSwitchDropdown"));
 eval(extract("setAskAgainUi"));
 eval(extract("refreshAssistantSettingsUi"));

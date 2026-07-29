@@ -244,7 +244,12 @@ global.setAssistantMediaCtx = () => {};
 // a real-browser concern, not this DOM stub's.
 global.setChatDetached = () => {};
 global.syncChatDockBodyClass = () => {};
+// #485: tabs + status keep-in-step -- recorders here.
+global.renderChatAssistantTabs = () => {};
+global.startChatStatusSync = () => {};
 eval(extract("openChatOverlay"));
+if (typeof global.syncChatDockBodyClass === "undefined") global.syncChatDockBodyClass = () => {};
+if (typeof global.stopChatStatusSync === "undefined") global.stopChatStatusSync = () => {};
 if (typeof global.syncChatDockBodyClass === "undefined") global.syncChatDockBodyClass = () => {};
 eval(extract("closeChatOverlay"));
 eval(extract("handleAssistantChatKeydown"));
@@ -817,7 +822,12 @@ global.setAssistantMediaCtx = () => {};
 // a real-browser concern, not this DOM stub's.
 global.setChatDetached = () => {};
 global.syncChatDockBodyClass = () => {};
+// #485: tabs + status keep-in-step -- recorders here.
+global.renderChatAssistantTabs = () => {};
+global.startChatStatusSync = () => {};
 eval(extract("openChatOverlay"));
+if (typeof global.syncChatDockBodyClass === "undefined") global.syncChatDockBodyClass = () => {};
+if (typeof global.stopChatStatusSync === "undefined") global.stopChatStatusSync = () => {};
 if (typeof global.syncChatDockBodyClass === "undefined") global.syncChatDockBodyClass = () => {};
 eval(extract("closeChatOverlay"));
 

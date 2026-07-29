@@ -424,6 +424,8 @@ eval(extract("initAssistantSelection"));
 // too and bind it the same unconditional way, so this harness can catch a
 // double-fire instead of only ever exercising the picker in isolation.
 eval(extract("stopChatElapsed"));
+if (typeof global.stopChatStatusSync === "undefined") global.stopChatStatusSync = () => {};
+if (typeof global.syncChatDockBodyClass === "undefined") global.syncChatDockBodyClass = () => {};
 eval(extract("closeChatOverlay"));
 eval(extract("handleAssistantChatKeydown"));
 global.assistantChat = { queue: [], inFlight: false, exchanges: [], lastX: 2, elapsedTimer: null, elapsedStart: 0 };
