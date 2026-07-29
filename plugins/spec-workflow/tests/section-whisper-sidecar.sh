@@ -12,6 +12,9 @@
 # ws_env's output word-split into separate KEY=value tokens for `env`; its
 # values are always mktemp-derived paths or plain integers, never
 # space-containing, so this is safe unquoted (see ws_env's own comment).
+# shellcheck disable=SC2016  # lifecycle_start command-strings are single-quoted
+# on purpose -- they're expanded when eval'd inside the function, not at call
+# site (same directive/reason as section-neural-view-lifecycle.sh).
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== whisper-sidecar capability (issue #424: SPEC-ASSISTANT.md §13.2, install + lifecycle + provisioning) =="
 
@@ -325,3 +328,121 @@ check "compile_index: honestly reports NOT provisioned on fresh state (never a c
     "PROVISIONED_OK False" "$out"
 check "compile_index: the real reason names the install action, from the ACTUAL check script (cwd wiring works)" \
     "REASON_NAMES_INSTALL True" "$out"
+
+# ------------------------------------------------------------------------
+# neural-view boot auto-start: `serve` health-checks this sidecar at boot and
+# auto-STARTS it iff installed-but-not-running (never installs -- install
+# stays explicit), opt-out via --no-sidecar / NEURAL_VIEW_NO_SIDECAR=1, and
+# NO sidecar outcome may ever block or crash neural-view's own boot. Driven
+# end-to-end here: the real neural-view `start` spawns the real `serve`,
+# whose one "whisper-sidecar:" outcome line lands in
+# <NEURAL_VIEW_STATE>/server.log. The auto-start runs on a daemon thread, so
+# every log assertion POLLS (ws_nv_log_wait) instead of racing boot. Same
+# hermetic WHISPER_SIDECAR_* overrides as the direct lifecycle tests above --
+# never the real port 8737 or ~/.claude state.
+echo "-- e2e: neural-view boot auto-starts this sidecar (installed + not running) --"
+WS_NV="$PLUGIN/scripts/neural-view.py"
+WS_NV_PORT=""   # assigned (exported) by each lifecycle_start call below; pre-declared for SC2153
+WS_NV_ROOT="$WS_TMPD/nv-root"; mkdir -p "$WS_NV_ROOT/.claude"
+WS_NV_SCAN="$WS_TMPD/nv-scan-empty"; mkdir -p "$WS_NV_SCAN"
+
+ws_nv_log_wait() { # <server.log> <substring> -- poll up to ~5s for a daemon-thread log line
+    local log="$1" want="$2" _i
+    for _i in $(seq 1 50); do
+        [[ -f "$log" ]] && grep -qF -- "$want" "$log" && return 0
+        sleep 0.1
+    done
+    return 1
+}
+ws_nv_check_log() { # <name> <server.log> <substring>
+    if ws_nv_log_wait "$2" "$3"; then
+        echo "ok   $1"
+    else
+        echo "FAIL $1 — server.log never contained: $3"
+        echo "     log tail: $(tail -5 "$2" 2>/dev/null)"
+        fails=$((fails + 1))
+    fi
+}
+ws_nv_install() { # <state_dir> -- stage the stub as an already-installed sidecar
+    mkdir -p "$1/bin" "$1/models"
+    cp "$WS_STUB_SERVER" "$1/bin/whisper-server"; chmod +x "$1/bin/whisper-server"
+    cp "$WS_MODEL_SRC" "$1/models/ggml-model.bin"
+}
+
+# (a) installed + not running: boot fires the sidecar up
+WS_NV_S_AUTO="$WS_TMPD/nv-sidecar-auto"; WS_NV_P_AUTO="$(_rand_port)"
+ws_nv_install "$WS_NV_S_AUTO"
+WS_NV_STATE_AUTO="$WS_TMPD/nv-state-auto"
+# NEURAL_VIEW_NO_SIDECAR= (empty) re-enables the auto-start these tests
+# exercise -- run-tests.sh exports NEURAL_VIEW_NO_SIDECAR=1 suite-wide so no
+# OTHER section's neural-view boot can ever reach the real sidecar state.
+lifecycle_start "neural-view starts (sidecar installed, not running)" WS_NV_PORT \
+    'env NEURAL_VIEW_NO_SIDECAR= NEURAL_VIEW_STATE="$WS_NV_STATE_AUTO" NEURAL_VIEW_SCAN="$WS_NV_SCAN" $(ws_env "$WS_NV_S_AUTO" "$WS_NV_P_AUTO") python3 "$WS_NV" start --dir "$WS_NV_ROOT" --port "$WS_NV_PORT"'
+ws_nv_check_log "auto-start: boot logs the sidecar coming up" "$WS_NV_STATE_AUTO/server.log" \
+    "whisper-sidecar: started: whisper-server is running on 127.0.0.1:$WS_NV_P_AUTO"
+WS_NV_SIDE_PID="$(cat "$WS_NV_S_AUTO/whisper-server.pid" 2>/dev/null || true)"
+[[ -n "$WS_NV_SIDE_PID" ]] && ws_track_pid "$WS_NV_SIDE_PID"
+check "auto-start: the sidecar process is genuinely alive" \
+    "$([[ -n "$WS_NV_SIDE_PID" ]] && kill -0 "$WS_NV_SIDE_PID" 2>/dev/null && echo alive || echo dead)" "alive"
+out="$(env $(ws_env "$WS_NV_S_AUTO" "$WS_NV_P_AUTO") python3 "$WS_SKILL_DIR/whisper_sidecar.py" status 2>&1)"; rc=$?
+check_rc "auto-start: sidecar status exits 0 after neural-view boot" 0 "$rc"
+check "auto-start: sidecar status reports healthy on the test port" \
+    "healthy: whisper-server is running on 127.0.0.1:$WS_NV_P_AUTO" "$out"
+env NEURAL_VIEW_STATE="$WS_NV_STATE_AUTO" python3 "$WS_NV" stop >/dev/null 2>&1
+env $(ws_env "$WS_NV_S_AUTO" "$WS_NV_P_AUTO") python3 "$WS_SKILL_DIR/whisper_sidecar.py" stop >/dev/null 2>&1
+
+# (b) NEURAL_VIEW_NO_SIDECAR=1: auto-start is skipped, logged, sidecar untouched
+echo "-- e2e: neural-view boot skips the sidecar when NEURAL_VIEW_NO_SIDECAR=1 --"
+WS_NV_STATE_ENVOFF="$WS_TMPD/nv-state-envoff"
+lifecycle_start "neural-view starts (env opt-out)" WS_NV_PORT \
+    'env NEURAL_VIEW_NO_SIDECAR=1 NEURAL_VIEW_STATE="$WS_NV_STATE_ENVOFF" NEURAL_VIEW_SCAN="$WS_NV_SCAN" $(ws_env "$WS_NV_S_AUTO" "$WS_NV_P_AUTO") python3 "$WS_NV" start --dir "$WS_NV_ROOT" --port "$WS_NV_PORT"'
+ws_nv_check_log "env opt-out: boot logs that auto-start is disabled" "$WS_NV_STATE_ENVOFF/server.log" \
+    "whisper-sidecar: auto-start disabled"
+check "env opt-out: the sidecar was never spawned (no pidfile)" \
+    "$([[ -f "$WS_NV_S_AUTO/whisper-server.pid" ]] && echo present || echo absent)" "absent"
+env NEURAL_VIEW_STATE="$WS_NV_STATE_ENVOFF" python3 "$WS_NV" stop >/dev/null 2>&1
+# belt-and-braces: if a regression DID spawn it, reap it so later tests stay clean
+env $(ws_env "$WS_NV_S_AUTO" "$WS_NV_P_AUTO") python3 "$WS_SKILL_DIR/whisper_sidecar.py" stop >/dev/null 2>&1
+
+# (c) --no-sidecar on `start`: same skip, proving the flag is FORWARDED to the serve child
+echo "-- e2e: neural-view start --no-sidecar forwards the opt-out to its serve child --"
+WS_NV_STATE_FLAGOFF="$WS_TMPD/nv-state-flagoff"
+lifecycle_start "neural-view starts (--no-sidecar)" WS_NV_PORT \
+    'env NEURAL_VIEW_STATE="$WS_NV_STATE_FLAGOFF" NEURAL_VIEW_SCAN="$WS_NV_SCAN" $(ws_env "$WS_NV_S_AUTO" "$WS_NV_P_AUTO") python3 "$WS_NV" start --dir "$WS_NV_ROOT" --port "$WS_NV_PORT" --no-sidecar'
+ws_nv_check_log "--no-sidecar: boot logs that auto-start is disabled" "$WS_NV_STATE_FLAGOFF/server.log" \
+    "whisper-sidecar: auto-start disabled"
+check "--no-sidecar: the sidecar was never spawned (no pidfile)" \
+    "$([[ -f "$WS_NV_S_AUTO/whisper-server.pid" ]] && echo present || echo absent)" "absent"
+env NEURAL_VIEW_STATE="$WS_NV_STATE_FLAGOFF" python3 "$WS_NV" stop >/dev/null 2>&1
+env $(ws_env "$WS_NV_S_AUTO" "$WS_NV_P_AUTO") python3 "$WS_SKILL_DIR/whisper_sidecar.py" stop >/dev/null 2>&1
+
+# (d) not installed: ONE honest log line, never an install, boot continues normally
+echo "-- e2e: neural-view boot logs honestly when the sidecar is not installed (never auto-installs) --"
+WS_NV_S_MISSING="$WS_TMPD/nv-sidecar-missing"; mkdir -p "$WS_NV_S_MISSING"
+WS_NV_STATE_MISSING="$WS_TMPD/nv-state-missing"
+lifecycle_start "neural-view starts (sidecar not installed)" WS_NV_PORT \
+    'env NEURAL_VIEW_NO_SIDECAR= NEURAL_VIEW_STATE="$WS_NV_STATE_MISSING" NEURAL_VIEW_SCAN="$WS_NV_SCAN" $(ws_env "$WS_NV_S_MISSING" "$(_rand_port)") python3 "$WS_NV" start --dir "$WS_NV_ROOT" --port "$WS_NV_PORT"'
+ws_nv_check_log "not installed: one honest skip line naming the state" "$WS_NV_STATE_MISSING/server.log" \
+    "whisper-sidecar: auto-start skipped — whisper-server is not installed"
+check "not installed: nothing was auto-installed (state dir stays empty)" \
+    "$([[ -e "$WS_NV_S_MISSING/bin/whisper-server" ]] && echo present || echo absent)" "absent"
+out="$(env NEURAL_VIEW_STATE="$WS_NV_STATE_MISSING" python3 "$WS_NV" status 2>&1)"
+check "not installed: neural-view itself still boots and reports RUNNING" "RUNNING http://127.0.0.1:$WS_NV_PORT" "$out"
+env NEURAL_VIEW_STATE="$WS_NV_STATE_MISSING" python3 "$WS_NV" stop >/dev/null 2>&1
+
+# (e) sidecar start FAILURE (server never becomes healthy) must never take down neural-view
+echo "-- e2e: a failing sidecar start never blocks or crashes neural-view boot --"
+WS_NV_S_FAIL="$WS_TMPD/nv-sidecar-fail"; WS_NV_P_FAIL="$(_rand_port)"
+ws_nv_install "$WS_NV_S_FAIL"
+WS_NV_STATE_FAIL="$WS_TMPD/nv-state-fail"
+lifecycle_start "neural-view starts (sidecar will fail to become healthy)" WS_NV_PORT \
+    'env NEURAL_VIEW_NO_SIDECAR= WHISPER_STUB_MODE=never_bind NEURAL_VIEW_STATE="$WS_NV_STATE_FAIL" NEURAL_VIEW_SCAN="$WS_NV_SCAN" $(ws_env "$WS_NV_S_FAIL" "$WS_NV_P_FAIL") python3 "$WS_NV" start --dir "$WS_NV_ROOT" --port "$WS_NV_PORT"'
+ws_nv_check_log "sidecar failure: logged honestly as a failed auto-start" "$WS_NV_STATE_FAIL/server.log" \
+    "whisper-sidecar: auto-start failed — whisper-server did not become healthy on port $WS_NV_P_FAIL"
+out="$(env NEURAL_VIEW_STATE="$WS_NV_STATE_FAIL" python3 "$WS_NV" status 2>&1)"
+check "sidecar failure: neural-view is STILL running after the sidecar gave up" "RUNNING http://127.0.0.1:$WS_NV_PORT" "$out"
+out="$(cat "$WS_NV_STATE_FAIL/server.log" 2>/dev/null)"
+check_absent "sidecar failure: no raw Python traceback leaks into the server log" "Traceback (most recent call last)" "$out"
+WS_NV_FAIL_PID="$(cat "$WS_NV_S_FAIL/whisper-server.pid" 2>/dev/null || true)"
+[[ -n "$WS_NV_FAIL_PID" ]] && ws_track_pid "$WS_NV_FAIL_PID"
+env NEURAL_VIEW_STATE="$WS_NV_STATE_FAIL" python3 "$WS_NV" stop >/dev/null 2>&1

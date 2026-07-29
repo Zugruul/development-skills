@@ -10,11 +10,11 @@ recalls happen, lights the neurons up and pulses the synapses in real time.
 Repos are laid out as "constellations": each repo is a labeled region on the
 canvas containing its own role-clusters (dev/reviewer/orchestrator/...).
 
-  neural-view.py start [--port N] [--dir ROOT] [--scan BASE] [--rescan SECS]  # start (idempotent)
+  neural-view.py start [--port N] [--dir ROOT] [--scan BASE] [--rescan SECS] [--no-sidecar]  # start (idempotent)
   neural-view.py status                # RUNNING <url> notes=N brains=N repos=N | STOPPED | STALE: ...
   neural-view.py stop [--force]        # --force also kills a zombie holding the port (see below)
-  neural-view.py serve [--port N] [--dir ROOT] [--scan BASE] [--rescan SECS] # run in the foreground (internal)
-  neural-view.py dev [--port N] [--dir ROOT] [--scan BASE] [--rescan SECS]   # foreground + auto-restart on script
+  neural-view.py serve [--port N] [--dir ROOT] [--scan BASE] [--rescan SECS] [--no-sidecar] # run in the foreground (internal)
+  neural-view.py dev [--port N] [--dir ROOT] [--scan BASE] [--rescan SECS] [--no-sidecar]   # foreground + auto-restart on script
                                        # change; the page live-reloads via GET /version (dev only)
   neural-view.py assistant status                        # GET /assistant/status against the running server
   neural-view.py assistant default [NAME]                # set/read the machine-local default assistant (local file, no server needed)
@@ -95,6 +95,15 @@ conversation transcript). See discover_sessions() docstring for the full
 investigation writeup. $NEURAL_VIEW_CLAUDE_DIR overrides ~/.claude (mainly for
 tests); $NEURAL_VIEW_SESSION_RECENT_SECS overrides the "recent" window
 (default 900s).
+
+Whisper STT sidecar: at `serve` boot (so `start` and `dev` too), the local
+whisper.cpp sidecar the voice panel's default STT engine relies on is
+health-checked and auto-STARTED iff installed-but-not-running, by delegating
+to the whisper-sidecar skill's own lifecycle script (never reimplemented,
+never auto-installed). Runs on a daemon thread; any outcome is one
+"whisper-sidecar:" log line and can never block or crash startup. Opt out
+with --no-sidecar or $NEURAL_VIEW_NO_SIDECAR=1. See
+autostart_whisper_sidecar() for the full rules.
 
 State dir (pid/port/log): $NEURAL_VIEW_STATE, else <PRIMARY repo root>/.claude/neural-view (#463: the main checkout, from any linked worktree).
 Port: --port, else $NEURAL_VIEW_PORT, else 4748. Binds 127.0.0.1 only.
@@ -2604,6 +2613,74 @@ def arg_rescan(args):
     return float(raw_arg_rescan(args) or 60)
 
 
+# --- whisper.cpp STT sidecar auto-start ------------------------------------
+# The voice panel's default STT engine is the local whisper.cpp sidecar
+# (neural-view.html's WhisperSttEngine, hardcoded to 127.0.0.1:8737), but its
+# lifecycle lives in a separate skill — so a fresh boot used to serve a UI
+# whose mic silently transcribed nothing until someone remembered to run the
+# sidecar by hand. `serve` now health-checks/starts it at boot by delegating
+# to the skill's OWN lifecycle script as a subprocess (its `start` is already
+# idempotent, spawns detached, and refuses a port held by a stranger — never
+# reimplemented here). Rules:
+#   - START only, NEVER install: install stays an explicit action per
+#     whisper_sidecar.py's own docstring; "not installed" logs one honest
+#     line and neural-view boots on without local STT.
+#   - a sidecar failure of ANY kind must never block or crash neural-view
+#     startup: the attempt runs on a daemon thread (the sidecar's health
+#     poll can take ~15s while the model loads) and every outcome is one
+#     "whisper-sidecar:" log line, never an exception out of `serve`.
+#   - opt out via --no-sidecar (start/dev forward it to their serve child)
+#     or NEURAL_VIEW_NO_SIDECAR=1.
+# WHISPER_SIDECAR_* env overrides pass through to the subprocess untouched,
+# so tests drive this end-to-end against a scratch state dir + random port +
+# stub binary, exactly like section-whisper-sidecar.sh's direct lifecycle
+# tests — never the real port 8737.
+SIDECAR_SCRIPT = Path(__file__).resolve().parent.parent / "skills" / "whisper-sidecar" / "whisper_sidecar.py"
+
+
+def _sidecar_start_timeout():
+    """Mirror of whisper_sidecar.py's own start-poll bound (same env var,
+    same 15s default) — used only to size the never-hang backstop below."""
+    try:
+        return float(os.environ.get("WHISPER_SIDECAR_START_TIMEOUT_SECONDS", "15"))
+    except ValueError:
+        return 15.0
+
+
+def autostart_whisper_sidecar(args):
+    """Kick off the sidecar health-check/start described above. Returns
+    immediately; every outcome (started, already running, disabled, not
+    installed, failed) surfaces as exactly one 'whisper-sidecar:' log line."""
+    if "--no-sidecar" in args or os.environ.get("NEURAL_VIEW_NO_SIDECAR") == "1":
+        print("whisper-sidecar: auto-start disabled (--no-sidecar / NEURAL_VIEW_NO_SIDECAR=1)", flush=True)
+        return
+    if not SIDECAR_SCRIPT.is_file():
+        print(f"whisper-sidecar: auto-start skipped — lifecycle script not found at {SIDECAR_SCRIPT}", flush=True)
+        return
+
+    def _run():
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(SIDECAR_SCRIPT), "start"],
+                capture_output=True, text=True,
+                timeout=_sidecar_start_timeout() + 30,  # the script's own health poll is the real bound
+            )
+            line = " ".join((proc.stdout + "\n" + proc.stderr).split()) or f"exit {proc.returncode} with no output"
+            if proc.returncode == 0:
+                print(f"whisper-sidecar: {line}", flush=True)
+            elif "not installed" in line:
+                # Honest, non-alarming: this is the documented not-provisioned
+                # state, not a failure — and auto-start never installs.
+                print(f"whisper-sidecar: auto-start skipped — {line} (auto-start never installs; "
+                      "voice input has no local STT until then)", flush=True)
+            else:
+                print(f"whisper-sidecar: auto-start failed — {line}", flush=True)
+        except Exception as e:  # noqa: BLE001 — a sidecar failure must never take down neural-view
+            print(f"whisper-sidecar: auto-start failed — {e}", flush=True)
+
+    threading.Thread(target=_run, name="whisper-sidecar-autostart", daemon=True).start()
+
+
 def discover_repos(args):
     """Every repo to aggregate, as (name, root) sorted by name:
     - the explicit --dir/$NEURAL_VIEW_DIR root, if given — ALWAYS included,
@@ -2738,6 +2815,7 @@ def main():
         rescan_interval = arg_rescan(args)
         if rescan_interval > 0:
             threading.Thread(target=rescan_loop, args=(args, rescan_interval), daemon=True).start()
+        autostart_whisper_sidecar(args)  # daemon thread; any sidecar outcome is one log line, never a boot blocker
         ENGINE = AssistantEngine(lambda: REPOS, S)  # getter, not a snapshot -- stays live across rescan_loop's REPOS reassignment
         ENGINE.start()
         atexit.register(ENGINE.stop)  # covers normal return below AND an uncaught KeyboardInterrupt unwinding out of main()
@@ -2780,6 +2858,8 @@ def main():
         explicit_rescan = raw_arg_rescan(args)
         if explicit_rescan is not None:
             child += ["--rescan", str(explicit_rescan)]
+        if "--no-sidecar" in args:
+            child += ["--no-sidecar"]
         log = open(S / "server.log", "ab")
         subprocess.Popen(child, executable=exe, stdout=log, stderr=log, start_new_session=True, env=env)
         came_up = False
@@ -2914,6 +2994,8 @@ def main():
         explicit_rescan = raw_arg_rescan(args)
         if explicit_rescan is not None:
             child_cmd += ["--rescan", str(explicit_rescan)]
+        if "--no-sidecar" in args:
+            child_cmd += ["--no-sidecar"]
         env = dict(os.environ, NEURAL_VIEW_DEV="1")
 
         def spawn():

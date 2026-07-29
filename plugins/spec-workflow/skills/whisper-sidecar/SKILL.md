@@ -43,3 +43,13 @@ See `whisper_sidecar.py`'s module docstring for the full state machine and
 every environment-variable override (state dir, port, install sources,
 start timeout) hermetic tests use to avoid any real network access or
 process leakage.
+
+## Auto-start at neural-view boot
+
+`neural-view.py serve` (so `start` and `dev` too) health-checks this sidecar
+at boot and runs its `start` action iff it's installed but not running --
+delegating to `whisper_sidecar.py` itself, on a daemon thread, so a sidecar
+failure can never block or crash neural-view. It never installs (that stays
+explicit, above); "not installed" is one honest log line and neural-view
+boots on without local STT. Opt out with `--no-sidecar` or
+`NEURAL_VIEW_NO_SIDECAR=1`.

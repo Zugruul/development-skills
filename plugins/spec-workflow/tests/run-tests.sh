@@ -66,6 +66,17 @@ trap '_cleanup_run_tmp; exit 130' INT
 trap '_cleanup_run_tmp; exit 143' TERM
 trap '_cleanup_run_tmp; exit 129' HUP
 
+# neural-view's `serve` now auto-starts the whisper.cpp STT sidecar at boot
+# (see autostart_whisper_sidecar in scripts/neural-view.py). Left enabled,
+# every section that boots a neural-view server WITHOUT its own
+# WHISPER_SIDECAR_* overrides would reach the REAL sidecar state
+# (~/.claude/whisper-sidecar, port 8737) -- the exact hermeticity breach the
+# WHISPER_SIDECAR_* env seams exist to prevent. Opt the whole suite out here;
+# the auto-start tests in section-whisper-sidecar.sh re-enable it per boot
+# (NEURAL_VIEW_NO_SIDECAR=) alongside their scratch-state/random-port
+# overrides.
+export NEURAL_VIEW_NO_SIDECAR=1
+
 # shellcheck disable=SC2034  # PLUGIN/FIX are used by the section-*.sh files
 # sourced below via a variable path, which defeats shellcheck's static
 # cross-file analysis of "source $f" in a loop.

@@ -39,6 +39,12 @@ discovery on this interval and registers any repo anchored (marker file added) a
 started, no restart needed; newly-found repos are only ever appended, never removed or
 reordered, so a marker deleted later doesn't drop that repo mid-session.
 
+On boot, the server also health-checks the local whisper.cpp STT sidecar (the voice
+panel's default engine) and auto-starts it if it's installed but not running, via the
+whisper-sidecar skill's own lifecycle script — never installing it, and never letting a
+sidecar failure block or crash neural-view (every outcome is one `whisper-sidecar:` line
+in the server log). `--no-sidecar` or `NEURAL_VIEW_NO_SIDECAR=1` skips this.
+
 The page renders in 3D (three.js, vendored same-origin — no CDN, no build step, zero
 external requests): drag to orbit, wheel/pinch to zoom, right-drag or shift-drag to pan,
 click a neuron to inspect it, and the ⌂ button (or double-clicking empty space) resets
