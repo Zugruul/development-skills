@@ -8637,7 +8637,11 @@ async function switchAssistantTo(name){
       }catch{}
       return null;
     }
-    const confirmed = (resp && resp.selected) || name;
+    // round-2 residual 3: only ever adopt the server's ECHO -- a 200 with
+    // an unparseable body is treated as a failed switch, never a fallback
+    // to the requested name.
+    const confirmed = resp && resp.selected;
+    if(!confirmed) return null;
     setVoiceHeaderName(confirmed);
     gateVoiceAndChat(false);
     // AST-024 (#321): only a REAL switch's response carries `digest`; an
@@ -8752,6 +8756,9 @@ async function quickSwitchAssistant(){
   if(candidates.length < 2){ openAssistantSwitchDropdown(); return; }
   const cur = Math.max(0, candidates.findIndex(c => c.name === (status && status.selected)));
   const next = candidates[(cur + 1) % candidates.length];
+  // round-2 residual 2: this fetch is the freshest candidate list -- hand
+  // it to the shared switch so media ctx / tabs never run on a stale cache.
+  window.__assistantCandidates = candidates;
   closeAssistantSwitchDropdown();
   // #485 review round 1, finding 1: this surface used to carry its own
   // inline copy of the switch flow -- Cmd+K then left the chat log on the
