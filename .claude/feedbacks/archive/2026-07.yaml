@@ -6358,3 +6358,60 @@ items:
   routing:
     action: brain-note
     ref: orchestrator/guards-scope-to-targets-not-text
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-29T17:10:00+02:00'
+iteration:
+  task: '485'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Two independent review passes with re-verification rounds caught 19 real
+    findings on a feature the implementer believed done
+  detail: Spec-compliance and code-quality reviewers independently found overlapping
+    and disjoint defects including three high-severity state races; both re-verified
+    fixes in code rather than trusting the fix mapping.
+  generalized: For UI state machines (selection mirrors, polling loops, async switches),
+    a dual-pass independent review (spec-intent pass + code-quality pass) with mandatory
+    re-verification rounds finds races that a single reviewer or the implementer reliably
+    misses; the re-verification step (reviewer reads the fix sites, not the claim
+    list) is where several would-have-lingered gaps surfaced.
+  routing:
+    action: brain-note
+    ref: reviewer/dual-pass-reverification-catches-ui-races
+- category: friction
+  area: concurrency
+  severity: medium
+  summary: A tree-fingerprint board gate chased a moving target when work landed on
+    the main branch via cherry-pick from a session worktree
+  detail: The session's guard hook fingerprints the session worktree while commits
+    landed on the main checkout; release-bot commits made the two trees diverge, invalidating
+    gate passes twice and forcing a content resync before board moves.
+  generalized: When a loop lands commits on the main branch by cherry-picking from
+    a session worktree, any tree-fingerprint gate must be recorded from the SAME tree
+    the enforcing hook fingerprints; either pin the whole loop (gate + moves) to one
+    checkout, or sync the mirror to identical content before recording the pass.
+  routing:
+    action: brain-note
+    ref: orchestrator/gate-fingerprint-one-checkout
+- category: incident
+  area: testing
+  severity: high
+  summary: A commit landed with red tests because a grep-filtered test run inverted
+    the guard in a command chain
+  detail: run | grep FAIL exits 0 when failures ARE found, so '&& commit' proceeded
+    exactly when it should have stopped; caught within a minute and fixed forward.
+  generalized: Never gate a commit on a grep-filtered test pipeline -- grep's exit
+    code inverts the semantics (success means failures found). Gate on the test runner's
+    own exit code, and keep the commit as a separate command issued only after reading
+    the result.
+  routing:
+    action: brain-note
+    ref: dev/never-gate-commits-on-grep-filtered-tests
