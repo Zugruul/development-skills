@@ -252,9 +252,7 @@ global.syncChatDockBodyClass = () => {};
 global.renderChatAssistantTabs = () => {};
 global.startChatStatusSync = () => {};
 eval(extract("openChatOverlay"));
-if (typeof global.syncChatDockBodyClass === "undefined") global.syncChatDockBodyClass = () => {};
 if (typeof global.stopChatStatusSync === "undefined") global.stopChatStatusSync = () => {};
-if (typeof global.syncChatDockBodyClass === "undefined") global.syncChatDockBodyClass = () => {};
 eval(extract("closeChatOverlay"));
 eval(extract("handleAssistantChatKeydown"));
 
@@ -834,9 +832,7 @@ global.syncChatDockBodyClass = () => {};
 global.renderChatAssistantTabs = () => {};
 global.startChatStatusSync = () => {};
 eval(extract("openChatOverlay"));
-if (typeof global.syncChatDockBodyClass === "undefined") global.syncChatDockBodyClass = () => {};
 if (typeof global.stopChatStatusSync === "undefined") global.stopChatStatusSync = () => {};
-if (typeof global.syncChatDockBodyClass === "undefined") global.syncChatDockBodyClass = () => {};
 eval(extract("closeChatOverlay"));
 
 (async () => {

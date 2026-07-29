@@ -992,7 +992,7 @@ body.chat-docked #search-filters-panel{height:calc((100vh - 130px)*.62)}
   backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
   box-shadow:0 10px 28px rgba(0,0,0,.45);
   z-index:61;font-family:var(--mono);font-size:.68rem;color:var(--fg)}
-.ast-chat-header{display:flex;align-items:center;gap:.5rem;
+.ast-chat-header{display:flex;align-items:center;gap:.35rem .5rem;flex-wrap:wrap;
   padding:.4rem .55rem;border-bottom:1px solid var(--border)}
 /* detached chat (2026-07-29, human-directed): floating, draggable by its
    header, natively RESIZABLE from the corner. Geometry is inline-styled
@@ -9239,7 +9239,10 @@ function buildChatOverlay(){
   retry.id = "ast-chat-retry";
   retry.className = "ast-chat-retry ast-chat-hidden";
   retry.textContent = "retry";
-  retry.onclick = ()=>{ retry.classList.add("ast-chat-hidden"); loadChatHistory(); };
+  // #485 quality review, finding 8: a recovered overlay must also re-arm
+  // the keep-in-step poll -- a transient blip at open otherwise disabled
+  // re-sync for the overlay's whole life.
+  retry.onclick = ()=>{ retry.classList.add("ast-chat-hidden"); loadChatHistory(); startChatStatusSync(); };
   inputrow.appendChild(retry);
   overlay.appendChild(inputrow);
   return overlay;
@@ -9416,10 +9419,15 @@ async function loadChatHistory(){
   // repro, 2026-07-29: megabrain selected, fab-io's history rendered).
   const assistantQ = window.__assistantSelected
     ? "&assistant=" + encodeURIComponent(window.__assistantSelected) : "";
+  // #485 quality review, finding 3: request-generation guard -- two
+  // interleaved loads (rapid tab switches, the sync poll racing a click)
+  // must never render an OLDER response over a newer selection's log.
+  const gen = window.__chatHistoryGen = (window.__chatHistoryGen || 0) + 1;
   try{ data = await (await fetch("/assistant/history?n=30" + assistantQ)).json(); }catch{
-    renderChatOffline();
+    if(gen === window.__chatHistoryGen) renderChatOffline();
     return;
   }
+  if(gen !== window.__chatHistoryGen) return;   // superseded -- a newer load owns the log
   window.assistantChat.exchanges = (data && data.exchanges) || [];
   renderChatLastXToggle();
   renderChatLog();
@@ -9496,6 +9504,11 @@ function renderChatAssistantTabs(){
   const cands = window.__assistantCandidates || [];
   const nameEl = document.getElementById("ast-chat-assistant-name");
   const multi = cands.length >= 2;
+  // #485 quality review, finding 7: identical state -> no rebuild (the
+  // poll runs this every 10s; wiping the row steals keyboard focus).
+  const sig = cands.map(c => c.name).join("|") + "@" + (window.__assistantSelected || "") + "@" + multi;
+  if(wrap.dataset && wrap.dataset.sig === sig) return;
+  if(wrap.dataset) wrap.dataset.sig = sig;
   wrap.hidden = !multi;
   if(nameEl) nameEl.hidden = multi;
   wrap.innerHTML = "";
@@ -9529,8 +9542,15 @@ function startChatStatusSync(){
   window.__chatStatusTimer = setInterval(async ()=>{
     if(!document.getElementById("ast-chat-overlay")) return;
     if(window.__assistantSwitchBusy) return;   // a click-driven switch owns this tick
+    // #485 quality review, finding 4: a status response that was ALREADY
+    // in flight when a switch committed must not revert it -- re-check
+    // after the await (the switch bumps switchGen; busy may also have
+    // been raised meanwhile).
+    const tickGen = (window.assistantChat && window.assistantChat.switchGen) || 0;
     let status;
     try{ status = await (await fetch("/assistant/status")).json(); }catch{ return; }
+    if(window.__assistantSwitchBusy) return;
+    if((((window.assistantChat && window.assistantChat.switchGen) || 0)) !== tickGen) return;
     if(!status || status.gated) return;
     window.__assistantCandidates = status.candidates || [];
     window.__assistantSelected = status.selected || window.__assistantSelected;
