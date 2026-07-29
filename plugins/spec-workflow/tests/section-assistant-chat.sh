@@ -192,6 +192,12 @@ eval(extract("isChatTypingTarget"));
 defineConst("CHAT_SCROLL_BOTTOM_SLACK_PX");
 eval(extract("isChatLogAtBottom"));
 eval(extract("scrollChatLogToBottom"));
+// 2026-07-29: appendChatRow enriches assistant rows through the notes
+// renderer (chatEnrichObserver/enrichChatRowMarkdown) -- stubbed inert
+// here; the render POST path is exercised against the live server, not
+// this DOM stub.
+global.chatEnrichObserver = () => false;
+global.enrichChatRowMarkdown = () => {};
 eval(extract("appendChatRow"));
 eval(extract("renderChatLog"));
 eval(extract("renderChatLastXToggle"));
@@ -229,6 +235,10 @@ eval(extract("chatInputKeydown"));
 eval(extract("loadChatHistory"));
 // #480: openChatOverlay's fix calls focusChatInput() -- extract it first.
 eval(extract("focusChatInput"));
+// 2026-07-29: openChatOverlay resolves the selected assistant's media
+// context (setAssistantMediaCtx) from the status payload -- stubbed as a
+// recorder here.
+global.setAssistantMediaCtx = () => {};
 eval(extract("openChatOverlay"));
 eval(extract("closeChatOverlay"));
 eval(extract("handleAssistantChatKeydown"));
@@ -750,6 +760,12 @@ window.assistantChat = { queue: [], inFlight: false, exchanges: [], lastX: 2, el
 defineConst("CHAT_SCROLL_BOTTOM_SLACK_PX");
 eval(extract("isChatLogAtBottom"));
 eval(extract("scrollChatLogToBottom"));
+// 2026-07-29: appendChatRow enriches assistant rows through the notes
+// renderer (chatEnrichObserver/enrichChatRowMarkdown) -- stubbed inert
+// here; the render POST path is exercised against the live server, not
+// this DOM stub.
+global.chatEnrichObserver = () => false;
+global.enrichChatRowMarkdown = () => {};
 eval(extract("appendChatRow"));
 eval(extract("renderChatLog"));
 eval(extract("renderChatLastXToggle"));
@@ -786,6 +802,10 @@ eval(extract("chatInputKeydown"));
 eval(extract("loadChatHistory"));
 // #480: openChatOverlay's fix calls focusChatInput() -- extract it first.
 eval(extract("focusChatInput"));
+// 2026-07-29: openChatOverlay resolves the selected assistant's media
+// context (setAssistantMediaCtx) from the status payload -- stubbed as a
+// recorder here.
+global.setAssistantMediaCtx = () => {};
 eval(extract("openChatOverlay"));
 eval(extract("closeChatOverlay"));
 

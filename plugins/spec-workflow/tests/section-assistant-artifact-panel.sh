@@ -357,6 +357,12 @@ eval(extract("ensureArtifactPanel"));
 eval(extract("appendArtifactRailRow"));
 eval(extract("mountArtifactViewer"));
 eval(extract("renderArtifactPanel"));
+// 2026-07-29 (AST-083-r1 chat tiles): applyArtifactTaskEvent also renders
+// the chat overlay's live media tile -- stubbed as a recorder here (its
+// real DOM behavior is covered by the chat-tile checks, not this panel
+// harness).
+let chatTileCalls = [];
+global.renderChatArtifactTile = (task, pstate) => { chatTileCalls.push({task, pstate}); };
 eval(extract("applyArtifactTaskEvent"));
 eval(extract("linkArtifactInChat"));
 eval(extract("renderQueueChip"));
