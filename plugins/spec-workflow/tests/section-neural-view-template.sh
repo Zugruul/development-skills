@@ -1650,7 +1650,7 @@ check "the graph viewport flex-fills the .nmmd box in the detached window, repla
 check "bar right-alignment group is anchored by a SINGLE margin-left:auto on the first trailing button (reset) -- not one auto per button, which doesn't stack" '.nmmd-bar .nmmd-reset{margin-left:auto}' "$(cat "$NVHTML")"
 
 echo "-- reset affordance: a visible button (chosen over double-click-only, which has no discoverable affordance) -- double-click is ALSO wired as a bonus, matching the app-wide dblclick-to-reset convention (main canvas resetView(), 3D block viewer) --"
-check "mermaid bar gets a reset (fit-to-view) button, same .iconbtn idiom as Text/Graph/Copy/Detach" '<button class="iconbtn nmmd-reset" type="button" title="Reset zoom/pan to fit">⤢</button>' "$(cat "$NVHTML")"
+check "mermaid bar gets a reset (fit-to-view) button, same .iconbtn idiom as Text/Graph/Copy/Detach" '<button class="iconbtn nmmd-reset" type="button" title="Reframe -- reposition the view so the whole diagram is visible">Fit</button>' "$(cat "$NVHTML")"
 check "reset button re-fits the current SVG" 'box.querySelector(".nmmd-reset").onclick = ()=>{' "$(cat "$NVHTML")"
 check "double-click over the diagram also re-fits it, reusing the app's existing dblclick-to-reset convention (main canvas + 3D block viewer)" 'graphView.addEventListener("dblclick", ()=>{' "$(cat "$NVHTML")"
 

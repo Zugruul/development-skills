@@ -1004,6 +1004,10 @@ body.chat-docked #search-filters-panel{height:calc((100vh - 130px)*.62)}
 /* #485: per-assistant tabs -- pills in the header; the active one mirrors
    the SERVER-side selection. */
 .ast-chat-tabs{display:flex;align-items:center;gap:.25rem;flex-wrap:wrap;min-width:0}
+/* author display:flex overrides the UA [hidden] rule -- explicit
+   companion, same idiom as #voice-viz[hidden]/#ast-switch-dropdown[hidden]
+   (#485 review round 1, finding 8). */
+.ast-chat-tabs[hidden]{display:none}
 .ast-chat-tab{background:transparent;border:1px solid var(--border);border-radius:5px;
   color:var(--muted);font-family:var(--mono);font-size:.6rem;letter-spacing:.05em;
   text-transform:uppercase;padding:.16rem .45rem;cursor:pointer;
@@ -1014,7 +1018,13 @@ body.chat-docked #search-filters-panel{height:calc((100vh - 130px)*.62)}
 .ast-chat-detach{background:transparent;border:1px solid var(--border);border-radius:5px;
   color:var(--muted);font-family:var(--mono);font-size:.72rem;line-height:1;
   padding:.15rem .4rem;cursor:pointer}
-.ast-chat-detach:hover,.ast-chat-detach[aria-pressed="true"]{border-color:var(--cyan);color:var(--cyan)}
+.ast-chat-detach:hover{border-color:var(--cyan);color:var(--cyan)}
+.ast-chat-detach[hidden]{display:none}
+/* pull-to-detach grip -- same ⠿ language as the note-inspect sidebar */
+.ast-chat-grip{background:transparent;border:0;color:var(--muted);opacity:.7;
+  font-size:.72rem;line-height:1;padding:.1rem .15rem;cursor:grab}
+.ast-chat-grip:hover{color:var(--cyan);opacity:1}
+.ast-chat-overlay.dragging .ast-chat-grip{cursor:grabbing}
 /* #459 flagged extension 2 (WHO AM I TALKING TO): the voice panel already
    names the selected assistant (#voice-viz-name) but the chat overlay
    never did -- set from GET /assistant/status's own selected field in
@@ -6571,7 +6581,7 @@ function makeMermaidBlock(src){
         '<button class="iconbtn nmmd-text" type="button" aria-pressed="false">Text</button>' +
         '<button class="iconbtn nmmd-graph active" type="button" aria-pressed="true">Graph</button>' +
       '</div>' +
-      '<button class="iconbtn nmmd-reset" type="button" title="Reset zoom/pan to fit">⤢</button>' +
+      '<button class="iconbtn nmmd-reset" type="button" title="Reframe -- reposition the view so the whole diagram is visible">Fit</button>' +
       '<button class="iconbtn nmmd-copy" type="button">Copy</button>' +
       '<button class="iconbtn nmmd-pop" type="button">Detach</button>' +
       '<button class="iconbtn nmmd-fs" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button></div>' +
@@ -6933,8 +6943,17 @@ function make3dBlock(name, url){
     '<button class="iconbtn n3d-nt" type="button">New tab</button>' +
     '<button class="iconbtn n3d-dl" type="button">Save to</button>' +
     '<button class="iconbtn n3d-spin" type="button" title="Toggle auto-rotation" aria-pressed="true">Spin</button>' +
-    '<button class="iconbtn n3d-pop" type="button">Detach</button></div>';
+    '<button class="iconbtn n3d-pop" type="button">Detach</button>' +
+    '<button class="iconbtn n3d-fsq" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button></div>';
   zone.querySelector(".n3d-pop").onclick = ()=>open3dWindow(name, url);
+  // real fullscreen for the inline block (human-directed 2026-07-29:
+  // parity with the mermaid block's own ⛶) -- toggles browser fullscreen
+  // on the block itself; the ResizeObserver in boot3dViewer re-fits.
+  const fsq = zone.querySelector(".n3d-fsq");
+  if(fsq) fsq.onclick = ()=>{
+    if(document.fullscreenElement === box) document.exitFullscreen();
+    else if(box.requestFullscreen) box.requestFullscreen().catch(()=>{});
+  };
   wireModelFileActions(zone, name, url);
   box.appendChild(zone);
   // .scad blocks: 3D-first with a Code toggle (2026-07-29, human-directed)
@@ -7250,6 +7269,37 @@ function detachNote(fromRect){
 // marked data-drag (the whole header strip) — pointerdowns on buttons/links
 // inside a surface still click through, everything else starts the drag
 function wireWinDrag(win){
+  // Maximize/restore (human-directed 2026-07-29): every detached window
+  // gets a real fullscreen-style toggle -- expand to fill the viewport,
+  // click again to restore the previous geometry. Wired here because
+  // this is the one choke point every detached window already passes
+  // through; the button slots in just before the bar's close control.
+  const maxBar = win.querySelector && win.querySelector(".mw-bar, .aiw-bar");
+  if(maxBar && !win.querySelector(".mw-max")){
+    const maxBtn = document.createElement("button");
+    maxBtn.type = "button";
+    maxBtn.className = "close mw-max";
+    maxBtn.textContent = "⛶";
+    maxBtn.title = "Expand to fill the screen";
+    maxBtn.setAttribute("aria-label", "Expand to fill the screen");
+    maxBtn.onclick = ()=>{
+      if(win.__preMax){
+        win.style.left = win.__preMax.left; win.style.top = win.__preMax.top;
+        win.style.width = win.__preMax.width; win.style.height = win.__preMax.height;
+        win.__preMax = null;
+        maxBtn.title = "Expand to fill the screen";
+        maxBtn.setAttribute("aria-label", "Expand to fill the screen");
+      }else{
+        win.__preMax = {left: win.style.left, top: win.style.top, width: win.style.width, height: win.style.height};
+        win.style.left = "8px"; win.style.top = "8px";
+        win.style.width = "calc(100vw - 16px)"; win.style.height = "calc(100vh - 16px)";
+        win.style.zIndex = ++noteWinZ;
+        maxBtn.title = "Restore previous size";
+        maxBtn.setAttribute("aria-label", "Restore previous size");
+      }
+    };
+    maxBar.insertBefore(maxBtn, maxBar.lastElementChild || null);
+  }
   const surfaces = [win.querySelector(".grip"), ...win.querySelectorAll("[data-drag]")].filter(Boolean);
   let off = null;
   for(const surf of surfaces){
@@ -8564,22 +8614,56 @@ function closeAssistantSwitchDropdown(){
 // dependent surface (voice header, gate, digest, chat tabs + history,
 // media ctx) refreshes from the same call.
 async function switchAssistantTo(name){
-  let resp = null;
+  // #485 review round 1, finding 10: one switch at a time -- rapid tab
+  // clicks otherwise interleave selects + history loads out of order.
+  if(window.__assistantSwitchBusy) return null;
+  window.__assistantSwitchBusy = true;
   try{
-    const r = await fetch("/assistant/select", {method: "POST", body: JSON.stringify({name})});
-    resp = await r.json();
-  }catch{}
-  setVoiceHeaderName(name);
-  gateVoiceAndChat(false);
-  // AST-024 (#321): only a REAL switch's response carries `digest`; an
-  // undefined payload is a harmless clear (panel stays hidden).
-  renderAssistantDigest(resp && resp.digest);
-  window.__assistantSelected = name;
-  if(document.getElementById("ast-chat-overlay")){
-    renderChatAssistantTabs();
-    await loadChatHistory();
+    let resp = null, ok = false;
+    try{
+      const r = await fetch("/assistant/select", {method: "POST", body: JSON.stringify({name})});
+      ok = !!(r && r.ok);
+      resp = await r.json();
+    }catch{}
+    // finding 3: the SERVER's echo is the truth -- a 404/400 (renamed/
+    // disabled assistant, ambiguous name) must never become client-only
+    // selection state. On failure: refresh from status and stop.
+    if(!ok){
+      try{
+        const status = await (await fetch("/assistant/status")).json();
+        window.__assistantCandidates = (status && status.candidates) || [];
+        window.__assistantSelected = (status && status.selected) || window.__assistantSelected;
+        renderChatAssistantTabs();
+      }catch{}
+      return null;
+    }
+    const confirmed = (resp && resp.selected) || name;
+    setVoiceHeaderName(confirmed);
+    gateVoiceAndChat(false);
+    // AST-024 (#321): only a REAL switch's response carries `digest`; an
+    // undefined payload is a harmless clear (panel stays hidden).
+    renderAssistantDigest(resp && resp.digest);
+    window.__assistantSelected = confirmed;
+    // finding 4: media ctx follows the switch immediately (lazy row
+    // enrichment must never hydrate B's links against A's brain).
+    setAssistantMediaCtx({selected: confirmed, candidates: window.__assistantCandidates});
+    // finding 5 (§7.7): the outgoing assistant's queued/in-flight turn
+    // state never bleeds into the incoming one -- queued sends are
+    // dropped and any in-flight reply is discarded on arrival
+    // (dispatchNextChat checks switchGen).
+    window.assistantChat.queue = [];
+    window.assistantChat.switchGen = (window.assistantChat.switchGen || 0) + 1;
+    // the sync loop's baseline follows a click-switch so the next tick
+    // doesn't re-load the history it just loaded.
+    window.__chatSyncBaseline = confirmed;
+    if(document.getElementById("ast-chat-overlay")){
+      renderChatAssistantTabs();
+      await loadChatHistory();
+    }
+    return resp;
+  }finally{
+    window.__assistantSwitchBusy = false;
   }
-  return resp;
 }
 async function openAssistantSwitchDropdown(){
   const dd = document.getElementById("ast-switch-dropdown");
@@ -8668,15 +8752,11 @@ async function quickSwitchAssistant(){
   if(candidates.length < 2){ openAssistantSwitchDropdown(); return; }
   const cur = Math.max(0, candidates.findIndex(c => c.name === (status && status.selected)));
   const next = candidates[(cur + 1) % candidates.length];
-  let resp = null;
-  try{
-    const r = await fetch("/assistant/select", {method:"POST", body: JSON.stringify({name: next.name})});
-    resp = await r.json();
-  }catch{}
   closeAssistantSwitchDropdown();
-  setVoiceHeaderName(next.name);
-  gateVoiceAndChat(false);
-  renderAssistantDigest(resp && resp.digest);
+  // #485 review round 1, finding 1: this surface used to carry its own
+  // inline copy of the switch flow -- Cmd+K then left the chat log on the
+  // OLD assistant's transcript. One flow, every surface.
+  await switchAssistantTo(next.name);
 }
 function handleAssistantSwitchKeydown(ev){
   if((ev.key !== "k" && ev.key !== "K") || !(ev.metaKey || ev.ctrlKey)) return;
@@ -9010,6 +9090,44 @@ function buildChatOverlay(){
   overlay.className = "ast-chat-overlay";
   const header = document.createElement("div");
   header.className = "ast-chat-header";
+  // Pull-to-detach grip (human-directed 2026-07-29): same experience as
+  // the note-inspect sidebar's ⠿ -- grabbing it while DOCKED detaches
+  // immediately and the new floating window rides the same pointer until
+  // release. While detached, the header itself drags (wireWinDrag) and
+  // the dock button (below) re-attaches.
+  const grip = document.createElement("button");
+  grip.type = "button";
+  grip.className = "ast-chat-grip";
+  grip.textContent = "⠿";
+  grip.title = "Drag to detach the chat";
+  grip.setAttribute("aria-label", "Drag to detach the chat into a floating window");
+  if(grip.addEventListener) grip.addEventListener("pointerdown", ev=>{
+    if(uiState.chatDetached === true) return;   // floating already -- header drag owns moves
+    const r = overlay.getBoundingClientRect();
+    setChatDetached(true);
+    overlay.style.left = r.left + "px";
+    overlay.style.top = r.top + "px";
+    overlay.style.width = r.width + "px";
+    overlay.style.height = Math.min(r.height, Math.round(innerHeight*.7)) + "px";
+    const off = {dx: ev.clientX - r.left, dy: ev.clientY - r.top};
+    overlay.classList.add("dragging");
+    try{ grip.setPointerCapture(ev.pointerId); }catch{}
+    const move = e=>{
+      overlay.style.left = Math.max(0, e.clientX - off.dx) + "px";
+      overlay.style.top = Math.max(0, e.clientY - off.dy) + "px";
+    };
+    const up = e=>{
+      overlay.classList.remove("dragging");
+      try{ grip.releasePointerCapture(e.pointerId); }catch{}
+      grip.removeEventListener("pointermove", move);
+      grip.removeEventListener("pointerup", up);
+      saveChatWinRect(overlay);
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", up);
+    if(ev.preventDefault) ev.preventDefault();
+  });
+  header.appendChild(grip);
   // #459 review (visual pass): the mockup's header is a status dot THEN
   // the label (.mk-side-hd's .mk-dot) -- present always, not tied to any
   // particular state, same as this app's own #status dot at the top of
@@ -9033,7 +9151,11 @@ function buildChatOverlay(){
   const tabsWrap = document.createElement("div");
   tabsWrap.id = "ast-chat-tabs";
   tabsWrap.className = "ast-chat-tabs";
-  tabsWrap.setAttribute("role", "tablist");
+  // role=group + aria-pressed, NOT a half tablist (#485 review round 1,
+  // finding 9 -- the same call #459 made for the show-last selector: the
+  // full ARIA tab pattern needs tabpanel/aria-controls/roving tabindex,
+  // which this compact pill row deliberately is not).
+  tabsWrap.setAttribute("role", "group");
   tabsWrap.setAttribute("aria-label", "Assistants");
   tabsWrap.hidden = true;
   header.appendChild(tabsWrap);
@@ -9060,14 +9182,16 @@ function buildChatOverlay(){
   // 2/3 cap, see CSS). The header doubles as the drag surface when
   // detached (wireWinDrag's [data-drag] contract; its own button guard
   // keeps SHOW LAST/× clicks working).
+  // Re-attach button: appears only while floating (detaching is the
+  // grip-pull above), snaps the chat back into its docked column slot.
   const detachBtn = document.createElement("button");
   detachBtn.id = "ast-chat-detach";
   detachBtn.className = "ast-chat-detach";
-  detachBtn.setAttribute("aria-pressed", "false");
-  detachBtn.textContent = "⧉";
-  detachBtn.title = "Detach chat into a floating window";
-  detachBtn.setAttribute("aria-label", "Detach chat into a floating window");
-  detachBtn.onclick = ()=>{ setChatDetached(!(uiState.chatDetached === true)); };
+  detachBtn.hidden = true;
+  detachBtn.textContent = "⇱";
+  detachBtn.title = "Dock the chat back into the left column";
+  detachBtn.setAttribute("aria-label", "Dock the chat back into the left column");
+  detachBtn.onclick = ()=>{ setChatDetached(false); };
   header.appendChild(detachBtn);
   const close = document.createElement("button");
   close.className = "ast-chat-close";
@@ -9174,6 +9298,9 @@ async function dispatchNextChat(){
   // speakReply(..., turnId) shares the SAME id its stt-start/stt-end
   // spans already carry (see startStt's span-correlation comment).
   const {text, turnId} = item;
+  // #485 finding 5: snapshot the switch generation at send time -- an
+  // assistant switch mid-flight marks this turn's rendering stale.
+  const genAtSend = window.assistantChat.switchGen || 0;
   window.assistantChat.inFlight = true;
   const log = document.getElementById("ast-chat-log");
   appendChatRow(log, "user", text, null);
@@ -9202,6 +9329,16 @@ async function dispatchNextChat(){
   }
   stopChatElapsed();
   window.assistantChat.inFlight = false;
+  // #485 review round 1, finding 5 (§7.7): an assistant switch happened
+  // while this turn was in flight -- its reply belongs to the OUTGOING
+  // assistant's session and must not render into (or be cached with) the
+  // incoming assistant's log. The exchange is still durably in the
+  // outgoing assistant's server-side transcript; only this client-side
+  // rendering is discarded.
+  if((window.assistantChat.switchGen || 0) !== genAtSend){
+    dispatchNextChat();
+    return;
+  }
   if(resp.status === 403){
     window.assistantChat.queue = [];
     renderChatGated(document.getElementById("ast-chat-overlay"), payload);
@@ -9334,17 +9471,18 @@ async function openChatOverlay(){
   // the selected assistant's media context so relative media/chat/ links
   // in replies hydrate against its brain via /file/.
   setAssistantMediaCtx(status);
-  // #485: per-assistant tabs from the same response + the keep-in-step
-  // poll for as long as the overlay lives.
   window.__assistantCandidates = (status && status.candidates) || [];
-  renderChatAssistantTabs();
-  startChatStatusSync();
   const nameEl = document.getElementById("ast-chat-assistant-name");
   if(nameEl) nameEl.textContent = window.__assistantSelected || "";
   if(!status || status.gated || status.outcome === "none"){
     renderChatGated(overlay, status);
     return;
   }
+  // #485 (review round 1, finding 7): tabs + the keep-in-step poll only
+  // exist on an UNGATED overlay -- clickable tabs on a gated overlay
+  // could un-gate server-side while the state line still said otherwise.
+  renderChatAssistantTabs();
+  startChatStatusSync();
   await loadChatHistory();
 }
 // #485: per-assistant chat tabs. Candidates cache from the latest
@@ -9367,8 +9505,7 @@ function renderChatAssistantTabs(){
     const tab = document.createElement("button");
     tab.type = "button";
     tab.className = "ast-chat-tab" + (active ? " ast-chat-tab-active" : "");
-    tab.setAttribute("role", "tab");
-    tab.setAttribute("aria-selected", String(active));
+    tab.setAttribute("aria-pressed", String(active));
     tab.textContent = c.name;
     tab.title = active ? ("Talking to " + c.name) : ("Switch to " + c.name + " (loads its own history)");
     tab.onclick = ()=>{ if(!active) switchAssistantTo(c.name); };
@@ -9380,19 +9517,27 @@ function renderChatAssistantTabs(){
 // restart left the header lying about who answers. While the overlay is
 // open, this poll keeps tabs/name/history in step with the server.
 window.__chatStatusTimer = window.__chatStatusTimer || null;
+// #485 review round 1, finding 2: the change detector's baseline is OWNED
+// BY THIS LOOP (last value THIS loop synced), never window.
+// __assistantSelected -- other surfaces (Cmd+K, the ⚙ panel, the dropdown)
+// write that mirror first, which used to make the comparison read "no
+// change" and pin the log to a stale transcript forever.
+window.__chatSyncBaseline = window.__chatSyncBaseline !== undefined ? window.__chatSyncBaseline : null;
 function startChatStatusSync(){
   if(window.__chatStatusTimer) return;
+  window.__chatSyncBaseline = window.__assistantSelected || null;
   window.__chatStatusTimer = setInterval(async ()=>{
     if(!document.getElementById("ast-chat-overlay")) return;
+    if(window.__assistantSwitchBusy) return;   // a click-driven switch owns this tick
     let status;
     try{ status = await (await fetch("/assistant/status")).json(); }catch{ return; }
     if(!status || status.gated) return;
-    const prevSelected = window.__assistantSelected;
     window.__assistantCandidates = status.candidates || [];
-    window.__assistantSelected = status.selected || prevSelected;
+    window.__assistantSelected = status.selected || window.__assistantSelected;
     setAssistantMediaCtx(status);
     renderChatAssistantTabs();
-    if(status.selected && status.selected !== prevSelected){
+    if(status.selected && status.selected !== window.__chatSyncBaseline){
+      window.__chatSyncBaseline = status.selected;
       const nameEl = document.getElementById("ast-chat-assistant-name");
       if(nameEl) nameEl.textContent = status.selected;
       loadChatHistory();
@@ -9432,11 +9577,7 @@ function setChatDetached(on){
   if(!overlay) return;
   overlay.classList.toggle("detached", !!on);
   const btn = document.getElementById("ast-chat-detach");
-  if(btn){
-    btn.setAttribute("aria-pressed", String(!!on));
-    btn.textContent = on ? "⇱" : "⧉";
-    btn.title = on ? "Dock chat back into the left column" : "Detach chat into a floating window";
-  }
+  if(btn) btn.hidden = !on;   // dock button exists only while floating
   const header = overlay.querySelector ? overlay.querySelector(".ast-chat-header") : null;
   if(on){
     const r = uiState.chatWinRect || {

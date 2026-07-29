@@ -418,7 +418,9 @@ global.fetch = async (url, opts) => {
         return { json: async () => statusResponse };
     }
     if (url === "/assistant/select") {
-        return { json: async () => selectResponse };
+        // #485: switchAssistantTo checks r.ok -- absent ok reads as a
+        // failed select and the flow honestly refuses to switch.
+        return { ok: true, json: async () => selectResponse };
     }
     return { json: async () => ({}) };
 };
@@ -454,6 +456,8 @@ eval(extract("closeAssistantSwitchDropdown"));
 // this DOM stub).
 if (typeof global.renderChatAssistantTabs === "undefined") global.renderChatAssistantTabs = () => {};
 if (typeof global.loadChatHistory === "undefined") global.loadChatHistory = async () => {};
+if (typeof global.setAssistantMediaCtx === "undefined") global.setAssistantMediaCtx = () => {};
+if (typeof global.window.assistantChat === "undefined") global.window.assistantChat = { queue: [], inFlight: false, switchGen: 0 };
 eval(extract("switchAssistantTo"));
 eval(extract("openAssistantSwitchDropdown"));
 eval(extract("setAskAgainUi"));

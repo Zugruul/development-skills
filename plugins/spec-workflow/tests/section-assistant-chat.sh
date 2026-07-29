@@ -883,3 +883,127 @@ check "the composer Send button dispatches identically to Enter and clears the i
 check "the empty-state placeholder row is cleared once a real turn starts (no lingering row)" "EMPTY_STATE_CLEARS_ON_SEND_OK true" "$tmpl_ac2_out"
 check "the whole AST-083 chat-design template script completes" "ALL_OK true" "$tmpl_ac2_out"
 if [[ "$tmpl_ac2_rc" -ne 0 ]]; then echo "$tmpl_ac2_out" >&2; fi
+
+# ---- #485: per-assistant chat tabs -- REAL functions under test (review
+# round 1, finding 6: the tab machinery previously had zero direct
+# coverage; every other harness stubs it) ----
+echo "-- template: #485 per-assistant tabs (real renderChatAssistantTabs/switchAssistantTo/status sync) --"
+_ac3_node="$(mktemp).cjs"
+cat >"$_ac3_node" <<'NODEJS'
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+function extract(name) {
+    const re = new RegExp("(?:async )?function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\n\\}\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find function " + name + "() in template");
+    return m[0];
+}
+global.window = global;
+const elements = {};
+function mkEl(id){
+    const el = {
+        _id: id, _classes: new Set(), children: [], hidden: false, textContent: "", title: "",
+        attrs: {}, dataset: {},
+        classList: { add(c){ el._classes.add(c); }, remove(c){ el._classes.delete(c); },
+            contains(c){ return el._classes.has(c); }, toggle(c, on){ if(on) el._classes.add(c); else el._classes.delete(c); } },
+        setAttribute(k, v){ el.attrs[k] = String(v); },
+        getAttribute(k){ return el.attrs[k] !== undefined ? el.attrs[k] : null; },
+        appendChild(c){ el.children.push(c); return c; },
+        set innerHTML(v){ if(v === "") el.children = []; el._html = v; },
+        get innerHTML(){ return el._html || ""; },
+    };
+    if (id) elements[id] = el;
+    return el;
+}
+mkEl("ast-chat-tabs"); mkEl("ast-chat-assistant-name"); mkEl("ast-chat-overlay"); mkEl("ast-chat-log");
+global.document = {
+    getElementById(id){ return elements[id] || null; },
+    createElement(){ return mkEl(null); },
+};
+let fetchCalls = [];
+let selectResponse = { ok: true, body: { selected: "friday", digest: null } };
+global.fetch = async (url, opts) => {
+    fetchCalls.push({url, opts});
+    if (String(url) === "/assistant/select") return { ok: selectResponse.ok, json: async () => selectResponse.body };
+    return { ok: true, json: async () => ({}) };
+};
+let historyLoads = 0;
+global.loadChatHistory = async () => { historyLoads++; };
+global.setVoiceHeaderName = (n) => { global.__headerName = n; };
+global.gateVoiceAndChat = () => {};
+global.renderAssistantDigest = () => {};
+global.setAssistantMediaCtx = () => {};
+global.uiState = {};
+window.assistantChat = { queue: [{text: "stale queued"}], inFlight: false, switchGen: 0 };
+window.__assistantSelected = "jarvis";
+window.__assistantCandidates = [{name: "jarvis"}, {name: "friday"}];
+eval(extract("renderChatAssistantTabs"));
+eval(extract("switchAssistantTo"));
+(async () => {
+    // multi-candidate: one pill per assistant, active mirrors selection, name span hidden
+    renderChatAssistantTabs();
+    const wrap = elements["ast-chat-tabs"];
+    if (wrap.hidden !== false) throw new Error("2 candidates must show the tab row");
+    if (wrap.children.length !== 2) throw new Error("expected 2 tabs, got " + wrap.children.length);
+    if (wrap.children[0].getAttribute("aria-pressed") !== "true") throw new Error("active tab must mirror window.__assistantSelected");
+    if (wrap.children[1].getAttribute("aria-pressed") !== "false") throw new Error("inactive tab must not read pressed");
+    if (elements["ast-chat-assistant-name"].hidden !== true) throw new Error("multi-candidate must hide the single-name span");
+    console.log("TABS_RENDER_OK true");
+
+    // single candidate: plain name stays, tab row hides
+    window.__assistantCandidates = [{name: "jarvis"}];
+    renderChatAssistantTabs();
+    if (wrap.hidden !== true) throw new Error("single candidate must hide the tab row");
+    if (elements["ast-chat-assistant-name"].hidden !== false) throw new Error("single candidate keeps the name span");
+    console.log("TABS_SINGLE_NAME_OK true");
+
+    // click-switch: POSTs /assistant/select, adopts the SERVER's echoed
+    // selection, flushes the outgoing queue, bumps switchGen, reloads history
+    window.__assistantCandidates = [{name: "jarvis"}, {name: "friday"}];
+    renderChatAssistantTabs();
+    await switchAssistantTo("friday");
+    if (!fetchCalls.some(c => c.url === "/assistant/select")) throw new Error("switch must POST /assistant/select");
+    if (window.__assistantSelected !== "friday") throw new Error("switch must adopt the server-echoed selection");
+    if (window.assistantChat.queue.length !== 0) throw new Error("switch must flush the outgoing assistant's queued sends (§7.7)");
+    if (window.assistantChat.switchGen !== 1) throw new Error("switch must bump switchGen so in-flight replies discard");
+    if (historyLoads !== 1) throw new Error("switch must reload the incoming assistant's history exactly once, got " + historyLoads);
+    console.log("TABS_SWITCH_FLOW_OK true");
+
+    // failed select (404: renamed/disabled): selection must NOT become client-only state
+    selectResponse = { ok: false, body: { error: "no assistant named ghost" } };
+    fetchCalls = [];
+    await switchAssistantTo("ghost");
+    if (window.__assistantSelected === "ghost") throw new Error("a failed select must never set client-only selection (§7.5)");
+    console.log("TABS_FAILED_SELECT_HONEST_OK true");
+
+    // status sync: arms one interval, teardown clears it; baseline is loop-owned
+    let intervals = [], cleared = [];
+    global.setInterval = (fn, ms) => { intervals.push({fn, ms}); return intervals.length; };
+    global.clearInterval = (id) => { cleared.push(id); };
+    eval(extract("startChatStatusSync"));
+    eval(extract("stopChatStatusSync"));
+    window.__chatStatusTimer = null;
+    window.__chatSyncBaseline = null;
+    startChatStatusSync();
+    if (intervals.length !== 1) throw new Error("sync must arm exactly one interval");
+    if (window.__chatSyncBaseline !== "friday") throw new Error("sync baseline must seed from the current selection");
+    startChatStatusSync();
+    if (intervals.length !== 1) throw new Error("re-arming must be a no-op while armed");
+    stopChatStatusSync();
+    if (cleared.length !== 1 || window.__chatStatusTimer !== null) throw new Error("teardown must clear the interval");
+    console.log("TABS_SYNC_LIFECYCLE_OK true");
+
+    console.log("ALL_OK true");
+})().catch(e => { console.error("FAIL", e.message); process.exit(1); });
+NODEJS
+tmpl_ac3_out="$(node "$_ac3_node" "$NVHTML_CHAT" 2>&1)"
+tmpl_ac3_rc=$?
+rm -f "$_ac3_node"
+check_rc "#485 tabs script exits 0" 0 "$tmpl_ac3_rc"
+check "#485: tabs render one pill per candidate, active mirrors the selection, name span hides" "TABS_RENDER_OK true" "$tmpl_ac3_out"
+check "#485: single candidate keeps the plain name (no tab row)" "TABS_SINGLE_NAME_OK true" "$tmpl_ac3_out"
+check "#485: a tab click POSTs /assistant/select, adopts the server echo, flushes the queue, bumps switchGen, reloads history" "TABS_SWITCH_FLOW_OK true" "$tmpl_ac3_out"
+check "#485 (§7.5): a FAILED select never becomes client-only selection state" "TABS_FAILED_SELECT_HONEST_OK true" "$tmpl_ac3_out"
+check "#485: the status sync arms once, re-arm is a no-op, teardown clears; baseline is loop-owned" "TABS_SYNC_LIFECYCLE_OK true" "$tmpl_ac3_out"
+check "the whole #485 tabs script completes" "ALL_OK true" "$tmpl_ac3_out"
+if [[ "$tmpl_ac3_rc" -ne 0 ]]; then echo "$tmpl_ac3_out" >&2; fi

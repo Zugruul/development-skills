@@ -248,7 +248,9 @@ global.fetch = async (url, opts) => {
     // #399: openAssistantSwitchPicker's palette row click POSTs here and
     // reads back `digest` -- selectResponse lets tests control that.
     if (url === "/assistant/select") {
-        return { json: async () => selectResponse || {} };
+        // #485: switchAssistantTo checks r.ok and adopts the server echo --
+        // a stub without ok:true would read as a FAILED select.
+        return { ok: true, json: async () => selectResponse || {} };
     }
     return { json: async () => ({}) };
 };
@@ -305,6 +307,8 @@ eval(extract("closeAssistantSwitchDropdown"));
 // this DOM stub).
 if (typeof global.renderChatAssistantTabs === "undefined") global.renderChatAssistantTabs = () => {};
 if (typeof global.loadChatHistory === "undefined") global.loadChatHistory = async () => {};
+if (typeof global.setAssistantMediaCtx === "undefined") global.setAssistantMediaCtx = () => {};
+if (typeof global.window.assistantChat === "undefined") global.window.assistantChat = { queue: [], inFlight: false, switchGen: 0 };
 eval(extract("switchAssistantTo"));
 eval(extract("openAssistantSwitchDropdown"));
 eval(extract("toggleAssistantSwitchDropdown"));
