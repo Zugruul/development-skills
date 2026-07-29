@@ -14,6 +14,13 @@
   > Closes #490
   > Closes #491
 
+### Other
+- retro(490,491): outcomes, 2 notes minted, feedback routed (`3090145`)
+  > - 4 reviewer-note outcomes recorded for the hotfix reviews.
+  > - dev/css-shorthand-specificity-trap: shorthand on a higher-specificity selector silently resets longhands; verify computed style.
+  > - orchestrator/self-authored-code-needs-adversarial-review: do-now orchestrator-authored code still gets both review passes, in parallel with the gate.
+  > - Feedback: 3 items routed (1 brain-note, 1 backlog -> the doc-only re-gate exemption, 1 ignore), feed archived.
+
 ## v0.57.1 — 2026-07-29
 
 ### Fixes
