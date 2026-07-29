@@ -399,6 +399,7 @@ let neuralSpeakCalls = [];
 window.neuralVoice = { speakChunks(chunks, onDone){ neuralSpeakCalls.push({chunks, onDone}); } };
 eval(extract("voiceOn"));
 eval(extract("chunkSpeechText"));
+eval(extract("speechTextForReply"));
 eval(extract("speakReply"));
 
 uiState.vdir = "out"; // the default -- OUT-only hides the IN bar by design
@@ -826,6 +827,11 @@ eval(extract("sttRemovePendingBubble"));
 // harness exercises; the loop controller's own harness above covers it).
 global.voiceBargeWatchStart = () => {};
 global.voiceBargeWatchStop = () => {};
+// speech sanitizer (2026-07-29): spoken text is cleaned of markdown/code
+// syntax -- extract the REAL function so speakReply's chunking behavior
+// stays exercised end-to-end (plain text passes through unchanged).
+eval(extract("speechTextForReply"));
+eval(extract("speechTextForReply"));
 eval(extract("speakReply"));
 eval(extract("dispatchNextChat"));
 eval(extract("queueOrSendChat"));

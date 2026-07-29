@@ -1332,6 +1332,15 @@ body.chat-docked #search-filters-panel{height:calc((100vh - 130px)*.62)}
 .ast-chat-row th,.ast-chat-row td{border:1px solid var(--border);padding:.15rem .4rem;font-size:.62rem}
 .ast-chat-row img.nm{max-width:100%;border-radius:6px;display:block;margin:.3rem 0;cursor:zoom-in}
 .ast-chat-row .ncode{max-width:100%}
+/* media-block chrome shrinks inside chat bubbles (human report 2026-07-29:
+   "these buttons on the chat are too big") -- mermaid/code/3D action bars
+   drop to chat scale without touching their note-panel size. */
+.ast-chat-row .nmmd-bar .iconbtn,
+.ast-chat-row .ncode-bar .iconbtn,
+.ast-chat-row .mw-actions .iconbtn{font-size:.54rem;padding:.1rem .35rem;border-radius:4px;line-height:1.3}
+.ast-chat-row .nmmd-bar{padding:.18rem .3rem;gap:.2rem}
+.ast-chat-row .ncode-bar{padding:.2rem .4rem;gap:.25rem}
+.ast-chat-row .nmmd-graph-view{height:240px}
 .nmmd{margin:.4rem 0;border:1px solid var(--border);border-radius:8px;background:rgba(4,7,13,.5);overflow:hidden}
 .nmmd-bar{display:flex;align-items:center;gap:.4rem;padding:.35rem .5rem;border-bottom:1px solid var(--border)}
 .nmmd-opts{display:flex;gap:.25rem}
@@ -4600,12 +4609,18 @@ function wavFromFloat32(chunks, len, srcRate){
   new Int16Array(buf, 44).set(out);
   return new Blob([buf], {type:"audio/wav"});
 }
+// Live preview under whisper (human report 2026-07-29: "listening… no
+// longer shows what I'm speaking"): while a turn is mid-utterance, the
+// buffered audio-so-far is transcribed every ~1.2s (small.en does ~2s of
+// audio in ~0.4s, so a throttled, never-overlapping interim request is
+// cheap) and streamed into the SAME onInterim bubble web-speech feeds.
+// The FINAL transcription always supersedes; a late interim response for
+// an already-ended turn is dropped.
+const STT_WHISPER_INTERIM_MS = 1200;
+const STT_WHISPER_INTERIM_MIN_S = 0.6;
 class WhisperSttEngine{
   constructor(){ this.active = false; this._gen = 0; this._endTurn = null; }
-  // Accepts (and ignores) the onInterim third argument the shared engine
-  // contract carries (#491) -- whisper transcribes per utterance, so there
-  // is no interim channel; the pending bubble stays at "listening…".
-  async start(onResult, onError){
+  async start(onResult, onError, onInterim){
     const gen = ++this._gen;
     const mic = voiceSources.inbound;
     try{ await mic.start(); }catch{ onError("whisper-mic-denied: microphone access failed"); return; }
@@ -4615,6 +4630,7 @@ class WhisperSttEngine{
     const preN = Math.round(sr*STT_VAD_PREROLL_MS/1000);
     const maxN = sr*(STT_VAD_MAX_UTTERANCE_MS/1000);
     let pre = [], preLen = 0, chunks = [], len = 0, talking = false, silentMs = 0, onsetFrames = 0, sinceClearMs = 0;
+    let interimBusy = false, lastInterimMs = -Infinity, interimClockMs = 0;
     const endTurn = (discard)=>{
       if(gen !== this._gen || !this.active) return;
       this.active = false; this._endTurn = null;
@@ -4652,6 +4668,25 @@ class WhisperSttEngine{
         // stale endpoint: white noise above the floor but below CLEAR
         // speech never resets this; only real speech does.
         if(rms > STT_VAD_LOUD_RMS) sinceClearMs = 0; else sinceClearMs += frameMs;
+        // live preview: transcribe the utterance-so-far, throttled and
+        // never overlapping; the final always supersedes.
+        interimClockMs += frameMs;
+        if(onInterim && !interimBusy && len > sr * STT_WHISPER_INTERIM_MIN_S
+           && interimClockMs - lastInterimMs >= STT_WHISPER_INTERIM_MS){
+          interimBusy = true; lastInterimMs = interimClockMs;
+          const form = new FormData();
+          form.append("file", wavFromFloat32(chunks.slice(), len, sr), "interim.wav");
+          form.append("response_format", "json");
+          fetch(STT_WHISPER_ENDPOINT, {method: "POST", body: form})
+            .then(resp => resp.ok ? resp.json() : null)
+            .then(data => {
+              interimBusy = false;
+              if(gen !== this._gen || !this.active) return;   // turn ended -- final owns the bubble
+              const t = data && data.text && data.text.trim();
+              if(t) onInterim(t);
+            })
+            .catch(() => { interimBusy = false; });
+        }
         if(silentMs >= STT_VAD_SILENCE_MS || sinceClearMs >= STT_VAD_STALE_MS || len >= maxN) endTurn(false);
       }
     });
@@ -5313,6 +5348,26 @@ function voiceOn(){
 // strings) -- chunks feed SpeechSynthSource.speakChunks as ONE logical
 // utterance (its `speaking` flag spans the whole sequence); the §13.3
 // span still covers the whole reply, not per chunk.
+// Speech sanitizer (human-directed 2026-07-29): "the output in chat must
+// be what we want, but what we say may differ slightly" -- the CHAT
+// renders the full reply; the SPOKEN version never reads markdown syntax
+// or code aloud. Fenced blocks/diagrams/tables become short descriptions,
+// images speak their alt, links speak their label, emphasis/heading
+// markers are stripped. Inline `code` speaks its content (short
+// identifiers read fine).
+function speechTextForReply(text){
+  let s = String(text || "");
+  s = s.replace(/```mermaid[\s\S]*?(```|$)/g, " A diagram is shown in the chat. ");
+  s = s.replace(/```([A-Za-z0-9_+#.-]*)[\s\S]*?(```|$)/g,
+    (m, lang) => " A " + (lang ? lang + " " : "") + "code block is shown in the chat. ");
+  s = s.replace(/!\[([^\]]*)\]\([^)]*\)/g, (m, alt) => alt ? (" Image: " + alt + ". ") : " An image is shown in the chat. ");
+  s = s.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
+  s = s.replace(/(?:^\|.*\|[ \t]*$\n?){2,}/gm, " A table is shown in the chat. ");
+  s = s.replace(/`([^`]+)`/g, "$1");
+  s = s.replace(/^#{1,6}\s+/gm, "");
+  s = s.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1").replace(/_([^_]+)_/g, "$1");
+  return s.replace(/[ \t]{2,}/g, " ").trim();
+}
 function chunkSpeechText(text){
   const s = String(text || "").trim();
   if(!s) return [];
@@ -5404,7 +5459,9 @@ function speakReply(text, turnId){
   if(window.assistantGate && window.assistantGate.gated) return;
   const trimmed = String(text || "").trim();
   if(!trimmed) return;
-  const chunks = chunkSpeechText(trimmed);
+  // spoken text is SANITIZED (code/diagrams/tables described, syntax
+  // stripped) -- the chat keeps the full rendered reply (2026-07-29).
+  const chunks = chunkSpeechText(speechTextForReply(trimmed));
   if(!chunks.length) return;
   // AST-052 (#334) echo-guard interlock, docs/design/ast-E5.md's contract:
   // "during speech, either pause recognition or duck it". drawViz already
@@ -6629,7 +6686,20 @@ async function renderMermaidGraph(view, src){
     view.innerHTML = svg;   // mermaid's own sanitized output (securityLevel:"strict")
     view.dataset.rendered = src;
     const svgEl = view.querySelector("svg");
-    if(svgEl) mmdFitToNewSvg(view, svgEl);
+    // aspect-fit the VIEW to the diagram (human report 2026-07-29: a wide
+    // LR graph rendered tiny inside the fixed-height box) -- height
+    // follows the diagram's own aspect at the container's width, clamped
+    // so degenerate diagrams can't collapse or blow the layout out.
+    if(svgEl){
+      const r = svgEl.getBoundingClientRect();
+      const natW = r.width || parseFloat(svgEl.getAttribute("width")) || 300;
+      const natH = r.height || parseFloat(svgEl.getAttribute("height")) || 150;
+      const cw = view.clientWidth || natW;
+      if(natW > 0 && natH > 0 && cw > 0){
+        view.style.height = Math.max(120, Math.min(480, Math.round(cw * (natH / natW)))) + "px";
+      }
+      mmdFitToNewSvg(view, svgEl);
+    }
   }catch(err){
     view.textContent = "Diagram failed to render: " + (err && err.message || err);
   }

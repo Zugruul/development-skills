@@ -82,6 +82,10 @@ global.sttRemovePendingBubble = () => {};
 // the loop controller's own harness covers the cancel->resume contract).
 global.voiceBargeWatchStart = () => {};
 global.voiceBargeWatchStop = () => {};
+// speech sanitizer (2026-07-29): spoken text is cleaned of markdown/code
+// syntax -- extract the REAL function so speakReply's chunking behavior
+// stays exercised end-to-end (plain text passes through unchanged).
+eval(extract("speechTextForReply"));
 eval(extract("speakReply"));
 
 function reset(){
