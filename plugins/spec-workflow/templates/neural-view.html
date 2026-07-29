@@ -8655,7 +8655,11 @@ async function switchAssistantTo(name){
     if(!ok){
       try{
         const status = await (await fetch("/assistant/status")).json();
-        window.__assistantCandidates = (status && status.candidates) || [];
+        // spec round-2 nit: a malformed 200 must not wipe the candidate
+        // cache (collapsing the tab row) -- only adopt a real list.
+        if(status && Array.isArray(status.candidates) && status.candidates.length){
+          window.__assistantCandidates = status.candidates;
+        }
         window.__assistantSelected = (status && status.selected) || window.__assistantSelected;
         renderChatAssistantTabs();
       }catch{}
@@ -8685,6 +8689,17 @@ async function switchAssistantTo(name){
     // doesn't re-load the history it just loaded.
     window.__chatSyncBaseline = confirmed;
     if(document.getElementById("ast-chat-overlay")){
+      // quality round-2 R1: an overlay opened GATED used to stay a dead
+      // end (composer disabled, gated state line, no sync) even after a
+      // successful switch -- un-gate it fully here.
+      const gatedInput = document.getElementById("ast-chat-input");
+      if(gatedInput) gatedInput.disabled = false;
+      const gatedState = document.getElementById("ast-chat-state");
+      if(gatedState && gatedState.className && gatedState.className.indexOf("gated") !== -1){
+        gatedState.className = "ast-chat-state";
+        gatedState.textContent = "";
+      }
+      startChatStatusSync();
       renderChatAssistantTabs();
       await loadChatHistory();
     }
@@ -9156,8 +9171,13 @@ function buildChatOverlay(){
     };
     grip.addEventListener("pointermove", move);
     grip.addEventListener("pointerup", up);
+    grip.addEventListener("pointercancel", up);   // quality R4: interrupted touch/gesture never leaks listeners or .dragging
     if(ev.preventDefault) ev.preventDefault();
   });
+  // quality round-2 R3: keyboard parity -- Enter/Space on the focusable
+  // grip detaches too (pointer drags never reach here docked->detached
+  // because pointerdown already flipped the state).
+  grip.onclick = ()=>{ if(uiState.chatDetached !== true) setChatDetached(true); };
   header.appendChild(grip);
   // #459 review (visual pass): the mockup's header is a status dot THEN
   // the label (.mk-side-hd's .mk-dot) -- present always, not tied to any
@@ -9273,7 +9293,17 @@ function buildChatOverlay(){
   // #485 quality review, finding 8: a recovered overlay must also re-arm
   // the keep-in-step poll -- a transient blip at open otherwise disabled
   // re-sync for the overlay's whole life.
-  retry.onclick = ()=>{ retry.classList.add("ast-chat-hidden"); loadChatHistory(); startChatStatusSync(); };
+  retry.onclick = async ()=>{
+    retry.classList.add("ast-chat-hidden");
+    await loadChatHistory();   // failure re-renders offline (disables again)
+    const st = document.getElementById("ast-chat-state");
+    if(!st || st.className.indexOf("offline") === -1){
+      const inp = document.getElementById("ast-chat-input");
+      if(inp) inp.disabled = false;
+      if(st) st.textContent = "";
+    }
+    startChatStatusSync();
+  };
   inputrow.appendChild(retry);
   overlay.appendChild(inputrow);
   return overlay;
