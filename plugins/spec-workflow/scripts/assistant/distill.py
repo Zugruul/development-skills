@@ -143,6 +143,42 @@ def _bump_recalled_notes(brain_module, identities_dir, root, role, exchanges):
     return bumped
 
 
+def mint_artifact_note(identities_dir, root, artifact, role="assistant"):
+    """Chat-artifact memory (2026-07-29, human-directed): every file the
+    assistant produces during a chat turn is minted as its own note --
+    tagged #chat-artifact, carrying WHEN it was created, WHICH turn, a
+    prompt excerpt, and a brain-relative link to the file -- so the brain
+    remembers what was generated and recall/search can surface it later
+    ("what did we generate yesterday"). Slug derives from the FILENAME, so
+    re-generating the same file bumps (re-mints) the same note instead of
+    duplicating. Same discipline as process_batch: brain.py imported
+    lazily, every write through brain.mint()'s identities-wide flock, and
+    this only ever runs on the distiller worker thread."""
+    import brain as brain_module
+
+    fname = (artifact.get("file") or "").strip()
+    if not fname:
+        return None
+    slug_base = re.sub(r"[^a-z0-9-]+", "-", fname.lower()).strip("-") or "file"
+    slug = "chat-artifact-" + slug_base
+    created = artifact.get("created") or ""
+    turn_id = artifact.get("turn_id") or ""
+    prompt = (artifact.get("prompt") or "").strip()
+    lines = [
+        "Chat-generated artifact: [%s](media/chat/%s)" % (fname, fname),
+        "",
+        "Created: %s" % created,
+        "Turn: %s" % turn_id,
+    ]
+    if prompt:
+        lines += ["", 'Prompt (excerpt): "%s"' % prompt[:200]]
+    return brain_module.mint(
+        identities_dir, role, slug, root, "\n".join(lines) + "\n",
+        tags="chat-artifact",
+        source="assistant-chat",
+    )
+
+
 def process_batch(identities_dir, root, exchanges, role="assistant"):
     """The distiller's core logic (design doc's `distill.process_batch`
     contract): pure and testable without any thread/queue -- callers pass
@@ -249,6 +285,13 @@ def run_worker(q, stop_event, batch_n=DEFAULT_BATCH_N, role="assistant",
                 continue
             root = item.get("root")
             identities_dir = item.get("identities")
+            # chat-artifact items (2026-07-29): minted immediately, never
+            # batched -- one file, one note, same worker thread, same
+            # park-and-continue failure posture as a batch.
+            artifact = item.get("artifact_note")
+            if artifact is not None and root and identities_dir:
+                mint_artifact_note(identities_dir, root, artifact, role=role)
+                continue
             exchange = item.get("exchange")
             if not root or not identities_dir or exchange is None:
                 continue

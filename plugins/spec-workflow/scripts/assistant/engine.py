@@ -825,11 +825,24 @@ class AssistantEngine:
         snapshot would.
         """
         n = _parse_history_n(query)
+        # The session's SELECTED assistant threads through as `?assistant=`
+        # (the same flag `_chat`/`_traces`/`_tasks` already accept, #453/
+        # #479's family) -- without it, a page refresh with an assistant
+        # selected but no machine-level default resolves some OTHER
+        # assistant's transcript (or none), which the human hit live as
+        # "refresh resets the chat to a stale initial state" (2026-07-29):
+        # the overlay rendered a different assistant's session history.
+        assistant_flag = None
+        if query:
+            assistant_values = query.get("assistant")
+            if assistant_values and assistant_values[0]:
+                assistant_flag = assistant_values[0]
         candidates = default_store.discover_candidates(
             root for _, root in self._repos_getter()
         )
         try:
-            root, _section = default_store.resolve_assistant(candidates, state_dir=self.state_dir)
+            root, _section = default_store.resolve_assistant(
+                candidates, flag=assistant_flag, state_dir=self.state_dir)
         except default_store.ResolutionError as exc:
             # No assistant unambiguously resolved (none discovered, or
             # multiple with no stored default) -- an empty, explained
@@ -1134,6 +1147,35 @@ class AssistantEngine:
             except queue.Full:
                 pass
 
+    def _enqueue_artifact_note(self, root, turn_id, user_text, file_name):
+        """Chat-artifact memory (2026-07-29): posts one artifact-note item
+        to the distiller queue (the single sanctioned brain-write thread,
+        §9.5/§17.5) -- distill.mint_artifact_note mints it. Non-blocking,
+        drop-on-overflow, same posture as _enqueue_distill; a dropped item
+        loses only the memory note, never the file itself."""
+        item = {
+            "root": root,
+            "identities": os.path.join(root, ".claude", "identities"),
+            "artifact_note": {
+                "file": file_name,
+                "turn_id": turn_id,
+                "prompt": (user_text or "")[:300],
+                "created": _now_iso(),
+            },
+        }
+        q = self.queues["distiller"]
+        try:
+            q.put_nowait(item)
+        except queue.Full:
+            try:
+                q.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                q.put_nowait(item)
+            except queue.Full:
+                pass
+
     def _emit_trace(self, root, kind, turn_id=None, span_id=None,
                      parent_span_id=None, status=None, payload=None,
                      modality="text"):
@@ -1253,7 +1295,36 @@ class AssistantEngine:
                 # always []) -- see `_roster_provider_for`'s docstring for
                 # the ask-instead-of-guess rendering this closure applies.
                 roster_provider = self._roster_provider_for(root, message)
-                result = turns.run_turn(section, roster_provider, None, session_state, message)
+                # File output (2026-07-29, human-directed): resolve the
+                # sanctioned per-assistant output directory (the brain's
+                # media/chat/, the SAME relative base the chat renderer's
+                # /file/ links resolve) and inject it per-turn as
+                # `_fileOutputDir` -- turns.compose_context states it in
+                # the system prompt and the claude adapter scope-opens its
+                # Write tool to exactly that directory. `fileOutput: false`
+                # in the assistant section disables it; a dir that cannot
+                # be created degrades silently to the read-only turn shape.
+                persona_cfg = dict(section) if isinstance(section, dict) else section
+                # Temporal grounding (2026-07-29, human-directed): the
+                # assistant always knows the current wall clock, so
+                # time-relative asks ("what did we do yesterday") work.
+                # Injected per-turn (not in compose_context itself) so
+                # hermetic compose tests stay deterministic.
+                if isinstance(persona_cfg, dict):
+                    persona_cfg["_nowText"] = (
+                        datetime.now().astimezone().strftime("%A, %Y-%m-%d %H:%M %Z"))
+                prev_out_files = set()
+                if isinstance(persona_cfg, dict) and persona_cfg.get("fileOutput") is not False:
+                    out_dir = os.path.join(
+                        str(root), ".claude", "identities", "assistant",
+                        "brain", "media", "chat")
+                    try:
+                        os.makedirs(out_dir, exist_ok=True)
+                        persona_cfg["_fileOutputDir"] = out_dir
+                        prev_out_files = set(os.listdir(out_dir))
+                    except OSError:
+                        persona_cfg.pop("_fileOutputDir", None)
+                result = turns.run_turn(persona_cfg, roster_provider, None, session_state, message)
             except adapters.AdapterError as exc:
                 # provider CLI failure (Sec8.5) -- a clean upstream error,
                 # never a raw traceback, and never a persisted exchange
@@ -1268,6 +1339,21 @@ class AssistantEngine:
                 return 502, {"error": str(exc)}, "application/json"
 
             store.append_exchange(message, result["text"])
+            # Chat-artifact memory (2026-07-29, human-directed): any file
+            # the turn just produced in the sanctioned output dir is
+            # minted as a #chat-artifact note (when/what/which turn) --
+            # enqueue-only onto the distiller worker (the one sanctioned
+            # brain-write thread), same non-blocking posture as
+            # _enqueue_distill.
+            if isinstance(persona_cfg, dict) and persona_cfg.get("_fileOutputDir"):
+                try:
+                    now_files = set(os.listdir(persona_cfg["_fileOutputDir"]))
+                except OSError:
+                    now_files = set(prev_out_files)
+                for new_name in sorted(now_files - prev_out_files):
+                    if new_name.startswith("."):
+                        continue
+                    self._enqueue_artifact_note(root, turn_id, message, new_name)
             store.save_state(result["updated_session_state"])
 
         # Recall summary + provider.call are emitted together (both only

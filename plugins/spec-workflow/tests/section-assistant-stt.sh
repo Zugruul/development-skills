@@ -42,12 +42,12 @@ check "delta ties the deferred sidecar to E6/AST-060/061 provisioning" "AST-060/
 check "delta records the honest-unavailable requirement" "whisper sidecar not available" "$DELTA_STT_BODY"
 check "delta records the §17.9 hard gate applies to STT start" "STT cannot start while" "$DELTA_STT_BODY"
 
-echo "-- template: settings panel gains an STT engine control, default web-speech (#491), persisted --"
+echo "-- template: settings panel gains an STT engine control, default whisper (ast-051 restored, #424 landed), persisted --"
 NVHTML_STT_BODY="$(cat "$NVHTML_STT")"
 check "settings panel: whisper option present" 'id="vs-stt-whisper"' "$NVHTML_STT_BODY"
 check "settings panel: web-speech option present" 'id="vs-stt-webspeech"' "$NVHTML_STT_BODY"
-check "#491: hint names Web Speech as the default while the sidecar contract is unfinished" "Web Speech is the default" "$NVHTML_STT_BODY"
-check "#491: hint says whisper returns as default once the sidecar capability lands" "#424" "$NVHTML_STT_BODY"
+check "hint names whisper.cpp as the default now that the sidecar contract landed" "whisper.cpp (fully local, better accuracy) is the default" "$NVHTML_STT_BODY"
+check "hint records that the sidecar contract (#424) landed" "#424" "$NVHTML_STT_BODY"
 check "settings panel: hint names Web Speech as needing no install" "needs no install" "$NVHTML_STT_BODY"
 check "sttEngineChoice() defaults to web-speech when unset (#491)" 'function sttEngineChoice(){' "$NVHTML_STT_BODY"
 check "setSttEngineChoice persists via saveUiState (same path as the rest of the panel)" "function setSttEngineChoice(choice){" "$NVHTML_STT_BODY"
@@ -56,7 +56,10 @@ echo "-- template: STT engine abstraction -- two implementations, honest degrade
 check "WebSpeechSttEngine class exists" "class WebSpeechSttEngine{" "$NVHTML_STT_BODY"
 check "WebSpeechSttEngine degrades honestly when unavailable" "web-speech-unavailable" "$NVHTML_STT_BODY"
 check "WhisperSttEngine class exists" "class WhisperSttEngine{" "$NVHTML_STT_BODY"
-check "WhisperSttEngine surfaces the honest unavailable-sidecar message" "whisper sidecar not available -- install via the whisper capability" "$NVHTML_STT_BODY"
+check "WhisperSttEngine surfaces the honest unavailable-sidecar message" "whisper sidecar not reachable at 127.0.0.1:8737" "$NVHTML_STT_BODY"
+check "WhisperSttEngine posts to the sidecar's REAL endpoint (#424: /inference, not the never-served /transcribe)" 'const STT_WHISPER_ENDPOINT = "http://127.0.0.1:8737/inference";' "$NVHTML_STT_BODY"
+check "WhisperSttEngine records off the SHARED MicSource stream (no second getUserMedia -- #464's contention stays structurally gone)" "mic.tap(pcm=>{" "$NVHTML_STT_BODY"
+check "WhisperSttEngine endpoints on a natural pause (VAD silence window)" "const STT_VAD_SILENCE_MS = " "$NVHTML_STT_BODY"
 check "WhisperSttEngine's unavailable message offers the Web Speech alternative" "switch to Web Speech in Settings" "$NVHTML_STT_BODY"
 check "sttEngines registry wires both engine names to their implementations" 'const sttEngines = { whisper: new WhisperSttEngine(), "web-speech": new WebSpeechSttEngine() };' "$NVHTML_STT_BODY"
 check "#491: web-speech requests interim results for live STT feedback" "r.interimResults = true" "$NVHTML_STT_BODY"
@@ -208,26 +211,28 @@ eval(extract("sttEngineChoice"));
 eval(extract("applySttEngineUi"));
 eval(extract("setSttEngineChoice"));
 
-// #491: whisper's sidecar contract is unfinished (#424 -- the shipped
-// client posts /transcribe, the sidecar serves /inference), so defaulting
-// to it hands every fresh profile a voice path that CANNOT transcribe.
-// Web Speech is the default until #424 lands; an explicit whisper choice
-// still persists and wins.
-if (sttEngineChoice() !== "web-speech") throw new Error("#491: default sttEngineChoice must be web-speech while the whisper sidecar contract (#424) is unfinished, got " + sttEngineChoice());
-console.log("DEFAULT_WEBSPEECH_OK true");
+// ast-051's original decision, restored: whisper (fully local, better
+// accuracy) is the default now that the sidecar contract (#424) landed --
+// the client posts /inference, the endpoint the sidecar actually serves.
+// #491's temporary web-speech default is superseded; an explicit
+// web-speech choice still persists and wins.
+if (sttEngineChoice() !== "whisper") throw new Error("default sttEngineChoice must be whisper (ast-051 restored now that #424 landed), got " + sttEngineChoice());
+console.log("DEFAULT_WHISPER_OK true");
 
-setSttEngineChoice("whisper");
-if (sttEngineChoice() !== "whisper") throw new Error("setSttEngineChoice(whisper) did not take effect");
-if (elements["vs-stt-whisper"].getAttribute("aria-pressed") !== "true") throw new Error("vs-stt-whisper should be pressed after selecting whisper");
-if (elements["vs-stt-webspeech"].getAttribute("aria-pressed") !== "false") throw new Error("vs-stt-webspeech should NOT be pressed after selecting whisper");
+setSttEngineChoice("web-speech");
+if (sttEngineChoice() !== "web-speech") throw new Error("setSttEngineChoice(web-speech) did not take effect");
+if (elements["vs-stt-webspeech"].getAttribute("aria-pressed") !== "true") throw new Error("vs-stt-webspeech should be pressed after selecting web-speech");
+if (elements["vs-stt-whisper"].getAttribute("aria-pressed") !== "false") throw new Error("vs-stt-whisper should NOT be pressed after selecting web-speech");
 console.log("TOGGLE_APPLIES_OK true");
 
 // persisted like the rest of the panel: reload uiState from localStorage the
 // same way the template's own boot sequence does, and the choice must survive
 const persisted = JSON.parse(localStorage.getItem("nv-ui") || "{}");
-if (persisted.sttEngine !== "whisper") throw new Error("sttEngine was not persisted to the nv-ui localStorage key");
+if (persisted.sttEngine !== "web-speech") throw new Error("sttEngine was not persisted to the nv-ui localStorage key");
 console.log("PERSIST_OK true");
 
+setSttEngineChoice("whisper");
+if (sttEngineChoice() !== "whisper") throw new Error("setSttEngineChoice(whisper) did not take effect");
 setSttEngineChoice("web-speech");
 if (sttEngineChoice() !== "web-speech") throw new Error("setSttEngineChoice(web-speech) did not take effect");
 console.log("SWITCH_BACK_OK true");
@@ -524,48 +529,125 @@ defineConst("STT_WEBSPEECH_LIVENESS_MS");
     delete global.window.SpeechRecognition;
 }
 
-// ---- whisper engine: honest unavailable-sidecar state when unreachable ----
+// ---- whisper engine (#424 landed): records PCM off the SHARED MicSource
+// stream (tap/untap), VAD-endpoints on a natural pause, WAV-encodes, and
+// POSTs the sidecar's REAL /inference endpoint. The mic stub below stands
+// in for MicSource with the same {ctx, start, tap, untap} surface. ----
 defineConst("STT_WHISPER_ENDPOINT");
 defineConst("STT_WHISPER_UNAVAILABLE_MSG");
+defineConst("STT_VAD_SILENCE_MS");
+defineConst("STT_VAD_RMS");
+defineConst("STT_VAD_PREROLL_MS");
+defineConst("STT_VAD_MAX_UTTERANCE_MS");
+defineConst("STT_VAD_ONSET_FRAMES");
+defineConst("STT_VAD_LOUD_RMS");
+eval(extract("wavFromFloat32"));
+// the class is eval'd in defineClass's scope (then assigned to global) --
+// it resolves wavFromFloat32 via global, not this IIFE's eval scope.
+global.wavFromFloat32 = wavFromFloat32;
 defineClass("WhisperSttEngine");
-{
-    global.navigator = { mediaDevices: { getUserMedia: async () => { throw new Error("denied"); } } };
-    const engine = new WhisperSttEngine();
-    let gotError = null;
-    await engine.start(() => {}, (err) => { gotError = err; });
-    if (!gotError || gotError.indexOf("whisper sidecar not available") === -1) throw new Error("expected honest whisper-unavailable message, got " + gotError);
-    console.log("WHISPER_DEGRADE_OK true");
+function mkMicStub(){
+    const mic = { ctx: {sampleRate: 16000}, tapCb: null, untapped: 0,
+        start: async () => {}, tap(cb){ mic.tapCb = cb; return true; }, untap(){ mic.untapped++; mic.tapCb = null; } };
+    return mic;
 }
+const VAD_LOUD = new Float32Array(4096).fill(0.1);   // rms .1 > STT_VAD_RMS
+const VAD_QUIET = new Float32Array(4096);            // 4096/16000 = 256ms per frame
+async function settlePromises(){ for (let i = 0; i < 4; i++) await new Promise(r => setImmediate(r)); }
 {
-    // #474: "for BOTH engines" -- MediaRecorder (or its underlying mic
-    // track) can die on its own, e.g. device unplugged/permission revoked
-    // mid-capture, without ever reaching onstop. Previously nothing
-    // listened for MediaRecorder's own `error` event, which left the mic
-    // control "listening" against a dead recorder, the same silent-death
-    // shape as WebSpeech's unhandled onend.
-    let stoppedTracks = 0;
-    // modern Node ships a built-in, non-writable `navigator` global (user-
-    // agent info) -- a bare `global.navigator = {...}` silently no-ops
-    // against it (unlike every OTHER stub in this harness), so getUserMedia
-    // below would otherwise resolve against the REAL (mediaDevices-less)
-    // navigator and always take the catch branch. Delete it first (it IS
-    // configurable) so this stub actually takes effect -- needed here,
-    // unlike the getUserMedia-throws test above, because THIS test needs
-    // getUserMedia to actually SUCCEED.
-    delete global.navigator;
-    global.navigator = { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop(){ stoppedTracks++; } }] }) } };
-    let recorderInstance = null;
-    global.MediaRecorder = function () { recorderInstance = this; this.state = "recording"; };
-    global.MediaRecorder.prototype.start = function () {};
-    global.MediaRecorder.prototype.stop = function () {};
+    // sidecar unreachable: speech captured, pause endpointed, but the POST
+    // fails -- the honest unavailable message surfaces (never a generic
+    // transcription error).
+    const mic = mkMicStub();
+    global.voiceSources = { inbound: mic };
+    const realFetch = global.fetch;
+    global.fetch = async () => { throw new Error("ECONNREFUSED"); };
     const engine = new WhisperSttEngine();
     let gotError = null, resultCalls = 0;
     await engine.start(() => { resultCalls++; }, (err) => { gotError = err; });
-    recorderInstance.onerror({ error: { name: "InvalidStateError" } });
-    if (!gotError || gotError.indexOf("whisper-recorder-error") === -1) throw new Error("MediaRecorder's own error event must be surfaced honestly, got " + gotError);
-    if (resultCalls !== 0) throw new Error("a recorder error must never call onResult");
-    if (stoppedTracks !== 1) throw new Error("a recorder error must release the mic stream (stop its tracks), got " + stoppedTracks);
-    console.log("WHISPER_RECORDER_ERROR_OK true");
+    mic.tapCb(VAD_LOUD);
+    for (let i = 0; i < 6 && mic.tapCb; i++) mic.tapCb(VAD_QUIET);   // 6*256ms > STT_VAD_SILENCE_MS; endTurn untaps mid-loop
+    await settlePromises();
+    if (!gotError || gotError.indexOf("whisper sidecar not reachable") === -1) throw new Error("expected honest whisper-unavailable message, got " + gotError);
+    if (resultCalls !== 0) throw new Error("a failed POST must never call onResult");
+    if (mic.untapped !== 1) throw new Error("endpointing must release the PCM tap exactly once, got " + mic.untapped);
+    global.fetch = realFetch;
+    console.log("WHISPER_DEGRADE_OK true");
+}
+{
+    // the healthy path: pause-endpointed speech reaches /inference as a
+    // multipart WAV and the transcript comes back trimmed.
+    const mic = mkMicStub();
+    global.voiceSources = { inbound: mic };
+    const realFetch = global.fetch;
+    let posted = null;
+    global.fetch = async (url, opts) => { posted = {url, opts}; return { ok: true, status: 200, json: async () => ({ text: " add a 3D model \n" }) }; };
+    const engine = new WhisperSttEngine();
+    let gotText = null, gotError = null;
+    await engine.start((t) => { gotText = t; }, (err) => { gotError = err; });
+    mic.tapCb(VAD_LOUD);
+    for (let i = 0; i < 6 && mic.tapCb; i++) mic.tapCb(VAD_QUIET);
+    await settlePromises();
+    if (gotError) throw new Error("healthy transcription must not error, got " + gotError);
+    if (gotText !== "add a 3D model") throw new Error("expected the trimmed transcript, got " + JSON.stringify(gotText));
+    if (!posted || posted.url !== STT_WHISPER_ENDPOINT) throw new Error("must POST the real /inference endpoint, got " + (posted && posted.url));
+    global.fetch = realFetch;
+    console.log("WHISPER_TRANSCRIBES_OK true");
+}
+{
+    // #474: "for BOTH engines" -- a dead capture must be surfaced
+    // honestly, never left silently listening. The whisper engine's
+    // capture is the shared mic now; a mic that cannot start (denied,
+    // unplugged) reports through onError immediately.
+    const mic = mkMicStub();
+    mic.start = async () => { throw new Error("denied"); };
+    global.voiceSources = { inbound: mic };
+    const engine = new WhisperSttEngine();
+    let gotError = null, resultCalls = 0;
+    await engine.start(() => { resultCalls++; }, (err) => { gotError = err; });
+    if (!gotError || gotError.indexOf("whisper-mic-denied") === -1) throw new Error("a mic that cannot start must be surfaced honestly, got " + gotError);
+    if (resultCalls !== 0) throw new Error("a dead mic must never call onResult");
+    console.log("WHISPER_MIC_DEAD_HONEST_OK true");
+}
+{
+    // manual stop mid-utterance flushes what was captured (transcribes
+    // NOW) instead of discarding it -- same override contract web-speech's
+    // stop() has.
+    const mic = mkMicStub();
+    global.voiceSources = { inbound: mic };
+    const realFetch = global.fetch;
+    let posted = null;
+    global.fetch = async (url, opts) => { posted = {url, opts}; return { ok: true, status: 200, json: async () => ({ text: "half a sentence" }) }; };
+    const engine = new WhisperSttEngine();
+    let gotText = null;
+    await engine.start((t) => { gotText = t; }, () => {});
+    mic.tapCb(VAD_LOUD);          // speech started, no pause yet
+    engine.stop();                // manual stop -- flush
+    await settlePromises();
+    if (gotText !== "half a sentence") throw new Error("a manual stop must flush the captured speech to the sidecar, got " + JSON.stringify(gotText));
+    global.fetch = realFetch;
+    console.log("WHISPER_MANUAL_STOP_FLUSHES_OK true");
+}
+{
+    // a manual stop with NO speech captured tears down silently -- no
+    // POST, no result, no error (the caller's no-speech span path owns
+    // reporting that outcome).
+    const mic = mkMicStub();
+    global.voiceSources = { inbound: mic };
+    const realFetch = global.fetch;
+    let postCount = 0;
+    global.fetch = async () => { postCount++; return { ok: true, status: 200, json: async () => ({ text: "ghost" }) }; };
+    const engine = new WhisperSttEngine();
+    let resultCalls = 0, errorCalls = 0;
+    await engine.start(() => { resultCalls++; }, () => { errorCalls++; });
+    mic.tapCb(VAD_QUIET);         // ambient only, never speech
+    engine.stop();
+    await settlePromises();
+    if (postCount !== 0) throw new Error("a no-speech stop must never POST, got " + postCount);
+    if (resultCalls !== 0 || errorCalls !== 0) throw new Error("a no-speech stop is silent -- no result, no error");
+    if (mic.untapped !== 1) throw new Error("a no-speech stop must still release the tap, got " + mic.untapped);
+    global.fetch = realFetch;
+    console.log("WHISPER_EMPTY_STOP_SILENT_OK true");
 }
 
 // ---- §17.9 hard gate + span emission ----
@@ -580,6 +662,14 @@ defineClass("WhisperSttEngine");
 // undefined in this harness (falsy), so its restore branch simply never
 // fires here, same as a turn that never widened the direction.
 window.assistantVoiceSpans = [];
+// non-speech filtering (2026-07-29): onSttText routes noise-only
+// transcripts to sttShowNoiseRow instead of the model -- real helper for
+// the classifier, recorders for the row/toggle.
+eval(extract("sttMeaningfulText"));
+global.sttMeaningfulText = sttMeaningfulText;
+global.sttNoiseReactOn = () => false;
+let noiseRows = [];
+global.sttShowNoiseRow = (t) => { noiseRows.push(t); };
 eval(extract("onSttText"));
 eval(extract("emitVoiceSpan"));
 eval(extract("trackLocalVoiceSpan"));
@@ -810,7 +900,7 @@ tmpl_stt_out="$(node "$_ast_node" "$NVHTML_STT" 2>&1)"
 tmpl_stt_rc=$?
 rm -f "$_ast_node"
 check_rc "STT template script exits 0" 0 "$tmpl_stt_rc"
-check "default sttEngineChoice is web-speech (#491, until #424 lands)" "DEFAULT_WEBSPEECH_OK true" "$tmpl_stt_out"
+check "default sttEngineChoice is whisper (ast-051 restored -- #424 landed)" "DEFAULT_WHISPER_OK true" "$tmpl_stt_out"
 check "toggle applies to the settings-panel buttons" "TOGGLE_APPLIES_OK true" "$tmpl_stt_out"
 check "toggle persists in the nv-ui localStorage key" "PERSIST_OK true" "$tmpl_stt_out"
 check "switching back to web-speech works" "SWITCH_BACK_OK true" "$tmpl_stt_out"
@@ -828,7 +918,10 @@ check "#474 liveness requirement: a fully silent engine (no native events at all
 check "#474 liveness requirement: onaudiostart proves life and cancels the watchdog -- ordinary silence is never mistaken for death" "WEBSPEECH_LIVENESS_CLEARED_BY_AUDIOSTART_OK true" "$tmpl_stt_out"
 check "#474 hyp3 investigated and RULED OUT: an empty-buffer silence-timeout finalize never stops/clears the engine and never calls onResult" "WEBSPEECH_HYP3_EMPTY_FINALIZE_RULED_OUT_OK true" "$tmpl_stt_out"
 check "whisper engine surfaces an honest unavailable-sidecar state" "WHISPER_DEGRADE_OK true" "$tmpl_stt_out"
-check "#474 (BOTH engines): MediaRecorder's own error event is surfaced honestly instead of leaving the engine dead-but-listening" "WHISPER_RECORDER_ERROR_OK true" "$tmpl_stt_out"
+check "whisper: pause-endpointed speech reaches /inference and the transcript comes back trimmed" "WHISPER_TRANSCRIBES_OK true" "$tmpl_stt_out"
+check "#474 (BOTH engines): a mic that cannot start is surfaced honestly, never left silently listening" "WHISPER_MIC_DEAD_HONEST_OK true" "$tmpl_stt_out"
+check "whisper: a manual stop mid-utterance flushes captured speech instead of discarding it" "WHISPER_MANUAL_STOP_FLUSHES_OK true" "$tmpl_stt_out"
+check "whisper: a manual stop with no speech tears down silently (no POST, no result, no error)" "WHISPER_EMPTY_STOP_SILENT_OK true" "$tmpl_stt_out"
 check "the §17.9 gate blocks STT start with no assistant selected" "GATE_BLOCKS_START_OK true" "$tmpl_stt_out"
 check "a span's payload carries the engine name" "SPAN_ENGINE_NAME_OK true" "$tmpl_stt_out"
 check "#479: the assistant key is omitted (never null/undefined) from the voice-event POST body when window.__assistantSelected is unset" "ASSISTANT_OMITTED_WHEN_UNSET_OK true" "$tmpl_stt_out"

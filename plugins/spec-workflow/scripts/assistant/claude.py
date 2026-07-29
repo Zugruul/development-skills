@@ -170,6 +170,22 @@ _PINNED_FLAGS = (
     "--safe-mode",
 )
 
+# File-output variant (2026-07-29, human-directed: "workspace is read-only"
+# refusals): when the composed context carries a sanctioned output
+# directory, the Write tool alone is enabled and scoped to that directory
+# via --add-dir + acceptEdits. Every OTHER isolation flag stays pinned
+# (no MCP, no session persistence, safe-mode, isolated cwd): the sandbox
+# opens exactly one door, not the workspace.
+_WRITE_FLAGS = (
+    "-p",
+    "--output-format", "json",
+    "--tools", "Write",
+    "--strict-mcp-config",
+    "--permission-mode", "acceptEdits",
+    "--no-session-persistence",
+    "--safe-mode",
+)
+
 # Substring that marks a failure (nonzero exit, or an exit-0 envelope with
 # is_error:true) as an auth failure rather than a generic CLI error,
 # sourced from the real unauthenticated capture described in the module
@@ -196,9 +212,13 @@ def _build_prompt(context):
     return user
 
 
-def _build_argv(model):
+def _build_argv(model, file_output_dir=None):
     argv = ["claude"]
-    argv.extend(_PINNED_FLAGS)
+    if file_output_dir:
+        argv.extend(_WRITE_FLAGS)
+        argv.extend(["--add-dir", file_output_dir])
+    else:
+        argv.extend(_PINNED_FLAGS)
     argv.extend(["--model", model])
     return argv
 
@@ -241,7 +261,7 @@ def complete(context, *, timeout=DEFAULT_MODEL_TIMEOUT_SECONDS, env=None):
     prompt = _build_prompt(context)
     workdir = _isolated_cwd()
     try:
-        argv = _build_argv(model) + [prompt]
+        argv = _build_argv(model, context.get("fileOutputDir")) + [prompt]
         call_env = dict(env) if env is not None else dict(os.environ)
         start = time.monotonic()
         result = adapters.invoke_cli(argv, timeout=timeout, env=call_env, cwd=workdir)

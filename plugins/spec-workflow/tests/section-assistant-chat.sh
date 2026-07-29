@@ -195,6 +195,10 @@ eval(extract("scrollChatLogToBottom"));
 eval(extract("appendChatRow"));
 eval(extract("renderChatLog"));
 eval(extract("renderChatLastXToggle"));
+// show-last persistence (2026-07-29): setChatLastX persists via uiState/
+// saveUiState -- same stub contract other harnesses use.
+if (typeof global.uiState === "undefined") global.uiState = {};
+if (typeof global.saveUiState === "undefined") global.saveUiState = function(){ try{ localStorage.setItem("nv-ui", JSON.stringify(global.uiState)); }catch{} };
 eval(extract("setChatLastX"));
 eval(extract("buildChatOverlay"));
 eval(extract("renderChatGated"));
@@ -211,6 +215,10 @@ eval(extract("newClientTurnId"));
 // live-STT pending bubble -- stubbed no-op here (the real function is
 // exercised in section-assistant-voice-turn.sh's second harness).
 global.sttRemovePendingBubble = () => {};
+// barge-in (2026-07-29): speakReply arms/disarms the barge watcher --
+// stubbed no-ops here (audio-level behavior is out of this harness's scope).
+global.voiceBargeWatchStart = () => {};
+global.voiceBargeWatchStop = () => {};
 eval(extract("speakReply"));
 eval(extract("dispatchNextChat"));
 eval(extract("queueOrSendChat"));
@@ -745,6 +753,10 @@ eval(extract("scrollChatLogToBottom"));
 eval(extract("appendChatRow"));
 eval(extract("renderChatLog"));
 eval(extract("renderChatLastXToggle"));
+// show-last persistence (2026-07-29): setChatLastX persists via uiState/
+// saveUiState -- same stub contract other harnesses use.
+if (typeof global.uiState === "undefined") global.uiState = {};
+if (typeof global.saveUiState === "undefined") global.saveUiState = function(){ try{ localStorage.setItem("nv-ui", JSON.stringify(global.uiState)); }catch{} };
 eval(extract("setChatLastX"));
 eval(extract("buildChatOverlay"));
 eval(extract("renderChatGated"));
@@ -762,6 +774,10 @@ eval(extract("newClientTurnId"));
 // live-STT pending bubble -- stubbed no-op here (the real function is
 // exercised in section-assistant-voice-turn.sh's second harness).
 global.sttRemovePendingBubble = () => {};
+// barge-in (2026-07-29): speakReply arms/disarms the barge watcher --
+// stubbed no-ops here (audio-level behavior is out of this harness's scope).
+global.voiceBargeWatchStart = () => {};
+global.voiceBargeWatchStop = () => {};
 eval(extract("speakReply"));
 eval(extract("dispatchNextChat"));
 eval(extract("queueOrSendChat"));

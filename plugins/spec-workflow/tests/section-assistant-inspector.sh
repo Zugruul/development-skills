@@ -203,6 +203,7 @@ eval(extract("groupTurnsById"));
 eval(extract("turnDurationMs"));
 eval(extract("turnHasError"));
 eval(extract("computeWaterfallSpans"));
+eval(extract("astTurnDominantLabel"));
 eval(extract("renderAstTurnlist"));
 eval(extract("renderAstWaterfall"));
 eval(extract("selectAstTurn"));
@@ -304,9 +305,13 @@ const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
     renderAstWaterfall(turns[1]);
     const wfEl = document.getElementById("ast-waterfall");
     if (wfEl.classList.contains("ast-metrics-hidden")) throw new Error("rendering a turn must reveal the waterfall");
-    const tracks = wfEl.children.filter(c => c.className.includes("ast-waterfall-track"));
-    if (tracks.length !== 3) throw new Error("expected 3 tracks for turn B, got " + tracks.length);
-    const errorBar = tracks[1].children.find(b => b.className.includes("ast-waterfall-error"));
+    // Option B rows (2026-07-29): each span renders as an .ast-waterfall-row
+    // (label · track lane · duration); the track nests inside the row now.
+    const wrows = wfEl.children.filter(c => c.className.includes("ast-waterfall-row"));
+    if (wrows.length !== 3) throw new Error("expected 3 waterfall rows for turn B, got " + wrows.length);
+    const trackB = wrows[1].children.find(c => c.className.includes("ast-waterfall-track"));
+    if (!trackB) throw new Error("waterfall row must nest its track lane");
+    const errorBar = trackB.children.find(b => b.className.includes("ast-waterfall-error"));
     if (!errorBar) throw new Error("provider.error span must render with ast-waterfall-error");
     if (errorBar.title !== "boom") throw new Error("error bar title must carry the payload message verbatim: " + errorBar.title);
     console.log("ERROR_INLINE_OK true");
@@ -406,9 +411,10 @@ const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
     rowB.onclick();
     const wfAfterClick = document.getElementById("ast-waterfall");
     if (wfAfterClick.classList.contains("ast-metrics-hidden")) throw new Error("clicking a turn row must reveal the waterfall");
-    const clickedTracks = wfAfterClick.children.filter(c => c.className.includes("ast-waterfall-track"));
-    if (clickedTracks.length !== 3) throw new Error("waterfall after click should have 3 tracks (turn B's 3 events), got " + clickedTracks.length);
-    const clickedError = clickedTracks[1].children.find(b => b.className.includes("ast-waterfall-error"));
+    const clickedRows = wfAfterClick.children.filter(c => c.className.includes("ast-waterfall-row"));
+    if (clickedRows.length !== 3) throw new Error("waterfall after click should have 3 rows (turn B's 3 events), got " + clickedRows.length);
+    const clickedTrack = clickedRows[1].children.find(c => c.className.includes("ast-waterfall-track"));
+    const clickedError = clickedTrack && clickedTrack.children.find(b => b.className.includes("ast-waterfall-error"));
     if (!clickedError || clickedError.title !== "boom") throw new Error("waterfall after click must still carry the error bar + title");
     const rowBAfter = turnlistEl.children.find(r => r.getAttribute("data-turn-id") === "B");
     if (!rowBAfter.className.includes("ast-turnlist-selected")) throw new Error("clicked row must be marked selected");
@@ -421,7 +427,12 @@ const flushMicrotasks = () => new Promise(r => setTimeout(r, 0));
     // data does not carry. ----
     const turnlab = wfAfterClick.children.find(c => c.className && c.className.includes("ast-waterfall-turnlab"));
     if (!turnlab) throw new Error("waterfall missing its ast-waterfall-turnlab header");
-    if (turnlab.textContent !== "Turn B · error · 0.40s") throw new Error("turn-context header wrong: " + JSON.stringify(turnlab.textContent));
+    // 2026-07-29: the header is a flex row now -- text span + the raw-JSON
+    // detach button (human-directed) -- so the text lives on the first child.
+    const turnlabText = turnlab.children && turnlab.children[0] ? turnlab.children[0].textContent : turnlab.textContent;
+    if (turnlabText !== "Turn B · error · 0.40s") throw new Error("turn-context header wrong: " + JSON.stringify(turnlabText));
+    const rawBtn = turnlab.children.find(c => c.className && c.className.includes("ast-waterfall-raw"));
+    if (!rawBtn) throw new Error("waterfall header missing the raw-provider-JSON detach button");
     console.log("WATERFALL_TURNLAB_OK true");
 
     // ---- #393: truncated marker reveals/hides on the endpoint's own truncated flag ----
