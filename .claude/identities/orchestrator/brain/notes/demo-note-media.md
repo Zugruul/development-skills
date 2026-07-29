@@ -1,11 +1,11 @@
 ---
 tags: [demo, media, neural-view]
 paths: []
-strength: 2
-source: "PR#288 + #430 (audio + mermaid)"
+strength: 3
+source: "scad-viewer demo (2026-07-29)"
 graduated: false
 created: 2026-07-21
-last-touched: 2026-07-26
+last-touched: 2026-07-29
 ---
 
 # Note media — one example per supported entity type
@@ -72,3 +72,22 @@ Wikilink to another note in this brain: [[bisect-before-blaming-tracked-flakines
 - Remote video does NOT inline (only local files do); remote images DO. Asymmetry is deliberate for now.
 - The audio fixture is a generated 1s 440Hz sine (stdlib `wave`, deterministic) — no network fetch, no ffmpeg, mirrors the transcoding lesson above.
 ## Feedback addendum: this demo caught a real bug — code-span examples (`![alt](path)`) were parsed as live media; fixed in sw/neural-view-synapse-clicks by protecting backtick spans in render_body.
+
+## 3D CAD — `[label](path.scad)` renders the MODEL first; Code toggles the source
+
+OpenSCAD duck (subset-friendly — also opens in real OpenSCAD: F6, then Export as STL):
+
+[duck.scad](media/duck.scad)
+
+The preview interprets the printable-primitive subset (`sphere`, `cube`, `cylinder`, `translate`/`rotate`/`scale`, `union`, `color`) directly into the live viewer — same Spin/Detach/Save chrome as the other 3D blocks, plus a Code toggle. A `.scad` using unsupported ops (`difference`, modules, variables) falls back to the highlighted source view instead of rendering wrong geometry.
+
+Fenced ```scad blocks in notes and chat get the same 3D-first treatment when they fit the subset:
+
+```scad
+$fn = 32;
+union() {
+    cylinder(2, 8, 8);
+    translate([0, 0, 2]) cylinder(6, 5, 1.2);
+    translate([0, 0, 9]) sphere(2.2);
+}
+```

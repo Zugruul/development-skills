@@ -6311,3 +6311,50 @@ items:
   routing:
     action: brain-note
     ref: dev/nonhermetic-e2e-proof-class
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-29T12:45:00+02:00'
+iteration:
+  task: 'human-directed live batches: noise-proof voice, write relay, scad viewer,
+    chat detach'
+  outcome: merged
+  reviewRounds: 0
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: permissions
+  component: plugins/spec-workflow/scripts/assistant/claude.py
+  severity: high
+  summary: Shipped a headless CLI write-enable flag set that could never work; only
+    an empirical probe revealed the real permission model
+  detail: The first write-enable used tool enablement + acceptEdits + add-dir; the
+    headless CLI denies un-allowlisted tools AND flags dot-claude-nested paths as
+    sensitive with no prompt available. A one-call probe with a small model proved
+    the working combination in minutes.
+  generalized: 'Never ship a sandbox/permission flag combination for a headless CLI
+    from documentation reasoning alone: enabling a tool is not allowlisting it, and
+    path-sensitivity classifiers can veto targets regardless of flags. A single cheap
+    live probe (small model, trivial prompt, inspect the side effect) settles it before
+    code ships.'
+  proposal:
+    target: adapter development practice
+    change: Add a probe script or test fixture that exercises the real CLI flag set
+      against a scratch dir before an adapter flag change merges.
+  routing:
+    action: brain-note
+    ref: dev/probe-headless-cli-permissions-before-shipping
+- category: friction
+  area: permissions
+  severity: low
+  summary: A path-pattern guard hook blocked legitimate plugin-code edits whose command
+    text merely mentioned guarded paths
+  generalized: Guards that regex-match command TEXT for protected paths produce false
+    positives on legitimate tooling work that only references those paths in strings;
+    scoping the guard to the actual file targets being read (not any textual mention)
+    keeps protection without blocking maintenance.
+  routing:
+    action: brain-note
+    ref: orchestrator/guards-scope-to-targets-not-text

@@ -2403,3 +2403,11 @@
 {"action": "ignore", "idx": 3, "itemTs": "2026-07-29T05:05:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T07:54:00+00:00", "type": "FeedbackRouted", "v": 1}
 {"action": "brain-note", "idx": 4, "itemTs": "2026-07-29T05:05:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T07:54:00+00:00", "type": "FeedbackRouted", "v": 1}
 {"itemCount": 5, "itemTs": "2026-07-29T05:05:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T07:54:38+00:00", "type": "FeedbackArchived", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "demo-note-media", "strength": 3, "ts": "2026-07-29T15:31:32+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "probe-headless-cli-permissions-before-shipping", "strength": 1, "ts": "2026-07-29T15:38:23+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "guards-scope-to-targets-not-text", "strength": 1, "ts": "2026-07-29T15:38:23+00:00", "type": "NoteMinted", "v": 1}
+{"idx": 0, "itemTs": "2026-07-29T12:45:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T15:38:07+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 1, "itemTs": "2026-07-29T12:45:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T15:38:07+00:00", "type": "FeedbackEmitted", "v": 1}
+{"action": "brain-note", "idx": 0, "itemTs": "2026-07-29T12:45:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T15:38:07+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 1, "itemTs": "2026-07-29T12:45:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T15:38:07+00:00", "type": "FeedbackRouted", "v": 1}
+{"itemCount": 2, "itemTs": "2026-07-29T12:45:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T15:38:24+00:00", "type": "FeedbackArchived", "v": 1}
