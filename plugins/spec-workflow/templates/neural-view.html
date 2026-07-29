@@ -980,7 +980,10 @@ canvas.grabbing{cursor:grabbing}
    filters panel (60), which caps at the same 2/3 band and must NEVER
    cover the chat. */
 body.chat-docked #gauges{max-height:calc((100vh - 130px)*.62)}
-body.chat-docked #search-filters-panel{height:calc((100vh - 130px)*.66)}
+/* filters stop at the SAME band edge the brains do -- the docked chat's
+   top sits at .62 + 12px seam, so a .66 cap overlapped it (human report
+   2026-07-29: "the filter is behind the chat"). */
+body.chat-docked #search-filters-panel{height:calc((100vh - 130px)*.62)}
 .ast-chat-overlay{position:fixed;left:14px;bottom:14px;
   top:calc(70px + (100vh - 130px)*.62 + 12px);   /* 12px seam under the brains band -- the right sidebar's own panel gap */
   width:var(--colw);height:auto;min-height:0;
