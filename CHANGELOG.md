@@ -12,6 +12,12 @@
   > 
   > Closes #479
 
+### Other
+- retro(loop-close): 4 items routed, 5 notes minted, prune applied, retro #115 (`213f577`)
+  > - All four loop-close feedback items routed to brain notes and archived.
+  > - Minted: dev/record-gate-pass-after-final-commit, dev/bash32-heredoc-in-substitution, orchestrator/verify-state-before-assuming-stalled, orchestrator/name-the-counterfactual-bar; check-shipped-before-implementing re-minted to strength 2.
+  > - Pruned dev brain's dangling cross-role links; 4 recalled-note outcomes recorded for the voice-event task.
+
 ## v0.57.4 — 2026-07-29
 
 ### Fixes
