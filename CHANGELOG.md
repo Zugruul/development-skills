@@ -8,6 +8,23 @@
 - **release:** spec-workflow v0.61.0 (`7ffa0ed`)
 - push activations.png (`ef7d5c7`)
 
+### Other
+- fix(485-r1)+feat(chrome): review round-1 fixes, pull-to-detach chat, window maximize, mermaid Fit label, 3D fullscreen (`122410e`)
+  > Review fixes (#485 spec pass, 10 findings): Cmd+K routes through the one
+  > switch flow; the status-sync loop owns its own baseline; a failed select
+  > never becomes client-only selection (server echo adopted); media ctx
+  > follows the switch; queued/in-flight turns flush on switch (switchGen
+  > discard in dispatchNextChat, section 7.7); real test coverage for
+  > tabs/switch/sync lifecycle; gated overlays render no tabs; tabs honor
+  > [hidden]; role=group + aria-pressed instead of a half tablist; switch
+  > serialized against rapid clicks. Chrome: chat detaches by PULLING the
+  > header grip (window rides the pointer, dock button appears while
+  > floating); every detached window gains a maximize/restore toggle; the
+  > mermaid reframe button says Fit (it never was fullscreen); inline 3D
+  > blocks get a real fullscreen toggle.
+  > 
+  > Claude-Session: https://claude.ai/code/session_01EzNH8czvn8a1XVxYjsWLMm
+
 ## v0.60.1 — 2026-07-29
 
 ### Features
