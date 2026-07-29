@@ -109,16 +109,6 @@
     "last": "2026-07-28",
     "weight": 0.5
   },
-  "css-length-strings-never-roundtrip->tested-through-which-caller": {
-    "fires": 2,
-    "last": "2026-07-28",
-    "weight": 0.5
-  },
-  "css-shorthand-specificity-trap->comments-deserve-code-scrutiny": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "deterministic-repro-fast->hotfix-repro-incident-sequence": {
     "fires": 26,
     "last": "2026-07-29",
@@ -402,6 +392,11 @@
   "read-validator-before-fixtures->capture-dont-transcribe": {
     "fires": 1,
     "last": "2026-07-22",
+    "weight": 0.5
+  },
+  "record-gate-pass-after-final-commit->gate-runs-take-minutes": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "red-commit-as-you-go->batch-red-across-surfaces": {

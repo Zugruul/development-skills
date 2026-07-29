@@ -6161,3 +6161,70 @@ items:
     action: ignore
     ref: batching micro-asks is a human-workflow choice; the serial lanes are the
       designed safety behavior
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-29T06:05:00Z'
+iteration:
+  task: '479'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: testing
+  component: plugins/spec-workflow/scripts/gate.sh
+  severity: medium
+  summary: A recorded gate pass taken before the implementation commit dies the moment
+    the commit lands — the fingerprint binds HEAD plus the uncommitted diff, so committing
+    byte-identical content still invalidates it and forces a full re-run.
+  detail: The dev ran the recorded gate green with the fix uncommitted, then committed;
+    the In-review move was BLOCKED and a second multi-minute suite run was needed
+    on an identical tree.
+  evidence:
+  - Zugruul/development-skills#479
+  generalized: Record the quality-gate pass only AFTER the final commit of the round
+    — a pass recorded against an uncommitted tree is invalidated by the very commit
+    that finalizes the work, costing a redundant full suite run.
+  routing:
+    action: brain-note
+    ref: dev/record-gate-pass-after-final-commit
+- category: incident
+  area: concurrency
+  severity: medium
+  summary: Three different dev agents in one session appeared stalled mid-task because
+    their wait mechanism timed out under the multi-minute gate while the underlying
+    run was healthy; the orchestrator recovered each by direct state inspection.
+  generalized: Subagents waiting on long-running commands look identical to crashed
+    ones from the outside; the orchestrator should verify actual process and branch
+    state before re-briefing or taking over, and briefs should mandate wait budgets
+    exceeding the known gate duration.
+  routing:
+    action: brain-note
+    ref: orchestrator/verify-state-before-assuming-stalled
+- category: worked-well
+  area: board
+  severity: low
+  summary: Checking git history for already-landed work before briefing a dev converted
+    six stale-open dispatches into evidence-based closes in one session and focused
+    the single real dispatch onto its genuine residual gap.
+  generalized: A pre-brief check of git history for the picked issue's identifiers
+    cheaply separates stale-open issues (close with evidence) from genuine work, and
+    sharpens genuine work onto what actually remains.
+  routing:
+    action: brain-note
+    ref: orchestrator/check-shipped-before-implementing
+- category: worked-well
+  area: review
+  severity: low
+  summary: Requiring reviewers to counterfactual-check assertions (strip the fix in
+    an isolated copy, watch the assertion flip) repeatedly proved tests non-vacuous
+    and caught one comment-vs-behavior lie.
+  generalized: Review briefs that explicitly demand counterfactual verification of
+    new assertions get non-vacuous tests and accurate comments; reviewers reliably
+    rise to the named bar.
+  routing:
+    action: brain-note
+    ref: orchestrator/name-the-counterfactual-bar
