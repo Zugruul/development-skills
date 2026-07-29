@@ -114,6 +114,11 @@
     "last": "2026-07-28",
     "weight": 0.5
   },
+  "css-shorthand-specificity-trap->comments-deserve-code-scrutiny": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "deterministic-repro-fast->hotfix-repro-incident-sequence": {
     "fires": 25,
     "last": "2026-07-28",

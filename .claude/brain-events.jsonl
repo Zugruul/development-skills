@@ -2253,3 +2253,17 @@
 {"key": "extract-harness-new-callee-sweep->anonymous-listener-slice-eval", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-29T01:41:49+00:00", "type": "LinkFormed", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "dev", "slug": "gate-runs-take-minutes", "strength": 1, "ts": "2026-07-29T01:41:49+00:00", "type": "NoteMinted", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "outcomes-after-interviews", "strength": 1, "ts": "2026-07-29T01:41:49+00:00", "type": "NoteMinted", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reproduce-before-verdict", "task": "490", "ts": "2026-07-29T03:07:31+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "comments-deserve-code-scrutiny", "task": "490", "ts": "2026-07-29T03:07:31+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "red-commit-verify-sequential-harness", "task": "490", "ts": "2026-07-29T03:07:31+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "stub-never-happens-claims-verify", "task": "490", "ts": "2026-07-29T03:07:32+00:00", "type": "RecallOutcome", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "css-shorthand-specificity-trap", "strength": 1, "ts": "2026-07-29T03:07:32+00:00", "type": "NoteMinted", "v": 1}
+{"key": "css-shorthand-specificity-trap->comments-deserve-code-scrutiny", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-29T03:07:32+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "self-authored-code-needs-adversarial-review", "strength": 1, "ts": "2026-07-29T03:07:32+00:00", "type": "NoteMinted", "v": 1}
+{"idx": 0, "itemTs": "2026-07-29T03:12:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T03:07:55+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 1, "itemTs": "2026-07-29T03:12:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T03:07:55+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 2, "itemTs": "2026-07-29T03:12:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T03:07:55+00:00", "type": "FeedbackEmitted", "v": 1}
+{"action": "brain-note", "idx": 0, "itemTs": "2026-07-29T03:12:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T03:08:26+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "backlog", "idx": 1, "itemTs": "2026-07-29T03:12:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T03:08:27+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "ignore", "idx": 2, "itemTs": "2026-07-29T03:12:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T03:08:27+00:00", "type": "FeedbackRouted", "v": 1}
+{"itemCount": 3, "itemTs": "2026-07-29T03:12:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T03:08:27+00:00", "type": "FeedbackArchived", "v": 1}

@@ -6106,3 +6106,58 @@ items:
   routing:
     action: ignore
     ref: the documented lock protocol worked exactly as designed; nothing to change
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-29T03:12:00Z'
+iteration:
+  task: '490'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: low
+  summary: Running the full gate and both independent review passes concurrently made
+    a same-session hotfix safe without adding wall-clock; the reviews caught four
+    real findings in orchestrator-authored code.
+  generalized: When the orchestrator must author code directly under a human do-it-now
+    directive, running the recorded gate and both review passes in parallel preserves
+    independent scrutiny at zero added latency — and that scrutiny finds real defects
+    self-review misses.
+  routing:
+    action: brain-note
+    ref: orchestrator/self-authored-code-needs-adversarial-review
+- category: friction
+  area: merge
+  severity: medium
+  summary: Every push to main triggers a changelog-regeneration commit, which moves
+    main and forces a full rebase-plus-regate cycle on whatever branch merges next,
+    repeatedly re-running a multi-minute suite for doc-only main movement.
+  generalized: A bot that commits to main after every push interacts badly with a
+    merge-freshness rule requiring rebase plus full re-gate whenever main moves —
+    consider exempting doc-only or bot-authored main movement from the re-gate requirement,
+    or batching the bot's commits.
+  proposal:
+    target: plugins/spec-workflow/skills/build-next/references/auto-review.md
+    change: Allow the merge dance to skip the re-gate (keep the rebase) when the only
+      new commits on main since the branch's recorded gate touch a configured doc-only
+      allowlist (e.g. CHANGELOG.md, .claude/ state).
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#493
+- category: friction
+  area: concurrency
+  severity: low
+  summary: A series of small same-file UI tasks forced strictly serial lanes; each
+    waited on the previous task's full merge dance.
+  generalized: Many small human-directed tweaks to one file serialize the whole pipeline;
+    batching related micro-asks into one task when they arrive within minutes of each
+    other would cut per-task overhead substantially.
+  routing:
+    action: ignore
+    ref: batching micro-asks is a human-workflow choice; the serial lanes are the
+      designed safety behavior
