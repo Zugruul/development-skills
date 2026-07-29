@@ -90,7 +90,7 @@ check_absent "stopStt()'s own body never touches window.__sttSpanId either -- it
 echo "-- template: #454 (P0 live-bug batch) -- silence-timeout endpointing, named constant --"
 check "STT_WEBSPEECH_SILENCE_MS is a named constant, not a magic number inline" "const STT_WEBSPEECH_SILENCE_MS = 1300;" "$NVHTML_VT_BODY"
 check "WebSpeechSttEngine accumulates final segments into a buffer instead of finalizing on the first one" "if(t) this.buffer += (this.buffer ? \" \" : \"\") + t;" "$NVHTML_VT_BODY"
-check "a manual stop() flushes the buffered segment immediately rather than losing it" "if(this.silenceTimer) this._finalize();" "$NVHTML_VT_BODY"
+check "a manual stop() flushes the buffered segment immediately rather than losing it" "if(this.silenceTimer || this._staleTimer) this._finalize();" "$NVHTML_VT_BODY"
 
 echo "-- template: #451 (P0 live-bug batch) -- a failed voice turn must SAY why --"
 check "reportSttFailure() exists" "async function reportSttFailure(message){" "$NVHTML_VT_BODY"
@@ -347,6 +347,7 @@ function fireLatestTimer(){
     entry.fn();
 }
 defineConst("STT_WEBSPEECH_SILENCE_MS");
+defineConst("STT_WEBSPEECH_STALE_MS");
 defineConst("STT_WEBSPEECH_LIVENESS_MS");
 defineClass("WebSpeechSttEngine");
 global.sttEngines = { "web-speech": new WebSpeechSttEngine() };
@@ -592,14 +593,21 @@ window.__sttListening = false;
 syncCaptureDot();
 if (dotBtn.classList.contains("listening")) throw new Error("#490: fresh state must not read as capturing -- capture is off by default on load");
 console.log("CAPTUREDOT_FRESH_OFF_OK true");
-// visualizer mic-always-on captures with NO stt turn -> dot must be ON
+// 2026-07-29 (human directive, overruling #490's wider capture-truth
+// reading): the dot is RECORDING truth -- the ambient always-on
+// visualizer capture must NOT light it; it kept the dot bright forever
+// and read as "stuck on".
 global.uiState = { micMode: "always", vdir: "both" };
 syncCaptureDot();
-if (!dotBtn.classList.contains("listening")) throw new Error("#490: always-on visualizer capture must light the dot (it IS capturing)");
-// direction out => micHot false => not capturing => dark
+if (dotBtn.classList.contains("listening")) throw new Error("recording-truth dot: ambient always-on visualizer capture must NOT light the dot");
 global.uiState = { micMode: "always", vdir: "out" };
 syncCaptureDot();
-if (dotBtn.classList.contains("listening")) throw new Error("#490: direction=out means no inbound capture -- dot must be dark");
+if (dotBtn.classList.contains("listening")) throw new Error("direction=out, no recording -- dot must be dark");
+// a held press-to-speak IS recording -> bright
+window.voicePTT = true;
+syncCaptureDot();
+if (!dotBtn.classList.contains("listening")) throw new Error("held press-to-speak records -- dot must be bright");
+window.voicePTT = false;
 // a live STT turn lights it even though micHot() is false during turns (#464)
 global.uiState = {};
 window.__sttListening = true;

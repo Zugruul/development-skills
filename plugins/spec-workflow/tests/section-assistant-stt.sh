@@ -257,6 +257,7 @@ function fireLatestTimer(){
 // ---- Web Speech engine: wires recognition events -> onResult, degrades honestly ----
 defineClass("WebSpeechSttEngine");
 defineConst("STT_WEBSPEECH_SILENCE_MS");
+defineConst("STT_WEBSPEECH_STALE_MS");
 defineConst("STT_WEBSPEECH_LIVENESS_MS");
 {
     // no SpeechRecognition ctor on this stubbed window at all
@@ -286,12 +287,17 @@ defineConst("STT_WEBSPEECH_LIVENESS_MS");
     engine.start((text) => { gotResult = text; resultCalls++; }, () => {});
     startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "Are you" }], { isFinal: true })] });
     if (resultCalls !== 0) throw new Error("a single final segment must not finalize the turn immediately -- that is the #454 truncation bug");
-    if (scheduledTimers.size !== 1) throw new Error("a final segment must schedule exactly one silence timer, got " + scheduledTimers.size);
-    if ([...scheduledTimers.values()][0].ms !== STT_WEBSPEECH_SILENCE_MS) throw new Error("the scheduled delay must be STT_WEBSPEECH_SILENCE_MS, got " + [...scheduledTimers.values()][0].ms);
+    // 2026-07-29: a final with words arms TWO timers now -- the silence
+    // timer AND the stale-buffer backstop (STT_WEBSPEECH_STALE_MS); both
+    // finalize, the stale one exists for noise that keeps resetting
+    // nothing-new events. Assert both delays are present.
+    if (scheduledTimers.size !== 2) throw new Error("a final segment must schedule the silence timer + the stale backstop, got " + scheduledTimers.size);
+    const delays = [...scheduledTimers.values()].map(t => t.ms).sort((a, b) => a - b);
+    if (delays[0] !== STT_WEBSPEECH_SILENCE_MS || delays[1] !== STT_WEBSPEECH_STALE_MS) throw new Error("expected [SILENCE, STALE] delays, got " + JSON.stringify(delays));
     // speech resumes before the silence timeout elapses -- must EXTEND, not truncate
     startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "there" }], { isFinal: true })] });
     if (resultCalls !== 0) throw new Error("a second segment arriving before the silence timeout must not have finalized yet either");
-    if (scheduledTimers.size !== 1) throw new Error("the second segment must reset (not add to) the pending timer, got " + scheduledTimers.size + " pending");
+    if (scheduledTimers.size !== 2) throw new Error("the second segment must reset (not add to) the pending timers, got " + scheduledTimers.size + " pending");
     // the turn actually goes quiet now
     fireLatestTimer();
     if (resultCalls !== 1) throw new Error("the silence timeout must finalize the turn exactly once, got " + resultCalls + " calls");
@@ -316,7 +322,7 @@ defineConst("STT_WEBSPEECH_LIVENESS_MS");
     if (scheduledTimers.size !== 0) throw new Error("an interim (non-final) segment must NOT arm the silence timer -- endpointing keys off finals only");
     if (resultCalls !== 0) throw new Error("interims must never finalize the turn");
     startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "hello world" }], { isFinal: true })] });
-    if (scheduledTimers.size !== 1) throw new Error("the final segment must still arm the silence timer");
+    if (scheduledTimers.size !== 2) throw new Error("the final segment must arm the silence timer + the stale backstop (2026-07-29), got " + scheduledTimers.size);
     if (interims[interims.length - 1] !== "hello world") throw new Error("a final segment must refresh the live text with the accumulated buffer, got " + JSON.stringify(interims[interims.length - 1]));
     fireLatestTimer();
     if (resultCalls !== 1) throw new Error("silence after the final must finalize exactly once");
@@ -540,6 +546,7 @@ defineConst("STT_VAD_RMS");
 defineConst("STT_VAD_PREROLL_MS");
 defineConst("STT_VAD_MAX_UTTERANCE_MS");
 defineConst("STT_VAD_ONSET_FRAMES");
+defineConst("STT_VAD_STALE_MS");
 defineConst("STT_VAD_LOUD_RMS");
 eval(extract("wavFromFloat32"));
 // the class is eval'd in defineClass's scope (then assigned to global) --

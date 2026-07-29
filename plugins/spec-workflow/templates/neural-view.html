@@ -652,8 +652,12 @@ canvas.grabbing{cursor:grabbing}
    purely by setSttListening(), independent of the mode this button no
    longer exposes. */
 #voice-stt{display:inline-flex;align-items:center;justify-content:center}
-#voice-stt .micdot{position:relative;width:9px;height:9px;border-radius:50%;background:#7a2a24;display:block}
-#voice-stt.listening .micdot{background:#e0453a;box-shadow:0 0 8px rgba(224,69,58,.7)}
+/* muted = clearly DARK (human directive 2026-07-29, repeated): the resting
+   dot must read as off at a glance -- deep desaturated ember, no glow.
+   Bright/glowing only while actually recording. */
+#voice-stt .micdot{position:relative;width:9px;height:9px;border-radius:50%;
+  background:#3f1713;opacity:.75;display:block;transition:background .15s ease,opacity .15s ease}
+#voice-stt.listening .micdot{background:#e0453a;opacity:1;box-shadow:0 0 8px rgba(224,69,58,.7)}
 /* AST-021 startup selection (SPEC-ASSISTANT.md §7.2-§7.4, issue #318):
    finalized as Option C "command palette" (docs/ui-options/AST-021-r1.html,
    human pick recorded on the issue) -- a top-center dropdown anchored
@@ -4312,6 +4316,15 @@ applyNoiseReactUi();
 // override) flushes whatever's been captured so far immediately rather
 // than losing it.
 const STT_WEBSPEECH_SILENCE_MS = 1300;
+// Stale-buffer endpoint (human report 2026-07-29: "message sometimes never
+// sends -- maybe white noise"): background noise makes the recognizer emit
+// EMPTY final segments and jittering interims forever, and the silence
+// timer used to reset on every one of them -- words sat in the buffer with
+// no send. Two-part fix: an empty final no longer resets the pause once
+// words are buffered (no new words IS the pause), and this harder backstop
+// finalizes whenever the accumulated transcript text has not GROWN for
+// this long while non-empty.
+const STT_WEBSPEECH_STALE_MS = 2500;
 // #474 (P0 live-bug batch, issue #474): "talks non-stop, hears nothing at
 // all" -- investigation found the browser's continuous recognition
 // session can go dead in ways that leave NOTHING for the mic control to
@@ -4328,6 +4341,7 @@ const STT_WEBSPEECH_LIVENESS_MS = 8000;
 class WebSpeechSttEngine{
   constructor(){
     this.recog = null; this.buffer = ""; this.silenceTimer = null; this.onResult = null;
+    this._staleTimer = null; this._lastLive = "";
     // #491: live-transcription hook -- receives the accumulated finals +
     // current interim as one string while the human is still talking.
     this.onInterim = null;
@@ -4379,26 +4393,41 @@ class WebSpeechSttEngine{
         if(res && res.isFinal){
           const t = text && text.trim();
           if(t) this.buffer += (this.buffer ? " " : "") + t;
-          // reset the silence timer on every new final segment -- even an
-          // empty-text one (pre-#491 behavior: ANY result reset it; #474
-          // hyp3 pins that an empty-buffer finalize is a harmless no-op)
-          // -- only finalize once the turn actually goes quiet.
-          clearTimeout(this.silenceTimer);
-          this.silenceTimer = setTimeout(()=>this._finalize(), STT_WEBSPEECH_SILENCE_MS);
+          // reset the pause timer on a final that CARRIED WORDS, or on any
+          // final while the buffer is still empty (#474 hyp3: an
+          // empty-buffer finalize is a harmless no-op). An EMPTY final
+          // with words already buffered no longer resets it (2026-07-29):
+          // white noise produces empty finals indefinitely, and each one
+          // used to push the send further away -- no new words IS the
+          // pause continuing.
+          if(t || !this.buffer){
+            clearTimeout(this.silenceTimer);
+            this.silenceTimer = setTimeout(()=>this._finalize(), STT_WEBSPEECH_SILENCE_MS);
+          }
         }else if(text && text.trim()){
           interim += (interim ? " " : "") + text.trim();
         }
       }
-      if(this.onInterim){
-        const live = this.buffer + (interim ? (this.buffer ? " " : "") + interim : "");
-        if(live) this.onInterim(live);
+      const live = this.buffer + (interim ? (this.buffer ? " " : "") + interim : "");
+      // stale-buffer backstop (2026-07-29): armed/reset ONLY when the live
+      // transcript text actually changes; noise events that change nothing
+      // leave it ticking, so words in the buffer always send within
+      // STT_WEBSPEECH_STALE_MS of the last real word.
+      if(live !== this._lastLive){
+        this._lastLive = live;
+        clearTimeout(this._staleTimer);
+        if(this.buffer){
+          this._staleTimer = setTimeout(()=>this._finalize(), STT_WEBSPEECH_STALE_MS);
+        }
       }
+      if(this.onInterim && live) this.onInterim(live);
     };
     r.onerror = ev=>{
       if(gen !== this._gen) return; // #474: stale instance, ignore
       settled = true;
       clearTimeout(this._livenessTimer); this._livenessTimer = null;
       clearTimeout(this.silenceTimer); this.silenceTimer = null; this.buffer = "";
+      clearTimeout(this._staleTimer); this._staleTimer = null; this._lastLive = "";
       onError("web-speech-error: " + ((ev && ev.error) || "unknown"));
     };
     // #474: `onend` is the ONE event the spec guarantees fires last no
@@ -4415,6 +4444,7 @@ class WebSpeechSttEngine{
       if(this._manualStop || settled) return;
       settled = true;
       clearTimeout(this.silenceTimer); this.silenceTimer = null; this.buffer = "";
+      clearTimeout(this._staleTimer); this._staleTimer = null; this._lastLive = "";
       onError("web-speech-ended: recognition ended unexpectedly with no result and no error -- the browser's speech service likely dropped the session");
     };
     // #474 liveness watchdog -- see STT_WEBSPEECH_LIVENESS_MS's own
@@ -4424,6 +4454,7 @@ class WebSpeechSttEngine{
       if(gen !== this._gen || settled) return;
       settled = true;
       clearTimeout(this.silenceTimer); this.silenceTimer = null; this.buffer = "";
+      clearTimeout(this._staleTimer); this._staleTimer = null; this._lastLive = "";
       const stale = this.recog;
       if(stale){
         stale.onresult = stale.onerror = stale.onend = stale.onaudiostart = null;
@@ -4436,6 +4467,8 @@ class WebSpeechSttEngine{
   }
   _finalize(){
     clearTimeout(this.silenceTimer); this.silenceTimer = null;
+    clearTimeout(this._staleTimer); this._staleTimer = null;
+    this._lastLive = "";
     const text = this.buffer; this.buffer = "";
     if(text && this.onResult) this.onResult(text);
   }
@@ -4453,7 +4486,7 @@ class WebSpeechSttEngine{
     // truly stale one (gen bumped by a subsequent start()).
     this._manualStop = true;
     clearTimeout(this._livenessTimer); this._livenessTimer = null;
-    if(this.silenceTimer) this._finalize();
+    if(this.silenceTimer || this._staleTimer) this._finalize();
     if(this.recog){ this.recog.stop(); this.recog = null; }
   }
 }
@@ -4480,6 +4513,11 @@ const STT_WHISPER_UNAVAILABLE_MSG = "whisper sidecar not reachable at 127.0.0.1:
 // syllable is never clipped.
 const STT_VAD_SILENCE_MS = 1100;
 const STT_VAD_RMS = 0.012;
+// Stale endpoint (2026-07-29, human report: noise between "silence" and
+// "clear speech" postponed the send): frames louder than the floor but
+// never reaching CLEAR speech (2x floor) for this long, with words
+// already captured, end the turn anyway.
+const STT_VAD_STALE_MS = 2500;
 const STT_VAD_PREROLL_MS = 400;
 const STT_VAD_MAX_UTTERANCE_MS = 60000;
 // Onset hardening (human report 2026-07-29: typing/blank audio opened
@@ -4541,7 +4579,7 @@ class WhisperSttEngine{
     const sr = mic.ctx.sampleRate;
     const preN = Math.round(sr*STT_VAD_PREROLL_MS/1000);
     const maxN = sr*(STT_VAD_MAX_UTTERANCE_MS/1000);
-    let pre = [], preLen = 0, chunks = [], len = 0, talking = false, silentMs = 0, onsetFrames = 0;
+    let pre = [], preLen = 0, chunks = [], len = 0, talking = false, silentMs = 0, onsetFrames = 0, sinceClearMs = 0;
     const endTurn = (discard)=>{
       if(gen !== this._gen || !this.active) return;
       this.active = false; this._endTurn = null;
@@ -4576,7 +4614,10 @@ class WhisperSttEngine{
       }else{
         chunks.push(new Float32Array(pcm)); len += pcm.length;
         if(rms > STT_VAD_RMS) silentMs = 0; else silentMs += frameMs;
-        if(silentMs >= STT_VAD_SILENCE_MS || len >= maxN) endTurn(false);
+        // stale endpoint: white noise above the floor but below CLEAR
+        // speech never resets this; only real speech does.
+        if(rms > STT_VAD_LOUD_RMS) sinceClearMs = 0; else sinceClearMs += frameMs;
+        if(silentMs >= STT_VAD_SILENCE_MS || sinceClearMs >= STT_VAD_STALE_MS || len >= maxN) endTurn(false);
       }
     });
   }
@@ -5291,17 +5332,31 @@ function newClientTurnId(){
 // echo-cancelled capture (MicSource's echoCancellation:true) is what
 // keeps the reply's own speaker output from tripping the threshold; the
 // sustain window guards against residual blips.
-const VOICE_BARGE_LEVEL = 0.10, VOICE_BARGE_SUSTAIN_MS = 350, VOICE_BARGE_POLL_MS = 70;
+// 2026-07-29 (human report: "the assistant is getting interrupted mid
+// sentence by the slightest white noise"): the trigger is ADAPTIVE now --
+// a rolling ambient baseline absorbs steady noise (fans, hiss, the
+// reply's own speaker bleed) and only a level well ABOVE that baseline,
+// sustained, counts as the human talking. Sustain lengthened too: a real
+// interjection lasts >600ms; a hiss spike does not.
+const VOICE_BARGE_LEVEL = 0.14, VOICE_BARGE_SUSTAIN_MS = 600, VOICE_BARGE_POLL_MS = 70,
+      VOICE_BARGE_AMBIENT_RATIO = 3;
 let voiceBargeTimer = null;
 function voiceBargeWatchStart(){
   if(!window.__voiceLoopOn) return;   // barge-in is a loop-mode behavior
   voiceBargeWatchStop();
-  let hotMs = 0;
+  let hotMs = 0, ambient = 0, seeded = false;
   voiceBargeTimer = setInterval(()=>{
     if(!voiceSources.outbound.speaking){ voiceBargeWatchStop(); return; }
     const src = voiceSources.inbound;
     const lv = src && src.level ? src.level() : 0;
-    hotMs = lv >= VOICE_BARGE_LEVEL ? hotMs + VOICE_BARGE_POLL_MS : 0;
+    if(!seeded){ ambient = lv; seeded = true; }
+    const trigger = Math.max(VOICE_BARGE_LEVEL, ambient * VOICE_BARGE_AMBIENT_RATIO);
+    if(lv >= trigger){
+      hotMs += VOICE_BARGE_POLL_MS;
+    }else{
+      hotMs = 0;
+      ambient = ambient * .9 + lv * .1;   // steady noise settles into the baseline
+    }
     if(hotMs >= VOICE_BARGE_SUSTAIN_MS){
       voiceBargeWatchStop();
       voiceSources.outbound.stop();
@@ -5448,7 +5503,12 @@ function micHot(){
 function syncCaptureDot(){
   const btn = document.getElementById("voice-stt");
   if(!btn) return;
-  btn.classList.toggle("listening", !!(window.__sttListening || micHot()));
+  // RECORDING truth, not capture truth (human directive 2026-07-29,
+  // overruling #490's wider reading): bright iff a voice turn/loop or a
+  // held press-to-speak is actually recording speech. The always-on
+  // VISUALIZER capture (micMode "always") no longer lights it -- that
+  // ambient meter kept the dot bright forever and read as "stuck on".
+  btn.classList.toggle("listening", !!(window.__sttListening || window.__voiceLoopOn || window.voicePTT));
 }
 async function syncMic(){
   const want = micHot();
