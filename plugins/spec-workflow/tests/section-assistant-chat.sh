@@ -925,6 +925,11 @@ global.fetch = async (url, opts) => {
 };
 let historyLoads = 0;
 global.loadChatHistory = async () => { historyLoads++; };
+// switchAssistantTo re-arms the keep-in-step sync when an overlay exists
+// (quality round-2 R1) -- recorder here; the real lifecycle is asserted in
+// the TABS_SYNC_LIFECYCLE block below with stubbed timers.
+let syncArms = 0;
+global.startChatStatusSync = () => { syncArms++; };
 global.setVoiceHeaderName = (n) => { global.__headerName = n; };
 global.gateVoiceAndChat = () => {};
 global.renderAssistantDigest = () => {};
