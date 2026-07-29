@@ -18,6 +18,10 @@
 ### Chores
 - **release:** spec-workflow v0.61.4 (`b733af4`)
 
+### Other
+- retro(485-close): 3 items routed+minted (dual-pass review, gate/checkout fingerprints, grep-gated commits), retro #118 (`ce62020`)
+  > Claude-Session: https://claude.ai/code/session_01EzNH8czvn8a1XVxYjsWLMm
+
 ## v0.61.3 — 2026-07-29
 
 ### Fixes
