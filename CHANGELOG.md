@@ -12,6 +12,10 @@
   > 
   > Closes #463
 
+### Other
+- retro(463): outcomes + check-shipped-before-implementing minted (`2849bf7`)
+  > - Two dev-note outcomes recorded; new orchestrator note: grep git history for the issue before briefing — four stale-open issues in one night were already shipped, and board.sh audit at session close is the standing prevention.
+
 ## v0.57.3 — 2026-07-29
 
 ### Fixes
