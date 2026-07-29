@@ -160,8 +160,11 @@ canvas.grabbing{cursor:grabbing}
    height keeps it a full opaque overlay regardless of how much is inside;
    multi-column content (BRAINS/FILTERS groups) auto-collapses to one column
    at this width since column-width:150px can't fit a second one. */
+/* height caps at the SAME 2/3 band the BRAINS panel occupies (human-
+   directed 2026-07-29): the filters may cover brains, NEVER the docked
+   chat below (chat also sits one z-index above as a second guarantee). */
 #search-filters-panel{position:fixed;top:70px;left:14px;
-  width:var(--colw);height:calc(100vh - 100px);overflow-y:scroll;padding:.65rem .75rem;display:none;
+  width:var(--colw);height:calc((100vh - 130px)*.66);overflow-y:scroll;padding:.65rem .75rem;display:none;
   flex-direction:column;gap:.6rem;z-index:60;background:var(--panel-solid);backdrop-filter:none;
   -webkit-backdrop-filter:none;scrollbar-gutter:stable;
   scrollbar-width:thin;scrollbar-color:rgba(90,190,255,.4) rgba(255,255,255,.05)}
@@ -353,7 +356,9 @@ canvas.grabbing{cursor:grabbing}
 #talk-panel .hint{font-size:.58rem;color:var(--muted);line-height:1.4}
 
 /* gauges (top-left, below topbar) */
-#gauges{top:70px;left:14px;width:var(--colw);max-height:calc(100vh - 130px);overflow:auto;
+/* 2/3 of its former full-column height (human-directed 2026-07-29) -- the
+   bottom third belongs to the docked chat overlay now. */
+#gauges{top:70px;left:14px;width:var(--colw);max-height:calc((100vh - 130px)*.62);overflow:auto;
   padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease}
 #gauges.collapsed{transform:translateX(calc(-100% - 24px));opacity:0;pointer-events:none}
 #gauges-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem}
@@ -844,8 +849,12 @@ canvas.grabbing{cursor:grabbing}
 .ast-metrics-legend-p50::before{background:var(--cyan)}
 .ast-metrics-legend-p95{color:var(--amber)}
 .ast-metrics-legend-p95::before{background:var(--amber)}
-.ast-metrics-row{display:flex;justify-content:space-between;gap:.5rem;
-  border:1px solid var(--border);border-radius:3px;padding:.2rem .4rem}
+/* AST-044-r1 Option B conformance pass 3 (human-directed 2026-07-29): the
+   metric rows were full-width bordered slabs dominating the window --
+   compacted to quiet two-per-line entries subordinate to the graphs. */
+.ast-metrics-row{display:inline-flex;justify-content:space-between;gap:.5rem;
+  background:rgba(255,255,255,.03);border:0;border-radius:3px;
+  padding:.16rem .4rem;font-size:.56rem;flex:1 1 44%;min-width:9rem}
 .ast-metrics-graph{display:block;width:100%;height:2.2rem;fill:var(--cyan)}
 /* percentile markers drawn ON the bucket-distribution graph above (the
    "percentile sparkline (p50/p95 lines)" half of the recorded #330 Option B
@@ -885,23 +894,48 @@ canvas.grabbing{cursor:grabbing}
   border-radius:3px;cursor:pointer;color:var(--fg);background:transparent}
 .ast-metrics-hidden{display:none}
 .ast-truncated{padding:.2rem .4rem;font-size:.6rem;color:var(--muted)}
-.ast-turnlist{display:flex;flex-direction:column;gap:.2rem;max-height:8rem;overflow-y:auto}
-.ast-turnlist-row{font-family:var(--mono);font-size:.6rem;color:var(--fg);
-  border:1px solid var(--border);border-radius:3px;padding:.2rem .4rem;cursor:pointer;
-  display:flex;justify-content:space-between;gap:.4rem}
-.ast-turnlist-row:hover{border-color:var(--cyan);color:var(--cyan)}
-.ast-turnlist-row.ast-turnlist-selected{border-color:var(--cyan);color:var(--cyan)}
-.ast-turnlist-row.ast-turnlist-error{color:#e0453a}
-.ast-waterfall{display:flex;flex-direction:column;gap:.15rem;margin-top:.3rem}
-/* #460, second conformance pass (mockup `.mB2 .wbot .blab`): turn-context
-   header shown above the waterfall once a turn is selected, same label
-   styling as the top-section block labels above. */
-.ast-waterfall-turnlab{font-size:.58rem;letter-spacing:.06em;color:var(--muted)}
-.ast-waterfall-track{position:relative;height:.6rem;border:1px solid var(--border);border-radius:2px}
-.ast-waterfall-bar{position:absolute;top:0;height:100%;background:var(--cyan);opacity:.6}
+/* AST-044-r1 Option B turns list (human-directed 2026-07-29, mockup
+   `.turns`/`.turn`): numbered round rows -- "#N  <dominant action>  dur ▸"
+   -- each expandable in place; the open row gets the cyan treatment. */
+.ast-turnlist{display:flex;flex-direction:column;gap:.22rem;max-height:14rem;overflow-y:auto}
+.ast-turnlist-row{font-family:var(--mono);font-size:.62rem;color:var(--fg);
+  background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:6px;
+  padding:.32rem .5rem;cursor:pointer;display:flex;align-items:center;gap:.5rem;
+  width:100%;text-align:left}
+.ast-turnlist-row:hover{border-color:var(--cyan)}
+.ast-turnlist-row.ast-turnlist-selected{border-color:var(--cyan);background:rgba(70,230,255,.08)}
+.ast-turnlist-row.ast-turnlist-error .ast-turnlist-lab{color:#e0453a}
+.ast-turnlist-n{color:var(--cyan);flex:none;min-width:1.9rem;font-size:.58rem}
+.ast-turnlist-lab{flex:1;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ast-turnlist-dur{color:var(--muted);font-size:.56rem;flex:none}
+.ast-turnlist-car{color:var(--slate);font-size:.6rem;flex:none}
+/* Option B waterfall (mockup `.wf`/`.wrow`): docked inline under its own
+   turn row -- label · positioned bar in a shared lane · per-span duration.
+   The error span stays red and carries the reason as its tooltip. */
+.ast-waterfall{display:flex;flex-direction:column;gap:.3rem;margin:.1rem 0 .25rem;
+  padding:.45rem .45rem .35rem;background:rgba(0,0,0,.25);
+  border:1px solid var(--border);border-radius:6px}
+.ast-waterfall-turnlab{font-size:.58rem;letter-spacing:.06em;color:var(--muted);
+  display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.ast-waterfall-raw{background:none;border:1px solid var(--border);border-radius:4px;
+  color:var(--cyan);font-family:var(--mono);font-size:.54rem;padding:.12rem .4rem;cursor:pointer}
+.ast-waterfall-raw:hover{border-color:var(--cyan)}
+.ast-waterfall-row{display:flex;align-items:center;gap:.5rem}
+.ast-waterfall-label{font-size:.53rem;color:var(--slate);width:7.2rem;flex:none;
+  text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ast-waterfall-track{position:relative;flex:1;height:.9rem;
+  background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:4px}
+.ast-waterfall-bar{position:absolute;top:1px;height:calc(100% - 2px);border-radius:3px;
+  background:var(--cyan);opacity:.6}
 .ast-waterfall-bar.ast-waterfall-instant{width:2px!important;opacity:1;background:var(--fg)}
-.ast-waterfall-bar.ast-waterfall-error{background:#e0453a;opacity:1}
-.ast-waterfall-label{font-size:.55rem;color:var(--muted)}
+.ast-waterfall-bar.ast-waterfall-error{background:rgba(224,69,58,.42);opacity:1;
+  border:1px solid #e0453a;top:0;height:100%}
+.ast-waterfall-dur{font-size:.5rem;color:var(--muted);width:2.4rem;flex:none;text-align:right}
+/* raw provider JSON panel (human-directed 2026-07-29) */
+.ast-rawjson-window{width:min(480px,90vw);display:flex;flex-direction:column}
+.ast-rawjson-body{flex:1;max-height:50vh;overflow:auto;margin:0;
+  padding:.6rem .7rem;font-family:var(--mono);font-size:.58rem;line-height:1.5;
+  color:var(--fg);white-space:pre;background:rgba(0,0,0,.3)}
 /* AST-083 (issue #459, human-directed): the FINALIZED chat design --
    Option A "Inline rail" (.claude/ui-hub/html decision, human pick
    confirmed by docs/ui-options/screenshots/AST-083/AST-083-A-*.png),
@@ -933,12 +967,20 @@ canvas.grabbing{cursor:grabbing}
    is a per-message TASK failure (an assistant bubble reporting its own
    job died), not this app's distinct "system announcement" row kind --
    flagged in the #459 report as a design-silent judgment call. */
-.ast-chat-overlay{position:fixed;left:50%;bottom:1rem;transform:translateX(-50%);
-  width:min(560px,90vw);max-height:60vh;display:flex;flex-direction:column;
+/* Left-column split (human-directed 2026-07-29, screenshots #29/#30):
+   the chat DOCKS into the left column's bottom third -- same left/width
+   as the BRAINS panel above it (which now caps at ~2/3, see #gauges),
+   fixed height so the two read as one column. z-index 61: one above the
+   filters panel (60), which caps at the same 2/3 band and must NEVER
+   cover the chat. */
+.ast-chat-overlay{position:fixed;left:14px;bottom:14px;
+  top:calc(70px + (100vh - 130px)*.62 + 12px);   /* 12px seam under the brains band -- the right sidebar's own panel gap */
+  width:var(--colw);height:auto;min-height:0;
+  display:flex;flex-direction:column;
   background:var(--panel-solid);border:1px solid var(--border);border-radius:10px;
   backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
   box-shadow:0 10px 28px rgba(0,0,0,.45);
-  z-index:60;font-family:var(--mono);font-size:.68rem;color:var(--fg)}
+  z-index:61;font-family:var(--mono);font-size:.68rem;color:var(--fg)}
 .ast-chat-header{display:flex;align-items:center;gap:.5rem;
   padding:.4rem .55rem;border-bottom:1px solid var(--border)}
 /* #459 flagged extension 2 (WHO AM I TALKING TO): the voice panel already
@@ -972,12 +1014,19 @@ canvas.grabbing{cursor:grabbing}
 .ast-chat-lastx-btn.ast-chat-lastx-active{border-color:var(--cyan);color:var(--cyan)}
 .ast-chat-close{font-family:var(--mono);font-size:.7rem;border:1px solid var(--border);
   border-radius:3px;cursor:pointer;color:var(--fg);background:transparent}
-.ast-chat-log{flex:1;overflow-y:auto;padding:.55rem .6rem;display:flex;
-  flex-direction:column;gap:.4rem}
+/* 2026-07-29 (human-directed): thin styled scrollbar (same idiom as the
+   filters panel), a small right inset so the bar never sits atop bubbles,
+   and a slightly tighter type size. */
+.ast-chat-log{flex:1;overflow-y:auto;padding:.55rem .8rem .55rem .6rem;display:flex;
+  flex-direction:column;gap:.4rem;
+  scrollbar-width:thin;scrollbar-color:rgba(90,190,255,.4) rgba(255,255,255,.05)}
+.ast-chat-log::-webkit-scrollbar{width:7px}
+.ast-chat-log::-webkit-scrollbar-thumb{background:rgba(90,190,255,.4);border-radius:4px}
+.ast-chat-log::-webkit-scrollbar-track{background:rgba(255,255,255,.04)}
 /* .mk-bub -> .ast-chat-row: rounded bubble, asymmetric "tail" corner per
    role (border-bottom-*-radius pulled in), role-colored bg/border. */
 .ast-chat-row{border-radius:.7rem;padding:.45rem .6rem;
-  white-space:pre-wrap;max-width:88%;line-height:1.45;font-size:.7rem}
+  white-space:pre-wrap;max-width:88%;line-height:1.45;font-size:.66rem}
 /* #491: the live STT pending bubble -- same user-side bubble geometry,
    visibly provisional (muted + italic + dashed edge) until the final
    transcript replaces it as a real row. The dashed edge needs the
@@ -986,6 +1035,9 @@ canvas.grabbing{cursor:grabbing}
    outranks a bare .ast-chat-pending (0,1,0) regardless of source order --
    cascade resolves per-property by specificity. */
 .ast-chat-pending{opacity:.68;font-style:italic}
+/* heard-but-not-speech notes (2026-07-29): same provisional idiom as the
+   pending bubble, permanently -- visible, never answered. */
+.ast-chat-row.ast-chat-noise{opacity:.5;font-style:italic;border-style:dotted}
 .ast-chat-row[data-role="user"].ast-chat-pending{border-style:dashed}
 .ast-chat-row[data-role="user"]{align-self:flex-end;
   background:rgba(70,230,255,.12);border:1px solid var(--border);
@@ -1018,6 +1070,36 @@ canvas.grabbing{cursor:grabbing}
    textContent directly to the joined slug string instead of appending
    per-item spans. */
 .ast-chat-chips{margin-top:.3rem;font-size:.55rem;color:var(--muted)}
+/* AST-083-r1 media tiles (human-directed 2026-07-29): a media-producing
+   turn renders a LIVE artifact tile inside the assistant bubble --
+   queued (dashed placeholder) -> progress (slim bar + phase/pct + meta,
+   the "no preview needed" card) -> ready (click morphs into the detached
+   artifact panel) -> failed (amber, View trace · job id). Amber for
+   failed-ARTIFACT tiles per the mockup's .mk-bub.fail -- distinct from
+   the red system rows, which stay the app's own error idiom. */
+.ast-chat-media{align-self:flex-start;background:#0d1826;
+  border:1px solid rgba(90,190,255,.18);border-bottom-left-radius:.2rem;
+  min-width:min(62%,300px)}
+.ast-chat-media .cm-title{font-size:.7rem;margin-bottom:.35rem}
+.ast-chat-media .cm-tile{border:1px solid rgba(90,190,255,.25);border-radius:.5rem;
+  padding:.45rem .55rem;display:flex;flex-direction:column;gap:.3rem}
+.ast-chat-media.queued .cm-tile{border-style:dashed;border-color:rgba(143,166,189,.5);color:var(--muted)}
+.ast-chat-media .cm-bar{height:4px;border-radius:2px;background:rgba(90,190,255,.14);overflow:hidden}
+.ast-chat-media .cm-bar i{display:block;height:100%;background:linear-gradient(90deg,#2b7fd4,#46e6ff);
+  border-radius:2px;transition:width .4s ease}
+.ast-chat-media .cm-status{display:flex;justify-content:space-between;font-size:.62rem}
+.ast-chat-media .cm-status .pct{color:var(--cyan)}
+.ast-chat-media .cm-meta{font-size:.58rem;color:var(--muted)}
+.ast-chat-media .cm-state{font-size:.6rem;letter-spacing:.08em;color:var(--muted)}
+.ast-chat-media .cm-open{align-self:flex-start;background:none;border:1px solid rgba(90,190,255,.35);
+  border-radius:.4rem;color:var(--cyan);font-family:var(--mono);font-size:.6rem;
+  padding:.2rem .5rem;cursor:pointer}
+.ast-chat-media.done .cm-tile{cursor:pointer}
+.ast-chat-media.done .cm-thumb{max-width:120px;max-height:90px;border-radius:.35rem;display:block}
+.ast-chat-media.failed{border-color:#ffb347}
+.ast-chat-media.failed .cm-tile{border-color:rgba(255,179,71,.6);color:#ffb347}
+.ast-chat-media.failed .cm-title{color:#ffb347}
+.ast-chat-media.failed .cm-open{border-color:rgba(255,179,71,.6);color:#ffb347}
 .ast-chat-state{padding:.2rem .55rem;font-size:.6rem;color:var(--muted);min-height:1em}
 .ast-chat-state-gated,.ast-chat-state-offline{color:#e0453a}
 .ast-chat-inputrow{display:flex;gap:.4rem;align-items:center;
@@ -1189,6 +1271,28 @@ canvas.grabbing{cursor:grabbing}
 /* mermaid blocks (#430): fenced ```mermaid``` note bodies -- a text|graph
    toggle (same segmented .iconbtn group idiom as IN/OUT/BOTH), a copy
    button that always copies the mermaid SOURCE text, and a detach action */
+/* fenced code blocks (2026-07-29): shared by notes + chat -- lang chip,
+   Copy, Save chrome over a highlighted pre. Token colors keep the app's
+   own palette (cyan/amber/slate). */
+.ncode{margin:.4rem 0;border:1px solid var(--border);border-radius:8px;overflow:hidden;
+  background:rgba(0,0,0,.3)}
+.ncode-bar{display:flex;align-items:center;gap:.35rem;padding:.28rem .5rem;
+  border-bottom:1px solid var(--border);background:rgba(255,255,255,.03)}
+.ncode-lang{font-size:.56rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);flex:1}
+.ncode-pre{margin:0;padding:.55rem .6rem;overflow-x:auto;font-size:.64rem;line-height:1.5}
+.ncode-pre code{font-family:var(--mono);white-space:pre}
+.ncode .hl-k{color:var(--cyan)}
+.ncode .hl-s{color:var(--amber)}
+.ncode .hl-c{color:var(--slate);font-style:italic}
+.ncode .hl-n{color:#9ee493}
+/* chat rows carry rendered markdown now -- keep block spacing tight inside
+   a bubble; media/code blocks span the bubble width. */
+.ast-chat-row p{margin:.2rem 0}
+.ast-chat-row ul,.ast-chat-row ol{margin:.2rem 0 .2rem 1rem;padding:0}
+.ast-chat-row table{border-collapse:collapse;margin:.3rem 0}
+.ast-chat-row th,.ast-chat-row td{border:1px solid var(--border);padding:.15rem .4rem;font-size:.62rem}
+.ast-chat-row img.nm{max-width:100%;border-radius:6px;display:block;margin:.3rem 0;cursor:zoom-in}
+.ast-chat-row .ncode{max-width:100%}
 .nmmd{margin:.4rem 0;border:1px solid var(--border);border-radius:8px;background:rgba(4,7,13,.5);overflow:hidden}
 .nmmd-bar{display:flex;align-items:center;gap:.4rem;padding:.35rem .5rem;border-bottom:1px solid var(--border)}
 .nmmd-opts{display:flex;gap:.25rem}
@@ -1489,8 +1593,8 @@ canvas.grabbing{cursor:grabbing}
            with the removed button: both wrote the exact same
            uiState.micMode field). -->
       <button class="iconbtn" id="voice-stt" aria-pressed="false"
-        aria-label="Voice-driven chat turn: press to speak"
-        title="Press to speak — sends the transcript as a chat turn (finalizes after a pause in speech, or press again to send now)"><span class="micdot"></span></button>
+        aria-label="Voice on/off"
+        title="Voice on/off — hands-free conversation: talk, pause to send; replies speak back, and talking over a reply interrupts it. Bright dot = mic live, dim dot = mic off."><span class="micdot"></span></button>
       <span id="voice-dir" role="group" aria-label="Voice direction">
         <button class="iconbtn" id="voice-in" aria-pressed="false" title="Inbound — microphone">IN</button>
         <button class="iconbtn" id="voice-out" aria-pressed="true" title="Outbound — speech synthesis">OUT</button>
@@ -1611,7 +1715,14 @@ canvas.grabbing{cursor:grabbing}
       <button class="iconbtn" id="vs-stt-whisper" aria-pressed="false">whisper.cpp (local)</button>
       <button class="iconbtn" id="vs-stt-webspeech" aria-pressed="false">Web Speech (browser)</button>
     </div>
-    <div class="vs-hint">Web Speech is the default while the local whisper.cpp sidecar contract is unfinished (#424) -- whisper.cpp returns as the default once that lands. Web Speech needs no install but sends audio to the browser vendor; whisper.cpp is fully local via a separate sidecar process once installed.</div>
+    <div class="vs-hint">whisper.cpp (fully local, better accuracy) is the default -- the sidecar contract landed (#424), so it transcribes for real; install/start it via the whisper-sidecar capability. Web Speech needs no install but sends audio to the browser vendor and mishears more.</div>
+  </div>
+  <div class="vs-row"><span class="label">Non-speech sounds</span>
+    <div class="vs-opts" role="group" aria-label="Non-speech sound handling">
+      <button class="iconbtn" id="vs-noise-ignore" aria-pressed="true">Show only</button>
+      <button class="iconbtn" id="vs-noise-react" aria-pressed="false">Send to assistant</button>
+    </div>
+    <div class="vs-hint">Typing, blank audio, and other noises the mic picks up ("[BLANK_AUDIO]", "(keyboard clicking)") appear in the chat as a muted note. "Show only" (default) keeps them out of the conversation; "Send to assistant" forwards them like real speech.</div>
   </div>
   <!-- #449 (P2, human-directed): the top-level voice bar should carry
        only what is used DURING a voice turn -- inspection is a
@@ -4134,17 +4245,17 @@ document.getElementById("ast-ask-again").onclick = async ()=>{
 // recorded in docs/spec-deltas/ast-051.md, issue #333): "whisper" (fully
 // local via a sidecar client, see WhisperSttEngine below) or "web-speech"
 // (zero-install, the browser's own SpeechRecognition).
-// #491 (spec delta docs/spec-deltas/491.md): web-speech is the DEFAULT --
-// temporarily inverting ast-051's whisper-default decision -- because the
-// shipped whisper client cannot transcribe until #424 lands (it POSTs
-// /transcribe; the bare sidecar serves /inference), so defaulting to it
-// hands every fresh profile a voice path that always fails. An explicit,
-// persisted whisper choice still wins; flip the default back when #424
-// closes.
+// Whisper is the DEFAULT again (ast-051's original decision, restored):
+// #491 temporarily flipped it to web-speech because the shipped client
+// POSTed /transcribe while the sidecar serves /inference -- that endpoint
+// mismatch (#424) is now fixed in WhisperSttEngine below, verified live
+// against the running sidecar, so the local engine (better accuracy than
+// web-speech, fully on-device) is the right default. An explicit,
+// persisted web-speech choice still wins.
 // Persisted in uiState like every other voice-panel setting (vdir,
 // micMode, ...) -- same localStorage key (nv-ui), same saveUiState() path. ----
 function sttEngineChoice(){
-  return uiState.sttEngine === "whisper" ? "whisper" : "web-speech";
+  return uiState.sttEngine === "web-speech" ? "web-speech" : "whisper";
 }
 function setSttEngineChoice(choice){
   uiState.sttEngine = choice === "web-speech" ? "web-speech" : "whisper";
@@ -4163,6 +4274,20 @@ function applySttEngineUi(){
 document.getElementById("vs-stt-whisper").onclick = ()=>setSttEngineChoice("whisper");
 document.getElementById("vs-stt-webspeech").onclick = ()=>setSttEngineChoice("web-speech");
 applySttEngineUi();
+// non-speech handling toggle (2026-07-29): persisted like every other
+// voice setting; default = show only (never forwarded to the model).
+function applyNoiseReactUi(){
+  const on = uiState.vNoiseReact === true;
+  for(const [id, val] of [["vs-noise-react", true], ["vs-noise-ignore", false]]){
+    const b = document.getElementById(id);
+    if(!b) continue;
+    b.classList.toggle("active", on === val);
+    b.setAttribute("aria-pressed", String(on === val));
+  }
+}
+document.getElementById("vs-noise-react").onclick = ()=>{ uiState.vNoiseReact = true; saveUiState(); applyNoiseReactUi(); };
+document.getElementById("vs-noise-ignore").onclick = ()=>{ uiState.vNoiseReact = false; saveUiState(); applyNoiseReactUi(); };
+applyNoiseReactUi();
 
 // ---- STT engine abstraction (AST-051): a shared {start(onResult,onError),
 // stop()} contract with two implementations, selected at USE time by
@@ -4332,63 +4457,134 @@ class WebSpeechSttEngine{
     if(this.recog){ this.recog.stop(); this.recog = null; }
   }
 }
-// Documented local sidecar contract this client assumes (the sidecar
-// process itself -- install, model download, lifecycle -- is a
-// capability-shaped concern this task does NOT build; deferred to the
-// whisper capability that lands with E6's provisioning machinery,
-// AST-060/061; see docs/spec-deltas/ast-051.md's implementation notes):
-//   POST http://127.0.0.1:8737/transcribe
-//   multipart/form-data, field "audio" = a Blob (audio/webm)
+// Local sidecar contract (#424, verified live against the whisper.cpp
+// server the whisper-sidecar capability actually installs and starts):
+//   POST http://127.0.0.1:8737/inference
+//   multipart/form-data, field "file" = a 16kHz mono WAV Blob,
+//   field "response_format" = "json"
 //   -> 200 {"text": "<transcript>"} on success
+// The server sends Access-Control-Allow-Origin: * so the page can POST to
+// it directly. It only decodes WAV (no ffmpeg build), which is why the
+// engine below captures raw PCM off the SHARED MicSource stream and
+// encodes WAV itself instead of using MediaRecorder's webm/opus -- that
+// also removes the second concurrent getUserMedia capture #464 fixed by
+// freezing the visualizer during turns; one stream now feeds both.
 // Any network failure or non-2xx response is read as "the sidecar isn't
-// running/installed", never as a transcription error -- WhisperSttEngine
-// surfaces the honest unavailable message instead of a generic one.
-const STT_WHISPER_ENDPOINT = "http://127.0.0.1:8737/transcribe";
-const STT_WHISPER_UNAVAILABLE_MSG = "whisper sidecar not available -- install via the whisper capability (follow-up) or switch to Web Speech in Settings";
-class WhisperSttEngine{
-  constructor(){ this.mediaRecorder = null; this.chunks = []; this.stream = null; }
-  // #491: accepts (and ignores) the onInterim third argument the shared
-  // engine contract now carries -- whisper transcribes after stop(), so
-  // there is no interim channel; the pending bubble stays at "listening…".
-  async start(onResult, onError){
-    try{
-      this.stream = await navigator.mediaDevices.getUserMedia({audio:true});
-    }catch{
-      onError(STT_WHISPER_UNAVAILABLE_MSG);
-      return;
-    }
-    this.chunks = [];
-    const mr = this.mediaRecorder = new MediaRecorder(this.stream);
-    mr.ondataavailable = ev=>{ if(ev.data && ev.data.size) this.chunks.push(ev.data); };
-    // #474 ("for BOTH engines"): the recorder (or its underlying mic
-    // track) can die on its own -- device unplugged, permission revoked
-    // mid-capture -- without ever reaching onstop. MediaRecorder's own
-    // `error` event is the honest signal for that; previously unhandled,
-    // which left the mic control showing "listening" against a dead
-    // recorder, the same silent-death shape onend fixes for Web Speech.
-    mr.onerror = ev=>{
-      onError("whisper-recorder-error: " + ((ev && ev.error && ev.error.name) || "unknown"));
-      if(this.stream){ this.stream.getTracks().forEach(t=>t.stop()); this.stream = null; }
-      this.mediaRecorder = null;
-    };
-    mr.onstop = async ()=>{
-      this.stream.getTracks().forEach(t=>t.stop());
-      const blob = new Blob(this.chunks, {type:"audio/webm"});
-      const form = new FormData();
-      form.append("audio", blob);
-      try{
-        const resp = await fetch(STT_WHISPER_ENDPOINT, {method:"POST", body: form});
-        if(!resp.ok) throw new Error("sidecar-http-" + resp.status);
-        const data = await resp.json();
-        if(data && data.text) onResult(data.text.trim());
-        else onError(STT_WHISPER_UNAVAILABLE_MSG);
-      }catch{
-        onError(STT_WHISPER_UNAVAILABLE_MSG);
-      }
-    };
-    mr.start();
+// running", never as a transcription error.
+const STT_WHISPER_ENDPOINT = "http://127.0.0.1:8737/inference";
+const STT_WHISPER_UNAVAILABLE_MSG = "whisper sidecar not reachable at 127.0.0.1:8737 -- start it via the whisper-sidecar capability (action: start) or switch to Web Speech in Settings";
+// Pause-based endpointing (the same natural-turn contract web-speech's
+// silence timer implements): speech is RMS above STT_VAD_RMS on the raw
+// PCM frames; a turn finalizes after STT_VAD_SILENCE_MS of quiet.
+// STT_VAD_PREROLL_MS of audio from just before onset is kept so the first
+// syllable is never clipped.
+const STT_VAD_SILENCE_MS = 1100;
+const STT_VAD_RMS = 0.012;
+const STT_VAD_PREROLL_MS = 400;
+const STT_VAD_MAX_UTTERANCE_MS = 60000;
+// Onset hardening (human report 2026-07-29: typing/blank audio opened
+// turns): a single moderately-loud frame is not speech -- committing to a
+// turn takes either TWO consecutive frames above the floor (sustained
+// voice) or one frame clearly above it (a real word's energy). Keyboard
+// transients are short and land in one frame; real speech sustains.
+const STT_VAD_ONSET_FRAMES = 2;
+const STT_VAD_LOUD_RMS = STT_VAD_RMS * 2.5;
+// Whisper annotates non-speech it was forced to transcribe --
+// "[BLANK_AUDIO]", "(keyboard clicking)", "*door slams*", "♪...♪" -- and
+// the model must not be asked to answer a keyboard. A transcript is
+// MEANINGFUL only if something remains after stripping every such
+// annotation (checked in onSttText; the annotation still shows in chat as
+// a muted note, it just never reaches the model unless the human enables
+// vNoiseReact in ⚙ settings).
+function sttMeaningfulText(text){
+  return String(text || "")
+    .replace(/\[[^\]]*\]/g, " ")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\*[^*]*\*/g, " ")
+    .replace(/[♪♫]+/g, " ")
+    .replace(/[\s.,!?\-–—:;'"]+/g, " ")
+    .trim();
+}
+function sttNoiseReactOn(){ return uiState.vNoiseReact === true; }
+// 16kHz mono 16-bit WAV from captured Float32 PCM -- whisper.cpp's native
+// input format, linear-resampled from the AudioContext's device rate.
+function wavFromFloat32(chunks, len, srcRate){
+  const pcm = new Float32Array(len);
+  let o = 0; for(const c of chunks){ pcm.set(c, o); o += c.length; }
+  const rate = 16000, n = Math.max(1, Math.round(len*rate/srcRate));
+  const out = new Int16Array(n);
+  for(let i=0;i<n;i++){
+    const t = i*srcRate/rate, i0 = Math.floor(t), i1 = Math.min(len-1, i0+1), fr = t-i0;
+    const v = (pcm[i0]||0)*(1-fr) + (pcm[i1]||0)*fr;
+    out[i] = Math.max(-32768, Math.min(32767, Math.round(v*32767)));
   }
-  stop(){ if(this.mediaRecorder && this.mediaRecorder.state !== "inactive") this.mediaRecorder.stop(); }
+  const buf = new ArrayBuffer(44 + out.length*2); const dv = new DataView(buf);
+  const w = (off,s)=>{ for(let i=0;i<s.length;i++) dv.setUint8(off+i, s.charCodeAt(i)); };
+  w(0,"RIFF"); dv.setUint32(4, 36 + out.length*2, true); w(8,"WAVE"); w(12,"fmt ");
+  dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,1,true);
+  dv.setUint32(24,rate,true); dv.setUint32(28,rate*2,true); dv.setUint16(32,2,true);
+  dv.setUint16(34,16,true); w(36,"data"); dv.setUint32(40, out.length*2, true);
+  new Int16Array(buf, 44).set(out);
+  return new Blob([buf], {type:"audio/wav"});
+}
+class WhisperSttEngine{
+  constructor(){ this.active = false; this._gen = 0; this._endTurn = null; }
+  // Accepts (and ignores) the onInterim third argument the shared engine
+  // contract carries (#491) -- whisper transcribes per utterance, so there
+  // is no interim channel; the pending bubble stays at "listening…".
+  async start(onResult, onError){
+    const gen = ++this._gen;
+    const mic = voiceSources.inbound;
+    try{ await mic.start(); }catch{ onError("whisper-mic-denied: microphone access failed"); return; }
+    if(gen !== this._gen) return;   // superseded while awaiting the mic
+    this.active = true;
+    const sr = mic.ctx.sampleRate;
+    const preN = Math.round(sr*STT_VAD_PREROLL_MS/1000);
+    const maxN = sr*(STT_VAD_MAX_UTTERANCE_MS/1000);
+    let pre = [], preLen = 0, chunks = [], len = 0, talking = false, silentMs = 0, onsetFrames = 0;
+    const endTurn = (discard)=>{
+      if(gen !== this._gen || !this.active) return;
+      this.active = false; this._endTurn = null;
+      mic.untap();
+      if(discard || !talking || !len) return;   // no speech captured -- nothing to transcribe
+      const blob = wavFromFloat32(chunks, len, sr);
+      const form = new FormData();
+      form.append("file", blob, "utterance.wav");
+      form.append("response_format", "json");
+      fetch(STT_WHISPER_ENDPOINT, {method:"POST", body: form})
+        .then(resp=>{ if(!resp.ok) throw new Error("sidecar-http-" + resp.status); return resp.json(); })
+        .then(data=>{
+          const text = data && data.text && data.text.trim();
+          if(text) onResult(text); else onError("whisper-empty: no speech recognized");
+        })
+        .catch(()=>{ onError(STT_WHISPER_UNAVAILABLE_MSG); });
+    };
+    this._endTurn = endTurn;
+    mic.tap(pcm=>{
+      if(gen !== this._gen || !this.active) return;
+      let s = 0; for(let i=0;i<pcm.length;i++) s += pcm[i]*pcm[i];
+      const rms = Math.sqrt(s/pcm.length), frameMs = pcm.length/sr*1000;
+      if(!talking){
+        pre.push(new Float32Array(pcm)); preLen += pcm.length;
+        while(pre.length > 1 && preLen - pre[0].length > preN){ preLen -= pre[0].length; pre.shift(); }
+        // onset hardening: sustained frames above the floor, or one frame
+        // clearly above it -- a keyboard transient alone never opens a turn.
+        onsetFrames = rms > STT_VAD_RMS ? onsetFrames + 1 : 0;
+        if(rms > STT_VAD_LOUD_RMS || onsetFrames >= STT_VAD_ONSET_FRAMES){
+          talking = true; chunks = pre; len = preLen; pre = []; silentMs = 0;
+        }
+      }else{
+        chunks.push(new Float32Array(pcm)); len += pcm.length;
+        if(rms > STT_VAD_RMS) silentMs = 0; else silentMs += frameMs;
+        if(silentMs >= STT_VAD_SILENCE_MS || len >= maxN) endTurn(false);
+      }
+    });
+  }
+  // Manual stop: flush what's captured (transcribe now) instead of
+  // discarding it -- same override contract web-speech's stop() has. A
+  // stop with no speech captured tears down silently; the caller's own
+  // no-speech span path reports it.
+  stop(){ if(this._endTurn) this._endTurn(false); }
 }
 const sttEngines = { whisper: new WhisperSttEngine(), "web-speech": new WebSpeechSttEngine() };
 
@@ -4448,7 +4644,29 @@ function onSttText(text, turnId){
   // #491: the live bubble's job is done -- queueOrSendChat renders the
   // real user row for the final transcript right after.
   sttRemovePendingBubble();
-  queueOrSendChat(text, turnId, "voice");
+  // Non-speech annotations (human-directed 2026-07-29): whisper heard
+  // SOMETHING but it wasn't words -- "[BLANK_AUDIO]", "(keyboard
+  // clicking)". Show it in the chat as a muted note (the human liked
+  // seeing it) but do NOT ask the model to answer a keyboard -- unless
+  // the ⚙ "react to noise" toggle is on.
+  if(!sttMeaningfulText(text) && !sttNoiseReactOn()){
+    sttShowNoiseRow(text);
+  }else{
+    queueOrSendChat(text, turnId, "voice");
+  }
+  // voice loop: the turn is sent -- go straight back to listening (the
+  // human can keep talking while the reply is still thinking; turns
+  // queue). If the reply starts speaking first, speakReply's interlock
+  // pauses this listen and its onDone resumes it after.
+  if(window.__voiceLoopOn) voiceLoopScheduleListen(250);
+}
+// A heard-but-not-speech note: user-side, muted/italic like the pending
+// bubble, permanently inert -- never sent, never spoken back.
+function sttShowNoiseRow(text){
+  const log = document.getElementById("ast-chat-log");
+  if(!log) return;
+  const row = appendChatRow(log, "user", String(text || "").trim() || "(noise)", null);
+  if(row && row.classList) row.classList.add("ast-chat-noise");
 }
 
 // §13.3: stt-start/stt-end spans, engine name in the payload, over the
@@ -4518,6 +4736,20 @@ function startStt(turnId){
       // #491: the failed turn's pending bubble must not linger -- the red
       // system row from reportSttFailure below is the honest replacement.
       sttRemovePendingBubble();
+      // voice loop: the browser's continuous recognition routinely ends
+      // its session on its own (silence timeout, service hiccup --
+      // web-speech-ended / web-speech-dead / no-speech / aborted). In
+      // loop mode those are NOT failures, they're "still on, nothing
+      // heard yet": restart listening quietly instead of spamming the
+      // chat log with red rows. Anything else (mic denied, sidecar down,
+      // no browser support) is fatal: stop the loop and SAY why (#451).
+      const transientInLoop = window.__voiceLoopOn &&
+        /web-speech-ended|web-speech-dead|no-speech|whisper-empty|aborted/i.test(String(err));
+      if(transientInLoop){
+        voiceLoopScheduleListen(400);
+        return;
+      }
+      if(window.__voiceLoopOn) voiceLoopStop();
       // #451 (P0 live-bug batch): a failed voice turn must SAY why -- this
       // used to only console.warn + set window.__lastSttError, both
       // invisible to the human staring at the page. reportSttFailure()
@@ -4653,14 +4885,74 @@ window.__sttPrevVdir = null;
 // path never calls stopStt(), the engine already failed.)
 function releaseSttCapture(){
   setSttListening(false);
+  // Voice-loop mode: the LOOP owns the capture state, not the single turn
+  // that just ended -- between turns (reply speaking, transcription in
+  // flight, auto-resume pending) the mic stays hot and the widened
+  // direction stays put. Only voiceLoopStop() (which clears __voiceLoopOn
+  // BEFORE calling this) releases them for real.
+  if(window.__voiceLoopOn) return;
   window.voicePTT = false;
   if(window.__sttPrevVdir){
     uiState.vdir = window.__sttPrevVdir; window.__sttPrevVdir = null;
     saveUiState(); applyVoiceState();
   }
 }
-function toggleSttListening(){
+// ---- Voice loop (human-directed, 2026-07-29): the mic control is a
+// MASTER ON/OFF for hands-free conversation, not a per-turn trigger.
+// While ON: listen -> a natural pause ends the turn (web-speech's silence
+// timer / whisper's VAD) -> transcript sends -> the reply speaks ->
+// listening auto-resumes. Talking over the reply (barge-in, see
+// voiceBargeWatchStart) cancels the speech and goes straight back to
+// listening. OFF releases everything: recognition, TTS, mic capture,
+// the widened direction. The dot is bright iff the mic is capturing
+// (syncCaptureDot), which in loop mode is the whole time it's ON. ----
+window.__voiceLoopOn = false;
+let voiceLoopResumeTimer = null;
+function voiceLoopListen(){
+  if(!window.__voiceLoopOn || window.__sttListening) return;
+  // never listen while the reply is mid-speech -- speakChunks' onDone (or
+  // a barge-in cancel, which also lands in onDone) resumes instead
+  if(voiceSources.outbound.speaking) return;
+  const started = startStt(newClientTurnId());
+  if(started) window.voicePTT = true;
+  setSttListening(!!started);
+  if(!started) voiceLoopStop();   // gate closed under us -- release honestly
+}
+function voiceLoopScheduleListen(ms){
+  clearTimeout(voiceLoopResumeTimer);
+  voiceLoopResumeTimer = setTimeout(()=>{ voiceLoopResumeTimer = null; voiceLoopListen(); }, ms);
+}
+function voiceLoopStart(){
+  if(window.assistantGate && window.assistantGate.gated) return;
+  if(window.__voiceLoopOn) return;
+  window.__voiceLoopOn = true;
+  // widen an OUT-only display to BOTH for the loop's duration so the IN
+  // bars are live while the mic is; restored by voiceLoopStop's
+  // releaseSttCapture, never left silently switched (#334).
+  if(voiceDir() === "out"){
+    window.__sttPrevVdir = uiState.vdir;
+    uiState.vdir = "both"; saveUiState(); applyVoiceState();
+  }
+  voiceLoopListen();
+}
+function voiceLoopStop(){
+  window.__voiceLoopOn = false;
+  clearTimeout(voiceLoopResumeTimer); voiceLoopResumeTimer = null;
+  voiceBargeWatchStop();
+  // OFF means SILENT both ways: cancel a reply mid-speech too (its
+  // speakChunks onDone fires with "cancel"; the loop flag is already
+  // down, so nothing resumes).
+  voiceSources.outbound.stop();
   if(window.__sttListening){
+    toggleSttListeningOffTurn();
+  }else{
+    releaseSttCapture();
+  }
+}
+// The single-turn manual-stop path (#454's flush-or-no-speech contract),
+// factored out of the old toggle so voiceLoopStop reuses it verbatim.
+function toggleSttListeningOffTurn(){
+  {
     // #454 review round 2 MINOR 1: a turn started then manually stopped
     // with NO speech ever captured (silenceTimer never fired, so neither
     // onSttText's success emission nor startStt's error-callback emission
@@ -4699,17 +4991,13 @@ function toggleSttListening(){
       // cleared by onSttText's own removal).
       sttRemovePendingBubble();
     }
-    return;
   }
-  const started = startStt(newClientTurnId());
-  if(started){
-    window.voicePTT = true;
-    if(voiceDir() === "out"){
-      window.__sttPrevVdir = uiState.vdir;
-      uiState.vdir = "both"; saveUiState(); applyVoiceState();
-    }
-  }
-  setSttListening(!!started);
+}
+// The mic control: ON starts the hands-free loop, OFF stops it (and, for
+// a bare single turn started outside the loop, still manual-stops it).
+function toggleSttListening(){
+  if(window.__voiceLoopOn || window.__sttListening) voiceLoopStop();
+  else voiceLoopStart();
 }
 document.getElementById("voice-stt").onclick = ()=>{ toggleSttListening(); };
 
@@ -4726,13 +5014,9 @@ addEventListener("keydown", ev=>{
     return;
   }
   // #448: window.voicePTT still drives the real visualizer capture path
-  // (micHot() -> syncMic(), unchanged) -- only the .talking VISUAL side
-  // effect is dropped here, since #voice-mic (the button it used to
-  // paint) no longer exists at top level. Not repointed onto #voice-stt:
-  // that dot means "an actual voice-driven chat turn is listening", a
-  // different, mutually-exclusive state from this ad hoc visualizer
-  // preview (#464 already makes micHot() return false while an STT turn
-  // owns the mic, so the two can never be simultaneously true anyway).
+  // (micHot() -> syncMic()). The #voice-stt dot lights for this too now
+  // -- it is capture truth (#490): any live capture, including this ad
+  // hoc visualizer preview, shows bright.
   window.voicePTT = true;
 });
 addEventListener("keyup", ev=>{
@@ -4753,22 +5037,61 @@ addEventListener("keyup", ev=>{
 // columns sharing the lowest band (a visibly twinned pair when speaking)
 const VIZ_BARS = 25;
 class MicSource{
-  async start(){
-    if(this.analyser) return;
-    // echoCancellation is the first line of defense against the notebook
-    // speaker's TTS output re-entering through the mic (plus the half-duplex
-    // duck below, see echo guard)
-    this.stream = await navigator.mediaDevices.getUserMedia(
-      {audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true}});
-    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    this.ctx.createMediaStreamSource(this.stream).connect(
-      this.analyser = Object.assign(this.ctx.createAnalyser(), {fftSize:256, smoothingTimeConstant:.6}));
-    this.buf = new Uint8Array(this.analyser.frequencyBinCount);
+  // Both syncMic (visualizer) and WhisperSttEngine (recording) start this
+  // shared source; the in-flight promise guard makes concurrent starts
+  // share ONE getUserMedia instead of racing into two captures.
+  start(){
+    if(this.analyser) return Promise.resolve();
+    if(this._starting) return this._starting;
+    this._starting = (async()=>{
+      try{
+        // echoCancellation is the first line of defense against the notebook
+        // speaker's TTS output re-entering through the mic (plus the half-duplex
+        // duck below, see echo guard)
+        this.stream = await navigator.mediaDevices.getUserMedia(
+          {audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true}});
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.srcNode = this.ctx.createMediaStreamSource(this.stream);
+        this.srcNode.connect(
+          this.analyser = Object.assign(this.ctx.createAnalyser(), {fftSize:256, smoothingTimeConstant:.6}));
+        this.buf = new Uint8Array(this.analyser.frequencyBinCount);
+      }finally{ this._starting = null; }
+    })();
+    return this._starting;
   }
   stop(){
+    this.untap();
     if(this.stream) this.stream.getTracks().forEach(t=>t.stop());
     if(this.ctx) this.ctx.close();
-    this.stream = this.ctx = this.analyser = null;
+    this.stream = this.ctx = this.analyser = this.srcNode = null;
+  }
+  // Raw PCM tap over the SAME capture the analyser reads -- this is what
+  // lets WhisperSttEngine record without opening a second concurrent
+  // getUserMedia on the same physical mic (the #464 contention). One tap
+  // at a time; a silent-gain sink keeps the processor pumping without
+  // routing mic audio to the speakers.
+  tap(cb){
+    if(!this.ctx || !this.srcNode) return false;
+    this.untap();
+    this.proc = this.ctx.createScriptProcessor(4096, 1, 1);
+    this.proc.onaudioprocess = ev=>{ cb(ev.inputBuffer.getChannelData(0)); };
+    this.sink = this.ctx.createGain(); this.sink.gain.value = 0;
+    this.srcNode.connect(this.proc); this.proc.connect(this.sink); this.sink.connect(this.ctx.destination);
+    return true;
+  }
+  untap(){
+    if(this.proc){ try{ this.srcNode && this.srcNode.disconnect(this.proc); }catch{} try{ this.proc.disconnect(); }catch{} this.proc.onaudioprocess = null; }
+    if(this.sink){ try{ this.sink.disconnect(); }catch{} }
+    this.proc = this.sink = null;
+  }
+  // Coarse input level 0..1 (mean of the live voice-band spectrum) -- the
+  // barge-in watcher's "is the human talking over the reply" probe.
+  level(){
+    if(!this.analyser) return 0;
+    this.analyser.getByteFrequencyData(this.buf);
+    const n = Math.floor(this.buf.length*.5);
+    let s = 0; for(let i=1;i<n;i++) s += this.buf[i];
+    return n > 1 ? s/(n-1)/255 : 0;
   }
   getBins(out){
     if(!this.analyser){ out.fill(0); return; }
@@ -4959,6 +5282,33 @@ function newClientTurnId(){
 // "tts-end" in _VOICE_EVENT_KINDS) and locally via trackLocalVoiceSpan()
 // (turn-id-tagged, for the inspector's own merge) -- no second writer,
 // same single traces.sqlite the STT spans already land in.
+// Barge-in (human-directed, 2026-07-29): while a reply is speaking, the
+// shared MicSource stays hot (micHot() is true for the whole voice loop)
+// and this watcher polls its input level. Sustained voice-band energy --
+// the human talking over the reply -- cancels the speech outright;
+// SpeechSynthSource.stop() resolves the in-flight speakChunks with
+// "cancel", whose onDone (speakReply below) resumes listening. The
+// echo-cancelled capture (MicSource's echoCancellation:true) is what
+// keeps the reply's own speaker output from tripping the threshold; the
+// sustain window guards against residual blips.
+const VOICE_BARGE_LEVEL = 0.10, VOICE_BARGE_SUSTAIN_MS = 350, VOICE_BARGE_POLL_MS = 70;
+let voiceBargeTimer = null;
+function voiceBargeWatchStart(){
+  if(!window.__voiceLoopOn) return;   // barge-in is a loop-mode behavior
+  voiceBargeWatchStop();
+  let hotMs = 0;
+  voiceBargeTimer = setInterval(()=>{
+    if(!voiceSources.outbound.speaking){ voiceBargeWatchStop(); return; }
+    const src = voiceSources.inbound;
+    const lv = src && src.level ? src.level() : 0;
+    hotMs = lv >= VOICE_BARGE_LEVEL ? hotMs + VOICE_BARGE_POLL_MS : 0;
+    if(hotMs >= VOICE_BARGE_SUSTAIN_MS){
+      voiceBargeWatchStop();
+      voiceSources.outbound.stop();
+    }
+  }, VOICE_BARGE_POLL_MS);
+}
+function voiceBargeWatchStop(){ clearInterval(voiceBargeTimer); voiceBargeTimer = null; }
 function speakReply(text, turnId){
   if(!voiceOn()) return;
   if(window.assistantGate && window.assistantGate.gated) return;
@@ -5028,7 +5378,15 @@ function speakReply(text, turnId){
     const durationMs = Math.round(t1 - t0);
     emitVoiceSpan("tts-end", "speechSynthesis", turnId, status, {chars, durationMs});
     trackLocalVoiceSpan("tts-end", turnId, {chars, durationMs, status});
+    voiceBargeWatchStop();
+    // voice loop: the reply is done (finished naturally, errored, or was
+    // barged in on -- every path lands here exactly once, the never-latch
+    // invariant) -- go back to listening. voiceLoopStop() itself also
+    // cancels speech, but it has already lowered __voiceLoopOn by then,
+    // so an OFF press can never bounce back into listening.
+    if(window.__voiceLoopOn) voiceLoopScheduleListen(200);
   });
+  voiceBargeWatchStart();
 }
 // Never-latch guard, page-hide path (docs/design/ast-E5.md's "worst
 // failure mode"): if the tab is hidden/closed mid-utterance, stop() both
@@ -5061,50 +5419,30 @@ const inBins = new Uint8Array(VIZ_BARS), outBins = new Uint8Array(VIZ_BARS);
 let micWanted = false, micBusy = false;
 function voiceDir(){ return ["in","out","both"].includes(uiState.vdir) ? uiState.vdir : "out"; }
 function micHot(){
+  // Voice loop / live STT turn: the mic IS capturing -- the bars and the
+  // dot must say so. This inverts #464's "freeze the visualizer during
+  // turns" guard, and can, because the contention #464 fixed is
+  // structurally gone: WhisperSttEngine no longer opens a second
+  // getUserMedia -- it records off MicSource's OWN stream (tap()), so
+  // the analyser and the recorder share ONE capture. (Web-speech's
+  // internal recognition capture coexisting with MicSource is accepted;
+  // it is the standard recognition+visualizer pattern, and the #464
+  // shouting repro was the dual-getUserMedia whisper path.) The human's
+  // live report (2026-07-29) was the exact inversion this line fixes:
+  // bars MOVED while idle (always-on visualizer) and FROZE while
+  // actually listening.
+  // Checked before the direction gate: capture truth must not depend on
+  // what the display is showing.
+  if(window.__sttListening || window.__voiceLoopOn) return true;
   if(voiceDir()==="out") return false;
-  // #464 (P0, human hit it live): "voice input requires SHOUTING" at
-  // normal speaking volume. Pressing the mic control sets
-  // window.voicePTT true, which used to ALSO make this function report
-  // the mic "hot" for the visualizer, opening MicSource's own
-  // independent getUserMedia({echoCancellation,noiseSuppression,
-  // autoGainControl:true}) stream (below) at the exact same time
-  // WhisperSttEngine already has its own getUserMedia({audio:true}) +
-  // MediaRecorder capture open (or, for web-speech, while the browser's
-  // own internal recognition capture is live) -- two CONCURRENT
-  // getUserMedia() captures on the SAME physical microphone.
-  // #454 review round 2 correction: recording only what is actually
-  // known here, per the #424 lesson that a wrong recorded premise is
-  // worse than none. What IS verified from source: MicSource's
-  // constraints and WhisperSttEngine's bare {audio:true} (which Chrome
-  // resolves to those SAME three defaults) are effectively IDENTICAL --
-  // so "mismatched constraints causing the browser to clamp AGC" is NOT
-  // supported by the code it would describe, and is not being claimed.
-  // What IS demonstrated: two concurrent captures on one physical
-  // device was the trigger, and eliminating the second capture removed
-  // the symptom. The precise audio-pipeline reason two same-constraint
-  // captures on one device degraded input level is a HYPOTHESIS (AGC/
-  // gain contention at the OS or driver layer is one candidate), not
-  // demonstrated, and cannot be demonstrated in a headless test
-  // harness -- treat it as unproven, not as the recorded cause.
-  // The visualizer must never open a competing capture while STT owns
-  // the mic; it simply does not animate for the duration of an active
-  // voice turn. This is a FUNCTIONAL feedback loss accepted for
-  // correctness, not a cosmetic tradeoff: the IN bars are the user's
-  // only "it is actually hearing me" signal (input LEVEL), which the
-  // mic control's red dot does not convey (listening STATE, not level).
-  // Applies before either the "always on" or press-to-speak checks
-  // below so neither can re-open the contention.
-  if(window.__sttListening) return false;
   return uiState.micMode==="always" || window.voicePTT;
 }
 // #490 (human-directed, 2026-07-28): the mic dot is CAPTURE TRUTH -- lit
-// iff audio is actually being captured RIGHT NOW, by either owner of the
-// mic: a live STT turn (__sttListening; micHot() deliberately reports
-// false during turns per #464's contention guard) or the visualizer's own
-// capture (always-on / press-to-speak). The human's live repro was the
-// ensemble reading INVERTED: always-on visualizer captured with a dark
-// dot, while a voice turn showed a bright dot over dead IN bars and a
-// dead engine. Synced every drawViz frame so no stop path can strand it;
+// iff audio is actually being captured RIGHT NOW: a live STT turn, the
+// voice loop between its turns, or the visualizer's own capture
+// (always-on / press-to-speak) -- micHot() now reports all of these
+// directly. Bright dot = mic hot, dim dot = mic off, no third state.
+// Synced every drawViz frame so no stop path can strand it;
 // setSttListening's own immediate toggle stays for zero-latency press
 // feedback and is corrected within a frame if it ever disagrees.
 function syncCaptureDot(){
@@ -5891,6 +6229,71 @@ function hydrateNoteMedia(scope, nd){
   });
   scope.querySelectorAll(".nmmd[data-mmd]").forEach(el=>{
     el.replaceWith(makeMermaidBlock(el.dataset.mmd));
+  });
+  hydrateCodeBlocks(scope);
+}
+// ---- fenced code blocks (2026-07-29, human-directed): ```lang fences
+// render server-side as .ncode[data-lang] > pre > code; this hydrator adds
+// the chrome (language chip, Copy, Save) and a small dependency-free
+// syntax highlight -- shared by notes AND the chat overlay, one code path. ----
+const CODE_HL_KEYWORDS = new Set(("function,return,if,else,for,while,const,let,var,class,new,import,export,from,async,await,try,catch,"
+  + "finally,throw,switch,case,break,continue,typeof,instanceof,in,of,null,undefined,true,false,this,super,extends,"
+  + "def,elif,lambda,pass,raise,with,as,yield,global,nonlocal,None,True,False,not,and,or,is,print,"
+  + "fi,then,do,done,esac,local,echo,exit,struct,enum,impl,fn,pub,use,mut,match").split(","));
+const CODE_EXT_BY_LANG = {js:"js",javascript:"js",ts:"ts",typescript:"ts",python:"py",py:"py",bash:"sh",sh:"sh",zsh:"sh",
+  shell:"sh",json:"json",html:"html",css:"css",rust:"rs",go:"go",c:"c",cpp:"cpp",yaml:"yaml",yml:"yaml",sql:"sql",md:"md"};
+function highlightCodeHtml(src){
+  // one combined pass: comments, strings, numbers -- then keywords over the
+  // untouched remainder. Tokens never nest, earliest match wins.
+  const re = /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)|\b(\d+(?:\.\d+)?)\b/g;
+  let out = "", last = 0, m;
+  const kw = chunk => escapeHtml(chunk).replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g,
+    w => CODE_HL_KEYWORDS.has(w) ? '<span class="hl-k">' + w + "</span>" : w);
+  while((m = re.exec(src))){
+    out += kw(src.slice(last, m.index));
+    if(m[1]) out += '<span class="hl-c">' + escapeHtml(m[1]) + "</span>";
+    else if(m[2]) out += '<span class="hl-s">' + escapeHtml(m[2]) + "</span>";
+    else out += '<span class="hl-n">' + escapeHtml(m[3]) + "</span>";
+    last = m.index + m[0].length;
+  }
+  out += kw(src.slice(last));
+  return out;
+}
+function hydrateCodeBlocks(scope){
+  if(!scope || !scope.querySelectorAll) return;
+  scope.querySelectorAll(".ncode").forEach(box=>{
+    if(box.dataset && box.dataset.wired) return;
+    if(box.dataset) box.dataset.wired = "1";
+    const codeEl = box.querySelector("code");
+    if(!codeEl) return;
+    const lang = (box.dataset && box.dataset.lang) || "";
+    const src = codeEl.textContent;
+    codeEl.innerHTML = highlightCodeHtml(src);
+    const bar = document.createElement("div");
+    bar.className = "ncode-bar";
+    const chip = document.createElement("span");
+    chip.className = "ncode-lang";
+    chip.textContent = lang || "code";
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button"; copyBtn.className = "iconbtn ncode-copy"; copyBtn.textContent = "Copy";
+    copyBtn.onclick = async ()=>{
+      try{ await navigator.clipboard.writeText(src); copyBtn.textContent = "Copied"; }
+      catch{ copyBtn.textContent = "Copy failed"; }
+      setTimeout(()=>{ copyBtn.textContent = "Copy"; }, 1500);
+    };
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button"; saveBtn.className = "iconbtn ncode-save"; saveBtn.textContent = "Save to";
+    saveBtn.title = "Save this block as a code-snippet file";
+    saveBtn.onclick = ()=>{
+      const ext = CODE_EXT_BY_LANG[lang.toLowerCase()] || "txt";
+      const u = URL.createObjectURL(new Blob([src], {type: "text/plain"}));
+      const a = document.createElement("a");
+      a.href = u; a.download = "snippet-" + Date.now().toString(36) + "." + ext;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(u), 5000);
+    };
+    bar.appendChild(chip); bar.appendChild(copyBtn); bar.appendChild(saveBtn);
+    box.insertBefore(bar, box.firstChild);
   });
 }
 window.neuralNotes = { hydrate: hydrateNoteMedia, fileUrl, open: (...a)=>openNote(...a) };   // small public surface (also used by tests)
@@ -7011,6 +7414,10 @@ function applyArtifactTaskEvent(task, evt, originRect){
   if(!entry.panel) entry.panel = ensureArtifactPanel(task, originRect);
   const railEntry = entry.pstate.rail[entry.pstate.rail.length - 1];
   renderArtifactPanel(entry.panel, task, entry.pstate, railEntry);
+  // AST-083-r1: the chat overlay's live media tile tracks every applied
+  // transition (queued -> progress -> completed/failed) alongside the
+  // detached panel -- no-op when the overlay isn't open.
+  renderChatArtifactTile(task, entry.pstate);
   if(result.state === "completed"){
     speakReply((task.payload && task.payload.name ? task.payload.name : "Your artifact") + " is ready.", task.turn_id || task.id);
     linkArtifactInChat(task, entry.pstate, false);
@@ -7037,6 +7444,128 @@ function linkArtifactInChat(task, pstate, failed){
     ? (name + " failed to generate: " + (pstate.error || "unknown error") + " — view trace →")
     : (name + " is ready — artifact + trace →");
   appendChatRow(log, "system", text, null);
+}
+// ---- AST-083-r1 chat media tiles (human-directed, 2026-07-29): the chat
+// overlay renders a LIVE tile per artifact task -- the same "all sorts of
+// media" support notes already have, surfaced where the conversation
+// happens. One tile per task id, mutated in place across states (like the
+// STT pending bubble, deliberately NOT via appendChatRow's immutable
+// rows). Driven from applyArtifactTaskEvent, so it needs no polling of
+// its own; renderChatLog re-attaches tiles after its wholesale rebuild. ----
+function chatArtifactTileStates(pstate){
+  return {
+    queued: pstate.state === "queued",
+    running: pstate.state === "started" || pstate.state === "progress",
+    done: pstate.state === "completed",
+    failed: pstate.state === "failed" || pstate.state === "orphaned",
+  };
+}
+function renderChatArtifactTile(task, pstate){
+  const log = document.getElementById("ast-chat-log");
+  if(!log || !pstate || !pstate.state) return null;
+  let row = document.getElementById("ast-chat-tile-" + task.id);
+  if(!row){
+    if(log.getAttribute && log.getAttribute("data-chat-empty") === "1"){
+      log.innerHTML = "";
+      log.setAttribute("data-chat-empty", "");
+    }
+    row = document.createElement("div");
+    row.id = "ast-chat-tile-" + task.id;
+    row.className = "ast-chat-row ast-chat-media";
+    row.setAttribute("data-role", "assistant");
+    log.appendChild(row);
+    scrollChatLogToBottom(log);
+  }
+  const st = chatArtifactTileStates(pstate);
+  row.classList.toggle("queued", st.queued);
+  row.classList.toggle("done", st.done);
+  row.classList.toggle("failed", st.failed);
+  const name = (task.payload && task.payload.name) || task.id;
+  row.innerHTML = "";
+  const title = document.createElement("div");
+  title.className = "cm-title";
+  title.textContent = st.queued ? ("Queued — " + name)
+    : st.running ? ("Rendering " + name + "…")
+    : st.done ? ("Ready — " + name)
+    : ("Couldn't finish " + name + ".");
+  row.appendChild(title);
+  const tile = document.createElement("div");
+  tile.className = "cm-tile";
+  tile.setAttribute("data-testid", "c-chat-tile");
+  if(st.queued){
+    const state = document.createElement("div");
+    state.className = "cm-state"; state.textContent = "QUEUED";
+    tile.appendChild(state);
+  }else if(st.running){
+    // the mockup's no-preview progress card: slim bar, phase + pct,
+    // started/elapsed/trace meta line.
+    const bar = document.createElement("div"); bar.className = "cm-bar";
+    const fill = document.createElement("i");
+    fill.style.width = Math.max(2, Math.min(100, pstate.pct || 0)) + "%";
+    bar.appendChild(fill); tile.appendChild(bar);
+    const status = document.createElement("div"); status.className = "cm-status";
+    const phase = document.createElement("span");
+    const lastRail = pstate.rail && pstate.rail.length ? pstate.rail[pstate.rail.length - 1] : null;
+    phase.textContent = lastRail ? lastRail.label : pstate.state;
+    const pct = document.createElement("span"); pct.className = "pct";
+    pct.textContent = (pstate.pct || 0) + "%";
+    status.appendChild(phase); status.appendChild(pct); tile.appendChild(status);
+    const meta = document.createElement("div"); meta.className = "cm-meta";
+    const elapsedMs = pstate.firstTs ? (Date.now() - Date.parse(pstate.firstTs)) : 0;
+    meta.textContent = "started · " + Math.max(0, Math.round(elapsedMs/1000)) + "s elapsed · trace live";
+    tile.appendChild(meta);
+  }else if(st.done){
+    const kind = artifactViewerKind(pstate.artifactPath || name);
+    if(kind === "image"){
+      const img = document.createElement("img");
+      img.className = "cm-thumb"; img.alt = name;
+      img.src = "/assistant/artifact/" + encodeURIComponent(task.id);
+      tile.appendChild(img);
+    }
+    const open = document.createElement("button");
+    open.type = "button"; open.className = "cm-open";
+    open.setAttribute("data-testid", "c-chat-open");
+    open.textContent = "Open " + (kind === "unknown" ? "artifact" : kind) + " panel ▸";
+    tile.appendChild(open);
+    // tile morphs into the detached panel: reopen (or refocus) the SAME
+    // artifact window, originating the entrance from the tile itself.
+    const openPanel = ()=>{
+      const entry = window.__artifactTasks[task.id];
+      if(!entry) return;
+      if(entry.panel && entry.panel.win && entry.panel.win.isConnected){
+        entry.panel.win.style.zIndex = ++noteWinZ;
+        return;
+      }
+      entry.panel = null;
+      entry.panel = ensureArtifactPanel(entry.task, row.getBoundingClientRect && row.getBoundingClientRect());
+      const railEntry = entry.pstate.rail[entry.pstate.rail.length - 1];
+      renderArtifactPanel(entry.panel, entry.task, entry.pstate, railEntry);
+    };
+    open.onclick = openPanel;
+    tile.onclick = openPanel;
+  }else if(st.failed){
+    const state = document.createElement("div");
+    state.className = "cm-state";
+    state.textContent = "⚑ FAILED — " + (pstate.error || "unknown error");
+    tile.appendChild(state);
+    const traceBtn = document.createElement("button");
+    traceBtn.type = "button"; traceBtn.className = "cm-open";
+    traceBtn.setAttribute("data-testid", "c-chat-trace");
+    traceBtn.textContent = "View trace · job " + task.id;
+    traceBtn.onclick = ()=>{ openAstInspectorWindow(); };
+    tile.appendChild(traceBtn);
+  }
+  row.appendChild(tile);
+  return row;
+}
+// After renderChatLog's wholesale rebuild, every known task's tile is
+// re-attached (in registry insertion order -- task start order) so a
+// show-last toggle or history reload never silently drops live tiles.
+function reattachChatArtifactTiles(){
+  for(const id in (window.__artifactTasks || {})){
+    const entry = window.__artifactTasks[id];
+    if(entry && entry.pstate && entry.pstate.state) renderChatArtifactTile(entry.task, entry.pstate);
+  }
 }
 // §12.5's voice-panel queue indicator. SCOPE CALL (see report): no board
 // task owns the FULL queue-list UX yet (checked docs/BACKLOG-ASSISTANT.md
@@ -7883,7 +8412,13 @@ wireAssistantChatUi();
 // (`GET /assistant/history`) have none (chips are per-turn, never
 // persisted to the transcript) and simply render without a chips block.
 window.assistantChat = window.assistantChat || {
-  queue: [], inFlight: false, exchanges: [], lastX: 2,
+  queue: [], inFlight: false, exchanges: [],
+  // show-last selection survives a refresh (human report 2026-07-29:
+  // "state not preserved") -- persisted in uiState like every other
+  // panel setting; "all" and 1/2/3 are the only legal values. ∞ is the
+  // DEFAULT (human-directed): the full cached window shows, snapped to
+  // the newest message (renderChatLog's unconditional bottom snap).
+  lastX: (uiState.chatLastX === "all" || [1,2,3].includes(uiState.chatLastX)) ? uiState.chatLastX : "all",
   elapsedTimer: null, elapsedStart: 0,
 };
 function chatElapsedText(startMs, nowMs){
@@ -7927,6 +8462,18 @@ function appendChatRow(log, role, text, chips, suppressScroll){
     row.appendChild(chipsEl);
   }
   log.appendChild(row);
+  // 2026-07-29 (human-directed): assistant replies render through the SAME
+  // markdown/media/code pipeline notes use (server render_body + the note
+  // hydrators) -- async enhancement over the plain-text row, so a failed
+  // render fetch degrades to exactly what shipped before. Lazy: with ∞ as
+  // the default show-last, a history load appends the whole window at
+  // once -- rows only enrich as they scroll into view (IntersectionObserver)
+  // instead of firing a render POST per row up front.
+  if(role === "assistant" && text){
+    const io = chatEnrichObserver();
+    if(io){ row.__pendingMd = text; io.observe(row); }
+    else enrichChatRowMarkdown(row, text);
+  }
   // #481 (review round 1, finding 1): a LIVE append (dispatchNextChat's new
   // turn, reportSttFailure's error row) is sticky-bottom, not yank-to-
   // bottom -- a queued reply landing while the human is scrolled UP reading
@@ -7943,6 +8490,59 @@ function appendChatRow(log, role, text, chips, suppressScroll){
 // scrollHeight - clientHeight, so an exact-equality check would treat a
 // human sitting a pixel or two off the bottom as "scrolled up" and refuse
 // to follow new messages.
+// 2026-07-29 (human-directed): "ensure to reuse the same code we use on
+// notes" -- replies POST through /render-md (the server-side render_body
+// notes are rendered with) and then run the SAME client hydrators
+// (hydrateNoteMedia -> media viewers/players, mermaid, code chrome).
+// Relative media paths need a served home directory for assistant output
+// (the file-production task wires that); http(s) media and code blocks
+// work today. Fire-and-forget: any failure leaves the plain-text row.
+// The selected assistant's media context: repo = the discovered repo NAME
+// (directory basename of the candidate's root -- the same name /file/'s
+// repo segment resolves), role = "assistant" (the persona's brain lives at
+// .claude/identities/assistant/brain, see setup.py's BRAIN_NOTES_REL).
+// Set from /assistant/status wherever the selection is known; relative
+// media/chat/... links in replies resolve through it.
+window.__assistantMediaCtx = window.__assistantMediaCtx || null;
+// Lazy enrichment (2026-07-29): one shared observer; a row waits with its
+// markdown parked on __pendingMd until it approaches the viewport. false
+// (not null) marks "environment has no IntersectionObserver -- enrich
+// inline", so test harnesses and old engines degrade to the direct path.
+window.__chatEnrichIO = window.__chatEnrichIO !== undefined ? window.__chatEnrichIO : null;
+function chatEnrichObserver(){
+  if(window.__chatEnrichIO !== null) return window.__chatEnrichIO;
+  if(typeof IntersectionObserver === "undefined"){ window.__chatEnrichIO = false; return false; }
+  window.__chatEnrichIO = new IntersectionObserver(entries=>{
+    for(const e of entries){
+      if(!e.isIntersecting) continue;
+      window.__chatEnrichIO.unobserve(e.target);
+      const t = e.target.__pendingMd;
+      if(t){ delete e.target.__pendingMd; enrichChatRowMarkdown(e.target, t); }
+    }
+  }, {rootMargin: "200px"});
+  return window.__chatEnrichIO;
+}
+function setAssistantMediaCtx(status){
+  try{
+    if(!status || !status.selected || !status.candidates){ return; }
+    const cand = status.candidates.find(c => c && (c.name === status.selected || (c.aliases || []).includes(status.selected)));
+    if(!cand || !cand.root) return;
+    const repo = String(cand.root).replace(/\/+$/, "").split("/").pop();
+    window.__assistantMediaCtx = {repo: repo, role: "assistant"};
+  }catch{}
+}
+async function enrichChatRowMarkdown(row, text){
+  try{
+    const resp = await fetch("/render-md", {method: "POST", body: JSON.stringify({body: String(text)})});
+    if(!resp || !resp.ok) return;
+    const data = await resp.json();
+    if(!data || !data.html) return;
+    const chipsEl = row.querySelector ? row.querySelector(".ast-chat-chips") : null;
+    row.innerHTML = data.html;
+    if(chipsEl) row.appendChild(chipsEl);
+    try{ hydrateNoteMedia(row, window.__assistantMediaCtx || {repo: "", role: ""}); }catch{}
+  }catch{}
+}
 const CHAT_SCROLL_BOTTOM_SLACK_PX = 4;
 function isChatLogAtBottom(log){
   if(!log) return true;
@@ -8002,6 +8602,10 @@ function renderChatLog(){
     appendChatRow(log, "user", ex.user, null, true);
     appendChatRow(log, "assistant", ex.assistant, ex.chips || null, true);
   }
+  // AST-083-r1: live artifact tiles are NOT part of the persisted
+  // exchanges -- re-attach them after the wholesale rebuild so a
+  // show-last toggle / history reload never drops them.
+  if(typeof reattachChatArtifactTiles === "function") reattachChatArtifactTiles();
   scrollChatLogToBottom(log);
 }
 function renderChatLastXToggle(){
@@ -8021,6 +8625,7 @@ function renderChatLastXToggle(){
 }
 function setChatLastX(n){
   window.assistantChat.lastX = n;
+  uiState.chatLastX = n; saveUiState();
   renderChatLastXToggle();
   renderChatLog();
 }
@@ -8266,7 +8871,14 @@ function chatInputKeydown(ev){
 }
 async function loadChatHistory(){
   let data;
-  try{ data = await (await fetch("/assistant/history?n=30")).json(); }catch{
+  // Thread the session's SELECTED assistant (the same flag _chat/_traces
+  // already take, #453/#479's family) -- without it a refresh with 2+
+  // discovered assistants and no machine default loads a DIFFERENT
+  // assistant's transcript (the human's live "refresh resets the chat"
+  // repro, 2026-07-29: megabrain selected, fab-io's history rendered).
+  const assistantQ = window.__assistantSelected
+    ? "&assistant=" + encodeURIComponent(window.__assistantSelected) : "";
+  try{ data = await (await fetch("/assistant/history?n=30" + assistantQ)).json(); }catch{
     renderChatOffline();
     return;
   }
@@ -8315,6 +8927,10 @@ async function openChatOverlay(){
   // window.__assistantSelected to already be current -- this fetch is the
   // freshest data this function has.
   window.__assistantSelected = (status && status.selected) || null;
+  // 2026-07-29: the same response carries the candidate roots -- resolve
+  // the selected assistant's media context so relative media/chat/ links
+  // in replies hydrate against its brain via /file/.
+  setAssistantMediaCtx(status);
   const nameEl = document.getElementById("ast-chat-assistant-name");
   if(nameEl) nameEl.textContent = window.__assistantSelected || "";
   if(!status || status.gated || status.outcome === "none"){
@@ -8638,21 +9254,67 @@ function computeWaterfallSpans(turn){
     return {event: ev, offsetPct: offsetPct, widthPct: widthPct, instant: instant, error: error};
   });
 }
+// AST-044-r1 Option B (human-directed, 2026-07-29): a turn row reads like
+// the mockup's `.turn` -- "#N · <dominant action> · <dur> · caret" -- not
+// a raw id+ISO dump. The dominant action is the span that consumed the
+// most of the turn (mockup wording "provider call"), derived from the
+// SAME computeWaterfallSpans geometry the expanded waterfall renders.
+function astTurnDominantLabel(turn){
+  const spans = computeWaterfallSpans(turn);
+  let best = null;
+  for(const s of spans){ if(!best || s.widthPct > best.widthPct) best = s; }
+  const kind = best && best.event && best.event.kind ? String(best.event.kind) : (turn.status || "turn");
+  return kind.replace(/\./g, " ").replace(/-/g, " ");
+}
 function renderAstTurnlist(turns, selectedTurnId){
   const el = document.getElementById("ast-turnlist");
   if(!el) return;
+  // the waterfall may be docked INSIDE the list (inline expansion below)
+  // -- rescue it back to the list's parent before the wholesale rebuild
+  // wipes it, or the element (and every future expansion) is destroyed.
+  const wfRescue = document.getElementById("ast-waterfall");
+  if(wfRescue && wfRescue.parentNode === el && el.parentNode) el.parentNode.appendChild(wfRescue);
   el.innerHTML = "";
+  const total = (turns || []).length;
+  let i = 0;
   for(const turn of (turns || [])){
-    const row = document.createElement("div");
+    const selected = turn.turnId === selectedTurnId;
+    const row = document.createElement("button");
+    row.type = "button";
     row.className = "ast-turnlist-row"
-      + (turn.turnId === selectedTurnId ? " ast-turnlist-selected" : "")
+      + (selected ? " ast-turnlist-selected" : "")
       + (turnHasError(turn) ? " ast-turnlist-error" : "");
     const dur = turnDurationMs(turn);
-    row.textContent = turn.turnId.slice(0, 8) + " · " + (turn.startTs || "—")
-      + " · " + (dur === null ? "—" : (dur / 1000).toFixed(2) + "s");
+    const tn = document.createElement("span");
+    tn.className = "ast-turnlist-n";
+    // traces arrive newest-first (order=desc) -- newest turn gets the
+    // highest round number, so numbering reads like the mockup's #12/#11/#10.
+    tn.textContent = "#" + (total - i);
+    const tlab = document.createElement("span");
+    tlab.className = "ast-turnlist-lab";
+    tlab.textContent = astTurnDominantLabel(turn);
+    tlab.title = turn.turnId + (turn.startTs ? " · " + turn.startTs : "");
+    const tdur = document.createElement("span");
+    tdur.className = "ast-turnlist-dur";
+    tdur.textContent = dur === null ? "—" : (dur / 1000).toFixed(1) + "s";
+    const tcar = document.createElement("span");
+    tcar.className = "ast-turnlist-car";
+    tcar.textContent = selected ? "▾" : "▸";
+    row.appendChild(tn); row.appendChild(tlab); row.appendChild(tdur); row.appendChild(tcar);
     row.setAttribute("data-turn-id", turn.turnId);
-    row.onclick = () => { selectAstTurn(turn.turnId); };
+    row.setAttribute("aria-expanded", String(selected));
+    // toggle: clicking the open row closes it (multiple rounds each get a
+    // row; only one waterfall is expanded at a time).
+    row.onclick = () => { selectAstTurn(selected ? null : turn.turnId); };
     el.appendChild(row);
+    // inline expansion: the (single) waterfall element docks directly
+    // under its own turn's row, mockup-style, instead of a detached
+    // block at the bottom of the window.
+    if(selected){
+      const wf = document.getElementById("ast-waterfall");
+      if(wf) el.appendChild(wf);
+    }
+    i++;
   }
 }
 function renderAstWaterfall(turn){
@@ -8664,23 +9326,38 @@ function renderAstWaterfall(turn){
     return;
   }
   el.classList.remove("ast-metrics-hidden");
-  // #460, second conformance pass: the mockup's `.wbot` shows a turn-
-  // context header ("Turn #11 · provider call · 8.1s") above the
-  // waterfall -- the shipped inspector had none, relying only on the
-  // turnlist row's own selected-highlight to say which turn this is. The
-  // mockup's exact wording ("provider call") describes a turn's dominant
-  // action, which this data does not carry -- using the fields the turn
-  // actually has (id/status/duration) instead of inventing that summary.
+  // Option B `.wbot .blab`: "Turn <id8> · <status> · <dur>" header, plus
+  // (human-directed 2026-07-29) a small raw-JSON button that detaches the
+  // provider's raw response payloads into their own panel.
   const turnlab = document.createElement("div");
   turnlab.className = "ast-waterfall-turnlab";
   const dur = turnDurationMs(turn);
-  turnlab.textContent = "Turn " + turn.turnId.slice(0, 8)
+  const labText = document.createElement("span");
+  labText.textContent = "Turn " + turn.turnId.slice(0, 8)
     + " · " + (turn.status || "unknown")
     + " · " + (dur === null ? "—" : (dur / 1000).toFixed(2) + "s");
+  const rawBtn = document.createElement("button");
+  rawBtn.type = "button";
+  rawBtn.className = "ast-waterfall-raw";
+  rawBtn.textContent = "{ } raw";
+  rawBtn.title = "Show the raw JSON recorded for this turn's provider call in a detached panel";
+  rawBtn.onclick = (ev) => { if(ev && ev.stopPropagation) ev.stopPropagation(); openAstRawJsonWindow(turn); };
+  turnlab.appendChild(labText);
+  turnlab.appendChild(rawBtn);
   el.appendChild(turnlab);
+  // Option B `.wf`/`.wrow` anatomy: one row per span -- area label on the
+  // left, positioned bar in a shared track lane, per-span duration on the
+  // right. The error span keeps its red treatment + reason tooltip.
+  const totalMs = dur === null ? 0 : dur;
   const spans = computeWaterfallSpans(turn);
   for(const span of spans){
-    const track = document.createElement("div");
+    const wrow = document.createElement("div");
+    wrow.className = "ast-waterfall-row";
+    const label = document.createElement("span");
+    label.className = "ast-waterfall-label";
+    label.textContent = span.event.kind + (span.event.status ? " [" + span.event.status + "]" : "");
+    label.title = span.event.kind;
+    const track = document.createElement("span");
     track.className = "ast-waterfall-track";
     const bar = document.createElement("div");
     bar.className = "ast-waterfall-bar"
@@ -8693,12 +9370,57 @@ function renderAstWaterfall(turn){
       bar.title = payload.error || payload.message || span.event.status || span.event.kind;
     }
     track.appendChild(bar);
-    const label = document.createElement("div");
-    label.className = "ast-waterfall-label";
-    label.textContent = span.event.kind + (span.event.status ? " [" + span.event.status + "]" : "");
-    el.appendChild(track);
-    el.appendChild(label);
+    const wdur = document.createElement("span");
+    wdur.className = "ast-waterfall-dur";
+    const spanMs = totalMs > 0 && !span.instant ? (span.widthPct / 100) * totalMs : 0;
+    wdur.textContent = span.instant || totalMs <= 0 ? "·" : (spanMs / 1000).toFixed(1) + "s";
+    wrow.appendChild(label);
+    wrow.appendChild(track);
+    wrow.appendChild(wdur);
+    el.appendChild(wrow);
   }
+}
+// Raw provider JSON, detached (human-directed, 2026-07-29): everything the
+// trace recorded for this turn's provider spans (provider.call payloads --
+// usage etc. -- and provider.error reasons), pretty-printed in its own
+// draggable panel. Falls back to the turn's FULL event list when the turn
+// has no provider spans (voice-only turns), so the button never opens an
+// empty panel. One window max, replaced per click.
+window.astRawJsonWin = window.astRawJsonWin || null;
+function openAstRawJsonWindow(turn){
+  if(window.astRawJsonWin){
+    window.astRawJsonWin.remove();
+    window.astRawJsonWin = null;
+  }
+  const win = document.createElement("aside");
+  win.className = "hud note-window ast-rawjson-window";
+  const bar = document.createElement("div");
+  bar.className = "aiw-bar";
+  bar.setAttribute("data-drag", "");
+  const title = document.createElement("span");
+  title.className = "aiw-title";
+  title.textContent = "Raw provider JSON · turn " + String(turn.turnId).slice(0, 8);
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "close";
+  closeBtn.setAttribute("aria-label", "Close raw JSON panel");
+  closeBtn.textContent = "✕";
+  bar.appendChild(title); bar.appendChild(closeBtn);
+  win.appendChild(bar);
+  const pre = document.createElement("pre");
+  pre.className = "ast-rawjson-body";
+  const providerEvents = (turn.events || []).filter(e => e && typeof e.kind === "string" && e.kind.indexOf("provider") === 0);
+  const shown = providerEvents.length ? providerEvents : (turn.events || []);
+  pre.textContent = JSON.stringify(shown, null, 2);
+  win.appendChild(pre);
+  closeBtn.onclick = () => { win.remove(); if(window.astRawJsonWin === win) window.astRawJsonWin = null; };
+  win.style.left = "30vw";
+  win.style.top = "18vh";
+  win.style.zIndex = ++noteWinZ;
+  win.addEventListener("pointerdown", () => { win.style.zIndex = ++noteWinZ; }, true);
+  document.body.appendChild(win);
+  wireWinDrag(win);
+  window.astRawJsonWin = win;
+  return win;
 }
 function selectAstTurn(turnId){
   window.assistantInspector.selectedTurnId = turnId;

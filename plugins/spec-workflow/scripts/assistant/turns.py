@@ -499,6 +499,32 @@ def compose_context(persona_cfg, roster_provider, recall_fn, session_state,
     model = ((persona_cfg or {}).get("llm") or {}).get("model")
     if model:
         context_for_adapter["model"] = model
+    # File output (2026-07-29, human-directed): when the engine resolved a
+    # sanctioned output directory (`_fileOutputDir`, injected per-turn by
+    # _chat -- never persisted config), the adapter gets it (to scope-open
+    # the CLI's Write tool) and the system prompt states the ABSOLUTE path
+    # plus the relative link form the chat renderer resolves. Appended
+    # AFTER the budget accounting: a fixed ~2-line suffix, never clipped.
+    # Temporal grounding (2026-07-29, human-directed): the engine injects
+    # the formatted wall clock per-turn as `_nowText` (never computed here,
+    # so hermetic compose tests stay deterministic); when present the
+    # assistant always knows the current date/time/weekday/timezone.
+    now_text = (persona_cfg or {}).get("_nowText")
+    if now_text:
+        context_for_adapter["system"] = (
+            context_for_adapter["system"] + "\n\nCurrent date & time: " + now_text)
+    file_output_dir = (persona_cfg or {}).get("_fileOutputDir")
+    if file_output_dir:
+        context_for_adapter["fileOutputDir"] = file_output_dir
+        context_for_adapter["system"] = (
+            context_for_adapter["system"]
+            + "\n\nFile output: you CAN create files, ONLY inside "
+            + file_output_dir
+            + " (your Write tool is scoped to that directory). After writing, "
+            + "link each file in your reply as [name](media/chat/<filename>) "
+            + "or ![alt](media/chat/<filename>) so it renders inline in the chat. "
+            + "Never claim the workspace is read-only without an actual failed write."
+        )
 
     budget_report = {
         "total_tokens": total_tokens,

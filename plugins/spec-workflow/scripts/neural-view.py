@@ -280,6 +280,12 @@ MDLINK = re.compile(r"(?<!!)\[([^\]]+)\]\(([^()\s]+)\)")
 # blank-line block split below -- a flowchart's own source routinely contains
 # blank lines, which would otherwise fracture one diagram across several <p>s.
 MERMAID_FENCE = re.compile(r"```mermaid[ \t]*\n(.*?)```", re.S)
+# generic fenced code blocks (2026-07-29, human-directed): ```lang\n...```
+# renders as a real <pre><code> block with the language recorded for the
+# client's highlight/copy/save chrome. Extracted AFTER mermaid (mermaid
+# fences keep their dedicated diagram path) and BEFORE the blank-line
+# block splitter, same stash rationale as MERMAID_FENCE.
+CODE_FENCE = re.compile(r"```([A-Za-z0-9_+#.-]*)[ \t]*\n(.*?)```", re.S)
 # /file/ extension allowlist — media a note may embed or link. Anything else
 # 404s: this endpoint exposes brain-dir files to the browser, so the set is
 # deliberately small and read-only.
@@ -1012,6 +1018,25 @@ def render_body(body):
 
     body = MERMAID_FENCE.sub(_stash_mermaid, body)
 
+    # generic fenced code blocks, stashed the same way (after mermaid so a
+    # ```mermaid fence is never claimed as a plain code block)
+    code_blocks = []
+
+    def _stash_code(m):
+        code_blocks.append((m.group(1) or "", m.group(2)))
+        return f"\x00CODEBLK{len(code_blocks) - 1}\x00"
+
+    body = CODE_FENCE.sub(_stash_code, body)
+
+    def render_code(lang, src):
+        src = src.strip("\n")
+        lang_attr = escape(lang, quote=True)
+        return (
+            f'<div class="ncode" data-lang="{lang_attr}">'
+            f"<pre class=\"ncode-pre\"><code>{escape(src)}</code></pre>"
+            "</div>"
+        )
+
     def render_mermaid(src):
         src = src.strip("\n")
         # server emits only the escaped source, in a data attribute AND a
@@ -1035,6 +1060,11 @@ def render_body(body):
         mm = re.fullmatch(r"\x00MERMAID(\d+)\x00", block.strip())
         if mm:
             out.append(render_mermaid(mermaid_blocks[int(mm.group(1))]))
+            continue
+        cb = re.fullmatch(r"\x00CODEBLK(\d+)\x00", block.strip())
+        if cb:
+            lang, src = code_blocks[int(cb.group(1))]
+            out.append(render_code(lang, src))
             continue
         lines = block.splitlines()
         h = re.match(r"^(#{1,6})\s+(.*)$", block)
@@ -1772,6 +1802,17 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001 — malformed metrics are just dropped
                 pass
             return self._send(200, {})
+        if path == "/render-md":
+            # 2026-07-29 (human-directed): the chat overlay renders replies
+            # through the SAME render_body the notes use -- one renderer,
+            # identical markdown/media/code support in both surfaces.
+            try:
+                n = min(int(self.headers.get("Content-Length", 0) or 0), 262144)
+                data = json.loads(self.rfile.read(n) or b"{}")
+                md = str(data.get("body", ""))[:200000]
+            except Exception:  # noqa: BLE001 — malformed render input is a clean 400
+                return self._send(400, {"error": "invalid render-md body"})
+            return self._send(200, {"html": render_body(md)})
         if path.startswith("/open/"):
             parts = path[len("/open/"):].split("/", 2)
             if len(parts) == 3 and all(parts):

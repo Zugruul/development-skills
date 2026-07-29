@@ -77,6 +77,11 @@ eval(extract("newClientTurnId"));
 // live-STT pending bubble -- stubbed no-op here (the real function is
 // exercised in section-assistant-voice-turn.sh's second harness).
 global.sttRemovePendingBubble = () => {};
+// barge-in (2026-07-29): speakReply arms/disarms the barge watcher around
+// every spoken reply -- stubbed no-ops here (level-driven audio behavior;
+// the loop controller's own harness covers the cancel->resume contract).
+global.voiceBargeWatchStart = () => {};
+global.voiceBargeWatchStop = () => {};
 eval(extract("speakReply"));
 
 function reset(){

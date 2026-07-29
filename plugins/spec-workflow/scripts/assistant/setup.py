@@ -176,6 +176,12 @@ DEFAULT_FILE_NAME = "assistant-default"
 GEN_START = "<!-- >>> spec-workflow generated: enabled skills (SPEC-ASSISTANT.md §11.9) -->"
 GEN_END = "<!-- <<< spec-workflow generated: enabled skills (SPEC-ASSISTANT.md §11.9) -->"
 
+# File-output contract (2026-07-29, human-directed): a second regenerated
+# block so EXISTING personas pick it up on the next scaffold refresh, same
+# marker mechanics as the skills block above.
+OUT_START = "<!-- >>> spec-workflow generated: file output contract -->"
+OUT_END = "<!-- <<< spec-workflow generated: file output contract -->"
+
 # Base capabilities (issue #447, §11.1 "base capabilities ship in-plugin
 # with the same shape") that `ensure_base_capabilities` materializes into
 # every scaffolded assistant repo's `.claude/skills/<name>/`. A STATIC,
@@ -417,21 +423,21 @@ def _skills_block(skill_names):
     return f"{GEN_START}\n{body}\n{GEN_END}"
 
 
-def _replace_or_append_block(text, block):
+def _replace_or_append_block(text, block, start=GEN_START, end=GEN_END):
     lines = text.split("\n")
     out = []
     i = 0
     replaced = False
     while i < len(lines):
-        if lines[i].strip() == GEN_START:
+        if lines[i].strip() == start:
             out.extend(block.split("\n"))
             replaced = True
             i += 1
-            while i < len(lines) and lines[i].strip() != GEN_END:
+            while i < len(lines) and lines[i].strip() != end:
                 i += 1
             i += 1  # skip the END line itself
             continue
-        if lines[i].strip() == GEN_END:
+        if lines[i].strip() == end:
             i += 1  # orphaned END with no matching START: drop the stray delimiter
             continue
         out.append(lines[i])
@@ -447,11 +453,41 @@ def _replace_or_append_block(text, block):
     return block + "\n"
 
 
+def _output_contract_block():
+    """The persona's file-production contract (2026-07-29, human-directed):
+    assistants were refusing file requests with 'workspace is read-only'
+    because nothing ever told them where output is sanctioned. The chat UI
+    renders the exact markdown/media forms the notes renderer supports, so
+    a file written to the brain's media dir and linked relatively shows up
+    inline (image/video/audio/3D viewers), and fenced code renders with
+    highlight + copy/save."""
+    body = (
+        "## Producing files & rich replies\n\n"
+        "You CAN produce files. Write deliverables under your brain's media "
+        "directory — `.claude/identities/assistant/brain/media/chat/` (create "
+        "it if missing) — then link them in your reply with note-style "
+        "markdown, using paths relative to the brain directory:\n\n"
+        "- `![alt](media/chat/duck.png)` — images render inline in the chat\n"
+        "- `[duck.glb](media/chat/duck.glb)` — 3D models (`.glb .gltf .obj .stl`) become a live viewer\n"
+        "- `[clip](media/chat/demo.mp4)` / `[take](media/chat/take.wav)` — video/audio become inline players\n"
+        "- fenced code blocks (```lang) render highlighted with copy/save — "
+        "prefer them for code and small text artifacts\n"
+        "- fenced ```mermaid blocks render as diagrams\n\n"
+        "Only claim you cannot write files after an actual write fails — and "
+        "if it does, deliver the content inline (code block) instead of "
+        "refusing. Long-running generation should go through an enabled "
+        "capability when one fits (its progress and result appear in the "
+        "chat as live artifact tiles)."
+    )
+    return f"{OUT_START}\n{body}\n{OUT_END}"
+
+
 def _default_agents_md(main_name, block):
     return (
         f"# {main_name} — assistant persona\n\n"
         f"You are {main_name}, the local assistant for this repository's zettel brain.\n\n"
-        f"{block}\n"
+        f"{block}\n\n"
+        f"{_output_contract_block()}\n"
     )
 
 
@@ -474,6 +510,9 @@ def ensure_agents_md(root):
     with open(path, "r", encoding="utf-8") as fh:
         before = fh.read()
     after = _replace_or_append_block(before, block)
+    # the file-output contract regenerates in place the same way (its own
+    # marker pair), so existing personas pick it up on the next scaffold.
+    after = _replace_or_append_block(after, _output_contract_block(), start=OUT_START, end=OUT_END)
     if after != before:
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(after)

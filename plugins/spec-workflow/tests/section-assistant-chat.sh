@@ -192,9 +192,19 @@ eval(extract("isChatTypingTarget"));
 defineConst("CHAT_SCROLL_BOTTOM_SLACK_PX");
 eval(extract("isChatLogAtBottom"));
 eval(extract("scrollChatLogToBottom"));
+// 2026-07-29: appendChatRow enriches assistant rows through the notes
+// renderer (chatEnrichObserver/enrichChatRowMarkdown) -- stubbed inert
+// here; the render POST path is exercised against the live server, not
+// this DOM stub.
+global.chatEnrichObserver = () => false;
+global.enrichChatRowMarkdown = () => {};
 eval(extract("appendChatRow"));
 eval(extract("renderChatLog"));
 eval(extract("renderChatLastXToggle"));
+// show-last persistence (2026-07-29): setChatLastX persists via uiState/
+// saveUiState -- same stub contract other harnesses use.
+if (typeof global.uiState === "undefined") global.uiState = {};
+if (typeof global.saveUiState === "undefined") global.saveUiState = function(){ try{ localStorage.setItem("nv-ui", JSON.stringify(global.uiState)); }catch{} };
 eval(extract("setChatLastX"));
 eval(extract("buildChatOverlay"));
 eval(extract("renderChatGated"));
@@ -211,6 +221,10 @@ eval(extract("newClientTurnId"));
 // live-STT pending bubble -- stubbed no-op here (the real function is
 // exercised in section-assistant-voice-turn.sh's second harness).
 global.sttRemovePendingBubble = () => {};
+// barge-in (2026-07-29): speakReply arms/disarms the barge watcher --
+// stubbed no-ops here (audio-level behavior is out of this harness's scope).
+global.voiceBargeWatchStart = () => {};
+global.voiceBargeWatchStop = () => {};
 eval(extract("speakReply"));
 eval(extract("dispatchNextChat"));
 eval(extract("queueOrSendChat"));
@@ -221,6 +235,10 @@ eval(extract("chatInputKeydown"));
 eval(extract("loadChatHistory"));
 // #480: openChatOverlay's fix calls focusChatInput() -- extract it first.
 eval(extract("focusChatInput"));
+// 2026-07-29: openChatOverlay resolves the selected assistant's media
+// context (setAssistantMediaCtx) from the status payload -- stubbed as a
+// recorder here.
+global.setAssistantMediaCtx = () => {};
 eval(extract("openChatOverlay"));
 eval(extract("closeChatOverlay"));
 eval(extract("handleAssistantChatKeydown"));
@@ -742,9 +760,19 @@ window.assistantChat = { queue: [], inFlight: false, exchanges: [], lastX: 2, el
 defineConst("CHAT_SCROLL_BOTTOM_SLACK_PX");
 eval(extract("isChatLogAtBottom"));
 eval(extract("scrollChatLogToBottom"));
+// 2026-07-29: appendChatRow enriches assistant rows through the notes
+// renderer (chatEnrichObserver/enrichChatRowMarkdown) -- stubbed inert
+// here; the render POST path is exercised against the live server, not
+// this DOM stub.
+global.chatEnrichObserver = () => false;
+global.enrichChatRowMarkdown = () => {};
 eval(extract("appendChatRow"));
 eval(extract("renderChatLog"));
 eval(extract("renderChatLastXToggle"));
+// show-last persistence (2026-07-29): setChatLastX persists via uiState/
+// saveUiState -- same stub contract other harnesses use.
+if (typeof global.uiState === "undefined") global.uiState = {};
+if (typeof global.saveUiState === "undefined") global.saveUiState = function(){ try{ localStorage.setItem("nv-ui", JSON.stringify(global.uiState)); }catch{} };
 eval(extract("setChatLastX"));
 eval(extract("buildChatOverlay"));
 eval(extract("renderChatGated"));
@@ -762,6 +790,10 @@ eval(extract("newClientTurnId"));
 // live-STT pending bubble -- stubbed no-op here (the real function is
 // exercised in section-assistant-voice-turn.sh's second harness).
 global.sttRemovePendingBubble = () => {};
+// barge-in (2026-07-29): speakReply arms/disarms the barge watcher --
+// stubbed no-ops here (audio-level behavior is out of this harness's scope).
+global.voiceBargeWatchStart = () => {};
+global.voiceBargeWatchStop = () => {};
 eval(extract("speakReply"));
 eval(extract("dispatchNextChat"));
 eval(extract("queueOrSendChat"));
@@ -770,6 +802,10 @@ eval(extract("chatInputKeydown"));
 eval(extract("loadChatHistory"));
 // #480: openChatOverlay's fix calls focusChatInput() -- extract it first.
 eval(extract("focusChatInput"));
+// 2026-07-29: openChatOverlay resolves the selected assistant's media
+// context (setAssistantMediaCtx) from the status payload -- stubbed as a
+// recorder here.
+global.setAssistantMediaCtx = () => {};
 eval(extract("openChatOverlay"));
 eval(extract("closeChatOverlay"));
 

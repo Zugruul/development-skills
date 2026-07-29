@@ -73,7 +73,10 @@ MODEL_NAME = "ggml-model.bin"
 # tests (WHISPER_SIDECAR_BINARY_SRC/MODEL_SRC always override to a local
 # fixture path in every test in section-whisper-sidecar.sh).
 DEFAULT_BINARY_URL = "https://github.com/ggerganov/whisper.cpp/releases/latest/download/whisper-server"
-DEFAULT_MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
+# small.en over base.en: the human hit real-world mistranscriptions live
+# ("3D model" -> "Street Model" territory); small.en fixes them while still
+# transcribing a ~2s utterance in ~0.4s on Apple Silicon Metal.
+DEFAULT_MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin"
 
 DEFAULT_START_TIMEOUT_SECONDS = 15
 _POLL_INTERVAL_SECONDS = 0.1

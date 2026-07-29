@@ -102,22 +102,18 @@ echo "-- template: #453 (P0 live-bug batch) -- the session's selected assistant 
 check "setVoiceHeaderName mirrors the current selection into window.__assistantSelected, the one choke point every selection change already runs through" "window.__assistantSelected = name || null;" "$NVHTML_VT_BODY"
 check "dispatchNextChat threads it into the chat POST body's assistant field when known" "if(window.__assistantSelected) chatBody.assistant = window.__assistantSelected;" "$NVHTML_VT_BODY"
 
-echo "-- template: #464 (P0, human hit it live) -- voice input required SHOUTING at normal speaking volume; fixed at the root, not by telling the human to raise a slider --"
-# Investigated in the order the report demanded, real cause not guessed:
-#   1. two CONCURRENT getUserMedia() captures on the same physical mic --
-#      MicSource's own visualizer stream (echoCancellation/noiseSuppression/
-#      autoGainControl all explicitly true) opening at the SAME time
-#      WhisperSttEngine's own getUserMedia({audio:true})+MediaRecorder
-#      capture (or the browser's internal Web Speech capture) is already
-#      live -- CONFIRMED as the real cause and fixed in micHot() below.
-#   2. the noise-suppression floor slider (vs-gate, default 34) -- verified
-#      structurally scoped to MicSource.getBins() alone (the visualizer's
-#      bar-height clamp), never read by either STT engine -- pinned below,
-#      not a contributor.
-#   3. echo-guard ducking (inBins.fill(0)) -- verified keyed strictly on
-#      voiceSources.outbound.speaking (TTS playback), never on the user's
-#      own speech or the recognition path -- not a contributor.
-check "micHot() refuses the visualizer's own capture while STT is actively listening -- the #464 fix itself" "if(window.__sttListening) return false;" "$NVHTML_VT_BODY"
+echo "-- template: #464's contention is solved STRUCTURALLY now -- one shared capture, so the bars stay LIVE while listening --"
+# History: #464 ("voice input requires SHOUTING") was caused by two
+# CONCURRENT getUserMedia() captures on one physical mic (MicSource's
+# visualizer stream + WhisperSttEngine's own MediaRecorder stream) and was
+# first fixed by freezing the visualizer during turns (micHot() returned
+# false while __sttListening). The human then hit the cost of that fix
+# live (2026-07-29): bars MOVED while idle and FROZE while actually
+# listening -- exactly inverted feedback. The root cause is now removed
+# instead: WhisperSttEngine records off MicSource's OWN stream (tap()),
+# so there is never a second capture, and micHot() reports capture truth:
+check "micHot() reports the mic HOT during a live turn/loop -- bars and dot move exactly when listening" "if(window.__sttListening || window.__voiceLoopOn) return true;" "$NVHTML_VT_BODY"
+check "WhisperSttEngine taps the shared MicSource stream instead of opening its own getUserMedia" "mic.tap(pcm=>{" "$NVHTML_VT_BODY"
 check "MicSource's own getUserMedia call is the ONLY explicit AGC/NS/EC request in the template -- confirms it's the visualizer's private stream, distinct from either STT engine's capture" "{audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true}}" "$NVHTML_VT_BODY"
 # Structural check (item 2, required by #464's brief): the noise floor
 # (voiceTune().gate / GATE) must be UNREACHABLE from either STT engine's
@@ -317,6 +313,14 @@ eval(extract("emitVoiceSpan"));
 eval(extract("trackLocalVoiceSpan"));
 eval(extract("newClientTurnId"));
 eval(extract("setSttListening"));
+// non-speech filtering (2026-07-29): onSttText routes noise-only
+// transcripts to sttShowNoiseRow instead of the model -- real helper for
+// the classifier, recorders for the row/toggle.
+eval(extract("sttMeaningfulText"));
+global.sttMeaningfulText = sttMeaningfulText;
+global.sttNoiseReactOn = () => false;
+let noiseRows = [];
+global.sttShowNoiseRow = (t) => { noiseRows.push(t); };
 eval(extract("onSttText"));
 function sttEngineChoice(){ return "web-speech"; }
 let startedInstance = null;
@@ -360,7 +364,28 @@ eval(extract("micHot"));
 // the visible listening flag -- extracted before toggleSttListening (and
 // before onSttText, eval'd above) since both call it.
 eval(extract("releaseSttCapture"));
+// voice loop (2026-07-29, human-directed): the mic control is a master
+// ON/OFF now -- toggleSttListening routes through the loop controller, so
+// the whole controller is extracted here (real functions, not stubs).
+// voiceLoopResumeTimer is a top-level `let` in the template (not
+// extractable); pre-seeded on global so the eval'd functions resolve it.
+global.voiceLoopResumeTimer = null;
+eval(extract("voiceLoopListen"));
+eval(extract("voiceLoopScheduleListen"));
+eval(extract("voiceLoopStart"));
+eval(extract("voiceLoopStop"));
+eval(extract("toggleSttListeningOffTurn"));
 eval(extract("toggleSttListening"));
+// barge-in runs on real audio levels (MicSource.level()) -- stubbed as
+// recorders here; its cancel->resume path is covered via speakChunks'
+// onDone contract, which this harness drives directly.
+let bargeWatchCalls = [];
+global.voiceBargeWatchStart = () => { bargeWatchCalls.push("start"); };
+global.voiceBargeWatchStop = () => { bargeWatchCalls.push("stop"); };
+// voiceLoopStop cancels any in-flight reply speech; voiceLoopListen
+// refuses to listen over one -- the outbound stub tracks both.
+let outboundStopCalls = 0;
+global.voiceSources = { outbound: { speaking: false, stop(){ outboundStopCalls++; } } };
 // #474 review round 1, FINDING 1 (MAJOR, reviewer-454's retroactive
 // review): speakReply's own echo-guard interlock needs the SAME real
 // WebSpeechSttEngine wired in above -- the SECOND harness in this file
@@ -384,15 +409,15 @@ if (window.voicePTT !== true) throw new Error("toggleSttListening must engage wi
 if (uiState.vdir !== "both") throw new Error("an OUT-only direction must widen to both while listening, so the IN bar is actually visible, got " + uiState.vdir);
 console.log("MIC_STARTS_AND_WIRES_IN_BAR_OK true");
 
-// ---- #464 (P0, human hit it live): micHot() must refuse the visualizer's
-// own competing getUserMedia capture while STT is actively listening,
-// even though voicePTT is true and vdir is "both" -- exactly the state
-// this test is in right now. Before the fix, this returned true here,
-// meaning the visualizer's independent capture WAS opening concurrently
-// with STT's own capture on the same physical mic -- the root cause of
-// "voice input requires shouting".
-if (micHot() !== false) throw new Error("micHot() must return false while STT owns the mic (window.__sttListening), even with voicePTT/vdir both indicating the visualizer would otherwise want it -- this is the #464 two-consumers-one-device bug");
-console.log("MIC_HOT_REFUSES_DURING_STT_OK true");
+// ---- capture truth (2026-07-29, human-directed -- supersedes #464's
+// freeze-during-turns guard): while a turn is actually listening the mic
+// IS capturing, and micHot() must say so -- the IN bars animate exactly
+// when the human is being heard, never the inverse. Safe now because
+// whisper records off MicSource's own shared stream (tap()), so no second
+// concurrent getUserMedia can exist -- the #464 root cause is structural
+// history, not a state to tiptoe around.
+if (micHot() !== true) throw new Error("micHot() must report the mic HOT while a turn is listening -- frozen bars during listening is the exact inversion the human reported");
+console.log("MIC_HOT_LIVE_DURING_STT_OK true");
 
 const mintedTurnId = window.__sttSpanId;
 if (!mintedTurnId) throw new Error("starting via the mic control must mint and record a turn id");
@@ -414,26 +439,32 @@ if (window.__sttListening !== false) throw new Error("onSttText must auto-stop l
 if (elements["voice-stt"].classList.contains("listening") !== false) throw new Error("voice-stt must clear its listening state after auto-stop");
 console.log("AUTOSTOP_CLEARS_UI_OK true");
 
-// #334 review round 2 (MAJOR 2): onSttText's auto-stop -- the COMMON stop
-// path, not a manual second press -- must release the SAME capture state
-// the mic control's start branch set: window.voicePTT (the real
-// getUserMedia capture switch) and the widened voice direction, restored
-// to what the user had before pressing the mic control. Asserted DIRECTLY
-// on the auto-stop path itself (this used to only be exercised via a
-// manual re-arm+press-again workaround below, which could never have
-// caught this regression -- auto-stop only called setSttListening(false),
-// leaving the mic capture hot with the listening dot off and the user's
-// direction preference silently changed).
-if (uiState.vdir !== "out") throw new Error("onSttText's auto-stop must restore the user's original voice direction, got " + uiState.vdir);
-if (window.voicePTT !== false) throw new Error("onSttText's auto-stop must release window.voicePTT -- leaving it true keeps the real mic capture hot with the listening dot off");
-console.log("AUTOSTOP_RESTORES_CAPTURE_STATE_OK true");
+// voice loop (2026-07-29): between turns the LOOP still owns the capture
+// -- a finished turn must NOT release voicePTT or restore the direction
+// (that was the old per-turn teardown, and it is exactly what made the
+// ensemble feel desynced: dot dark + bars dead the instant a sentence
+// ended, while the conversation was still very much ON). The loop
+// schedules the next listen instead; only the OFF press releases.
+if (uiState.vdir !== "both") throw new Error("the loop must keep the widened direction between turns, got " + uiState.vdir);
+if (window.voicePTT !== true) throw new Error("the loop must keep window.voicePTT engaged between turns -- the conversation is still on");
+if (window.__voiceLoopOn !== true) throw new Error("a finished turn must not lower the loop flag");
+console.log("LOOP_KEEPS_CAPTURE_BETWEEN_TURNS_OK true");
 
-// ---- a manual second press (re-armed) also stops early and restores direction, same teardown, different trigger ----
-toggleSttListening(); // re-arm
+// the loop scheduled the next listen -- fire it and the mic re-arms
+// hands-free, no button press involved.
+fireLatestTimer();
+if (window.__sttListening !== true) throw new Error("the loop must auto-resume listening after a finished turn (hands-free rounds)");
+console.log("LOOP_AUTO_RESUMES_LISTENING_OK true");
+
+// ---- the OFF press: stops the live (speechless) turn, emits the honest
+// no-speech span, and releases EVERYTHING -- voicePTT, widened direction,
+// loop flag. This is the single release point now. ----
 const noSpeechTurnId = window.__sttSpanId;
-toggleSttListening(); // press again to stop early -- crucially, WITHOUT ever speaking (no onresult fired in between)
-if (uiState.vdir !== "out") throw new Error("stopping via a second press must restore the user's original direction, got " + uiState.vdir);
-if (window.voicePTT !== false) throw new Error("stopping must release window.voicePTT");
+toggleSttListening(); // press OFF -- crucially, WITHOUT ever speaking (no onresult fired in between)
+if (window.__voiceLoopOn !== false) throw new Error("the OFF press must lower the loop flag");
+if (window.__sttListening !== false) throw new Error("the OFF press must stop the live turn");
+if (uiState.vdir !== "out") throw new Error("the OFF press must restore the user's original direction, got " + uiState.vdir);
+if (window.voicePTT !== false) throw new Error("the OFF press must release window.voicePTT");
 console.log("STOP_RESTORES_DIRECTION_OK true");
 
 // #454 review round 2 MINOR 1: a turn started then manually stopped with
@@ -534,7 +565,7 @@ if (queuedChatCalls.length !== 1 || queuedChatCalls[0].text !== "Are you" || que
 if (neuralSpeakCalls.length !== 1) throw new Error("the reply must still speak after the interlock runs, regardless of which path closed the interrupted turn's span");
 if (window.__sttSpanId !== null) throw new Error("window.__sttSpanId must be cleared, not left pointing at an already-closed turn");
 console.log("INTERLOCK_FLUSH_SINGLE_SPAN_OK true");
-if (window.__sttListening) toggleSttListening(); // cleanup: leave nothing listening for the assertions below
+voiceLoopStop(); // cleanup: the interlock left the LOOP on (capture intentionally kept between turns) -- release everything for the assertions below
 
 delete global.window.SpeechRecognition;
 
@@ -602,11 +633,12 @@ rm -f "$_avt_node"
 check_rc "voice-turn template script exits 0" 0 "$tmpl_vt_rc"
 check "voice-stt is disabled+reasoned when gated, re-enabled with the normal hint when not" "GATE_REASONED_OK true" "$tmpl_vt_out"
 check "the mic control starts listening and wires the real IN-bar capture path" "MIC_STARTS_AND_WIRES_IN_BAR_OK true" "$tmpl_vt_out"
-check "#464 (P0, human hit it live): micHot() refuses the visualizer's own competing capture while STT actively owns the mic" "MIC_HOT_REFUSES_DURING_STT_OK true" "$tmpl_vt_out"
+check "capture truth (supersedes #464's freeze): micHot() reports the mic HOT while a turn is listening -- bars move exactly when the human is heard" "MIC_HOT_LIVE_DURING_STT_OK true" "$tmpl_vt_out"
 check "a final transcript routes into queueOrSendChat tagged voice, carrying the SAME turn id startStt minted" "FINAL_TRANSCRIPT_ROUTES_WITH_TURN_ID_OK true" "$tmpl_vt_out"
 check "onSttText auto-stops listening and clears the visible UI state" "AUTOSTOP_CLEARS_UI_OK true" "$tmpl_vt_out"
-check "onSttText's auto-stop (the common path) releases voicePTT and restores the prior voice direction, not just a manual second press" "AUTOSTOP_RESTORES_CAPTURE_STATE_OK true" "$tmpl_vt_out"
-check "a manual second press stops early and restores the prior voice direction" "STOP_RESTORES_DIRECTION_OK true" "$tmpl_vt_out"
+check "voice loop: a finished turn keeps voicePTT and the widened direction -- the LOOP owns capture between turns" "LOOP_KEEPS_CAPTURE_BETWEEN_TURNS_OK true" "$tmpl_vt_out"
+check "voice loop: listening auto-resumes after a finished turn (hands-free rounds)" "LOOP_AUTO_RESUMES_LISTENING_OK true" "$tmpl_vt_out"
+check "the OFF press stops the loop, the live turn, and restores voicePTT + the prior voice direction" "STOP_RESTORES_DIRECTION_OK true" "$tmpl_vt_out"
 check "#454 review round 2 MINOR 1: a turn manually stopped with no speech still gets an honest terminal stt-end span instead of hanging open" "NO_SPEECH_STOP_EMITS_TERMINAL_SPAN_OK true" "$tmpl_vt_out"
 check "#454 review round 2 MAJOR: onerror clears the armed silence timer instead of letting a buffered segment fire late into queueOrSendChat" "ONERROR_CLEARS_ARMED_TIMER_OK true" "$tmpl_vt_out"
 check "#475: the engine-error stop path clears the VISIBLE mic dot (classList + aria-pressed), not just the internal __sttListening flag" "ONERROR_CLEARS_VISIBLE_DOT_OK true" "$tmpl_vt_out"
@@ -735,9 +767,19 @@ eval(extract("isChatTypingTarget"));
 defineConst("CHAT_SCROLL_BOTTOM_SLACK_PX");
 eval(extract("isChatLogAtBottom"));
 eval(extract("scrollChatLogToBottom"));
+// 2026-07-29: appendChatRow enriches assistant rows through the notes
+// renderer (chatEnrichObserver/enrichChatRowMarkdown) -- stubbed inert
+// here; the render POST path is exercised against the live server, not
+// this DOM stub.
+global.chatEnrichObserver = () => false;
+global.enrichChatRowMarkdown = () => {};
 eval(extract("appendChatRow"));
 eval(extract("renderChatLog"));
 eval(extract("renderChatLastXToggle"));
+// show-last persistence (2026-07-29): setChatLastX persists via uiState/
+// saveUiState -- same stub contract other harnesses use.
+if (typeof global.uiState === "undefined") global.uiState = {};
+if (typeof global.saveUiState === "undefined") global.saveUiState = function(){ try{ localStorage.setItem("nv-ui", JSON.stringify(global.uiState)); }catch{} };
 eval(extract("setChatLastX"));
 eval(extract("buildChatOverlay"));
 eval(extract("renderChatGated"));
@@ -770,6 +812,12 @@ function sttEngineChoice(){ return "web-speech"; }
 eval(extract("sttShowPendingBubble"));
 eval(extract("sttUpdatePendingBubble"));
 eval(extract("sttRemovePendingBubble"));
+// barge-in (2026-07-29): speakReply arms/disarms the barge watcher around
+// every spoken reply -- stubbed as no-ops here, same rationale as this
+// harness's stopStt stub (level-driven audio behavior is not what this
+// harness exercises; the loop controller's own harness above covers it).
+global.voiceBargeWatchStart = () => {};
+global.voiceBargeWatchStop = () => {};
 eval(extract("speakReply"));
 eval(extract("dispatchNextChat"));
 eval(extract("queueOrSendChat"));
@@ -781,6 +829,10 @@ eval(extract("chatInputKeydown"));
 eval(extract("loadChatHistory"));
 // #480: openChatOverlay's fix calls focusChatInput() -- extract it first.
 eval(extract("focusChatInput"));
+// 2026-07-29: openChatOverlay resolves the selected assistant's media
+// context (setAssistantMediaCtx) from the status payload -- stubbed as a
+// recorder here.
+global.setAssistantMediaCtx = () => {};
 eval(extract("openChatOverlay"));
 eval(extract("closeChatOverlay"));
 eval(extract("reportSttFailure"));
