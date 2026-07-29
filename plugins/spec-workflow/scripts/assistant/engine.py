@@ -1332,6 +1332,19 @@ class AssistantEngine:
         keyed `engine` -- e.g. AST-051's stt-start/stt-end carry the chosen
         STT engine name ("whisper" | "web-speech") there, which is how a
         trace query can tell WHICH engine a given span belongs to.
+
+        `assistant` resolution (#479) runs the SAME §7.6-style order `_chat`
+        uses, `_effective_chat_flag` folded in identically: an explicit
+        `assistant` flag always wins; otherwise, for 2+ candidates, the
+        session's own selected assistant (self._selected, set via
+        /assistant/select) is tried before falling through to the
+        machine-local default; a sole candidate is never disturbed. Without
+        this, a session with an assistant selected but no machine-level
+        default 400'd on every voice-event post -- the client already
+        threads window.__assistantSelected (emitVoiceSpan, mirroring
+        dispatchNextChat's #453 fix), but that alone does not help any
+        OTHER future caller of this route, exactly the gap #462 closed for
+        `_chat`.
         """
         body = body if isinstance(body, dict) else {}
         if self._gated:
@@ -1349,6 +1362,19 @@ class AssistantEngine:
         candidates = default_store.discover_candidates(
             root for _, root in self._repos_getter()
         )
+        # #479: the SAME durable session-selected fallback #462 gave `_chat`
+        # -- emitVoiceSpan (neural-view.html) threads window.__assistant
+        # Selected the same way dispatchNextChat threads chatBody.assistant
+        # (#453), but that client-side fix alone left THIS route exposed:
+        # a session with an assistant selected but no machine-level default
+        # and 2+ candidates 400'd with "no local default set and multiple
+        # assistants found" on every voice-event POST, silently dropping
+        # every span (fire-and-forget fetch, nothing surfaces client-side).
+        # Reuses _effective_chat_flag verbatim -- see its own docstring for
+        # the exact contract (explicit flag always wins; never applied for
+        # a sole candidate; otherwise falls back to self._selected).
+        assistant_flag = _effective_chat_flag(
+            assistant_flag, self._selected, len(candidates))
         try:
             root, _section = default_store.resolve_assistant(
                 candidates, flag=assistant_flag, state_dir=self.state_dir)

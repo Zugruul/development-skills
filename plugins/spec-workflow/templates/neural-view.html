@@ -4456,7 +4456,15 @@ function onSttText(text, turnId){
 // engine.py (`POST /assistant/voice-event`, enqueue-only over the
 // existing `_emit_trace`, no new writer, §10.2's single-writer rule holds).
 function emitVoiceSpan(kind, engineName, spanId, status, payload){
+  // #479: thread the SESSION's already-selected assistant the exact same
+  // way dispatchNextChat threads chatBody.assistant (#453/#462) -- without
+  // this, a session with an assistant selected but no MACHINE-level
+  // default and 2+ discovered candidates hits engine.py's "no local
+  // default set and multiple assistants found" 400 on every voice-event
+  // POST, and since this fetch is fire-and-forget, the span is dropped
+  // silently with nothing surfacing client-side.
   const body = Object.assign({kind, engine: engineName}, status ? {status} : {}, {payload: Object.assign({spanId}, payload||{})});
+  if(window.__assistantSelected) body.assistant = window.__assistantSelected;
   try{ fetch("/assistant/voice-event", {method:"POST", body: JSON.stringify(body)}); }catch{}
 }
 window.__sttSpanId = null;

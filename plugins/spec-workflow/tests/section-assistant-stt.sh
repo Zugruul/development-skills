@@ -606,7 +606,32 @@ const startBody = JSON.parse(startEvent.opts.body);
 if (startBody.kind !== "stt-start") throw new Error("expected kind stt-start, got " + startBody.kind);
 if (startBody.engine !== "web-speech") throw new Error("expected engine web-speech in the span, got " + startBody.engine);
 console.log("SPAN_ENGINE_NAME_OK true");
+if ("assistant" in startBody) throw new Error("the assistant key must be OMITTED (never null/undefined) when window.__assistantSelected is unset, got " + JSON.stringify(startBody));
+console.log("ASSISTANT_OMITTED_WHEN_UNSET_OK true");
 delete global.window.SpeechRecognition;
+
+// #479 (P0): emitVoiceSpan must thread window.__assistantSelected into the
+// POST body the exact same way dispatchNextChat threads chatBody.assistant
+// (#453/#462) -- otherwise a voice-event POST from a multi-candidate
+// session with no machine-local default hits engine.py's "no local
+// default set and multiple assistants found" 400 and the span is dropped
+// silently (emitVoiceSpan's fetch is fire-and-forget, nothing surfaces
+// client-side -- this was live-caught via every voice span vanishing from
+// traces.sqlite for weeks).
+{
+    fetchCalls = [];
+    global.window.__assistantSelected = "friday";
+    global.window.SpeechRecognition = function () { this.start = () => {}; this.stop = () => {}; };
+    const startedWithSelection = startStt();
+    if (startedWithSelection !== true) throw new Error("startStt() must start when not gated");
+    const selectedEvent = fetchCalls.find(c => c.url === "/assistant/voice-event");
+    if (!selectedEvent) throw new Error("startStt() must POST a voice-event span");
+    const selectedBody = JSON.parse(selectedEvent.opts.body);
+    if (selectedBody.assistant !== "friday") throw new Error("expected window.__assistantSelected threaded into the voice-event POST body as assistant, got " + JSON.stringify(selectedBody));
+    console.log("ASSISTANT_THREADED_WHEN_SET_OK true");
+    global.window.__assistantSelected = null;
+    delete global.window.SpeechRecognition;
+}
 
 // ---- AST-052 (#334) span correlation: passing a turnId to startStt uses
 // it AS the span id (same trick speakReply already applies to tts spans),
@@ -806,6 +831,8 @@ check "whisper engine surfaces an honest unavailable-sidecar state" "WHISPER_DEG
 check "#474 (BOTH engines): MediaRecorder's own error event is surfaced honestly instead of leaving the engine dead-but-listening" "WHISPER_RECORDER_ERROR_OK true" "$tmpl_stt_out"
 check "the §17.9 gate blocks STT start with no assistant selected" "GATE_BLOCKS_START_OK true" "$tmpl_stt_out"
 check "a span's payload carries the engine name" "SPAN_ENGINE_NAME_OK true" "$tmpl_stt_out"
+check "#479: the assistant key is omitted (never null/undefined) from the voice-event POST body when window.__assistantSelected is unset" "ASSISTANT_OMITTED_WHEN_UNSET_OK true" "$tmpl_stt_out"
+check "#479: emitVoiceSpan threads window.__assistantSelected into the voice-event POST body, mirroring dispatchNextChat's chatBody.assistant (#453/#462)" "ASSISTANT_THREADED_WHEN_SET_OK true" "$tmpl_stt_out"
 check "#452 (P0 live-bug batch): stopStt() alone, before the outcome is known, emits no terminal span at all -- the old eager-ok lying-span bug" "STOPSTT_ALONE_EMITS_NOTHING_OK true" "$tmpl_stt_out"
 check "AST-052 (#334): startStt(turnId) uses turnId as the span id and both stt spans join window.assistantVoiceSpans tagged with it" "SPAN_CORRELATION_OK true" "$tmpl_stt_out"
 check "#452: whisper's async-after-stop outcome (the exact reported bug shape) still produces exactly ONE terminal span, not a duplicate ok-then-error pair" "ASYNC_FAILURE_AFTER_STOP_SINGLE_SPAN_OK true" "$tmpl_stt_out"
@@ -915,3 +942,98 @@ check "voice spans are tagged with the voice modality (not the turn/text default
 check "the engine name rides in the span's payload" "START_ENGINE_IN_PAYLOAD whisper" "$stt_out"
 if [[ "$rc_stt" -ne 0 ]]; then echo "$stt_out" >&2; fi
 rm -rf "$_ast_stt_root" "$_ast_stt_state" "$_ast_stt_state-2"
+
+echo "-- engine.py: #479 -- /assistant/voice-event applies the SAME session-selected fallback _chat gained in #462, so a voice span from a multi-candidate/no-local-default session is no longer silently dropped --"
+# Live evidence (issue #479): every voice-event POST from a session with 2+
+# candidates and no machine-local default 400'd with "no local default set
+# and multiple assistants found" while the sibling /assistant/chat call from
+# the SAME page succeeded -- #462 gave _chat a durable fallback to the
+# session's OWN selected assistant (self._selected) via
+# _effective_chat_flag; _voice_event never got the same treatment. This
+# reuses _effective_chat_flag verbatim (no duplicated logic) exactly the
+# way _chat already does.
+_as_voicefb_a="$(mktemp -d)"
+_as_voicefb_b="$(mktemp -d)"
+_as_voicefb_state="$(mktemp -d)"
+stt_repo "$_as_voicefb_a" jarvis
+stt_repo "$_as_voicefb_b" friday
+
+# Written to a standalone temp .py file rather than a heredoc inlined into
+# a $(...) capture (section-assistant-adapter.sh's convention) -- bash 3.2
+# mis-tracks quote state across a heredoc nested directly inside command
+# substitution, so an apostrophe anywhere in this script's comments/strings
+# can corrupt parsing of everything after it. Not a risk once the heredoc
+# targets a plain `cat >file <<PY ... PY`, invoked as a separate command.
+_voicefb_py="$(mktemp).py"
+cat >"$_voicefb_py" <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import engine, observability
+
+repos = lambda: [("a", os.environ["VA"]), ("b", os.environ["VB"])]
+e = engine.AssistantEngine(repos, os.environ["VSTATE"])
+try:
+    e.start()
+
+    # ---- before any selection: nothing has changed -- the 400 stays
+    # honest (truly unresolvable, same posture as the pre-462/-479 chat
+    # path) ----
+    unselected_code, unselected_payload, _ = e.handle(
+        "POST", "/assistant/voice-event", body={"kind": "stt-start", "engine": "web-speech"})
+    print("UNSELECTED_CODE", unselected_code)
+    print("UNSELECTED_ERROR", unselected_payload.get("error"))
+
+    sel_code, sel_payload, _ = e.handle("POST", "/assistant/select", body={"name": "friday"})
+    print("SELECT_CODE", sel_code)
+    print("SELECT_SELECTED", sel_payload["selected"])
+
+    # ---- #479's actual fix: no explicit assistant flag, 2 candidates,
+    # session-selected set -- must now be ACCEPTED, not the pre-fix 400 ----
+    noflag_code, noflag_payload, _ = e.handle(
+        "POST", "/assistant/voice-event",
+        body={"kind": "stt-start", "engine": "web-speech", "payload": {"span_id": "s-noflag"}})
+    print("NOFLAG_CODE", noflag_code)
+    print("NOFLAG_ERROR", noflag_payload.get("error"))
+
+    # ---- an explicit body flag must still win over the session selection ----
+    explicit_code, explicit_payload, _ = e.handle(
+        "POST", "/assistant/voice-event",
+        body={"kind": "stt-start", "engine": "web-speech", "assistant": "jarvis",
+              "payload": {"span_id": "s-explicit"}})
+    print("EXPLICIT_CODE", explicit_code)
+
+    time.sleep(0.6)
+    friday_events = observability.query(os.environ["VB"], limit=50)
+    jarvis_events = observability.query(os.environ["VA"], limit=50)
+    friday_span_ids = [ev.get("payload", {}).get("span_id") for ev in friday_events]
+    jarvis_span_ids = [ev.get("payload", {}).get("span_id") for ev in jarvis_events]
+    print("NOFLAG_RECORDED_AGAINST_SELECTED", "s-noflag" in friday_span_ids)
+    print("NOFLAG_NOT_RECORDED_AGAINST_OTHER", "s-noflag" in jarvis_span_ids)
+    print("EXPLICIT_RECORDED_AGAINST_JARVIS", "s-explicit" in jarvis_span_ids)
+    print("EXPLICIT_NOT_RECORDED_AGAINST_FRIDAY", "s-explicit" in friday_span_ids)
+    rc = 0
+except Exception as exc:  # noqa: BLE001 -- see the earlier engine block docstring above
+    print("SCRIPT_ERROR", repr(exc))
+    rc = 1
+finally:
+    e.stop()
+sys.stdout.flush()
+os._exit(rc)
+PY
+voicefb_out="$(SCRIPTS_DIR="$AST_STT_SCRIPTS" VA="$_as_voicefb_a" VB="$_as_voicefb_b" VSTATE="$_as_voicefb_state" python3 "$_voicefb_py" 2>&1)"
+rc_voicefb=$?
+rm -f "$_voicefb_py"
+check_rc "#479 voice-event fallback script exits 0" 0 "$rc_voicefb"
+check "before any selection, 2 candidates + no explicit flag stays a clean 400 -- honestly unresolvable, unchanged" "UNSELECTED_CODE 400" "$voicefb_out"
+check "the pre-fix error wording is unchanged for the truly-unresolvable case" "no local default set and multiple assistants found" "$voicefb_out"
+check "select succeeds" "SELECT_CODE 200" "$voicefb_out"
+check "select reports friday" "SELECT_SELECTED friday" "$voicefb_out"
+check "#479: a voice-event with NO explicit assistant flag now succeeds (200) once the session has a selected assistant, not the pre-fix 400" "NOFLAG_CODE 200" "$voicefb_out"
+check "the pre-fix resolution error never fires once a session selection exists (the no-flag call carries no error at all)" "NOFLAG_ERROR None" "$voicefb_out"
+check "#479: the no-flag span lands against the SESSION-SELECTED assistant (friday)" "NOFLAG_RECORDED_AGAINST_SELECTED True" "$voicefb_out"
+check "the no-flag span never lands against the other candidate" "NOFLAG_NOT_RECORDED_AGAINST_OTHER False" "$voicefb_out"
+check "an explicit body assistant flag still wins over the session selection" "EXPLICIT_CODE 200" "$voicefb_out"
+check "#479: the explicit-flag span lands against jarvis, not the session-selected friday" "EXPLICIT_RECORDED_AGAINST_JARVIS True" "$voicefb_out"
+check "the explicit-flag span never lands against friday" "EXPLICIT_NOT_RECORDED_AGAINST_FRIDAY False" "$voicefb_out"
+if [[ "$rc_voicefb" -ne 0 ]]; then echo "$voicefb_out" >&2; fi
+rm -rf "$_as_voicefb_a" "$_as_voicefb_b" "$_as_voicefb_state"
