@@ -571,6 +571,19 @@ function extract(name) {
     if (!m) throw new Error("could not find function " + name + "() in template");
     return m[0];
 }
+// #481: same extractConst/defineConst pattern as section-assistant-chat.sh
+// (and section-assistant-stt.sh before it) -- isChatLogAtBottom reads the
+// top-level CHAT_SCROLL_BOTTOM_SLACK_PX const.
+function extractConst(name) {
+    const re = new RegExp("const " + name + " = [^\\n]*\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find const " + name + " in template");
+    return m[0];
+}
+function defineConst(name) {
+    const src = extractConst(name).trim().replace(/^const\s+\S+\s*=\s*/, "").replace(/;$/, "");
+    global[name] = eval("(" + src + ")");
+}
 
 const elements = {};
 function mkEl(initialId) {
@@ -654,6 +667,14 @@ async function flush() { for (let i = 0; i < 6; i++) await new Promise(r => setI
 
 eval(extract("chatElapsedText"));
 eval(extract("isChatTypingTarget"));
+// #481: appendChatRow's sticky-bottom check calls isChatLogAtBottom, which
+// reads CHAT_SCROLL_BOTTOM_SLACK_PX -- define both before extracting
+// appendChatRow/renderChatLog (which call scrollChatLogToBottom) so
+// eval-ing them doesn't ReferenceError. This script doesn't exercise
+// scroll behavior itself, it just needs the dependency chain to not throw.
+defineConst("CHAT_SCROLL_BOTTOM_SLACK_PX");
+eval(extract("isChatLogAtBottom"));
+eval(extract("scrollChatLogToBottom"));
 eval(extract("appendChatRow"));
 eval(extract("renderChatLog"));
 eval(extract("renderChatLastXToggle"));

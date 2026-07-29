@@ -7741,7 +7741,7 @@ function chatElapsedText(startMs, nowMs){
 function isChatTypingTarget(t){
   return !!(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable));
 }
-function appendChatRow(log, role, text, chips){
+function appendChatRow(log, role, text, chips, suppressScroll){
   if(!log) return null;
   // AST-083 (#459): a row about to be added -- from ANY caller
   // (dispatchNextChat's new turn, reportSttFailure's error row, a future
@@ -7754,6 +7754,10 @@ function appendChatRow(log, role, text, chips){
     log.innerHTML = "";
     log.setAttribute("data-chat-empty", "");
   }
+  // #481 (review round 1, finding 1): capture BEFORE mutating the log --
+  // once the row below is appended, scrollHeight has already grown and
+  // "was the human already at the bottom" would always read true.
+  const wasAtBottom = isChatLogAtBottom(log);
   const row = document.createElement("div");
   row.className = "ast-chat-row";
   row.setAttribute("data-role", role);
@@ -7770,13 +7774,49 @@ function appendChatRow(log, role, text, chips){
     row.appendChild(chipsEl);
   }
   log.appendChild(row);
+  // #481 (review round 1, finding 1): a LIVE append (dispatchNextChat's new
+  // turn, reportSttFailure's error row) is sticky-bottom, not yank-to-
+  // bottom -- a queued reply landing while the human is scrolled UP reading
+  // older history (now reachable via the ∞ show-last option) must not drag
+  // them back down mid-read. Only snap if they were already at the bottom.
+  // renderChatLog's rebuild loop (below) passes suppressScroll=true and
+  // does its own single unconditional snap once the whole rebuild settles,
+  // instead of paying for a scroll write per row here.
+  if(!suppressScroll && wasAtBottom) scrollChatLogToBottom(log);
   return row;
+}
+// #481 (review round 1, finding 1): "at the bottom" allows a little slack --
+// a real browser's scrollTop rarely lands on the exact integer
+// scrollHeight - clientHeight, so an exact-equality check would treat a
+// human sitting a pixel or two off the bottom as "scrolled up" and refuse
+// to follow new messages.
+const CHAT_SCROLL_BOTTOM_SLACK_PX = 4;
+function isChatLogAtBottom(log){
+  if(!log) return true;
+  return (log.scrollTop + log.clientHeight) >= (log.scrollHeight - CHAT_SCROLL_BOTTOM_SLACK_PX);
+}
+// #481: called unconditionally by renderChatLog's rebuild (a deliberate
+// user action -- toggling the show-last option, loading history -- so
+// snapping to the newest message is always correct there) and, per
+// appendChatRow's sticky-bottom check above, ONLY when a live append finds
+// the human already reading the newest message.
+function scrollChatLogToBottom(log){
+  if(!log) return;
+  log.scrollTop = log.scrollHeight;
 }
 function renderChatLog(){
   const log = document.getElementById("ast-chat-log");
   if(!log) return;
   log.innerHTML = "";
-  const take = window.assistantChat.exchanges.slice(-window.assistantChat.lastX);
+  // #481: lastX === "all" is the ∞ show-last option -- an explicit sentinel,
+  // not `Array.prototype.slice(-Infinity)`. slice's start index goes
+  // through ToIntegerOrInfinity, which happens to clamp -Infinity to 0
+  // (the whole array) today, but that's an unlabeled spec quirk one
+  // accidental `Number(lastX)`/coercion change away from silently slicing
+  // wrong -- an explicit branch says what it means.
+  const take = window.assistantChat.lastX === "all"
+    ? window.assistantChat.exchanges
+    : window.assistantChat.exchanges.slice(-window.assistantChat.lastX);
   // #459 flagged extension 4: an assistant with no stored exchanges used
   // to render a blank log (the reported bug: switching to fab-io showed
   // nothing at all) -- name the assistant explicitly instead of leaving
@@ -7789,22 +7829,34 @@ function renderChatLog(){
     const name = window.__assistantSelected;
     empty.textContent = name ? `No messages yet with ${name} -- say something to start.` : "No messages yet -- say something to start.";
     log.appendChild(empty);
+    scrollChatLogToBottom(log);
     return;
   }
   log.setAttribute("data-chat-empty", "");
+  // #481 (review round 1, finding 2): suppressScroll=true -- a rebuild with
+  // N exchanges would otherwise pay for 2N scroll writes (one per row),
+  // the first time that cost scales with history size being exactly the ∞
+  // feature. One unconditional snap after the loop (below) replaces all of
+  // them; a rebuild is a deliberate user action, so snapping regardless of
+  // where they were scrolled is correct here (unlike a live append, which
+  // is sticky-bottom -- see appendChatRow).
   for(const ex of take){
-    appendChatRow(log, "user", ex.user, null);
-    appendChatRow(log, "assistant", ex.assistant, ex.chips || null);
+    appendChatRow(log, "user", ex.user, null, true);
+    appendChatRow(log, "assistant", ex.assistant, ex.chips || null, true);
   }
+  scrollChatLogToBottom(log);
 }
 function renderChatLastXToggle(){
   const wrap = document.getElementById("ast-chat-lastx");
   if(!wrap) return;
   wrap.innerHTML = "";
-  for(const n of [1, 2, 3]){
+  // #481: "all" (rendered as ∞) joins the numeric group as a fourth option
+  // -- same button styling/active-state handling, just the show-everything
+  // sentinel renderChatLog's `take` branches on above.
+  for(const n of [1, 2, 3, "all"]){
     const btn = document.createElement("button");
     btn.className = "ast-chat-lastx-btn" + (n === window.assistantChat.lastX ? " ast-chat-lastx-active" : "");
-    btn.textContent = String(n);
+    btn.textContent = n === "all" ? "∞" : String(n);
     btn.onclick = ()=>{ setChatLastX(n); };
     wrap.appendChild(btn);
   }

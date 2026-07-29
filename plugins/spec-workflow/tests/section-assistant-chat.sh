@@ -32,6 +32,20 @@ function extract(name) {
     if (!m) throw new Error("could not find function " + name + "() in template");
     return m[0];
 }
+// #481: isChatLogAtBottom (below) reads the top-level CHAT_SCROLL_BOTTOM_
+// SLACK_PX const -- same extractConst/defineConst pattern as section-
+// assistant-stt.sh, since a direct eval() of a `const` doesn't leak a
+// binding out to this scope the way a `function` declaration does.
+function extractConst(name) {
+    const re = new RegExp("const " + name + " = [^\\n]*\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find const " + name + " in template");
+    return m[0];
+}
+function defineConst(name) {
+    const src = extractConst(name).trim().replace(/^const\s+\S+\s*=\s*/, "").replace(/;$/, "");
+    global[name] = eval("(" + src + ")");
+}
 
 // DOM stub, same shape as section-assistant-selection.sh's, extended with
 // `value` (the chat input is a real <input>) and a `document.body` root
@@ -50,6 +64,24 @@ function mkEl(initialId) {
         title: "",
         textContent: "",
         value: "",
+        // #481: minimal scroll-position model for the ∞ show-last option --
+        // scrollHeight is rows * a per-row pixel unit (40, a plausible
+        // bubble height) so CHAT_SCROLL_BOTTOM_SLACK_PX's 4px slack is
+        // clearly smaller than one row, letting "at bottom" vs "scrolled
+        // up" tests actually distinguish rather than the slack accidentally
+        // swallowing a whole row. clientHeight is a fixed fake viewport
+        // (fits ~3 rows). scrollTop counts writes (_scrollWrites) so review
+        // round 1 finding 2's "exactly one scroll write per rebuild" is a
+        // real counterfactual-checkable assertion, not just a final-
+        // position check that would pass even with N redundant writes.
+        // Same "just enough to observe the production branch" spirit as
+        // #480's focus()/activeElement stub.
+        _scrollTop: 0,
+        _scrollWrites: 0,
+        get scrollTop(){ return this._scrollTop; },
+        set scrollTop(v){ this._scrollTop = v; this._scrollWrites++; },
+        get scrollHeight(){ return this._items.length * 40; },
+        clientHeight: 120,
         // #480: a real disabled control silently refuses focus() -- mirror
         // just that half here, since it's the half production code
         // (focusChatInput, see the template) actually branches on. This
@@ -152,6 +184,14 @@ async function flush() {
 
 eval(extract("chatElapsedText"));
 eval(extract("isChatTypingTarget"));
+// #481 (review round 1, finding 1): appendChatRow's sticky-bottom check
+// calls isChatLogAtBottom, which reads the top-level
+// CHAT_SCROLL_BOTTOM_SLACK_PX const -- define the const, then the
+// function, before extracting appendChatRow/renderChatLog (both call
+// scrollChatLogToBottom) so eval-ing them doesn't ReferenceError.
+defineConst("CHAT_SCROLL_BOTTOM_SLACK_PX");
+eval(extract("isChatLogAtBottom"));
+eval(extract("scrollChatLogToBottom"));
 eval(extract("appendChatRow"));
 eval(extract("renderChatLog"));
 eval(extract("renderChatLastXToggle"));
@@ -438,6 +478,91 @@ function resetChat() {
     setChatLastX(3);
     if (logX.children.length !== 6) throw new Error("lastX=3 should render 6 rows (3 of the 4 available exchanges), got " + logX.children.length);
     console.log("LASTX_OK true");
+
+    // ---- #481: a fourth "∞" option renders after 1/2/3 ----
+    resetChat();
+    historyResponse = { exchanges: [
+        {ts: "t1", user: "a1", assistant: "b1", meta: {}},
+        {ts: "t2", user: "a2", assistant: "b2", meta: {}},
+        {ts: "t3", user: "a3", assistant: "b3", meta: {}},
+        {ts: "t4", user: "a4", assistant: "b4", meta: {}},
+        {ts: "t5", user: "a5", assistant: "b5", meta: {}},
+    ], warnings: [] };
+    await openChatOverlay();
+    const infWrap = document.getElementById("ast-chat-lastx");
+    const infLabels = infWrap.children.map(b => b.textContent);
+    if (JSON.stringify(infLabels) !== JSON.stringify(["1","2","3","∞"])) throw new Error("expected the show-last toggle to render [1,2,3,∞] in that order, got " + JSON.stringify(infLabels));
+    console.log("INF_BUTTON_RENDERS_AFTER_123_OK true");
+
+    // ---- #481: selecting ∞ shows ALL cached exchanges (more than 3 exist) ----
+    const logInf = document.getElementById("ast-chat-log");
+    setChatLastX("all");
+    if (logInf.children.length !== 10) throw new Error("selecting ∞ should render all 5 cached exchanges (10 rows), got " + logInf.children.length);
+    const infActive = infWrap.children.find(b => b.className.includes("ast-chat-lastx-active"));
+    if (!infActive || infActive.textContent !== "∞") throw new Error("∞ button not marked active after selecting it, got " + (infActive && infActive.textContent));
+    console.log("INF_SHOWS_ALL_OK true");
+
+    // ---- #481: the numeric options keep slicing exactly as before, even after ∞ was active ----
+    setChatLastX(2);
+    if (logInf.children.length !== 4) throw new Error("switching back to lastX=2 after ∞ should render 4 rows (2 exchanges), got " + logInf.children.length);
+    const numActive = infWrap.children.find(b => b.className.includes("ast-chat-lastx-active"));
+    if (!numActive || numActive.textContent !== "2") throw new Error("lastX=2 button not marked active after switching back from ∞, got " + (numActive && numActive.textContent));
+    console.log("NUM_AFTER_INF_OK true");
+
+    // ---- #481: switching ∞ -> 2 -> ∞ re-renders correctly both ways ----
+    setChatLastX("all");
+    if (logInf.children.length !== 10) throw new Error("switching back to ∞ should again render all 10 rows, got " + logInf.children.length);
+    console.log("INF_ROUNDTRIP_OK true");
+
+    // ---- #481: ∞ must not be `slice(-Infinity)` in disguise -- it tracks the
+    // LIVE exchanges cache, not a count fixed at the moment ∞ was selected.
+    // (the fetch stub hands back `historyResponse` itself, not a JSON clone,
+    // so `window.assistantChat.exchanges` IS `historyResponse.exchanges` --
+    // pushing once here mutates both.) ----
+    window.assistantChat.exchanges.push({user: "a6", assistant: "b6", chips: null});
+    renderChatLog();
+    if (logInf.children.length !== 12) throw new Error("∞ must track the live exchanges cache (12 rows for 6 exchanges), got " + logInf.children.length);
+    console.log("INF_TRACKS_LIVE_CACHE_OK true");
+
+    // ---- #481 (review round 1, finding 2): renderChatLog()'s rebuild snaps
+    // to the bottom with exactly ONE scroll write -- not a write per row
+    // (2 * 6 exchanges = 12) plus one more, the cost that scales with
+    // history size ∞ makes newly reachable. A rebuild (toggling lastX,
+    // loading history) is a deliberate user action, so it snaps
+    // unconditionally regardless of where the human was scrolled. ----
+    logInf.scrollTop = 0; // simulate the human having scrolled up through history
+    logInf._scrollWrites = 0;
+    renderChatLog();
+    if (logInf._scrollWrites !== 1) throw new Error("renderChatLog() must write scrollTop exactly once per rebuild (suppressing the per-row scroll appendChatRow would otherwise do), got " + logInf._scrollWrites + " writes");
+    if (logInf.scrollTop !== logInf.scrollHeight) throw new Error("renderChatLog() must land the log at the bottom, scrollTop=" + logInf.scrollTop + " scrollHeight=" + logInf.scrollHeight);
+    console.log("REBUILD_SINGLE_SCROLL_SNAP_OK true");
+
+    // ---- #481 (review round 1, finding 1): a LIVE append (dispatchNextChat)
+    // while the human is scrolled UP reading older history must NOT yank
+    // them back to the bottom -- sticky-bottom, not yank-to-bottom. The log
+    // has 12 rows (scrollHeight=480) and clientHeight is a fixed 120, so
+    // scrollTop=0 sits nowhere near the bottom (well outside the 4px slack)
+    // -- this can genuinely fail if appendChatRow ever goes back to
+    // scrolling unconditionally. ----
+    logInf.scrollTop = 0; // simulate scrolled UP, reading old history
+    const heightBeforeStayPut = logInf.scrollHeight;
+    await queueOrSendChat("scroll me while reading history");
+    resolveChat(chatFetchCalls().length - 1, 200, {text: "should not yank the view down", chips: [], warnings: []});
+    await flush();
+    if (logInf.scrollTop !== 0) throw new Error("a live append must NOT move the log while the human is scrolled up reading history (sticky-bottom, not yank-to-bottom), scrollTop=" + logInf.scrollTop);
+    if (logInf.scrollHeight <= heightBeforeStayPut) throw new Error("setup: the new exchange should have grown scrollHeight past its pre-append value (" + heightBeforeStayPut + "), got " + logInf.scrollHeight);
+    console.log("STICKY_SCROLL_STAYS_PUT_OK true");
+
+    // ---- #481 (review round 1, finding 1): a LIVE append while the human
+    // IS at the bottom still follows the newest message down ----
+    logInf.scrollTop = logInf.scrollHeight; // already at the bottom
+    const heightBeforeSnap = logInf.scrollHeight;
+    await queueOrSendChat("scroll me while at the bottom");
+    resolveChat(chatFetchCalls().length - 1, 200, {text: "should follow to the new bottom", chips: [], warnings: []});
+    await flush();
+    if (logInf.scrollTop !== logInf.scrollHeight) throw new Error("a live append must snap to the new bottom when the human was already at the bottom, scrollTop=" + logInf.scrollTop + " scrollHeight=" + logInf.scrollHeight);
+    if (logInf.scrollHeight <= heightBeforeSnap) throw new Error("setup: the new exchange should have grown scrollHeight further past " + heightBeforeSnap + ", got " + logInf.scrollHeight);
+    console.log("STICKY_SCROLL_SNAPS_AT_BOTTOM_OK true");
 })().catch(e => { console.error("FAIL", e.message); process.exit(1); });
 NODEJS
 tmpl_chat_out="$(node "$_ac_node" "$NVHTML_CHAT" 2>&1)"
@@ -465,6 +590,14 @@ check "template: gated (outcome none) refuses input and shows the reason" "GATED
 check "template: offline (status fetch failure) disables input and offers retry" "OFFLINE_OK true" "$tmpl_chat_out"
 check "template: auth-expired error text is surfaced verbatim" "AUTH_EXPIRED_OK true" "$tmpl_chat_out"
 check "template: last-X toggle (1-3) changes the rendered count client-side" "LASTX_OK true" "$tmpl_chat_out"
+check "template (#481): a fourth ∞ option renders after 1/2/3" "INF_BUTTON_RENDERS_AFTER_123_OK true" "$tmpl_chat_out"
+check "template (#481): selecting ∞ shows ALL cached exchanges" "INF_SHOWS_ALL_OK true" "$tmpl_chat_out"
+check "template (#481): the numeric options keep slicing exactly as before after ∞ was active" "NUM_AFTER_INF_OK true" "$tmpl_chat_out"
+check "template (#481): switching ∞ -> 2 -> ∞ re-renders correctly both ways" "INF_ROUNDTRIP_OK true" "$tmpl_chat_out"
+check "template (#481): ∞ tracks the live exchanges cache, not a count fixed at selection time" "INF_TRACKS_LIVE_CACHE_OK true" "$tmpl_chat_out"
+check "template (#481, review round 1 finding 2): renderChatLog()'s rebuild scrolls to the bottom with exactly one write" "REBUILD_SINGLE_SCROLL_SNAP_OK true" "$tmpl_chat_out"
+check "template (#481, review round 1 finding 1): a live append while scrolled up reading history does not yank the view down (sticky-bottom)" "STICKY_SCROLL_STAYS_PUT_OK true" "$tmpl_chat_out"
+check "template (#481, review round 1 finding 1): a live append while already at the bottom follows the newest message down" "STICKY_SCROLL_SNAPS_AT_BOTTOM_OK true" "$tmpl_chat_out"
 if [[ "$tmpl_chat_rc" -ne 0 ]]; then echo "$tmpl_chat_out" >&2; fi
 
 check "template pins the ast-chat-overlay class name in source" '"ast-chat-overlay"' "$(cat "$NVHTML_CHAT")"
@@ -500,6 +633,18 @@ function extract(name) {
     const m = html.match(re);
     if (!m) throw new Error("could not find function " + name + "() in template");
     return m[0];
+}
+// #481: same extractConst/defineConst pattern as the first script above --
+// isChatLogAtBottom reads the top-level CHAT_SCROLL_BOTTOM_SLACK_PX const.
+function extractConst(name) {
+    const re = new RegExp("const " + name + " = [^\\n]*\\n");
+    const m = html.match(re);
+    if (!m) throw new Error("could not find const " + name + " in template");
+    return m[0];
+}
+function defineConst(name) {
+    const src = extractConst(name).trim().replace(/^const\s+\S+\s*=\s*/, "").replace(/;$/, "");
+    global[name] = eval("(" + src + ")");
 }
 
 const elements = {};
@@ -572,6 +717,15 @@ let uiState = {};
 global.localStorage = { getItem(){ return null; }, setItem(){}, removeItem(){} };
 window.assistantChat = { queue: [], inFlight: false, exchanges: [], lastX: 2, elapsedTimer: null, elapsedStart: 0 };
 
+// #481: appendChatRow's sticky-bottom check calls isChatLogAtBottom, which
+// reads CHAT_SCROLL_BOTTOM_SLACK_PX -- define both before extracting
+// appendChatRow/renderChatLog (which call scrollChatLogToBottom) so
+// eval-ing them doesn't ReferenceError. This script doesn't exercise
+// scroll behavior itself (see the first script's harness for that), it
+// just needs the dependency chain to not throw.
+defineConst("CHAT_SCROLL_BOTTOM_SLACK_PX");
+eval(extract("isChatLogAtBottom"));
+eval(extract("scrollChatLogToBottom"));
 eval(extract("appendChatRow"));
 eval(extract("renderChatLog"));
 eval(extract("renderChatLastXToggle"));
