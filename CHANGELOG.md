@@ -12,6 +12,13 @@
   > 
   > Closes #481
 
+### Other
+- retro(481): outcomes + 3 notes minted from interviews (`c877a9f`)
+  > - 7 recalled-note outcomes recorded (dev + reviewer) for the infinity show-last task.
+  > - dev/extract-harness-new-callee-sweep: grep every test file extracting a touched function when adding a new callee (proven twice, 480 and 481).
+  > - dev/gate-runs-take-minutes: budget 10+ minute waits for this repo's gate; check pids, not section names.
+  > - orchestrator/outcomes-after-interviews: record outcomes only after the acting agent confirms what fired.
+
 ## v0.56.1 — 2026-07-28
 
 ### Fixes
