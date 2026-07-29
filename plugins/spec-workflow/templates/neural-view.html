@@ -6701,12 +6701,21 @@ async function renderMermaidGraph(view, src){
     // follows the diagram's own aspect at the container's width, clamped
     // so degenerate diagrams can't collapse or blow the layout out.
     if(svgEl){
-      const r = svgEl.getBoundingClientRect();
-      const natW = r.width || parseFloat(svgEl.getAttribute("width")) || 300;
-      const natH = r.height || parseFloat(svgEl.getAttribute("height")) || 150;
-      const cw = view.clientWidth || natW;
-      if(natW > 0 && natH > 0 && cw > 0){
-        view.style.height = Math.max(120, Math.min(480, Math.round(cw * (natH / natW)))) + "px";
+      // aspect-fit applies to INLINE blocks only -- a detached .mw-mmd
+      // window flex-fills its whole height (its stylesheet height:auto
+      // would lose to an inline px height; the human hit exactly that as
+      // "fullscreen leaves the bottom empty", 2026-07-29).
+      const detached = view.closest && view.closest(".mw-mmd");
+      const vb0 = svgEl.viewBox && svgEl.viewBox.baseVal;
+      if(!detached){
+        const natW = (vb0 && vb0.width) || parseFloat(svgEl.getAttribute("width")) || 300;
+        const natH = (vb0 && vb0.height) || parseFloat(svgEl.getAttribute("height")) || 150;
+        const cw = view.clientWidth || natW;
+        if(natW > 0 && natH > 0 && cw > 0){
+          view.style.height = Math.max(120, Math.min(480, Math.round(cw * (natH / natW)))) + "px";
+        }
+      }else{
+        view.style.height = "";
       }
       mmdFitToNewSvg(view, svgEl);
     }
@@ -6720,9 +6729,24 @@ async function renderMermaidGraph(view, src){
 const MMD_MIN_SCALE = .1, MMD_MAX_SCALE = 8;
 function mmdFitToNewSvg(view, svgEl){
   svgEl.style.transformOrigin = "0 0";
-  const r = svgEl.getBoundingClientRect();
-  const natW = r.width || parseFloat(svgEl.getAttribute("width")) || 300;
-  const natH = r.height || parseFloat(svgEl.getAttribute("height")) || 150;
+  // Natural size from the SVG's OWN viewBox, never getBoundingClientRect
+  // (2026-07-29, human report "Fit zooms into a corner"): mermaid emits
+  // max-width-constrained SVGs, so the rendered rect reflects whatever
+  // container the diagram FIRST rendered in -- fitting a grown/maximized
+  // view against that stale size over-zooms. Pinning the element to its
+  // intrinsic size makes viewBox units == px and the fit math exact in
+  // any container.
+  let natW = 0, natH = 0;
+  const vb = svgEl.viewBox && svgEl.viewBox.baseVal;
+  if(vb && vb.width && vb.height){ natW = vb.width; natH = vb.height; }
+  if(!natW || !natH){
+    const r = svgEl.getBoundingClientRect();
+    natW = r.width || parseFloat(svgEl.getAttribute("width")) || 300;
+    natH = r.height || parseFloat(svgEl.getAttribute("height")) || 150;
+  }
+  svgEl.style.width = natW + "px";
+  svgEl.style.height = natH + "px";
+  svgEl.style.maxWidth = "none";
   view._pz = {natW, natH, scale: 1, tx: 0, ty: 0};
   mmdFit(view, svgEl);
 }
