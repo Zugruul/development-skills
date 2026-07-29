@@ -2389,3 +2389,17 @@
 {"itemCount": 4, "itemTs": "2026-07-29T06:05:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T05:46:24+00:00", "type": "FeedbackArchived", "v": 1}
 {"key": "css-length-strings-never-roundtrip->tested-through-which-caller", "reason": "target missing", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-29T05:46:45+00:00", "type": "LinkPruned", "v": 1}
 {"key": "css-shorthand-specificity-trap->comments-deserve-code-scrutiny", "reason": "target missing", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-29T05:46:45+00:00", "type": "LinkPruned", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "shared-harness-stub-prelude", "strength": 1, "ts": "2026-07-29T07:54:25+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "freeze-tree-during-recorded-gate", "strength": 1, "ts": "2026-07-29T07:54:25+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "nonhermetic-e2e-proof-class", "strength": 1, "ts": "2026-07-29T07:54:25+00:00", "type": "NoteMinted", "v": 1}
+{"idx": 0, "itemTs": "2026-07-29T05:05:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T07:53:05+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 1, "itemTs": "2026-07-29T05:05:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T07:53:05+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 2, "itemTs": "2026-07-29T05:05:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T07:53:05+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 3, "itemTs": "2026-07-29T05:05:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T07:53:05+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 4, "itemTs": "2026-07-29T05:05:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T07:53:05+00:00", "type": "FeedbackEmitted", "v": 1}
+{"action": "brain-note", "idx": 0, "itemTs": "2026-07-29T05:05:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T07:54:00+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 1, "itemTs": "2026-07-29T05:05:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T07:54:00+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "ignore", "idx": 2, "itemTs": "2026-07-29T05:05:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T07:54:00+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "ignore", "idx": 3, "itemTs": "2026-07-29T05:05:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T07:54:00+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 4, "itemTs": "2026-07-29T05:05:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T07:54:00+00:00", "type": "FeedbackRouted", "v": 1}
+{"itemCount": 5, "itemTs": "2026-07-29T05:05:00+02:00", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T07:54:38+00:00", "type": "FeedbackArchived", "v": 1}

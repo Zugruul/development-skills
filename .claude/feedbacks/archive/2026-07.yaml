@@ -6228,3 +6228,86 @@ items:
   routing:
     action: brain-note
     ref: orchestrator/name-the-counterfactual-bar
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-07-29T05:05:00+02:00'
+iteration:
+  task: human-directed live session (voice/chat overhaul)
+  outcome: merged
+  reviewRounds: 0
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: testing
+  component: plugins/spec-workflow/tests
+  severity: medium
+  summary: Extraction-based template harnesses require hand-stubbing every new cross-function
+    call at every extraction site
+  detail: Four separate stub-chasing rounds were needed (speakReply barge hooks, appendChatRow
+    enrichment, openChatOverlay media ctx, applyArtifactTaskEvent chat tile) across
+    five harness files.
+  generalized: When hermetic UI harnesses extract functions individually by regex,
+    any new call edge between template functions breaks every harness that extracts
+    the caller; a shared harness prelude of default no-op stubs (or a registry of
+    known template hooks) would absorb new edges without per-site patching.
+  proposal:
+    target: tests/_lib or a shared harness prelude
+    change: Provide a default stub set for known template hook names, overridable
+      per harness.
+  routing:
+    action: brain-note
+    ref: dev/shared-harness-stub-prelude
+- category: incident
+  area: testing
+  severity: medium
+  summary: Recorded gate runs were invalidated twice by edits landing while the suite
+    was still running
+  detail: Two full suite runs were wasted because the tree changed mid-run during
+    a fast-moving interactive session.
+  generalized: A recorded full-suite pass run in the background races any concurrent
+    edit; either freeze edits for the run's duration, or have the gate abort early
+    when it detects tree drift, instead of burning the full runtime to record a stale
+    verdict.
+  routing:
+    action: brain-note
+    ref: orchestrator/freeze-tree-during-recorded-gate
+- category: worked-well
+  area: testing
+  severity: low
+  summary: Section filter on the test runner enabled tight fix loops before paying
+    for the full recorded pass
+  generalized: A test runner section filter that deliberately refuses to record a
+    gate pass for filtered runs gives fast iteration without weakening the full-suite
+    guarantee.
+  routing:
+    action: ignore
+    ref: existing mechanism (section filter already refuses to record filtered passes)
+- category: worked-well
+  area: other
+  component: plugins/spec-workflow/scripts/neural-view.py
+  severity: low
+  summary: Dev-mode live template reload let the human verify UI changes in real time
+    during an interactive session
+  generalized: Serving the UI template with per-request reload plus a version-poll
+    live-reload signal makes human-in-the-loop UI iteration near-instant and avoided
+    stale-build confusion.
+  routing:
+    action: ignore
+    ref: confirmation of existing dev-mode behavior, nothing new to mint
+- category: recommendation
+  area: testing
+  severity: medium
+  summary: Non-hermetic end-to-end proofs deserve a standing, self-skipping home beside
+    the hermetic suite
+  detail: A real-audio browser E2E proved the voice pipeline in a way no DOM stub
+    could.
+  generalized: Keep a class of self-skipping non-hermetic e2e scripts (real browser,
+    real sidecars) outside the hermetic suite registration; they catch integration
+    contract breaks (wrong endpoint, wrong media format) that per-function harnesses
+    structurally cannot.
+  routing:
+    action: brain-note
+    ref: dev/nonhermetic-e2e-proof-class
