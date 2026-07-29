@@ -6594,6 +6594,22 @@ function makeMermaidBlock(src){
 function wireMermaidBlock(box, src){
   const textBtn = box.querySelector(".nmmd-text"), graphBtn = box.querySelector(".nmmd-graph");
   const textView = box.querySelector(".nmmd-src-view"), graphView = box.querySelector(".nmmd-graph-view");
+  // Re-fit when the CONTAINER changes size (maximize/restore, window
+  // resize, detach) -- human report 2026-07-29: a maximized diagram kept
+  // its old framing and left the grown area empty. A deliberate user
+  // pan/zoom disables the auto-refit until the next explicit Fit.
+  if(typeof ResizeObserver !== "undefined" && graphView){
+    let _lastW = 0, _lastH = 0;
+    new ResizeObserver(()=>{
+      const svgEl = graphView.querySelector("svg");
+      const st = graphView._pz;
+      if(!svgEl || !st) return;
+      const w = graphView.clientWidth, h = graphView.clientHeight;
+      if(w === _lastW && h === _lastH) return;
+      _lastW = w; _lastH = h;
+      if(!st.userMoved) mmdFit(graphView, svgEl);
+    }).observe(graphView);
+  }
   function setMode(mode){
     const isText = mode === "text";
     textBtn.classList.toggle("active", isText); textBtn.setAttribute("aria-pressed", String(isText));
@@ -6755,6 +6771,7 @@ function mmdFitToNewSvg(view, svgEl){
 // or double-click) fires.
 function mmdFit(view, svgEl){
   const st = view._pz; if(!st) return;
+  st.userMoved = false;   // a fit is a fresh framing -- resize may re-fit again
   const cw = view.clientWidth || 1, ch = view.clientHeight || 1;
   const scale = Math.max(MMD_MIN_SCALE, Math.min(MMD_MAX_SCALE, Math.min(cw/st.natW, ch/st.natH) || 1));
   st.scale = scale;
@@ -6771,6 +6788,7 @@ function mmdApplyTransform(view, svgEl){
 // canvas and 3D block viewers use.
 function mmdZoomAt(view, svgEl, clientX, clientY, factor){
   const st = view._pz; if(!st) return;
+  st.userMoved = true;   // deliberate framing -- container resizes stop auto-refitting
   const rect = view.getBoundingClientRect();
   const px = clientX - rect.left, py = clientY - rect.top;
   const newScale = Math.max(MMD_MIN_SCALE, Math.min(MMD_MAX_SCALE, st.scale*factor));
@@ -6781,6 +6799,7 @@ function mmdZoomAt(view, svgEl, clientX, clientY, factor){
   mmdApplyTransform(view, svgEl);
 }
 function mmdPanBy(view, svgEl, dx, dy){
+  if(view._pz) view._pz.userMoved = true;
   const st = view._pz; if(!st) return;
   st.tx += dx; st.ty += dy;
   mmdApplyTransform(view, svgEl);
