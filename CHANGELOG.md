@@ -11,6 +11,10 @@
   > 
   > Closes #459
 
+### Other
+- retro(459): 5 recalled-note outcomes recorded (`d1798e0`)
+  > - Both fresh lessons from tonight (extract-harness sweep, CSS shorthand specificity trap) fired usefully on their first recall; gate-duration note guided the dev's pacing.
+
 ## v0.57.2 — 2026-07-29
 
 ### Fixes
