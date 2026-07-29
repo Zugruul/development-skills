@@ -343,16 +343,21 @@ function resetChat() {
     if (!stateWhileThinking || stateWhileThinking.indexOf("s") === -1) throw new Error("elapsed state not shown while in flight: " + JSON.stringify(stateWhileThinking));
     console.log("ENTER_SEND_OK true");
 
-    resolveChat(0, 200, {text: "hi there", chips: [{slug: "foo-bar", strength: 3}], warnings: []});
+    resolveChat(0, 200, {text: "hi there", chips: [{slug: "foo-bar", strength: 3}, {slug: "baz-qux", strength: null}], warnings: []});
     await flush();
     const log1 = document.getElementById("ast-chat-log");
     if (log1.children.length !== 2) throw new Error("expected 2 rows (user+assistant), got " + log1.children.length);
     if (log1.children[0].getAttribute("data-role") !== "user" || log1.children[0].textContent !== "hello") throw new Error("user row wrong");
     if (log1.children[1].getAttribute("data-role") !== "assistant" || log1.children[1].textContent !== "hi there") throw new Error("assistant row wrong");
     const chipsWrap = log1.children[1].children.find(c => c.className.includes("ast-chat-chips"));
-    if (!chipsWrap) throw new Error("assistant row missing ast-chat-chips wrapper");
-    const chip = chipsWrap.children.find(c => c.className.includes("ast-chat-chip"));
-    if (!chip || chip.textContent !== "foo-bar [3]") throw new Error("chip text mismatch: " + (chip && chip.textContent));
+    if (!chipsWrap) throw new Error("assistant row missing ast-chat-chips meta line");
+    // #459 (Option A restyle, final slice -- human decision 2026-07-28):
+    // recall chips are now a single quiet meta line, slugs joined with
+    // " · " (middot), no per-item pill/span and no inline strength (that
+    // would be expanded chip metadata -- explicitly out of scope; a
+    // tooltip would be the place for it if ever wanted).
+    if (chipsWrap.textContent !== "foo-bar · baz-qux") throw new Error("chips meta line text mismatch: " + JSON.stringify(chipsWrap.textContent));
+    if (chipsWrap.children.length !== 0) throw new Error("chips meta line must not contain per-item child spans (quiet single-line treatment), got " + chipsWrap.children.length);
     if (document.getElementById("ast-chat-state").textContent !== "") throw new Error("elapsed state did not clear after the turn resolved");
     console.log("CHIPS_AND_CLEAR_OK true");
 
@@ -608,7 +613,14 @@ check "template pins the ast-chat-overlay class name in source" '"ast-chat-overl
 check "template pins the ast-chat-log class name in source" '"ast-chat-log"' "$(cat "$NVHTML_CHAT")"
 check "template pins the ast-chat-row class name in source" '"ast-chat-row"' "$(cat "$NVHTML_CHAT")"
 check "template pins the ast-chat-chips class name in source" '"ast-chat-chips"' "$(cat "$NVHTML_CHAT")"
-check "template pins the ast-chat-chip class name in source" '"ast-chat-chip"' "$(cat "$NVHTML_CHAT")"
+# #459 (Option A restyle, final slice -- human decision 2026-07-28): recall
+# chips are now a single quiet meta line inside the assistant bubble, not a
+# row of bordered pills -- the per-item `ast-chat-chip` span is gone
+# (joined text lives directly on the `.ast-chat-chips` container), so pin
+# the new CSS shape (muted color, no border) instead of the old per-item
+# class name.
+check "template's ast-chat-chips rule is a quiet meta line: muted color, no per-item pill styling" '.ast-chat-chips{margin-top:.3rem;font-size:.55rem;color:var(--muted)}' "$(cat "$NVHTML_CHAT")"
+check_absent "template no longer carries the bordered-pill ast-chat-chip rule (replaced by the quiet meta line)" '.ast-chat-chip{font-size:.55rem;border:1px solid var(--border)' "$(cat "$NVHTML_CHAT")"
 check "template pins the ast-chat-input class name in source" '"ast-chat-input"' "$(cat "$NVHTML_CHAT")"
 check "template pins the ast-chat-state class name in source" '"ast-chat-state"' "$(cat "$NVHTML_CHAT")"
 check "template pins the ast-chat-lastx class name in source" '"ast-chat-lastx"' "$(cat "$NVHTML_CHAT")"

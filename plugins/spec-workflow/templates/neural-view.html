@@ -1004,9 +1004,20 @@ canvas.grabbing{cursor:grabbing}
    nothing -- see renderChatLog(). */
 .ast-chat-empty{align-self:center;color:var(--muted);font-size:.62rem;
   text-align:center;padding:.6rem .5rem;max-width:90%}
-.ast-chat-chips{display:flex;flex-wrap:wrap;gap:.2rem;margin-top:.3rem}
-.ast-chat-chip{font-size:.55rem;border:1px solid var(--border);border-radius:3px;
-  padding:.05rem .3rem;color:var(--fg)}
+/* #459 (Option A restyle, final slice -- human decision recorded on the
+   issue 2026-07-28): recall chips move from a bordered-pill row to a
+   single quiet meta line inside the assistant bubble -- muted, middot-
+   joined, subordinate to the reply text (mockup wording: "completed ·
+   41s · duck.glb" is the same quiet idiom applied elsewhere). A plain
+   class selector is enough to set color here: unlike #491's pending-
+   bubble dashed edge (which needed a compound selector to outrank the
+   user-row border SHORTHAND on the SAME element), this is a separate
+   child element and nothing else targets it with a color/font
+   shorthand for the cascade to fight over. The per-item .ast-chat-chip
+   pill rule is gone -- appendChatRow now sets this element's
+   textContent directly to the joined slug string instead of appending
+   per-item spans. */
+.ast-chat-chips{margin-top:.3rem;font-size:.55rem;color:var(--muted)}
 .ast-chat-state{padding:.2rem .55rem;font-size:.6rem;color:var(--muted);min-height:1em}
 .ast-chat-state-gated,.ast-chat-state-offline{color:#e0453a}
 .ast-chat-inputrow{display:flex;gap:.4rem;align-items:center;
@@ -7896,14 +7907,15 @@ function appendChatRow(log, role, text, chips, suppressScroll){
   row.setAttribute("data-role", role);
   row.textContent = text;
   if(chips && chips.length){
+    // #459 (Option A restyle, final slice -- human decision 2026-07-28):
+    // a single quiet meta line, not a row of bordered pills -- slugs
+    // joined with " · ", no per-item span. Strength is intentionally
+    // dropped from this line (that's expanded chip metadata, out of
+    // scope for this slice; a tooltip would be the place for it if
+    // ever wanted).
     const chipsEl = document.createElement("div");
     chipsEl.className = "ast-chat-chips";
-    for(const c of chips){
-      const chip = document.createElement("span");
-      chip.className = "ast-chat-chip";
-      chip.textContent = c.slug + (c.strength !== null && c.strength !== undefined ? ` [${c.strength}]` : "");
-      chipsEl.appendChild(chip);
-    }
+    chipsEl.textContent = chips.map(c => c.slug).join(" · ");
     row.appendChild(chipsEl);
   }
   log.appendChild(row);
