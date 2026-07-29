@@ -2242,3 +2242,14 @@
 {"key": "vocab-dict-fake-embedder->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T20:36:02+00:00", "type": "LinkFired", "v": 1}
 {"key": "worktree-loss-recovery->deterministic-repro-fast", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T20:36:02+00:00", "type": "LinkFired", "v": 1}
 {"key": "write-fixtures-direct-for-read-path-tests->verify-fixture-isolates-intended-path", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-28T20:36:02+00:00", "type": "LinkFired", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "anonymous-listener-slice-eval", "task": "481", "ts": "2026-07-29T01:40:08+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "acceptance-criterion-outranks-test-spec-paraphrase", "task": "481", "ts": "2026-07-29T01:40:08+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reproduce-before-verdict", "task": "481", "ts": "2026-07-29T01:40:08+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "red-commit-worktree-verify", "task": "481", "ts": "2026-07-29T01:40:08+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "red-commit-verify-sequential-harness", "task": "481", "ts": "2026-07-29T01:40:08+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "comments-deserve-code-scrutiny", "task": "481", "ts": "2026-07-29T01:40:08+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "stub-never-happens-claims-verify", "task": "481", "ts": "2026-07-29T01:40:08+00:00", "type": "RecallOutcome", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "extract-harness-new-callee-sweep", "strength": 1, "ts": "2026-07-29T01:41:49+00:00", "type": "NoteMinted", "v": 1}
+{"key": "extract-harness-new-callee-sweep->anonymous-listener-slice-eval", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-07-29T01:41:49+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "gate-runs-take-minutes", "strength": 1, "ts": "2026-07-29T01:41:49+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "outcomes-after-interviews", "strength": 1, "ts": "2026-07-29T01:41:49+00:00", "type": "NoteMinted", "v": 1}

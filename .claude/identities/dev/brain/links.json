@@ -189,6 +189,11 @@
     "last": "2026-07-27",
     "weight": 0.5
   },
+  "extract-harness-new-callee-sweep->anonymous-listener-slice-eval": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "fake-cli-exit-code-is-contract->circular-fixture-detector": {
     "fires": 25,
     "last": "2026-07-28",
