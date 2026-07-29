@@ -37,3 +37,6 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "acceptance-criterion-outranks-test-spec-paraphrase", "task": "480", "ts": "2026-07-28T20:29:44+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "anonymous-listener-slice-eval", "task": "481", "ts": "2026-07-29T01:40:08+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "acceptance-criterion-outranks-test-spec-paraphrase", "task": "481", "ts": "2026-07-29T01:40:08+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "extract-harness-new-callee-sweep", "task": "459", "ts": "2026-07-29T03:50:40+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "css-shorthand-specificity-trap", "task": "459", "ts": "2026-07-29T03:50:40+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "gate-runs-take-minutes", "task": "459", "ts": "2026-07-29T03:50:40+00:00"}

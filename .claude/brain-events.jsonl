@@ -2267,3 +2267,7 @@
 {"action": "backlog", "idx": 1, "itemTs": "2026-07-29T03:12:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T03:08:27+00:00", "type": "FeedbackRouted", "v": 1}
 {"action": "ignore", "idx": 2, "itemTs": "2026-07-29T03:12:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T03:08:27+00:00", "type": "FeedbackRouted", "v": 1}
 {"itemCount": 3, "itemTs": "2026-07-29T03:12:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-07-29T03:08:27+00:00", "type": "FeedbackArchived", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "extract-harness-new-callee-sweep", "task": "459", "ts": "2026-07-29T03:50:40+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "css-shorthand-specificity-trap", "task": "459", "ts": "2026-07-29T03:50:40+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "gate-runs-take-minutes", "task": "459", "ts": "2026-07-29T03:50:40+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reproduce-before-verdict", "task": "459", "ts": "2026-07-29T03:50:40+00:00", "type": "RecallOutcome", "v": 1}
