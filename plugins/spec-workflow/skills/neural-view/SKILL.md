@@ -43,7 +43,10 @@ On boot, the server also health-checks the local whisper.cpp STT sidecar (the vo
 panel's default engine) and auto-starts it if it's installed but not running, via the
 whisper-sidecar skill's own lifecycle script — never installing it, and never letting a
 sidecar failure block or crash neural-view (every outcome is one `whisper-sidecar:` line
-in the server log). `--no-sidecar` or `NEURAL_VIEW_NO_SIDECAR=1` skips this.
+in the server log). It then keeps re-emitting the sidecar's own log lines prefixed
+`whisper-sidecar> ` — live in the terminal under `dev`, into the server log under
+`start` — and `stop` also stops the sidecar. `--no-sidecar` or
+`NEURAL_VIEW_NO_SIDECAR=1` opts out of all of it, in both directions.
 
 The page renders in 3D (three.js, vendored same-origin — no CDN, no build step, zero
 external requests): drag to orbit, wheel/pinch to zoom, right-drag or shift-drag to pan,

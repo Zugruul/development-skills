@@ -388,8 +388,22 @@ out="$(env $(ws_env "$WS_NV_S_AUTO" "$WS_NV_P_AUTO") python3 "$WS_SKILL_DIR/whis
 check_rc "auto-start: sidecar status exits 0 after neural-view boot" 0 "$rc"
 check "auto-start: sidecar status reports healthy on the test port" \
     "healthy: whisper-server is running on 127.0.0.1:$WS_NV_P_AUTO" "$out"
-env NEURAL_VIEW_STATE="$WS_NV_STATE_AUTO" python3 "$WS_NV" stop >/dev/null 2>&1
-env $(ws_env "$WS_NV_S_AUTO" "$WS_NV_P_AUTO") python3 "$WS_SKILL_DIR/whisper_sidecar.py" stop >/dev/null 2>&1
+
+# the sidecar's own log is re-emitted into neural-view's log stream (same
+# terminal under `dev`, server.log under `start`) -- append a probe line to
+# the sidecar's whisper-server.log and watch it come back out prefixed
+printf 'PROBE-sidecar-log-line-424\n' >>"$WS_NV_S_AUTO/whisper-server.log"
+ws_nv_check_log "log follow: sidecar log lines re-emit into neural-view's log, prefixed" "$WS_NV_STATE_AUTO/server.log" \
+    "whisper-sidecar> PROBE-sidecar-log-line-424"
+
+# stop symmetry: neural-view `stop` also stops the sidecar (same opt-out env
+# seam, so re-enable it here too)
+out="$(env NEURAL_VIEW_NO_SIDECAR= NEURAL_VIEW_STATE="$WS_NV_STATE_AUTO" $(ws_env "$WS_NV_S_AUTO" "$WS_NV_P_AUTO") python3 "$WS_NV" stop 2>&1)"
+check "stop: reports the sidecar stopped too" "whisper-sidecar: stopped" "$out"
+check "stop: the sidecar process is genuinely gone" \
+    "$([[ -n "$WS_NV_SIDE_PID" ]] && kill -0 "$WS_NV_SIDE_PID" 2>/dev/null && echo alive || echo dead)" "dead"
+check "stop: the sidecar pidfile is cleared" \
+    "$([[ -f "$WS_NV_S_AUTO/whisper-server.pid" ]] && echo present || echo absent)" "absent"
 
 # (b) NEURAL_VIEW_NO_SIDECAR=1: auto-start is skipped, logged, sidecar untouched
 echo "-- e2e: neural-view boot skips the sidecar when NEURAL_VIEW_NO_SIDECAR=1 --"
@@ -414,6 +428,18 @@ ws_nv_check_log "--no-sidecar: boot logs that auto-start is disabled" "$WS_NV_ST
 check "--no-sidecar: the sidecar was never spawned (no pidfile)" \
     "$([[ -f "$WS_NV_S_AUTO/whisper-server.pid" ]] && echo present || echo absent)" "absent"
 env NEURAL_VIEW_STATE="$WS_NV_STATE_FLAGOFF" python3 "$WS_NV" stop >/dev/null 2>&1
+env $(ws_env "$WS_NV_S_AUTO" "$WS_NV_P_AUTO") python3 "$WS_SKILL_DIR/whisper_sidecar.py" stop >/dev/null 2>&1
+
+# opted-out `stop` never touches a running sidecar either (stop symmetry of
+# the opt-out: hands off in BOTH directions)
+echo "-- e2e: an opted-out neural-view stop leaves a running sidecar alone --"
+env $(ws_env "$WS_NV_S_AUTO" "$WS_NV_P_AUTO") python3 "$WS_SKILL_DIR/whisper_sidecar.py" start >/dev/null 2>&1
+WS_NV_OPTOUT_PID="$(cat "$WS_NV_S_AUTO/whisper-server.pid" 2>/dev/null || true)"
+[[ -n "$WS_NV_OPTOUT_PID" ]] && ws_track_pid "$WS_NV_OPTOUT_PID"
+out="$(env NEURAL_VIEW_NO_SIDECAR=1 NEURAL_VIEW_STATE="$WS_NV_STATE_FLAGOFF" $(ws_env "$WS_NV_S_AUTO" "$WS_NV_P_AUTO") python3 "$WS_NV" stop 2>&1)"
+check_absent "opt-out stop: never reports touching the sidecar" "whisper-sidecar:" "$out"
+check "opt-out stop: the independently-started sidecar is still alive" \
+    "$([[ -n "$WS_NV_OPTOUT_PID" ]] && kill -0 "$WS_NV_OPTOUT_PID" 2>/dev/null && echo alive || echo dead)" "alive"
 env $(ws_env "$WS_NV_S_AUTO" "$WS_NV_P_AUTO") python3 "$WS_SKILL_DIR/whisper_sidecar.py" stop >/dev/null 2>&1
 
 # (d) not installed: ONE honest log line, never an install, boot continues normally

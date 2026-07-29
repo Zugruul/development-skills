@@ -12,7 +12,7 @@ canvas containing its own role-clusters (dev/reviewer/orchestrator/...).
 
   neural-view.py start [--port N] [--dir ROOT] [--scan BASE] [--rescan SECS] [--no-sidecar]  # start (idempotent)
   neural-view.py status                # RUNNING <url> notes=N brains=N repos=N | STOPPED | STALE: ...
-  neural-view.py stop [--force]        # --force also kills a zombie holding the port (see below)
+  neural-view.py stop [--force] [--no-sidecar]  # also stops the whisper sidecar; --force also kills a zombie holding the port (see below)
   neural-view.py serve [--port N] [--dir ROOT] [--scan BASE] [--rescan SECS] [--no-sidecar] # run in the foreground (internal)
   neural-view.py dev [--port N] [--dir ROOT] [--scan BASE] [--rescan SECS] [--no-sidecar]   # foreground + auto-restart on script
                                        # change; the page live-reloads via GET /version (dev only)
@@ -101,9 +101,13 @@ whisper.cpp sidecar the voice panel's default STT engine relies on is
 health-checked and auto-STARTED iff installed-but-not-running, by delegating
 to the whisper-sidecar skill's own lifecycle script (never reimplemented,
 never auto-installed). Runs on a daemon thread; any outcome is one
-"whisper-sidecar:" log line and can never block or crash startup. Opt out
-with --no-sidecar or $NEURAL_VIEW_NO_SIDECAR=1. See
-autostart_whisper_sidecar() for the full rules.
+"whisper-sidecar:" log line and can never block or crash startup. After the
+attempt, the same thread tails the sidecar's own whisper-server.log and
+re-emits new lines prefixed "whisper-sidecar> " — visible live in the
+terminal under `dev`, and in server.log under `start`. `stop` is symmetric:
+it also stops the sidecar (idempotent, same never-block rule). Opt out of
+all of it with --no-sidecar or $NEURAL_VIEW_NO_SIDECAR=1. See
+autostart_whisper_sidecar()/stop_whisper_sidecar() for the full rules.
 
 State dir (pid/port/log): $NEURAL_VIEW_STATE, else <PRIMARY repo root>/.claude/neural-view (#463: the main checkout, from any linked worktree).
 Port: --port, else $NEURAL_VIEW_PORT, else 4748. Binds 127.0.0.1 only.
@@ -2647,6 +2651,46 @@ def _sidecar_start_timeout():
         return 15.0
 
 
+def _sidecar_log_path():
+    """Mirror of whisper_sidecar.py's _state_dir()/_log_path() (same env var,
+    same defaults) — where the detached whisper-server's own output lands."""
+    state = os.environ.get("WHISPER_SIDECAR_STATE_DIR") or os.path.join(os.path.expanduser("~"), ".claude", "whisper-sidecar")
+    return os.path.join(state, "whisper-server.log")
+
+
+def _follow_sidecar_log(offset):
+    """Re-emit whisper-server.log lines (from `offset` onward, prefixed
+    "whisper-sidecar> ") into THIS process's stdout, so the sidecar's own
+    output shows up in the same terminal under `dev` and in server.log under
+    `start` — the sidecar is a detached process whose output would otherwise
+    only be visible by tailing its log by hand. Poll-based tail: tolerates
+    the file not existing yet and starts over on truncation. Runs forever;
+    only ever called on a daemon thread, so process exit just drops it."""
+    path = _sidecar_log_path()
+    pos = offset
+    while True:
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            time.sleep(1.0)
+            continue
+        if size < pos:
+            pos = 0  # truncated/rotated — start over from the top
+        if size > pos:
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                    fh.seek(pos)
+                    chunk = fh.read()
+                    pos = fh.tell()
+            except OSError:
+                time.sleep(1.0)
+                continue
+            for ln in chunk.splitlines():
+                if ln.strip():
+                    print(f"whisper-sidecar> {ln}", flush=True)
+        time.sleep(0.5)
+
+
 def autostart_whisper_sidecar(args):
     """Kick off the sidecar health-check/start described above. Returns
     immediately; every outcome (started, already running, disabled, not
@@ -2659,6 +2703,14 @@ def autostart_whisper_sidecar(args):
         return
 
     def _run():
+        # Offset captured BEFORE the start attempt: everything the sidecar
+        # writes from this boot onward gets re-emitted below, historical log
+        # content doesn't.
+        try:
+            log_offset = os.path.getsize(_sidecar_log_path())
+        except OSError:
+            log_offset = 0
+        follow = True
         try:
             proc = subprocess.run(
                 [sys.executable, str(SIDECAR_SCRIPT), "start"],
@@ -2673,12 +2725,34 @@ def autostart_whisper_sidecar(args):
                 # state, not a failure — and auto-start never installs.
                 print(f"whisper-sidecar: auto-start skipped — {line} (auto-start never installs; "
                       "voice input has no local STT until then)", flush=True)
+                follow = False  # nothing installed -> no log to follow
             else:
                 print(f"whisper-sidecar: auto-start failed — {line}", flush=True)
         except Exception as e:  # noqa: BLE001 — a sidecar failure must never take down neural-view
             print(f"whisper-sidecar: auto-start failed — {e}", flush=True)
+        if follow:
+            _follow_sidecar_log(log_offset)  # this same daemon thread becomes the log follower
 
     threading.Thread(target=_run, name="whisper-sidecar-autostart", daemon=True).start()
+
+
+def stop_whisper_sidecar(args):
+    """`stop` symmetry for the auto-start above: shut the sidecar down too,
+    via the skill's own (idempotent) `stop` action. Same opt-out as the
+    auto-start — an opted-out neural-view never touches the sidecar in
+    either direction — and same never-block rule: any failure is one log
+    line, never an exception out of `stop`."""
+    if "--no-sidecar" in args or os.environ.get("NEURAL_VIEW_NO_SIDECAR") == "1":
+        return
+    if not SIDECAR_SCRIPT.is_file():
+        return
+    try:
+        proc = subprocess.run([sys.executable, str(SIDECAR_SCRIPT), "stop"],
+                              capture_output=True, text=True, timeout=30)
+        line = " ".join((proc.stdout + "\n" + proc.stderr).split()) or f"exit {proc.returncode} with no output"
+        print(f"whisper-sidecar: {line}", flush=True)
+    except Exception as e:  # noqa: BLE001 — a sidecar failure must never break neural-view's own stop
+        print(f"whisper-sidecar: stop failed — {e}", flush=True)
 
 
 def discover_repos(args):
@@ -2932,6 +3006,7 @@ def main():
             print("stopped (still exiting)" if still_alive else "stopped")
         else:
             print("not running")
+        stop_whisper_sidecar(args)  # stop symmetry for the boot auto-start; opt-outs and failures never affect this command's own outcome
         if "--force" in args:
             port = configured_port()
             zombie = None
