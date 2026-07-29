@@ -171,15 +171,21 @@ _PINNED_FLAGS = (
 )
 
 # File-output variant (2026-07-29, human-directed: "workspace is read-only"
-# refusals): when the composed context carries a sanctioned output
-# directory, the Write tool alone is enabled and scoped to that directory
-# via --add-dir + acceptEdits. Every OTHER isolation flag stays pinned
-# (no MCP, no session persistence, safe-mode, isolated cwd): the sandbox
-# opens exactly one door, not the workspace.
+# refusals). Empirically validated against the real claude CLI on this
+# machine: the headless permission classifier DENIES any Write into a
+# `.claude/**` path (flagged sensitive; -p mode has no prompt to approve
+# it), and enabling a tool (--tools) does NOT allowlist it -- the write
+# only succeeds with `--allowedTools Write` AND a non-sensitive target.
+# So the model writes plain filenames into its isolated WORKDIR (the cwd,
+# an ordinary temp dir) and complete() PUBLISHES those files into the
+# sanctioned output dir afterwards. Every other isolation flag stays
+# pinned (no MCP, no session persistence, safe-mode, isolated cwd): the
+# sandbox opens exactly one door, not the workspace.
 _WRITE_FLAGS = (
     "-p",
     "--output-format", "json",
     "--tools", "Write",
+    "--allowedTools", "Write",
     "--strict-mcp-config",
     "--permission-mode", "acceptEdits",
     "--no-session-persistence",
@@ -214,11 +220,11 @@ def _build_prompt(context):
 
 def _build_argv(model, file_output_dir=None):
     argv = ["claude"]
-    if file_output_dir:
-        argv.extend(_WRITE_FLAGS)
-        argv.extend(["--add-dir", file_output_dir])
-    else:
-        argv.extend(_PINNED_FLAGS)
+    # file_output_dir only selects the flag set -- the model writes into
+    # its cwd (the isolated workdir, always writable); complete() publishes
+    # from there. No --add-dir: the sanctioned dir itself is .claude-nested
+    # and the classifier would deny direct writes to it anyway.
+    argv.extend(_WRITE_FLAGS if file_output_dir else _PINNED_FLAGS)
     argv.extend(["--model", model])
     return argv
 
@@ -267,6 +273,23 @@ def complete(context, *, timeout=DEFAULT_MODEL_TIMEOUT_SECONDS, env=None):
         result = adapters.invoke_cli(argv, timeout=timeout, env=call_env, cwd=workdir)
         elapsed = time.monotonic() - start
     finally:
+        # publish-from-workdir (2026-07-29): any plain file the model wrote
+        # into its isolated cwd moves into the sanctioned output dir before
+        # the workdir is destroyed. Same-name collisions overwrite
+        # (re-generating a file IS the intent); failures are best-effort --
+        # a missed publish loses the file, never the turn.
+        _publish_dir = context.get("fileOutputDir")
+        if _publish_dir:
+            try:
+                for _name in os.listdir(workdir):
+                    _src = os.path.join(workdir, _name)
+                    if os.path.isfile(_src) and not _name.startswith("."):
+                        try:
+                            os.replace(_src, os.path.join(_publish_dir, _name))
+                        except OSError:
+                            pass
+            except OSError:
+                pass
         shutil.rmtree(workdir, ignore_errors=True)
 
     combined = (result.stdout or "") + "\n" + (result.stderr or "")

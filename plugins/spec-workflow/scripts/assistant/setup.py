@@ -247,8 +247,18 @@ def _default_assistant_section(names, provider, model):
         "version": 1,
         "enabled": True,
         "names": list(names) if names else ["assistant"],
+        # Style rules baked into the DEFAULT prompt (human-directed
+        # 2026-07-29): assistants kept re-introducing themselves ("I'm
+        # <name>...") in different forms on every turn -- identity is
+        # stated ONCE here and repeating it is explicitly forbidden unless
+        # the user asks. Replies are often spoken aloud via TTS, so
+        # brevity is a hard default. A user who WANTS self-introductions
+        # adds that requirement to their own systemPrompt explicitly.
         "systemPrompt": (
-            f"You are {main_name}, the local assistant for this repository's zettel brain."
+            f"You are {main_name}, the local assistant for this repository's zettel brain. "
+            "Answer directly and concisely -- your replies are often spoken aloud. "
+            "Never introduce yourself, restate your name, or describe your own "
+            "capabilities unless the user explicitly asks who or what you are."
         ),
         "llm": {"provider": provider, "model": model},
         "capabilities": {
@@ -463,10 +473,12 @@ def _output_contract_block():
     highlight + copy/save."""
     body = (
         "## Producing files & rich replies\n\n"
-        "You CAN produce files. Write deliverables under your brain's media "
-        "directory — `.claude/identities/assistant/brain/media/chat/` (create "
-        "it if missing) — then link them in your reply with note-style "
-        "markdown, using paths relative to the brain directory:\n\n"
+        "You CAN produce files. Write them as plain filenames in your "
+        "current working directory during a turn -- the engine publishes "
+        "them into your brain's media library "
+        "(`.claude/identities/assistant/brain/media/chat/`) automatically. "
+        "Link them in your reply with note-style markdown, using paths "
+        "relative to the brain directory:\n\n"
         "- `![alt](media/chat/duck.png)` — images render inline in the chat\n"
         "- `[duck.glb](media/chat/duck.glb)` — 3D models (`.glb .gltf .obj .stl`) become a live viewer\n"
         "- `[clip](media/chat/demo.mp4)` / `[take](media/chat/take.wav)` — video/audio become inline players\n"

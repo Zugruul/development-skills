@@ -518,11 +518,12 @@ def compose_context(persona_cfg, roster_provider, recall_fn, session_state,
         context_for_adapter["fileOutputDir"] = file_output_dir
         context_for_adapter["system"] = (
             context_for_adapter["system"]
-            + "\n\nFile output: you CAN create files, ONLY inside "
-            + file_output_dir
-            + " (your Write tool is scoped to that directory). After writing, "
-            + "link each file in your reply as [name](media/chat/<filename>) "
-            + "or ![alt](media/chat/<filename>) so it renders inline in the chat. "
+            + "\n\nFile output: you CAN create files. Write them with your "
+            + "Write tool as PLAIN FILENAMES in your current working directory "
+            + "(it is writable); after your reply they are published to the "
+            + "user's media library automatically. Link each produced file in "
+            + "your reply as [name](media/chat/<filename>) or "
+            + "![alt](media/chat/<filename>) so it renders inline in the chat. "
             + "Never claim the workspace is read-only without an actual failed write."
         )
 
