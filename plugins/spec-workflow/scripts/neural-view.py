@@ -296,7 +296,7 @@ FILE_TYPES = {
     # audio (#430): same inline-vs-link split as video -- local files only
     ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg", ".m4a": "audio/mp4",
     ".glb": "model/gltf-binary", ".gltf": "model/gltf+json", ".obj": "text/plain; charset=utf-8",
-    ".stl": "application/octet-stream",
+    ".stl": "application/octet-stream", ".scad": "text/plain; charset=utf-8",
     ".md": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8",
     ".json": "application/json", ".pdf": "application/pdf",
 }

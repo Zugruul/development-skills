@@ -160,11 +160,12 @@ canvas.grabbing{cursor:grabbing}
    height keeps it a full opaque overlay regardless of how much is inside;
    multi-column content (BRAINS/FILTERS groups) auto-collapses to one column
    at this width since column-width:150px can't fit a second one. */
-/* height caps at the SAME 2/3 band the BRAINS panel occupies (human-
-   directed 2026-07-29): the filters may cover brains, NEVER the docked
-   chat below (chat also sits one z-index above as a second guarantee). */
+/* Full height by default; caps at the 2/3 band ONLY while a docked chat
+   occupies the bottom third (body.chat-docked) -- the filters may cover
+   brains, NEVER the docked chat below (chat also sits one z-index above
+   as a second guarantee). */
 #search-filters-panel{position:fixed;top:70px;left:14px;
-  width:var(--colw);height:calc((100vh - 130px)*.66);overflow-y:scroll;padding:.65rem .75rem;display:none;
+  width:var(--colw);height:calc(100vh - 100px);overflow-y:scroll;padding:.65rem .75rem;display:none;
   flex-direction:column;gap:.6rem;z-index:60;background:var(--panel-solid);backdrop-filter:none;
   -webkit-backdrop-filter:none;scrollbar-gutter:stable;
   scrollbar-width:thin;scrollbar-color:rgba(90,190,255,.4) rgba(255,255,255,.05)}
@@ -356,9 +357,10 @@ canvas.grabbing{cursor:grabbing}
 #talk-panel .hint{font-size:.58rem;color:var(--muted);line-height:1.4}
 
 /* gauges (top-left, below topbar) */
-/* 2/3 of its former full-column height (human-directed 2026-07-29) -- the
-   bottom third belongs to the docked chat overlay now. */
-#gauges{top:70px;left:14px;width:var(--colw);max-height:calc((100vh - 130px)*.62);overflow:auto;
+/* Full column by default; the 2/3 cap applies ONLY while a DOCKED chat
+   overlay exists (body.chat-docked, human-directed 2026-07-29) -- a
+   detached or closed chat gives brains/filters the whole height back. */
+#gauges{top:70px;left:14px;width:var(--colw);max-height:calc(100vh - 130px);overflow:auto;
   padding:.7rem 1rem;transition:transform .25s ease,opacity .25s ease}
 #gauges.collapsed{transform:translateX(calc(-100% - 24px));opacity:0;pointer-events:none}
 #gauges-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem}
@@ -977,6 +979,8 @@ canvas.grabbing{cursor:grabbing}
    fixed height so the two read as one column. z-index 61: one above the
    filters panel (60), which caps at the same 2/3 band and must NEVER
    cover the chat. */
+body.chat-docked #gauges{max-height:calc((100vh - 130px)*.62)}
+body.chat-docked #search-filters-panel{height:calc((100vh - 130px)*.66)}
 .ast-chat-overlay{position:fixed;left:14px;bottom:14px;
   top:calc(70px + (100vh - 130px)*.62 + 12px);   /* 12px seam under the brains band -- the right sidebar's own panel gap */
   width:var(--colw);height:auto;min-height:0;
@@ -987,6 +991,17 @@ canvas.grabbing{cursor:grabbing}
   z-index:61;font-family:var(--mono);font-size:.68rem;color:var(--fg)}
 .ast-chat-header{display:flex;align-items:center;gap:.5rem;
   padding:.4rem .55rem;border-bottom:1px solid var(--border)}
+/* detached chat (2026-07-29, human-directed): floating, draggable by its
+   header, natively RESIZABLE from the corner. Geometry is inline-styled
+   (persisted uiState.chatWinRect); min sizes keep it usable. */
+.ast-chat-overlay.detached{top:auto;bottom:auto;resize:both;overflow:hidden;
+  min-width:320px;min-height:260px;max-width:92vw;max-height:88vh;
+  box-shadow:0 18px 50px rgba(0,0,0,.6)}
+.ast-chat-overlay.detached .ast-chat-header{cursor:move}
+.ast-chat-detach{background:transparent;border:1px solid var(--border);border-radius:5px;
+  color:var(--muted);font-family:var(--mono);font-size:.72rem;line-height:1;
+  padding:.15rem .4rem;cursor:pointer}
+.ast-chat-detach:hover,.ast-chat-detach[aria-pressed="true"]{border-color:var(--cyan);color:var(--cyan)}
 /* #459 flagged extension 2 (WHO AM I TALKING TO): the voice panel already
    names the selected assistant (#voice-viz-name) but the chat overlay
    never did -- set from GET /assistant/status's own selected field in
@@ -1212,6 +1227,13 @@ canvas.grabbing{cursor:grabbing}
   .mw-actions{gap:.2rem}
 }
 .n3d-spin.off{text-decoration:line-through;opacity:.75}
+/* .scad blocks: 3D-first with a Code toggle (2026-07-29) -- toggling hides
+   the canvas and reveals the highlighted source in place. */
+.n3d .n3d-src{display:none}
+.n3d.show-code canvas{display:none}
+.n3d.show-code .n3d-label{display:none}
+.n3d.show-code .n3d-src{display:block;max-height:300px;overflow:auto;margin:0;border:0;border-radius:0}
+.n3d-code[aria-pressed="true"]{border-color:var(--cyan);color:var(--cyan)}
 /* a 3D block promoted into its own window (open3dWindow tags it .mw-3d)
    flex-fills whatever space the window currently has, instead of a fixed
    vh-based canvas height that ignored panel resizing -- the ResizeObserver
@@ -6260,7 +6282,7 @@ document.getElementById("inspect-pin").onclick=()=>{
 // tiny hand parsers on core three); other allowed files open raw in a new
 // tab. Fenced ```mermaid``` blocks (server-emitted as .nmmd[data-mmd]) are
 // hydrated separately, below.
-const VID_EXT = /\.(mp4|webm|mov)$/i, GLTF_EXT = /\.(glb|gltf)$/i, MESH_EXT = /\.(obj|stl)$/i;
+const VID_EXT = /\.(mp4|webm|mov)$/i, GLTF_EXT = /\.(glb|gltf)$/i, MESH_EXT = /\.(obj|stl)$/i, SCAD_EXT = /\.scad$/i;
 const AUD_EXT = /\.(mp3|wav|ogg|m4a)$/i;
 function fileUrl(nd, rel){
   return `/file/${encodeURIComponent(nd.repo)}/${encodeURIComponent(nd.role)}/`
@@ -6281,7 +6303,7 @@ function hydrateNoteMedia(scope, nd){
       a.replaceWith(v);
     }else if(AUD_EXT.test(href)){
       a.replaceWith(makeAudioBlock(href, url));
-    }else if(GLTF_EXT.test(href) || MESH_EXT.test(href)){
+    }else if(GLTF_EXT.test(href) || MESH_EXT.test(href) || SCAD_EXT.test(href)){
       a.replaceWith(make3dBlock(href, url));
     }else{
       a.href = url; a.target = "_blank"; a.rel = "noopener";
@@ -6327,6 +6349,19 @@ function hydrateCodeBlocks(scope){
     const codeEl = box.querySelector("code");
     if(!codeEl) return;
     const lang = (box.dataset && box.dataset.lang) || "";
+    // ```scad fences render 3D-FIRST (2026-07-29, human-directed) when the
+    // source fits the parseSCAD subset -- swapped for the full 3D block
+    // (spin/detach/save + its own Code toggle). Outside the subset, the
+    // plain highlighted code view stays: honest fallback, never a wrong render.
+    if(lang.toLowerCase() === "scad" && !(box.classList && box.classList.contains("n3d-src"))){
+      const scadSrc = codeEl.textContent;
+      try{
+        parseSCAD(scadSrc);
+        const blobUrl = URL.createObjectURL(new Blob([scadSrc], {type: "text/plain"}));
+        box.replaceWith(make3dBlock("inline.scad", blobUrl));
+        return;
+      }catch{}
+    }
     const src = codeEl.textContent;
     codeEl.innerHTML = highlightCodeHtml(src);
     const bar = document.createElement("div");
@@ -6655,6 +6690,153 @@ function openMermaidWindow(src){
   wireWinDrag(win);
   return win;
 }
+// ---- OpenSCAD subset viewer (2026-07-29, human-directed): .scad files
+// and ```scad fences render 3D-FIRST with a Code toggle. This is a small
+// interpreter over the printable-primitive subset -- sphere, cube,
+// cylinder, translate/rotate/scale, union/group, color -- built straight
+// into three.js meshes. Anything outside the subset (difference,
+// intersection, modules, variables, loops) throws, and the caller falls
+// back to the plain highlighted code view: an honest "can't preview this
+// one" beats a wrong render. OpenSCAD is Z-up; the returned group is
+// rotated once at the root so it views naturally in the Y-up stage. ----
+function parseSCAD(src){
+  const s = String(src).replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+  let i = 0;
+  const err = m => { throw new Error("scad: " + m); };
+  const ws = () => { while(i < s.length && /\s/.test(s[i])) i++; };
+  const peek = () => { ws(); return s[i]; };
+  const eat = c => { ws(); if(s[i] !== c) err("expected '" + c + "' at " + i); i++; };
+  const ident = () => {
+    ws();
+    const m = /^[$A-Za-z_][$A-Za-z0-9_]*/.exec(s.slice(i));
+    if(!m) return null;
+    i += m[0].length; return m[0];
+  };
+  const number = () => {
+    ws();
+    const m = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?/.exec(s.slice(i));
+    if(!m) err("expected number at " + i);
+    i += m[0].length; return parseFloat(m[0]);
+  };
+  const value = () => {
+    ws();
+    if(s[i] === "["){
+      i++;
+      const v = [];
+      while(peek() !== "]"){ v.push(value()); if(peek() === ",") i++; }
+      i++; return v;
+    }
+    if(s[i] === '"'){
+      i++;
+      const start = i;
+      while(i < s.length && s[i] !== '"') i++;
+      const str = s.slice(start, i); i++; return str;
+    }
+    const id = /^[A-Za-z_]/.test(s[i] || "") ? ident() : null;
+    if(id === "true") return true;
+    if(id === "false") return false;
+    if(id) err("unsupported identifier value '" + id + "'");
+    return number();
+  };
+  const args = () => {
+    eat("(");
+    const pos = [], named = {};
+    while(peek() !== ")"){
+      const save = i;
+      const id = /^[A-Za-z_$]/.test(peek() || "") ? ident() : null;
+      if(id !== null && peek() === "="){ i++; named[id] = value(); }
+      else { i = save; pos.push(value()); }
+      if(peek() === ",") i++;
+    }
+    i++; return {pos, named};
+  };
+  const MAT = () => new THREE.MeshStandardMaterial({color: 0x46a8cc, roughness: .55, metalness: .15});
+  const centerOr = (a, dflt) => a.named.center === undefined ? dflt : a.named.center === true;
+  function primitive(name, a){
+    if(name === "sphere"){
+      const r = a.named.r !== undefined ? a.named.r : (a.named.d !== undefined ? a.named.d/2 : (a.pos[0] !== undefined ? a.pos[0] : 1));
+      return new THREE.Mesh(new THREE.SphereGeometry(r, 32, 24), MAT());
+    }
+    if(name === "cube"){
+      let sz = a.named.size !== undefined ? a.named.size : (a.pos[0] !== undefined ? a.pos[0] : 1);
+      if(typeof sz === "number") sz = [sz, sz, sz];
+      const m = new THREE.Mesh(new THREE.BoxGeometry(sz[0], sz[1], sz[2]), MAT());
+      if(!centerOr(a, false)) m.position.set(sz[0]/2, sz[1]/2, sz[2]/2);
+      return m;
+    }
+    if(name === "cylinder"){
+      const h = a.named.h !== undefined ? a.named.h : (a.pos[0] !== undefined ? a.pos[0] : 1);
+      let r1 = a.named.r1, r2 = a.named.r2;
+      if(a.named.d1 !== undefined) r1 = a.named.d1/2;
+      if(a.named.d2 !== undefined) r2 = a.named.d2/2;
+      if(r1 === undefined && r2 === undefined){
+        let r = a.named.r !== undefined ? a.named.r : (a.named.d !== undefined ? a.named.d/2 : undefined);
+        if(r === undefined) r = a.pos[1] !== undefined ? a.pos[1] : 1;
+        r1 = r;
+        r2 = a.pos[2] !== undefined ? a.pos[2] : r;
+      }
+      if(r1 === undefined) r1 = r2; if(r2 === undefined) r2 = r1;
+      // OpenSCAD: r1 bottom, r2 top, along +Z. THREE: radiusTop first, Y axis.
+      const g = new THREE.CylinderGeometry(Math.max(r2, 1e-4), Math.max(r1, 1e-4), h, 32);
+      g.rotateX(Math.PI/2);   // align to Z
+      const m = new THREE.Mesh(g, MAT());
+      if(!centerOr(a, false)) m.position.z = h/2;
+      return m;
+    }
+    return null;
+  }
+  function statement(){
+    ws();
+    while("%#!*".includes(s[i])) i++;   // debug modifiers: ignored
+    const name = ident();
+    if(name === null){ err("expected statement at " + i); }
+    if(peek() === "="){ i++; value(); eat(";"); return null; }   // $fn = 48; and friends: ignored
+    const a = args();
+    ws();
+    // leaf primitive
+    const prim = primitive(name, a);
+    if(prim !== null){ eat(";"); return prim; }
+    // container: one child statement or a { block }
+    const kids = [];
+    if(peek() === "{"){
+      i++;
+      while(peek() !== "}"){ const k = statement(); if(k) kids.push(k); }
+      i++;
+    }else if(peek() === ";"){
+      i++;
+    }else{
+      const k = statement(); if(k) kids.push(k);
+    }
+    const grp = new THREE.Group();
+    for(const k of kids) grp.add(k);
+    if(name === "union" || name === "group") return grp;
+    if(name === "translate"){ const v = a.pos[0] || [0,0,0]; grp.position.set(v[0]||0, v[1]||0, v[2]||0); return grp; }
+    if(name === "scale"){ let v = a.pos[0]; if(typeof v === "number") v = [v,v,v]; v = v || [1,1,1]; grp.scale.set(v[0]||1, v[1]||1, v[2]||1); return grp; }
+    if(name === "rotate"){
+      let v = a.pos[0] !== undefined ? a.pos[0] : (a.named.a !== undefined ? a.named.a : [0,0,0]);
+      if(typeof v === "number") v = [0, 0, v];
+      const d = Math.PI/180;
+      grp.rotation.set((v[0]||0)*d, (v[1]||0)*d, (v[2]||0)*d, "ZYX");
+      return grp;
+    }
+    if(name === "color"){
+      let c = a.pos[0];
+      try{
+        const col = Array.isArray(c) ? new THREE.Color(c[0], c[1], c[2]) : new THREE.Color(String(c));
+        grp.traverse(o => { if(o.isMesh) o.material = new THREE.MeshStandardMaterial({color: col, roughness: .55, metalness: .15}); });
+      }catch{}
+      return grp;
+    }
+    err("unsupported operation '" + name + "' -- preview covers sphere/cube/cylinder + translate/rotate/scale/union/color");
+  }
+  const root = new THREE.Group();
+  while((ws(), i < s.length)){ const n = statement(); if(n) root.add(n); }
+  if(!root.children.length) err("no renderable geometry found");
+  const zUp = new THREE.Group();
+  zUp.rotation.x = -Math.PI/2;   // OpenSCAD Z-up -> stage Y-up
+  zUp.add(root);
+  return zUp;
+}
 function make3dBlock(name, url){
   const box = document.createElement("div");
   box.className = "n3d"; box.dataset.name = name; box.dataset.url = url;
@@ -6672,6 +6854,34 @@ function make3dBlock(name, url){
   zone.querySelector(".n3d-pop").onclick = ()=>open3dWindow(name, url);
   wireModelFileActions(zone, name, url);
   box.appendChild(zone);
+  // .scad blocks: 3D-first with a Code toggle (2026-07-29, human-directed)
+  // -- same text/graph idiom the mermaid block has. The source is stashed
+  // by boot3dViewer once fetched (or pre-seeded for ```scad fences).
+  if(SCAD_EXT.test(name) || box.__scadSource !== undefined){
+    const codeBtn = document.createElement("button");
+    codeBtn.type = "button"; codeBtn.className = "iconbtn n3d-code";
+    codeBtn.setAttribute("aria-pressed", "false");
+    codeBtn.textContent = "Code";
+    const actions = zone.querySelector(".mw-actions");
+    actions.insertBefore(codeBtn, actions.firstChild);
+    codeBtn.onclick = ()=>{
+      const on = codeBtn.getAttribute("aria-pressed") !== "true";
+      codeBtn.setAttribute("aria-pressed", String(on));
+      box.classList.toggle("show-code", on);
+      if(on && !box.querySelector(".n3d-src")){
+        const srcWrap = document.createElement("div");
+        srcWrap.className = "n3d-src ncode";
+        srcWrap.setAttribute("data-lang", "scad");
+        const pre = document.createElement("pre");
+        pre.className = "ncode-pre";
+        const code = document.createElement("code");
+        code.textContent = box.__scadSource || "// source still loading…";
+        pre.appendChild(code); srcWrap.appendChild(pre);
+        box.appendChild(srcWrap);
+        hydrateCodeBlocks(box);
+      }
+    };
+  }
   boot3dViewer(box).catch(err=>{
     // surface the real reason IN the block — a silent flat strip is undebuggable
     lab.textContent = "3D · failed: " + name.split("/").pop();
@@ -6782,9 +6992,17 @@ async function boot3dViewer(box){
   const url = box.dataset.url, name = box.dataset.name;
   const cv = box.querySelector("canvas");
   let object;
-  if(GLTF_EXT.test(name)){
+  if(box.__scadSource !== undefined){
+    object = parseSCAD(box.__scadSource);
+  }else if(GLTF_EXT.test(name)){
     const {GLTFLoader} = await import("/vendor/GLTFLoader.js");
     object = (await new GLTFLoader().loadAsync(url)).scene;
+  }else if(SCAD_EXT.test(name)){
+    const res = await fetch(url);
+    if(!res.ok) throw new Error("fetch failed");
+    box.__scadSource = await res.text();
+    object = parseSCAD(box.__scadSource);
+    if(box.__onScadSource) box.__onScadSource(box.__scadSource);
   }else{
     const res = await fetch(url);
     if(!res.ok) throw new Error("fetch failed");
@@ -7390,7 +7608,7 @@ function appendArtifactRailRow(panel, railEntry, isTerminal){
 const ARTIFACT_IMG_EXT = /\.(png|jpe?g|gif|webp|svg)$/i;
 function artifactViewerKind(name){
   const n = String(name || "");
-  if(GLTF_EXT.test(n) || MESH_EXT.test(n)) return "3d";
+  if(GLTF_EXT.test(n) || MESH_EXT.test(n) || SCAD_EXT.test(n)) return "3d";
   if(VID_EXT.test(n)) return "video";
   if(ARTIFACT_IMG_EXT.test(n)) return "image";
   return "unknown";
@@ -8728,6 +8946,21 @@ function buildChatOverlay(){
   lastx.className = "ast-chat-lastx";
   lastxWrap.appendChild(lastx);
   header.appendChild(lastxWrap);
+  // detach/dock (2026-07-29, human-directed): the chat pops out into a
+  // draggable, RESIZABLE window; while detached the left column's
+  // brains/filters reclaim the full height (body.chat-docked drives the
+  // 2/3 cap, see CSS). The header doubles as the drag surface when
+  // detached (wireWinDrag's [data-drag] contract; its own button guard
+  // keeps SHOW LAST/× clicks working).
+  const detachBtn = document.createElement("button");
+  detachBtn.id = "ast-chat-detach";
+  detachBtn.className = "ast-chat-detach";
+  detachBtn.setAttribute("aria-pressed", "false");
+  detachBtn.textContent = "⧉";
+  detachBtn.title = "Detach chat into a floating window";
+  detachBtn.setAttribute("aria-label", "Detach chat into a floating window");
+  detachBtn.onclick = ()=>{ setChatDetached(!(uiState.chatDetached === true)); };
+  header.appendChild(detachBtn);
   const close = document.createElement("button");
   close.className = "ast-chat-close";
   close.textContent = "×";
@@ -8968,6 +9201,8 @@ async function openChatOverlay(){
   }
   const overlay = buildChatOverlay();
   document.body.appendChild(overlay);
+  // restore the persisted detach/dock state (and the docked 2/3 cap class)
+  setChatDetached(uiState.chatDetached === true);
   renderChatLastXToggle();
   // #480: focus the moment the overlay exists in the DOM -- before the
   // /assistant/status round trip, so "T, type" works even while that
@@ -8999,10 +9234,78 @@ async function openChatOverlay(){
   }
   await loadChatHistory();
 }
+// Detach/dock state for the chat overlay (2026-07-29, human-directed).
+// Persisted (uiState.chatDetached + chatWinRect) so a refresh restores the
+// floating window where it was left. body.chat-docked is what the left
+// column's CSS keys on: present only while a DOCKED chat overlay exists,
+// so brains/filters reclaim the full height whenever the chat is detached
+// or closed.
+function syncChatDockBodyClass(){
+  const overlay = document.getElementById("ast-chat-overlay");
+  const docked = !!overlay && uiState.chatDetached !== true;
+  if(document.body && document.body.classList) document.body.classList.toggle("chat-docked", docked);
+}
+function saveChatWinRect(overlay){
+  if(uiState.chatDetached !== true || !overlay) return;
+  uiState.chatWinRect = {
+    left: overlay.offsetLeft, top: overlay.offsetTop,
+    width: overlay.offsetWidth, height: overlay.offsetHeight,
+  };
+  saveUiState();
+}
+function setChatDetached(on){
+  uiState.chatDetached = !!on;
+  saveUiState();
+  const overlay = document.getElementById("ast-chat-overlay");
+  syncChatDockBodyClass();
+  if(!overlay) return;
+  overlay.classList.toggle("detached", !!on);
+  const btn = document.getElementById("ast-chat-detach");
+  if(btn){
+    btn.setAttribute("aria-pressed", String(!!on));
+    btn.textContent = on ? "⇱" : "⧉";
+    btn.title = on ? "Dock chat back into the left column" : "Detach chat into a floating window";
+  }
+  const header = overlay.querySelector ? overlay.querySelector(".ast-chat-header") : null;
+  if(on){
+    const r = uiState.chatWinRect || {
+      left: Math.round(innerWidth*.5), top: Math.round(innerHeight*.22),
+      width: Math.min(520, Math.round(innerWidth*.42)), height: Math.round(innerHeight*.55),
+    };
+    overlay.style.left = r.left + "px";
+    overlay.style.top = r.top + "px";
+    overlay.style.width = r.width + "px";
+    overlay.style.height = r.height + "px";
+    overlay.style.bottom = "auto";
+    overlay.style.zIndex = ++noteWinZ;
+    if(header) header.setAttribute("data-drag", "");
+    if(!overlay.__dragWired){
+      overlay.__dragWired = true;
+      wireWinDrag(overlay);
+      overlay.addEventListener("pointerup", ()=>saveChatWinRect(overlay));
+      if(typeof ResizeObserver !== "undefined"){
+        let t = null;
+        new ResizeObserver(()=>{
+          clearTimeout(t);
+          t = setTimeout(()=>saveChatWinRect(overlay), 300);
+        }).observe(overlay);
+      }
+      overlay.addEventListener("pointerdown", ()=>{
+        if(overlay.classList.contains("detached")) overlay.style.zIndex = ++noteWinZ;
+      }, true);
+    }
+  }else{
+    overlay.style.left = overlay.style.top = overlay.style.width = "";
+    overlay.style.height = overlay.style.bottom = overlay.style.zIndex = "";
+    if(header) header.removeAttribute("data-drag");
+  }
+}
 function closeChatOverlay(){
   stopChatElapsed();
   const overlay = document.getElementById("ast-chat-overlay");
   if(overlay) overlay.remove();
+  // no overlay -> no dock cap; brains/filters get the full column back
+  syncChatDockBodyClass();
 }
 function handleAssistantChatKeydown(ev){
   if(ev.key === "Escape"){

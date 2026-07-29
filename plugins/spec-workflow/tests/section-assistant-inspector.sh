@@ -237,6 +237,7 @@ eval(extract("isChatTypingTarget"));
 eval(extract("unbindAssistantPickerKeys"));
 eval(extract("renderAssistantPicker"));
 eval(extract("stopChatElapsed"));
+global.syncChatDockBodyClass = () => {};
 eval(extract("closeChatOverlay"));
 eval(extract("handleAssistantChatKeydown"));
 

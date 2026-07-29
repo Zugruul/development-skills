@@ -239,7 +239,13 @@ eval(extract("focusChatInput"));
 // context (setAssistantMediaCtx) from the status payload -- stubbed as a
 // recorder here.
 global.setAssistantMediaCtx = () => {};
+// detach/dock (2026-07-29): openChatOverlay restores the persisted state
+// via setChatDetached -- stubbed as a recorder; geometry/drag behavior is
+// a real-browser concern, not this DOM stub's.
+global.setChatDetached = () => {};
+global.syncChatDockBodyClass = () => {};
 eval(extract("openChatOverlay"));
+if (typeof global.syncChatDockBodyClass === "undefined") global.syncChatDockBodyClass = () => {};
 eval(extract("closeChatOverlay"));
 eval(extract("handleAssistantChatKeydown"));
 
@@ -806,7 +812,13 @@ eval(extract("focusChatInput"));
 // context (setAssistantMediaCtx) from the status payload -- stubbed as a
 // recorder here.
 global.setAssistantMediaCtx = () => {};
+// detach/dock (2026-07-29): openChatOverlay restores the persisted state
+// via setChatDetached -- stubbed as a recorder; geometry/drag behavior is
+// a real-browser concern, not this DOM stub's.
+global.setChatDetached = () => {};
+global.syncChatDockBodyClass = () => {};
 eval(extract("openChatOverlay"));
+if (typeof global.syncChatDockBodyClass === "undefined") global.syncChatDockBodyClass = () => {};
 eval(extract("closeChatOverlay"));
 
 (async () => {

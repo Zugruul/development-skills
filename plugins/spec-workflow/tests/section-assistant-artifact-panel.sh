@@ -132,7 +132,7 @@ eval(extract("applyArtifactTraceEvent"));
 // round 1 BLOCKER 1: artifactViewerKind depends on the SAME extension regexes
 // hydrateNoteMedia already classifies note media with (VID_EXT/GLTF_EXT/
 // MESH_EXT, one shared const line) plus this feature's own image set.
-defineConstsFromLine("const VID_EXT = ", ["VID_EXT", "GLTF_EXT", "MESH_EXT"]);
+defineConstsFromLine("const VID_EXT = ", ["VID_EXT", "GLTF_EXT", "MESH_EXT", "SCAD_EXT"]);
 defineConstsFromLine("const ARTIFACT_IMG_EXT = ", ["ARTIFACT_IMG_EXT"]);
 eval(extract("artifactViewerKind"));
 
@@ -370,7 +370,7 @@ eval(extract("renderQueueChip"));
 // harness above already validated in isolation -- mountArtifactViewer
 // (already eval'd above) calls artifactViewerKind internally, so it must
 // exist in THIS harness's global scope too.
-defineConstsFromLine("const VID_EXT = ", ["VID_EXT", "GLTF_EXT", "MESH_EXT"]);
+defineConstsFromLine("const VID_EXT = ", ["VID_EXT", "GLTF_EXT", "MESH_EXT", "SCAD_EXT"]);
 defineConstsFromLine("const ARTIFACT_IMG_EXT = ", ["ARTIFACT_IMG_EXT"]);
 eval(extract("artifactViewerKind"));
 // round 1 BLOCKER 2/judgment call: the real-count function and the poller
