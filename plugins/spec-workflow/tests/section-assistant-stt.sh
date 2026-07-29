@@ -42,13 +42,14 @@ check "delta ties the deferred sidecar to E6/AST-060/061 provisioning" "AST-060/
 check "delta records the honest-unavailable requirement" "whisper sidecar not available" "$DELTA_STT_BODY"
 check "delta records the §17.9 hard gate applies to STT start" "STT cannot start while" "$DELTA_STT_BODY"
 
-echo "-- template: settings panel gains an STT engine control, default whisper, persisted --"
+echo "-- template: settings panel gains an STT engine control, default web-speech (#491), persisted --"
 NVHTML_STT_BODY="$(cat "$NVHTML_STT")"
 check "settings panel: whisper option present" 'id="vs-stt-whisper"' "$NVHTML_STT_BODY"
 check "settings panel: web-speech option present" 'id="vs-stt-webspeech"' "$NVHTML_STT_BODY"
-check "settings panel: hint names whisper.cpp as local/default" "whisper.cpp is the default" "$NVHTML_STT_BODY"
+check "#491: hint names Web Speech as the default while the sidecar contract is unfinished" "Web Speech is the default" "$NVHTML_STT_BODY"
+check "#491: hint says whisper returns as default once the sidecar capability lands" "#424" "$NVHTML_STT_BODY"
 check "settings panel: hint names Web Speech as needing no install" "needs no install" "$NVHTML_STT_BODY"
-check "sttEngineChoice() defaults to whisper when unset" 'function sttEngineChoice(){' "$NVHTML_STT_BODY"
+check "sttEngineChoice() defaults to web-speech when unset (#491)" 'function sttEngineChoice(){' "$NVHTML_STT_BODY"
 check "setSttEngineChoice persists via saveUiState (same path as the rest of the panel)" "function setSttEngineChoice(choice){" "$NVHTML_STT_BODY"
 
 echo "-- template: STT engine abstraction -- two implementations, honest degrade --"
@@ -58,6 +59,15 @@ check "WhisperSttEngine class exists" "class WhisperSttEngine{" "$NVHTML_STT_BOD
 check "WhisperSttEngine surfaces the honest unavailable-sidecar message" "whisper sidecar not available -- install via the whisper capability" "$NVHTML_STT_BODY"
 check "WhisperSttEngine's unavailable message offers the Web Speech alternative" "switch to Web Speech in Settings" "$NVHTML_STT_BODY"
 check "sttEngines registry wires both engine names to their implementations" 'const sttEngines = { whisper: new WhisperSttEngine(), "web-speech": new WebSpeechSttEngine() };' "$NVHTML_STT_BODY"
+check "#491: web-speech requests interim results for live STT feedback" "r.interimResults = true" "$NVHTML_STT_BODY"
+check "#491: startStt threads the live-interim callback into the engine" "sttUpdatePendingBubble(live)" "$NVHTML_STT_BODY"
+check "#491: startStt shows the pending bubble when capture starts, span-guarded" "sttShowPendingBubble(spanId);" "$NVHTML_STT_BODY"
+check "#491: onSttText clears the pending bubble before the real row renders" "sttRemovePendingBubble();" "$NVHTML_STT_BODY"
+check "#490: the mic dot is driven by capture truth every frame" "function syncCaptureDot(){" "$NVHTML_STT_BODY"
+check "#490: drawViz syncs the capture dot each frame" "syncCaptureDot(); // #490" "$NVHTML_STT_BODY"
+check "#491: pending-bubble style exists" ".ast-chat-pending{" "$NVHTML_STT_BODY"
+check "#491 review finding 2: the dashed edge wins specificity over the user-row border shorthand" '.ast-chat-row[data-role="user"].ast-chat-pending{border-style:dashed}' "$NVHTML_STT_BODY"
+check "#491 review finding 4: sttShowPendingBubble guards against a turn that ended during the overlay-open await" "if(spanId !== undefined && window.__sttSpanId !== spanId) return;" "$NVHTML_STT_BODY"
 
 echo "-- template: onSttText hook routes into the existing chat-send path --"
 check "onSttText(text, turnId) exists -- AST-052 (#334) threads a turnId through for span correlation" "function onSttText(text, turnId){" "$NVHTML_STT_BODY"
@@ -177,9 +187,18 @@ global.queueOrSendChat = (text, turnId, source) => { queuedChatMessages.push(tex
 // trigger it well before the dedicated REPORTS_STT_FAILURE_OK test does.
 let reportedFailures = [];
 global.reportSttFailure = (msg) => { reportedFailures.push(msg); };
+// #491: startStt/onSttText now drive the live-transcription pending
+// bubble -- stubbed as recorders here (the REAL functions are exercised
+// against the full chat DOM stub in section-assistant-voice-turn.sh's
+// second harness; this harness has no chat overlay DOM), same pattern as
+// reportSttFailure above.
+let pendingBubbleCalls = [];
+global.sttShowPendingBubble = async () => { pendingBubbleCalls.push(["show"]); };
+global.sttUpdatePendingBubble = (t) => { pendingBubbleCalls.push(["update", t]); };
+global.sttRemovePendingBubble = () => { pendingBubbleCalls.push(["remove"]); };
 
 (async () => {
-// ---- setting: default whisper, toggle persists ----
+// ---- setting: default web-speech (#491, until #424 lands), toggle persists ----
 // saveUiState() itself is a one-liner in the template (not extractable via
 // the block-regex above); stub the SAME contract it has -- persist
 // uiState to the nv-ui localStorage key -- rather than regex-splice it.
@@ -189,23 +208,28 @@ eval(extract("sttEngineChoice"));
 eval(extract("applySttEngineUi"));
 eval(extract("setSttEngineChoice"));
 
-if (sttEngineChoice() !== "whisper") throw new Error("default sttEngineChoice must be whisper, got " + sttEngineChoice());
-console.log("DEFAULT_WHISPER_OK true");
+// #491: whisper's sidecar contract is unfinished (#424 -- the shipped
+// client posts /transcribe, the sidecar serves /inference), so defaulting
+// to it hands every fresh profile a voice path that CANNOT transcribe.
+// Web Speech is the default until #424 lands; an explicit whisper choice
+// still persists and wins.
+if (sttEngineChoice() !== "web-speech") throw new Error("#491: default sttEngineChoice must be web-speech while the whisper sidecar contract (#424) is unfinished, got " + sttEngineChoice());
+console.log("DEFAULT_WEBSPEECH_OK true");
 
-setSttEngineChoice("web-speech");
-if (sttEngineChoice() !== "web-speech") throw new Error("setSttEngineChoice(web-speech) did not take effect");
-if (elements["vs-stt-webspeech"].getAttribute("aria-pressed") !== "true") throw new Error("vs-stt-webspeech should be pressed after selecting web-speech");
-if (elements["vs-stt-whisper"].getAttribute("aria-pressed") !== "false") throw new Error("vs-stt-whisper should NOT be pressed after selecting web-speech");
+setSttEngineChoice("whisper");
+if (sttEngineChoice() !== "whisper") throw new Error("setSttEngineChoice(whisper) did not take effect");
+if (elements["vs-stt-whisper"].getAttribute("aria-pressed") !== "true") throw new Error("vs-stt-whisper should be pressed after selecting whisper");
+if (elements["vs-stt-webspeech"].getAttribute("aria-pressed") !== "false") throw new Error("vs-stt-webspeech should NOT be pressed after selecting whisper");
 console.log("TOGGLE_APPLIES_OK true");
 
 // persisted like the rest of the panel: reload uiState from localStorage the
 // same way the template's own boot sequence does, and the choice must survive
 const persisted = JSON.parse(localStorage.getItem("nv-ui") || "{}");
-if (persisted.sttEngine !== "web-speech") throw new Error("sttEngine was not persisted to the nv-ui localStorage key");
+if (persisted.sttEngine !== "whisper") throw new Error("sttEngine was not persisted to the nv-ui localStorage key");
 console.log("PERSIST_OK true");
 
-setSttEngineChoice("whisper");
-if (sttEngineChoice() !== "whisper") throw new Error("setSttEngineChoice(whisper) did not take effect");
+setSttEngineChoice("web-speech");
+if (sttEngineChoice() !== "web-speech") throw new Error("setSttEngineChoice(web-speech) did not take effect");
 console.log("SWITCH_BACK_OK true");
 
 // #454 (P0 live-bug batch): WebSpeechSttEngine's silence-timeout
@@ -255,12 +279,12 @@ defineConst("STT_WEBSPEECH_LIVENESS_MS");
     const engine = new WebSpeechSttEngine();
     let gotResult = null, resultCalls = 0;
     engine.start((text) => { gotResult = text; resultCalls++; }, () => {});
-    startedInstance.onresult({ results: [[{ transcript: "Are you" }]] });
+    startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "Are you" }], { isFinal: true })] });
     if (resultCalls !== 0) throw new Error("a single final segment must not finalize the turn immediately -- that is the #454 truncation bug");
     if (scheduledTimers.size !== 1) throw new Error("a final segment must schedule exactly one silence timer, got " + scheduledTimers.size);
     if ([...scheduledTimers.values()][0].ms !== STT_WEBSPEECH_SILENCE_MS) throw new Error("the scheduled delay must be STT_WEBSPEECH_SILENCE_MS, got " + [...scheduledTimers.values()][0].ms);
     // speech resumes before the silence timeout elapses -- must EXTEND, not truncate
-    startedInstance.onresult({ results: [[{ transcript: "there" }]] });
+    startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "there" }], { isFinal: true })] });
     if (resultCalls !== 0) throw new Error("a second segment arriving before the silence timeout must not have finalized yet either");
     if (scheduledTimers.size !== 1) throw new Error("the second segment must reset (not add to) the pending timer, got " + scheduledTimers.size + " pending");
     // the turn actually goes quiet now
@@ -268,6 +292,30 @@ defineConst("STT_WEBSPEECH_LIVENESS_MS");
     if (resultCalls !== 1) throw new Error("the silence timeout must finalize the turn exactly once, got " + resultCalls + " calls");
     if (gotResult !== "Are you there") throw new Error("expected the ACCUMULATED transcript across both segments, got " + JSON.stringify(gotResult));
     console.log("WEBSPEECH_ENDPOINTING_ACCUMULATES_OK true");
+    delete global.window.SpeechRecognition;
+}
+{
+    // #491: interim (non-final) results feed the live transcription
+    // bubble via onInterim -- streamed as they arrive, WITHOUT finalizing
+    // the turn and WITHOUT touching the silence timer (#454's endpointing
+    // keys off FINAL segments only; an interim mid-word must never
+    // schedule or reset a finalize).
+    let startedInstance = null;
+    global.window.SpeechRecognition = function () { startedInstance = this; this.start = () => {}; this.stop = () => {}; };
+    const engine = new WebSpeechSttEngine();
+    let interims = [], resultCalls = 0;
+    engine.start(() => { resultCalls++; }, () => {}, (live) => { interims.push(live); });
+    startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "hel" }], { isFinal: false })] });
+    startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "hello wor" }], { isFinal: false })] });
+    if (interims.join("|") !== "hel|hello wor") throw new Error("interim segments must stream through onInterim as they arrive, got " + JSON.stringify(interims));
+    if (scheduledTimers.size !== 0) throw new Error("an interim (non-final) segment must NOT arm the silence timer -- endpointing keys off finals only");
+    if (resultCalls !== 0) throw new Error("interims must never finalize the turn");
+    startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "hello world" }], { isFinal: true })] });
+    if (scheduledTimers.size !== 1) throw new Error("the final segment must still arm the silence timer");
+    if (interims[interims.length - 1] !== "hello world") throw new Error("a final segment must refresh the live text with the accumulated buffer, got " + JSON.stringify(interims[interims.length - 1]));
+    fireLatestTimer();
+    if (resultCalls !== 1) throw new Error("silence after the final must finalize exactly once");
+    console.log("WEBSPEECH_INTERIM_STREAMS_OK true");
     delete global.window.SpeechRecognition;
 }
 {
@@ -283,7 +331,7 @@ defineConst("STT_WEBSPEECH_LIVENESS_MS");
     const engine = new WebSpeechSttEngine();
     let gotResult = null, resultCalls = 0;
     engine.start((text) => { gotResult = text; resultCalls++; }, () => {});
-    startedInstance.onresult({ results: [[{ transcript: "partial" }]] });
+    startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "partial" }], { isFinal: true })] });
     engine.stop(); // manual stop BEFORE the silence timeout fires
     if (resultCalls !== 1) throw new Error("stop() must flush the buffered segment immediately, got " + resultCalls + " calls");
     if (gotResult !== "partial") throw new Error("expected the buffered text to be flushed on manual stop, got " + JSON.stringify(gotResult));
@@ -339,7 +387,7 @@ defineConst("STT_WEBSPEECH_LIVENESS_MS");
     staleOnResult({ results: [[{ transcript: "stale from A" }]] });
     if (resultsA.length !== 0 || resultsB.length !== 0) throw new Error("a stale instance's onresult must be a no-op, not deliver into either session's onResult -- got A=" + JSON.stringify(resultsA) + " B=" + JSON.stringify(resultsB));
     // session B still works normally afterward
-    instanceB.onresult({ results: [[{ transcript: "from B" }]] });
+    instanceB.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "from B" }], { isFinal: true })] });
     fireLatestTimer();
     if (resultsB.length !== 1 || resultsB[0] !== "from B") throw new Error("session B must still finalize normally after the stale A event was ignored, got " + JSON.stringify(resultsB));
     console.log("WEBSPEECH_STALE_INSTANCE_IGNORED_OK true");
@@ -362,7 +410,7 @@ defineConst("STT_WEBSPEECH_LIVENESS_MS");
     // still reach onResult normally rather than being silently dropped.
     let resultCalls = 0;
     engine.onResult = () => { resultCalls++; }; // _finalize reads this.onResult directly
-    startedInstance.onresult({ results: [[{ transcript: "captured before stop" }]] });
+    startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "captured before stop" }], { isFinal: true })] });
     fireLatestTimer();
     if (resultCalls !== 1) throw new Error("a legitimate late result on the SAME generation (no new start() yet) must still deliver, got " + resultCalls + " calls");
     console.log("WEBSPEECH_LATE_RESULT_AFTER_STOP_SAME_GEN_OK true");
@@ -468,7 +516,7 @@ defineConst("STT_WEBSPEECH_LIVENESS_MS");
     // an onresult event carrying no usable transcript still arms the
     // silence timer (existing accumulation behavior) -- firing it must be
     // a no-op, and critically must NOT stop/clear the engine.
-    startedInstance.onresult({ results: [[{ transcript: "" }]] });
+    startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "" }], { isFinal: true })] });
     fireLatestTimer();
     if (resultCalls !== 0) throw new Error("an empty-buffer finalize must never call onResult");
     if (engine.recog !== startedInstance) throw new Error("hyp 3 is ruled out only if an empty finalize leaves the engine's recog untouched -- it must NOT stop/clear it");
@@ -593,7 +641,7 @@ delete global.window.SpeechRecognition;
     // the REAL outcome (a transcript) arrives now -- exactly ONE stt-end,
     // "ok", tagged with the SAME turn_id, emitted only once success is
     // actually known.
-    startedInstance.onresult({ results: [[{ transcript: "final phrase" }]] });
+    startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "final phrase" }], { isFinal: true })] });
     fireLatestTimer();
     const endSpans = window.assistantVoiceSpans.filter(e => e.kind === "stt-end");
     if (endSpans.length !== 1) throw new Error("expected exactly ONE stt-end span for this turn, got " + endSpans.length);
@@ -737,12 +785,13 @@ tmpl_stt_out="$(node "$_ast_node" "$NVHTML_STT" 2>&1)"
 tmpl_stt_rc=$?
 rm -f "$_ast_node"
 check_rc "STT template script exits 0" 0 "$tmpl_stt_rc"
-check "default sttEngineChoice is whisper" "DEFAULT_WHISPER_OK true" "$tmpl_stt_out"
+check "default sttEngineChoice is web-speech (#491, until #424 lands)" "DEFAULT_WEBSPEECH_OK true" "$tmpl_stt_out"
 check "toggle applies to the settings-panel buttons" "TOGGLE_APPLIES_OK true" "$tmpl_stt_out"
 check "toggle persists in the nv-ui localStorage key" "PERSIST_OK true" "$tmpl_stt_out"
-check "switching back to whisper works" "SWITCH_BACK_OK true" "$tmpl_stt_out"
+check "switching back to web-speech works" "SWITCH_BACK_OK true" "$tmpl_stt_out"
 check "Web Speech engine degrades honestly when unavailable" "WEBSPEECH_DEGRADE_OK true" "$tmpl_stt_out"
 check "#454 (P0 live-bug batch): silence-timeout endpointing accumulates final segments across a mid-sentence pause into ONE turn, instead of truncating on the first" "WEBSPEECH_ENDPOINTING_ACCUMULATES_OK true" "$tmpl_stt_out"
+check "#491: interim results stream through onInterim without touching endpointing" "WEBSPEECH_INTERIM_STREAMS_OK true" "$tmpl_stt_out"
 check "#454: a manual stop (press again) flushes whatever's buffered immediately, never losing it" "WEBSPEECH_MANUAL_STOP_FLUSHES_OK true" "$tmpl_stt_out"
 check "#454: a manual stop with nothing captured yet never calls onResult with empty text" "WEBSPEECH_EMPTY_STOP_NO_RESULT_OK true" "$tmpl_stt_out"
 check "#474 hyp1/hyp4: a stale (pre-teardown) recognizer instance's events never corrupt the new session, and a new session finalizes normally afterward" "WEBSPEECH_STALE_INSTANCE_IGNORED_OK true" "$tmpl_stt_out"

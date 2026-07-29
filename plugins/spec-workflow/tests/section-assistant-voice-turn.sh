@@ -89,7 +89,7 @@ check_absent "stopStt()'s own body never touches window.__sttSpanId either -- it
 
 echo "-- template: #454 (P0 live-bug batch) -- silence-timeout endpointing, named constant --"
 check "STT_WEBSPEECH_SILENCE_MS is a named constant, not a magic number inline" "const STT_WEBSPEECH_SILENCE_MS = 1300;" "$NVHTML_VT_BODY"
-check "WebSpeechSttEngine accumulates final segments into a buffer instead of finalizing on the first one" "if(text) this.buffer += (this.buffer ? \" \" : \"\") + text.trim();" "$NVHTML_VT_BODY"
+check "WebSpeechSttEngine accumulates final segments into a buffer instead of finalizing on the first one" "if(t) this.buffer += (this.buffer ? \" \" : \"\") + t;" "$NVHTML_VT_BODY"
 check "a manual stop() flushes the buffered segment immediately rather than losing it" "if(this.silenceTimer) this._finalize();" "$NVHTML_VT_BODY"
 
 echo "-- template: #451 (P0 live-bug batch) -- a failed voice turn must SAY why --"
@@ -305,6 +305,14 @@ global.queueOrSendChat = (text, turnId, source) => { queuedChatCalls.push({text,
 // never defined.
 let reportSttFailureCalls = [];
 global.reportSttFailure = async (message) => { reportSttFailureCalls.push(message); };
+// #491: startStt/onSttText drive the live-transcription pending bubble --
+// stubbed as recorders in THIS harness (the real functions run against
+// the full chat DOM stub in the second harness below), same pattern as
+// reportSttFailure above.
+let pendingBubbleCalls = [];
+global.sttShowPendingBubble = async () => { pendingBubbleCalls.push(["show"]); };
+global.sttUpdatePendingBubble = (t) => { pendingBubbleCalls.push(["update", t]); };
+global.sttRemovePendingBubble = () => { pendingBubbleCalls.push(["remove"]); };
 eval(extract("emitVoiceSpan"));
 eval(extract("trackLocalVoiceSpan"));
 eval(extract("newClientTurnId"));
@@ -394,7 +402,7 @@ if (!mintedTurnId) throw new Error("starting via the mic control must mint and r
 // a single final segment schedules the silence timer instead of finalizing
 // immediately -- fire it to reach the same "turn actually finalized" point
 // this test already asserts on.
-startedInstance.onresult({ results: [[{ transcript: "hello assistant " }]] });
+startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "hello assistant " }], { isFinal: true })] });
 fireLatestTimer();
 if (queuedChatCalls.length !== 1) throw new Error("a final transcript must forward exactly once into queueOrSendChat, got " + queuedChatCalls.length);
 if (queuedChatCalls[0].text !== "hello assistant") throw new Error("expected the trimmed transcript, got " + JSON.stringify(queuedChatCalls[0].text));
@@ -456,7 +464,7 @@ console.log("NO_SPEECH_STOP_EMITS_TERMINAL_SPAN_OK true");
 // left to advance, and nothing must reach queueOrSendChat either.
 toggleSttListening(); // start a fresh turn
 queuedChatCalls = [];
-startedInstance.onresult({ results: [[{ transcript: "Are you" }]] });
+startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "Are you" }], { isFinal: true })] });
 startedInstance.onerror({ error: "network" });
 if (scheduledTimers.size !== 0) throw new Error("onerror must clear the armed silence timer, found " + scheduledTimers.size + " still scheduled -- the stale-timer-fires-after-error bug");
 if (queuedChatCalls.length !== 0) throw new Error("no buffered segment may reach queueOrSendChat once the turn has errored, got " + queuedChatCalls.length + " call(s)");
@@ -497,7 +505,7 @@ if (window.__sttListening) toggleSttListening();
 toggleSttListening(); // start a fresh turn
 const doubleSpanTurnId = window.__sttSpanId;
 queuedChatCalls = [];
-startedInstance.onresult({ results: [[{ transcript: "Are you" }]] }); // buffers, arms the silence timer -- does NOT finalize yet
+startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "Are you" }], { isFinal: true })] }); // buffers, arms the silence timer -- does NOT finalize yet
 toggleSttListening(); // press again to stop early -- stopStt() flushes the buffer SYNCHRONOUSLY
 const doubleSpanTerminals = window.assistantVoiceSpans.filter(e => e.kind === "stt-end" && e.turn_id === doubleSpanTurnId);
 if (doubleSpanTerminals.length !== 1) throw new Error("a manual stop that synchronously flushes a buffered segment must produce EXACTLY ONE terminal span, not " + doubleSpanTerminals.length + " (" + JSON.stringify(doubleSpanTerminals.map(e => e.status)) + ") -- the #454-round-2 double-span bug (reviewer-454 finding 2)");
@@ -516,7 +524,7 @@ console.log("MANUAL_STOP_FLUSH_SINGLE_SPAN_OK true");
 toggleSttListening(); // start a fresh turn
 const interlockTurnId = window.__sttSpanId;
 queuedChatCalls = [];
-startedInstance.onresult({ results: [[{ transcript: "Are you" }]] }); // buffers, does not finalize yet
+startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "Are you" }], { isFinal: true })] }); // buffers, does not finalize yet
 neuralSpeakCalls = [];
 speakReply("an unrelated reply", "reply-turn-unrelated");
 const interlockTerminals = window.assistantVoiceSpans.filter(e => e.kind === "stt-end" && e.turn_id === interlockTurnId);
@@ -535,6 +543,55 @@ const localStart = window.assistantVoiceSpans.find(e => e.kind === "stt-start" &
 const localEnd = window.assistantVoiceSpans.find(e => e.kind === "stt-end" && e.turn_id === mintedTurnId);
 if (!localStart || !localEnd) throw new Error("both stt-start and stt-end must join window.assistantVoiceSpans tagged with the turn's id");
 console.log("SPAN_CORRELATION_LOCAL_OK true");
+
+// ---- #490: the mic dot is CAPTURE TRUTH -- bright iff audio is actually
+// being captured (a live STT turn OR the visualizer's own mic), dark
+// otherwise. The human's live repro: the always-on visualizer captured
+// with a dark dot, while an STT turn showed a bright dot with dead bars
+// (#464's contention guard) and a broken engine -- the ensemble read
+// exactly INVERTED. syncCaptureDot (called every drawViz frame) makes the
+// dot track the real capture state no matter which path owns the mic. ----
+eval(extract("syncCaptureDot"));
+const dotBtn = elements["voice-stt"];
+// fresh state (human directive 2026-07-28): opening the page must NOT be
+// capturing -- empty uiState, no PTT, no turn => dot dark.
+global.uiState = {};
+window.voicePTT = false;
+window.__sttListening = false;
+syncCaptureDot();
+if (dotBtn.classList.contains("listening")) throw new Error("#490: fresh state must not read as capturing -- capture is off by default on load");
+console.log("CAPTUREDOT_FRESH_OFF_OK true");
+// visualizer mic-always-on captures with NO stt turn -> dot must be ON
+global.uiState = { micMode: "always", vdir: "both" };
+syncCaptureDot();
+if (!dotBtn.classList.contains("listening")) throw new Error("#490: always-on visualizer capture must light the dot (it IS capturing)");
+// direction out => micHot false => not capturing => dark
+global.uiState = { micMode: "always", vdir: "out" };
+syncCaptureDot();
+if (dotBtn.classList.contains("listening")) throw new Error("#490: direction=out means no inbound capture -- dot must be dark");
+// a live STT turn lights it even though micHot() is false during turns (#464)
+global.uiState = {};
+window.__sttListening = true;
+syncCaptureDot();
+if (!dotBtn.classList.contains("listening")) throw new Error("#490: a live STT turn must light the dot");
+window.__sttListening = false;
+syncCaptureDot();
+if (dotBtn.classList.contains("listening")) throw new Error("#490: dot must go dark once nothing captures");
+console.log("CAPTUREDOT_TRUTH_OK true");
+
+// ---- #491: the voice-turn journey drives the pending bubble: shown on
+// start, updated by interims, removed when the turn resolves ----
+pendingBubbleCalls.length = 0;
+window.assistantGate = { gated: false };
+const bubbleTurnId = "turn-bubble-1";
+startStt(bubbleTurnId);
+if (!pendingBubbleCalls.some(c => c[0] === "show")) throw new Error("#491: startStt must show the pending bubble");
+startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "live tex" }], { isFinal: false })] });
+if (!pendingBubbleCalls.some(c => c[0] === "update" && c[1] === "live tex")) throw new Error("#491: interims must update the pending bubble with the live text");
+startedInstance.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: "live text done" }], { isFinal: true })] });
+fireLatestTimer(); // silence elapses -> finalize -> onSttText
+if (!pendingBubbleCalls.some(c => c[0] === "remove")) throw new Error("#491: resolving the turn must remove the pending bubble");
+console.log("BUBBLE_JOURNEY_OK true");
 
 console.log("ALL_OK true");
 })().catch(e => { console.error("FAIL", e.message); process.exit(1); });
@@ -556,6 +613,9 @@ check "#475: the engine-error stop path clears the VISIBLE mic dot (classList + 
 check "#474 review round 1 finding 2 (reviewer-454): a manual stop that synchronously flushes a buffered segment emits exactly ONE terminal span (ok), not a duplicate ok-then-no-speech pair" "MANUAL_STOP_FLUSH_SINGLE_SPAN_OK true" "$tmpl_vt_out"
 check "#474 review round 1 finding 1 (reviewer-454): speakReply's interlock pausing a turn with a synchronously-flushed buffered segment emits exactly ONE terminal span (ok), not a duplicate ok-then-interrupted pair" "INTERLOCK_FLUSH_SINGLE_SPAN_OK true" "$tmpl_vt_out"
 check "stt-start/stt-end join window.assistantVoiceSpans under the turn's shared id" "SPAN_CORRELATION_LOCAL_OK true" "$tmpl_vt_out"
+check "#490: fresh state does not capture -- opening the page is never listening by default (human-directed)" "CAPTUREDOT_FRESH_OFF_OK true" "$tmpl_vt_out"
+check "#490: the mic dot is capture truth -- bright iff STT turn or visualizer mic is live, dark otherwise" "CAPTUREDOT_TRUTH_OK true" "$tmpl_vt_out"
+check "#491: the voice-turn journey shows/updates/removes the pending bubble" "BUBBLE_JOURNEY_OK true" "$tmpl_vt_out"
 check "the whole voice-turn template script completes" "ALL_OK true" "$tmpl_vt_out"
 if [[ "$tmpl_vt_rc" -ne 0 ]]; then echo "$tmpl_vt_out" >&2; fi
 
@@ -704,6 +764,12 @@ global.stopStt = () => { stopSttCalls++; };
 // sttEngineChoice() -- stubbed here the same way section-assistant-stt.sh's
 // harness does, since this file doesn't exercise engine selection itself.
 function sttEngineChoice(){ return "web-speech"; }
+// #491: the REAL pending-bubble functions, extracted BEFORE speakReply so
+// its interlock's new sttRemovePendingBubble() call resolves (review
+// finding 1) -- and driven directly by the lifecycle block further below.
+eval(extract("sttShowPendingBubble"));
+eval(extract("sttUpdatePendingBubble"));
+eval(extract("sttRemovePendingBubble"));
 eval(extract("speakReply"));
 eval(extract("dispatchNextChat"));
 eval(extract("queueOrSendChat"));
@@ -806,11 +872,19 @@ neuralSpeakCalls = [];
 stopSttCalls = 0;
 window.__sttListening = true;
 window.__sttSpanId = "interrupted-span-1";
+// #491 review finding 1: an interlock-interrupted turn with an EMPTY
+// buffer never reaches onSttText, so ONLY the interlock itself can clear
+// the live "listening…" bubble -- otherwise it strands in the log right
+// as the reply renders.
+await sttShowPendingBubble();
+if (!document.getElementById("ast-stt-pending")) throw new Error("setup: the pending bubble must exist before the interlock test means anything");
 speakReply("interrupting reply", "shared-turn-3");
 if (window.__sttSpanId !== null) throw new Error("the interlock must clear window.__sttSpanId once it honestly closes the interrupted turn's span");
 const interruptedSpan = window.assistantVoiceSpans.find(e => e.kind === "stt-end" && e.turn_id === "interrupted-span-1");
 if (!interruptedSpan) throw new Error("the interlock must emit a terminal stt-end span for the turn it just interrupted instead of leaving it hanging open");
 if (interruptedSpan.status !== "interrupted") throw new Error("the interrupted turn's stt-end span must carry status 'interrupted', got " + JSON.stringify(interruptedSpan.status));
+if (document.getElementById("ast-stt-pending")) throw new Error("#491 review finding 1: the interlock must clear the pending bubble -- an empty-buffer interrupted turn has no other path that removes it");
+console.log("BUBBLE_CLEARED_BY_INTERLOCK_OK true");
 console.log("ECHO_GUARD_INTERLOCK_CLOSES_OPEN_SPAN_OK true");
 
 // the interlock must stay a no-op when there was no open span to begin
@@ -866,6 +940,28 @@ console.log("STT_FAILURE_SURFACES_IN_OVERLAY_OK true");
 if (document.activeElement !== document.getElementById("ast-chat-input")) throw new Error("reportSttFailure's auto-open must focus #ast-chat-input, activeElement was " + (document.activeElement && document.activeElement.id));
 console.log("STT_FAILURE_FOCUSES_INPUT_OK true");
 
+// ---- #491: the REAL pending-bubble functions against the full chat DOM
+// stub (extracted near the top of this harness, before speakReply) --
+// lifecycle: show renders a muted user-side "listening…" row, updates
+// fill it with the live transcript, remove clears it. ----
+await sttShowPendingBubble();
+const pendingRow = document.getElementById("ast-stt-pending");
+if (!pendingRow) throw new Error("#491: sttShowPendingBubble must render the pending row");
+if (pendingRow.getAttribute("data-role") !== "user") throw new Error("#491: the pending bubble sits on the user side, got " + pendingRow.getAttribute("data-role"));
+if (pendingRow.className.indexOf("ast-chat-pending") === -1) throw new Error("#491: the pending bubble carries the muted pending class");
+if (pendingRow.textContent !== "listening…") throw new Error("#491: before any interim the bubble reads listening…, got " + JSON.stringify(pendingRow.textContent));
+const rowsBeforeDupe = document.getElementById("ast-chat-log").children.length;
+await sttShowPendingBubble(); // a second show while one is pending must not add a duplicate
+if (document.getElementById("ast-chat-log").children.length !== rowsBeforeDupe) throw new Error("#491: a second sttShowPendingBubble must not append a duplicate pending row");
+sttUpdatePendingBubble("hello wor");
+if (pendingRow.textContent !== "hello wor") throw new Error("#491: interims must fill the bubble with the live transcript, got " + JSON.stringify(pendingRow.textContent));
+sttUpdatePendingBubble("");
+if (pendingRow.textContent !== "listening…") throw new Error("#491: an empty interim falls back to listening…, got " + JSON.stringify(pendingRow.textContent));
+sttRemovePendingBubble();
+if (document.getElementById("ast-stt-pending")) throw new Error("#491: sttRemovePendingBubble must remove the row");
+sttRemovePendingBubble(); // second remove is a harmless no-op
+console.log("PENDING_BUBBLE_LIFECYCLE_OK true");
+
 console.log("ALL_OK true");
 })().catch(e => { console.error("FAIL", e.message); process.exit(1); });
 NODEJS
@@ -883,5 +979,7 @@ check "#474: the interlock's span-closing branch is a no-op when there was no op
 check "typed chat (no turnId/source) is unaffected -- fully backward compatible" "TYPED_CHAT_UNAFFECTED_OK true" "$tmpl_vt2_out"
 check "#451 (P0 live-bug batch): a pure STT failure (no transcript ever produced) auto-opens the overlay and renders the honest message as a red system row -- the human's silent-failure bug" "STT_FAILURE_SURFACES_IN_OVERLAY_OK true" "$tmpl_vt2_out"
 check "(#480) a voice-failure auto-open (reportSttFailure) also focuses the composer input" "STT_FAILURE_FOCUSES_INPUT_OK true" "$tmpl_vt2_out"
+check "#491 review finding 1: the echo-guard interlock clears the pending bubble for an empty-buffer interrupted turn" "BUBBLE_CLEARED_BY_INTERLOCK_OK true" "$tmpl_vt2_out"
+check "#491: the pending bubble's real lifecycle works against the chat DOM (show/update/fallback/remove, no duplicates)" "PENDING_BUBBLE_LIFECYCLE_OK true" "$tmpl_vt2_out"
 check "the whole voice-turn full-pipeline script completes" "ALL_OK true" "$tmpl_vt2_out"
 if [[ "$tmpl_vt2_rc" -ne 0 ]]; then echo "$tmpl_vt2_out" >&2; fi

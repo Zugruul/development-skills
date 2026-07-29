@@ -978,6 +978,15 @@ canvas.grabbing{cursor:grabbing}
    role (border-bottom-*-radius pulled in), role-colored bg/border. */
 .ast-chat-row{border-radius:.7rem;padding:.45rem .6rem;
   white-space:pre-wrap;max-width:88%;line-height:1.45;font-size:.7rem}
+/* #491: the live STT pending bubble -- same user-side bubble geometry,
+   visibly provisional (muted + italic + dashed edge) until the final
+   transcript replaces it as a real row. The dashed edge needs the
+   compound selector (review round 1, finding 2): the user-row rule's
+   border SHORTHAND sets border-style:solid at specificity 0,2,0, which
+   outranks a bare .ast-chat-pending (0,1,0) regardless of source order --
+   cascade resolves per-property by specificity. */
+.ast-chat-pending{opacity:.68;font-style:italic}
+.ast-chat-row[data-role="user"].ast-chat-pending{border-style:dashed}
 .ast-chat-row[data-role="user"]{align-self:flex-end;
   background:rgba(70,230,255,.12);border:1px solid var(--border);
   border-bottom-right-radius:.2rem}
@@ -1591,7 +1600,7 @@ canvas.grabbing{cursor:grabbing}
       <button class="iconbtn" id="vs-stt-whisper" aria-pressed="false">whisper.cpp (local)</button>
       <button class="iconbtn" id="vs-stt-webspeech" aria-pressed="false">Web Speech (browser)</button>
     </div>
-    <div class="vs-hint">whisper.cpp is the default -- fully local via a separate sidecar process (its own install/model capability, not yet provisioned by this template). Web Speech needs no install but sends audio to the browser vendor. If the whisper sidecar isn't running, switch here to keep using voice input.</div>
+    <div class="vs-hint">Web Speech is the default while the local whisper.cpp sidecar contract is unfinished (#424) -- whisper.cpp returns as the default once that lands. Web Speech needs no install but sends audio to the browser vendor; whisper.cpp is fully local via a separate sidecar process once installed.</div>
   </div>
   <!-- #449 (P2, human-directed): the top-level voice bar should carry
        only what is used DURING a voice turn -- inspection is a
@@ -4111,13 +4120,20 @@ document.getElementById("ast-ask-again").onclick = async ()=>{
 };
 
 // ---- STT engine setting (AST-051, SPEC-ASSISTANT.md §13.2, the decision
-// recorded in docs/spec-deltas/ast-051.md, issue #333): "whisper" (the
-// DEFAULT -- fully local via a sidecar client, see WhisperSttEngine below)
-// or "web-speech" (zero-install, the browser's own SpeechRecognition).
+// recorded in docs/spec-deltas/ast-051.md, issue #333): "whisper" (fully
+// local via a sidecar client, see WhisperSttEngine below) or "web-speech"
+// (zero-install, the browser's own SpeechRecognition).
+// #491 (spec delta docs/spec-deltas/491.md): web-speech is the DEFAULT --
+// temporarily inverting ast-051's whisper-default decision -- because the
+// shipped whisper client cannot transcribe until #424 lands (it POSTs
+// /transcribe; the bare sidecar serves /inference), so defaulting to it
+// hands every fresh profile a voice path that always fails. An explicit,
+// persisted whisper choice still wins; flip the default back when #424
+// closes.
 // Persisted in uiState like every other voice-panel setting (vdir,
 // micMode, ...) -- same localStorage key (nv-ui), same saveUiState() path. ----
 function sttEngineChoice(){
-  return uiState.sttEngine === "web-speech" ? "web-speech" : "whisper";
+  return uiState.sttEngine === "whisper" ? "whisper" : "web-speech";
 }
 function setSttEngineChoice(choice){
   uiState.sttEngine = choice === "web-speech" ? "web-speech" : "whisper";
@@ -4176,6 +4192,9 @@ const STT_WEBSPEECH_LIVENESS_MS = 8000;
 class WebSpeechSttEngine{
   constructor(){
     this.recog = null; this.buffer = ""; this.silenceTimer = null; this.onResult = null;
+    // #491: live-transcription hook -- receives the accumulated finals +
+    // current interim as one string while the human is still talking.
+    this.onInterim = null;
     // #474: monotonic session generation. The native recognizer's own
     // stop() is ASYNCHRONOUS -- the browser can keep delivering queued
     // events for a brief window after stop() returns. If start() is
@@ -4188,7 +4207,7 @@ class WebSpeechSttEngine{
     this._livenessTimer = null;
     this._manualStop = false;
   }
-  start(onResult, onError){
+  start(onResult, onError, onInterim){
     const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
     if(!Ctor){
       onError("web-speech-unavailable: this browser has no SpeechRecognition support -- switch to whisper.cpp (if the sidecar is installed) or use a browser that supports Web Speech.");
@@ -4196,12 +4215,14 @@ class WebSpeechSttEngine{
     }
     this.buffer = "";
     this.onResult = onResult;
+    this.onInterim = onInterim || null;
     this._manualStop = false;
     let settled = false; // this session already reported a terminal outcome (error/dead) -- guards onend from double-reporting after onerror/the watchdog already did
     const gen = ++this._gen;
     const r = this.recog = new Ctor();
     r.continuous = true;
-    r.interimResults = false;
+    // #491: interim results feed the live-transcription bubble.
+    r.interimResults = true;
     r.onaudiostart = ()=>{
       if(gen !== this._gen) return; // #474: stale instance, ignore
       clearTimeout(this._livenessTimer); this._livenessTimer = null;
@@ -4209,13 +4230,33 @@ class WebSpeechSttEngine{
     r.onresult = ev=>{
       if(gen !== this._gen) return; // #474: stale instance, ignore
       clearTimeout(this._livenessTimer); this._livenessTimer = null;
-      const res = ev.results[ev.results.length-1];
-      const text = res && res[0] && res[0].transcript;
-      if(text) this.buffer += (this.buffer ? " " : "") + text.trim();
-      // reset the silence timer on every new final segment -- only
-      // finalize once the turn actually goes quiet.
-      clearTimeout(this.silenceTimer);
-      this.silenceTimer = setTimeout(()=>this._finalize(), STT_WEBSPEECH_SILENCE_MS);
+      // #491: with interimResults on, one event can carry a MIX of final
+      // and interim segments from resultIndex onward. Finals accumulate
+      // into the buffer and drive #454's silence-timeout endpointing
+      // EXACTLY as before (an interim never arms or resets the timer --
+      // it proves the human is mid-word, not that a segment completed);
+      // interims only feed the live bubble via onInterim.
+      let interim = "";
+      for(let i = ev.resultIndex || 0; i < ev.results.length; i++){
+        const res = ev.results[i];
+        const text = res && res[0] && res[0].transcript;
+        if(res && res.isFinal){
+          const t = text && text.trim();
+          if(t) this.buffer += (this.buffer ? " " : "") + t;
+          // reset the silence timer on every new final segment -- even an
+          // empty-text one (pre-#491 behavior: ANY result reset it; #474
+          // hyp3 pins that an empty-buffer finalize is a harmless no-op)
+          // -- only finalize once the turn actually goes quiet.
+          clearTimeout(this.silenceTimer);
+          this.silenceTimer = setTimeout(()=>this._finalize(), STT_WEBSPEECH_SILENCE_MS);
+        }else if(text && text.trim()){
+          interim += (interim ? " " : "") + text.trim();
+        }
+      }
+      if(this.onInterim){
+        const live = this.buffer + (interim ? (this.buffer ? " " : "") + interim : "");
+        if(live) this.onInterim(live);
+      }
     };
     r.onerror = ev=>{
       if(gen !== this._gen) return; // #474: stale instance, ignore
@@ -4295,6 +4336,9 @@ const STT_WHISPER_ENDPOINT = "http://127.0.0.1:8737/transcribe";
 const STT_WHISPER_UNAVAILABLE_MSG = "whisper sidecar not available -- install via the whisper capability (follow-up) or switch to Web Speech in Settings";
 class WhisperSttEngine{
   constructor(){ this.mediaRecorder = null; this.chunks = []; this.stream = null; }
+  // #491: accepts (and ignores) the onInterim third argument the shared
+  // engine contract now carries -- whisper transcribes after stop(), so
+  // there is no interim channel; the pending bubble stays at "listening…".
   async start(onResult, onError){
     try{
       this.stream = await navigator.mediaDevices.getUserMedia({audio:true});
@@ -4390,6 +4434,9 @@ function onSttText(text, turnId){
   // COMMON stop path, so it's the one most likely to leave voicePTT/vdir
   // behind if it only cleared the visible flag (#334 review round 2).
   releaseSttCapture();
+  // #491: the live bubble's job is done -- queueOrSendChat renders the
+  // real user row for the final transcript right after.
+  sttRemovePendingBubble();
   queueOrSendChat(text, turnId, "voice");
 }
 
@@ -4423,6 +4470,12 @@ function startStt(turnId){
   const spanId = window.__sttSpanId = turnId || Math.random().toString(36).slice(2);
   emitVoiceSpan("stt-start", engineName, spanId);
   trackLocalVoiceSpan("stt-start", spanId, {engine: engineName});
+  // #491: live feedback the moment capture starts -- the human sees a
+  // pending bubble in the chat overlay filling with their own words
+  // (web-speech interims) instead of talking into a void. Fire-and-forget:
+  // the overlay may still be opening while the engine spins up; the spanId
+  // arg lets the bubble skip appending if this turn ends first (finding 4).
+  sttShowPendingBubble(spanId);
   engine.start(
     text=>{ onSttText(text, spanId); },
     err=>{
@@ -4443,6 +4496,9 @@ function startStt(turnId){
       // voicePTT/widened vdir before the engine ever got a chance to
       // fail; those must still be released here (#334 review round 2).
       releaseSttCapture();
+      // #491: the failed turn's pending bubble must not linger -- the red
+      // system row from reportSttFailure below is the honest replacement.
+      sttRemovePendingBubble();
       // #451 (P0 live-bug batch): a failed voice turn must SAY why -- this
       // used to only console.warn + set window.__lastSttError, both
       // invisible to the human staring at the page. reportSttFailure()
@@ -4451,7 +4507,10 @@ function startStt(turnId){
       // error) in the chat overlay, reusing the existing red system-row
       // treatment a failed /assistant/chat reply already gets.
       reportSttFailure(String(err));
-    }
+    },
+    // #491: interims stream into the pending bubble while the human is
+    // still talking (web-speech only; whisper has no interim channel).
+    live=>{ sttUpdatePendingBubble(live); }
   );
   return true;
 }
@@ -4480,6 +4539,54 @@ async function reportSttFailure(message){
   if(!document.getElementById("ast-chat-overlay")) await openChatOverlay();
   const log = document.getElementById("ast-chat-log");
   if(log) appendChatRow(log, "system", message, null);
+}
+// #491 (human-directed, 2026-07-28): real-time STT feedback -- from the
+// moment capture starts, a muted user-side "listening…" row sits in the
+// chat overlay and fills with the live transcript (web-speech interims;
+// whisper has no interim channel so it stays at "listening…"). It is a
+// PENDING artifact, not a real exchange row: onSttText removes it right
+// before queueOrSendChat renders the final transcript as the real row,
+// and every failure/cancel path removes it too (startStt's error
+// callback, toggleSttListening's no-speech cancel). Not routed through
+// appendChatRow -- that renders immutable rows and would sticky-scroll
+// per update; this row mutates in place.
+async function sttShowPendingBubble(spanId){
+  if(!document.getElementById("ast-chat-overlay")) await openChatOverlay();
+  // #491 (review round 1, finding 4): the overlay-open await above can, on
+  // a slow /assistant/status or history fetch, resolve AFTER the turn that
+  // requested this bubble already ended (final/error/cancel all called
+  // sttRemovePendingBubble by then) -- appending now would strand an
+  // ownerless bubble. Same staleness-guard pattern onSttText uses (#474);
+  // callers without a span (tests, future non-turn uses) skip the guard.
+  if(spanId !== undefined && window.__sttSpanId !== spanId) return;
+  const log = document.getElementById("ast-chat-log");
+  if(!log || document.getElementById("ast-stt-pending")) return;
+  // same empty-state clearing contract appendChatRow documents (#459):
+  // the placeholder must not linger beside a real (even pending) row.
+  if(log.getAttribute && log.getAttribute("data-chat-empty") === "1"){
+    log.innerHTML = "";
+    log.setAttribute("data-chat-empty", "");
+  }
+  const row = document.createElement("div");
+  row.id = "ast-stt-pending";
+  row.className = "ast-chat-row ast-chat-pending";
+  row.setAttribute("data-role", "user");
+  row.textContent = "listening…";
+  log.appendChild(row);
+  // starting to talk is a deliberate act -- snap to the newest message
+  // unconditionally, same rationale as renderChatLog's rebuild snap (#481).
+  scrollChatLogToBottom(log);
+}
+function sttUpdatePendingBubble(text){
+  const row = document.getElementById("ast-stt-pending");
+  if(!row) return;
+  row.textContent = text && String(text).trim() ? text : "listening…";
+  const log = document.getElementById("ast-chat-log");
+  if(log) scrollChatLogToBottom(log);
+}
+function sttRemovePendingBubble(){
+  const row = document.getElementById("ast-stt-pending");
+  if(row) row.remove();
 }
 // AST-052 (#334): the mic control's visible listening state -- lit red
 // (#448: the ONLY mic dot at top level now, since #voice-mic is gone).
@@ -4568,6 +4675,10 @@ function toggleSttListening(){
       emitVoiceSpan("stt-end", engineName, spanId, "no-speech");
       trackLocalVoiceSpan("stt-end", spanId, {status: "no-speech"});
       window.__sttSpanId = null;
+      // #491: a no-speech cancel leaves no transcript -- clear the
+      // "listening…" bubble (the synchronous-flush case was already
+      // cleared by onSttText's own removal).
+      sttRemovePendingBubble();
     }
     return;
   }
@@ -4882,6 +4993,12 @@ function speakReply(text, turnId){
       trackLocalVoiceSpan("stt-end", interruptedSpanId, {status: "interrupted"});
       window.__sttSpanId = null;
     }
+    // #491 (review round 1, finding 1): an EMPTY-buffer interrupted turn
+    // never reaches onSttText, so this interlock is the ONLY path that can
+    // clear the live "listening…" bubble -- without this it strands in the
+    // log right as the reply renders. (A flushed buffer's onSttText call
+    // already removed it; a second remove is a harmless no-op.)
+    sttRemovePendingBubble();
   }
   const chars = trimmed.length;
   const t0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
@@ -4961,6 +5078,21 @@ function micHot(){
   if(window.__sttListening) return false;
   return uiState.micMode==="always" || window.voicePTT;
 }
+// #490 (human-directed, 2026-07-28): the mic dot is CAPTURE TRUTH -- lit
+// iff audio is actually being captured RIGHT NOW, by either owner of the
+// mic: a live STT turn (__sttListening; micHot() deliberately reports
+// false during turns per #464's contention guard) or the visualizer's own
+// capture (always-on / press-to-speak). The human's live repro was the
+// ensemble reading INVERTED: always-on visualizer captured with a dark
+// dot, while a voice turn showed a bright dot over dead IN bars and a
+// dead engine. Synced every drawViz frame so no stop path can strand it;
+// setSttListening's own immediate toggle stays for zero-latency press
+// feedback and is corrected within a frame if it ever disagrees.
+function syncCaptureDot(){
+  const btn = document.getElementById("voice-stt");
+  if(!btn) return;
+  btn.classList.toggle("listening", !!(window.__sttListening || micHot()));
+}
 async function syncMic(){
   const want = micHot();
   if(want === micWanted || micBusy) return;
@@ -4991,6 +5123,7 @@ function drawViz(){
   vizCtx2d.setTransform(dpr,0,0,dpr,0,0);
   vizCtx2d.clearRect(0,0,w,h);
   syncMic();
+  syncCaptureDot(); // #490: dot = capture truth, every frame
   voiceSources.inbound.getBins(inBins);
   voiceSources.outbound.getBins(outBins);
   // echo guard: while the outbound adapter reports it is speaking, the
@@ -7807,6 +7940,11 @@ function scrollChatLogToBottom(log){
 function renderChatLog(){
   const log = document.getElementById("ast-chat-log");
   if(!log) return;
+  // #491 (review round 1, finding 3, accepted tradeoff): this wholesale
+  // rebuild also wipes a live #ast-stt-pending bubble if the human clicks
+  // the show-last toggle MID-CAPTURE; updates then no-op until the turn
+  // resolves (the final transcript still renders normally). Narrow enough
+  // not to special-case -- documented so the gap is deliberate, not missed.
   log.innerHTML = "";
   // #481: lastX === "all" is the ∞ show-last option -- an explicit sentinel,
   // not `Array.prototype.slice(-Infinity)`. slice's start index goes

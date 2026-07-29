@@ -73,6 +73,10 @@ eval(extract("chunkSpeechText"));
 eval(extract("emitVoiceSpan"));
 eval(extract("trackLocalVoiceSpan"));
 eval(extract("newClientTurnId"));
+// #491 review finding 1: speakReply's echo-guard interlock now clears the
+// live-STT pending bubble -- stubbed no-op here (the real function is
+// exercised in section-assistant-voice-turn.sh's second harness).
+global.sttRemovePendingBubble = () => {};
 eval(extract("speakReply"));
 
 function reset(){
