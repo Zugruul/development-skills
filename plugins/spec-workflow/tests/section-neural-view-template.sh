@@ -1364,6 +1364,13 @@ check_absent "the label is no longer a plain non-interactive span (#399)" '<span
 # 2026-07-25 human refinement: caret replaced by keycap chips beside the label
 check_absent "the caret is gone — keycap chips are the affordance now" '.ast-voice-name::after{content:" ▾"' "$(cat "$NVHTML")"
 check "keycap chips span sits beside the label" 'id="voice-viz-kbd"' "$(cat "$NVHTML")"
+# #482 (human-directed header reorder): the human scans left-to-right --
+# the chat affordance (T) should lead, then whom they're talking to, then
+# the switcher shortcut. Wanted order: ast-chat-kbd, voice-viz-name,
+# voice-viz-kbd (was: voice-viz-name, voice-viz-kbd, ast-chat-kbd).
+check "the T chip (#ast-chat-kbd) sits immediately left of the voice-viz-name label, not trailing after it (#482)" '<div id="voice-viz"><span id="ast-chat-kbd" aria-hidden="true"></span><button type="button" id="voice-viz-name" class="ast-voice-name"' "$(cat "$NVHTML")"
+check_absent "ast-chat-kbd no longer trails after voice-viz-kbd (#482)" '<span id="voice-viz-kbd" aria-hidden="true"></span><span id="ast-chat-kbd" aria-hidden="true"></span>' "$(cat "$NVHTML")"
+check "the ⌘K/Ctrl+K switch chip (#voice-viz-kbd) stays to the right of the name, before the canvas (#482)" '></button><span id="voice-viz-kbd" aria-hidden="true"></span><canvas id="voice-viz-canvas">' "$(cat "$NVHTML")"
 check "header buttons slimmed to text height (2026-07-25)" '#voicebar-head .iconbtn{height:20px' "$(cat "$NVHTML")"
 check "an empty label (nothing selected yet) falls back to a SELECT affordance via :empty generated content" '.ast-voice-name:empty::before{content:"SELECT"}' "$(cat "$NVHTML")"
 # #ast-digest-panel (AST-024 digest relocation) is out of #voicebar's normal

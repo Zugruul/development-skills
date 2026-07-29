@@ -1490,8 +1490,8 @@ canvas.grabbing{cursor:grabbing}
        the label's text ("NAME ▾" or "SELECT ▾" when nothing is chosen
        yet). Same Cmd+K/Ctrl+K shortcut opens/toggles the same dropdown --
        see the JS below. -->
-  <div id="voice-viz"><button type="button" id="voice-viz-name" class="ast-voice-name"
-      aria-haspopup="listbox" aria-expanded="false" title="Switch assistant"></button><span id="voice-viz-kbd" aria-hidden="true"></span><span id="ast-chat-kbd" aria-hidden="true"></span><canvas id="voice-viz-canvas"></canvas><span id="voice-viz-status" hidden></span></div>
+  <div id="voice-viz"><span id="ast-chat-kbd" aria-hidden="true"></span><button type="button" id="voice-viz-name" class="ast-voice-name"
+      aria-haspopup="listbox" aria-expanded="false" title="Switch assistant"></button><span id="voice-viz-kbd" aria-hidden="true"></span><canvas id="voice-viz-canvas"></canvas><span id="voice-viz-status" hidden></span></div>
   <!-- AST-069 (§12.5, issue #344): minimal queue indicator -- running-count
        chip only; see renderQueueChip's own comment (neural-view.html JS)
        for the scope call on why this is not yet a full per-task list.
