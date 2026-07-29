@@ -9,8 +9,8 @@ stored local default -> error listing candidates, and NAME matching covers
 any name/alias.
 
 State dir resolution mirrors neural-view.py's own `state_dir()`: the
-`NEURAL_VIEW_STATE` env var if set, else `<git root>/.claude/neural-view`
-(there is no per-repo `root` parameter here -- the store itself is
+`NEURAL_VIEW_STATE` env var if set, else `<PRIMARY repo root>/.claude/neural-view`
+(#463: the main checkout, from any linked worktree -- there is no per-repo `root` parameter here -- the store itself is
 machine-local, not repo-local; setup.py's `set_default` passes an explicit
 `state_dir` computed from ITS `root` argument, which is how the existing
 `set-default` CLI verb keeps writing under `<root>/.claude/neural-view/`
@@ -69,7 +69,6 @@ CLI: `default_store.py {read-default|write-default <name>|resolve} ...`
      library functions). See `_cli` below for exact flags.
 """
 import os
-import subprocess
 import sys
 import tempfile
 
@@ -79,8 +78,10 @@ _SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _SCRIPTS_DIR in sys.path:
     sys.path.remove(_SCRIPTS_DIR)
 sys.path.insert(0, _SCRIPTS_DIR)
+sys.path.insert(0, os.path.join(_SCRIPTS_DIR, "lib"))  # #463: shared primary-root resolver
 
 from assistant import discovery  # noqa: E402  AST-020: single classification code path
+from repo_root import resolve_repo_root  # noqa: E402
 
 DEFAULT_FILE_NAME = "assistant-default"
 
@@ -97,21 +98,13 @@ class ResolutionError(Exception):
 
 # --- state dir ---------------------------------------------------------------
 
-def _git_root():
-    try:
-        return subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip()
-    except Exception:  # noqa: BLE001  -- mirrors neural-view.py's git_root()
-        return os.getcwd()
-
-
 def _default_state_dir():
     env = os.environ.get("NEURAL_VIEW_STATE")
     if env:
         return env
-    return os.path.join(_git_root(), ".claude", "neural-view")
+    # #463: PRIMARY repo root, not the current tree's -- see neural-view.py's
+    # own state_dir(), which this mirrors exactly (module docstring above).
+    return os.path.join(resolve_repo_root(), ".claude", "neural-view")
 
 
 def _resolve_state_dir(state_dir):

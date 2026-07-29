@@ -268,6 +268,40 @@ else
     echo "ok   ui-hub.py: no card siloed under either worktree's own .claude/ui-hub/"
 fi
 
+# --- neural-view.py, invoked with a worktree cwd and NO $NEURAL_VIEW_STATE
+# override, writes its state dir (pid/port/repos.json, and the assistant
+# machine-local default it stores on default_store's behalf) into the MAIN
+# checkout, not the worktree -- same silent-invisibility bug class as
+# ui-hub.py above, exercised via `assistant default NAME`, which writes
+# through default_store.write_default(state_dir=str(S)) with no server
+# needed. ------------------------------------------------------------------
+out="$(cd "$RR_WT" && env -u NEURAL_VIEW_STATE python3 "$PLUGIN/scripts/neural-view.py" assistant default rr-nv-assistant 2>&1)"
+if [[ -f "$RR_MAIN/.claude/neural-view/assistant-default" ]]; then
+    echo "ok   neural-view.py from a worktree: assistant-default written to the main checkout"
+else
+    echo "FAIL neural-view.py from a worktree: assistant-default written to the main checkout (out: $out)"
+    fails=$((fails + 1))
+fi
+if [[ -f "$RR_WT/.claude/neural-view/assistant-default" ]]; then
+    echo "FAIL neural-view.py from a worktree: must NOT also write assistant-default under the worktree's own .claude/"
+    fails=$((fails + 1))
+else
+    echo "ok   neural-view.py from a worktree: no stray assistant-default under the worktree's own .claude/"
+fi
+
+# --- assistant/default_store.py's own bare CLI (no --state-dir, no
+# $NEURAL_VIEW_STATE), invoked with a worktree cwd, must resolve the SAME
+# primary-root state dir neural-view.py's `S` resolves to -- it is
+# documented to mirror neural-view.py's state_dir() exactly. -----------------
+out="$(cd "$RR_WT" && env -u NEURAL_VIEW_STATE python3 "$PLUGIN/scripts/assistant/default_store.py" write-default rr-cli-assistant 2>&1)"
+check "default_store.py CLI from a worktree: writes under the main checkout's .claude/neural-view" "$RR_MAIN/.claude/neural-view/assistant-default" "$out"
+if [[ -f "$RR_WT/.claude/neural-view/assistant-default" ]]; then
+    echo "FAIL default_store.py CLI from a worktree: must NOT also write under the worktree's own .claude/"
+    fails=$((fails + 1))
+else
+    echo "ok   default_store.py CLI from a worktree: no stray assistant-default under the worktree's own .claude/"
+fi
+
 git -C "$RR_MAIN" worktree remove -f "$RR_WT" >/dev/null 2>&1 || true
 git -C "$RR_MAIN" worktree remove -f "$RR_WT2" >/dev/null 2>&1 || true
 rm -rf "$RR_MAIN" "$RR_WT_PARENT" "$RR_WT2_PARENT" "$RR_NONGIT" "$RR_GH"

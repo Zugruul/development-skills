@@ -96,7 +96,7 @@ investigation writeup. $NEURAL_VIEW_CLAUDE_DIR overrides ~/.claude (mainly for
 tests); $NEURAL_VIEW_SESSION_RECENT_SECS overrides the "recent" window
 (default 900s).
 
-State dir (pid/port/log): $NEURAL_VIEW_STATE, else <git root>/.claude/neural-view.
+State dir (pid/port/log): $NEURAL_VIEW_STATE, else <PRIMARY repo root>/.claude/neural-view (#463: the main checkout, from any linked worktree).
 Port: --port, else $NEURAL_VIEW_PORT, else 4748. Binds 127.0.0.1 only.
 """
 import atexit
@@ -123,6 +123,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # import config (project.yaml reader) beside this script
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))  # #463: shared primary-root resolver
+from repo_root import resolve_repo_root  # noqa: E402
 
 from assistant.engine import AssistantEngine  # noqa: E402  the /assistant/* engine (AST-010, SPEC-ASSISTANT.md §5a)
 from assistant import default_store  # noqa: E402  §7.6 resolution + machine-local default store, for `assistant default` (AST-016)
@@ -236,7 +238,16 @@ def render_index():
 
 def state_dir():
     env = os.environ.get("NEURAL_VIEW_STATE")
-    return Path(env) if env else Path(git_root()) / ".claude" / "neural-view"
+    if env:
+        return Path(env)
+    # #463: PRIMARY repo root, not the current tree's -- .claude/neural-view/
+    # is gitignored local state (pid/port/repos.json, and the assistant
+    # machine-local default stored on default_store's behalf), so it must
+    # live once per repo in the main checkout. Before this fix, a server
+    # started (or `assistant default` set) from a linked worktree wrote its
+    # state under THAT worktree's own (invisible to everyone else) path --
+    # same bug class ui-hub.py's state_dir() was fixed for.
+    return Path(resolve_repo_root()) / ".claude" / "neural-view"
 
 
 S = state_dir()
@@ -1932,7 +1943,7 @@ def _cmd_assistant_default(args):
     """`assistant default [NAME]` -- a thin wrapper over
     assistant.default_store's write_default/read_default (§6.3), using the
     SAME state dir this process's own `S` resolves to (NEURAL_VIEW_STATE
-    env override, else <git root>/.claude/neural-view) -- direct, not
+    env override, else <PRIMARY repo root>/.claude/neural-view) -- direct, not
     routed through setup.py's `set_default(root, name)`, because that verb
     is keyed off a REPO root (it exists for the per-repo `set-default` CLI
     surface) whereas this one is keyed off neural-view's own machine-local
