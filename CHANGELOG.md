@@ -4,6 +4,22 @@
 
 ## v0.61.4 — 2026-07-29
 
+### Features
+- **neural-view:** auto-start the whisper STT sidecar at boot (`4506acc`)
+  > serve (so start/dev too) now health-checks the local whisper.cpp sidecar
+  > and starts it iff installed-but-not-running, by subprocessing the
+  > whisper-sidecar skill's own lifecycle script (idempotent start, detached
+  > spawn, foreign-port refusal all reused, never reimplemented). START only,
+  > never install; "not installed" is one honest log line; every outcome runs
+  > on a daemon thread so a sidecar failure can never block or crash
+  > neural-view boot. Opt out with --no-sidecar (forwarded from start/dev to
+  > the serve child) or NEURAL_VIEW_NO_SIDECAR=1 -- run-tests.sh exports the
+  > latter suite-wide so no other section's neural-view boot can reach the
+  > real sidecar state, and the new e2e tests re-enable it per boot against
+  > scratch WHISPER_SIDECAR_* state on random ports.
+  > 
+  > Claude-Session: https://claude.ai/code/session_01EzNH8czvn8a1XVxYjsWLMm
+
 ### Fixes
 - **mermaid:** re-fit on container resize -- maximize/restore reframes the diagram (manual pan/zoom opts out until next Fit) (`982df60`)
   > Claude-Session: https://claude.ai/code/session_01EzNH8czvn8a1XVxYjsWLMm
