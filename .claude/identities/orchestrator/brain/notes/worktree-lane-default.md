@@ -1,15 +1,12 @@
 ---
 tags: [worktree, concurrency, isolation, process]
-paths: ["**"]
-strength: 1
-source: ""
+paths: ["plugins/spec-workflow/skills/build-next"]
+strength: 2
+source: "human direction 2026-08-01: dev lanes in worktrees, primary checkout stays on main"
 confidence: direct
-learned-from: GL-021 #256 (human-directed)
 graduated: false
 created: 2026-07-22
-last-touched: 2026-07-22
+last-touched: 2026-08-01
 ---
 
-Human-directed standing practice: every build-loop task runs in its OWN worktree cut from fresh origin/main (branch sw/<id>-<slug>), the dev agent is briefed with the absolute worktree path and forbidden from touching the parent clone, and at task close the branch is squash-merged (push HEAD:main) and the worktree removed before the next task. This eliminated the entire shared-clone collision class (stash accidents, foreign dirty runtime files, held-main checkout) that caused real incidents in earlier iterations.
-
-Related: [[merge-via-temp-worktree-when-main-held]] [[board-moves-before-branch-delete]]
+Dev lanes run in worktrees (.claude/worktrees/sw-<id>) even when work is sequential — the primary checkout stays on the main branch at all times so the human's terminal, other sessions, and orchestrator main-branch work are never disturbed by an in-flight task branch. Human-directed 2026-08-01 after a lane ran in the primary checkout. Relocating a live lane: stash -u, switch primary to main, worktree add for the branch, stash apply inside the worktree, drop the stash, redirect the dev agent with absolute paths.
