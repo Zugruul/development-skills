@@ -447,3 +447,151 @@ PY
 )"
 check "r2: CJK text charged at least 1 token per char" "CJK_TOKENS_GE_12 True" "$at_r2b_out"
 check "r2: ASCII estimation unchanged by the dense-script rule" "ASCII_UNCHANGED True" "$at_r2b_out"
+
+# ------------------------------------------------------------------------
+# AST-071 (SPEC-ASSISTANT.md §11.8, docs/design/ast-E6.md sequence 5):
+# capability_gap_reply -- off an ALREADY-COMPILED CapabilityIndex (a stub
+# index here, no index recompute, §11.3), composes a deterministic
+# in-persona refusal when roster_for_turn finds no match, and drafts an
+# acquire-offer plan-note PAYLOAD for the caller to hand to the async
+# mint queue (turns.py itself never touches a queue -- see the
+# NO_QUEUE_TOUCH invariant test above, which re-scans this whole module's
+# source and therefore also covers this new function).
+#
+# ARCHITECTURAL NOTE (review round 1, HIGH #1 -- read before touching these
+# fixtures): roster_for_turn returns [] if AND ONLY IF every entry scores
+# EXACTLY 0 for the query (it is the max-score entry's own score that gates
+# the [] return, and scores are never negative) -- capability_gap_reply
+# detects a gap off that EXACT SAME condition, re-using the identical
+# `_score` computation via `capability_index.nearest_entries`. Therefore,
+# by construction, EVERY gap this function ever detects has `nearest == []`
+# and `total_enabled` as the only varying signal: naming a NONZERO-scored
+# "nearest ability" in a refusal is unreachable through this public
+# function today, even though `nearest_entries`/`_render_capability_gap_refusal`
+# both fully implement and are directly unit-tested for that shape (see
+# "-- unit: _render_capability_gap_refusal --" below, and
+# section-capability-roster.sh's nearest_entries tests). Documented in
+# docs/spec-deltas/346.md (also records a round-1 embedding-mode finding);
+# a future task that wants named-ability refusals to actually fire needs a
+# gap-detection signal weaker than "roster_for_turn returned []".
+#
+# Round 2 (NEW-2, orchestrator decision): the plan-note MAY-offer is drafted
+# UNCONDITIONALLY on every gap now, including a totally empty index -- round
+# 1's "only when total_enabled > 0" gate was reverted (the bare-assistant
+# case is exactly the one worth parking, not the one to suppress).
+# ------------------------------------------------------------------------
+echo "-- unit: capability_gap_reply -- a nonempty index with zero relevance signal degrades to the 'none related' shape (no fabricated names), stating enabled AND available counts (round 2, NEW-5) --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+from assistant import capability_index as ci
+
+entries = (
+    ci.CapabilityIndexEntry(name="weather", one_liner="checks the weather", keywords=["weather", "forecast"],
+                              embedding=None, enabled=True, provisioned_ok=True, unavailable_reason=None),
+    ci.CapabilityIndexEntry(name="reminders", one_liner="sets reminders", keywords=["reminder", "schedule"],
+                              embedding=None, enabled=True, provisioned_ok=False, unavailable_reason="not provisioned"),
+)
+index = ci.CapabilityIndex(entries=entries)
+
+gap = turns.capability_gap_reply(index, "please render a 3d model of a duck", embed_fn=lambda texts: None)
+print("IS_GAP", gap is not None)
+print("NEAREST_EMPTY", gap.nearest == [])
+print("TEXT_NEVER_NAMES_WEATHER", "weather" not in gap.text)
+print("TEXT_NEVER_NAMES_REMINDERS", "reminders" not in gap.text)
+print("TEXT_STATES_ENABLED_COUNT", "2" in gap.text)
+print("TEXT_STATES_AVAILABLE_COUNT", "1 available" in gap.text)
+print("TEXT_SAYS_NONE_RELATED", "none" in gap.text.lower() and "related" in gap.text.lower())
+print("PLAN_NOTE_PRESENT", gap.plan_note is not None)
+print("PLAN_NOTE_HAS_EXCERPT", "duck" in (gap.plan_note.get("request_excerpt") or ""))
+print("PLAN_NOTE_HAS_TOTAL_ENABLED", gap.plan_note.get("total_enabled") == 2)
+PY
+)"
+check "capability_gap_reply: an unmatched request IS a gap" "IS_GAP True" "$out"
+check "capability_gap_reply: nearest is empty -- see the architectural note above" "NEAREST_EMPTY True" "$out"
+check "capability_gap_reply: never names an entry that scored zero (review round 1 fix -- inverted from the old alphabetical-dump assertion)" "TEXT_NEVER_NAMES_WEATHER True" "$out"
+check "capability_gap_reply: never names the other zero-score entry either" "TEXT_NEVER_NAMES_REMINDERS True" "$out"
+check "capability_gap_reply: the THIRD refusal shape states how many abilities are enabled" "TEXT_STATES_ENABLED_COUNT True" "$out"
+check "capability_gap_reply: the THIRD refusal shape ALSO states how many are actually available (round 2, NEW-5 -- 1 of the 2 enabled is unprovisioned)" "TEXT_STATES_AVAILABLE_COUNT True" "$out"
+check "capability_gap_reply: the THIRD refusal shape says none are related" "TEXT_SAYS_NONE_RELATED True" "$out"
+check "capability_gap_reply: a plan note IS drafted when the index has an established capability posture" "PLAN_NOTE_PRESENT True" "$out"
+check "capability_gap_reply: plan-note payload carries the request excerpt" "PLAN_NOTE_HAS_EXCERPT True" "$out"
+check "capability_gap_reply: plan-note payload carries total_enabled (round 2, HIGH NEW-1 -- so mint_gap_note can branch on it, not on the always-empty nearest)" "PLAN_NOTE_HAS_TOTAL_ENABLED True" "$out"
+
+echo "-- unit: capability_gap_reply -- empty index degrades to an honest 'no abilities enabled' shape (distinct from the 'none related' shape); a plan note IS STILL drafted (round 2, NEW-2: the bare-assistant case is the one most worth parking) --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+from assistant import capability_index as ci
+
+empty_index = ci.CapabilityIndex(entries=())
+gap = turns.capability_gap_reply(empty_index, "please render a 3d model of a duck", embed_fn=lambda texts: None)
+print("IS_GAP", gap is not None)
+print("NEAREST_EMPTY", gap.nearest == [])
+print("TEXT_SAYS_NO_ABILITIES", "no" in gap.text.lower() and "abilit" in gap.text.lower())
+print("TEXT_NEVER_CLAIMS_A_MATCH", "weather" not in gap.text and "reminders" not in gap.text)
+print("TEXT_NOT_THE_NONE_RELATED_SHAPE", "related" not in gap.text.lower())
+print("PLAN_NOTE_PRESENT_EVEN_FOR_EMPTY_INDEX", gap.plan_note is not None)
+print("PLAN_NOTE_TOTAL_ENABLED_IS_ZERO", gap.plan_note.get("total_enabled") == 0)
+PY
+)"
+check "capability_gap_reply: a completely empty index is still a gap" "IS_GAP True" "$out"
+check "capability_gap_reply: nearest is empty (nothing to name)" "NEAREST_EMPTY True" "$out"
+check "capability_gap_reply: refusal honestly states no abilities are enabled" "TEXT_SAYS_NO_ABILITIES True" "$out"
+check "capability_gap_reply: never fabricates a match against an empty index" "TEXT_NEVER_CLAIMS_A_MATCH True" "$out"
+check "capability_gap_reply: the empty-index shape is textually distinct from the 'none related' shape" "TEXT_NOT_THE_NONE_RELATED_SHAPE True" "$out"
+check "capability_gap_reply: a plan note IS drafted even for a truly empty index (round 2, NEW-2 -- reverses round 1's fix #6 gate)" "PLAN_NOTE_PRESENT_EVEN_FOR_EMPTY_INDEX True" "$out"
+check "capability_gap_reply: that plan note honestly carries total_enabled=0" "PLAN_NOTE_TOTAL_ENABLED_IS_ZERO True" "$out"
+
+echo "-- unit: _render_capability_gap_refusal (direct call -- see the architectural note above for why the named-ability shape is not reachable through capability_gap_reply's public entry point) -- names a nearest ability WITH its unavailable reason (Sec11.4), deleting the branch must fail this suite --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+from assistant import capability_index as ci
+
+available = ci.CapabilityIndexEntry(name="video-renderer", one_liner="renders video clips", keywords=[],
+                                      embedding=None, enabled=True, provisioned_ok=True, unavailable_reason=None)
+unavailable = ci.CapabilityIndexEntry(name="renderer", one_liner="renders things", keywords=[],
+                                        embedding=None, enabled=True, provisioned_ok=False,
+                                        unavailable_reason="binary not on PATH")
+
+text = turns._render_capability_gap_refusal([available, unavailable], total_enabled=2, available_count=1)
+print("NAMES_AVAILABLE", "video-renderer" in text)
+print("NAMES_UNAVAILABLE", "renderer" in text)
+print("STATES_REASON", "binary not on PATH" in text)
+print("NEVER_PRESENTS_UNAVAILABLE_AS_USABLE", "unavailable" in text.lower())
+PY
+)"
+check "_render_capability_gap_refusal: names an available nearest ability" "NAMES_AVAILABLE True" "$out"
+check "_render_capability_gap_refusal: names an unprovisioned nearest ability too (Sec11.4: never hidden)" "NAMES_UNAVAILABLE True" "$out"
+check "_render_capability_gap_refusal: states the unavailable reason" "STATES_REASON True" "$out"
+check "_render_capability_gap_refusal: marks it unavailable, never presented as usable (Sec11.4)" "NEVER_PRESENTS_UNAVAILABLE_AS_USABLE True" "$out"
+
+echo "-- unit: capability_gap_reply -- a real match (or a genuine ambiguity) is NOT a gap --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+from assistant import capability_index as ci
+
+# a clear, unambiguous, above-threshold match -- roster_for_turn returns a
+# real list, so this must NOT be treated as a capability gap.
+match_entries = (
+    ci.CapabilityIndexEntry(name="weather", one_liner="checks the weather", keywords=["weather", "forecast", "rain"],
+                              embedding=None, enabled=True, provisioned_ok=True, unavailable_reason=None),
+)
+match_index = ci.CapabilityIndex(entries=match_entries)
+match_gap = turns.capability_gap_reply(match_index, "weather forecast rain", embed_fn=lambda texts: None)
+
+# a genuine tie -- roster_for_turn returns AskInsteadOfGuess, a DIFFERENT
+# (already-handled, AST-061) concern, not the AST-071 capability gap.
+tie_entries = (
+    ci.CapabilityIndexEntry(name="alpha", one_liner="", keywords=["render", "video", "duck"],
+                              embedding=None, enabled=True, provisioned_ok=True, unavailable_reason=None),
+    ci.CapabilityIndexEntry(name="beta", one_liner="", keywords=["render", "video", "duck"],
+                              embedding=None, enabled=True, provisioned_ok=True, unavailable_reason=None),
+)
+tie_index = ci.CapabilityIndex(entries=tie_entries)
+tie_gap = turns.capability_gap_reply(tie_index, "render video duck", embed_fn=lambda texts: None)
+
+print("MATCH_IS_NOT_A_GAP", match_gap is None)
+print("TIE_IS_NOT_A_GAP", tie_gap is None)
+PY
+)"
+check "capability_gap_reply: a clear match is not a capability gap" "MATCH_IS_NOT_A_GAP True" "$out"
+check "capability_gap_reply: a genuine tie (AskInsteadOfGuess) is not a capability gap either" "TIE_IS_NOT_A_GAP True" "$out"

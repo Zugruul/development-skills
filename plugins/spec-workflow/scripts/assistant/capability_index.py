@@ -143,6 +143,19 @@ ast-E6.md) closes enablement gating end to end on top of the above:
         docstring for why the gate lives here rather than inside
         `adapters.py` itself (a flagged design call).
 
+AST-071 (SPEC-ASSISTANT.md Sec11.8, docs/design/ast-E6.md sequence 5) adds
+one more read of an already-compiled index:
+
+    nearest_entries(index, query, top_n=DEFAULT_NEAREST_TOP_N) ->
+        list[CapabilityIndexEntry]
+        The DISPLAY-ONLY sibling of `roster_for_turn`: ranks every entry by
+        the same `_score`, but returns the top `top_n` regardless of the
+        zero-score/tie/low-confidence gates -- used by `turns.
+        capability_gap_reply` to name "nearest enabled abilities" in a
+        capability-gap refusal exactly when `roster_for_turn` itself
+        returned `[]` (nothing trustworthy to invoke, but still something
+        honest to mention). See the function's own docstring.
+
     _substitute_skill_dir(argv, skill_dir) -> argv (issue #424 round 2)
         Replaces the literal `{skill_dir}` token in each argv element
         with the capability's actual skill_dir -- used by BOTH
@@ -676,6 +689,73 @@ def _score(entry, query):
     if not a or not b:
         return 0.0
     return len(a & b) / len(a | b)
+
+
+# AST-071 (Sec11.8) hard cap default for `nearest_entries` -- deliberately
+# smaller than DEFAULT_ROSTER_TOP_N: a refusal names a HANDFUL of closest
+# abilities, not a full roster dump.
+DEFAULT_NEAREST_TOP_N = 3
+
+
+def nearest_entries(index, query, top_n=DEFAULT_NEAREST_TOP_N):
+    """AST-071 (Sec11.8, docs/design/ast-E6.md sequence 5): the DISPLAY-ONLY
+    sibling of `roster_for_turn` -- ranks every entry in `index` by the
+    SAME `_score` function, but returns the top `top_n` regardless of the
+    zero-score/tie/low-confidence gates `roster_for_turn` applies for
+    INVOCATION-SELECTION purposes (Sec11.3). Used by `turns.
+    capability_gap_reply` to name "nearest enabled abilities" in an
+    in-persona refusal precisely in the case `roster_for_turn` returns `[]`
+    for -- i.e. exactly when nothing scored well enough to be trusted as an
+    actual match. Naming the closest candidate anyway ("the closest I have
+    is X, but it likely does not cover this") is more honest than naming
+    nothing; roster_for_turn's stricter gates exist to protect INVOCATION
+    (never guess which ability to actually run), not to protect what a
+    refusal is allowed to mention.
+
+    Deterministic ranking: same (-score, name) sort `roster_for_turn` uses,
+    so two identically-shaped indexes/queries always produce the same
+    ordering. Includes ENABLED-BUT-UNPROVISIONED entries (Sec11.4: "never
+    present an unavailable ability as usable" -- naming one here WITH its
+    `unavailable_reason` satisfies that; every entry already compiled into
+    `index` is, by construction, enabled (Sec11.2's invisibility tier for
+    disabled skills already excluded it upstream in `compile_index`), so
+    this function never needs its own enablement check.
+
+    EXCLUDES zero-score entries (review round 1, HIGH #1): an earlier
+    version sorted every entry by `(-score, name)` without filtering, so
+    two-or-more entries that ALL scored 0.0 against the query came back in
+    plain alphabetical order -- indistinguishable, to any caller, from a
+    genuine ranking by relevance. That is worse than useless: it dresses up
+    "I have no idea what's closest" as "here is what's closest." A refusal
+    should either name something that ACTUALLY has some relevance signal,
+    or say plainly that nothing does (see `turns.
+    _render_capability_gap_refusal`'s "none related" shape, which is what a
+    non-empty index with an all-zero-scored `nearest_entries` result
+    degrades to).
+
+    Degrades to `[]` both for an empty index AND for a non-empty index
+    where every entry scores exactly 0.0 (Sec17: never a crash, never a
+    fabricated candidate) -- these are the SAME condition `roster_for_turn`
+    itself uses to decide whether to return `[]` (its own `best_score <=
+    0.0` check), so a caller that already observed `roster_for_turn(index,
+    query, ...) == []` is guaranteed (by construction, same `_score`
+    function, same query) to also observe `nearest_entries(index, query,
+    ...) == []` -- see `turns.capability_gap_reply`'s docstring for why
+    this means a NAMED-ability refusal is currently unreachable through
+    that specific call path, even though this function fully implements
+    and is independently tested for that shape."""
+    entries = list(index.entries) if index else []
+    if not entries:
+        return []
+    scored = []
+    for entry in entries:
+        score = _score(entry, query)
+        if score > 0.0:
+            scored.append((entry, score))
+    if not scored:
+        return []
+    scored.sort(key=lambda pair: (-pair[1], pair[0].name))
+    return [entry for entry, _score_val in scored[:top_n]]
 
 
 def roster_for_turn(index, query, top_n):

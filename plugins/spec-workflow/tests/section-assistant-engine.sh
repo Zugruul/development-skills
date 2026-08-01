@@ -240,3 +240,277 @@ check "overflow evicts the oldest and keeps the newest 5" "OVERFLOW_USERS ['u3',
 check "a raced eviction degrades to silently dropping the item, never raises (Sec9.5)" "RACE_RAISED False" "$dq_out"
 
 rm -rf "$_ae_dq_state"
+
+# ------------------------------------------------------------------------
+# AST-071 (SPEC-ASSISTANT.md §11.8, docs/design/ast-E6.md sequence 5):
+# capability-gap flow wiring. `_capability_gap_check` (reusing the already-
+# compiled index -- no recompute, §11.3) is a complete, directly-callable
+# building block: on a genuine gap it emits a first-class trace event and
+# drafts a background, non-blocking plan note, and NEVER touches a reply.
+# It is deliberately NOT auto-invoked from every `_chat` call -- see its
+# docstring (engine.py) and docs/spec-deltas/346.md for why: doing so was
+# tried and reverted after it minted a flood of near-duplicate plan notes
+# across an ordinary multi-turn conversation against a skill-less
+# assistant (every turn's roster comes back empty, same as this task's own
+# gap trigger), breaking section-assistant-distill.sh's real distilled-
+# mint count. The tests below exercise the method directly (the shape a
+# future explicit invocation-attempt caller would use) and then add a
+# regression guard proving ordinary chat still mints nothing extra.
+# ------------------------------------------------------------------------
+echo "-- engine: _enqueue_gap_note overflow is drop-oldest, never blocks/raises (Sec9.5) --"
+_ae_gq_state="$(mktemp -d)"
+gq_out="$(SCRIPTS_DIR="$AE_SCRIPTS" STATE="$_ae_gq_state" python3 - <<'PY'
+import os, sys, queue as queue_module
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import engine
+
+e = engine.AssistantEngine(lambda: [], os.environ["STATE"])
+e.queues["distiller"] = queue_module.Queue(maxsize=3)
+
+for i in range(3):
+    e._enqueue_gap_note("root", {"request_excerpt": "req-%d" % i, "nearest": [], "turn_id": "t%d" % i})
+print("FULL_LEN", e.queues["distiller"].qsize())
+
+for i in range(3, 5):
+    e._enqueue_gap_note("root", {"request_excerpt": "req-%d" % i, "nearest": [], "turn_id": "t%d" % i})
+
+remaining = []
+while True:
+    try:
+        remaining.append(e.queues["distiller"].get_nowait())
+    except queue_module.Empty:
+        break
+turn_ids = [item["gap_note"]["turn_id"] for item in remaining]
+print("OVERFLOW_LEN", len(turn_ids))
+print("OVERFLOW_TURN_IDS", turn_ids)
+
+class _AlwaysFullQueue:
+    def put_nowait(self, item):
+        raise queue_module.Full
+    def get_nowait(self):
+        raise queue_module.Empty
+
+e.queues["distiller"] = _AlwaysFullQueue()
+try:
+    e._enqueue_gap_note("root", {"request_excerpt": "raced", "nearest": [], "turn_id": "tR"})
+    print("RACE_RAISED", False)
+except Exception:
+    print("RACE_RAISED", True)
+PY
+)"
+check "gap-note queue fills to exactly maxsize before overflow" "FULL_LEN 3" "$gq_out"
+check "gap-note overflow keeps exactly maxsize items (drop-oldest)" "OVERFLOW_LEN 3" "$gq_out"
+check "gap-note overflow evicts the oldest, keeps the newest" "OVERFLOW_TURN_IDS ['t2', 't3', 't4']" "$gq_out"
+check "a raced gap-note eviction degrades to silently dropping the item, never raises" "RACE_RAISED False" "$gq_out"
+rm -rf "$_ae_gq_state"
+
+# ae_gap_repo <dir> <main> -- like ae_repo, but with ONE real, enabled,
+# provisioned skill installed (an always-succeeding `true` provisioning
+# check -- no special binaries needed) so the compiled index is genuinely
+# non-empty. Used below to exercise the "total_enabled > 0 but nothing
+# matched" branch (review round 1 fix #6: a plan note is only drafted when
+# there is an established capability posture to extend -- see
+# turns.capability_gap_reply's docstring).
+ae_gap_repo() {
+    local dir="$1" main="$2"
+    ae_repo "$dir" "$main"
+    mkdir -p "$dir/.claude/skills/recipe-finder"
+    printf '%s\n' \
+        "version: 1" \
+        "provisioning:" \
+        "    check: [\"true\"]" \
+        "    ttlSeconds: 300" \
+        "permissions: []" \
+        "invoke:" \
+        "    exec: [\"true\"]" \
+        >"$dir/.claude/skills/recipe-finder/capability.yaml"
+    printf '%s\n' \
+        "---" \
+        "name: recipe-finder" \
+        "description: finds cooking recipes" \
+        "---" \
+        "body" \
+        >"$dir/.claude/skills/recipe-finder/SKILL.md"
+    # append the capability's enablement to the SAME project.yaml ae_repo
+    # already wrote (same "capabilities:" mapping key level as "codex:").
+    printf '%s\n' \
+        "        recipe-finder:" \
+        "            enabled: true" \
+        >>"$dir/.claude/project.yaml"
+}
+
+echo "-- integration: _capability_gap_check (called directly -- see its docstring for why it is NOT auto-wired into _chat) emits skill.gap (turn_id-linked) and drafts a plan note in the background when the index has an established posture, without touching project.yaml --"
+_ae_gap_root="$(mktemp -d)"
+ae_gap_repo "$_ae_gap_root" jarvis
+_ae_gap_project_yaml="$_ae_gap_root/.claude/project.yaml"
+_ae_gap_before_hash="$(shasum -a 256 "$_ae_gap_project_yaml" | awk '{print $1}')"
+
+gap_engine_out="$(SCRIPTS_DIR="$AE_SCRIPTS" ROOT="$_ae_gap_root" python3 - <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import capability_index, engine, observability
+import brain
+
+root = os.environ["ROOT"]
+
+# Force the deterministic keyword-overlap fallback (never a real embedding)
+# for BOTH the index compile and the per-turn query, keeping this test
+# environment-independent -- see docs/spec-deltas/346.md (§2, round 2
+# NEW-3) for why a real embeddings capability would make this test flaky.
+capability_index._default_embed_fn = lambda texts: None
+
+state_dir = os.path.join(root, ".claude", "assistant-engine-state-gap")
+e = engine.AssistantEngine(lambda: [("jarvis", root)], state_dir)
+e.start()
+try:
+    # wait for the real index worker to compile at least once (installs
+    # recipe-finder) before calling _capability_gap_check --
+    # capability_index_for degrades to an empty index until it has.
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        if len(e.capability_index_for(root).entries) > 0:
+            break
+        time.sleep(0.1)
+
+    # a query with ZERO keyword overlap against "recipe-finder" -- an
+    # established capability posture exists (total_enabled=1), but
+    # nothing matched THIS request.
+    turn_id = "turn-gap-1"
+    e._capability_gap_check(root, turn_id, "please book a flight to mars")
+
+    identities = os.path.join(root, ".claude", "identities")
+    deadline = time.monotonic() + 5.0
+    minted_slugs = []
+    while time.monotonic() < deadline:
+        notes = brain.load_notes(identities, "assistant")
+        minted_slugs = [s for s in notes if s.startswith("capability-acquire-plan-")]
+        if minted_slugs:
+            break
+        time.sleep(0.2)
+    print("PLAN_NOTE_MINTED_IN_BACKGROUND", len(minted_slugs) == 1)
+
+    rows = []
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        rows = observability.query(root)
+        if any(r["kind"] == "skill.gap" for r in rows):
+            break
+        time.sleep(0.2)
+    gap_rows = [r for r in rows if r["kind"] == "skill.gap"]
+    print("GAP_EVENT_EMITTED", len(gap_rows) == 1)
+    print("GAP_EVENT_HAS_TURN_ID", bool(gap_rows) and gap_rows[0].get("turn_id") == turn_id)
+    print("GAP_EVENT_KIND_IN_SKILL_NAMESPACE", bool(gap_rows) and gap_rows[0]["kind"].startswith("skill."))
+finally:
+    e.stop()
+PY
+)"
+check "gap check: an acquire-offer plan note is minted in the background" "PLAN_NOTE_MINTED_IN_BACKGROUND True" "$gap_engine_out"
+check "gap check: a skill.gap trace event is emitted (§10.1 namespace, review round 1 fix #4)" "GAP_EVENT_EMITTED True" "$gap_engine_out"
+check "gap check: the gap event carries the caller's turn_id (turn linkage)" "GAP_EVENT_HAS_TURN_ID True" "$gap_engine_out"
+check "gap check: the event kind lives inside the enumerated skill.* namespace" "GAP_EVENT_KIND_IN_SKILL_NAMESPACE True" "$gap_engine_out"
+
+_ae_gap_after_hash="$(shasum -a 256 "$_ae_gap_project_yaml" | awk '{print $1}')"
+check "gap check: project.yaml is byte-identical after the whole flow (never mutated)" \
+    "$_ae_gap_before_hash" "$_ae_gap_after_hash"
+rm -rf "$_ae_gap_root"
+
+echo "-- unit: _capability_gap_check -- an exception is never raised into the caller; an error trace event is emitted instead (review round 1 fix #5, §10.6) --"
+_ae_gaperr_state="$(mktemp -d)"
+_ae_gaperr_root="$(mktemp -d)"
+gaperr_out="$(SCRIPTS_DIR="$AE_SCRIPTS" STATE="$_ae_gaperr_state" ROOT="$_ae_gaperr_root" python3 - <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import engine, observability, turns
+
+# a REAL, writable root (never a fake path) -- the traces WRITER thread
+# needs somewhere real to create <root>/.claude/assistant/traces.sqlite;
+# a nonexistent root would break trace persistence itself, not just the
+# synthetic error this test injects.
+root = os.environ["ROOT"]
+state_dir = os.environ["STATE"]
+e = engine.AssistantEngine(lambda: [], state_dir)
+e.start()
+
+def boom(index, message, **kwargs):
+    raise RuntimeError("synthetic gap-detection failure")
+
+original = turns.capability_gap_reply
+turns.capability_gap_reply = boom
+try:
+    turn_id = "turn-err-1"
+    try:
+        e._capability_gap_check(root, turn_id, "anything")
+        print("RAISED", False)
+    except Exception:
+        print("RAISED", True)
+
+    deadline = time.monotonic() + 5.0
+    rows = []
+    while time.monotonic() < deadline:
+        rows = observability.query(root)
+        if any(r["kind"].startswith("skill.gap") and r.get("status") == "error" for r in rows):
+            break
+        time.sleep(0.2)
+    err_rows = [r for r in rows if r["kind"].startswith("skill.gap") and r.get("status") == "error"]
+    print("ERROR_EVENT_EMITTED", len(err_rows) == 1)
+    print("ERROR_EVENT_HAS_TURN_ID", bool(err_rows) and err_rows[0].get("turn_id") == turn_id)
+    print("ERROR_EVENT_NAMES_THE_ERROR", bool(err_rows)
+          and "synthetic gap-detection failure" in str(err_rows[0].get("payload") or {}))
+finally:
+    turns.capability_gap_reply = original
+    e.stop()
+PY
+)"
+check "gap check: an internal exception never raises into the caller" "RAISED False" "$gaperr_out"
+check "gap check: an error trace event is emitted instead (§10.6)" "ERROR_EVENT_EMITTED True" "$gaperr_out"
+check "gap check: the error event carries the turn_id" "ERROR_EVENT_HAS_TURN_ID True" "$gaperr_out"
+check "gap check: the error event names the actual error" "ERROR_EVENT_NAMES_THE_ERROR True" "$gaperr_out"
+rm -rf "$_ae_gaperr_state" "$_ae_gaperr_root"
+
+echo "-- regression guard: _chat does NOT auto-invoke the capability-gap flow -- ordinary chat on a skill-less assistant mints ONLY the real distiller-batch note, never a flood of gap notes --"
+_ae_nogap_root="$(mktemp -d)"
+ae_repo "$_ae_nogap_root" jarvis
+
+nogap_out="$(SCRIPTS_DIR="$AE_SCRIPTS" ROOT="$_ae_nogap_root" python3 - <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import adapters, distill, engine
+import brain
+
+root = os.environ["ROOT"]
+identities = os.path.join(root, ".claude", "identities")
+
+def stub_complete(context, **kwargs):
+    return {"text": "a completely ordinary reply", "usage": None, "timings": None}
+
+adapters.register_adapter("openai", stub_complete)
+
+state_dir = os.path.join(root, ".claude", "assistant-engine-state-nogap")
+e = engine.AssistantEngine(lambda: [("jarvis", root)], state_dir)
+e.start()
+try:
+    n = distill.DEFAULT_BATCH_N
+    for i in range(n):
+        status, payload, _ = e.handle("POST", "/assistant/chat", body={"message": "ordinary message %d" % i})
+        if status != 200:
+            print("CHAT_FAILED", status, payload)
+            break
+    else:
+        deadline = time.monotonic() + 5.0
+        minted = 0
+        while time.monotonic() < deadline:
+            minted = len(brain.load_notes(identities, "assistant"))
+            if minted >= 1:
+                break
+            time.sleep(0.2)
+        print("MINTED_COUNT", minted)
+        gap_slugs = [s for s in brain.load_notes(identities, "assistant")
+                     if s.startswith("capability-acquire-plan-")]
+        print("NO_GAP_NOTES", gap_slugs == [])
+finally:
+    e.stop()
+PY
+)"
+check "regression guard: ordinary chat mints exactly one note (the real distilled batch), never a flood" "MINTED_COUNT 1" "$nogap_out"
+check "regression guard: ordinary chat never drafts a capability-acquire-plan note on its own" "NO_GAP_NOTES True" "$nogap_out"
+rm -rf "$_ae_nogap_root"

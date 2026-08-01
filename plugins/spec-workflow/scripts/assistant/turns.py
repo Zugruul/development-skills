@@ -68,9 +68,10 @@ truncation -- Sec8.2's "user message" is never on the chopping block.
 import hashlib
 import threading
 import time
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 
 from assistant import adapters
+from assistant import capability_index
 
 # ----------------------------------------------------------------- budgets
 
@@ -223,6 +224,227 @@ def default_roster_provider():
     note in the composed context (`_render_roster` below), never a crash or
     a silently-omitted section."""
     return []
+
+
+# ------------------------------------------------------- capability gap (AST-071, Sec11.8)
+
+
+# Sec11.8 "nearest enabled abilities" -- how many to name in a refusal.
+# Deliberately smaller than roster_for_turn's own top-N (a refusal names a
+# handful of closest candidates, not a full roster dump).
+NEAREST_ABILITIES_TOP_N = capability_index.DEFAULT_NEAREST_TOP_N
+
+CapabilityGap = namedtuple("CapabilityGap", ["text", "nearest", "plan_note"])
+
+
+def _render_capability_gap_refusal(nearest, total_enabled, available_count):
+    """Composes the deterministic, in-persona refusal text (Sec11.8: "SHALL
+    say so in-persona"). THREE distinct shapes (review round 1, HIGH #1 --
+    a two-shape version conflated "nothing installed" with "something is
+    installed but none of it is relevant", which reads as the SAME honest
+    admission when it is not: an operator who installed a capability wants
+    to know their assistant HAS one, just not a matching one, versus an
+    operator who installed nothing at all):
+
+      1. `total_enabled == 0` -- nothing is enabled at all. The plain
+         "nothing installed" admission.
+      2. `total_enabled > 0` but `nearest` is empty -- `capability_index.
+         nearest_entries` found no entry with ANY relevance signal for
+         this query (every entry scored exactly 0.0, the same condition
+         that made `roster_for_turn` return `[]` in the first place -- see
+         `capability_gap_reply`'s docstring). States how many abilities
+         ARE enabled without naming any of them (there is nothing
+         truthful to name -- see the round-1 finding: this is, in
+         practice, the ONLY populated-index shape `capability_gap_reply`
+         can currently produce). `total_enabled` counts every ENABLED
+         entry in the index, which -- per the "two invisibility tiers"
+         design (capability_index.py's own module docstring) -- includes
+         enabled-but-UNPROVISIONED entries; review round 2 (NEW-5) flagged
+         that "I have N abilities enabled" alone overstates what is
+         actually USABLE when some of those N are not provisioned, so this
+         shape states BOTH counts: "N enabled (M available)" (M =
+         `available_count`, i.e. entries with `provisioned_ok`).
+      3. `nearest` is non-empty -- names each one, in ranked order. Per
+         Sec11.4 ("never present an unavailable ability as usable"), an
+         unprovisioned-but-enabled nearest entry is still named, but WITH
+         its unavailable reason -- naming it is honest; omitting it would
+         hide that it exists at all, and presenting it as usable would
+         violate Sec11.4 directly. (Not reachable via `capability_gap_reply`
+         today -- see that function's docstring -- but fully implemented
+         and directly unit-tested, e.g.
+         section-assistant-turns.sh's "_render_capability_gap_refusal"
+         cases, so the branch cannot silently regress.) Per-entry
+         availability is already precise here (each unavailable entry
+         states its own reason), so this shape does not repeat the
+         N-enabled/M-available summary shape 2 uses."""
+    if total_enabled == 0:
+        return ("I do not have any abilities enabled right now, so I cannot "
+                 "help with that -- there is nothing installed to try.")
+    if not nearest:
+        return ("I have %d abilit%s enabled (%d available), but none of them "
+                 "are related to that request."
+                 % (total_enabled, "y" if total_enabled == 1 else "ies", available_count))
+    lines = ["I do not have an ability that covers that request.",
+             "The closest I have enabled:"]
+    for entry in nearest:
+        line = "- %s: %s" % (entry.name, entry.one_liner or "(no description)")
+        if not entry.provisioned_ok:
+            reason = entry.unavailable_reason or "not currently available"
+            line += " (unavailable -- %s)" % reason
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _draft_capability_acquire_offer(user_message, nearest, total_enabled):
+    """Sec11.8 "MAY offer to acquire the ability by drafting a plan into the
+    brain repo (parking lot)". MAY-offer POLICY (review round 2, NEW-2 --
+    an orchestrator decision that REVERSED round 1's "only when
+    total_enabled > 0" gate): the offer is drafted EVERY time
+    `capability_gap_reply` decides there is a genuine gap, unconditionally
+    -- including when `total_enabled == 0` (a completely bare assistant
+    with nothing installed at all). Rationale (recorded on task #508): the
+    bare-assistant case is EXACTLY the one whose unmet requests are most
+    worth parking -- it is the strongest signal of all that something
+    should be acquired, and gating it out (round 1's choice) suppressed
+    the most useful case rather than a marginal one. This is the simplest
+    possible reading of "MAY" that stays fully deterministic (never a
+    fresh LLM guess about whether to bother); drafting is cheap and a
+    human still has to approve any real acquisition out-of-band regardless
+    (Sec11.8), so an always-drafted note is never itself a commitment.
+
+    `total_enabled` is carried in the returned payload (round 2, HIGH
+    NEW-1) so `distill.mint_gap_note` can branch the minted note's body on
+    it -- NOT on `nearest`, which is provably always `[]` for every gap
+    this module can currently detect (see `capability_gap_reply`'s
+    "ARCHITECTURAL NOTE") and therefore cannot, by itself, distinguish
+    "nothing enabled at all" from "N enabled but none matched". Branching
+    on `nearest` alone (an earlier version of this function's caller did
+    exactly that) made the minted note assert "No capabilities are
+    currently enabled at all" even when `total_enabled` was 2 -- a live
+    contradiction against the refusal text from the SAME gap event, which
+    round 2 (NEW-1) fixed by threading this field through.
+
+    Returns a plain PAYLOAD dict, not a minted note -- this module never
+    touches a queue or calls brain.mint() itself (Sec9.5/Sec17.7, see the
+    NO_QUEUE_TOUCH invariant test in section-assistant-turns.sh, which
+    re-scans this whole module's source). The caller (engine.py) is
+    responsible for enqueuing this payload onto the distiller worker's
+    queue (the engine's one sanctioned brain-write thread, Sec17.5) --
+    `distill.mint_gap_note` is the function that actually mints it, adding
+    `turn_id`/`created` to this payload before handing it off (mirrors
+    `_enqueue_artifact_note`'s own payload-shaping)."""
+    return {
+        "request_excerpt": (user_message or "")[:200],
+        "nearest": [entry.name for entry in nearest],
+        "total_enabled": total_enabled,
+    }
+
+
+def capability_gap_reply(index, user_message, *, embed_fn=None,
+                          nearest_top_n=NEAREST_ABILITIES_TOP_N,
+                          roster_top_n=None):
+    """SPEC-ASSISTANT.md Sec11.8, AST-071, docs/design/ast-E6.md sequence 5:
+    "roster/index produce no match for a request -> turns.py returns an
+    in-persona refusal naming the nearest enabled abilities (from the
+    index, not a fresh LLM guess) and MAY draft an acquire-offer plan note
+    into the brain repo." (See `_draft_capability_acquire_offer`'s
+    docstring for the current MAY-offer policy -- round 2 made this an
+    UNCONDITIONAL draft on every gap, including a totally bare index.)
+
+    Runs off an ALREADY-COMPILED `index` (Sec11.3: no index recompute in
+    the request path) -- the exact same `capability_index.roster_for_turn`
+    evaluation the turn's own roster injection already performs (see
+    engine.py's `_roster_provider_for`), so this function detects a gap by
+    re-running that SAME pure, in-memory, no-I/O scoring rather than
+    inventing a second notion of "matches".
+
+    Returns `None` when there is no gap: either `roster_for_turn` found a
+    genuine candidate list (a real, usable match), or it returned the
+    `AskInsteadOfGuess` sentinel (a DIFFERENT, already-handled AST-061
+    concern -- a tie or low-confidence single winner still means something
+    PLAUSIBLY matched, which is not what Sec11.8 is about). Only the
+    `roster_for_turn() == []` case -- Sec11.3's own docstring flags this
+    exact branch as "AST-071's capability-gap handling, not this task" --
+    is a gap: covers BOTH a completely empty index (nothing installed at
+    all) and a nonempty index where nothing had ANY relevance signal for
+    this query.
+
+    ARCHITECTURAL NOTE (review round 1, HIGH #1 -- read before assuming
+    the named-ability refusal shape fires in practice): `roster_for_turn`
+    returns `[]` if and only if its max-scoring entry's own score is
+    `<= 0.0` -- and since `_score` never returns a negative number, that
+    condition means EVERY entry scored EXACTLY 0.0. `nearest_entries`
+    (called below with the SAME `index`/`query`, hence the SAME `_score`
+    results) now EXCLUDES zero-score entries (review round 1 fix). So
+    whenever this function detects a gap at all, `nearest` is PROVABLY
+    always `[]` too -- the "name specific nearest abilities" refusal shape
+    is fully implemented and independently unit-tested (see
+    `_render_capability_gap_refusal` and `capability_index.
+    nearest_entries`'s own test coverage) but is NOT reachable through
+    THIS function's public entry point today. Only `total_enabled` (zero
+    vs. nonzero) varies across real calls. A further consequence (review
+    round 2, NEW-3): in production, when a real embeddings capability is
+    available, `_score` uses cosine similarity, which is essentially NEVER
+    exactly 0.0 for real embedding vectors, even for semantically
+    unrelated text -- so in EMBEDDING MODE, `roster_for_turn() == []` (and
+    therefore this function's gap detection) may rarely if ever fire at
+    all; the whole capability-gap flow is, today, effectively
+    keyword-fallback-only (it reliably engages when the embeddings
+    capability itself is unavailable/degraded, forcing every entry's
+    `embedding` to `None`). Both findings are recorded in
+    docs/spec-deltas/346.md, alongside task #508's production-wiring
+    scope, which owns deciding whether/how to loosen either condition.
+
+    On a gap, returns a `CapabilityGap(text, nearest, plan_note)`:
+      - `text`: the deterministic in-persona refusal -- see
+        `_render_capability_gap_refusal`'s docstring for its three shapes
+        (nothing enabled / something enabled but nothing related / named
+        candidates, the last of which is the unreachable-today shape the
+        architectural note above explains).
+      - `nearest`: up to `nearest_top_n` `CapabilityIndexEntry` objects
+        from `capability_index.nearest_entries` -- always `[]` for any gap
+        this function can currently detect (see the architectural note).
+      - `plan_note`: a payload dict for the CALLER to hand to the async
+        mint queue (see `_draft_capability_acquire_offer`'s docstring for
+        the current unconditional-draft policy) -- always a dict, never
+        `None`, on any gap; never minted here, never blocking, never
+        touching `assistant.capabilities.*` or project.yaml (Sec11.8:
+        installation/enablement SHALL require human approval; this
+        function contains no installation logic whatsoever).
+
+    WIRING NOTE (flagged design call, docs/spec-deltas/346.md; production
+    wiring is task #508, not this one): callers should treat a non-`None`
+    result as background-only signal (trace + plan-note draft) rather than
+    unconditionally replacing every turn's LLM-generated reply with `text`
+    -- an index with few or no capabilities installed (the common v1
+    state) would otherwise turn EVERY ordinary chat message into a
+    refusal, which Sec11.3's own roster-injection contract explicitly
+    guards against ("ordinary chat turns... completely unaffected").
+    Detecting whether a given user_message was actually AN ACTION REQUEST
+    (as opposed to ordinary conversation) is a natural-language judgment
+    call this function deliberately does not make -- "never a fresh LLM
+    guess" (Sec11.8) rules out asking the model, and no deterministic,
+    stdlib-only substitute reliably distinguishes the two. This function's
+    OWN contract is unconditional and honest: called with an index and a
+    message, it reports the true state of that index/query match (or its
+    absence) every time -- what a caller does with a `None` vs. a
+    populated result is that caller's decision."""
+    roster_top_n = (roster_top_n if roster_top_n is not None
+                     else capability_index.DEFAULT_ROSTER_TOP_N)
+    query = capability_index.embed_query(user_message, embed_fn)
+    roster_result = capability_index.roster_for_turn(index, query, roster_top_n)
+    if not (isinstance(roster_result, list) and not roster_result):
+        return None  # a real match, or AskInsteadOfGuess -- not a gap
+
+    entries = index.entries if index else ()
+    nearest = capability_index.nearest_entries(index, query, nearest_top_n)
+    total_enabled = len(entries)
+    available_count = sum(1 for e in entries if e.provisioned_ok)
+    return CapabilityGap(
+        text=_render_capability_gap_refusal(nearest, total_enabled, available_count),
+        nearest=nearest,
+        plan_note=_draft_capability_acquire_offer(user_message, nearest, total_enabled),
+    )
 
 
 # ------------------------------------------------------------- recall seam

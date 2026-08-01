@@ -517,3 +517,134 @@ check "run_worker: at least one start-time compile happened" "N_BEFORE 1" "$out"
 check "run_worker: no recompile fires while nothing changed between polls" "NO_RECOMPILE_WHILE_UNCHANGED True" "$out"
 check "run_worker: a real config change (enabled flips) triggers exactly one more recompile" "RECOMPILED_AFTER_CHANGE True" "$out"
 check "run_worker: the recompiled index reflects the newly-disabled skill's absence" "LAST_REFLECTS_DISABLED_SKILL True" "$out"
+
+# ------------------------------------------------------------------------
+# AST-071 (SPEC-ASSISTANT.md §11.8, docs/design/ast-E6.md sequence 5):
+# nearest_entries -- the DISPLAY-ONLY sibling of roster_for_turn, used by
+# turns.capability_gap_reply to name "nearest enabled abilities" in an
+# in-persona refusal even when NOTHING scored well enough for
+# roster_for_turn to trust as an actual match (which returns [] in that
+# case). Deterministic ranking off the already-compiled index -- never a
+# fresh LLM guess.
+# ------------------------------------------------------------------------
+echo "-- unit: nearest_entries -- ranks by ACTUAL relevance (differing nonzero scores), never an alphabetical dump of zero-score entries (review round 1, HIGH #1) --"
+out="$(SCRIPTS_DIR="$CR_SCRIPTS" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import capability_index as ci
+
+# a query with GENUINE, DIFFERING partial overlap against two entries, and
+# ZERO overlap against a third -- proves nearest_entries (a) ranks by real
+# relevance, highest first, and (b) EXCLUDES the zero-score entry rather
+# than including it just to pad out the count (the round-1 finding: a
+# prior version sorted by (-score, name) without filtering, so two
+# zero-score entries came back in plain alphabetical order -- indistinguishable
+# from a real ranking).
+query = ci.Query(keywords=["render", "duck", "video", "clip"], embedding=None)
+entries = (
+    ci.CapabilityIndexEntry(name="video-renderer", one_liner="renders video clips",
+                              keywords=["render", "duck", "video", "clip"],
+                              embedding=None, enabled=True, provisioned_ok=True, unavailable_reason=None),
+    ci.CapabilityIndexEntry(name="photo-editor", one_liner="edits photos", keywords=["render", "photo"],
+                              embedding=None, enabled=True, provisioned_ok=True, unavailable_reason=None),
+    ci.CapabilityIndexEntry(name="cooking-helper", one_liner="suggests recipes", keywords=["pasta", "recipe"],
+                              embedding=None, enabled=True, provisioned_ok=True, unavailable_reason=None),
+)
+index = ci.CapabilityIndex(entries=entries)
+
+nearest = ci.nearest_entries(index, query, 3)
+print("NEAREST_COUNT", len(nearest))
+print("NEAREST_NAMES_IN_ORDER", [e.name for e in nearest])
+print("ZERO_SCORE_ENTRY_EXCLUDED", "cooking-helper" not in [e.name for e in nearest])
+PY
+)"
+check "nearest_entries: excludes the zero-score entry (never pads with irrelevant candidates)" "NEAREST_COUNT 2" "$out"
+check "nearest_entries: highest-relevance entry ranked first" "NEAREST_NAMES_IN_ORDER ['video-renderer', 'photo-editor']" "$out"
+check "nearest_entries: a genuinely unrelated entry never appears" "ZERO_SCORE_ENTRY_EXCLUDED True" "$out"
+
+echo "-- unit: nearest_entries -- a nonEMPTY index with NO relevance signal at all still returns [], never an alphabetical fallback --"
+out="$(SCRIPTS_DIR="$CR_SCRIPTS" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import capability_index as ci
+
+# every entry scores EXACTLY 0 against this query (this is also the only
+# way roster_for_turn itself can ever return [] -- see turns.py
+# capability_gap_reply docstring for the proof this is the SAME condition).
+query = ci.Query(keywords=["duck", "render", "video"], embedding=None)
+entries = (
+    ci.CapabilityIndexEntry(name="weather", one_liner="checks the weather", keywords=["weather", "forecast"],
+                              embedding=None, enabled=True, provisioned_ok=True, unavailable_reason=None),
+    ci.CapabilityIndexEntry(name="reminders", one_liner="sets reminders", keywords=["reminder", "schedule"],
+                              embedding=None, enabled=True, provisioned_ok=True, unavailable_reason=None),
+)
+index = ci.CapabilityIndex(entries=entries)
+
+roster = ci.roster_for_turn(index, query, 5)
+nearest = ci.nearest_entries(index, query, 2)
+print("ROSTER_EMPTY", roster == [])
+print("NEAREST_EMPTY_TOO", nearest == [])
+PY
+)"
+check "nearest_entries: sanity -- roster_for_turn also returns [] for this zero-relevance query" "ROSTER_EMPTY True" "$out"
+check "nearest_entries: an index with entries but zero relevance returns [], never a fabricated ranking" "NEAREST_EMPTY_TOO True" "$out"
+
+echo "-- unit: nearest_entries -- HARD top-N cap, deterministic (-score, name) ordering (fixture already uses genuinely differing nonzero scores -- unaffected by the zero-score filter) --"
+out="$(SCRIPTS_DIR="$CR_SCRIPTS" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import capability_index as ci
+
+vocab = ["k0", "k1", "k2", "k3", "k4", "k5"]
+query = ci.Query(keywords=vocab, embedding=None)
+entries = []
+for i in range(6):
+    kept = vocab[: 6 - i]  # strictly decreasing overlap -> strictly decreasing score
+    entries.append(ci.CapabilityIndexEntry(
+        name="skill-%d" % i, one_liner="", keywords=kept, embedding=None,
+        enabled=True, provisioned_ok=True, unavailable_reason=None,
+    ))
+index = ci.CapabilityIndex(entries=tuple(entries))
+
+top2 = ci.nearest_entries(index, query, 2)
+print("TOP2_COUNT", len(top2))
+print("TOP2_NAMES", [e.name for e in top2])
+PY
+)"
+check "nearest_entries: hard top-N cap -- exactly N from more candidates" "TOP2_COUNT 2" "$out"
+check "nearest_entries: highest-overlap entries first, deterministic order" "TOP2_NAMES ['skill-0', 'skill-1']" "$out"
+
+echo "-- unit: nearest_entries -- degrades to [] for a genuinely empty index (Sec17: never a crash) --"
+out="$(SCRIPTS_DIR="$CR_SCRIPTS" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import capability_index as ci
+
+empty_index = ci.CapabilityIndex(entries=())
+query = ci.Query(keywords=["anything"], embedding=None)
+print("EMPTY_RESULT", ci.nearest_entries(empty_index, query, 3))
+PY
+)"
+check "nearest_entries: empty index -> [] (no crash, no fabricated candidate)" "EMPTY_RESULT []" "$out"
+
+echo "-- unit: nearest_entries -- includes enabled-but-unprovisioned entries (Sec11.4: named, never hidden) --"
+out="$(SCRIPTS_DIR="$CR_SCRIPTS" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import capability_index as ci
+
+query = ci.Query(keywords=["render"], embedding=None)
+entries = (
+    ci.CapabilityIndexEntry(name="renderer", one_liner="renders things", keywords=["render"],
+                              embedding=None, enabled=True, provisioned_ok=False,
+                              unavailable_reason="binary not on PATH"),
+)
+index = ci.CapabilityIndex(entries=entries)
+nearest = ci.nearest_entries(index, query, 3)
+print("COUNT", len(nearest))
+print("NAME", nearest[0].name if nearest else None)
+print("REASON", nearest[0].unavailable_reason if nearest else None)
+PY
+)"
+check "nearest_entries: an unprovisioned-but-enabled entry is still returned" "COUNT 1" "$out"
+check "nearest_entries: its unavailable reason travels with it" "REASON binary not on PATH" "$out"

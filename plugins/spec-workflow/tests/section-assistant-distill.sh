@@ -351,3 +351,237 @@ PY
 check "latency: 10 turns complete quickly even while the distiller chews a 500-item backlog" "LOADED_UNDER_BOUND True" "$latency_out"
 check "latency: loaded-worker latency stays within a generous multiple of the idle baseline" "LOADED_NOT_WORSE_THAN_10X_BASELINE True" "$latency_out"
 rm -rf "$_adl_root"
+
+# ------------------------------------------------------------------------
+# AST-071 (SPEC-ASSISTANT.md §11.8, §17.5): mint_gap_note -- the
+# capability-gap acquire-offer PLAN NOTE (parking lot), minted through
+# brain.mint()'s identities-wide flock + atomic write, same non-batched
+# "immediate mint" discipline as mint_artifact_note. Never touches
+# assistant.capabilities.* or project.yaml -- drafting a plan is not
+# installation (§11.8).
+# ------------------------------------------------------------------------
+echo "-- unit: mint_gap_note -- atomic, schema-valid note; brain-event emitted; never touches project.yaml --"
+gap_out="$(SCRIPTS_DIR="$AD_SCRIPTS" python3 - <<'PY'
+import json, os, sys, tempfile
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import distill
+import brain
+
+root = tempfile.mkdtemp(prefix="ad-gap-")
+identities = os.path.join(root, ".claude", "identities")
+os.makedirs(identities, exist_ok=True)
+
+project_yaml = os.path.join(root, ".claude", "project.yaml")
+with open(project_yaml, "w", encoding="utf-8") as fh:
+    fh.write("schemaVersion: 2\nassistant:\n    enabled: true\n")
+before_bytes = open(project_yaml, "rb").read()
+
+gap_note = {
+    "request_excerpt": "please render a 3d model of a duck",
+    "nearest": ["weather", "reminders"],
+    "turn_id": "turn-abc123",
+    "created": "2026-08-01T00:00:00Z",
+}
+result = distill.mint_gap_note(identities, root, gap_note, role="assistant")
+print("SLUG_PREFIX", result["slug"].startswith("capability-acquire-plan-"))
+print("FILE_EXISTS", os.path.isfile(result["path"]))
+
+fm, body = brain.parse_note(open(result["path"], encoding="utf-8").read())
+required_keys = {"tags", "paths", "strength", "source", "graduated", "created", "last-touched"}
+print("SCHEMA_KEYS_PRESENT", required_keys.issubset(fm.keys()))
+print("TAGGED_PARKING_LOT", "capability-acquisition-plan" in fm.get("tags", []))
+print("BODY_MENTIONS_NOT_INSTALLED", "NOT an installed ability" in body)
+print("BODY_MENTIONS_HUMAN_APPROVAL", "human must approve" in body)
+print("BODY_HAS_EXCERPT", "duck" in body)
+print("BODY_HAS_NEAREST", "weather" in body and "reminders" in body)
+
+events_path = os.path.join(root, ".claude", "brain-events.jsonl")
+events = [json.loads(line) for line in open(events_path, encoding="utf-8")]
+minted = [e for e in events if e.get("type") == "NoteMinted" and e.get("slug") == result["slug"]]
+print("BRAIN_EVENT_EMITTED", len(minted) == 1)
+
+after_bytes = open(project_yaml, "rb").read()
+print("PROJECT_YAML_BYTE_IDENTICAL", before_bytes == after_bytes)
+PY
+)"
+check "mint_gap_note: slug is clearly tagged as a capability-acquisition plan" "SLUG_PREFIX True" "$gap_out"
+check "mint_gap_note: note file was written" "FILE_EXISTS True" "$gap_out"
+check "mint_gap_note: frontmatter carries every zettel-schema-required key" "SCHEMA_KEYS_PRESENT True" "$gap_out"
+check "mint_gap_note: tagged parking-lot / capability-acquisition-plan" "TAGGED_PARKING_LOT True" "$gap_out"
+check "mint_gap_note: body states this is NOT an installed ability" "BODY_MENTIONS_NOT_INSTALLED True" "$gap_out"
+check "mint_gap_note: body states a human must approve out-of-band" "BODY_MENTIONS_HUMAN_APPROVAL True" "$gap_out"
+check "mint_gap_note: body carries the unmatched request excerpt" "BODY_HAS_EXCERPT True" "$gap_out"
+check "mint_gap_note: body names the nearest abilities considered" "BODY_HAS_NEAREST True" "$gap_out"
+check "mint_gap_note: brain-events.jsonl records a NoteMinted event" "BRAIN_EVENT_EMITTED True" "$gap_out"
+check "mint_gap_note: project.yaml is byte-identical before/after (never mutated)" "PROJECT_YAML_BYTE_IDENTICAL True" "$gap_out"
+
+# ------------------------------------------------------------------------
+# Review round 2, HIGH NEW-1: the note body used to branch on `nearest`
+# (empty vs non-empty) as its "is anything enabled" proxy -- but `nearest`
+# is ALWAYS `[]` in every gap_note payload capability_gap_reply can
+# currently produce (see turns.capability_gap_reply's ARCHITECTURAL NOTE),
+# so a genuinely empty index and an index with 2 enabled-but-unmatched
+# capabilities produced the IDENTICAL "No capabilities are currently
+# enabled at all" sentence -- a live contradiction against the refusal
+# text from the SAME gap event (which correctly said "I have 2 abilities
+# enabled..."). Split into two tests, each asserting the sentence that
+# matches its OWN total_enabled, proving the note body now branches on
+# total_enabled (plumbed through the payload) instead.
+# ------------------------------------------------------------------------
+echo "-- unit: mint_gap_note -- a GENUINELY empty index (total_enabled=0) honestly says nothing is enabled --"
+gap_empty_out="$(SCRIPTS_DIR="$AD_SCRIPTS" python3 - <<'PY'
+import os, sys, tempfile
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import distill
+import brain
+
+root = tempfile.mkdtemp(prefix="ad-gap-empty-")
+identities = os.path.join(root, ".claude", "identities")
+os.makedirs(identities, exist_ok=True)
+
+gap_note = {"request_excerpt": "do something I have no ability for", "nearest": [], "total_enabled": 0,
+            "turn_id": "turn-xyz", "created": "2026-08-01T00:00:00Z"}
+result = distill.mint_gap_note(identities, root, gap_note, role="assistant")
+_fm, body = brain.parse_note(open(result["path"], encoding="utf-8").read())
+print("BODY_SAYS_NONE_ENABLED", "no capabilities are currently enabled" in body.lower())
+print("BODY_NEVER_CLAIMS_SOMETHING_ENABLED", "currently enabled, but" not in body.lower())
+PY
+)"
+check "mint_gap_note: total_enabled=0 case honestly says nothing is enabled" "BODY_SAYS_NONE_ENABLED True" "$gap_empty_out"
+check "mint_gap_note: total_enabled=0 case never claims something is enabled" "BODY_NEVER_CLAIMS_SOMETHING_ENABLED True" "$gap_empty_out"
+
+echo "-- unit: mint_gap_note -- ENABLED but nothing relevant (total_enabled=2, nearest still []) states the TRUE count, never the empty-index lie (round 2, HIGH NEW-1) --"
+gap_related_out="$(SCRIPTS_DIR="$AD_SCRIPTS" python3 - <<'PY'
+import os, sys, tempfile
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import distill
+import brain
+
+root = tempfile.mkdtemp(prefix="ad-gap-enabled-")
+identities = os.path.join(root, ".claude", "identities")
+os.makedirs(identities, exist_ok=True)
+
+# this is the SHAPE capability_gap_reply actually produces in production
+# today (see its ARCHITECTURAL NOTE): nearest is [] even though
+# total_enabled > 0.
+gap_note = {"request_excerpt": "do something none of my abilities cover", "nearest": [], "total_enabled": 2,
+            "turn_id": "turn-xyz2", "created": "2026-08-01T00:00:00Z"}
+result = distill.mint_gap_note(identities, root, gap_note, role="assistant")
+_fm, body = brain.parse_note(open(result["path"], encoding="utf-8").read())
+print("BODY_STATES_TRUE_COUNT", "2 capabilit" in body.lower())
+print("BODY_NEVER_SAYS_NONE_ENABLED", "no capabilities are currently enabled" not in body.lower())
+PY
+)"
+check "mint_gap_note: total_enabled=2 case states the true enabled count" "BODY_STATES_TRUE_COUNT True" "$gap_related_out"
+check "mint_gap_note: total_enabled=2 case never asserts the empty-index lie (this is the bug review round 2 caught)" "BODY_NEVER_SAYS_NONE_ENABLED True" "$gap_related_out"
+
+# ------------------------------------------------------------------------
+# Review round 1, MEDIUM #2: the ORIGINAL slug (a 40-char prefix of the
+# slugified excerpt) both flooded (near-identical requests -- e.g. same
+# text, different whitespace/case -- got DISTINCT slugs) and silently
+# merged unrelated requests (two different 200+ char excerpts sharing
+# their first 40 characters collapsed onto ONE note, discarding the
+# earlier plan). Re-keyed on sorted nearest-capability names + a hash of
+# the NORMALIZED (lowercased, whitespace-collapsed) full excerpt.
+# ------------------------------------------------------------------------
+echo "-- unit: mint_gap_note -- slug dedupe: near-identical requests bump ONE note (never flood) --"
+dedupe_out="$(SCRIPTS_DIR="$AD_SCRIPTS" python3 - <<'PY'
+import os, sys, tempfile
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import distill
+import brain
+
+root = tempfile.mkdtemp(prefix="ad-gap-dedupe-")
+identities = os.path.join(root, ".claude", "identities")
+os.makedirs(identities, exist_ok=True)
+
+# same request, differing only in whitespace/case -- must normalize to the
+# SAME slug and bump the SAME note (strength 1 -> 2), never mint a second.
+r1 = distill.mint_gap_note(identities, root, {
+    "request_excerpt": "Please   render a duck", "nearest": ["video-renderer"],
+    "turn_id": "t1", "created": "2026-08-01T00:00:00Z",
+}, role="assistant")
+r2 = distill.mint_gap_note(identities, root, {
+    "request_excerpt": "please render a duck", "nearest": ["video-renderer"],
+    "turn_id": "t2", "created": "2026-08-01T00:01:00Z",
+}, role="assistant")
+
+notes = brain.load_notes(identities, "assistant")
+gap_slugs = [s for s in notes if s.startswith("capability-acquire-plan-")]
+print("SAME_SLUG", r1["slug"] == r2["slug"])
+print("ONE_NOTE_TOTAL", len(gap_slugs) == 1)
+print("STRENGTH_AFTER_BUMP", notes[r1["slug"]]["fm"]["strength"])
+PY
+)"
+check "mint_gap_note: whitespace/case-only variants dedupe to the same slug" "SAME_SLUG True" "$dedupe_out"
+check "mint_gap_note: near-identical requests mint exactly ONE note" "ONE_NOTE_TOTAL True" "$dedupe_out"
+check "mint_gap_note: the second near-identical request BUMPS (strength 2), never duplicates" "STRENGTH_AFTER_BUMP 2" "$dedupe_out"
+
+echo "-- unit: mint_gap_note -- slug dedupe: requests sharing only a text PREFIX get DISTINCT notes (the old 40-char-prefix bug is fixed) --"
+prefix_out="$(SCRIPTS_DIR="$AD_SCRIPTS" python3 - <<'PY'
+import os, sys, tempfile
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import distill
+import brain
+
+root = tempfile.mkdtemp(prefix="ad-gap-prefix-")
+identities = os.path.join(root, ".claude", "identities")
+os.makedirs(identities, exist_ok=True)
+
+shared_prefix = "please render a beautiful high quality cinematic video of "
+r1 = distill.mint_gap_note(identities, root, {
+    "request_excerpt": shared_prefix + "a duck swimming in a pond at sunset",
+    "nearest": ["video-renderer"], "turn_id": "t1", "created": "2026-08-01T00:00:00Z",
+}, role="assistant")
+r2 = distill.mint_gap_note(identities, root, {
+    "request_excerpt": shared_prefix + "a cat chasing a laser pointer indoors",
+    "nearest": ["video-renderer"], "turn_id": "t2", "created": "2026-08-01T00:01:00Z",
+}, role="assistant")
+
+notes = brain.load_notes(identities, "assistant")
+gap_slugs = sorted(s for s in notes if s.startswith("capability-acquire-plan-"))
+print("DISTINCT_SLUGS", r1["slug"] != r2["slug"])
+print("BOTH_NOTES_PRESENT", len(gap_slugs) == 2)
+print("BOTH_STRENGTH_ONE", notes[r1["slug"]]["fm"]["strength"] == 1 and notes[r2["slug"]]["fm"]["strength"] == 1)
+PY
+)"
+check "mint_gap_note: prefix-sharing but genuinely different requests get distinct slugs" "DISTINCT_SLUGS True" "$prefix_out"
+check "mint_gap_note: both land as separate notes (no silent data loss)" "BOTH_NOTES_PRESENT True" "$prefix_out"
+check "mint_gap_note: neither bumped the other (both minted fresh, strength 1)" "BOTH_STRENGTH_ONE True" "$prefix_out"
+
+echo "-- integration: run_worker mints a gap-note item IMMEDIATELY, never buffered/batched (non-blocking hand-off) --"
+gap_worker_out="$(SCRIPTS_DIR="$AD_SCRIPTS" python3 - <<'PY'
+import os, sys, tempfile, threading, time, queue
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import distill
+import brain
+
+root = tempfile.mkdtemp(prefix="ad-gap-worker-")
+identities = os.path.join(root, ".claude", "identities")
+os.makedirs(identities, exist_ok=True)
+
+q = queue.Queue()
+stop = threading.Event()
+# batch_n=100 -- if gap notes were wrongly folded into the exchange batcher,
+# nothing would mint until 100 items; a single gap_note item must mint at
+# once, proving it is NOT subject to batching.
+t = threading.Thread(target=distill.run_worker, args=(q, stop), kwargs={"batch_n": 100})
+t.start()
+
+q.put({"root": root, "identities": identities, "gap_note": {
+    "request_excerpt": "please book a flight to mars",
+    "nearest": [], "turn_id": "turn-1", "created": "2026-08-01T00:00:00Z",
+}})
+time.sleep(0.6)  # generous watchdog
+
+notes = brain.load_notes(identities, "assistant")
+gap_notes = [slug for slug in notes if slug.startswith("capability-acquire-plan-")]
+print("MINTED_IMMEDIATELY", len(gap_notes) == 1)
+
+stop.set()
+t.join(timeout=3)
+print("WORKER_JOINED", not t.is_alive())
+PY
+)"
+check "run_worker: a gap_note item mints immediately, not batched (turn never blocks on it)" "MINTED_IMMEDIATELY True" "$gap_worker_out"
+check "run_worker: worker thread still joins cleanly after stop()" "WORKER_JOINED True" "$gap_worker_out"

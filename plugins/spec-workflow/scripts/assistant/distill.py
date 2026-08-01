@@ -26,6 +26,7 @@ the same isolation discipline turns.make_default_recall and this module's
 own `refresh_after_mint` already use (Sec17.1: isolation extends to import
 time).
 """
+import hashlib
 import queue as queue_module
 import re
 import sys
@@ -179,6 +180,147 @@ def mint_artifact_note(identities_dir, root, artifact, role="assistant"):
     )
 
 
+def _normalize_gap_excerpt(text):
+    """Lowercase + collapsed-whitespace normalization used ONLY to compute
+    `_gap_note_slug`'s dedup hash below -- the note BODY still renders the
+    RAW excerpt verbatim, unmodified. Two excerpts that normalize
+    identically are treated as "the same request" for dedup purposes: a
+    case or whitespace-only difference collapses into one note.
+    Non-ASCII limitation (documented, not fixed here): Python's
+    locale-naive `str.lower()` does not round-trip cleanly for every
+    script, so two visually-identical non-ASCII excerpts can rarely
+    normalize to different strings and therefore mint separate notes
+    instead of deduping -- an accepted, minor over-minting edge case, not
+    a data-loss one (nothing is ever silently merged incorrectly by this
+    limitation, only occasionally NOT merged when it ideally would be)."""
+    return " ".join((text or "").strip().lower().split())
+
+
+def _gap_note_slug(nearest, excerpt):
+    """AST-071 slug (review round 1, MEDIUM #2): the ORIGINAL scheme (a
+    40-char prefix of the slugified excerpt) had two independent bugs:
+      (a) FLOODING -- near-identical requests that diverged anywhere
+          within their first 40 characters got DISTINCT slugs, minting a
+          fresh note per near-duplicate turn.
+      (b) SILENT DATA LOSS -- two DIFFERENT requests that merely shared
+          the same 40-character PREFIX (identical up to char 40, only
+          diverging after it -- which the old scheme truncated away
+          before it could matter) collapsed onto ONE slug: the second
+          mint's `brain.mint()` bump silently overwrote/extended the
+          first request's note instead of creating its own.
+
+    Re-keyed on:
+      - the SORTED nearest-capability names (so requests naming the exact
+        same acquisition target group under one readable slug segment,
+        independent of exact wording), and
+      - a short hash of the `_normalize_gap_excerpt`-normalized FULL
+        excerpt (collapses whitespace/case-only differences into one
+        note; ANY other difference -- including one past the old scheme's
+        40-char cutoff -- now hashes to a different digest and gets its
+        own note).
+
+    COLLISION SEMANTICS (documented, not a bug): two requests naming the
+    SAME nearest-capability set whose excerpts normalize identically
+    dedupe into one note by design (that IS "the same request", modulo
+    case/whitespace). A 10-hex-char (40-bit) hash has a real but
+    astronomically small collision probability for the note volume this
+    function will ever see; a hash collision would silently bump an
+    unrelated note rather than mint a new one -- an accepted, standard
+    trade-off for a bounded, human-readable slug, not fixed here."""
+    digest = hashlib.sha256(_normalize_gap_excerpt(excerpt).encode("utf-8")).hexdigest()[:10]
+    if nearest:
+        names_part = re.sub(r"[^a-z0-9-]+", "-", "-".join(sorted(nearest)).lower()).strip("-")[:40]
+        names_part = names_part or "abilities"
+    else:
+        names_part = "unspecified"
+    return "capability-acquire-plan-%s-%s" % (names_part, digest)
+
+
+def mint_gap_note(identities_dir, root, gap_note, role="assistant"):
+    """AST-071 (SPEC-ASSISTANT.md Sec11.8, docs/design/ast-E6.md sequence
+    5): mints the capability-gap ACQUIRE-OFFER PLAN NOTE -- a parking-lot
+    zettel, clearly tagged/titled so it is never mistaken for an installed
+    capability or an enablement action. Drafting this note is NOT
+    installation: this function never reads or writes
+    `assistant.capabilities.*`, never touches project.yaml, and never
+    invokes anything -- a human approves any real acquisition out-of-band
+    (Sec11.8). Same discipline as `mint_artifact_note`: brain.py imported
+    lazily (never at module top), one `brain.mint()` call under the
+    identities-wide flock (atomic write + brain-events.jsonl emission come
+    for free from that one call, Sec17.5), and this only ever runs on the
+    distiller worker thread -- never the HTTP request thread that detected
+    the gap (turns.py itself is queue-free, Sec9.5/Sec17.7; see
+    `turns.capability_gap_reply`'s docstring for the payload this consumes).
+
+    `gap_note` is the payload `turns._draft_capability_acquire_offer`
+    built, with `turn_id`/`created` added by the caller (engine.py's
+    `_enqueue_gap_note`, mirroring `_enqueue_artifact_note`'s own payload-
+    shaping): `{"request_excerpt", "nearest": [name, ...], "total_enabled":
+    int, "turn_id", "created"}`. Slug is `_gap_note_slug(nearest, excerpt)`
+    -- see that function's docstring for the exact dedup scheme (sorted
+    nearest names + a hash of the normalized excerpt) and its documented
+    collision semantics; near-identical requests bump the SAME parked
+    note, while genuinely different requests -- even ones sharing a long
+    text prefix -- always land as distinct notes. NOTE (round 2, HIGH
+    NEW-1): `nearest` is, in every request this function is reachable for
+    today, ALWAYS an empty list (see `turns.capability_gap_reply`'s
+    "ARCHITECTURAL NOTE" docstring -- `nearest_entries` provably returns
+    `[]` for every gap that function can detect) -- so `nearest` alone
+    CANNOT distinguish "nothing is enabled at all" from "N abilities are
+    enabled but none matched"; branching the note body on `nearest`
+    (an earlier version of this function did exactly that) asserted
+    "No capabilities are currently enabled at all" even when the SAME gap
+    event's own refusal text said otherwise -- a live, self-contradicting
+    lie. The note body below branches on `total_enabled` instead, the
+    SAME signal `turns._render_capability_gap_refusal` uses for its own
+    three shapes, so the plan note and the refusal it was drafted
+    alongside always agree. Because `nearest` is always `[]` in practice,
+    `_gap_note_slug`'s `names_part` is, in every note this function mints
+    today, the literal fallback `"unspecified"` -- production slugs read
+    `capability-acquire-plan-unspecified-<hash>` until a future task (see
+    docs/spec-deltas/346.md) gives this function a real nearest-ability
+    signal to key off."""
+    import brain as brain_module
+
+    excerpt = (gap_note.get("request_excerpt") or "").strip()
+    nearest = gap_note.get("nearest") or []
+    total_enabled = gap_note.get("total_enabled") or 0
+    turn_id = gap_note.get("turn_id") or ""
+    created = gap_note.get("created") or ""
+
+    slug = _gap_note_slug(nearest, excerpt)
+
+    lines = [
+        "# Capability acquisition plan (parking lot -- NOT an installed ability)",
+        "",
+        "This note is a DRAFT plan only. Nothing was installed or enabled --",
+        "assistant.capabilities.* and project.yaml were never touched while",
+        "drafting this note. A human must approve any acquisition out-of-band",
+        "(SPEC-ASSISTANT.md Sec11.8) before anything is ever installed.",
+        "",
+        'Unmatched request (excerpt): "%s"' % excerpt[:200],
+        "Turn: %s" % turn_id,
+        "Created: %s" % created,
+    ]
+    # Branches on total_enabled (round 2, HIGH NEW-1), NOT on `nearest` --
+    # see the docstring above for why `nearest` cannot tell these two
+    # cases apart (it is always empty for both).
+    if nearest:
+        lines += ["", "Nearest enabled abilities considered (none matched well enough):"]
+        lines += ["- %s" % name for name in nearest]
+    elif total_enabled > 0:
+        lines += ["", "%d capabilit%s currently enabled, but none matched this request."
+                  % (total_enabled, "y is" if total_enabled == 1 else "ies are")]
+    else:
+        lines += ["", "No capabilities are currently enabled at all."]
+
+    return brain_module.mint(
+        identities_dir, role, slug, root, "\n".join(lines) + "\n",
+        tags="capability-acquisition-plan,parking-lot",
+        source="assistant-capability-gap",
+    )
+
+
 def process_batch(identities_dir, root, exchanges, role="assistant"):
     """The distiller's core logic (design doc's `distill.process_batch`
     contract): pure and testable without any thread/queue -- callers pass
@@ -250,7 +392,10 @@ def run_worker(q, stop_event, batch_n=DEFAULT_BATCH_N, role="assistant",
     (engine.py's `_enqueue_distill`), buffers PER ROOT (Sec9.2/AST-033: two
     assistants' exchanges never mix into the same batch -- role privacy and
     digest correctness), and calls `process_batch` once a root's buffer
-    reaches `batch_n`.
+    reaches `batch_n`. Also drains `artifact_note` (chat-artifact memory)
+    and `gap_note` (AST-071, Sec11.8 capability-acquire-offer plan notes)
+    items -- both mint IMMEDIATELY, never batched, via
+    `mint_artifact_note`/`mint_gap_note` respectively.
 
     Runs entirely on ITS OWN thread: nothing here ever runs on an HTTP
     request thread, and `q.get(timeout=poll_timeout)` bounds how long the
@@ -291,6 +436,14 @@ def run_worker(q, stop_event, batch_n=DEFAULT_BATCH_N, role="assistant",
             artifact = item.get("artifact_note")
             if artifact is not None and root and identities_dir:
                 mint_artifact_note(identities_dir, root, artifact, role=role)
+                continue
+            # capability-gap items (AST-071, Sec11.8): also minted
+            # immediately, never batched -- a parking-lot plan note is a
+            # one-off draft per gap, not something to accumulate into a
+            # distilled summary.
+            gap = item.get("gap_note")
+            if gap is not None and root and identities_dir:
+                mint_gap_note(identities_dir, root, gap, role=role)
                 continue
             exchange = item.get("exchange")
             if not root or not identities_dir or exchange is None:

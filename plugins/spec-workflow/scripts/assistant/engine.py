@@ -1205,6 +1205,102 @@ class AssistantEngine:
             except queue.Full:
                 pass
 
+    def _enqueue_gap_note(self, root, gap_note):
+        """AST-071 (SPEC-ASSISTANT.md Sec11.8, Sec9.5/Sec17.7): posts one
+        capability-acquire-offer plan-note payload to the distiller
+        worker's queue -- distill.mint_gap_note mints it (a parking-lot
+        zettel, never an installation). Same non-blocking, drop-oldest-on-
+        overflow posture as `_enqueue_artifact_note`/`_enqueue_distill`: a
+        dropped item loses only the parked plan note, never the turn or
+        its reply."""
+        item = {
+            "root": root,
+            "identities": os.path.join(root, ".claude", "identities"),
+            "gap_note": gap_note,
+        }
+        q = self.queues["distiller"]
+        try:
+            q.put_nowait(item)
+        except queue.Full:
+            try:
+                q.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                q.put_nowait(item)
+            except queue.Full:
+                pass
+
+    def _capability_gap_check(self, root, turn_id, message):
+        """AST-071 (SPEC-ASSISTANT.md Sec11.8, docs/design/ast-E6.md
+        sequence 5): runs `turns.capability_gap_reply` off the SAME
+        already-compiled index `_roster_provider_for` reads (Sec11.3: no
+        index recompute) and, on a genuine gap, emits a first-class
+        `skill.gap` trace event (turn-linked, Sec10.1 -- `skill.*` is one
+        of §10.1's enumerated event-kind namespaces; review round 1 fix #4
+        renamed this from `capability.gap`, which was not) and enqueues
+        the MAY-offer acquire-plan draft onto the distiller queue --
+        turn_id/created are stamped onto the payload here since turns.py
+        itself never touches a queue or a clock (Sec9.5/Sec17.7). Never
+        alters any reply text -- it only has trace/background-note side
+        effects. Never RAISES into the caller (a bug in gap detection must
+        never break an otherwise-successful turn, Sec17) -- but per §10.6
+        ("every error... SHALL be a first-class event linked from its
+        turn") an internal failure is not silently swallowed either: it is
+        reported as a `skill.gap.error` trace event carrying the turn_id
+        and the error (review round 1 fix #5).
+
+        NOT auto-wired into every `_chat` call (flagged design decision,
+        docs/spec-deltas/346.md -- read this if extending the wiring;
+        production wiring into a real request path is tracked separately
+        as task #508, not this one). `capability_index.roster_for_turn`
+        returns `[]` (a "gap" by this function's own contract) both for a
+        genuinely empty index (no capabilities installed at all -- the
+        common v1 default) AND for any ordinary conversational turn that
+        simply does not mention an installed capability; `_roster_provider_for`'s
+        own docstring already establishes that AST-061 treats BOTH as
+        "ordinary chat, completely unaffected" for roster injection.
+        Calling this unconditionally on every turn was tried and reverted:
+        an 8-turn conversation against a skill-less assistant fixture
+        minted 8 near-duplicate acquire-offer plan notes (one per turn)
+        instead of the expected single distilled summary note -- a real,
+        demonstrated flooding regression (it broke
+        section-assistant-distill.sh's "N turns... trigger a real
+        distilled mint" integration test), confirming that distinguishing
+        "this message is an action request" from ordinary conversation
+        needs a real trigger (an actual capability-invocation attempt)
+        this task does not build (no MCP/argv invoke changes, per the task
+        brief's non-scope) -- rather than a heuristic that would either
+        miss real gaps or flood the brain on skill-less/off-topic turns.
+        This method is therefore shipped as a complete, directly-callable,
+        fully-tested building block (section-assistant-engine.sh calls it
+        directly) for a FUTURE caller that already knows a specific
+        request could not be resolved to a capability (e.g. an explicit
+        invocation-attempt path, once one exists, or task #508's
+        production wiring) -- not invoked from the general chat pipeline
+        in this task."""
+        try:
+            index = self.capability_index_for(root)
+            gap = turns.capability_gap_reply(index, message)
+        except Exception as exc:
+            self._emit_trace(root, "skill.gap.error", turn_id=turn_id, status="error", payload={
+                "error": str(exc), "error_type": type(exc).__name__,
+            })
+            return
+        if gap is None:
+            return
+        # review round 2 (NEW-2): `plan_note_drafted` was dropped from this
+        # payload -- `turns.capability_gap_reply` now drafts a plan note
+        # unconditionally on every gap (see `_draft_capability_acquire_offer`'s
+        # docstring), so the field was always True and carried no signal.
+        self._emit_trace(root, "skill.gap", turn_id=turn_id, status="gap", payload={
+            "nearest": [entry.name for entry in gap.nearest],
+        })
+        plan_note = dict(gap.plan_note)
+        plan_note["turn_id"] = turn_id
+        plan_note["created"] = _now_iso()
+        self._enqueue_gap_note(root, plan_note)
+
     def _emit_trace(self, root, kind, turn_id=None, span_id=None,
                      parent_span_id=None, status=None, payload=None,
                      modality="text"):
