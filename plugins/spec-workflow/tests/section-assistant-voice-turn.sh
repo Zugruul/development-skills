@@ -855,6 +855,9 @@ global.syncChatDockBodyClass = () => {};
 // #485: tabs + status keep-in-step -- recorders here.
 global.renderChatAssistantTabs = () => {};
 global.startChatStatusSync = () => {};
+// #492 review round 1: openChatOverlay resolves the muted model suffix
+// through the shared assistantModelSuffix() helper -- extract it first.
+eval(extract("assistantModelSuffix"));
 eval(extract("openChatOverlay"));
 if (typeof global.stopChatStatusSync === "undefined") global.stopChatStatusSync = () => {};
 eval(extract("closeChatOverlay"));

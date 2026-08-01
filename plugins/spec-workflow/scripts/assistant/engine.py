@@ -139,6 +139,26 @@ def _main_name(section):
     return names[0] if names else None
 
 
+def _candidate_llm(section):
+    """A candidate's `llm` sub-mapping, resolved for the /assistant/status
+    payload (#492): `{"provider": str|None, "model": str|None}`, degrading
+    each field to None on any malformed shape rather than raising -- a
+    `discovery.scan` "candidate" classification already requires
+    `assistant.config.validate_assistant` to accept `llm.provider`/
+    `llm.model` as strings (§6.5), so this defensive path should be
+    unreachable in practice, but `_status` must never KeyError building the
+    chat header's model name off a hand-crafted or corrupted section."""
+    llm = section.get("llm") if isinstance(section, dict) else None
+    if not isinstance(llm, dict):
+        return {"provider": None, "model": None}
+    provider = llm.get("provider")
+    model = llm.get("model")
+    return {
+        "provider": provider if isinstance(provider, str) else None,
+        "model": model if isinstance(model, str) else None,
+    }
+
+
 class AssistantEngine:
     """Owns the `/assistant/*` route table and the per-subsystem worker
     threads. One instance is constructed per server process (neural-view.py's
@@ -633,13 +653,19 @@ class AssistantEngine:
         is true when Skip was explicitly chosen (§7.3) OR when there is no
         assistant to select at all (`outcome == "none"`, §7.4) -- the page
         needs one boolean to decide whether to hard-gate voice/chat, it
-        should not have to re-derive "none means gated" itself."""
+        should not have to re-derive "none means gated" itself.
+
+        #492: each candidate also carries its resolved `llm`
+        (`_candidate_llm`) -- the chat overlay header resolves the selected
+        assistant's model id LOCALLY off this same list (including on
+        #485 tab switches) rather than a second round-trip."""
         scan = discovery.scan(root for _, root in self._repos_getter())
         candidates_payload = [
             {
                 "name": _main_name(section),
                 "aliases": default_store._names(section)[1:],
                 "root": str(root),
+                "llm": _candidate_llm(section),
             }
             for root, section in scan.candidates
         ]

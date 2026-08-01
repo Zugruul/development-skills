@@ -1042,6 +1042,14 @@ body.chat-docked #search-filters-panel{height:calc((100vh - 130px)*.62)}
 .ast-chat-assistant-name{flex:0 0 auto;font-size:.62rem;letter-spacing:.06em;
   text-transform:uppercase;color:var(--cyan);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;max-width:40%}
+/* #492: the resolved provider model id, rendered in the header after the
+   tab row (review round 1, finding 1: it never hides when tabs render --
+   tabs answer "who", this is a different fact), muted relative to the
+   name (same var() other quiet meta text in this file uses, e.g.
+   .ast-chat-lastx-label/.ast-chat-chips) -- never uppercased, the model
+   id renders verbatim. */
+.ast-chat-assistant-model{flex:0 0 auto;font-size:.6rem;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%}
 /* #459 flagged extension 1 (the 1/2/3 control read as unlabeled tabs): a
    proper visible name, not just an aria-label -- role="group" carries the
    same semantic the app's other segmented controls already use
@@ -8718,6 +8726,16 @@ async function switchAssistantTo(name){
         gatedState.className = "ast-chat-state";
         gatedState.textContent = "";
       }
+      // #492 review round 1, finding 2: this switch is the header's own
+      // truth for the assistant that's now active -- update its name/model
+      // spans right here rather than waiting on the poll's next tick
+      // (which this same switch just set __chatSyncBaseline to skip).
+      // Without this, a tab click or the voice-header dropdown switch left
+      // the header naming the OLD assistant and its OLD model.
+      const nameEl = document.getElementById("ast-chat-assistant-name");
+      if(nameEl) nameEl.textContent = confirmed;
+      const modelEl = document.getElementById("ast-chat-assistant-model");
+      if(modelEl) modelEl.textContent = assistantModelSuffix(confirmed);
       startChatStatusSync();
       renderChatAssistantTabs();
       await loadChatHistory();
@@ -9229,6 +9247,17 @@ function buildChatOverlay(){
   tabsWrap.setAttribute("aria-label", "Assistants");
   tabsWrap.hidden = true;
   header.appendChild(tabsWrap);
+  // #492: the resolved model id, muted, after the tab row -- populated
+  // wherever nameEl's OWN text is set (openChatOverlay's status fetch,
+  // switchAssistantTo, the #485 keep-in-step poll) so it can never drift
+  // from the name it labels. Review round 1, finding 1 (BLOCKER): unlike
+  // nameEl, this span NEVER hides when tabs render -- the tabs answer "who
+  // am I talking to", but the model is a different fact tabs never carry,
+  // so on any machine with 2+ assistants the model must still show.
+  const modelEl = document.createElement("span");
+  modelEl.id = "ast-chat-assistant-model";
+  modelEl.className = "ast-chat-assistant-model";
+  header.appendChild(modelEl);
   // #459 flagged extension 1: the 1/2/3 control is a last-N-exchanges
   // selector, not tabs -- role="group" + a visible label name it, same
   // pattern #voice-dir ("Voice direction") and #theme-toggle ("Theme")
@@ -9523,6 +9552,24 @@ function focusChatInput(){
   const input = document.getElementById("ast-chat-input");
   if(input && !input.disabled) input.focus();
 }
+// #492 review round 1 (findings 2, 3, 5a, 5b): the single source for the
+// chat header's muted model suffix, resolving `name`'s llm.model off
+// window.__assistantCandidates -- shared by every caller that can change
+// or refresh the active assistant (openChatOverlay's initial status fetch,
+// switchAssistantTo's tab-click/dropdown-switch flow, and the #485
+// keep-in-step poll) so the three can never drift out of format with each
+// other. Empty whenever the name or its model id isn't known (mirrors
+// nameEl's own empty-when-unknown rule); no leading space before the
+// middot -- the header's flex `gap` already supplies that separation.
+// Array.isArray-guarded: a missing/malformed candidates cache degrades to
+// "" rather than throwing (matches switchAssistantTo's own guard on
+// status.candidates before adopting it).
+function assistantModelSuffix(name){
+  const cands = Array.isArray(window.__assistantCandidates) ? window.__assistantCandidates : [];
+  const selCand = cands.find(c => c && c.name === name);
+  const model = selCand && selCand.llm && typeof selCand.llm.model === "string" ? selCand.llm.model.trim() : "";
+  return model ? ("· " + model) : "";
+}
 async function openChatOverlay(){
   if(document.getElementById("ast-chat-overlay")){
     // #480: re-pressing T (or another auto-open path) on an overlay that's
@@ -9562,6 +9609,14 @@ async function openChatOverlay(){
   window.__assistantCandidates = (status && status.candidates) || [];
   const nameEl = document.getElementById("ast-chat-assistant-name");
   if(nameEl) nameEl.textContent = window.__assistantSelected || "";
+  // #492: the muted "· <model>" suffix, resolved from THIS SAME status
+  // response's per-candidate llm.model (engine.py's _status extension) via
+  // the shared assistantModelSuffix() helper -- empty whenever the
+  // selected assistant or its model id isn't known, so a gated/offline
+  // open never shows a bare separator or "undefined" (mirrors nameEl's
+  // own empty-when-unknown rule just above).
+  const modelEl = document.getElementById("ast-chat-assistant-model");
+  if(modelEl) modelEl.textContent = assistantModelSuffix(window.__assistantSelected);
   if(!status || status.gated || status.outcome === "none"){
     renderChatGated(overlay, status);
     return;
@@ -9591,6 +9646,12 @@ function renderChatAssistantTabs(){
   if(wrap.dataset) wrap.dataset.sig = sig;
   wrap.hidden = !multi;
   if(nameEl) nameEl.hidden = multi;
+  // #492 review round 1, finding 1 (BLOCKER): the muted model span does
+  // NOT hide here -- tabs answer "who am I talking to" once there are 2+
+  // assistants, but the model is a different fact tabs never carry. Its
+  // text is kept current by whichever caller changed the active
+  // assistant (openChatOverlay's status fetch, switchAssistantTo, or the
+  // keep-in-step poll), so nothing needs recomputing in this function.
   wrap.innerHTML = "";
   if(!multi) return;
   for(const c of cands){
@@ -9636,6 +9697,14 @@ function startChatStatusSync(){
     window.__assistantSelected = status.selected || window.__assistantSelected;
     setAssistantMediaCtx(status);
     renderChatAssistantTabs();
+    // #492 review round 1, finding 3: the model suffix is recomputed on
+    // EVERY tick, not just a name-change tick -- a human editing
+    // llm.model in project.yaml (which _status re-scans live) changes the
+    // model WITHOUT changing who's selected, and that used to be nested
+    // inside the name-change branch below, so a model-only change left the
+    // header naming the old model forever.
+    const modelEl = document.getElementById("ast-chat-assistant-model");
+    if(modelEl) modelEl.textContent = assistantModelSuffix(window.__assistantSelected);
     if(status.selected && status.selected !== window.__chatSyncBaseline){
       window.__chatSyncBaseline = status.selected;
       const nameEl = document.getElementById("ast-chat-assistant-name");

@@ -251,6 +251,10 @@ global.syncChatDockBodyClass = () => {};
 // #485: tabs + status keep-in-step -- recorders here.
 global.renderChatAssistantTabs = () => {};
 global.startChatStatusSync = () => {};
+// #492 review round 1, finding 2/3/5a: openChatOverlay resolves the muted
+// model suffix through the shared assistantModelSuffix() helper now
+// (rather than inlining the lookup) -- extract it first.
+eval(extract("assistantModelSuffix"));
 eval(extract("openChatOverlay"));
 if (typeof global.stopChatStatusSync === "undefined") global.stopChatStatusSync = () => {};
 eval(extract("closeChatOverlay"));
@@ -603,6 +607,37 @@ function resetChat() {
     if (logInf.scrollTop !== logInf.scrollHeight) throw new Error("a live append must snap to the new bottom when the human was already at the bottom, scrollTop=" + logInf.scrollTop + " scrollHeight=" + logInf.scrollHeight);
     if (logInf.scrollHeight <= heightBeforeSnap) throw new Error("setup: the new exchange should have grown scrollHeight further past " + heightBeforeSnap + ", got " + logInf.scrollHeight);
     console.log("STICKY_SCROLL_SNAPS_AT_BOTTOM_OK true");
+
+    // ---- #492: MODEL NAME beside the assistant name, muted, rendered as
+    // "· <model>" after the name (review round 1, finding 5a: no leading
+    // space -- the header's flex `gap` already supplies the separation, so
+    // a leading space just doubled it) -- resolved from THIS SAME status
+    // response's per-candidate llm.model (engine.py's _status extension,
+    // same source nameEl already reads its text from) ----
+    resetChat();
+    statusResponse = {outcome: "one", candidates: [{name: "jarvis", aliases: [], root: "/r", llm: {provider: "claude", model: "claude-sonnet-5"}}], selected: "jarvis", gated: false, askAgain: false};
+    await openChatOverlay();
+    const modelElOn = document.getElementById("ast-chat-assistant-model");
+    if (!modelElOn || modelElOn.textContent !== "· claude-sonnet-5") throw new Error("expected the muted model suffix '· claude-sonnet-5', got " + JSON.stringify(modelElOn && modelElOn.textContent));
+    console.log("MODEL_SUFFIX_RENDERS_OK true");
+
+    // ---- #492: candidate carries no llm (older/degraded status payload) --
+    // no separator, no "undefined", nothing rendered ----
+    resetChat();
+    statusResponse = {outcome: "one", candidates: [{name: "jarvis", aliases: [], root: "/r"}], selected: "jarvis", gated: false, askAgain: false};
+    await openChatOverlay();
+    const modelElOff = document.getElementById("ast-chat-assistant-model");
+    if (!modelElOff || modelElOff.textContent !== "") throw new Error("expected no model suffix when the candidate carries no llm info, got " + JSON.stringify(modelElOff && modelElOff.textContent));
+    console.log("MODEL_SUFFIX_ABSENT_WHEN_UNKNOWN_OK true");
+
+    // ---- #492: gated (skip) -- both name and model stay empty, same rule ----
+    resetChat();
+    statusResponse = {outcome: "multiple", candidates: [], selected: null, gated: true, askAgain: true};
+    await openChatOverlay();
+    const nameElGated = document.getElementById("ast-chat-assistant-name");
+    const modelElGated = document.getElementById("ast-chat-assistant-model");
+    if (nameElGated.textContent !== "" || (modelElGated && modelElGated.textContent !== "")) throw new Error("gated overlay must leave both name and model empty, got name=" + JSON.stringify(nameElGated.textContent) + " model=" + JSON.stringify(modelElGated && modelElGated.textContent));
+    console.log("MODEL_EMPTY_WHEN_GATED_OK true");
 })().catch(e => { console.error("FAIL", e.message); process.exit(1); });
 NODEJS
 tmpl_chat_out="$(node "$_ac_node" "$NVHTML_CHAT" 2>&1)"
@@ -638,6 +673,9 @@ check "template (#481): ∞ tracks the live exchanges cache, not a count fixed a
 check "template (#481, review round 1 finding 2): renderChatLog()'s rebuild scrolls to the bottom with exactly one write" "REBUILD_SINGLE_SCROLL_SNAP_OK true" "$tmpl_chat_out"
 check "template (#481, review round 1 finding 1): a live append while scrolled up reading history does not yank the view down (sticky-bottom)" "STICKY_SCROLL_STAYS_PUT_OK true" "$tmpl_chat_out"
 check "template (#481, review round 1 finding 1): a live append while already at the bottom follows the newest message down" "STICKY_SCROLL_SNAPS_AT_BOTTOM_OK true" "$tmpl_chat_out"
+check "template (#492): the muted model suffix renders '· <model>' after the name when the selected candidate carries an llm.model" "MODEL_SUFFIX_RENDERS_OK true" "$tmpl_chat_out"
+check "template (#492): no model suffix (no separator, no undefined) when the candidate carries no llm info" "MODEL_SUFFIX_ABSENT_WHEN_UNKNOWN_OK true" "$tmpl_chat_out"
+check "template (#492): a gated overlay leaves both the name and the model suffix empty" "MODEL_EMPTY_WHEN_GATED_OK true" "$tmpl_chat_out"
 if [[ "$tmpl_chat_rc" -ne 0 ]]; then echo "$tmpl_chat_out" >&2; fi
 
 check "template pins the ast-chat-overlay class name in source" '"ast-chat-overlay"' "$(cat "$NVHTML_CHAT")"
@@ -669,6 +707,10 @@ check "459 flagged extension 2: the chat header gets an assistant-name element" 
 # when the literal "ASSISTANT" text became the real name. Same idiom
 # this app's own top #status bar already uses (#status .dot).
 check "459 review: the chat header carries a status dot, same idiom as this app's own #status .dot" 'dotEl.className = "ast-chat-dot";' "$(cat "$NVHTML_CHAT")"
+# #492: the model-name element is created right beside the name span, in
+# buildChatOverlay, so it exists in the DOM before any status fetch resolves.
+check "492: the chat header gets a muted assistant-model element beside the name" 'ast-chat-assistant-model' "$(cat "$NVHTML_CHAT")"
+check "492: the model element carries its own CSS class, styled with the muted color var" '.ast-chat-assistant-model{' "$(cat "$NVHTML_CHAT")"
 
 _ac2_node="$(mktemp).cjs"
 cat >"$_ac2_node" <<'NODEJS'
@@ -831,6 +873,9 @@ global.syncChatDockBodyClass = () => {};
 // #485: tabs + status keep-in-step -- recorders here.
 global.renderChatAssistantTabs = () => {};
 global.startChatStatusSync = () => {};
+// #492 review round 1: openChatOverlay resolves the model suffix through
+// the shared assistantModelSuffix() helper -- extract it first.
+eval(extract("assistantModelSuffix"));
 eval(extract("openChatOverlay"));
 if (typeof global.stopChatStatusSync === "undefined") global.stopChatStatusSync = () => {};
 eval(extract("closeChatOverlay"));
@@ -911,7 +956,7 @@ function mkEl(id){
     if (id) elements[id] = el;
     return el;
 }
-mkEl("ast-chat-tabs"); mkEl("ast-chat-assistant-name"); mkEl("ast-chat-overlay"); mkEl("ast-chat-log");
+mkEl("ast-chat-tabs"); mkEl("ast-chat-assistant-name"); mkEl("ast-chat-assistant-model"); mkEl("ast-chat-overlay"); mkEl("ast-chat-log");
 global.document = {
     getElementById(id){ return elements[id] || null; },
     createElement(){ return mkEl(null); },
@@ -937,11 +982,32 @@ global.setAssistantMediaCtx = () => {};
 global.uiState = {};
 window.assistantChat = { queue: [{text: "stale queued"}], inFlight: false, switchGen: 0 };
 window.__assistantSelected = "jarvis";
-window.__assistantCandidates = [{name: "jarvis"}, {name: "friday"}];
+window.__assistantCandidates = [
+    {name: "jarvis", llm: {provider: "claude", model: "claude-sonnet-5"}},
+    {name: "friday", llm: {provider: "openai", model: "gpt-5.6-sol"}},
+];
+// #492 review round 1, finding 2/3/5a: openChatOverlay/switchAssistantTo/
+// the poll all resolve the muted model suffix through this one shared
+// helper now -- extract it before the functions that call it.
+eval(extract("assistantModelSuffix"));
 eval(extract("renderChatAssistantTabs"));
 eval(extract("switchAssistantTo"));
 (async () => {
-    // multi-candidate: one pill per assistant, active mirrors selection, name span hidden
+    // #492 review round 1, finding 5b: assistantModelSuffix must degrade to
+    // "" (never throw) when window.__assistantCandidates isn't an array --
+    // matches switchAssistantTo's own Array.isArray guard pattern used
+    // elsewhere in this file.
+    const savedCandidates = window.__assistantCandidates;
+    window.__assistantCandidates = null;
+    if (assistantModelSuffix("jarvis") !== "") throw new Error("assistantModelSuffix must return '' when window.__assistantCandidates isn't an array, not throw");
+    window.__assistantCandidates = savedCandidates;
+    console.log("MODEL_SUFFIX_GUARDS_NON_ARRAY_CANDIDATES_OK true");
+
+    // multi-candidate: one pill per assistant, active mirrors selection, name
+    // span hides -- the muted model span must NOT hide (review round 1,
+    // finding 1 (BLOCKER): tabs answer "who", the model is a different fact
+    // tabs never carry, so on a machine with 2+ assistants the old rule hid
+    // the whole feature).
     renderChatAssistantTabs();
     const wrap = elements["ast-chat-tabs"];
     if (wrap.hidden !== false) throw new Error("2 candidates must show the tab row");
@@ -949,6 +1015,7 @@ eval(extract("switchAssistantTo"));
     if (wrap.children[0].getAttribute("aria-pressed") !== "true") throw new Error("active tab must mirror window.__assistantSelected");
     if (wrap.children[1].getAttribute("aria-pressed") !== "false") throw new Error("inactive tab must not read pressed");
     if (elements["ast-chat-assistant-name"].hidden !== true) throw new Error("multi-candidate must hide the single-name span");
+    if (elements["ast-chat-assistant-model"].hidden !== false) throw new Error("multi-candidate must NOT hide the model span -- tabs answer who, model is a different fact tabs never carry");
     console.log("TABS_RENDER_OK true");
 
     // single candidate: plain name stays, tab row hides
@@ -956,11 +1023,20 @@ eval(extract("switchAssistantTo"));
     renderChatAssistantTabs();
     if (wrap.hidden !== true) throw new Error("single candidate must hide the tab row");
     if (elements["ast-chat-assistant-name"].hidden !== false) throw new Error("single candidate keeps the name span");
+    if (elements["ast-chat-assistant-model"].hidden !== false) throw new Error("single candidate keeps the model span too");
     console.log("TABS_SINGLE_NAME_OK true");
 
     // click-switch: POSTs /assistant/select, adopts the SERVER's echoed
-    // selection, flushes the outgoing queue, bumps switchGen, reloads history
-    window.__assistantCandidates = [{name: "jarvis"}, {name: "friday"}];
+    // selection, flushes the outgoing queue, bumps switchGen, reloads
+    // history, AND (review round 1, finding 2) updates the header's name +
+    // model spans from the switch's own confirmed selection -- previously
+    // switchAssistantTo never touched either span, so tab clicks and the
+    // voice-header dropdown switch left the header naming the OLD assistant
+    // and its OLD model until the next 10s poll tick happened to catch it.
+    window.__assistantCandidates = [
+        {name: "jarvis", llm: {provider: "claude", model: "claude-sonnet-5"}},
+        {name: "friday", llm: {provider: "openai", model: "gpt-5.6-sol"}},
+    ];
     renderChatAssistantTabs();
     await switchAssistantTo("friday");
     if (!fetchCalls.some(c => c.url === "/assistant/select")) throw new Error("switch must POST /assistant/select");
@@ -969,6 +1045,12 @@ eval(extract("switchAssistantTo"));
     if (window.assistantChat.switchGen !== 1) throw new Error("switch must bump switchGen so in-flight replies discard");
     if (historyLoads !== 1) throw new Error("switch must reload the incoming assistant's history exactly once, got " + historyLoads);
     console.log("TABS_SWITCH_FLOW_OK true");
+
+    const nameElAfterSwitch = elements["ast-chat-assistant-name"];
+    const modelElAfterSwitch = elements["ast-chat-assistant-model"];
+    if (!nameElAfterSwitch || nameElAfterSwitch.textContent !== "friday") throw new Error("switch must update the header's name span to the newly-selected assistant, got " + JSON.stringify(nameElAfterSwitch && nameElAfterSwitch.textContent));
+    if (!modelElAfterSwitch || modelElAfterSwitch.textContent !== "· gpt-5.6-sol") throw new Error("switch must update the header's model span to the newly-selected assistant's model, got " + JSON.stringify(modelElAfterSwitch && modelElAfterSwitch.textContent));
+    console.log("TABS_SWITCH_UPDATES_HEADER_OK true");
 
     // failed select (404: renamed/disabled): selection must NOT become client-only state
     selectResponse = { ok: false, body: { error: "no assistant named ghost" } };
@@ -994,6 +1076,52 @@ eval(extract("switchAssistantTo"));
     if (cleared.length !== 1 || window.__chatStatusTimer !== null) throw new Error("teardown must clear the interval");
     console.log("TABS_SYNC_LIFECYCLE_OK true");
 
+    // #492: the SAME keep-in-step poll tick that refreshes the name on a
+    // real selection change also refreshes the muted model suffix, from
+    // the same /assistant/status candidates it already fetched.
+    global.fetch = async (url) => {
+        if (String(url) === "/assistant/status") {
+            return { json: async () => ({
+                gated: false,
+                selected: "friday",
+                candidates: [{name: "jarvis"}, {name: "friday", llm: {provider: "openai", model: "gpt-5.6-sol"}}],
+            }) };
+        }
+        return { json: async () => ({}) };
+    };
+    window.__assistantSwitchBusy = false;
+    // startChatStatusSync() seeds its own baseline from window.__assistantSelected
+    // at arm time -- set it to something OTHER than the stubbed status's
+    // "friday" so the tick below sees a real change and actually updates.
+    window.__assistantSelected = "jarvis";
+    startChatStatusSync();
+    await intervals[intervals.length - 1].fn();
+    const modelElSync = elements["ast-chat-assistant-model"];
+    if (!modelElSync || modelElSync.textContent !== "· gpt-5.6-sol") throw new Error("expected the sync poll to refresh the model suffix to '· gpt-5.6-sol', got " + JSON.stringify(modelElSync && modelElSync.textContent));
+    console.log("MODEL_SUFFIX_SYNCS_ON_POLL_OK true");
+
+    // #492 review round 1, finding 3: a tick where `selected` does NOT
+    // change (the human edited llm.model in project.yaml; _status re-scans
+    // live) must still refresh the model suffix -- the model refresh used
+    // to be nested inside the "selected !== baseline" branch, so a
+    // model-only change with the same assistant selected left the header
+    // naming the old model forever.
+    window.__chatSyncBaseline = "friday"; // unchanged from the prior tick -- no name-change branch this time
+    global.fetch = async (url) => {
+        if (String(url) === "/assistant/status") {
+            return { json: async () => ({
+                gated: false,
+                selected: "friday",
+                candidates: [{name: "jarvis"}, {name: "friday", llm: {provider: "openai", model: "gpt-6-nova"}}],
+            }) };
+        }
+        return { json: async () => ({}) };
+    };
+    await intervals[intervals.length - 1].fn();
+    const modelElNoNameChange = elements["ast-chat-assistant-model"];
+    if (!modelElNoNameChange || modelElNoNameChange.textContent !== "· gpt-6-nova") throw new Error("expected a same-selection tick to still refresh the model suffix to '· gpt-6-nova', got " + JSON.stringify(modelElNoNameChange && modelElNoNameChange.textContent));
+    console.log("MODEL_SUFFIX_SYNCS_WITHOUT_NAME_CHANGE_OK true");
+
     console.log("ALL_OK true");
 })().catch(e => { console.error("FAIL", e.message); process.exit(1); });
 NODEJS
@@ -1001,10 +1129,14 @@ tmpl_ac3_out="$(node "$_ac3_node" "$NVHTML_CHAT" 2>&1)"
 tmpl_ac3_rc=$?
 rm -f "$_ac3_node"
 check_rc "#485 tabs script exits 0" 0 "$tmpl_ac3_rc"
+check "#492 review round 1, finding 5b: assistantModelSuffix degrades to '' (never throws) when candidates isn't an array" "MODEL_SUFFIX_GUARDS_NON_ARRAY_CANDIDATES_OK true" "$tmpl_ac3_out"
 check "#485: tabs render one pill per candidate, active mirrors the selection, name span hides" "TABS_RENDER_OK true" "$tmpl_ac3_out"
 check "#485: single candidate keeps the plain name (no tab row)" "TABS_SINGLE_NAME_OK true" "$tmpl_ac3_out"
 check "#485: a tab click POSTs /assistant/select, adopts the server echo, flushes the queue, bumps switchGen, reloads history" "TABS_SWITCH_FLOW_OK true" "$tmpl_ac3_out"
+check "#492 review round 1, finding 2: a switch updates the header's name AND model spans from the switch's own confirmed selection" "TABS_SWITCH_UPDATES_HEADER_OK true" "$tmpl_ac3_out"
 check "#485 (§7.5): a FAILED select never becomes client-only selection state" "TABS_FAILED_SELECT_HONEST_OK true" "$tmpl_ac3_out"
 check "#485: the status sync arms once, re-arm is a no-op, teardown clears; baseline is loop-owned" "TABS_SYNC_LIFECYCLE_OK true" "$tmpl_ac3_out"
+check "#492: the keep-in-step poll tick refreshes the muted model suffix alongside the name on a real selection change" "MODEL_SUFFIX_SYNCS_ON_POLL_OK true" "$tmpl_ac3_out"
+check "#492 review round 1, finding 3: a poll tick with the SAME selection but a changed llm.model still refreshes the model suffix" "MODEL_SUFFIX_SYNCS_WITHOUT_NAME_CHANGE_OK true" "$tmpl_ac3_out"
 check "the whole #485 tabs script completes" "ALL_OK true" "$tmpl_ac3_out"
 if [[ "$tmpl_ac3_rc" -ne 0 ]]; then echo "$tmpl_ac3_out" >&2; fi

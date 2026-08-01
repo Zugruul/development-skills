@@ -79,6 +79,10 @@ print("ONE_OUTCOME", p1["outcome"])
 print("ONE_ASSISTANTS", p1["assistants"])
 print("ONE_CANDIDATE_NAME", p1["candidates"][0]["name"])
 print("ONE_CANDIDATE_ALIASES", p1["candidates"][0]["aliases"])
+# #492: candidates now carry their resolved llm provider/model (an
+# engine.py _status extension) so the chat header can show a model name
+# beside the assistant name without a second round-trip.
+print("ONE_CANDIDATE_LLM", p1["candidates"][0]["llm"])
 print("ONE_SELECTED_BEFORE", p1["selected"])
 print("ONE_GATED_BEFORE", p1["gated"])
 
@@ -99,6 +103,10 @@ print("MULTI_OUTCOME", pm["outcome"])
 print("MULTI_ASSISTANTS", pm["assistants"])
 print("MULTI_NAMES", sorted(c["name"] for c in pm["candidates"]))
 print("MULTI_GATED_BEFORE", pm["gated"])
+# #492: every candidate in a multi-candidate scan carries its own llm too.
+multi_llm = {c["name"]: c["llm"] for c in pm["candidates"]}
+print("MULTI_LLM_JARVIS", multi_llm["jarvis"])
+print("MULTI_LLM_FRIDAY", multi_llm["friday"])
 
 bad_code, bad_payload, _ = e_multi.handle("POST", "/assistant/select", body={"name": "nope"})
 print("MULTI_BAD_SELECT_CODE", bad_code)
@@ -161,6 +169,34 @@ check "a sole candidate with nothing selected and no flag stays a no-op (unchang
 check "#462's actual fix: no flag + 2plus candidates falls back to the session's own selected assistant" "MULTI_NO_FLAG_FALLS_BACK_TO_SELECTED friday" "$_effflag_out"
 check "no flag + 2plus candidates + nothing selected stays None -- falls through to the machine-local default exactly as before" "MULTI_NO_FLAG_NO_SELECTED_STAYS_NONE None" "$_effflag_out"
 
+echo "-- #492: /assistant/status candidates carry llm provider/model (chat header NAME/model); missing/malformed llm degrades to null fields, never a KeyError --"
+_candllm_out="$(SCRIPTS_DIR="$AS_SCRIPTS" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant.engine import _candidate_llm
+
+# well-formed llm passes provider/model through verbatim.
+print("WELLFORMED", _candidate_llm({"llm": {"provider": "openai", "model": "gpt-5.6-sol"}}))
+# no "llm" key at all -- degrades to both-None, no KeyError.
+print("MISSING_LLM_KEY", _candidate_llm({"names": ["x"]}))
+# "llm" present but not a mapping.
+print("LLM_NOT_A_DICT", _candidate_llm({"llm": "openai"}))
+# llm is a dict but provider/model are the wrong type (or absent) -- each
+# field degrades independently, never crashes the whole candidate.
+print("PROVIDER_WRONG_TYPE", _candidate_llm({"llm": {"provider": 7, "model": "gpt-5.6-sol"}}))
+print("MODEL_MISSING", _candidate_llm({"llm": {"provider": "openai"}}))
+print("BOTH_MISSING", _candidate_llm({"llm": {}}))
+PY
+)"
+_candllm_rc=$?
+check_rc "_candidate_llm unit script exits 0" 0 "$_candllm_rc"
+check "#492: a well-formed llm mapping passes provider/model through verbatim" "WELLFORMED {'provider': 'openai', 'model': 'gpt-5.6-sol'}" "$_candllm_out"
+check "#492: a section with no 'llm' key at all degrades to both fields None, never a KeyError" "MISSING_LLM_KEY {'provider': None, 'model': None}" "$_candllm_out"
+check "#492: an 'llm' value that isn't a mapping degrades to both fields None" "LLM_NOT_A_DICT {'provider': None, 'model': None}" "$_candllm_out"
+check "#492: a non-string provider degrades that field alone to None, model still passes through" "PROVIDER_WRONG_TYPE {'provider': None, 'model': 'gpt-5.6-sol'}" "$_candllm_out"
+check "#492: a missing model degrades that field alone to None, provider still passes through" "MODEL_MISSING {'provider': 'openai', 'model': None}" "$_candllm_out"
+check "#492: an empty llm mapping degrades both fields to None" "BOTH_MISSING {'provider': None, 'model': None}" "$_candllm_out"
+
 echo "-- #462: real end-to-end proof -- a multi-candidate session selects an assistant, then POSTs /assistant/chat with NO assistant flag, and the RIGHT assistant answers (not the pre-462 resolution error) --"
 STUB_CODEX="$FIX/stub-codex"
 _as_e2e_a="$(mktemp -d)"
@@ -219,6 +255,7 @@ check "one outcome: status carries outcome one" "ONE_OUTCOME one" "$sel_out"
 check "one outcome: assistants count is 1" "ONE_ASSISTANTS 1" "$sel_out"
 check "one outcome: candidate main name is jarvis" "ONE_CANDIDATE_NAME jarvis" "$sel_out"
 check "one outcome: candidate aliases carry jay" "ONE_CANDIDATE_ALIASES ['jay']" "$sel_out"
+check "one outcome: candidate carries its resolved llm provider/model (#492 status extension)" "ONE_CANDIDATE_LLM {'provider': 'openai', 'model': 'gpt-5.6-sol'}" "$sel_out"
 check "one outcome: nothing auto-selected by the engine itself (page drives the POST)" "ONE_SELECTED_BEFORE None" "$sel_out"
 check "one outcome: not gated before any selection (sole assistant is not sec17.9's none-selected state)" "ONE_GATED_BEFORE False" "$sel_out"
 check "select resolves an alias case-insensitively (JAY -> jarvis)" "ONE_SELECT_CODE 200" "$sel_out"
@@ -231,6 +268,8 @@ check "multiple outcome: status carries outcome multiple" "MULTI_OUTCOME multipl
 check "multiple outcome: assistants count is 2" "MULTI_ASSISTANTS 2" "$sel_out"
 check "multiple outcome: both main names listed" "MULTI_NAMES ['friday', 'jarvis']" "$sel_out"
 check "multiple outcome: not gated before Skip" "MULTI_GATED_BEFORE False" "$sel_out"
+check "multiple outcome: jarvis candidate carries its own llm provider/model (#492)" "MULTI_LLM_JARVIS {'provider': 'openai', 'model': 'gpt-5.6-sol'}" "$sel_out"
+check "multiple outcome: friday candidate carries its own llm provider/model (#492)" "MULTI_LLM_FRIDAY {'provider': 'openai', 'model': 'gpt-5.6-sol'}" "$sel_out"
 check "select with an unknown name 404s" "MULTI_BAD_SELECT_CODE 404" "$sel_out"
 check "unknown-name select lists the real candidates" "MULTI_BAD_SELECT_LISTS_CANDIDATES ['friday', 'jarvis']" "$sel_out"
 check "chat with an explicit --assistant flag is unaffected before any select/skip (terminal coverage regression guard)" "MULTI_PRECHAT_CODE_NOT_GATED True" "$sel_out"
