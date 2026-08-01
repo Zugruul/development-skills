@@ -153,7 +153,22 @@ assistant:
   candidates.
 - §6.4 WHEN `/setup-assistant` runs THE SYSTEM SHALL scaffold: marker, project.yaml with
   assistant section, empty brain directories, persona-scoped AGENTS.md, and gitignore
-  entries for all assistant local state.
+  entries for all assistant local state. WHEN the scaffold is fresh (or
+  `assistant.systemPrompt` still equals the bare default) THE SYSTEM SHALL interview the
+  human — via the host's structured-input facility — about this project's assistant
+  (domain, tone, boundaries, example tasks) and compose a quality persona from the
+  answers, applied through a `set-persona` verb that writes the composed text into BOTH
+  `assistant.systemPrompt` (via the same snapshot → surgical edit → §6.5 validation →
+  revert-on-invalid pattern every other settings verb uses) and a new marker-delimited
+  persona block in the root `AGENTS.md`, regenerated in place — hand-written prose
+  outside the markers SHALL survive byte-for-byte, and re-running `set-persona` SHALL be
+  idempotent and is the supported way to evolve the persona later. Empty/whitespace-only
+  persona text, and persona text containing a line matching one of `AGENTS.md`'s own
+  reserved generated-block markers, SHALL be rejected (`project.yaml` and `AGENTS.md`
+  both left byte-identical); text exceeding the runtime engine's persona-component clip
+  (3200 chars by default — `turns.py`'s persona token budget of 800, converted at 4
+  chars/token, and itself overridable) SHALL still be accepted and stored in full — never
+  silently truncated — with a warning naming the actual clip.
 - §6.5 THE SYSTEM SHALL validate: provider↔capability consistency (`openai` requires
   `codex` enabled; `claude` requires `claude-code` enabled); model string passed verbatim
   to the adapter.
@@ -168,7 +183,13 @@ assistant:
 - §7.1 WHEN the discovery scan runs THE SYSTEM SHALL identify assistant repos by marker
   presence + valid `assistant.enabled: true` config.
 - §7.2 WHEN exactly one assistant exists THE SYSTEM SHALL select it silently and show its
-  main name in the voice panel header (e.g. "VOICE · JARVIS").
+  main name in the voice panel header (e.g. "VOICE · JARVIS"). The chat overlay's header
+  SHALL additionally render the selected assistant's model id beside its name, muted and
+  verbatim (e.g. "MEGABRAIN · claude-sonnet-5"), kept in sync across assistant switches
+  and model-only config changes; to support this, each `GET /assistant/status` candidate
+  carries a resolved `llm: {provider, model}` sub-mapping (fields degrade to null on a
+  malformed section, never an error) so the page resolves the model locally without a
+  second round-trip.
 - §7.3 WHEN multiple assistants exist THE SYSTEM SHALL present a startup picker (main
   name + aliases) with a Skip option; WHEN Skip is chosen THE SYSTEM SHALL disable voice
   and chat for the session.
@@ -382,6 +403,11 @@ assistant:
 8. Transcripts, traces, tasks, and artifacts are never committed to git.
 9. Voice and chat are hard-gated off when no enabled assistant is selected.
 10. The engine's HTTP surface binds localhost only.
+11. A task executor never persists an `artifact_path` it did not itself construct.
+    Artifact paths are built engine-side from the task's own id; an executor SHALL
+    NEVER accept, parse, or otherwise adopt a path (or path-shaped field) supplied by
+    a dispatched job's own output, response, or anything else crossing the process
+    boundary.
 
 ## §18 Open questions
 

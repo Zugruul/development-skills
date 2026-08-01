@@ -342,6 +342,7 @@ specs:
     - Transcripts, traces, tasks, and artifacts are never committed to git.
     - Voice and chat are hard-gated off when no enabled assistant is selected.
     - The engine's HTTP surface binds localhost only.
+    - A task executor never persists an artifact_path it did not itself construct — paths are built engine-side from the task's own id; nothing crossing the process boundary (job output, harness response, marker files) may supply one.
 commands:
     gate: bash plugins/spec-workflow/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/scripts/lib/*.sh plugins/spec-workflow/tests/*.sh && claude plugin validate plugins/spec-workflow
 commit:
