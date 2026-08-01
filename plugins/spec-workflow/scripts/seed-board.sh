@@ -7,8 +7,12 @@
 # Task file format: one task per line, pipe-separated (blank lines and #-comments ignored):
 #   <task-id>|<priority>|<points>|<epic-id>|<title>
 #   e.g.  CP-001|P0|5|E0|Repo scaffold: pnpm workspace + tsconfig
-# The task-id prefix must match a spec's taskPrefix in project.yaml; the issue body links to
-# that spec's backlogPath for full acceptance criteria.
+# The task-id prefix must match a spec's taskPrefix in project.yaml. The issue body embeds
+# the task's FULL backlog block (description, dependencies, acceptance criteria, spec-section
+# citations) extracted from that spec's backlogPath, plus an artifacts/references section
+# (spec path, per-epic design doc when present, ui-mode note); the backlog stays authoritative
+# on drift. If the block can't be found (title-only seeding), the body falls back to the title
+# with a warning.
 #
 # Idempotent: a task whose issue title "<task-id>: <title>" already exists is skipped in
 # phase 1, and phase 2 (re)applies Status/Priority/Estimate, so re-running is safe.
@@ -64,6 +68,33 @@ print("")
 PY
 }
 
+spec_meta() { # task-id -> "specPath<TAB>specId" for the matching spec ('' if none)
+    python3 - "$CONFIG" "$1" <<'PY'
+import sys
+import config as C
+cfg = C.load_config(path=sys.argv[1], warn=False); tid = sys.argv[2]
+for s in cfg["specs"]:
+    if tid.startswith(s["taskPrefix"] + "-"):
+        print(s["specPath"] + "\t" + s["id"]); sys.exit()
+print("")
+PY
+}
+
+task_block() { # backlog-file task-id -> that task's full markdown block ('' if not found)
+    python3 - "$1" "$2" <<'PY'
+import re, sys, pathlib
+p = pathlib.Path(sys.argv[1]); tid = sys.argv[2]
+if not p.exists():
+    print(""); sys.exit()
+text = p.read_text(encoding="utf-8")
+# Block = from the task's "- **ID**" bullet up to the next task bullet or section header.
+m = re.search(
+    rf'^- \*\*{re.escape(tid)}\*\*.*?(?=^- \*\*[A-Z][A-Z0-9]*-\d+\*\*|^## |\Z)',
+    text, re.M | re.S)
+print(m.group(0).rstrip() if m else "")
+PY
+}
+
 read_tasks() { grep -vE '^\s*(#|$)' "$TASKS_FILE"; }
 
 echo "==> ensuring labels"
@@ -83,12 +114,27 @@ while IFS='|' read -r id prio sp epic title; do
     if grep -Fxq "$full" <<<"$EXISTING"; then continue; fi
     bp="$(backlog_path "$id")"
     [[ -z "$bp" ]] && { echo "   !! $id: no spec in project.yaml matches this prefix — skipped"; continue; }
+    meta="$(spec_meta "$id")"
+    sp_path="${meta%%$'\t'*}"; spec_id="${meta##*$'\t'}"
+    block="$(task_block "$ROOT/$bp" "$id")"
+    if [[ -z "$block" ]]; then
+        echo "   ! $id: task block not found in $bp — issue body falls back to title only"
+        block="$title"
+    fi
+    design_line=""
+    design_doc="docs/design/${spec_id}-${epic}.md"
+    [[ -n "$spec_id" && -f "$ROOT/$design_doc" ]] && design_line=$'\n'"- Design doc: \`$design_doc\`"
     body=$(cat <<EOF
 **Epic:** $epic  ·  **Priority:** $prio  ·  **Story points (Estimate):** $sp
 
-$title
+$block
 
-Full acceptance criteria + Definition of Done: see \`$bp\` (task \`$id\`) and the referenced spec sections.
+---
+
+**Artifacts & references**
+- Spec: \`$sp_path\` (the §s cited above define the requirements this task implements)
+- Backlog: \`$bp\` (task \`$id\`) — **authoritative**: if this issue body ever drifts from the backlog/spec, the repo files win$design_line
+- UI-affecting tasks: iterative-UI decisions and final screenshots are folded into this issue by \`/refine-task-ui\` (ui-mode); implementation artifacts (PRs, spec deltas) link back here
 
 - [ ] Tests written first (TDD red -> green -> refactor)
 - [ ] \`$GATE_CMD\` green

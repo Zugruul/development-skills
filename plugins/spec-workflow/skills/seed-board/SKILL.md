@@ -31,9 +31,16 @@ bash "../../scripts/seed-board.sh" /path/to/tasks.txt
 ```
 Idempotent: existing issues (matched by exact `"<task-id>: <title>"`) are skipped; fields are (re)applied. Watch for `!!`/`!` lines — each names the task and the failing step; fix and re-run.
 
+Issue bodies are thorough by construction: the seeder embeds each task's FULL backlog block
+(description, dependency notes, acceptance criteria, spec-§ citations) plus an artifacts &
+references section (spec path, per-epic design doc when one exists, where ui-mode/PR
+artifacts attach), with the backlog marked authoritative on drift. A `! <id>: task block not
+found` warning means the backlog bullet doesn't start with `- **<task-id>**` — fix the
+backlog formatting (or accept a title-only body) before considering the seed complete.
+
 ## 4. Verify
 ```bash
 bash "../../scripts/board.sh" list | sort
 bash "../../scripts/board.sh" next
 ```
-Every seeded task should appear in the first status with its priority, and `next` should pick the expected first task.
+Every seeded task should appear in the first status with its priority, and `next` should pick the expected first task. Spot-check one issue body per epic (`gh issue view <n>`): it must contain the full backlog block — description, dependencies, AC, and spec citations — not just a title line.
