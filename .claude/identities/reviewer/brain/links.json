@@ -74,11 +74,6 @@
     "last": "2026-07-28",
     "weight": 0.5
   },
-  "red-commit-verify-sequential-harness->red-commit-worktree-verify": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "red-commit-worktree-verify->recompute-hashes-never-eyeball": {
     "fires": 5,
     "last": "2026-07-28",
@@ -129,11 +124,6 @@
     "last": "2026-07-28",
     "weight": 0.5
   },
-  "stub-never-happens-claims-verify->comments-deserve-code-scrutiny": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "stub-shaped-blind-spots->reproduce-before-verdict": {
     "fires": 1,
     "last": "2026-07-28",
@@ -172,11 +162,6 @@
   "true-or-merely-true-today->one-time-assertion-as-live-gate": {
     "fires": 2,
     "last": "2026-07-28",
-    "weight": 0.5
-  },
-  "truncated-shell-output-not-absence->reproduce-before-verdict": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "verify-backcompat-claims-algebraically->verify-tdd-empirically-when-log-is-thin": {

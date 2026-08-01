@@ -24,6 +24,11 @@
     "last": "2026-07-26",
     "weight": 0.5
   },
+  "dev-idle-recovery-ladder->retroactive-records-honesty": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "discriminator-over-hypothesis->cheap-ab-before-10min-runs": {
     "fires": 0,
     "last": null,
@@ -60,6 +65,11 @@
     "weight": 0.5
   },
   "relay-apply-on-behalf->serialize-moves-behind-matching-gate": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "retroactive-records-honesty->dev-idle-recovery-ladder": {
     "fires": 0,
     "last": null,
     "weight": 0.5

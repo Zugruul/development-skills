@@ -1,0 +1,131 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-08-01T20:05:00Z'
+iteration:
+  task: 486+492+345+346 (session batch)
+  outcome: in-review
+  reviewRounds: 9
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: friction
+  area: briefing
+  severity: high
+  summary: Dev subagents repeatedly went idle mid-task with complete work uncommitted
+    and the gate unrun
+  detail: Every dev lane this session (486, 492, 345, 346) idled at least once with
+    a finished or near-finished tree left uncommitted and no gate run; each needed
+    one or two orchestrator nudges, and once the orchestrator had to run the gate
+    and commit on the dev's behalf (attribution preserved via the dev identity flags,
+    noted in the commit body).
+  evidence:
+  - Zugruul/development-skills#486
+  - Zugruul/development-skills#492
+  - Zugruul/development-skills#345
+  - Zugruul/development-skills#346
+  generalized: 'Dev-agent briefs need a hard completion contract (tree clean + recorded
+    gate pass + report sent = the ONLY done state), and the orchestrator should treat
+    a dev idle notification as a checkpoint: verify branch state, nudge once with
+    the exact remaining steps, and if the work is complete but unlanded, gate and
+    commit it under the dev identity rather than looping on nudges.'
+  proposal:
+    target: skills/build-next + implement-task dev-brief templates
+    change: append an explicit completion contract block and document the idle-notification
+      recovery ladder
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#515
+- category: worked-well
+  area: review
+  severity: high
+  summary: Reviews that demand experiment-confirmed findings caught severe defects
+    a green gate missed, every round
+  detail: Round-1 reviews caught a tokens-vs-chars unit error headed into spec text,
+    a marker-file path-smuggling flow enabling cross-task artifact substitution, and
+    a feature hidden in exactly the multi-assistant configuration the human runs;
+    each was CONFIRMED by the reviewer driving the real code, and each fix round was
+    then mutation-tested for pinning.
+  evidence:
+  - Zugruul/development-skills#486
+  - Zugruul/development-skills#492
+  - Zugruul/development-skills#345
+  - Zugruul/development-skills#346
+  generalized: Reviewer briefs should require findings to be labeled CONFIRMED (reproduced
+    by driving the real code) versus PLAUSIBLE, and re-review rounds should mutation-test
+    that new tests actually pin the fixes — this reliably catches defects that a green
+    test suite and gate cannot.
+  routing:
+    action: brain-note
+    ref: reviewer
+- category: recommendation
+  area: board
+  severity: medium
+  summary: Enforcement hooks demanding records that history lacks are best satisfied
+    by doing the work retroactively, never by fabricating records
+  detail: Two merged-but-board-stale tasks could not advance because review-pass records
+    were never made; a real retroactive two-pass review against merged reality generated
+    the records honestly and surfaced eight genuine follow-up bugs in the process.
+  evidence:
+  - Zugruul/development-skills#342
+  - Zugruul/development-skills#343
+  generalized: When a board-enforcement hook blocks a transition because required
+    records are missing from history, run the required activity retroactively against
+    merged reality and record the genuine result — the byproduct is usually a crop
+    of real follow-up findings, and the board never lies.
+  routing:
+    action: brain-note
+    ref: orchestrator
+- category: incident
+  area: testing
+  severity: high
+  summary: A scratch test server stopped a machine-global voice service on shutdown,
+    taking down live user-facing functionality
+  detail: A QA validator's state-scoped scratch server auto-started and then, on stop,
+    killed the machine-global whisper STT sidecar; the user's voice input was down
+    until the orchestrator restarted it.
+  evidence:
+  - Zugruul/development-skills#509
+  generalized: State-scoped or scratch instances must never manage machine-global
+    resources; lifecycle ownership must be scoped to the same state dir the instance
+    owns, and validator/test briefs should require restoring any global service they
+    may have disturbed before finishing.
+  routing:
+    action: brain-note
+    ref: orchestrator
+- category: recommendation
+  area: concurrency
+  severity: medium
+  summary: Declined auto-merge consent plus serial delivery predictably freezes all
+    lanes at the WIP limit; the loop should pivot to non-gated work
+  detail: With merges human-gated, four lanes filled with In-review tasks and no picks
+    were possible; the productive pivot was QA-to-Ready validation of merged tasks
+    and mechanical enforcement checks, which advanced 15 board items while waiting.
+  generalized: When merge consent is declined and lanes saturate at the WIP limit,
+    the loop should pivot to advancing merged-but-unvalidated work (QA validation
+    against acceptance criteria, enforcement verification) instead of idling on heartbeats
+    — encode this pivot as the expected behavior in the loop skill.
+  proposal:
+    target: skills/build-next/SKILL.md
+    change: 'document the lane-saturation pivot: QA validation is the sanctioned non-gated
+      work when all slots are In review and merges are human-gated'
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#516
+- category: recommendation
+  area: board
+  severity: low
+  summary: Scope-restricted loop directives conflict with the picker's global priority
+    order
+  detail: A human directive restricted work to one spec's tasks; the picker's PICK
+    lines kept naming out-of-scope items and the orchestrator had to skip them by
+    judgment, which sits uneasily with the scripts-decide rule.
+  generalized: The next-task picker should accept an explicit scope filter (by task
+    prefix or spec id) so that a scope-restricted loop still has the script deciding
+    the pick, rather than the orchestrator overriding PICK lines by hand.
+  proposal:
+    target: scripts/next.py + board.sh next
+    change: add --scope <taskPrefix|specId> filtering applied before candidate ranking
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#517
