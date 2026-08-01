@@ -362,10 +362,12 @@ sa_skill_body="$(cat "$SA_SKILL" 2>/dev/null)"
 check "SKILL.md invokes setup-assistant.sh scaffold" "setup-assistant.sh" "$sa_skill_body"
 check "SKILL.md documents the settings-editor verbs" "set-provider" "$sa_skill_body"
 check "SKILL.md documents set-default (§6.3 touchpoint)" "set-default" "$sa_skill_body"
+check "SKILL.md documents the persona interview + set-persona verb (#486)" "set-persona" "$sa_skill_body"
 
 # --- docs: both README skills tables mention the new skill ---------------------
 check "root README documents setup-assistant" "setup-assistant" "$(cat "$PLUGIN/../../README.md" 2>/dev/null)"
 check "plugin README documents setup-assistant" "setup-assistant" "$(cat "$PLUGIN/README.md" 2>/dev/null)"
+check "plugin README documents the set-persona verb (#486)" "set-persona" "$(cat "$PLUGIN/README.md" 2>/dev/null)"
 
 # --- review r2 finding 1: concurrent scaffolds never torn-write project.yaml --
 # 12 fully-concurrent `scaffold` runs against the SAME fresh root used to
@@ -504,3 +506,177 @@ check_absent "#437: no AttributeError from the shadowed engine-config module lea
 [[ -f "$sa_d/.claude/project.yaml" ]] && r=yes || r=no
 check "#437: scaffold under PYTHONPATH=scripts/ still creates .claude/project.yaml" "yes" "$r"
 rm -rf "$sa_d"
+
+# --- set-persona (task #486): the /setup-assistant persona interview writes
+# a real, interview-composed persona into assistant.systemPrompt AND a new
+# marker-delimited persona block in AGENTS.md, instead of the bare one-line
+# scaffold default. Same snapshot -> surgical edit -> validate_assistant ->
+# revert-on-invalid pattern the other settings verbs (set-provider etc.)
+# already use, so a rejected write never touches project.yaml. -----------------
+sa_d="$(mktemp -d)"
+bash "$SA_SCRIPT" --root "$sa_d" scaffold --name jarvis >/dev/null 2>&1
+
+# review round 1 finding 1: 800 is turns.py's TOKEN budget, not chars -- the
+# real runtime char clip is derived, not hardcoded here or in setup.py.
+sa_persona_clip="$(PYTHONPATH="$PLUGIN/scripts" python3 -c 'from assistant import turns; print(turns.persona_char_budget())' 2>/dev/null)"
+# Vacuity guard: an empty $sa_persona_clip (import/call failure) would make
+# every later `check ... "$sa_persona_clip" ...` below pass VACUOUSLY --
+# grep -qF matches an empty needle against anything. Fail loudly instead of
+# silently testing nothing, same positive-control discipline as the
+# engine-module-list guard earlier in this file.
+if [[ -z "$sa_persona_clip" ]]; then
+    check "set-persona: derived runtime clip resolves to a non-empty value (positive control)" \
+        "non-empty" "EMPTY -- turns.persona_char_budget() import/call failed, check PYTHONPATH/\$PLUGIN/scripts"
+else
+    check "set-persona: derived runtime clip resolves to a non-empty value (positive control)" \
+        "non-empty" "non-empty ($sa_persona_clip)"
+fi
+
+sa_persona_file="$(mktemp)"
+printf '%s\n' \
+    'You are Jarvis, the on-call assistant for the acme-widgets repo.' \
+    'Domain: help ship the widget API; tone: terse and a little dry.' \
+    'Boundaries: never merge a PR or touch prod config on your own.' \
+    'Example tasks: triage a failing test, draft a changelog entry, explain a stack trace.' \
+    > "$sa_persona_file"
+
+sa_sp_out="$(bash "$SA_SCRIPT" --root "$sa_d" set-persona --file "$sa_persona_file" 2>&1)"
+sa_sp_rc=$?
+check_rc "set-persona: exits 0 on a valid persona" 0 "$sa_sp_rc"
+check "set-persona: prints OK" "OK" "$sa_sp_out"
+
+sa_sp_sysprompt="$(sa_get "$sa_d" assistant.systemPrompt)"
+check "set-persona: assistant.systemPrompt contains the composed persona" \
+    "Domain: help ship the widget API" "$sa_sp_sysprompt"
+
+sa_sp_agents="$(cat "$sa_d/AGENTS.md" 2>/dev/null)"
+check "set-persona: AGENTS.md gains a persona marker block" \
+    "spec-workflow generated: persona" "$sa_sp_agents"
+check "set-persona: AGENTS.md's persona block contains the composed text" \
+    "Boundaries: never merge a PR or touch prod config on your own." "$sa_sp_agents"
+
+# review round 1 finding 2: the bare scaffold-default intro must not survive
+# alongside the real persona (two conflicting identities), and the real
+# persona must sit ABOVE the generated skills block, never appended at EOF
+# below everything.
+check_absent "set-persona: the bare scaffold-default intro sentence is gone from AGENTS.md" \
+    "the local assistant for this repository's zettel brain" "$sa_sp_agents"
+sa_persona_marker_line="$(grep -n 'spec-workflow generated: persona' "$sa_d/AGENTS.md" | head -1 | cut -d: -f1)"
+sa_skills_marker_line="$(grep -n 'spec-workflow generated: enabled skills' "$sa_d/AGENTS.md" | head -1 | cut -d: -f1)"
+[[ "$sa_persona_marker_line" -lt "$sa_skills_marker_line" ]] && r=ABOVE || r=BELOW
+check "set-persona: the persona block sits above the enabled-skills block" "ABOVE" "$r"
+
+# idempotent re-run: identical persona text a second time -> byte-identical tree
+sa_sp_snap="$(mktemp -d)"
+cp -R "$sa_d/." "$sa_sp_snap/"
+sa_sp_out2="$(bash "$SA_SCRIPT" --root "$sa_d" set-persona --file "$sa_persona_file" 2>&1)"
+sa_sp_rc2=$?
+check_rc "set-persona: re-running with identical text exits 0" 0 "$sa_sp_rc2"
+check "set-persona: re-running with identical text still prints OK" "OK" "$sa_sp_out2"
+if diff -rq "$sa_sp_snap" "$sa_d" >/dev/null 2>&1; then r=IDENTICAL; else r=DIFFER; fi
+check "set-persona: identical re-run leaves the tree byte-identical (idempotent)" "IDENTICAL" "$r"
+rm -rf "$sa_sp_snap"
+
+# custom prose the human hand-added outside the markers survives a re-run
+printf '\n\n%s\n' "Hand-written note the human added below the generated blocks." >> "$sa_d/AGENTS.md"
+bash "$SA_SCRIPT" --root "$sa_d" set-persona --file "$sa_persona_file" >/dev/null 2>&1
+sa_sp_agents3="$(cat "$sa_d/AGENTS.md" 2>/dev/null)"
+check "set-persona: hand-written prose outside the markers survives a re-run" \
+    "Hand-written note the human added below the generated blocks." "$sa_sp_agents3"
+
+# review round 1 finding 3: persona text containing a line matching one of
+# AGENTS.md's own reserved marker lines is rejected outright -- both files
+# left byte-identical, never silently corrupting the generated-block
+# scanner on a later scaffold/set-persona re-run.
+cp "$sa_d/.claude/project.yaml" "$sa_d/before-marker.yaml"
+cp "$sa_d/AGENTS.md" "$sa_d/before-marker.md"
+sa_marker_file="$(mktemp)"
+printf '%s\n%s\n' \
+    "A persona with an embedded marker line." \
+    "<!-- >>> spec-workflow generated: file output contract -->" \
+    > "$sa_marker_file"
+sa_sp_marker_out="$(bash "$SA_SCRIPT" --root "$sa_d" set-persona --file "$sa_marker_file" 2>&1)"
+sa_sp_marker_rc=$?
+check_rc "set-persona: text containing a reserved AGENTS.md marker line is rejected" 1 "$sa_sp_marker_rc"
+check "set-persona: marker-conflict rejection prints REJECTED" "REJECTED" "$sa_sp_marker_out"
+cmp -s "$sa_d/before-marker.yaml" "$sa_d/.claude/project.yaml" && r=SAME || r=DIFF
+check "set-persona: marker-conflict rejection leaves project.yaml byte-identical" "SAME" "$r"
+cmp -s "$sa_d/before-marker.md" "$sa_d/AGENTS.md" && r=SAME || r=DIFF
+check "set-persona: marker-conflict rejection leaves AGENTS.md byte-identical" "SAME" "$r"
+rm -f "$sa_marker_file" "$sa_d/before-marker.yaml" "$sa_d/before-marker.md"
+
+# empty/whitespace-only text is rejected: nonzero exit, project.yaml AND
+# AGENTS.md both byte-identical (not just project.yaml)
+cp "$sa_d/.claude/project.yaml" "$sa_d/before-persona.yaml"
+cp "$sa_d/AGENTS.md" "$sa_d/before-persona.md"
+sa_empty_file="$(mktemp)"
+printf '   \n\n  \n' > "$sa_empty_file"
+sa_sp_empty_out="$(bash "$SA_SCRIPT" --root "$sa_d" set-persona --file "$sa_empty_file" 2>&1)"
+sa_sp_empty_rc=$?
+check_rc "set-persona: empty/whitespace-only text is rejected" 1 "$sa_sp_empty_rc"
+check "set-persona: rejection prints REJECTED with a specific message" "REJECTED" "$sa_sp_empty_out"
+cmp -s "$sa_d/before-persona.yaml" "$sa_d/.claude/project.yaml" && r=SAME || r=DIFF
+check "set-persona: rejected write leaves project.yaml byte-identical" "SAME" "$r"
+cmp -s "$sa_d/before-persona.md" "$sa_d/AGENTS.md" && r=SAME || r=DIFF
+check "set-persona: rejected write leaves AGENTS.md byte-identical too" "SAME" "$r"
+rm -f "$sa_empty_file" "$sa_d/before-persona.yaml" "$sa_d/before-persona.md"
+
+# text over the DERIVED runtime clip is still accepted in full, with a
+# warning naming the actual derived char count (review round 1 finding 1 --
+# not a hardcoded, wrong-unit 800)
+sa_long_file="$(mktemp)"
+python3 -c "print('A persona sentence that repeats itself. ' * 100)" > "$sa_long_file"
+sa_sp_long_out="$(bash "$SA_SCRIPT" --root "$sa_d" set-persona --file "$sa_long_file" 2>&1)"
+sa_sp_long_rc=$?
+check_rc "set-persona: text over the runtime clip is still accepted (never silently rejected)" 0 "$sa_sp_long_rc"
+check "set-persona: OK printed for the long persona" "OK" "$sa_sp_long_out"
+check "set-persona: the warning names the derived runtime clip" "$sa_persona_clip" "$sa_sp_long_out"
+sa_sp_long_stored="$(sa_get "$sa_d" assistant.systemPrompt)"
+sa_sp_long_stored_len="${#sa_sp_long_stored}"
+[[ "$sa_sp_long_stored_len" -gt "$sa_persona_clip" ]] && r=FULL || r=TRUNCATED
+check "set-persona: the full (untruncated) text is what's stored, not silently clipped" "FULL" "$r"
+rm -f "$sa_long_file"
+
+# scaffold re-run after set-persona does not overwrite the custom systemPrompt
+bash "$SA_SCRIPT" --root "$sa_d" scaffold --name jarvis >/dev/null 2>&1
+sa_sp_after_scaffold="$(sa_get "$sa_d" assistant.systemPrompt)"
+check "set-persona: a later scaffold re-run does not overwrite the custom systemPrompt" \
+    "repeats itself" "$sa_sp_after_scaffold"
+rm -rf "$sa_d"
+
+# review round 1 finding 4: a missing/unreadable --file path is a clean
+# rejection, not an uncaught FileNotFoundError traceback.
+sa_d="$(mktemp -d)"
+bash "$SA_SCRIPT" --root "$sa_d" scaffold --name jarvis >/dev/null 2>&1
+sa_sp_missing_out="$(bash "$SA_SCRIPT" --root "$sa_d" set-persona --file "$sa_d/does-not-exist.txt" 2>&1)"
+sa_sp_missing_rc=$?
+check_rc "set-persona: a missing --file path is rejected cleanly" 1 "$sa_sp_missing_rc"
+check "set-persona: missing-file rejection prints REJECTED" "REJECTED" "$sa_sp_missing_out"
+check_absent "set-persona: missing-file rejection never leaks a raw Python traceback" \
+    "Traceback (most recent call last)" "$sa_sp_missing_out"
+
+# coverage: special characters round-trip intact through project.yaml's
+# YAML encoding and config.py's `get` verb -- double quote, backslash,
+# colon-space, and unicode are all meaningful in YAML/JSON and easy to mangle
+sa_special_file="$(mktemp)"
+printf '%s\n' 'Say "hello" then a backslash \ and a colon: value, plus emoji 🤖.' > "$sa_special_file"
+bash "$SA_SCRIPT" --root "$sa_d" set-persona --file "$sa_special_file" >/dev/null 2>&1
+sa_special_stored="$(sa_get "$sa_d" assistant.systemPrompt)"
+check 'set-persona: a double quote round-trips intact' 'Say "hello"' "$sa_special_stored"
+check 'set-persona: a backslash round-trips intact' 'backslash \ and' "$sa_special_stored"
+check 'set-persona: a colon-space round-trips intact' 'a colon: value' "$sa_special_stored"
+check 'set-persona: unicode round-trips intact' 'emoji 🤖' "$sa_special_stored"
+rm -f "$sa_special_file"
+rm -rf "$sa_d"
+
+# stdin form (--file -) works
+sa_d="$(mktemp -d)"
+bash "$SA_SCRIPT" --root "$sa_d" scaffold --name jarvis >/dev/null 2>&1
+sa_sp_stdin_out="$(printf 'You are Jarvis, from stdin.\n' | bash "$SA_SCRIPT" --root "$sa_d" set-persona --file - 2>&1)"
+sa_sp_stdin_rc=$?
+check_rc "set-persona: --file - reads from stdin, exits 0" 0 "$sa_sp_stdin_rc"
+check "set-persona: --file - prints OK" "OK" "$sa_sp_stdin_out"
+check "set-persona: stdin persona text lands in assistant.systemPrompt" \
+    "You are Jarvis, from stdin." "$(sa_get "$sa_d" assistant.systemPrompt)"
+rm -rf "$sa_d"
+rm -f "$sa_persona_file"

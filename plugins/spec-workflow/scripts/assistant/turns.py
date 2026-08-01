@@ -145,6 +145,20 @@ def _cap_chars(budgets, component):
     return budgets[component] * TOKENS_CHARS_PER_TOKEN
 
 
+def persona_char_budget(budgets=None):
+    """Public accessor (task #486): the actual runtime CHAR clip applied to
+    the rendered persona component (`_render_persona` -- systemPrompt PLUS
+    the names line) at compose time. `DEFAULT_COMPONENT_BUDGETS["persona"]`
+    is in TOKENS, not chars -- this is `_cap_chars(_resolve_budgets(budgets),
+    "persona")`, the exact conversion `compose_context` itself applies, so a
+    caller outside this module (setup.py's `set_persona`, which warns a
+    human composing a persona about the real runtime clip) never has to
+    hand-duplicate the token->char math or silently drift from it if the
+    default ever changes. `budgets`, like `compose_context`'s own param, is
+    an optional override of the defaults."""
+    return _cap_chars(_resolve_budgets(budgets), "persona")
+
+
 # ------------------------------------------------------------- query-embed cache
 
 

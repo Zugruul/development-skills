@@ -14,6 +14,7 @@
 #   setup-assistant.sh [--root DIR] set-model <model-string>
 #   setup-assistant.sh [--root DIR] enable-capability <name>
 #   setup-assistant.sh [--root DIR] disable-capability <name>
+#   setup-assistant.sh [--root DIR] set-persona --file <path|->
 #   setup-assistant.sh [--root DIR] set-default <name>
 #   setup-assistant.sh [--root DIR] validate
 #
@@ -29,6 +30,7 @@ usage: setup-assistant.sh [--root DIR] [scaffold [--name NAME] [--provider P] [-
        setup-assistant.sh [--root DIR] set-model <model-string>
        setup-assistant.sh [--root DIR] enable-capability <name>
        setup-assistant.sh [--root DIR] disable-capability <name>
+       setup-assistant.sh [--root DIR] set-persona --file <path|->
        setup-assistant.sh [--root DIR] set-default <name>
        setup-assistant.sh [--root DIR] validate
   No verb given -> scaffold. --root defaults to the git toplevel, else cwd.
@@ -67,7 +69,7 @@ case "$sa_verb" in
         bash "$SA_HERE/gitignore-sync.sh" "$sa_root/.gitignore" || exit 1
         echo "setup-assistant: scaffold complete at $sa_root"
         ;;
-    set-provider|set-model|enable-capability|disable-capability|set-default|validate)
+    set-provider|set-model|enable-capability|disable-capability|set-persona|set-default|validate)
         if [ "${#sa_args[@]}" -gt 0 ]; then
             python3 "$SA_HERE/assistant/setup.py" "$sa_root" "$sa_verb" "${sa_args[@]}"
         else

@@ -14,7 +14,7 @@ Everything project-specific lives in the consumer repo's **`.claude/project.yaml
 |---|---|
 | `craft-spec` | Assisted spec creation: plan-mode interview → numbered-§ draft → backlog → review gate |
 | `setup-project` | Bootstrap a repo: board creation, `init-config.sh` auto-fill, validation, hygiene |
-| `setup-assistant` | Scaffold (or edit the settings of) a bare-brain assistant repo — marker, `assistant:` config section, brain dirs, generated persona `AGENTS.md`, gitignores; idempotent, script-driven (`setup-assistant.sh`) |
+| `setup-assistant` | Scaffold (or edit the settings of) a bare-brain assistant repo — marker, `assistant:` config section, brain dirs, generated persona `AGENTS.md`, gitignores; interviews the human after a fresh scaffold to compose a real persona and applies it via the `set-persona` verb (task #486 — writes `assistant.systemPrompt` plus a new marker-delimited persona block in `AGENTS.md`); idempotent, script-driven (`setup-assistant.sh`) |
 | `seed-board` | Issues + board items from the backlog (idempotent) |
 | `board` | All board reads/writes via `board.sh` (no hardcoded ids); comments are the human steering channel |
 | `next-task` | `PICK` / `RESUME` / `BLOCKED` decision from priority, epic order, guards, and the WIP limit |

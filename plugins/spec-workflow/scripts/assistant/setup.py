@@ -28,8 +28,24 @@ Library:
         local-state.manifest — §6.3 touchpoint only; AST-007 builds the full
         store + ambiguity resolution). Returns the path written.
 
+    set_persona(root, text) -> (bool, list[str])
+        Task #486: write an interview-composed persona into BOTH
+        `assistant.systemPrompt` (same snapshot -> surgical edit ->
+        validate_assistant -> revert-on-invalid pattern as `apply_setting`)
+        and a new marker-delimited persona block in the root `AGENTS.md`.
+        Empty/whitespace-only text is rejected via `validate_assistant`'s
+        existing non-empty check (`project.yaml` is left byte-identical);
+        text containing a line matching one of AGENTS.md's reserved
+        marker lines is rejected outright (would corrupt the generated-
+        block scanner). Text over the runtime persona clip (review round 1:
+        `turns.py`'s `DEFAULT_COMPONENT_BUDGETS["persona"]` is 800 TOKENS,
+        not chars -- the real compose-time clip is `persona_char_budget()`,
+        3200 chars by default) is still accepted in full — never silently
+        truncated — but a warning is returned. Returns (True, [warnings]) on
+        success or (False, [errors]) on rejection.
+
 CLI: `setup.py <root> {scaffold|set-provider|set-model|enable-capability|
-disable-capability|set-default|validate} [args...]`
+disable-capability|set-persona|set-default|validate} [args...]`
 """
 import contextlib
 import fcntl
@@ -52,6 +68,11 @@ sys.path.insert(0, _SCRIPTS_DIR)
 import config as project_config  # noqa: E402  scripts/config.py, the shared loader
 from assistant.config import validate_assistant  # noqa: E402
 from assistant import default_store  # noqa: E402  AST-007: single source of truth for the default store
+# turns.py is stdlib-only (imports only `assistant.adapters`, itself
+# stdlib-only) -- unlike neural-view.py below, importing it carries no
+# server-process weight, so `set_persona` derives the real runtime persona
+# clip from it directly instead of hand-duplicating its token->char math.
+from assistant import turns as _turns  # noqa: E402
 
 # Verbatim match of neural-view.py's MARKER_CONTENT (§6.2) — duplicated
 # rather than imported so this module never pulls in neural-view.py's
@@ -181,6 +202,16 @@ GEN_END = "<!-- <<< spec-workflow generated: enabled skills (SPEC-ASSISTANT.md �
 # marker mechanics as the skills block above.
 OUT_START = "<!-- >>> spec-workflow generated: file output contract -->"
 OUT_END = "<!-- <<< spec-workflow generated: file output contract -->"
+
+# Persona block (task #486, human-directed): a THIRD marker-delimited block,
+# regenerated the same way as the two above (prose outside the markers
+# survives byte-for-byte, re-runs are idempotent) -- but only ever written
+# by `set_persona`, never by `scaffold`'s `ensure_agents_md`. Holds the
+# fuller interview-composed persona prose; `assistant.systemPrompt` stays
+# tight since turns.py clips it (3200 chars by default -- see
+# `_PERSONA_RUNTIME_CLIP` below) at compose time.
+PERSONA_START = "<!-- >>> spec-workflow generated: persona (setup-assistant set-persona) -->"
+PERSONA_END = "<!-- <<< spec-workflow generated: persona (setup-assistant set-persona) -->"
 
 # Base capabilities (issue #447, §11.1 "base capabilities ship in-plugin
 # with the same shape") that `ensure_base_capabilities` materializes into
@@ -494,10 +525,26 @@ def _output_contract_block():
     return f"{OUT_START}\n{body}\n{OUT_END}"
 
 
-def _default_agents_md(main_name, block):
+def _bare_intro_line(main_name):
+    """The exact one-line default intro `_default_agents_md` writes for a
+    fresh AGENTS.md. A known, deterministic string (main_name is read from
+    project.yaml) -- `_update_persona_block` matches it EXACTLY to replace
+    the generic intro with a real persona in place, rather than leaving it
+    sitting above (or appending the persona below) whatever real identity
+    `set_persona` composes."""
+    return f"You are {main_name}, the local assistant for this repository's zettel brain."
+
+
+def _default_agents_md(main_name, block, persona_block=None):
+    """`persona_block`, when given (task #486's `set_persona`, on a repo
+    that has no AGENTS.md yet), replaces the bare one-line intro with the
+    interview-composed persona block, placed right after the H1 -- the
+    fresh-file case scaffold's own `ensure_agents_md` never exercises since
+    `persona_block` is always None there."""
+    intro = persona_block if persona_block else _bare_intro_line(main_name)
     return (
         f"# {main_name} — assistant persona\n\n"
-        f"You are {main_name}, the local assistant for this repository's zettel brain.\n\n"
+        f"{intro}\n\n"
         f"{block}\n\n"
         f"{_output_contract_block()}\n"
     )
@@ -530,6 +577,80 @@ def ensure_agents_md(root):
             fh.write(after)
         return True
     return False
+
+
+def _place_persona_before_generated_blocks(text, block):
+    """Review round 1 finding 2: the FIRST time `set_persona` applies
+    against an EXISTING AGENTS.md whose intro line isn't (or is no longer)
+    the exact bare default -- e.g. a human already hand-edited it -- insert
+    the persona block right after the H1 (first line starting with '# '),
+    NEVER append it at EOF below the generated skills/output-contract
+    blocks. Appending at EOF would leave whatever generic/stale intro is
+    already there as the FIRST identity a reader sees (including a
+    codex-backed assistant, which has no native skills dir and reads
+    AGENTS.md directly), with the real persona buried at the bottom."""
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("# "):
+            return "\n".join(lines[:i + 1] + [""] + block.split("\n") + [""] + lines[i + 1:])
+    # No H1 at all (unusual, fully hand-authored AGENTS.md) -- prepend.
+    return block + "\n\n" + text
+
+
+def _update_persona_block(root, text):
+    """Task #486: regenerate ONLY the persona block in `AGENTS.md`. A
+    brand-fresh AGENTS.md (no prior scaffold ever ran) gets the persona
+    placed right after the H1 via `_default_agents_md`'s `persona_block`
+    param. An EXISTING file (the normal case — scaffold always creates one
+    first) that ALREADY carries a persona block (a re-run) gets it
+    regenerated in place via `_replace_or_append_block` — same
+    idempotence/preservation discipline as `ensure_agents_md`'s GEN/OUT
+    blocks. The first-ever application against an existing file (review
+    round 1 finding 2) replaces the bare scaffold intro line in place when
+    present — the common case — rather than leaving it sitting above (or
+    appending the real persona below) the generic default; see
+    `_place_persona_before_generated_blocks` for the fallback when that
+    exact line isn't found.
+
+    May raise OSError (e.g. an unwritable AGENTS.md) — callers decide how
+    to report that; `set_persona` catches it, see its docstring."""
+    path = os.path.join(root, AGENTS_MD_REL)
+    block = f"{PERSONA_START}\n{text}\n{PERSONA_END}"
+
+    cfg_path = os.path.join(root, PROJECT_YAML_REL)
+    cfg = _load(root, cfg_path)
+    names = project_config.dig(cfg, "assistant.names") or ["assistant"]
+    main_name = names[0] if names else "assistant"
+
+    if not os.path.exists(path):
+        skills_block = _skills_block(_enabled_capabilities(root))
+        content = _default_agents_md(main_name, skills_block, persona_block=block)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        return True
+
+    with open(path, "r", encoding="utf-8") as fh:
+        before = fh.read()
+    lines = before.split("\n")
+
+    if any(line.strip() == PERSONA_START for line in lines):
+        # Already personalized once (a re-run) -- regenerate in place.
+        after = _replace_or_append_block(before, block, start=PERSONA_START, end=PERSONA_END)
+    else:
+        bare = _bare_intro_line(main_name)
+        after = None
+        for i, line in enumerate(lines):
+            if line.strip() == bare:
+                after = "\n".join(lines[:i] + block.split("\n") + lines[i + 1:])
+                break
+        if after is None:
+            after = _place_persona_before_generated_blocks(before, block)
+
+    if after == before:
+        return False
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(after)
+    return True
 
 
 # --- scaffold entrypoint -------------------------------------------------------
@@ -597,6 +718,111 @@ def disable_capability(root, name):
     return ok, errors
 
 
+# Review round 1 finding 1: DEFAULT_COMPONENT_BUDGETS["persona"] (turns.py)
+# is 800 TOKENS, not chars -- the real compose-time char clip is derived
+# via turns.persona_char_budget() (800 * TOKENS_CHARS_PER_TOKEN == 3200
+# chars by default) so this can never silently drift from turns.py's own
+# math if either constant ever changes.
+_PERSONA_RUNTIME_CLIP = _turns.persona_char_budget()
+
+# Review round 1 finding 3: a persona line that happens to exactly match one
+# of AGENTS.md's own reserved marker lines would corrupt the generated-block
+# scanner -- an embedded PERSONA_END duplicates without bound on re-runs
+# (idempotence breaks), an embedded GEN_START/OUT_START makes the NEXT
+# scaffold's `_replace_or_append_block` scan treat everything after it as
+# inside that block and discard it silently. Rejected outright, same
+# treatment as empty text.
+_AGENTS_MD_MARKERS = (GEN_START, GEN_END, OUT_START, OUT_END, PERSONA_START, PERSONA_END)
+
+
+def _persona_marker_conflict(text):
+    """The first line of `text` (stripped) that exactly matches one of
+    AGENTS.md's reserved marker lines, or None."""
+    for line in text.split("\n"):
+        if line.strip() in _AGENTS_MD_MARKERS:
+            return line.strip()
+    return None
+
+
+def set_persona(root, text):
+    """Task #486: write an interview-composed persona into BOTH
+    `assistant.systemPrompt` (via `apply_setting` — the SAME snapshot ->
+    surgical edit -> `validate_assistant` -> revert-on-invalid pattern
+    `set_provider`/`set_model` already use, so a rejected write leaves
+    `project.yaml` byte-identical) and a new marker-delimited persona block
+    in the root `AGENTS.md` (`_update_persona_block`, only run once the
+    `project.yaml` write has already succeeded).
+
+    `text` is stripped up front (review round 1 finding 5) — a trailing
+    newline would otherwise be stored verbatim (inflating the clip-warning
+    length and leaving a stray blank line before PERSONA_END), and
+    `validate_assistant`'s own non-empty check already strips for its
+    comparison, so this changes no rejection behavior, only what a SUCCESS
+    stores.
+
+    Rejected outright, `project.yaml`/`AGENTS.md` both left untouched:
+      - empty/whitespace-only text, via `validate_assistant`'s existing
+        `systemPrompt` non-empty check (its message is used verbatim, so
+        the specific error text always comes from one place).
+      - text containing a line matching one of AGENTS.md's reserved marker
+        lines (`_persona_marker_conflict`) — checked BEFORE the
+        `project.yaml` write, so a rejection here never touches either file.
+
+    Text over the runtime persona clip (`_PERSONA_RUNTIME_CLIP`, derived
+    from `turns.py` — see the module comment above) is still stored and
+    returned in full — never silently truncated here — but a warning is
+    returned for the caller to surface.
+
+    If the `project.yaml` write succeeds but writing the `AGENTS.md` block
+    fails (e.g. unwritable), that is reported as a REJECTED-prefixed
+    message and a nonzero exit even though `project.yaml` was already
+    changed — the two are now out of sync; re-running `set-persona` with
+    the same text is how a human/agent recovers, since `project.yaml`
+    already has the target value.
+
+    Returns (True, [warnings]) on success, (False, [messages]) on
+    rejection/partial failure — every message in the False case is already
+    prefixed for direct display (`REJECTED: ...`).
+    """
+    text = text.strip()
+
+    conflict = _persona_marker_conflict(text)
+    if conflict:
+        return False, [
+            f"REJECTED: persona text contains a line matching a reserved AGENTS.md "
+            f"marker ({conflict!r}) -- this would corrupt the generated-block scanner "
+            "on the next scaffold/set-persona re-run; remove or rephrase that line"
+        ]
+
+    ok, errors = apply_setting(root, lambda p: project_config.set_config(p, "assistant.systemPrompt", text))
+    if not ok:
+        return False, [f"REJECTED: {e}" for e in errors]
+
+    warnings = []
+    if len(text) > _PERSONA_RUNTIME_CLIP:
+        warnings.append(
+            f"WARNING: persona text is {len(text)} chars -- turns.py clips the persona "
+            f"component (systemPrompt + the names line) to {_PERSONA_RUNTIME_CLIP} chars "
+            "at compose time by default, so only the first "
+            f"{_PERSONA_RUNTIME_CLIP} chars are used in a live turn (the full text is "
+            "still stored in assistant.systemPrompt and AGENTS.md's persona block -- "
+            "consider tightening systemPrompt and moving the rest into AGENTS.md prose)."
+        )
+
+    try:
+        _update_persona_block(root, text)
+    except OSError as e:
+        warnings.append(
+            "REJECTED: assistant.systemPrompt was updated in project.yaml, but writing "
+            f"the AGENTS.md persona block failed ({e.strerror or e}) -- project.yaml and "
+            "AGENTS.md are now OUT OF SYNC; fix the AGENTS.md write problem and re-run "
+            "set-persona with the same text to bring it back in sync."
+        )
+        return False, warnings
+
+    return True, warnings
+
+
 def set_default(root, name):
     """§6.3 touchpoint: write the machine-local default assistant name into
     neural-view's existing local-state dir (never a tracked file). Wired to
@@ -630,7 +856,7 @@ def _dispatch(argv):
     if len(argv) < 2:
         sys.stderr.write(
             "usage: setup.py <root> {scaffold|set-provider|set-model|"
-            "enable-capability|disable-capability|set-default|validate} [args...]\n"
+            "enable-capability|disable-capability|set-persona|set-default|validate} [args...]\n"
         )
         return 2
     root, verb = argv[0], argv[1]
@@ -674,6 +900,44 @@ def _dispatch(argv):
             return 0
         for e in errors:
             sys.stderr.write(f"REJECTED: {e}\n")
+        return 1
+
+    if verb == "set-persona":
+        file_path = None
+        i = 0
+        while i < len(rest):
+            if rest[i] == "--file" and i + 1 < len(rest):
+                file_path = rest[i + 1]; i += 2
+            else:
+                i += 1
+        if not file_path:
+            sys.stderr.write("usage: setup.py <root> set-persona --file <path|->\n")
+            return 2
+        # Review round 1 finding 4: a missing/unreadable --file previously
+        # tracebacked (uncaught FileNotFoundError) instead of the clean,
+        # nonzero-exit error every other bad-input path here gives.
+        try:
+            if file_path == "-":
+                text = sys.stdin.read()
+            else:
+                with open(file_path, "r", encoding="utf-8") as fh:
+                    text = fh.read()
+        except OSError as e:
+            sys.stderr.write(f"REJECTED: cannot read persona file {file_path!r}: {e.strerror or e}\n")
+            return 1
+        # set_persona's messages are already REJECTED:/WARNING:-prefixed for
+        # direct display (some rejections happen after project.yaml was
+        # already written -- see its docstring -- so the CLI must not
+        # blanket-prefix "REJECTED:" here the way the settings verbs above
+        # do; that would mislabel a partial-failure message).
+        ok, messages = set_persona(root, text)
+        if ok:
+            print("OK")
+            for m in messages:
+                sys.stderr.write(f"{m}\n")
+            return 0
+        for m in messages:
+            sys.stderr.write(f"{m}\n")
         return 1
 
     if verb == "set-default":
