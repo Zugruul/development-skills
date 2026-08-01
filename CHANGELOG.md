@@ -16,6 +16,14 @@
 - **release:** spec-workflow v0.63.0 (`1771998`)
 - **brains:** commit brain-events feed appends (tracked per local-state manifest) (`f5f2d1d`)
 
+### Other
+- retro(4-close): 6 feedback items routed (3 backlog, 3 brain-note), 4 notes minted, retro #119 (`7134af3`)
+  > - routed: dev-brief completion contract -> #515, lane-saturation pivot docs -> #516, scoped picker -> #517
+  > - minted orchestrator: dev-idle-recovery-ladder, retroactive-records-honesty, global-resources-in-test-briefs (all direct)
+  > - minted reviewer: confirmed-over-plausible (inferred, cross-review)
+  > - reviewer prune applied (3 aged links); orchestrator prune deferred (shrink guard refused, not forced)
+  > - feed archived to 2026-08; directory regenerated
+
 ## v0.62.0 — 2026-08-01
 
 ### Features
