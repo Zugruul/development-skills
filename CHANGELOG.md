@@ -4,6 +4,15 @@
 
 ## v0.63.0 — 2026-08-01
 
+### Features
+- **seed-board:** issue bodies embed the task's full backlog block (`15b5ff8`)
+  > - issue body carries the FULL backlog block (description, dependencies, acceptance criteria, spec-section citations) extracted from the spec's backlogPath, not just the title
+  > - artifacts & references section: spec path, per-epic design doc when present, ui-mode note; backlog marked authoritative on drift
+  > - title-only fallback with a visible warning when the backlog bullet can't be found
+  > - SKILL.md documents the thorough-bodies contract and the per-epic spot-check
+  > 
+  > (authored in a parallel session; committed by the build loop per direction)
+
 ### Documentation
 - **spec:** fold #486/#492/#345/#346 deltas into SPEC-ASSISTANT (`3ea3c27`)
   > - §6.4: persona interview + set-persona contract (486)
@@ -16,6 +25,7 @@
 - **release:** spec-workflow v0.63.0 (`1771998`)
 - **brains:** commit brain-events feed appends (tracked per local-state manifest) (`f5f2d1d`)
 - **brains:** commit brain-events appends from retro minting (`01d9447`)
+- **brains:** worktree-lane-default strength bump + brain-events appends (`e36c133`)
 
 ### Other
 - retro(4-close): 6 feedback items routed (3 backlog, 3 brain-note), 4 notes minted, retro #119 (`7134af3`)
