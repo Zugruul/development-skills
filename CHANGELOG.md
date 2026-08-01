@@ -15,6 +15,7 @@
 ### Chores
 - **release:** spec-workflow v0.63.0 (`1771998`)
 - **brains:** commit brain-events feed appends (tracked per local-state manifest) (`f5f2d1d`)
+- **brains:** commit brain-events appends from retro minting (`01d9447`)
 
 ### Other
 - retro(4-close): 6 feedback items routed (3 backlog, 3 brain-note), 4 notes minted, retro #119 (`7134af3`)
