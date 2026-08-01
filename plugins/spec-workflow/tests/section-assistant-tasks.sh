@@ -1136,3 +1136,795 @@ check "engine wiring (restart reconciliation): it is genuinely the SAME row that
     "ORPHANED_TASK_ID_MATCHES True" "$engine_out"
 check "engine wiring (restart reconciliation): engine.stop() still joins cleanly afterward" "ENGINE_STOPPED_CLEANLY True" "$engine_out"
 rm -rf "$_at_reconcile_root"
+
+# ==========================================================================
+# AST-070: dispatched harness jobs as a task kind (SPEC-ASSISTANT.md §9.4,
+# issue #345, docs/design/ast-E6.md sequence 3). `harness.py` registers the
+# FIRST real executor/resolver pair into the `executors`/`resolvers` seams
+# this file's own AST-066/067 sections above prove are otherwise empty.
+# `$AT_STUB_HARNESS` is a fake agentic-CLI binary (never the real codex/
+# claude) providing BOTH a `codex` and a `claude` executable, entirely
+# env-driven -- see its own docstring for every $HARNESS_STUB_* knob.
+# ==========================================================================
+echo "== assistant harness jobs (AST-070: dispatched harness jobs as a task kind, SPEC-ASSISTANT.md §9.4) =="
+
+AT_STUB_HARNESS="$FIX/stub-harness"
+
+echo "-- integration: run_harness_job -- happy path: queued -> started -> progress -> completed, each a trace event, artifact + result populated --"
+at_argv_file="$(mktemp)"
+out="$(PATH="$AT_STUB_HARNESS:$PATH" HARNESS_STUB_ARGV_FILE="$at_argv_file" PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile, threading, time
+from assistant import tasks, harness, artifacts
+
+root = tempfile.mkdtemp(prefix="at-harness-happy-")
+q = queue.Queue()
+traces_q = queue.Queue()
+stop = threading.Event()
+
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"executors": {harness.KIND: harness.run_harness_job},
+                              "resolvers": {harness.KIND: harness.resolve_harness_job},
+                              "poll_timeout": 0.1, "traces_queue": traces_q})
+t.start()
+
+tid = harness.dispatch(q, root, provider="codex", model="gpt-5.6-sol", prompt="say hi",
+                        poll_interval_seconds=0.05, turn_id="turn-harness-1")
+
+deadline = time.monotonic() + 10.0
+row = {}
+while time.monotonic() < deadline:
+    rows = tasks.list_tasks(root)
+    if rows and rows[0]["state"] in ("completed", "failed"):
+        row = rows[0]
+        break
+    time.sleep(0.05)
+stop.set()
+t.join(timeout=3)
+
+print("TASK_ID_RETURNED", isinstance(tid, str) and bool(tid))
+print("FINAL_STATE", row.get("state"))
+print("ARTIFACT_PATH", row.get("artifact_path"))
+print("ARTIFACT_PATH_IS_TASKID_LOG", row.get("artifact_path") == f"{tid}.log")
+print("RESULT_HAS_RETURNCODE", isinstance(row.get("result"), dict) and row["result"].get("returncode") == 0)
+print("EXTERNAL_JOB_ID_SET", bool(row.get("external_job_id")))
+print("EXTERNAL_JOB_ID_STARTS_WITH_TASKID", (row.get("external_job_id") or "").startswith(tid + ":"))
+print("ROW_TURN_ID", row.get("turn_id"))
+
+path, size = artifacts.resolve(root, tid)
+with open(path) as fh:
+    content = fh.read()
+print("ARTIFACT_SERVABLE", size > 0)
+print("ARTIFACT_CONTENT_HAS_STUB_OUTPUT", "harness job complete" in content)
+
+trace_kinds = []
+progress_count = 0
+turn_ids = set()
+while True:
+    try:
+        item = traces_q.get_nowait()
+    except queue.Empty:
+        break
+    ev = item["event"]
+    trace_kinds.append(ev["kind"])
+    turn_ids.add(ev.get("turn_id"))
+    if ev["kind"] == "task.progress":
+        progress_count += 1
+print("HAS_QUEUED", "task.queued" in trace_kinds)
+print("HAS_STARTED", "task.started" in trace_kinds)
+print("HAS_PROGRESS", progress_count >= 1)
+print("HAS_COMPLETED", "task.completed" in trace_kinds)
+print("ORDER_OK", trace_kinds[0] == "task.queued" and trace_kinds[1] == "task.started" and trace_kinds[-1] == "task.completed")
+print("EVERY_EVENT_SAME_TURN_ID", turn_ids == {"turn-harness-1"})
+PY
+)"
+check "harness happy path: dispatch returns a task id" "TASK_ID_RETURNED True" "$out"
+check "harness happy path: reaches completed" "FINAL_STATE completed" "$out"
+check "harness happy path: artifact_path is task-id-derived (engine-side, never the job's own claim)" \
+    "ARTIFACT_PATH_IS_TASKID_LOG True" "$out"
+check "harness happy path: result carries the subprocess returncode" "RESULT_HAS_RETURNCODE True" "$out"
+check "harness happy path: external_job_id is populated mid-flight (resumable, §12.4)" "EXTERNAL_JOB_ID_SET True" "$out"
+check "harness happy path: external_job_id is task-id-prefixed (resolver-decodable without a separate lookup)" \
+    "EXTERNAL_JOB_ID_STARTS_WITH_TASKID True" "$out"
+check "harness happy path: the row carries the dispatch-time turn_id" "ROW_TURN_ID turn-harness-1" "$out"
+check "harness happy path: the artifact is servable via artifacts.resolve()" "ARTIFACT_SERVABLE True" "$out"
+check "harness happy path: the artifact content is the job's own captured transcript" "ARTIFACT_CONTENT_HAS_STUB_OUTPUT True" "$out"
+check "harness happy path: emits task.queued" "HAS_QUEUED True" "$out"
+check "harness happy path: emits task.started" "HAS_STARTED True" "$out"
+check "harness happy path: emits at least one task.progress (report/progress flow, §9.4)" "HAS_PROGRESS True" "$out"
+check "harness happy path: emits task.completed" "HAS_COMPLETED True" "$out"
+check "harness happy path: events are queued -> started -> ... -> completed, in order" "ORDER_OK True" "$out"
+check "harness happy path: every trace event carries the SAME turn_id (conversation resumable mid-job, §9.4)" \
+    "EVERY_EVENT_SAME_TURN_ID True" "$out"
+
+argv_contents="$(cat "$at_argv_file")"
+check "harness happy path (codex provider): --json is present" "--json" "$argv_contents"
+check "harness happy path (codex provider): own sandbox posture -- workspace-write, NOT the turn's read-only" \
+    "workspace-write" "$argv_contents"
+check_absent "harness happy path (codex provider): never the turn's read-only sandbox (own posture, §9.4)" \
+    "read-only" "$argv_contents"
+check "harness happy path (codex provider): --ignore-user-config is pinned" "--ignore-user-config" "$argv_contents"
+check "harness happy path (codex provider): --ignore-rules is pinned" "--ignore-rules" "$argv_contents"
+check "harness happy path (codex provider): --ephemeral is pinned" "--ephemeral" "$argv_contents"
+check "harness happy path (codex provider): --skip-git-repo-check is pinned" "--skip-git-repo-check" "$argv_contents"
+check "harness happy path (codex provider): -C isolated working root is pinned" "-C" "$argv_contents"
+check "harness happy path (codex provider): prompt arrives as one literal argv element" "say hi" "$argv_contents"
+rm -f "$at_argv_file"
+
+echo "-- unit: _build_argv -- claude provider: own sandbox posture (tools allowed, unlike a turn) with isolation still pinned --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import harness
+
+argv = harness._build_argv("claude", "sonnet-x", "/tmp/some-isolated-workdir", "do the thing; rm -rf / && echo pwned")
+print("ARGV", argv)
+print("HAS_SAFE_MODE", "--safe-mode" in argv)
+print("HAS_STRICT_MCP", "--strict-mcp-config" in argv)
+print("HAS_NO_SESSION_PERSISTENCE", "--no-session-persistence" in argv)
+print("HAS_ACCEPT_EDITS", "acceptEdits" in argv)
+print("NEVER_DISABLES_ALL_TOOLS", not ("--tools" in argv and "" in argv))
+print("PROMPT_IS_ONE_ELEMENT", argv.count("do the thing; rm -rf / && echo pwned") == 1)
+print("MODEL_PASSED_VERBATIM", "sonnet-x" in argv)
+PY
+)"
+check "claude harness argv: --safe-mode pinned (no CLAUDE.md/plugins/hooks, same as a turn)" "HAS_SAFE_MODE True" "$out"
+check "claude harness argv: --strict-mcp-config pinned" "HAS_STRICT_MCP True" "$out"
+check "claude harness argv: --no-session-persistence pinned" "HAS_NO_SESSION_PERSISTENCE True" "$out"
+check "claude harness argv: --permission-mode acceptEdits (headless auto-approve, own sandbox posture)" "HAS_ACCEPT_EDITS True" "$out"
+check "claude harness argv: never disables all tools (a harness job is a FULL agentic run, unlike a turn)" \
+    "NEVER_DISABLES_ALL_TOOLS True" "$out"
+check "claude harness argv: an injection-shaped prompt still arrives as exactly one argv element" "PROMPT_IS_ONE_ELEMENT True" "$out"
+check "claude harness argv: model passed verbatim" "MODEL_PASSED_VERBATIM True" "$out"
+
+echo "-- unit: run_harness_job -- argv-array only, never a shell (§17.3) --"
+harness_src="$AT_SCRIPTS/assistant/harness.py"
+check_absent "harness.py: never uses shell=True" "shell=True" "$(cat "$harness_src")"
+check_absent "harness.py: never calls os.system" "os.system" "$(cat "$harness_src")"
+
+echo "-- integration: run_harness_job -- a nonzero exit fails the task with a specific error --"
+out="$(PATH="$AT_STUB_HARNESS:$PATH" HARNESS_STUB_EXIT_CODE=7 PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile, threading, time
+from assistant import tasks, harness
+
+root = tempfile.mkdtemp(prefix="at-harness-fail-")
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"executors": {harness.KIND: harness.run_harness_job}, "poll_timeout": 0.1})
+t.start()
+tid = harness.dispatch(q, root, provider="codex", model="m", prompt="p")
+
+deadline = time.monotonic() + 10.0
+row = {}
+while time.monotonic() < deadline:
+    rows = tasks.list_tasks(root)
+    if rows and rows[0]["state"] in ("completed", "failed"):
+        row = rows[0]
+        break
+    time.sleep(0.05)
+stop.set()
+t.join(timeout=3)
+print("STATE", row.get("state"))
+print("ERROR_NAMES_EXIT_CODE", "exited 7" in (row.get("error") or ""))
+PY
+)"
+check "harness nonzero exit: task state is failed" "STATE failed" "$out"
+check "harness nonzero exit: error names the specific exit code" "ERROR_NAMES_EXIT_CODE True" "$out"
+
+echo "-- integration: run_harness_job -- exceeding the timeout kills the subprocess and fails specifically, never hangs --"
+out="$(PATH="$AT_STUB_HARNESS:$PATH" HARNESS_STUB_MODE=hang HARNESS_STUB_HANG_SECONDS=30 PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile, threading, time
+from assistant import tasks, harness
+
+root = tempfile.mkdtemp(prefix="at-harness-timeout-")
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"executors": {harness.KIND: harness.run_harness_job}, "poll_timeout": 0.1})
+t.start()
+start = time.monotonic()
+tid = harness.dispatch(q, root, provider="codex", model="m", prompt="p", timeout_seconds=1, poll_interval_seconds=0.1)
+
+deadline = time.monotonic() + 10.0
+row = {}
+while time.monotonic() < deadline:
+    rows = tasks.list_tasks(root)
+    if rows and rows[0]["state"] in ("completed", "failed"):
+        row = rows[0]
+        break
+    time.sleep(0.05)
+elapsed = time.monotonic() - start
+stop.set()
+t.join(timeout=5)
+print("STATE", row.get("state"))
+print("ERROR_NAMES_TIMEOUT", "timeout" in (row.get("error") or "").lower())
+print("BOUNDED", elapsed < 8.0)
+print("WORKER_JOINED", not t.is_alive())
+PY
+)"
+check "harness timeout: task state is failed, never hangs forever" "STATE failed" "$out"
+check "harness timeout: error names it as a timeout" "ERROR_NAMES_TIMEOUT True" "$out"
+check "harness timeout: fails well inside a bounded window (kills the child, doesn't wait out the 30s hang)" "BOUNDED True" "$out"
+check "harness timeout: the worker thread still joins cleanly afterward" "WORKER_JOINED True" "$out"
+
+echo "-- SECURITY (OWNER threat-model directive, issue #345): a hostile job trying to smuggle its own artifact_path is ignored/rejected --"
+out="$(PATH="$AT_STUB_HARNESS:$PATH" HARNESS_STUB_MODE=hostile PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile, threading, time
+from assistant import tasks, harness, artifacts
+
+root = tempfile.mkdtemp(prefix="at-harness-hostile-")
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"executors": {harness.KIND: harness.run_harness_job}, "poll_timeout": 0.1})
+t.start()
+tid = harness.dispatch(q, root, provider="claude", model="m", prompt="try to smuggle a path")
+
+deadline = time.monotonic() + 10.0
+row = {}
+while time.monotonic() < deadline:
+    rows = tasks.list_tasks(root)
+    if rows and rows[0]["state"] in ("completed", "failed"):
+        row = rows[0]
+        break
+    time.sleep(0.05)
+stop.set()
+t.join(timeout=3)
+
+print("STATE", row.get("state"))
+print("ARTIFACT_PATH", row.get("artifact_path"))
+print("ARTIFACT_PATH_IS_TASKID_LOG", row.get("artifact_path") == f"{tid}.log")
+print("NEVER_THE_SMUGGLED_PATH", row.get("artifact_path") != "../../../../etc/passwd")
+print("NO_TRAVERSAL_SEQUENCE", ".." not in (row.get("artifact_path") or ""))
+
+# artifacts.resolve() is the last line of defence -- must still resolve
+# cleanly INSIDE the artifacts root, never escape it.
+path, size = artifacts.resolve(root, tid)
+artifacts_root = artifacts._artifacts_root(root)
+print("RESOLVED_INSIDE_ARTIFACTS_ROOT", artifacts._within(path, artifacts_root))
+print("RESOLVED_NEVER_ETC_PASSWD", "etc/passwd" not in path and "etc/shadow" not in path)
+PY
+)"
+check "hostile smuggling: task still completes (the stub CLI itself exits 0)" "STATE completed" "$out"
+check "hostile smuggling: artifact_path is STILL the engine-constructed task-id-derived path" \
+    "ARTIFACT_PATH_IS_TASKID_LOG True" "$out"
+check "hostile smuggling: the injected path string is never adopted" "NEVER_THE_SMUGGLED_PATH True" "$out"
+check "hostile smuggling: no traversal sequence ever reaches the stored artifact_path" "NO_TRAVERSAL_SEQUENCE True" "$out"
+check "hostile smuggling: artifacts.resolve() (last line of defence) still confines the path inside the artifacts root" \
+    "RESOLVED_INSIDE_ARTIFACTS_ROOT True" "$out"
+check "hostile smuggling: the resolved path is never anywhere near /etc/passwd or /etc/shadow" \
+    "RESOLVED_NEVER_ETC_PASSWD True" "$out"
+
+echo "-- unit: resolve_harness_job -- a completed marker wins outright, never resubmitted --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import tempfile
+from assistant import harness
+
+root = tempfile.mkdtemp(prefix="at-harness-resolve-completed-")
+harness._write_marker(root, "task-done", {"state": "completed", "result": {"ok": True}})
+outcome = harness.resolve_harness_job(harness._encode_external_job_id("task-done", 999999), {"root": root})
+print("STATE", outcome.get("state"))
+print("ARTIFACT_PATH", outcome.get("artifact_path"))
+print("RESULT", outcome.get("result"))
+PY
+)"
+check "resolve (completed marker): reports completed" "STATE completed" "$out"
+check "resolve (completed marker): artifact_path is REBUILT from the decoded task id, never read from the marker (round-1 review BLOCKER, issue #345)" \
+    "ARTIFACT_PATH task-done.log" "$out"
+check "resolve (completed marker): result carries through" "RESULT {'ok': True}" "$out"
+
+echo "-- SECURITY (round-1 review BLOCKER, issue #345): a marker naming a FOREIGN/traversal artifact_path is ignored -- the resolver never trusts stored state for the served path --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import tempfile
+from assistant import harness, artifacts
+
+root = tempfile.mkdtemp(prefix="at-harness-resolve-hostile-marker-")
+# A legitimate OTHER task real artifact, sitting in the same artifacts
+# root -- what a cross-task substitution attack would try to redirect the
+# victim task resolver onto.
+harness._publish_artifact(root, "secret-other-task.log", "this belongs to a DIFFERENT task")
+
+# The victim task own marker file, TAMPERED (or simply a bug or an old
+# marker shape) to name that foreign file instead of its own.
+harness._write_marker(root, "victim-task",
+                       {"state": "completed", "artifact_path": "secret-other-task.log", "result": {"ok": True}})
+outcome = harness.resolve_harness_job(harness._encode_external_job_id("victim-task", 123456), {"root": root})
+print("STATE", outcome.get("state"))
+print("ARTIFACT_PATH", outcome.get("artifact_path"))
+print("NEVER_THE_FOREIGN_PATH", outcome.get("artifact_path") != "secret-other-task.log")
+print("IS_TASKID_DERIVED", outcome.get("artifact_path") == "victim-task.log")
+
+# A second flavor: a traversal-shaped value in the marker (never just a
+# same-root substitution).
+harness._write_marker(root, "victim-task-2",
+                       {"state": "completed", "artifact_path": "../../../../etc/passwd", "result": None})
+outcome2 = harness.resolve_harness_job(harness._encode_external_job_id("victim-task-2", 123457), {"root": root})
+print("ARTIFACT_PATH_2", outcome2.get("artifact_path"))
+print("NO_TRAVERSAL_2", ".." not in (outcome2.get("artifact_path") or ""))
+PY
+)"
+check "hostile marker: still reports completed (the marker's state field is legitimate here)" "STATE completed" "$out"
+check "hostile marker: artifact_path is the task's OWN rebuilt path, never the foreign one" "NEVER_THE_FOREIGN_PATH True" "$out"
+check "hostile marker: artifact_path is exactly <task_id>.log, task-id-derived" "IS_TASKID_DERIVED True" "$out"
+check "hostile marker (traversal-shaped): artifact_path is still task-id-derived" "ARTIFACT_PATH_2 victim-task-2.log" "$out"
+check "hostile marker (traversal-shaped): no traversal sequence ever reaches the returned path" "NO_TRAVERSAL_2 True" "$out"
+
+echo "-- unit: resolve_harness_job -- a failed marker reports failed with its own error --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import tempfile
+from assistant import harness
+
+root = tempfile.mkdtemp(prefix="at-harness-resolve-failed-")
+harness._write_marker(root, "task-failed", {"state": "failed", "error": "harness exited 3"})
+outcome = harness.resolve_harness_job(harness._encode_external_job_id("task-failed", 999998), {"root": root})
+print("STATE", outcome.get("state"))
+print("ERROR", outcome.get("error"))
+PY
+)"
+check "resolve (failed marker): reports failed" "STATE failed" "$out"
+check "resolve (failed marker): error carries through" "ERROR harness exited 3" "$out"
+
+echo "-- unit: resolve_harness_job -- a genuinely still-running pid (no marker yet) reports in_progress, never resubmitted --"
+out="$(PATH="$AT_STUB_HARNESS:$PATH" HARNESS_STUB_MODE=hang HARNESS_STUB_HANG_SECONDS=5 PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import os, subprocess, tempfile
+from assistant import harness
+
+root = tempfile.mkdtemp(prefix="at-harness-resolve-running-")
+proc = subprocess.Popen(["codex"], cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+try:
+    ext_id = harness._encode_external_job_id("task-running", proc.pid)
+    outcome = harness.resolve_harness_job(ext_id, {"root": root})
+    print("STATE", outcome.get("state"))
+finally:
+    proc.kill()
+    proc.wait(timeout=5)
+PY
+)"
+check "resolve (still running): reports in_progress -- never resubmitted, genuinely still running" "STATE in_progress" "$out"
+
+echo "-- unit: resolve_harness_job -- a vanished job (dead pid, no marker) reports not_found -> orphaned by the existing reconciliation --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import os, subprocess, sys, tempfile, time
+from assistant import harness
+
+root = tempfile.mkdtemp(prefix="at-harness-resolve-vanished-")
+proc = subprocess.Popen([sys.executable, "-c", "pass"])
+proc.wait(timeout=5)
+# proc has genuinely exited and wrote no marker (it never ran through
+# run_harness_job at all) -- exactly what a crashed-before-completion job
+# looks like to a restart-time resolver.
+ext_id = harness._encode_external_job_id("task-vanished", proc.pid)
+outcome = harness.resolve_harness_job(ext_id, {"root": root})
+print("STATE", outcome.get("state"))
+PY
+)"
+check "resolve (vanished job): reports not_found (no marker, dead pid -- honest 'no record of it')" "STATE not_found" "$out"
+
+echo "-- integration: _reconcile_root -- a harness-job row with a completed marker is reconciled end to end, no subprocess ever spawned (never resubmitted) --"
+out="$(PATH="$AT_STUB_HARNESS:$PATH" HARNESS_STUB_CALL_LOG="$(mktemp)" PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import json, os, queue, tempfile
+from assistant import tasks, harness
+
+root = tempfile.mkdtemp(prefix="at-harness-reconcile-done-")
+conn = tasks._open_conn(root)
+tasks._insert(conn, "pre-crash-harness", harness.KIND,
+              {"root": root, "provider": "codex", "model": "m", "prompt": "p"}, "turn-precrash")
+ext_id = harness._encode_external_job_id("pre-crash-harness", 999996)
+tasks._transition(conn, "pre-crash-harness", tasks.STATE_STARTED, external_job_id=ext_id)
+harness._write_marker(root, "pre-crash-harness", {"state": "completed", "result": {"ok": True}})
+
+traces_q = queue.Queue()
+tasks._reconcile_root(conn, root, {harness.KIND: harness.resolve_harness_job}, traces_q)
+conn.close()
+
+row = {r["id"]: r for r in tasks.list_tasks(root)}["pre-crash-harness"]
+print("STATE", row["state"])
+print("ARTIFACT_PATH", row["artifact_path"])
+
+call_log = os.environ.get("HARNESS_STUB_CALL_LOG")
+calls = 0
+if call_log and os.path.exists(call_log):
+    with open(call_log) as fh:
+        calls = sum(1 for _ in fh)
+print("SUBPROCESS_NEVER_SPAWNED", calls == 0)
+
+trace_kinds = []
+while True:
+    try:
+        item = traces_q.get_nowait()
+    except queue.Empty:
+        break
+    trace_kinds.append((item["event"]["kind"], item["event"]["payload"].get("reconciled")))
+print("HAS_RECONCILED_COMPLETED_EVENT", ("task.completed", True) in trace_kinds)
+PY
+)"
+check "reconcile (harness, completed marker): row transitions to completed" "STATE completed" "$out"
+check "reconcile (harness, completed marker): artifact_path is rebuilt from the decoded task id, never read from the marker" \
+    "ARTIFACT_PATH pre-crash-harness.log" "$out"
+check "reconcile (harness, completed marker): resolving NEVER spawns a new subprocess (never resubmitted, §12.4)" \
+    "SUBPROCESS_NEVER_SPAWNED True" "$out"
+check "reconcile (harness, completed marker): the trace event is marked reconciled=True" \
+    "HAS_RECONCILED_COMPLETED_EVENT True" "$out"
+
+echo "-- integration: engine wiring -- e.start() registers harness.KIND's executor AND resolver into the real tasks worker (AST-070 fills the seams AST-066/067 left empty) --"
+_at_harness_root="$(mktemp -d)"
+at_repo "$_at_harness_root" jarvis
+
+engine_out="$(SCRIPTS_DIR="$AT_SCRIPTS" ROOT="$_at_harness_root" PATH="$AT_STUB_HARNESS:$PATH" python3 - <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import engine, tasks, harness
+
+root = os.environ["ROOT"]
+state_dir = os.path.join(root, ".claude", "assistant-engine-state")
+e = engine.AssistantEngine(lambda: [("jarvis", root)], state_dir)
+e.start()
+try:
+    tid = harness.dispatch(e.queues["tasks"], root, provider="codex", model="m", prompt="hi via engine",
+                            poll_interval_seconds=0.05)
+
+    deadline = time.monotonic() + 10.0
+    payload = None
+    while time.monotonic() < deadline:
+        status, payload, _ = e.handle("GET", "/assistant/tasks", query={"assistant": ["jarvis"]})
+        if payload.get("tasks") and payload["tasks"][0]["state"] in ("completed", "failed"):
+            break
+        time.sleep(0.1)
+    print("STATUS", status)
+    task = payload["tasks"][0] if payload.get("tasks") else {}
+    print("TASK_STATE", task.get("state"))
+    print("TASK_ID_MATCHES", task.get("id") == tid)
+    print("ARTIFACT_PATH_SET", bool(task.get("artifact_path")))
+finally:
+    e.stop()
+    print("ENGINE_STOPPED_CLEANLY", True)
+PY
+)"
+check "engine wiring (harness): GET /assistant/tasks returns 200" "STATUS 200" "$engine_out"
+check "engine wiring (harness): the real tasks worker executed the harness job end to end via the REAL registered executor" \
+    "TASK_STATE completed" "$engine_out"
+check "engine wiring (harness): the endpoint's task id matches dispatch's returned id" "TASK_ID_MATCHES True" "$engine_out"
+check "engine wiring (harness): an artifact_path is populated" "ARTIFACT_PATH_SET True" "$engine_out"
+check "engine wiring (harness): engine.stop() joins the tasks worker cleanly afterward" "ENGINE_STOPPED_CLEANLY True" "$engine_out"
+rm -rf "$_at_harness_root"
+
+echo "-- integration: engine wiring -- a real restart reconciles a leftover harness job via the REAL registered resolver (no resubmission) --"
+_at_harness_reconcile_root="$(mktemp -d)"
+at_repo "$_at_harness_reconcile_root" jarvis
+
+engine_out="$(SCRIPTS_DIR="$AT_SCRIPTS" ROOT="$_at_harness_reconcile_root" HARNESS_STUB_CALL_LOG="$(mktemp)" python3 - <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import engine, tasks, harness
+
+root = os.environ["ROOT"]
+state_dir = os.path.join(root, ".claude", "assistant-engine-state")
+
+# Simulate a PRIOR run that crashed mid-job, having already reached actual
+# completion and written its durable marker (the "resumable mid-job"
+# scenario the AST-070 AC names) -- written directly to tasks.sqlite BEFORE
+# this engine ever starts, exactly what a restart finds.
+conn = tasks._open_conn(root)
+tasks._insert(conn, "precrash-harness-e2e", harness.KIND,
+              {"root": root, "provider": "codex", "model": "m", "prompt": "p"}, "turn-precrash-h")
+ext_id = harness._encode_external_job_id("precrash-harness-e2e", 999995)
+tasks._transition(conn, "precrash-harness-e2e", tasks.STATE_STARTED, external_job_id=ext_id)
+conn.close()
+harness._write_marker(root, "precrash-harness-e2e", {"state": "completed", "result": {"done": True}})
+
+e = engine.AssistantEngine(lambda: [("jarvis", root)], state_dir)
+e.start()
+try:
+    deadline = time.monotonic() + 5.0
+    payload = None
+    while time.monotonic() < deadline:
+        status, payload, _ = e.handle("GET", "/assistant/tasks", query={"assistant": ["jarvis"], "state": ["completed"]})
+        if payload.get("tasks"):
+            break
+        time.sleep(0.2)
+    print("STATUS", status)
+    task = payload["tasks"][0] if payload.get("tasks") else {}
+    print("TASK_ID_MATCHES", task.get("id") == "precrash-harness-e2e")
+    print("ARTIFACT_PATH", task.get("artifact_path"))
+
+    call_log = os.environ.get("HARNESS_STUB_CALL_LOG")
+    calls = 0
+    if call_log and os.path.exists(call_log):
+        with open(call_log) as fh:
+            calls = sum(1 for _ in fh)
+    print("NEVER_RESUBMITTED", calls == 0)
+finally:
+    e.stop()
+    print("ENGINE_STOPPED_CLEANLY", True)
+PY
+)"
+check "engine wiring (harness restart reconciliation): the completed-at-restart row is found via the endpoint" \
+    "STATUS 200" "$engine_out"
+check "engine wiring (harness restart reconciliation): it is the SAME pre-crash row" "TASK_ID_MATCHES True" "$engine_out"
+check "engine wiring (harness restart reconciliation): artifact_path is rebuilt from the decoded task id, never read from the marker" \
+    "ARTIFACT_PATH precrash-harness-e2e.log" "$engine_out"
+check "engine wiring (harness restart reconciliation): the real resolver never resubmits (no subprocess spawned)" \
+    "NEVER_RESUBMITTED True" "$engine_out"
+check "engine wiring (harness restart reconciliation): engine.stop() still joins cleanly" "ENGINE_STOPPED_CLEANLY True" "$engine_out"
+rm -rf "$_at_harness_reconcile_root"
+
+# ==========================================================================
+# AST-070 round-1 review fixes (issue #345): MAJOR (in_progress reconciliation
+# is a dead end after the one-time startup sweep) + MINORS (timeout-path
+# artifact loss, timeoutSeconds/pollIntervalSeconds validation,
+# external_job_id path-traversal/pid<=0 hardening, honest progress pct).
+# ==========================================================================
+echo "-- MAJOR (round-1 review, issue #345): a row left in_progress by the one-time startup sweep is NOT a dead end -- the worker periodically re-checks it and picks up completion once the marker lands --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, subprocess, sys, tempfile, threading, time
+from assistant import tasks, harness
+
+root = tempfile.mkdtemp(prefix="at-harness-live-reconcile-")
+
+# A genuinely still-running child -- exactly what a restart into a
+# still-executing dispatched job looks like (NOT run through
+# run_harness_job at all -- this row is a leftover row + a real,
+# independent process, simulating the prior engine having crashed).
+proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+conn = tasks._open_conn(root)
+tasks._insert(conn, "still-going-restart", harness.KIND, {"root": root}, "turn-live")
+ext_id = harness._encode_external_job_id("still-going-restart", proc.pid)
+tasks._transition(conn, "still-going-restart", tasks.STATE_STARTED, external_job_id=ext_id)
+conn.close()
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"resolvers": {harness.KIND: harness.resolve_harness_job},
+                              "poll_timeout": 0.05, "repos_getter": lambda: [("jarvis", root)],
+                              "live_reconcile_interval": 0.2})
+t.start()
+
+# The one-time STARTUP sweep runs first and must leave the row genuinely
+# in_progress (state unchanged) -- non-empty control proving the sweep
+# actually ran and correctly did NOT orphan a genuinely-live job.
+time.sleep(0.4)
+rows = {r["id"]: r for r in tasks.list_tasks(root)}
+print("AFTER_STARTUP_STATE", rows["still-going-restart"]["state"])
+
+try:
+    # NOW the "genuinely live" child actually finishes -- killed here and
+    # its completion marker written from OUTSIDE this worker, exactly the
+    # way run_harness_job itself would at the end of a real run. Nothing
+    # re-enqueues anything (never resubmitted) -- only the PERIODIC
+    # re-check (not the one-time startup sweep, which already ran) can
+    # ever notice this and move the row.
+    proc.kill()
+    proc.wait(timeout=5)
+    harness._write_marker(root, "still-going-restart", {"state": "completed", "result": {"ok": True}})
+
+    deadline = time.monotonic() + 5.0
+    final_row = {}
+    while time.monotonic() < deadline:
+        rows = {r["id"]: r for r in tasks.list_tasks(root)}
+        row = rows.get("still-going-restart")
+        if row and row["state"] == "completed":
+            final_row = row
+            break
+        time.sleep(0.1)
+finally:
+    stop.set()
+    t.join(timeout=3)
+
+print("FINAL_STATE", final_row.get("state"))
+print("ARTIFACT_PATH", final_row.get("artifact_path"))
+PY
+)"
+check "live reconciliation: the startup sweep leaves a genuinely-live job in_progress (state unchanged)" \
+    "AFTER_STARTUP_STATE started" "$out"
+check "live reconciliation: the PERIODIC re-check later finds the completion and transitions the row" \
+    "FINAL_STATE completed" "$out"
+check "live reconciliation: artifact_path is rebuilt from the task id (same BLOCKER-fix path)" \
+    "ARTIFACT_PATH still-going-restart.log" "$out"
+
+echo "-- unit: run_worker -- live_reconcile_interval OMITTED default / repos_getter absent -> no periodic re-check ever runs (opt-in, existing callers unaffected) --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile, threading, time
+from assistant import tasks
+
+root = tempfile.mkdtemp(prefix="at-live-reconcile-noop-")
+conn = tasks._open_conn(root)
+tasks._insert(conn, "leftover3", "harness-job", {}, None)
+tasks._transition(conn, "leftover3", tasks.STATE_STARTED, external_job_id="leftover3:1")
+conn.close()
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop), kwargs={"poll_timeout": 0.05})
+t.start()
+time.sleep(0.5)
+stop.set()
+t.join(timeout=3)
+
+row = {r["id"]: r for r in tasks.list_tasks(root)}["leftover3"]
+print("STATE_UNCHANGED", row["state"])
+PY
+)"
+check "run_worker (no repos_getter): the periodic live re-check never runs either -- purely opt-in" \
+    "STATE_UNCHANGED started" "$out"
+
+echo "-- MINOR (a): a timeout still publishes the captured transcript BEFORE the workdir is wiped, not just at the end of a clean run --"
+out="$(PATH="$AT_STUB_HARNESS:$PATH" HARNESS_STUB_MODE=hang HARNESS_STUB_HANG_SECONDS=30 HARNESS_STUB_OUTPUT="partial transcript before the kill" PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile, threading, time
+from assistant import tasks, harness
+
+root = tempfile.mkdtemp(prefix="at-harness-timeout-publish-")
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"executors": {harness.KIND: harness.run_harness_job}, "poll_timeout": 0.1})
+t.start()
+tid = harness.dispatch(q, root, provider="codex", model="m", prompt="p", timeout_seconds=1, poll_interval_seconds=0.1)
+
+deadline = time.monotonic() + 10.0
+row = {}
+while time.monotonic() < deadline:
+    rows = tasks.list_tasks(root)
+    if rows and rows[0]["state"] == "failed":
+        row = rows[0]
+        break
+    time.sleep(0.05)
+stop.set()
+t.join(timeout=5)
+
+print("STATE", row.get("state"))
+artifact_path = harness._artifact_rel_path(tid)
+import os
+on_disk = os.path.join(root, "").rstrip("/")
+full_path = os.path.join(root, ".claude", "assistant", "artifacts", artifact_path)
+print("PUBLISHED_TO_DISK", os.path.isfile(full_path))
+if os.path.isfile(full_path):
+    with open(full_path) as fh:
+        content = fh.read()
+    print("HAS_PARTIAL_TRANSCRIPT", "partial transcript before the kill" in content)
+else:
+    print("HAS_PARTIAL_TRANSCRIPT", False)
+PY
+)"
+check "timeout publish: task still fails (unchanged behavior)" "STATE failed" "$out"
+check "timeout publish: the captured transcript IS written to disk before the workdir is wiped (round-1 MINOR a)" \
+    "PUBLISHED_TO_DISK True" "$out"
+check "timeout publish: the transcript content is the partial output captured before the kill" \
+    "HAS_PARTIAL_TRANSCRIPT True" "$out"
+
+echo "-- MINOR (c): timeoutSeconds/pollIntervalSeconds are type/bounds-validated -- a bad value fails specifically, never spawns a subprocess, never crashes with a raw TypeError --"
+out="$(PATH="$AT_STUB_HARNESS:$PATH" HARNESS_STUB_CALL_LOG="$(mktemp)" PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import os, tempfile
+from assistant import harness
+
+root = tempfile.mkdtemp(prefix="at-harness-badtimeout-")
+
+def report_progress(payload=None, external_job_id=None):
+    raise AssertionError("must never be called -- validation must precede any spawn")
+report_progress.task_id = "would-be-task"
+
+cases = [
+    ("not-a-number", {"root": root, "provider": "codex", "model": "m", "prompt": "p", "timeoutSeconds": "soon"}),
+    ("negative", {"root": root, "provider": "codex", "model": "m", "prompt": "p", "timeoutSeconds": -5}),
+    ("too-large", {"root": root, "provider": "codex", "model": "m", "prompt": "p", "timeoutSeconds": 999999}),
+    ("bool-not-number", {"root": root, "provider": "codex", "model": "m", "prompt": "p", "timeoutSeconds": True}),
+    ("poll-exceeds-timeout", {"root": root, "provider": "codex", "model": "m", "prompt": "p",
+                               "timeoutSeconds": 5, "pollIntervalSeconds": 50}),
+]
+results = {}
+for name, payload in cases:
+    try:
+        harness.run_harness_job(payload, report_progress)
+        results[name] = "NO_ERROR_RAISED"
+    except harness.HarnessJobError as exc:
+        results[name] = "HarnessJobError: " + str(exc)
+    except Exception as exc:
+        results[name] = "WRONG_EXCEPTION: " + type(exc).__name__
+
+for name, outcome in results.items():
+    print(name.upper(), outcome)
+
+call_log = os.environ.get("HARNESS_STUB_CALL_LOG")
+calls = 0
+if call_log and os.path.exists(call_log):
+    with open(call_log) as fh:
+        calls = sum(1 for _ in fh)
+print("NEVER_SPAWNED_ANYTHING", calls == 0)
+PY
+)"
+check "bad timeoutSeconds (non-number): raises HarnessJobError, never a raw exception" "NOT-A-NUMBER HarnessJobError" "$out"
+check "bad timeoutSeconds (negative): raises HarnessJobError" "NEGATIVE HarnessJobError" "$out"
+check "bad timeoutSeconds (over the max bound): raises HarnessJobError" "TOO-LARGE HarnessJobError" "$out"
+check "bad timeoutSeconds (bool, not a real number -- bool-before-int-guard): raises HarnessJobError" "BOOL-NOT-NUMBER HarnessJobError" "$out"
+check "pollIntervalSeconds exceeding timeoutSeconds: raises HarnessJobError" "POLL-EXCEEDS-TIMEOUT HarnessJobError" "$out"
+check "bad timeout/poll values: validation precedes any spawn -- the stub CLI is never invoked" \
+    "NEVER_SPAWNED_ANYTHING True" "$out"
+
+echo "-- MINOR (d): _decode_external_job_id rejects a path-traversal-shaped task id and a non-positive pid, never used to build an on-disk path --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import harness
+
+cases = [
+    ("traversal_task_id", "../../etc/passwd:1234"),
+    ("slash_task_id", "some/nested/path:1234"),
+    ("pid_zero", "task-abc:0"),
+    ("pid_negative", "task-abc:-5"),
+    ("pid_not_numeric", "task-abc:not-a-pid"),
+    ("no_colon", "task-abc-no-colon"),
+]
+for name, ext_id in cases:
+    try:
+        harness._decode_external_job_id(ext_id)
+        print(name.upper(), "NO_ERROR_RAISED")
+    except ValueError:
+        print(name.upper(), "VALUE_ERROR")
+
+# resolve_harness_job must degrade cleanly (not_found), never raise, for
+# every one of these -- a resolver must never trust its input.
+for name, ext_id in cases:
+    outcome = harness.resolve_harness_job(ext_id, {"root": "/tmp/does-not-matter"})
+    print(name.upper() + "_RESOLVE_STATE", outcome.get("state"))
+
+# a VALID id still round-trips normally.
+task_id, pid = harness._decode_external_job_id("task_ABC-123:4567")
+print("VALID_TASK_ID", task_id)
+print("VALID_PID", pid)
+PY
+)"
+check "decode: rejects a traversal-shaped task id" "TRAVERSAL_TASK_ID VALUE_ERROR" "$out"
+check "decode: rejects a slash-containing task id" "SLASH_TASK_ID VALUE_ERROR" "$out"
+check "decode: rejects pid=0 (meaningless/dangerous with os.kill)" "PID_ZERO VALUE_ERROR" "$out"
+check "decode: rejects a negative pid" "PID_NEGATIVE VALUE_ERROR" "$out"
+check "decode: rejects a non-numeric pid" "PID_NOT_NUMERIC VALUE_ERROR" "$out"
+check "decode: rejects an id with no colon separator at all" "NO_COLON VALUE_ERROR" "$out"
+check "resolve_harness_job never raises for any of these -- degrades to not_found" \
+    "TRAVERSAL_TASK_ID_RESOLVE_STATE not_found" "$out"
+check "resolve_harness_job (slash task id): not_found, never touches the filesystem with it" \
+    "SLASH_TASK_ID_RESOLVE_STATE not_found" "$out"
+check "resolve_harness_job (pid=0): not_found" "PID_ZERO_RESOLVE_STATE not_found" "$out"
+check "decode: a well-formed id still round-trips its task id" "VALID_TASK_ID task_ABC-123" "$out"
+check "decode: a well-formed id still round-trips its pid" "VALID_PID 4567" "$out"
+
+echo "-- MINOR (e): progress events carry an honest, timeout-derived pct so a progress ring has something to render --"
+at_pct_argv="$(mktemp)"
+out="$(PATH="$AT_STUB_HARNESS:$PATH" PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile, threading, time
+from assistant import tasks, harness
+
+root = tempfile.mkdtemp(prefix="at-harness-pct-")
+q = queue.Queue()
+traces_q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"executors": {harness.KIND: harness.run_harness_job},
+                              "poll_timeout": 0.1, "traces_queue": traces_q})
+t.start()
+harness.dispatch(q, root, provider="codex", model="m", prompt="p", poll_interval_seconds=0.05)
+
+deadline = time.monotonic() + 10.0
+while time.monotonic() < deadline:
+    rows = tasks.list_tasks(root)
+    if rows and rows[0]["state"] in ("completed", "failed"):
+        break
+    time.sleep(0.05)
+stop.set()
+t.join(timeout=3)
+
+pct_values = []
+while True:
+    try:
+        item = traces_q.get_nowait()
+    except queue.Empty:
+        break
+    ev = item["event"]
+    if ev["kind"] == "task.progress":
+        progress = (ev.get("payload") or {}).get("progress") or {}
+        if "pct" in progress:
+            pct_values.append(progress["pct"])
+print("SAW_PCT_VALUES", len(pct_values) > 0)
+print("ALL_PCT_ARE_NUMBERS", all(isinstance(v, (int, float)) for v in pct_values))
+print("ALL_PCT_IN_RANGE", all(0 <= v <= 100 for v in pct_values))
+PY
+)"
+check "progress pct: at least one progress event carries a pct field" "SAW_PCT_VALUES True" "$out"
+check "progress pct: every pct value is numeric" "ALL_PCT_ARE_NUMBERS True" "$out"
+check "progress pct: every pct value is in the sane 0-100 range" "ALL_PCT_IN_RANGE True" "$out"
+rm -f "$at_pct_argv"

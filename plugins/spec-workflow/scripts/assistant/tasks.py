@@ -160,6 +160,25 @@ row's real-world work still happening, or not":
     `executors[kind]`'s `(payload, report_progress) -> {...}` outcome dict,
     for the same reason: one convention, not two.
 
+    AST-070 extension seam (SPEC-ASSISTANT.md §9.4, docs/design/ast-E6.md
+    sequence 3): a harness-job executor needs to (a) persist an
+    `external_job_id` PARTWAY through its run -- before it blocks on the
+    dispatched subprocess, not only at completion, so a restart mid-job has
+    something to reconcile against -- and (b) know its OWN task id, so it
+    can construct an artifact path deterministically from something the
+    engine controls, never from anything the dispatched job's own output
+    claims. Neither need changes `executors[kind]`'s fixed two-positional-
+    arg call shape (every existing executor fixture in this file's own test
+    section keeps working unchanged): `report_progress` (the SAME closure
+    every executor already receives) gained an optional `external_job_id=`
+    kwarg -- passed, it is written into that transition's `UPDATE` the same
+    way `_transition`'s other optional fields are (omitted, the column is
+    left untouched, matching `_transition`'s existing "only what's passed
+    gets set" behavior) -- and carries its OWN `task_id` as a plain function
+    attribute (`report_progress.task_id`), a closure being an ordinary
+    Python object that can carry extra, purely-additive state no old caller
+    ever reads or is affected by.
+
 Library:
     STATES -- the exact six state names Sec12.3 lists, in transition
         order. `orphaned` was never produced before AST-067; restart
@@ -213,6 +232,7 @@ import os
 import queue as queue_module
 import sqlite3
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -249,7 +269,29 @@ _RESOLVER_STATES = (_RESOLVER_STATE_COMPLETED, _RESOLVER_STATE_FAILED, _RESOLVER
 # is a vocabulary/correctness fix, not a data-volume one.
 _RECONCILE_TARGET_STATES = (STATE_QUEUED, STATE_STARTED, STATE_PROGRESS)
 
+# AST-070 round-1 review MAJOR (issue #345): the startup sweep above runs
+# exactly ONCE, before the drain loop starts -- a row it leaves `in_progress`
+# (genuinely still running elsewhere at that moment) has NOTHING that will
+# ever look at it again, since reconciliation never enqueues anything onto
+# `q` and the drain loop only ever pulls from `q`. That row would sit
+# `started`/`progress` FOREVER even after the external job actually
+# finishes -- a dead end that directly contradicts "conversation resumable
+# mid-job" (AST-070's own AC). `_reconcile_live_root`/`_reconcile_live_all`
+# (see `run_worker`'s periodic call below) are the fix: a periodic re-poll,
+# reusing `_reconcile_row`'s exact per-outcome logic (never resubmits), but
+# over a NARROWER row set than the startup sweep -- ONLY `started`/
+# `progress` rows that already carry an `external_job_id`. A bare `queued`
+# row is deliberately EXCLUDED here (unlike the startup sweep): during
+# NORMAL operation a `queued` row can be a legitimate, imminent item
+# already sitting in the in-memory queue `q`, about to be drained -- the
+# startup sweep's "queued at restart is unreconcilable" reasoning is true
+# only at the one moment nothing could legitimately still be pending
+# in-process; treating a live `queued` row that way mid-loop would
+# incorrectly orphan work that is about to run normally.
+_LIVE_RECONCILE_TARGET_STATES = (STATE_STARTED, STATE_PROGRESS)
+
 DEFAULT_POLL_TIMEOUT_SECONDS = 0.5
+DEFAULT_LIVE_RECONCILE_INTERVAL_SECONDS = 30.0
 
 _SCHEMA_DDL = """
 CREATE TABLE IF NOT EXISTS tasks (
@@ -460,10 +502,25 @@ def _process_create(item, conns, executors, traces_queue):
         _emit(traces_queue, root, "task.failed", task_id, kind, STATE_FAILED, {"error": error}, turn_id=turn_id)
         return
 
-    def report_progress(progress_payload=None):
-        _transition(conn, task_id, STATE_PROGRESS)
+    def report_progress(progress_payload=None, external_job_id=None):
+        # AST-070 (see module docstring's "AST-070 extension seam"):
+        # external_job_id is OPTIONAL and omitted by every pre-existing
+        # caller -- only written into the transition when a caller (a
+        # harness-job executor) actually supplies one, so a plain
+        # `report_progress()`/`report_progress({...})` call never clobbers
+        # the column back to NULL.
+        fields = {}
+        if external_job_id is not None:
+            fields["external_job_id"] = external_job_id
+        _transition(conn, task_id, STATE_PROGRESS, **fields)
         extra = {"progress": progress_payload} if progress_payload is not None else None
         _emit(traces_queue, root, "task.progress", task_id, kind, STATE_PROGRESS, extra, turn_id=turn_id)
+
+    # AST-070: a task-scoped executor (e.g. harness.run_harness_job) reads
+    # this to construct an artifact path deterministically from the task's
+    # OWN id -- never from anything crossing the process boundary. Plain
+    # attribute on the closure; no old executor reads or is affected by it.
+    report_progress.task_id = task_id
 
     try:
         outcome = executor(payload, report_progress)
@@ -622,36 +679,95 @@ def _reconcile_all(repos_getter, conns, resolvers, traces_queue):
             sys.stderr.write("tasks worker: reconciliation failed for root %s: %s\n" % (root, exc))
 
 
-def run_worker(q, stop_event, executors=None, poll_timeout=DEFAULT_POLL_TIMEOUT_SECONDS, traces_queue=None, repos_getter=None, resolvers=None):
+def _reconcile_live_root(conn, root, resolvers, traces_queue):
+    """AST-070 round-1 review MAJOR (issue #345): the PERIODIC twin of
+    `_reconcile_root`, called repeatedly from `run_worker`'s drain loop
+    instead of once at startup. See `_LIVE_RECONCILE_TARGET_STATES`'s own
+    comment for why this selects a narrower row set (never a bare
+    `queued` row) and reuses `_reconcile_row`'s exact per-outcome logic
+    unchanged -- same never-resubmit guarantee, same trace events, just a
+    different, safe-for-mid-loop candidate set."""
+    placeholders = ", ".join("?" for _ in _LIVE_RECONCILE_TARGET_STATES)
+    rows = conn.execute(
+        "SELECT " + ", ".join(_SELECT_COLUMNS) + " FROM tasks WHERE state IN (" + placeholders + ") "
+        "AND external_job_id IS NOT NULL",
+        _LIVE_RECONCILE_TARGET_STATES,
+    ).fetchall()
+    for raw_row in rows:
+        row = dict(zip(_SELECT_COLUMNS, raw_row))
+        try:
+            _reconcile_row(conn, root, row, resolvers, traces_queue)
+        except Exception as exc:  # never let one row's reconciliation kill the pass
+            sys.stderr.write("tasks worker: live reconciliation failed for task %s: %s\n" % (row.get("id"), exc))
+
+
+def _reconcile_live_all(repos_getter, conns, resolvers, traces_queue):
+    """Periodic twin of `_reconcile_all` -- same broken-repos_getter and
+    per-root failure isolation posture, called repeatedly instead of
+    once."""
+    try:
+        repo_pairs = list(repos_getter())
+    except Exception as exc:  # a broken repos_getter must not prevent the worker from continuing
+        sys.stderr.write("tasks worker: live reconciliation could not list roots: %s\n" % exc)
+        return
+    for _repo_name, root in repo_pairs:
+        try:
+            if root not in conns:
+                conns[root] = _open_conn(root)
+            _reconcile_live_root(conns[root], root, resolvers, traces_queue)
+        except Exception as exc:  # one root's reconciliation failing must not block another root's
+            sys.stderr.write("tasks worker: live reconciliation failed for root %s: %s\n" % (root, exc))
+
+
+def run_worker(q, stop_event, executors=None, poll_timeout=DEFAULT_POLL_TIMEOUT_SECONDS, traces_queue=None,
+                repos_getter=None, resolvers=None, live_reconcile_interval=DEFAULT_LIVE_RECONCILE_INTERVAL_SECONDS):
     """See module docstring's Library entry, "Execution model", and
     "Restart reconciliation" sections. `repos_getter`/`resolvers` are both
     optional (default `None`/`{}`) so every existing caller/test that
     constructs this worker without them keeps working unchanged -- the
     same convention `traces_queue=None` already established. `repos_getter`
     omitted means reconciliation simply does not run (there is no way to
-    know which roots to check without it)."""
+    know which roots to check without it) -- this also disables the
+    periodic live re-check below, for the identical reason.
+
+    `live_reconcile_interval` (AST-070 round-1 review MAJOR, issue #345):
+    seconds between periodic `_reconcile_live_all` passes, checked once per
+    drain-loop iteration (cheap: a monotonic-clock subtraction) so it never
+    adds a second sleep/timer thread. `None` or `<= 0` disables it (same
+    "falsy/absent means off" convention `repos_getter=None` already uses
+    for the startup sweep) -- opt-in, existing callers that construct this
+    worker without passing it keep the DEFAULT interval, but since
+    `repos_getter` also defaults to `None`, no existing caller's behavior
+    changes unless it ALREADY opted into `repos_getter` too."""
     executors = executors or {}
     resolvers = resolvers or {}
     conns = {}
     if repos_getter is not None:
         _reconcile_all(repos_getter, conns, resolvers, traces_queue)
+    last_live_reconcile = time.monotonic()
     try:
         while not stop_event.is_set():
             try:
                 item = q.get(timeout=poll_timeout)
             except queue_module.Empty:
-                continue
-            try:
-                if isinstance(item, dict) and item.get("action") == "create":
-                    _process_create(item, conns, executors, traces_queue)
-                else:
-                    # ADVISORY 1 (round-2 review, issue #341): a non-dict
-                    # item or an unrecognized action used to be silently
-                    # dropped here with no trace at all -- symmetry with
-                    # every other drop path in this module.
-                    sys.stderr.write("tasks worker: skipping unrecognized queue item: %r\n" % (item,))
-            except Exception as exc:  # park-and-continue -- never kill the worker thread
-                sys.stderr.write("tasks worker: item failed: %s\n" % exc)
+                item = None
+            if item is not None:
+                try:
+                    if isinstance(item, dict) and item.get("action") == "create":
+                        _process_create(item, conns, executors, traces_queue)
+                    else:
+                        # ADVISORY 1 (round-2 review, issue #341): a non-dict
+                        # item or an unrecognized action used to be silently
+                        # dropped here with no trace at all -- symmetry with
+                        # every other drop path in this module.
+                        sys.stderr.write("tasks worker: skipping unrecognized queue item: %r\n" % (item,))
+                except Exception as exc:  # park-and-continue -- never kill the worker thread
+                    sys.stderr.write("tasks worker: item failed: %s\n" % exc)
+            if repos_getter is not None and live_reconcile_interval and live_reconcile_interval > 0:
+                now = time.monotonic()
+                if now - last_live_reconcile >= live_reconcile_interval:
+                    _reconcile_live_all(repos_getter, conns, resolvers, traces_queue)
+                    last_live_reconcile = now
     finally:
         for conn in conns.values():
             try:

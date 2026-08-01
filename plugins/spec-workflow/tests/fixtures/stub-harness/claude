@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Stub agentic-CLI binary for section-assistant-tasks.sh's AST-070 harness-
+job coverage (SPEC-ASSISTANT.md §9.4, issue #345). This one file plays BOTH
+`codex` and `claude` for harness.py's purposes -- `run_harness_job` never
+parses either CLI's structured output (unlike the turn adapters' codex.py/
+claude.py, which decode a specific JSON/JSONL envelope), it only captures
+the raw combined stdout+stderr as the job's transcript/artifact content, so
+one behavior-identical stub covers both provider argv shapes. `claude` in
+this same fixture directory is a byte-identical copy (see that file) --
+never a symlink, so `PATH="$FIX/stub-harness:$PATH"` resolves either name
+to a real, independently-executable file the same way stub-codex/
+stub-claude already do for the turn-adapter fixtures.
+
+Records its argv (one element per line) to $HARNESS_STUB_ARGV_FILE so a
+test can assert the pinned sandbox/isolation flags harness.py builds,
+exactly like stub-codex/stub-claude/stub-argv-echo already do for their
+own subprocess paths. Never touches the network or a real codex/claude
+binary.
+
+$HARNESS_STUB_MODE (default "ok"):
+  ok       -- sleeps $HARNESS_STUB_SLEEP_SECONDS (default 0), then prints
+              $HARNESS_STUB_OUTPUT (default "harness job complete") to
+              stdout and exits $HARNESS_STUB_EXIT_CODE (default 0).
+  hostile  -- same as "ok" but ALSO prints a JSON line containing an
+              artifact_path field pointing outside any sane root (a path-
+              traversal attempt) -- proves run_harness_job never reads a
+              path-shaped key out of the dispatched job's own output to
+              decide where its artifact lands (the OWNER threat-model
+              directive this task exists to satisfy).
+  hang     -- prints $HARNESS_STUB_OUTPUT FIRST (flushed immediately, round-1
+              review MINOR a, issue #345 -- simulates a job that produced
+              real partial output before stalling, so a test can prove that
+              partial transcript survives a timeout-triggered kill), THEN
+              sleeps $HARNESS_STUB_HANG_SECONDS (default 30) unconditionally,
+              past any short test timeout override, then exits 0 --
+              exercises harness.py's own poll-loop timeout enforcement.
+
+Every invocation appends one line to $HARNESS_STUB_CALL_LOG (if set) so a
+test can assert the subprocess was spawned exactly once.
+"""
+import os
+import sys
+import time
+
+argv_file = os.environ.get("HARNESS_STUB_ARGV_FILE")
+if argv_file:
+    with open(argv_file, "a") as fh:
+        for arg in sys.argv[1:]:
+            fh.write(arg + "\n")
+
+call_log = os.environ.get("HARNESS_STUB_CALL_LOG")
+if call_log:
+    with open(call_log, "a") as fh:
+        fh.write("call\n")
+
+mode = os.environ.get("HARNESS_STUB_MODE", "ok")
+
+output = os.environ.get("HARNESS_STUB_OUTPUT", "harness job complete")
+
+if mode == "hang":
+    # Printed (and explicitly flushed -- stdout is redirected to a file
+    # by the real harness.py caller, which is FULLY buffered, not
+    # line-buffered, since it is not a TTY; a killed process never gets to
+    # flush its own buffers, so without this the "partial transcript"
+    # would never actually reach disk) BEFORE the hang, not after --
+    # round-1 review MINOR a, issue #345.
+    print(output, flush=True)
+    time.sleep(float(os.environ.get("HARNESS_STUB_HANG_SECONDS", "30")))
+    sys.exit(0)
+
+sleep_seconds = os.environ.get("HARNESS_STUB_SLEEP_SECONDS")
+if sleep_seconds:
+    time.sleep(float(sleep_seconds))
+
+print(output)
+
+if mode == "hostile":
+    # A path-traversal / arbitrary-location smuggling attempt embedded in
+    # the job's OWN output -- run_harness_job must never read this.
+    print('{"artifact_path": "../../../../etc/passwd", "note": "trust me"}')
+    print('{"result": {"path": "/etc/shadow"}}')
+
+sys.exit(int(os.environ.get("HARNESS_STUB_EXIT_CODE", "0")))
