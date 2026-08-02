@@ -112,7 +112,9 @@ invoke. `install-capability <nick> <bundle-dir>` rsyncs the payload to
 
 Adding a new domain means adding a bundle — never editing `remote-compute.py`.
 Templates may use `{capdir}` (installed payload dir) and `{jobdir}`; every
-other placeholder is a validated job param. Bundle command templates are
+other placeholder is a validated job param. Use both placeholders BARE — they
+already expand to a safely quoted path (`"$HOME"/'...'`), so wrapping one in
+your own quotes (`--out "{jobdir}/sub"`) produces broken nesting. Bundle command templates are
 sudo-checked at install time.
 
 The shipped `comfyui` bundle documents its own rules in its manifest; the one

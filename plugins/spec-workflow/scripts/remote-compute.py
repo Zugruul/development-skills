@@ -1196,7 +1196,12 @@ def cmd_job_status(job_id):
 
 def cmd_job_logs(job_id):
     job = load_job(job_id)
-    rc, out, err = ssh_run(job["resource"], "tail -n 100 %s/job.log" % job["remoteDir"])
+    # through remote_path like every other remote path: correct as raw today
+    # (an unquoted tilde does expand, and the id is JOB_ID_RE-validated), but
+    # the job JSON is hand-editable in exactly the way the registry is, and we
+    # defend that elsewhere. Consistency here is defence in depth.
+    rc, out, err = ssh_run(job["resource"],
+                           "tail -n 100 %s/job.log" % remote_path(job["remoteDir"]))
     print(out if rc == 0 else "ERROR: %s" % (err or "no log yet"))
     return 0
 
