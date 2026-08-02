@@ -724,6 +724,30 @@ out="$(run_compute remove-capability gpubox nope 2>&1)"; rc=$?
 check "remove-capability: unknown names what IS installed" "installed:" "$out"
 check_rc "remove-capability: unknown exit 2" 2 "$rc"
 
+# --- a bundle manifest's `env:` must reach the dispatched payload ---------
+# (#527) env: is honored in code but was only ever exercised via add-job --env.
+# The shipped training bundle declares it on every job, so a regression here
+# would silently run training outside its virtualenv.
+run_compute add-env gpubox bundleenv --activate "source ~/bundleenv/bin/activate" >/dev/null 2>&1
+ENVB="$CT/envcap"; mkdir -p "$ENVB"
+cat > "$ENVB/capability.yaml" <<'EOF'
+version: 1
+name: envcap
+description: bundle whose job declares the env it needs
+payload:
+-   run.py
+jobs:
+    work:
+        description: runs inside a declared env
+        cmd: python3 {capdir}/run.py
+        env: bundleenv
+EOF
+printf '#!/usr/bin/env python3\nprint("ok")\n' > "$ENVB/run.py"
+run_compute install-capability gpubox "$ENVB" >/dev/null 2>&1
+: > "$TLOG"
+run_compute run gpubox envcap:work --job-id bundleenvjob >/dev/null 2>&1
+check "bundle manifest env activates before the command" "source ~/bundleenv/bin/activate && python3" "$(cat "$TLOG")"
+
 # --- remove --------------------------------------------------------------
 out="$(run_compute remove gpubox 2>&1)"
 check_absent "remove: gone from registry" "gpubox" "$(cat "$CH/resources.yaml")"
