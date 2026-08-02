@@ -230,6 +230,13 @@ assistant:
 - §8.4 Turns SHALL run answer-only: adapters SHALL pin isolation flags (no user-global
   instruction ingestion; no plugin/skill surface from the dev workflow; harness tool use
   disabled). Agentic work happens via dispatched harness jobs (§9.4), never inside turns.
+  EXCEPTION, file production (the workdir publish relay): WHEN the engine resolves a
+  sanctioned per-turn `fileOutputDir` the adapter MAY open a write surface scoped to the
+  turn's own isolated throwaway workdir (claude: Write-tool flags + pinned cwd; codex:
+  `-s workspace-write` + pinned `-C` and cwd) — a turn with no `fileOutputDir` keeps the
+  fully read-only posture. Publishing moves only regular files (never symlinks or
+  multi-link entries) from that workdir into the sanctioned directory, atomically and
+  cross-filesystem-safe.
 - §8.5 IF the provider CLI exits nonzero, times out (mandatory timeout), or emits
   unparseable output THEN THE SYSTEM SHALL surface a bounded-time, specific error in the
   overlay — including an auth-expired state instructing `codex login`/`claude login`.
@@ -249,6 +256,10 @@ assistant:
 - §9.4 Harness jobs: THE SYSTEM SHALL support dispatching full agentic CLI runs as async
   tasks (own sandbox posture, full tracing); the assistant SHALL keep conversing while
   jobs run, report progress, and announce results, resuming the topic on completion.
+  A capability whose `capability.yaml` declares `longRunning: true` is a second,
+  lighter-weight async mechanism: routed through the task queue under its own (more
+  generous) bound instead of invoked inline, with the reply directing the user to the
+  artifact panel for the result.
 - §9.5 Turns SHALL never block on the distiller, index refresh, or any task.
 - §9.6 Inactive assistants' queues/distillers SHALL continue running (feeding §7.8's
   digest).
@@ -297,12 +308,21 @@ assistant:
 - §11.5 `invoke.exec` SHALL be an argv ARRAY; placeholder substitution occurs only within
   single argv elements, after validation against the skill's declared parameter schema
   (type/pattern/allowlist); THE SYSTEM SHALL never pass invoke commands through a shell.
+  Invocation is reachable from a live turn via a single fenced ```capability JSON
+  directive in the model's reply (line-anchored, one per turn, trailing-element rule
+  taught via the roster prompt and enforced by the parser), stripped from the visible
+  reply engine-side; the result feeds exactly one size-capped same-turn follow-up
+  completion, and a follow-up failure degrades to a result-bearing reply rather than
+  discarding an executed invocation.
 - §11.6 capability.yaml `version` SHALL be checked against the engine's supported range;
   unsupported versions are unavailable-with-reason, never best-effort executed.
 - §11.7 MCP servers are an invoke flavor (`invoke: {mcp: ...}`).
 - §11.8 WHEN a request matches no enabled capability THE SYSTEM SHALL say so in-persona
   and MAY offer to acquire the ability by drafting a plan into the brain repo (parking
   lot); installation/enablement SHALL require human approval.
+  The production trigger is an EXPLICIT capability request that fails to resolve by
+  name — never a relevance-score threshold, and never plain conversation (which
+  invokes no capability machinery at all).
 - §11.9 For codex turns, /setup-assistant SHALL maintain a generated persona-scoped
   AGENTS.md section listing enabled skills (codex has no native skills dir).
 
@@ -321,6 +341,9 @@ assistant:
 - §12.4 WHEN the engine restarts THE SYSTEM SHALL reconcile the queue: tasks with an
   external_job_id are re-polled against the remote system before any resubmission;
   unreconcilable tasks become orphaned (surfaced, never silently re-run).
+  Reconciliation (startup and periodic) SHALL open a root's queue only when the root is
+  an assistant candidate AND already has a tasks database on disk — discovery of a repo
+  is never a side effect that creates one.
 - §12.5 WHILE tasks run, chat/voice remain fully usable; a queue indicator on the voice
   panel lists running/queued tasks; completion opens the artifact panel and announces
   (TTS when voice on); failures surface in-chat with the trace linked.
