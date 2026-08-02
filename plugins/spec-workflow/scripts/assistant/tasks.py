@@ -659,6 +659,49 @@ def _reconcile_root(conn, root, resolvers, traces_queue):
             sys.stderr.write("tasks worker: reconciliation failed for task %s: %s\n" % (row.get("id"), exc))
 
 
+def _is_reconcile_candidate(root):
+    """Issue #497 (AST-067's retro-review): `repos_getter()` yields EVERY
+    `.neural-network`-anchored repo, not just assistant candidates -- but
+    `_open_conn` `os.makedirs`'s `.claude/assistant/` and CREATEs
+    `tasks.sqlite` as a side effect, so a reconciliation sweep opening a
+    connection unconditionally for every yielded root was silently
+    creating that directory/db for non-assistant repos too (§17.8
+    exposure: those dirs are frequently un-gitignored). Both sweeps below
+    now gate on this exactly the way `capability_index.run_worker` already
+    gates its own `repos_getter()` walk: `discovery.classify_repo(root)`,
+    skip anything that is not `"candidate"`.
+
+    A candidate with no `tasks.sqlite` on disk yet is ALSO skipped here --
+    it has nothing to reconcile (no rows exist), so opening a connection
+    for it would itself be the exact bug this is fixing, just for a
+    legitimate assistant repo instead of a non-assistant one. This check
+    only ever gates OPENING a fresh connection (see both call sites: it is
+    skipped entirely once `root` is already in `conns`) -- the normal
+    enqueue/worker path for a root actively receiving tasks legitimately
+    creates the db via its own `_open_conn` call in `_process_create`,
+    completely unaffected by this function.
+
+    Round-1 review (issue #497): the on-disk `tasks.sqlite` check runs
+    FIRST, `classify_repo` (a project.yaml parse) second -- semantics-
+    identical (both must hold either way), but the vast majority of
+    `repos_getter()`'s roots have never queued a task, so the cheap
+    filesystem stat short-circuits before paying for a YAML parse on
+    every anchored repo on every periodic tick.
+
+    Local import (mirrors `capability_index.run_worker`'s own `from
+    assistant import discovery`): avoids a hard import-time coupling from
+    this pure queue/worker module to the discovery/marker/config stack for
+    callers that only need the queue machinery."""
+    if not os.path.exists(_db_path(root)):
+        return False
+    from assistant import discovery
+    try:
+        classification = discovery.classify_repo(root)
+    except Exception:
+        return False
+    return classification.kind == "candidate"
+
+
 def _reconcile_all(repos_getter, conns, resolvers, traces_queue):
     """Called once, before `run_worker`'s drain loop starts. `conns` is
     `run_worker`'s OWN dict (passed in, not created here) so a connection
@@ -673,6 +716,8 @@ def _reconcile_all(repos_getter, conns, resolvers, traces_queue):
     for _repo_name, root in repo_pairs:
         try:
             if root not in conns:
+                if not _is_reconcile_candidate(root):  # issue #497: never CREATE a db just to reconcile it
+                    continue
                 conns[root] = _open_conn(root)
             _reconcile_root(conns[root], root, resolvers, traces_queue)
         except Exception as exc:  # one root's reconciliation failing must not block another root's
@@ -713,6 +758,8 @@ def _reconcile_live_all(repos_getter, conns, resolvers, traces_queue):
     for _repo_name, root in repo_pairs:
         try:
             if root not in conns:
+                if not _is_reconcile_candidate(root):  # issue #497: never CREATE a db just to reconcile it
+                    continue
                 conns[root] = _open_conn(root)
             _reconcile_live_root(conns[root], root, resolvers, traces_queue)
         except Exception as exc:  # one root's reconciliation failing must not block another root's

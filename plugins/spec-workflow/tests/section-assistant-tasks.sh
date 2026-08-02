@@ -36,6 +36,49 @@ at_repo() {
         >"$dir/.claude/project.yaml"
 }
 
+# at_marker_only <dir> -- an anchored repo (.neural-network marker present,
+# same as every other repos_getter()-yielded root) with NO project.yaml at
+# all -- discovery.classify_repo(root) resolves this to "no-config", never
+# "candidate". Issue #497: repos_getter yields every anchored repo, assistant
+# candidate or not, so this is the fixture for "anchored but not an
+# assistant" -- the exact shape 8 real repos on the reporting machine had.
+at_marker_only() {
+    local dir="$1"
+    mkdir -p "$dir/.claude"
+    printf "%s\n" "# neural-network" >"$dir/.claude/.neural-network"
+}
+
+# at_repo_disabled <dir> <main> -- same shape as at_repo, but
+# assistant.enabled: false -- discovery.classify_repo(root) resolves this to
+# "disabled", never "candidate" (§6.1's assistant: section is the sole
+# authority for enabled state). Issue #497 round-1 review MINOR-1: a root
+# that WAS a candidate (has a real tasks.sqlite from when it was enabled)
+# and has since been disabled/de-candidated must still be skipped by both
+# reconciliation sweeps -- classify_repo is the single source of truth, not
+# "does a db already exist".
+at_repo_disabled() {
+    local dir="$1" main="$2"
+    mkdir -p "$dir/.claude"
+    printf "%s\n" "# neural-network" >"$dir/.claude/.neural-network"
+    printf "%s\n" \
+        "schemaVersion: 2" \
+        "assistant:" \
+        "    version: 1" \
+        "    enabled: false" \
+        "    names: [$main]" \
+        "    systemPrompt: |" \
+        "        You are $main." \
+        "    llm:" \
+        "        provider: openai" \
+        "        model: gpt-5.6-sol" \
+        "    capabilities:" \
+        "        codex:" \
+        "            enabled: true" \
+        "            provisioning:" \
+        "                bin: codex" \
+        >"$dir/.claude/project.yaml"
+}
+
 # ------------------------------------------------------------------------
 echo "-- unit: STATES -- the exact six Sec12.3 state names, in transition order --"
 out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
@@ -954,11 +997,13 @@ check "reconcile (scope): the one genuinely in-flight row in the same pass WAS r
     "IN_FLIGHT_WAS_ACTUALLY_RECONCILED completed" "$out"
 
 echo "-- integration: run_worker -- repos_getter given, reconciliation runs ONCE at startup, before any queue item is even processed --"
-out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
-import queue, tempfile, threading, time
+at_worker_reconcile_root="$(mktemp -d)"
+at_repo "$at_worker_reconcile_root" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at_worker_reconcile_root" <<'PY'
+import queue, sys, threading, time
 from assistant import tasks
 
-root = tempfile.mkdtemp(prefix="at-worker-reconcile-")
+root = sys.argv[1]  # issue #497: must be a real assistant candidate, not a bare tempdir
 conn = tasks._open_conn(root)
 tasks._insert(conn, "leftover", "harness", {}, None)
 tasks._transition(conn, "leftover", tasks.STATE_STARTED, external_job_id="job-leftover")
@@ -988,6 +1033,7 @@ PY
 check "run_worker (repos_getter given): a leftover started row is reconciled at startup, no resolver registered -> orphaned" \
     "RECONCILED_AT_STARTUP orphaned" "$out"
 check "run_worker (repos_getter given): the worker thread still joins cleanly afterward" "WORKER_JOINED True" "$out"
+rm -rf "$at_worker_reconcile_root"
 
 echo "-- integration: run_worker -- repos_getter OMITTED (the default) -> reconciliation does NOT run at all, existing callers/tests are unaffected --"
 out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
@@ -1016,12 +1062,15 @@ check "run_worker (no repos_getter): a leftover started row is left completely u
     "STATE_UNCHANGED_NO_REPOS_GETTER started" "$out"
 
 echo "-- integration: run_worker -- repos_getter returns MULTIPLE roots, every one gets reconciled, not just the first --"
-out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
-import queue, tempfile, threading, time
+at_multi_root_a="$(mktemp -d)"
+at_multi_root_b="$(mktemp -d)"
+at_repo "$at_multi_root_a" jarvis-a
+at_repo "$at_multi_root_b" jarvis-b
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at_multi_root_a" "$at_multi_root_b" <<'PY'
+import queue, sys, threading, time
 from assistant import tasks
 
-root_a = tempfile.mkdtemp(prefix="at-multi-a-")
-root_b = tempfile.mkdtemp(prefix="at-multi-b-")
+root_a, root_b = sys.argv[1], sys.argv[2]  # issue #497: real assistant candidates, not bare tempdirs
 for root in (root_a, root_b):
     conn = tasks._open_conn(root)
     tasks._insert(conn, "orphan-me", "no-such-kind", {}, None)
@@ -1051,6 +1100,7 @@ PY
 )"
 check "run_worker (multiple roots): the FIRST root's leftover row is reconciled" "ROOT_A_STATE orphaned" "$out"
 check "run_worker (multiple roots): the SECOND root's leftover row is reconciled too, not skipped" "ROOT_B_STATE orphaned" "$out"
+rm -rf "$at_multi_root_a" "$at_multi_root_b"
 
 echo "-- integration: run_worker -- a broken repos_getter never prevents the worker from starting or draining the live queue --"
 out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
@@ -1653,11 +1703,13 @@ rm -rf "$_at_harness_reconcile_root"
 # external_job_id path-traversal/pid<=0 hardening, honest progress pct).
 # ==========================================================================
 echo "-- MAJOR (round-1 review, issue #345): a row left in_progress by the one-time startup sweep is NOT a dead end -- the worker periodically re-checks it and picks up completion once the marker lands --"
-out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
-import queue, subprocess, sys, tempfile, threading, time
+at_harness_live_root="$(mktemp -d)"
+at_repo "$at_harness_live_root" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at_harness_live_root" <<'PY'
+import queue, subprocess, sys, threading, time
 from assistant import tasks, harness
 
-root = tempfile.mkdtemp(prefix="at-harness-live-reconcile-")
+root = sys.argv[1]  # issue #497: must be a real assistant candidate, not a bare tempdir
 
 # A genuinely still-running child -- exactly what a restart into a
 # still-executing dispatched job looks like (NOT run through
@@ -1719,6 +1771,7 @@ check "live reconciliation: the PERIODIC re-check later finds the completion and
     "FINAL_STATE completed" "$out"
 check "live reconciliation: artifact_path is rebuilt from the task id (same BLOCKER-fix path)" \
     "ARTIFACT_PATH still-going-restart.log" "$out"
+rm -rf "$at_harness_live_root"
 
 echo "-- unit: run_worker -- live_reconcile_interval OMITTED default / repos_getter absent -> no periodic re-check ever runs (opt-in, existing callers unaffected) --"
 out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
@@ -1928,3 +1981,232 @@ check "progress pct: at least one progress event carries a pct field" "SAW_PCT_V
 check "progress pct: every pct value is numeric" "ALL_PCT_ARE_NUMBERS True" "$out"
 check "progress pct: every pct value is in the sane 0-100 range" "ALL_PCT_IN_RANGE True" "$out"
 rm -f "$at_pct_argv"
+
+# ==========================================================================
+# BUG #497 (AST-067's retro-review): repos_getter() yields EVERY
+# .neural-network-anchored repo, not just assistant candidates -- but both
+# reconciliation sweeps (`_reconcile_all`/startup and
+# `_reconcile_live_all`/periodic, via `run_worker`) call `_open_conn(root)`
+# unconditionally for every root repos_getter() hands them, and `_open_conn`
+# `os.makedirs`s `.claude/assistant/` and CREATEs `tasks.sqlite` as a side
+# effect -- even for a non-assistant repo, and even for an assistant
+# candidate that has never had a task queued (no tasks.sqlite yet, nothing
+# to reconcile). capability_index.run_worker already solved this exact
+# problem (filters with discovery.classify_repo(root), skips non-
+# candidates) -- both sweeps here must do the same, PLUS skip a candidate
+# with no tasks.sqlite on disk yet (nothing to reconcile -- opening one
+# would itself be the bug).
+# ==========================================================================
+echo "-- BUG #497: startup sweep must not create .claude/assistant/tasks.sqlite for a non-assistant anchored repo --"
+at497_a="$(mktemp -d)"
+at_marker_only "$at497_a"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at497_a" <<'PY'
+import os, queue, sys, threading, time
+from assistant import tasks
+
+root = sys.argv[1]
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"poll_timeout": 0.05, "repos_getter": lambda: [("not-jarvis", root)],
+                              "live_reconcile_interval": 0.15})
+t.start()
+
+time.sleep(0.05)  # the one-time startup sweep has already run by now
+print("STARTUP_DIR_EXISTS", os.path.isdir(os.path.join(root, ".claude", "assistant")))
+
+time.sleep(0.6)  # several periodic live-reconcile ticks have had a chance to run
+print("LIVE_DIR_EXISTS", os.path.isdir(os.path.join(root, ".claude", "assistant")))
+
+stop.set()
+t.join(timeout=3)
+print("WORKER_JOINED", not t.is_alive())
+PY
+)"
+check "#497 non-assistant repo: startup sweep creates no .claude/assistant dir" "STARTUP_DIR_EXISTS False" "$out"
+check "#497 non-assistant repo: periodic live pass creates no .claude/assistant dir either" "LIVE_DIR_EXISTS False" "$out"
+check "#497 non-assistant repo: worker still joins cleanly" "WORKER_JOINED True" "$out"
+rm -rf "$at497_a"
+
+echo "-- BUG #497: sweeps must not create tasks.sqlite for an assistant CANDIDATE that has no existing db (nothing to reconcile) --"
+at497_b="$(mktemp -d)"
+at_repo "$at497_b" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at497_b" <<'PY'
+import os, queue, sys, threading, time
+from assistant import tasks
+
+root = sys.argv[1]
+db_path = os.path.join(root, ".claude", "assistant", "tasks.sqlite")
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"poll_timeout": 0.05, "repos_getter": lambda: [("jarvis", root)],
+                              "live_reconcile_interval": 0.15})
+t.start()
+
+time.sleep(0.05)
+print("STARTUP_DB_EXISTS", os.path.exists(db_path))
+
+time.sleep(0.6)
+print("LIVE_DB_EXISTS", os.path.exists(db_path))
+
+stop.set()
+t.join(timeout=3)
+print("WORKER_JOINED", not t.is_alive())
+PY
+)"
+check "#497 fresh candidate (no db yet): startup sweep alone creates no tasks.sqlite" "STARTUP_DB_EXISTS False" "$out"
+check "#497 fresh candidate (no db yet): periodic live pass alone creates no tasks.sqlite either" "LIVE_DB_EXISTS False" "$out"
+check "#497 fresh candidate (no db yet): worker still joins cleanly" "WORKER_JOINED True" "$out"
+rm -rf "$at497_b"
+
+echo "-- BUG #497 regression control: an assistant candidate WITH an existing db is still reconciled by the startup sweep, exactly as before --"
+at497_c="$(mktemp -d)"
+at_repo "$at497_c" jarvis
+PYTHONPATH="$AT_SCRIPTS" python3 - "$at497_c" <<'PY'
+import sys
+from assistant import tasks
+
+root = sys.argv[1]
+conn = tasks._open_conn(root)
+tasks._insert(conn, "leftover-497c", "harness", {}, None)
+tasks._transition(conn, "leftover-497c", tasks.STATE_STARTED)  # no external_job_id -> unreconcilable
+conn.close()
+PY
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at497_c" <<'PY'
+import queue, sys, threading, time
+from assistant import tasks
+
+root = sys.argv[1]
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"poll_timeout": 0.1, "repos_getter": lambda: [("jarvis", root)]})
+t.start()
+
+deadline = time.monotonic() + 5.0
+row = {}
+while time.monotonic() < deadline:
+    rows = {r["id"]: r for r in tasks.list_tasks(root)}
+    row = rows.get("leftover-497c", {})
+    if row.get("state") == "orphaned":
+        break
+    time.sleep(0.1)
+stop.set()
+t.join(timeout=3)
+
+print("RECONCILED_STATE", row.get("state"))
+PY
+)"
+check "#497 regression (startup): an existing-db candidate's leftover row is still reconciled -> orphaned" \
+    "RECONCILED_STATE orphaned" "$out"
+rm -rf "$at497_c"
+
+echo "-- BUG #497 regression control: an assistant candidate WITH an existing db is still visited by the PERIODIC live reconciliation pass, exactly as before --"
+at497_d="$(mktemp -d)"
+at_repo "$at497_d" jarvis
+PYTHONPATH="$AT_SCRIPTS" python3 - "$at497_d" <<'PY'
+import sys
+from assistant import tasks
+
+root = sys.argv[1]
+conn = tasks._open_conn(root)
+tasks._insert(conn, "live-497d", "harness", {}, None)
+tasks._transition(conn, "live-497d", tasks.STATE_STARTED, external_job_id="job-497d")
+conn.close()
+PY
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at497_d" <<'PY'
+import queue, sys, threading, time
+from assistant import tasks
+
+root = sys.argv[1]
+
+def still_running_resolver(external_job_id, payload):
+    return {"state": "in_progress"}
+
+traces_q = queue.Queue()
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"resolvers": {"harness": still_running_resolver},
+                              "poll_timeout": 0.05, "repos_getter": lambda: [("jarvis", root)],
+                              "live_reconcile_interval": 0.15, "traces_queue": traces_q})
+t.start()
+time.sleep(0.6)  # let the startup sweep AND at least one periodic tick run
+stop.set()
+t.join(timeout=3)
+
+saw_reconcile_checked = False
+while True:
+    try:
+        item = traces_q.get_nowait()
+    except queue.Empty:
+        break
+    ev = item["event"]
+    payload = ev.get("payload") or {}
+    if ev["kind"] == "task.reconcile_checked" and payload.get("task_id") == "live-497d":
+        saw_reconcile_checked = True
+
+print("SAW_RECONCILE_CHECKED", saw_reconcile_checked)
+PY
+)"
+check "#497 regression (periodic): an existing-db candidate's live row is still visited by the periodic pass" \
+    "SAW_RECONCILE_CHECKED True" "$out"
+rm -rf "$at497_d"
+
+echo "-- BUG #497 round-1 review MINOR-1: a DISABLED (de-candidated) root with an EXISTING tasks.sqlite is skipped by both sweeps -- classify_repo is the single source of truth, not 'does a db already exist' --"
+at497_e="$(mktemp -d)"
+at_repo_disabled "$at497_e" jarvis
+PYTHONPATH="$AT_SCRIPTS" python3 - "$at497_e" <<'PY'
+import sys
+from assistant import tasks
+
+root = sys.argv[1]
+conn = tasks._open_conn(root)
+tasks._insert(conn, "leftover-497e", "harness", {}, None)
+tasks._transition(conn, "leftover-497e", tasks.STATE_STARTED)  # no external_job_id
+conn.close()
+conn2 = tasks._open_conn(root)
+tasks._insert(conn2, "live-497e", "harness", {}, None)
+tasks._transition(conn2, "live-497e", tasks.STATE_STARTED, external_job_id="job-497e")
+conn2.close()
+PY
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at497_e" <<'PY'
+import queue, sys, threading, time
+from assistant import tasks
+
+root = sys.argv[1]
+
+def completed_resolver(external_job_id, payload):
+    # a resolver that WOULD flip the row to completed if this root got
+    # reconciled at all -- state staying "started" is the only honest
+    # signal that the root (both leftover-497e, the no-external-job-id
+    # startup-path row, and live-497e, the external_job_id row) was truly
+    # skipped, since an in_progress response would be a state-invariant
+    # no-op either way and could not distinguish skipped from reconciled.
+    return {"state": "completed", "result": {"ok": True}}
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"resolvers": {"harness": completed_resolver},
+                              "poll_timeout": 0.05, "repos_getter": lambda: [("jarvis", root)],
+                              "live_reconcile_interval": 0.15})
+t.start()
+time.sleep(0.6)  # startup sweep AND at least one periodic tick have had a chance to run
+stop.set()
+t.join(timeout=3)
+
+rows = {r["id"]: r for r in tasks.list_tasks(root)}
+print("STARTUP_ROW_STATE", rows.get("leftover-497e", {}).get("state"))
+print("LIVE_ROW_STATE", rows.get("live-497e", {}).get("state"))
+PY
+)"
+check "#497 MINOR-1: a disabled root's queued-startup-candidate row is left completely untouched, not orphaned" \
+    "STARTUP_ROW_STATE started" "$out"
+check "#497 MINOR-1: a disabled root's live-reconcile-candidate row is left completely untouched, not re-checked" \
+    "LIVE_ROW_STATE started" "$out"
+rm -rf "$at497_e"
