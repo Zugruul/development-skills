@@ -80,13 +80,17 @@ def load_rows(dataset_cfg):
     return rows
 
 
-def sft_text(row, tokenizer):
-    """One training text per row, whatever shape the row uses."""
+def sft_text(row, tokenizer, template_kwargs=None):
+    """One training text per row, whatever shape the row uses.
+    template_kwargs (config: dataset.chat_template_kwargs) passes straight
+    through to apply_chat_template — e.g. {"enable_thinking": false} for
+    models whose template defaults a reasoning block on (Qwen3-style)."""
     if "text" in row:
         return row["text"]
     if "messages" in row:
         return tokenizer.apply_chat_template(
-            row["messages"], tokenize=False, add_generation_prompt=False)
+            row["messages"], tokenize=False, add_generation_prompt=False,
+            **(template_kwargs or {}))
     if "prompt" in row and "completion" in row:
         return row["prompt"] + row["completion"]
     raise ValueError("sft row needs text, messages, or prompt+completion: %r"
@@ -177,7 +181,9 @@ def main():
     if stage == "sft":
         from trl import SFTTrainer
         try:
-            texts = [sft_text(r, tokenizer) for r in rows]
+            texts = [sft_text(r, tokenizer,
+                              (cfg.get("dataset") or {}).get("chat_template_kwargs"))
+                     for r in rows]
         except ValueError as e:
             print("ERROR: %s" % e)
             return 2
