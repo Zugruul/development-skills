@@ -367,6 +367,31 @@
                 }
             }
         },
+        "compute": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Remote compute resources AVAILABLE to this project, written by the remote-compute skill (docs/design/remote-compute-plan.md). Normally lives in the gitignored machine-local overlay .claude/project.local.yaml (config.py merges its compute key over the committed config; missing overlay = no compute), because which machines a clone can reach is a property of the machine, not the repo. Capability-style and non-exclusive — the same machine may be enabled in many projects (mirrors assistant.capabilities.<name>); the machine-local cooperative lock serializes actual use, never this declaration. Entries carry only the ssh alias plus an informational capability snapshot — never host, user, or secrets (resolution goes through ~/.ssh/config and the machine-local registry ~/.claude/compute/resources.yaml, which is never committed). Snapshots are documentation: consumers re-probe before real dispatch. Absent == no machines advertised (additive-only).",
+            "properties": {
+                "resources": {
+                    "type": "object",
+                    "description": "Map keyed by ssh alias (== registry nickname), one entry per machine advertised to this project. Re-enabling the same alias replaces its entry in place; disable keeps the entry with enabled: false, like a disabled capability.",
+                    "additionalProperties": {
+                        "type": "object",
+                        "description": "One advertised compute resource: whether it is enabled here, its free-form roles, when its live probe ran, and the capability snapshot taken at that probe.",
+                        "properties": {
+                            "enabled": { "type": "boolean", "default": true, "description": "Whether this project currently treats the resource as available. disable flips this to false without dropping the entry (capability-style)." },
+                            "probedAt": { "type": "string", "description": "UTC ISO-8601 timestamp of the live probe that produced the snapshot (enable never writes from a stale snapshot)." },
+                            "roles": {
+                                "type": "array",
+                                "items": { "type": "string", "description": "A free-form role name, e.g. training or inference." },
+                                "description": "Free-form roles tasks may reference instead of the alias (e.g. resource-by-role: training)."
+                            },
+                            "capabilities": { "type": "object", "description": "Informational snapshot from the live probe (gpu, ramGB, disks, verified envs). Never authoritative — consumers re-probe before real dispatch." }
+                        }
+                    }
+                }
+            }
+        },
         "assistant": {
             "type": "object",
             "description": "AST-002 (SPEC-ASSISTANT.md §6): the persistent, LLM-agnostic assistant this repo hosts. Absent == no assistant (additive-only; every other key in this schema validates identically with or without this section). Per §6.1 this section is the SOLE authority for assistant identity/enabled state — the `.neural-network` discovery marker carries no assistant flags. Structure is validated by scripts/assistant/config.py's validate_assistant(); it never resolves binaries/auth (that's AST-006 preflight) and never allowlists `llm.model` (passed verbatim to the adapter).",

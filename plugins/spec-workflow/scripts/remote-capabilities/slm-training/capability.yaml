@@ -1,0 +1,69 @@
+version: 1
+name: slm-training
+description: >-
+    Config-driven small-language-model (SLM) fine-tuning on a GPU machine:
+    unsloth QLoRA SFT/DPO, adapter-merge + GGUF export, and a suite-based
+    eval — plus a fast GPU sanity probe. Every job takes ONE config file
+    (JSON or YAML, path on the remote machine or shipped via --inputs) so
+    any project can use it by authoring a config; nothing here knows any
+    specific project. Rules a caller must respect: configs, datasets, and
+    checkpoints must live on the machine's ext4 filesystem (never /mnt/* —
+    DrvFs is marked slow), outputs land in the per-job dir the engine
+    exports as COMPUTE_JOB_DIR (retrieved with job-pull), and a training
+    run holds the resource lock for its whole duration — that is intended,
+    the GPU is shared.
+payload:
+-   gpu_check.py
+-   train.py
+-   export_gguf.py
+-   eval_suite.py
+jobs:
+    gpu-check:
+        description: >-
+            Fast sanity probe of the training env: torch/CUDA versions,
+            device name, VRAM total/free, arch list, a small matmul timing,
+            unsloth version. Writes gpu-check.json to the job dir. Fails
+            (exit 1) if CUDA is unavailable. No params.
+        cmd: python3 {capdir}/gpu_check.py
+        env: training
+    sft:
+        description: >-
+            Fine-tune per config (unsloth QLoRA). config= path to a JSON/
+            YAML file on the remote machine with keys: base_model
+            (required), stage (sft|dpo, default sft), max_seq_length,
+            load_in_4bit, lora {r, alpha, dropout, target_modules},
+            dataset {path: JSONL of {messages:[...]}|{prompt,completion}
+            rows — or {prompt,chosen,rejected} for dpo — or inline
+            samples: [...]}, train {max_steps|num_epochs, batch_size,
+            grad_accum, lr, warmup_steps, seed, logging_steps}. Writes
+            adapters/ and train-summary.json to the job dir.
+        cmd: python3 {capdir}/train.py --config {config}
+        env: training
+        params:
+            config: "[^`$;|&<>]+"
+    export-gguf:
+        description: >-
+            Merge trained adapters into the base model and export GGUF
+            per config. config= path to JSON/YAML with keys: base_model
+            (required), adapters (path to a trained adapter dir, optional
+            — omit to export the base model as-is), quantizations (list,
+            default [q8_0]), max_seq_length. Writes gguf/ plus
+            export-summary.json (files + sha256) to the job dir.
+        cmd: python3 {capdir}/export_gguf.py --config {config}
+        env: training
+        params:
+            config: "[^`$;|&<>]+"
+    eval:
+        description: >-
+            Run an eval suite per config against a base model or trained
+            adapters. config= path to JSON/YAML with keys: model
+            {base_model (required), adapters, max_seq_length,
+            load_in_4bit}, generation {max_new_tokens, temperature},
+            items [{id, prompt|messages, expect {contains|regex|equals|
+            one_of}}], fail_under (optional fraction — exit 1 below it).
+            Writes eval-results.json (per-item pass/fail + score) to the
+            job dir.
+        cmd: python3 {capdir}/eval_suite.py --config {config}
+        env: training
+        params:
+            config: "[^`$;|&<>]+"

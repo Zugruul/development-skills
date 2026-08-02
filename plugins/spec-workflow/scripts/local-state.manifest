@@ -10,6 +10,7 @@
 # Readers (never re-hardcode these paths): scripts/lib/local-state.sh (bash 3.2)
 # and scripts/lib/local_state.py (python stdlib).
 ignore	.claude/CHECKPOINT
+ignore	.claude/project.local.yaml
 ignore	.claude/ITERATIVE_UI_OFF
 ignore	.claude/ui-hub/
 ignore	.claude/gate-pass

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# stub rsync -- records argv only; no bytes are moved in the hermetic gate.
+printf 'rsync %s\n' "$*" >> "${FAKE_TRANSPORT_LOG:?FAKE_TRANSPORT_LOG unset}"
+exit 0

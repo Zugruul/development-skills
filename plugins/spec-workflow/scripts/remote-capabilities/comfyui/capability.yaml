@@ -1,0 +1,25 @@
+version: 1
+name: comfyui
+description: >-
+    Image/video generation through a ComfyUI server already running on the
+    remote machine, bound to its own loopback. Jobs submit a PRE-AUTHORED
+    API-format workflow file and only ever change input VALUES on it -- never
+    graph structure (compute-registry-plan-v3 §3.6 / SPEC-ASSISTANT §14.2).
+payload:
+-   comfy-run.py
+jobs:
+    render:
+        description: >-
+            Render a pre-authored API-format workflow. Pass workflow= the path
+            on the remote machine, and sets= a space-separated list of
+            NODE.INPUT=VALUE pairs (node id or _meta.title).
+        cmd: python3 {capdir}/comfy-run.py --workflow {workflow} --port {port} --timeout 900 --out {jobdir} {sets}
+        params:
+            workflow: "[^`$;|&<>]+"
+            port: "[0-9]+"
+            sets: "[^`$;|&<>]*"
+    list-models:
+        description: List the checkpoints this ComfyUI server offers.
+        cmd: python3 {capdir}/comfy-run.py --list-models --port {port}
+        params:
+            port: "[0-9]+"

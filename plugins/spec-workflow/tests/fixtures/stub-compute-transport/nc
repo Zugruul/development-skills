@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# stub nc -- records argv, exits with FAKE_NC_RC (default 0 = port open).
+printf 'nc %s\n' "$*" >> "${FAKE_TRANSPORT_LOG:?FAKE_TRANSPORT_LOG unset}"
+exit "${FAKE_NC_RC:-0}"

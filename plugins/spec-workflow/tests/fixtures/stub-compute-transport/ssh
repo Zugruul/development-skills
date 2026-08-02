@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# stub ssh -- records argv, then delegates to the per-test handler script.
+# The handler receives the full ssh argv; the remote payload is the last arg.
+printf 'ssh %s\n' "$*" >> "${FAKE_TRANSPORT_LOG:?FAKE_TRANSPORT_LOG unset}"
+exec bash "${FAKE_SSH_HANDLER:?FAKE_SSH_HANDLER unset}" "$@"

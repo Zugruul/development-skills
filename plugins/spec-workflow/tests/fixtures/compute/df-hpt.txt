@@ -1,0 +1,6 @@
+Filesystem     Type   Size  Used Avail Use% Mounted on
+/dev/sdd       ext4  1007G   81G  876G   9% /
+C:\            9p     1.8T  1.1T  720G  61% /mnt/c
+F:\            drvfs  232G  110G  122G  48% /mnt/f
+none           tmpfs   48G     0   48G   0% /mnt/wsl
+none           tmpfs   48G     0   48G   0% /mnt/wslg

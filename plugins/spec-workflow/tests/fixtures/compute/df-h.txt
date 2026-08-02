@@ -1,0 +1,3 @@
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sdc       1007G  550G  410G  58% /home/testuser
+drvfs           232G  110G  122G  48% /mnt/f

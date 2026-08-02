@@ -18,6 +18,7 @@ LS_LIB="$PLUGIN/scripts/lib/local-state.sh"
 # manifest and both parsers must agree with these lists exactly.
 LS_EXP_IGNORE="$(printf '%s\n' \
     '.claude/CHECKPOINT' \
+    '.claude/project.local.yaml' \
     '.claude/ITERATIVE_UI_OFF' \
     '.claude/ui-hub/' \
     '.claude/gate-pass' \

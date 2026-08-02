@@ -141,6 +141,29 @@ def normalize(cfg):
     return cfg, warnings
 
 
+# .claude/project.local.yaml — OPTIONAL machine-local overlay, gitignored
+# (see local-state.manifest). Only the keys listed here are read from it,
+# local winning over project.yaml; every other key in the local file is
+# deliberately ignored so a gitignored file can never silently override
+# committed configuration. Today the overlay carries exactly one thing:
+# `compute` — the remote machines THIS clone has access to (written by
+# remote-compute.py / the remote-compute skill; availability is per-machine,
+# not per-repo, so it must never be committed).
+LOCAL_OVERLAY_KEYS = ("compute",)
+
+
+def _apply_local_overlay(cfg, cfg_path):
+    lp = os.path.join(os.path.dirname(cfg_path), "project.local.yaml")
+    if not os.path.exists(lp):
+        return cfg  # missing file is the normal case, never an error
+    local = _parse(lp)
+    if isinstance(local, dict):
+        for k in LOCAL_OVERLAY_KEYS:
+            if k in local:
+                cfg[k] = local[k]
+    return cfg
+
+
 def load_config(root=None, path=None, warn=True):
     """Load + normalize the config. None if no file. Raises ConfigError on parse error."""
     p = path or find_config(root)
@@ -157,7 +180,7 @@ def load_config(root=None, path=None, warn=True):
             )
             for w in warnings:
                 sys.stderr.write(f"  note: {w}\n")
-    return cfg
+    return _apply_local_overlay(cfg, p)
 
 
 # work.type / work.sync.mode: the only dotted paths with a script-side

@@ -80,7 +80,11 @@ def is_test(p): return (re.search(r'(^|/)(test|tests|__tests__)/', p) is not Non
 def is_doc(p): return p.lower().endswith('.md') or p.startswith('docs/') or '/docs/' in p
 if not files:
     print("doc")
-elif all(is_test(f) for f in files):
+elif all(is_test(f) or is_doc(f) for f in files) and any(is_test(f) for f in files):
+    # tests, optionally alongside docs: still a RED commit. Docs are not
+    # implementation (a docs-only commit is already accepted on its own), so a
+    # red suite committed together with its design doc must not be misread as
+    # implementation and fail a branch that did follow red-first.
     print("test")
 elif all(is_doc(f) for f in files):
     print("doc")

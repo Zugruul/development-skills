@@ -319,6 +319,34 @@ def main(path):
                 elif not sp.strip():
                     errs.append("commit.systemPrompt: must not be empty")
 
+    # compute: remote resources AVAILABLE to this project, written by the
+    # remote-compute skill (docs/design/remote-compute-plan.md).
+    # Capability-style and non-exclusive (mirrors assistant.capabilities.<name>):
+    # a map keyed by ssh alias -> {enabled, roles, probedAt, capabilities};
+    # alias + informational snapshot only, never host/user/secrets.
+    # Absent == no machines advertised -- additive-only, like work above.
+    compute_cfg = cfg.get("compute")
+    if compute_cfg is not None:
+        if not isinstance(compute_cfg, dict):
+            errs.append("compute: must be a mapping with a 'resources' map")
+        else:
+            for k in compute_cfg:
+                if k != "resources":
+                    errs.append(f"compute.{k}: unknown key (allowed: ['resources'])")
+            resources = compute_cfg.get("resources")
+            if resources is not None:
+                if not isinstance(resources, dict):
+                    errs.append("compute.resources: must be a map keyed by ssh alias")
+                else:
+                    for alias, r in resources.items():
+                        if not isinstance(r, dict):
+                            errs.append(f"compute.resources.{alias}: must be a mapping")
+                            continue
+                        if "enabled" in r and not isinstance(r["enabled"], bool):
+                            errs.append(f"compute.resources.{alias}.enabled: must be a boolean")
+                        if "roles" in r and not isinstance(r["roles"], list):
+                            errs.append(f"compute.resources.{alias}.roles: must be a list")
+
     # assistant: persistent LLM-agnostic assistant identity/config (AST-002,
     # SPEC-ASSISTANT.md §6/§6.1/§6.5). Absent == no-op -- additive-only, like
     # work/neuralView/entityKinds above.

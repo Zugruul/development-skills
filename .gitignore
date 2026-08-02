@@ -4,6 +4,7 @@ evals/results/
 docs/handoffs/
 # >>> spec-workflow managed
 .claude/CHECKPOINT
+.claude/project.local.yaml
 .claude/ITERATIVE_UI_OFF
 .claude/ui-hub/
 .claude/gate-pass

@@ -272,6 +272,7 @@ section-semver.sh
     section-assistant-artifacts.sh
     section-assistant-artifact-panel.sh
     section-design-registry.sh
+    section-remote-compute.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then

@@ -97,6 +97,21 @@ out="$(bash "$RFS" --root "$T5E" --branch feature 2>&1)"; rc=$?
 check_rc "red-first: (e) test-only branch passes trivially" 0 "$rc"
 rm -rf "$T5E"
 
+# --- (e2) a red commit that ALSO carries its design doc still counts as the
+# red commit: docs are not implementation (a docs-only commit is already
+# accepted on its own), so tests+docs must not be misread as impl and fail a
+# branch that did follow red-first.
+T5E2="$(mktemp -d)"
+_rf_repo "$T5E2"
+mkdir -p "$T5E2/tests" "$T5E2/docs"
+echo "red" > "$T5E2/tests/section-thing.sh"
+echo "plan" > "$T5E2/docs/design/thing.md" 2>/dev/null || { mkdir -p "$T5E2/docs/design"; echo "plan" > "$T5E2/docs/design/thing.md"; }
+( cd "$T5E2" && git add -A && git commit -q -m "test(1): red suite + design doc" )
+_rf_commit "$T5E2" "src/thing.py" "feat(1): implement"
+out="$(bash "$RFS" --root "$T5E2" --branch feature 2>&1)"; rc=$?
+check_rc "red-first: (e2) tests+docs counts as the red commit" 0 "$rc"
+rm -rf "$T5E2"
+
 # --- (f) multi-round: proper red-then-green pair, THEN a later commit that
 # also touches impl files (e.g. a reviewer-requested fix-round commit) ->
 # still PASS -- the rule only requires ONE qualifying test-only commit

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# stub ssh-keyscan -- records argv, prints one canned host key line.
+printf 'ssh-keyscan %s\n' "$*" >> "${FAKE_TRANSPORT_LOG:?FAKE_TRANSPORT_LOG unset}"
+echo "${FAKE_KEYSCAN_OUT:-192.0.2.17 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForComputeTests0000000000000000000}"
