@@ -2210,3 +2210,782 @@ check "#497 MINOR-1: a disabled root's queued-startup-candidate row is left comp
 check "#497 MINOR-1: a disabled root's live-reconcile-candidate row is left completely untouched, not re-checked" \
     "LIVE_ROW_STATE started" "$out"
 rm -rf "$at497_e"
+
+# ==========================================================================
+# #498 (AST-067's retro-review F2): reconciliation assumed it was the only
+# live engine for a root. On this machine multiple neural-view engines
+# routinely run with scan bases covering the same repos -- a second engine's
+# startup sweep or periodic live pass would orphan rows a FIRST engine is
+# actively working. Fix: a per-root owner heartbeat (`task_owner`, one row,
+# inside the SAME tasks.sqlite -- no new files) that the worker claims/
+# refreshes only when it actually DRAINS a root (never merely by scanning
+# it for reconciliation); both sweeps skip a root whose owner heartbeat is
+# foreign AND fresh (bounded staleness window, engine_id/owner_stale_seconds
+# below are the new run_worker kwargs this task adds). A stale or self-owned
+# or absent heartbeat falls through to today's behavior -- every #497 test
+# above creates no task_owner row at all, so this must regress none of them.
+# ==========================================================================
+echo "== assistant tasks ownership (#498: heartbeat-guarded reconciliation, AST-067 retro-review F2) =="
+
+echo "-- #498: a fresh FOREIGN engine heartbeat is skipped by the STARTUP sweep (never orphans another engine's live root) --"
+at498_a="$(mktemp -d)"
+at_repo "$at498_a" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at498_a" <<'PY'
+import queue, sys, threading, time
+from assistant import tasks
+
+root = sys.argv[1]
+conn = tasks._open_conn(root)
+tasks._claim_ownership(conn, "engine-foreign")
+tasks._insert(conn, "leftover-498a", "harness", {}, None)
+tasks._transition(conn, "leftover-498a", tasks.STATE_STARTED)  # no external_job_id -> would normally orphan
+conn.close()
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"poll_timeout": 0.05, "repos_getter": lambda: [("jarvis", root)],
+                              "engine_id": "engine-self"})
+t.start()
+time.sleep(0.3)  # the one-time startup sweep has already run by now
+stop.set()
+t.join(timeout=3)
+
+rows = {r["id"]: r for r in tasks.list_tasks(root)}
+print("ROW_STATE", rows.get("leftover-498a", {}).get("state"))
+print("WORKER_JOINED", not t.is_alive())
+PY
+)"
+check "#498 startup sweep: a foreign engine's fresh-heartbeat root is left completely untouched, not orphaned" \
+    "ROW_STATE started" "$out"
+check "#498 startup sweep: worker still joins cleanly" "WORKER_JOINED True" "$out"
+rm -rf "$at498_a"
+
+echo "-- #498: a fresh FOREIGN engine heartbeat is skipped by the PERIODIC live sweep too --"
+at498_b="$(mktemp -d)"
+at_repo "$at498_b" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at498_b" <<'PY'
+import queue, sys, threading, time
+from assistant import tasks
+
+root = sys.argv[1]
+conn = tasks._open_conn(root)
+tasks._claim_ownership(conn, "engine-foreign")
+conn.close()
+
+def completed_resolver(external_job_id, payload):
+    # would flip the row to completed if this root got reconciled at all --
+    # only a periodic pass incorrectly ignoring ownership could do that,
+    # since the row below is inserted AFTER the one-time startup sweep runs.
+    return {"state": "completed", "result": {"ok": True}}
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"resolvers": {"harness": completed_resolver},
+                              "poll_timeout": 0.05, "repos_getter": lambda: [("jarvis", root)],
+                              "live_reconcile_interval": 0.15, "engine_id": "engine-self",
+                              # a real foreign engine would keep refreshing its own
+                              # heartbeat; this test stamps it once and never again,
+                              # so owner_stale_seconds must outlast the whole test's
+                              # wall-clock window (independent of the SHORT tick
+                              # interval used above to drive this engine's own cadence).
+                              "owner_stale_seconds": 60})
+t.start()
+time.sleep(0.3)  # let the startup sweep finish -- nothing to reconcile yet
+
+conn2 = tasks._open_conn(root)
+tasks._insert(conn2, "live-498b", "harness", {}, None)
+tasks._transition(conn2, "live-498b", tasks.STATE_STARTED, external_job_id="job-498b")
+conn2.close()
+
+time.sleep(0.6)  # several periodic ticks have had a chance to run
+stop.set()
+t.join(timeout=3)
+
+rows = {r["id"]: r for r in tasks.list_tasks(root)}
+print("ROW_STATE", rows.get("live-498b", {}).get("state"))
+PY
+)"
+check "#498 periodic sweep: a foreign engine's fresh-heartbeat root is left completely untouched, not reconciled" \
+    "ROW_STATE started" "$out"
+rm -rf "$at498_b"
+
+echo "-- #498: a heartbeat owned by THIS SAME engine id never blocks its own reconciliation --"
+at498_c="$(mktemp -d)"
+at_repo "$at498_c" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at498_c" <<'PY'
+import queue, sys, threading, time
+from assistant import tasks
+
+root = sys.argv[1]
+conn = tasks._open_conn(root)
+tasks._claim_ownership(conn, "engine-self")
+tasks._insert(conn, "leftover-498c", "harness", {}, None)
+tasks._transition(conn, "leftover-498c", tasks.STATE_STARTED)  # no external_job_id -> unreconcilable
+conn.close()
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"poll_timeout": 0.1, "repos_getter": lambda: [("jarvis", root)],
+                              "engine_id": "engine-self"})
+t.start()
+
+deadline = time.monotonic() + 5.0
+row = {}
+while time.monotonic() < deadline:
+    rows = {r["id"]: r for r in tasks.list_tasks(root)}
+    row = rows.get("leftover-498c", {})
+    if row.get("state") == "orphaned":
+        break
+    time.sleep(0.1)
+stop.set()
+t.join(timeout=3)
+
+print("ROW_STATE", row.get("state"))
+PY
+)"
+check "#498 self-ownership: the SAME engine id's own root still reconciles normally -> orphaned" \
+    "ROW_STATE orphaned" "$out"
+rm -rf "$at498_c"
+
+echo "-- #498: a STALE foreign heartbeat (crashed owner) falls through to normal reconciliation -- crash recovery preserved --"
+at498_d="$(mktemp -d)"
+at_repo "$at498_d" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at498_d" <<'PY'
+import queue, sqlite3, sys, threading, time
+from datetime import datetime, timedelta, timezone
+from assistant import tasks
+
+root = sys.argv[1]
+conn = tasks._open_conn(root)
+stale_heartbeat = (datetime.now(timezone.utc) - timedelta(seconds=1000)).isoformat()
+conn.execute(
+    "INSERT INTO task_owner (id, engine_id, pid, host, heartbeat_at) VALUES (1, ?, ?, ?, ?)",
+    ("engine-crashed", 999999, "some-other-host", stale_heartbeat),
+)
+tasks._insert(conn, "leftover-498d", "harness", {}, None)
+tasks._transition(conn, "leftover-498d", tasks.STATE_STARTED)  # no external_job_id -> unreconcilable
+conn.close()
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"poll_timeout": 0.1, "repos_getter": lambda: [("jarvis", root)],
+                              "engine_id": "engine-self", "owner_stale_seconds": 5})
+t.start()
+
+deadline = time.monotonic() + 5.0
+row = {}
+while time.monotonic() < deadline:
+    rows = {r["id"]: r for r in tasks.list_tasks(root)}
+    row = rows.get("leftover-498d", {})
+    if row.get("state") == "orphaned":
+        break
+    time.sleep(0.1)
+stop.set()
+t.join(timeout=3)
+
+print("ROW_STATE", row.get("state"))
+PY
+)"
+check "#498 stale heartbeat: a long-dead owner's root falls through to normal reconciliation -> orphaned (never wedged forever)" \
+    "ROW_STATE orphaned" "$out"
+rm -rf "$at498_d"
+
+echo "-- #498: heartbeat refresh happens on DRAIN -- claiming a root writes engine_id/pid/host/heartbeat_at --"
+at498_e="$(mktemp -d)"
+at_repo "$at498_e" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at498_e" <<'PY'
+import os, queue, socket, sqlite3, sys, threading, time
+from datetime import datetime, timezone
+from assistant import tasks
+
+root = sys.argv[1]
+
+def echo_executor(payload, report_progress):
+    return {"result": "ok"}
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"executors": {"echo": echo_executor}, "poll_timeout": 0.1,
+                              "engine_id": "engine-drain-test"})
+t.start()
+tasks.enqueue(q, root, "echo", {})
+
+deadline = time.monotonic() + 5.0
+rows = []
+while time.monotonic() < deadline:
+    rows = tasks.list_tasks(root)
+    if rows and rows[0]["state"] == "completed":
+        break
+    time.sleep(0.1)
+
+# Read the owner row WHILE the worker is still alive -- round-1 review
+# advisory (b) makes a graceful shutdown DELETE it (tested separately,
+# below), so reading only after stop.set()/join() would no longer prove
+# the claim ever happened.
+conn = sqlite3.connect(tasks._db_path(root))
+owner_row = conn.execute("SELECT engine_id, pid, host, heartbeat_at FROM task_owner WHERE id = 1").fetchone()
+conn.close()
+
+print("OWNER_ROW_EXISTS", owner_row is not None)
+if owner_row:
+    engine_id, pid, host, heartbeat_at = owner_row
+    print("ENGINE_ID", engine_id)
+    print("PID_MATCHES_THIS_PROCESS", pid == os.getpid())
+    print("HOST_MATCHES", host == socket.gethostname())
+    age = (datetime.now(timezone.utc) - datetime.fromisoformat(heartbeat_at)).total_seconds()
+    print("HEARTBEAT_RECENT", age < 10)
+
+stop.set()
+t.join(timeout=3)
+
+# advisory (b): a graceful shutdown releases ownership immediately.
+conn2 = sqlite3.connect(tasks._db_path(root))
+owner_row_after_stop = conn2.execute("SELECT 1 FROM task_owner WHERE id = 1").fetchone()
+conn2.close()
+print("OWNER_ROW_GONE_AFTER_GRACEFUL_STOP", owner_row_after_stop is None)
+PY
+)"
+check "#498 drain claims ownership: a task_owner row exists after draining one item" "OWNER_ROW_EXISTS True" "$out"
+check "#498 drain claims ownership: engine_id matches the draining worker's id" "ENGINE_ID engine-drain-test" "$out"
+check "#498 drain claims ownership: pid is this (thread's) process pid" "PID_MATCHES_THIS_PROCESS True" "$out"
+check "#498 drain claims ownership: host is this machine's hostname" "HOST_MATCHES True" "$out"
+check "#498 drain claims ownership: heartbeat_at is recent" "HEARTBEAT_RECENT True" "$out"
+check "#498 round-1 review advisory (b): a graceful stop() deletes this engine's owner row (instant handoff, never wait out the staleness window)" \
+    "OWNER_ROW_GONE_AFTER_GRACEFUL_STOP True" "$out"
+rm -rf "$at498_e"
+
+echo "-- #498 round-1 review advisory (a): an engine that drained a root but has NOTHING in-flight for it anymore stops refreshing its heartbeat (must not block every other engine's reconciliation of that root forever just by staying alive) --"
+at498_f="$(mktemp -d)"
+at_repo "$at498_f" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at498_f" <<'PY'
+import queue, sqlite3, sys, threading, time
+from assistant import tasks
+
+root = sys.argv[1]
+
+def echo_executor(payload, report_progress):
+    return {"result": "ok"}
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"executors": {"echo": echo_executor}, "poll_timeout": 0.05,
+                              "repos_getter": lambda: [("jarvis", root)],
+                              "live_reconcile_interval": 0.15, "engine_id": "engine-tick-test"})
+t.start()
+tasks.enqueue(q, root, "echo", {})
+
+deadline = time.monotonic() + 5.0
+rows = []
+while time.monotonic() < deadline:
+    rows = tasks.list_tasks(root)
+    if rows and rows[0]["state"] == "completed":
+        break
+    time.sleep(0.05)
+
+def read_heartbeat():
+    conn = sqlite3.connect(tasks._db_path(root))
+    row = conn.execute("SELECT heartbeat_at FROM task_owner WHERE id = 1").fetchone()
+    conn.close()
+    return row[0] if row else None
+
+# The one and only task for this root has already completed by now -- no
+# in-flight rows remain, so _maybe_prune_owned_root should have dropped
+# this root from `owned` the moment it finished.
+heartbeat_after_drain = read_heartbeat()
+time.sleep(0.6)  # several idle periodic ticks AND heartbeat-timer wakes have had a chance to run
+heartbeat_after_ticks = read_heartbeat()
+
+stop.set()
+t.join(timeout=3)
+
+print("HEARTBEAT_AFTER_DRAIN", heartbeat_after_drain)
+print("HEARTBEAT_NEVER_ADVANCED_AFTER_IDLE", heartbeat_after_ticks == heartbeat_after_drain)
+PY
+)"
+check "#498 advisory (a): once the root has nothing in-flight, its heartbeat stops advancing -- ownership is pruned, not held forever" \
+    "HEARTBEAT_NEVER_ADVANCED_AFTER_IDLE True" "$out"
+rm -rf "$at498_f"
+
+echo "-- #498: ownership READ failure (locked/corrupt) skips the root this pass -- never orphans blind, always traced --"
+at498_g="$(mktemp -d)"
+at_repo "$at498_g" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at498_g" <<'PY'
+import queue, sys, threading, time
+from unittest import mock
+from assistant import tasks
+
+root = sys.argv[1]
+conn = tasks._open_conn(root)
+tasks._insert(conn, "leftover-498g", "harness", {}, None)
+tasks._transition(conn, "leftover-498g", tasks.STATE_STARTED)  # no external_job_id -> would normally orphan
+conn.close()
+
+traces_q = queue.Queue()
+q = queue.Queue()
+stop = threading.Event()
+with mock.patch.object(tasks, "_read_owner", side_effect=RuntimeError("database is locked")):
+    t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                          kwargs={"poll_timeout": 0.05, "repos_getter": lambda: [("jarvis", root)],
+                                  "engine_id": "engine-self", "traces_queue": traces_q})
+    t.start()
+    time.sleep(0.3)  # the one-time startup sweep has already run by now
+    stop.set()
+    t.join(timeout=3)
+
+rows = {r["id"]: r for r in tasks.list_tasks(root)}
+print("ROW_STATE", rows.get("leftover-498g", {}).get("state"))
+
+saw_failure_trace = False
+while True:
+    try:
+        item = traces_q.get_nowait()
+    except queue.Empty:
+        break
+    ev = item["event"]
+    if ev["kind"] == "task.ownership_check_failed":
+        payload = ev.get("payload") or {}
+        if "database is locked" in str(payload.get("error", "")):
+            saw_failure_trace = True
+print("SAW_FAILURE_TRACE", saw_failure_trace)
+PY
+)"
+check "#498 ownership read failure: the root is skipped this pass, never orphaned blind" "ROW_STATE started" "$out"
+check "#498 ownership read failure: a trace-level note is emitted with the error text" "SAW_FAILURE_TRACE True" "$out"
+rm -rf "$at498_g"
+
+# #497's own scoping (candidates-with-a-db only) is regression-guarded by
+# every #497 test above continuing to pass unchanged: none of them ever
+# create a task_owner row, so absent-owner must keep behaving exactly like
+# "no live foreign owner" -- proceed with reconciliation, same as before
+# this task existed.
+
+# ==========================================================================
+# #498 round-1 review: two CONFIRMED majors (heartbeat freezes for an
+# executor's entire duration; the one-time startup sweep can wedge a root
+# forever on a fast restart) plus two minors (a naive timestamp escapes
+# fail-open as an untraced fail-closed; a failed claim can poison the
+# connection for the next _insert) plus advisories (idle-owner pruning,
+# instant shutdown handoff -- both already tested above inline; a normal
+# ownership skip was previously untraced).
+# ==========================================================================
+echo "== assistant tasks ownership round-1 review (#498) =="
+
+echo "-- #498 round-1 review MAJOR-1: an executor that OUTLIVES the staleness window -- a foreign engine's sweep must skip the whole time, never just at the start --"
+at498r1_a="$(mktemp -d)"
+at_repo "$at498r1_a" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at498r1_a" <<'PY'
+import queue, sys, threading, time
+from assistant import tasks
+
+root = sys.argv[1]
+
+def slow_executor(payload, report_progress):
+    report_progress(external_job_id="ext-major1")  # makes this row live-reconcile-visible
+    time.sleep(1.0)  # >> owner_stale_seconds (0.3s) -- the whole point of this test
+    return {"result": "done-by-A"}
+
+def hostile_resolver(external_job_id, payload):
+    # a resolver B would NEVER legitimately see run for a row A still owns
+    # -- a distinctive, un-mistakable outcome if ownership gating fails.
+    return {"state": "failed", "error": "WRONGLY-RECONCILED-BY-FOREIGN-ENGINE-B"}
+
+q_a = queue.Queue()
+stop_a = threading.Event()
+engine_a = threading.Thread(target=tasks.run_worker, args=(q_a, stop_a),
+                             kwargs={"executors": {"slow": slow_executor}, "poll_timeout": 0.05,
+                                     "repos_getter": lambda: [("jarvis", root)],
+                                     "live_reconcile_interval": 0.1, "owner_stale_seconds": 0.3,
+                                     "engine_id": "engine-A"})
+engine_a.start()
+tasks.enqueue(q_a, root, "slow", {})
+time.sleep(0.2)  # let A claim ownership and enter the slow executor call
+
+q_b = queue.Queue()
+stop_b = threading.Event()
+engine_b = threading.Thread(target=tasks.run_worker, args=(q_b, stop_b),
+                             kwargs={"resolvers": {"slow": hostile_resolver}, "poll_timeout": 0.05,
+                                     "repos_getter": lambda: [("jarvis", root)],
+                                     "live_reconcile_interval": 0.1, "owner_stale_seconds": 0.3,
+                                     "engine_id": "engine-B"})
+engine_b.start()
+
+samples = []
+deadline = time.monotonic() + 1.3  # spans the whole 1.0s executor sleep, well past 0.3s staleness window
+while time.monotonic() < deadline:
+    rows = tasks.list_tasks(root)
+    samples.append(rows[0]["state"] if rows else None)
+    time.sleep(0.1)
+
+stop_a.set()
+stop_b.set()
+engine_a.join(timeout=3)
+engine_b.join(timeout=3)
+
+final_rows = tasks.list_tasks(root)
+print("EVER_WRONGLY_RECONCILED", "failed" in samples)
+print("FINAL_STATE", final_rows[0]["state"] if final_rows else None)
+PY
+)"
+check "#498 MAJOR-1: engine B's sweep never touches A's row at ANY sampled point during the whole executor run" \
+    "EVER_WRONGLY_RECONCILED False" "$out"
+check "#498 MAJOR-1: the row completes normally via A's own flow once the executor returns" "FINAL_STATE completed" "$out"
+rm -rf "$at498r1_a"
+
+echo "-- #498 round-1 review MAJOR-1(b): the fallback for an executor that NEVER calls report_progress (e.g. #508's capability-invoke executor) -- a background timer keeps the heartbeat fresh regardless --"
+at498r1_b="$(mktemp -d)"
+at_repo "$at498r1_b" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at498r1_b" <<'PY'
+import queue, sqlite3, sys, threading, time
+from datetime import datetime, timezone
+from assistant import tasks
+
+root = sys.argv[1]
+
+def silent_executor(payload, report_progress):
+    time.sleep(0.8)  # never calls report_progress -- MUST rely on the timer thread alone
+    return {"result": "done"}
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"executors": {"silent": silent_executor}, "poll_timeout": 0.05,
+                              "repos_getter": lambda: [("jarvis", root)],
+                              "live_reconcile_interval": 0.1, "owner_stale_seconds": 0.3,
+                              "engine_id": "engine-daemon-only"})
+t.start()
+tasks.enqueue(q, root, "silent", {})
+
+def heartbeat_age():
+    conn = sqlite3.connect(tasks._db_path(root))
+    row = conn.execute("SELECT heartbeat_at FROM task_owner WHERE id = 1").fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return (datetime.now(timezone.utc) - datetime.fromisoformat(row[0])).total_seconds()
+
+time.sleep(0.15)  # let the drain claim ownership once
+samples = []
+deadline = time.monotonic() + 0.55  # sampled WHILE the 0.8s silent executor is still sleeping
+while time.monotonic() < deadline:
+    age = heartbeat_age()
+    if age is not None:
+        samples.append(age)
+    time.sleep(0.1)
+
+stop.set()
+t.join(timeout=3)
+
+print("ENOUGH_SAMPLES", len(samples) >= 3)
+print("NEVER_WENT_STALE", all(age < 0.3 for age in samples))
+PY
+)"
+check "#498 MAJOR-1(b): several heartbeat samples were taken during the silent executor's run" "ENOUGH_SAMPLES True" "$out"
+check "#498 MAJOR-1(b): the heartbeat never once exceeded the staleness window, though report_progress was never called" \
+    "NEVER_WENT_STALE True" "$out"
+rm -rf "$at498r1_b"
+
+echo "-- #498 round-2 review: report_progress-triggered refresh (MAJOR-1(a)) keeps the heartbeat fresh even with the background timer thread DISABLED -- proves that half of the fix independently, not merely alongside the timer --"
+at498r1_h="$(mktemp -d)"
+at_repo "$at498r1_h" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at498r1_h" <<'PY'
+import queue, sqlite3, sys, threading, time
+from datetime import datetime, timezone
+from unittest import mock
+from assistant import tasks
+
+root = sys.argv[1]
+
+def chatty_executor(payload, report_progress):
+    # reports progress well inside window/OWNER_STALE_MULTIPLIER (~0.67s)
+    # -- if this path were deleted, ONLY the (disabled, below) timer
+    # thread could keep the heartbeat warm, and this test would fail.
+    deadline = time.monotonic() + 2.5  # spans past the 2.0s staleness window
+    while time.monotonic() < deadline:
+        report_progress()
+        time.sleep(0.3)
+    return {"result": "done"}
+
+def heartbeat_age():
+    conn = sqlite3.connect(tasks._db_path(root))
+    row = conn.execute("SELECT heartbeat_at FROM task_owner WHERE id = 1").fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return (datetime.now(timezone.utc) - datetime.fromisoformat(row[0])).total_seconds()
+
+q = queue.Queue()
+stop = threading.Event()
+# the background timer thread (MAJOR-1(b)) is a no-op here -- ONLY
+# report_progress-triggered refresh (MAJOR-1(a)) can keep this root warm.
+with mock.patch.object(tasks, "_run_heartbeat_timer", lambda *a, **kw: None):
+    t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                          kwargs={"executors": {"chatty": chatty_executor}, "poll_timeout": 0.05,
+                                  "repos_getter": lambda: [("jarvis", root)],
+                                  "live_reconcile_interval": 0.2, "owner_stale_seconds": 2.0,
+                                  "engine_id": "engine-progress-only"})
+    t.start()
+    tasks.enqueue(q, root, "chatty", {})
+
+    time.sleep(0.2)  # let the drain claim ownership once
+    samples = []
+    deadline = time.monotonic() + 2.2  # sampled WHILE the chatty executor is still running
+    while time.monotonic() < deadline:
+        age = heartbeat_age()
+        if age is not None:
+            samples.append(age)
+        time.sleep(0.2)
+
+    stop.set()
+    t.join(timeout=5)
+
+print("ENOUGH_SAMPLES", len(samples) >= 5)
+print("NEVER_WENT_STALE", all(age < 2.0 for age in samples))
+PY
+)"
+check "#498 round-2 review: report_progress refresh alone (timer disabled) -- enough samples were taken" \
+    "ENOUGH_SAMPLES True" "$out"
+check "#498 round-2 review: report_progress refresh alone (timer disabled) -- the heartbeat never once went stale" \
+    "NEVER_WENT_STALE True" "$out"
+rm -rf "$at498r1_h"
+
+echo "-- #498 round-1 review MAJOR-2(a): a dead pid on THIS SAME host recovers INSTANTLY at the startup sweep, regardless of how fresh the heartbeat timestamp still looks --"
+at498r1_c="$(mktemp -d)"
+at_repo "$at498r1_c" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at498r1_c" <<'PY'
+import queue, socket, subprocess, sys, threading, time
+from datetime import datetime, timezone
+from assistant import tasks
+
+root = sys.argv[1]
+
+# A genuinely dead pid on THIS host.
+proc = subprocess.Popen([sys.executable, "-c", "pass"])
+proc.wait()
+dead_pid = proc.pid
+
+conn = tasks._open_conn(root)
+fresh_ts = datetime.now(timezone.utc).isoformat()  # deliberately FRESH by timestamp
+conn.execute(
+    "INSERT INTO task_owner (id, engine_id, pid, host, heartbeat_at) VALUES (1, ?, ?, ?, ?)",
+    ("engine-dead-samehost", dead_pid, socket.gethostname(), fresh_ts),
+)
+tasks._insert(conn, "leftover-major2a", "harness", {}, None)
+tasks._transition(conn, "leftover-major2a", tasks.STATE_STARTED)  # no external_job_id -- startup-class-only
+conn.close()
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"poll_timeout": 0.05, "repos_getter": lambda: [("jarvis", root)],
+                              "engine_id": "engine-self",
+                              # deliberately HUGE -- if recovery happens anyway, it cannot be
+                              # timestamp-staleness explaining it, only the dead-pid check.
+                              "owner_stale_seconds": 999})
+t.start()
+time.sleep(0.3)  # only the ONE-TIME startup sweep needs to have run
+stop.set()
+t.join(timeout=3)
+
+rows = {r["id"]: r for r in tasks.list_tasks(root)}
+print("ROW_STATE", rows.get("leftover-major2a", {}).get("state"))
+PY
+)"
+check "#498 MAJOR-2(a): a same-host dead-pid owner is recovered from INSTANTLY, not after waiting out a (huge) staleness window" \
+    "ROW_STATE orphaned" "$out"
+rm -rf "$at498r1_c"
+
+echo "-- #498 round-1 review MAJOR-2(b): a root the ONE-TIME startup sweep deferred for ownership must NOT wedge forever -- the periodic tick retries it, recovering BOTH startup-class-only row shapes once the foreign owner goes stale --"
+at498r1_d="$(mktemp -d)"
+at_repo "$at498r1_d" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at498r1_d" <<'PY'
+import queue, sys, threading, time
+from datetime import datetime, timezone
+from assistant import tasks
+
+root = sys.argv[1]
+
+conn = tasks._open_conn(root)
+fresh_ts = datetime.now(timezone.utc).isoformat()
+conn.execute(
+    "INSERT INTO task_owner (id, engine_id, pid, host, heartbeat_at) VALUES (1, ?, ?, ?, ?)",
+    # a REMOTE host -- the MAJOR-2(a) same-host dead-pid shortcut must NOT
+    # apply here; this test is specifically about the age-based retry path.
+    ("engine-dead-remote", 424242, "some-other-host-not-this-machine", fresh_ts),
+)
+tasks._insert(conn, "queued-major2b", "harness", {}, None)  # left QUEUED -- only _reconcile_root ever touches this
+tasks._insert(conn, "started-major2b", "harness", {}, None)
+tasks._transition(conn, "started-major2b", tasks.STATE_STARTED)  # no external_job_id -- also startup-class-only
+conn.close()
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"poll_timeout": 0.05, "repos_getter": lambda: [("jarvis", root)],
+                              "engine_id": "engine-self", "live_reconcile_interval": 0.1,
+                              "owner_stale_seconds": 0.3})
+t.start()
+
+time.sleep(0.15)  # only the startup sweep has run -- the foreign heartbeat still looks fresh
+rows = {r["id"]: r for r in tasks.list_tasks(root)}
+print("AT_BOOT_QUEUED_STATE", rows.get("queued-major2b", {}).get("state"))
+print("AT_BOOT_STARTED_STATE", rows.get("started-major2b", {}).get("state"))
+
+deadline = time.monotonic() + 5.0
+rows = {}
+while time.monotonic() < deadline:
+    rows = {r["id"]: r for r in tasks.list_tasks(root)}
+    if (rows.get("queued-major2b", {}).get("state") == "orphaned"
+            and rows.get("started-major2b", {}).get("state") == "orphaned"):
+        break
+    time.sleep(0.1)
+stop.set()
+t.join(timeout=3)
+
+print("EVENTUAL_QUEUED_STATE", rows.get("queued-major2b", {}).get("state"))
+print("EVENTUAL_STARTED_STATE", rows.get("started-major2b", {}).get("state"))
+PY
+)"
+check "#498 MAJOR-2(b): at boot, the deferred queued row is correctly left untouched (not orphaned prematurely)" \
+    "AT_BOOT_QUEUED_STATE queued" "$out"
+check "#498 MAJOR-2(b): at boot, the deferred started row is correctly left untouched (not orphaned prematurely)" \
+    "AT_BOOT_STARTED_STATE started" "$out"
+check "#498 MAJOR-2(b): once the foreign owner goes stale, the deferred queued row IS eventually reconciled -> orphaned (never wedged for this process's life)" \
+    "EVENTUAL_QUEUED_STATE orphaned" "$out"
+check "#498 MAJOR-2(b): the deferred started (no external_job_id) row is reconciled too" \
+    "EVENTUAL_STARTED_STATE orphaned" "$out"
+rm -rf "$at498r1_d"
+
+echo "-- #498 round-1 review MINOR-1: a NAIVE (tzinfo-less) heartbeat timestamp must fail OPEN (normal reconciliation), not escape as an untraced fail-closed skip --"
+at498r1_e="$(mktemp -d)"
+at_repo "$at498r1_e" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at498r1_e" <<'PY'
+import queue, sys, threading, time
+from assistant import tasks
+
+root = sys.argv[1]
+conn = tasks._open_conn(root)
+naive_heartbeat = "2020-01-01T00:00:00"  # NO tzinfo -- raises TypeError subtracting from an aware datetime
+conn.execute(
+    "INSERT INTO task_owner (id, engine_id, pid, host, heartbeat_at) VALUES (1, ?, ?, ?, ?)",
+    ("engine-naive-ts", 1, "some-host", naive_heartbeat),
+)
+tasks._insert(conn, "leftover-minor1", "harness", {}, None)
+tasks._transition(conn, "leftover-minor1", tasks.STATE_STARTED)  # no external_job_id -- unreconcilable if reached
+conn.close()
+
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"poll_timeout": 0.05, "repos_getter": lambda: [("jarvis", root)],
+                              "engine_id": "engine-self"})
+t.start()
+time.sleep(0.3)
+stop.set()
+t.join(timeout=3)
+
+rows = {r["id"]: r for r in tasks.list_tasks(root)}
+print("ROW_STATE", rows.get("leftover-minor1", {}).get("state"))
+print("WORKER_JOINED", not t.is_alive())
+PY
+)"
+check "#498 MINOR-1: a naive heartbeat timestamp fails OPEN -- the root reconciles normally, never silently skipped" \
+    "ROW_STATE orphaned" "$out"
+check "#498 MINOR-1: the worker never crashes or hangs over the naive timestamp" "WORKER_JOINED True" "$out"
+rm -rf "$at498r1_e"
+
+echo "-- #498 round-1 review MINOR-2: a failed ownership claim must never leave the connection mid-transaction -- the NEXT _insert on it must still succeed --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import sqlite3, tempfile
+from assistant import tasks
+
+root = tempfile.mkdtemp(prefix="at-minor2-")
+real_conn = tasks._open_conn(root)
+
+class FlakyConn:
+    """Proxies a real sqlite3.Connection, raising exactly once on the
+    task_owner upsert -- everything else (including the ROLLBACK/BEGIN
+    IMMEDIATE _claim_ownership itself issues) passes through untouched."""
+    def __init__(self, real):
+        self._real = real
+        self.armed = True
+    def execute(self, sql, params=()):
+        if self.armed and "INSERT INTO task_owner" in sql:
+            self.armed = False
+            raise sqlite3.OperationalError("simulated failure mid-claim")
+        return self._real.execute(sql, params)
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+flaky = FlakyConn(real_conn)
+claim_raised = False
+try:
+    tasks._claim_ownership(flaky, "engine-x")
+except Exception:
+    claim_raised = True
+print("CLAIM_RAISED", claim_raised)
+
+insert_raised = False
+insert_error = ""
+try:
+    tasks._insert(real_conn, "after-flaky-claim", "harness", {}, None)
+except Exception as exc:
+    insert_raised = True
+    insert_error = str(exc)
+print("INSERT_AFTER_FLAKY_CLAIM_RAISED", insert_raised)
+print("INSERT_ERROR", insert_error)
+real_conn.close()
+PY
+)"
+check "#498 MINOR-2: the flaky claim itself raises, as designed (propagates to its caller's own try/except)" \
+    "CLAIM_RAISED True" "$out"
+check "#498 MINOR-2: a SUBSEQUENT _insert on the same connection succeeds -- never poisoned by the failed claim's dangling transaction" \
+    "INSERT_AFTER_FLAKY_CLAIM_RAISED False" "$out"
+check_absent "#498 MINOR-2: no 'cannot start a transaction within a transaction' error leaks through" \
+    "cannot start a transaction" "$out"
+
+echo "-- #498 round-1 review advisory (c): a NORMAL ownership skip (working as designed, not a failure) now emits its own trace event -- distinct from the failure-path task.ownership_check_failed --"
+at498r1_g="$(mktemp -d)"
+at_repo "$at498r1_g" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at498r1_g" <<'PY'
+import queue, sys, threading, time
+from assistant import tasks
+
+root = sys.argv[1]
+conn = tasks._open_conn(root)
+tasks._claim_ownership(conn, "engine-foreign-c")
+conn.close()
+
+traces_q = queue.Queue()
+q = queue.Queue()
+stop = threading.Event()
+t = threading.Thread(target=tasks.run_worker, args=(q, stop),
+                      kwargs={"poll_timeout": 0.05, "repos_getter": lambda: [("jarvis", root)],
+                              "engine_id": "engine-self", "traces_queue": traces_q})
+t.start()
+time.sleep(0.3)
+stop.set()
+t.join(timeout=3)
+
+saw_skip_trace = False
+while True:
+    try:
+        item = traces_q.get_nowait()
+    except queue.Empty:
+        break
+    ev = item["event"]
+    if ev["kind"] == "task.ownership_skip":
+        payload = ev.get("payload") or {}
+        if payload.get("owner_engine_id") == "engine-foreign-c" and payload.get("root") == root:
+            saw_skip_trace = True
+print("SAW_SKIP_TRACE", saw_skip_trace)
+PY
+)"
+check "#498 advisory (c): a normal (non-failure) ownership skip emits its own task.ownership_skip trace event" \
+    "SAW_SKIP_TRACE True" "$out"
+rm -rf "$at498r1_g"

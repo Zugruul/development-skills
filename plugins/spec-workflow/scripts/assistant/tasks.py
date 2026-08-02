@@ -179,6 +179,79 @@ row's real-world work still happening, or not":
     Python object that can carry extra, purely-additive state no old caller
     ever reads or is affected by.
 
+Root ownership / heartbeat (§12.4-area, issue #498, AST-067's retro-review
+F2): both reconciliation sweeps above assumed they were the only live
+engine for a root. On a machine running multiple neural-view engines with
+overlapping scan bases, that assumption is false -- a SECOND engine's
+startup sweep or periodic live pass would orphan rows a FIRST engine is
+actively draining, purely because the second engine has no way to know the
+first is alive. Fix: a `task_owner` table -- ONE row, inside the SAME
+`tasks.sqlite` (no new file, same single-writer discipline) -- recording
+whichever engine last DRAINED this root: `engine_id` (a `uuid4().hex`
+generated once per `run_worker` call, i.e. per process, unless a caller
+passes its own), `pid`, `host` (`socket.gethostname()`), and `heartbeat_at`.
+
+Claim discipline (deliberately narrow): ONLY `_process_create` -- i.e. this
+engine actually draining a queued item for `root` through to an executor --
+calls `_claim_ownership`. Neither reconciliation sweep ever claims
+ownership of a root it is merely scanning, including a root it finds
+something to reconcile in: scanning is not draining, and a scanner that
+claimed ownership by the mere act of looking would let a purely-periodic
+reconciler falsely present itself as "the live engine" for a root nothing
+is actually routing traffic to.
+
+Skip discipline: before either sweep touches a candidate root's rows
+(`_reconcile_root`/`_reconcile_live_root`), `_owner_blocks_reconciliation`
+reads `task_owner` and returns True (skip this root, this pass) only when
+ALL of: a row exists, its `engine_id` is NOT this engine's own, AND its
+`heartbeat_at` is within the staleness window. Any other case -- no owner
+row (the common case: every #497 test fixture creates none, so absent-
+owner must keep behaving exactly like before this task existed), this
+engine's OWN id (never blocks itself, regardless of heartbeat age -- an
+engine's own in-flight work must never wedge on its own possibly-stale
+heartbeat), or a heartbeat older than the staleness window (the owning
+engine crashed) -- falls through to the pre-#498 behavior unchanged. This
+is what keeps ownership crash-safe: a dead owner's heartbeat simply stops
+advancing and ages out on its own; nothing needs to notice the crash or
+release a lock.
+
+Staleness window: `owner_stale_seconds`, default `OWNER_STALE_MULTIPLIER`
+(3) times the effective live-reconcile interval (the configured
+`live_reconcile_interval`, or `DEFAULT_LIVE_RECONCILE_INTERVAL_SECONDS` if
+periodic reconciliation is disabled). 3x is chosen the same way a TCP
+keepalive or Kubernetes liveness probe threshold is: one missed tick is
+ordinary jitter (GC pause, a slow disk fsync under WAL), not evidence of a
+crash, so a single miss must never cause a live owner's rows to be
+snatched by another engine's sweep; three consecutive misses is no longer
+plausibly transient. This also bounds recovery time after a REAL crash to
+a small, known multiple of the tick interval (default: 90s), keeping the
+"never wedge forever" invariant's actual wait bounded and explainable.
+
+Refresh discipline ("refreshed... each drain/tick"): a claim happens once
+per drained item (`_process_create`, unconditionally, best-effort -- a
+heartbeat write failing must never fail the task itself). Additionally,
+every periodic tick (the SAME `live_reconcile_interval` cadence that
+already drives `_reconcile_live_all`) re-stamps the heartbeat for every
+root this engine has EVER drained in this process's lifetime
+(`owned_roots`, an in-memory set) -- this is what keeps a long-running,
+between-drains root (e.g. one dispatched harness job that runs for
+several minutes with no new items queued for that root) from going stale
+and getting reconciled out from under its own engine by a DIFFERENT
+engine's sweep. `owned_roots` is never pruned within a process's lifetime:
+an engine that drained a root once keeps asserting ownership of it for as
+long as the process lives, which is harmless (this engine's own
+reconciliation of that root is always self-permitted regardless) and
+correct (only this engine's continued liveness -- not some separate
+timeout -- should ever cause ownership to lapse).
+
+Failure honesty (OWNER directive: never orphan blind): if reading
+`task_owner` itself raises (locked, corrupt, mid-migration), the root is
+SKIPPED for this pass -- fail closed, exactly as if a live foreign owner
+were found -- and a `task.ownership_check_failed` trace event plus a
+stderr line record why, so a silent skip that could otherwise look
+indistinguishable from "root has nothing to reconcile" always leaves a
+trail.
+
 Library:
     STATES -- the exact six state names Sec12.3 lists, in transition
         order. `orphaned` was never produced before AST-067; restart
@@ -204,11 +277,19 @@ Library:
         correlated back to the turn that spawned it (§12.5: "failures
         surface in-chat with the trace linked").
     run_worker(q, stop_event, executors=None, poll_timeout=...,
-        traces_queue=None, repos_getter=None, resolvers=None)
+        traces_queue=None, repos_getter=None, resolvers=None,
+        live_reconcile_interval=..., engine_id=None, owner_stale_seconds=None)
         The `tasks` worker body engine.py's `start()` binds into the
         AST-010 `tasks` slot. See module docstring for the execution
-        model, transition-as-trace-event contract, and (AST-067)
-        "Restart reconciliation" sections.
+        model, transition-as-trace-event contract, (AST-067) "Restart
+        reconciliation", and (#498) "Root ownership / heartbeat" sections.
+        `engine_id` defaults to a fresh `uuid4().hex` per call (i.e. per
+        process) when omitted; `owner_stale_seconds` defaults to
+        `OWNER_STALE_MULTIPLIER * live_reconcile_interval` (see #498
+        section for the 3x justification). Both are backward-compatible:
+        every existing caller/test that constructs this worker without
+        them keeps working unchanged (they only matter once more than one
+        engine's sweep can see the same root).
     list_tasks(root, state=None, limit=200) -> list[dict]
         Read path for the queue-indicator endpoint
         (`GET /assistant/tasks`). Opens a fresh, short-lived connection
@@ -230,8 +311,10 @@ Library:
 import json
 import os
 import queue as queue_module
+import socket
 import sqlite3
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -293,6 +376,11 @@ _LIVE_RECONCILE_TARGET_STATES = (STATE_STARTED, STATE_PROGRESS)
 DEFAULT_POLL_TIMEOUT_SECONDS = 0.5
 DEFAULT_LIVE_RECONCILE_INTERVAL_SECONDS = 30.0
 
+# #498 (module docstring's "Root ownership / heartbeat" section): 3 missed
+# heartbeat ticks before a foreign owner is treated as crashed -- see that
+# section for the keepalive-style justification.
+OWNER_STALE_MULTIPLIER = 3
+
 _SCHEMA_DDL = """
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
@@ -313,6 +401,19 @@ _INDEX_DDL = (
     "CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_tasks_turn_id ON tasks(turn_id)",
 )
+
+# #498: ONE row (id=1, enforced by the CHECK constraint), inside the SAME
+# tasks.sqlite -- see module docstring's "Root ownership / heartbeat"
+# section for the full claim/skip/refresh/failure contract.
+_OWNER_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS task_owner (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    engine_id TEXT NOT NULL,
+    pid INTEGER NOT NULL,
+    host TEXT NOT NULL,
+    heartbeat_at TEXT NOT NULL
+)
+"""
 
 _SELECT_COLUMNS = (
     "id", "kind", "state", "payload", "external_job_id",
@@ -364,6 +465,7 @@ def _open_conn(root):
     conn.execute(_SCHEMA_DDL)
     for ddl in _INDEX_DDL:
         conn.execute(ddl)
+    conn.execute(_OWNER_TABLE_DDL)  # #498: same db, same connection, no new file
     return conn
 
 
@@ -446,7 +548,262 @@ def _transition_safe(conn, task_id, state, **fields):
         sys.stderr.write("tasks worker: could not record %s transition for %s: %s\n" % (state, task_id, exc))
 
 
-def _process_create(item, conns, executors, traces_queue):
+def _pid_alive(pid):
+    """#498 round-1 review MAJOR-2(a): mirrors `harness._pid_alive` exactly
+    (duplicated, not imported -- `harness.py` imports `tasks`, so the
+    reverse import would be circular). See that module's own docstring for
+    the OS-signal-0 rationale; used here only for a same-host owner pid,
+    never across hosts."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists, just not ours -- still "alive" from here
+    except OSError:
+        return False
+    return True
+
+
+class _OwnedRoots:
+    """#498 round-1 review MAJOR-1(b): the set of roots THIS engine process
+    has ever drained, guarded by a lock. Before this round, only the main
+    worker thread ever touched this set; now a background heartbeat-timer
+    thread (`_run_heartbeat_timer`) also reads it on its own schedule,
+    concurrently with the main thread's `add`/`discard` calls -- a bare
+    `set()` is not safe for that without a lock (both iteration-during-
+    mutation and lost updates are real risks here, not theoretical)."""
+
+    def __init__(self):
+        self._roots = set()
+        self._lock = threading.Lock()
+
+    def add(self, root):
+        with self._lock:
+            self._roots.add(root)
+
+    def discard(self, root):
+        with self._lock:
+            self._roots.discard(root)
+
+    def snapshot(self):
+        with self._lock:
+            return list(self._roots)
+
+
+def _claim_ownership(conn, engine_id):
+    """#498: stamps THIS process as `root`'s current owner (upsert -- the
+    table always holds exactly one row, `id=1`). Called from several
+    places now (round-1 review MAJOR-1): `_process_create`'s drain claim,
+    its `report_progress`-triggered refresh, the main loop's periodic-tick
+    refresh, and the background heartbeat-timer thread's own refresh.
+    Blindly overwrites whatever was there: whichever caller is actually
+    reaching this IS, by definition, either draining the root right now or
+    refreshing on behalf of a root this SAME engine already drained.
+
+    Round-1 review MINOR-2: defensively rolls back FIRST (mirrors
+    `_transition_safe`) -- a PRIOR failed call (or any other failed
+    transaction on this connection) may have left `conn` mid-transaction;
+    a fresh `BEGIN IMMEDIATE` on a connection already mid-transaction
+    raises ("cannot start a transaction within a transaction"), which used
+    to poison every subsequent `_insert`/`_transition` on this root too.
+    Also rolls back on ITS OWN failure, then re-raises -- every call site
+    already wraps this in a best-effort try/except (a heartbeat write
+    failing must never fail the actual task), so re-raising here just
+    hands the caller back a clean connection to recover with."""
+    try:
+        conn.execute("ROLLBACK")
+    except Exception:
+        pass  # nothing to roll back -- not an error
+    now = _now_iso()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(
+            "INSERT INTO task_owner (id, engine_id, pid, host, heartbeat_at) VALUES (1, ?, ?, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET engine_id = excluded.engine_id, pid = excluded.pid, "
+            "host = excluded.host, heartbeat_at = excluded.heartbeat_at",
+            (engine_id, os.getpid(), socket.gethostname(), now),
+        )
+        conn.execute("COMMIT")
+    except Exception:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
+
+
+def _read_owner(conn):
+    """#498: the current owner row, or `None` if this root has never been
+    drained by any engine. Raises on a genuinely broken read (locked/
+    corrupt db) -- callers (`_owner_blocks_reconciliation`) decide what
+    "raised" means; this function itself never swallows anything, so a
+    test can reliably patch it to simulate a read failure."""
+    row = conn.execute(
+        "SELECT engine_id, pid, host, heartbeat_at FROM task_owner WHERE id = 1"
+    ).fetchone()
+    if row is None:
+        return None
+    return {"engine_id": row[0], "pid": row[1], "host": row[2], "heartbeat_at": row[3]}
+
+
+def _refresh_owned_heartbeats(conns, owned, engine_id):
+    """#498: the cheap half of the refresh contract -- called from the main
+    loop's own periodic tick, re-stamping every root THIS engine has ever
+    drained using its ALREADY-OPEN connection (never a fresh one just for
+    this). This is the common-case path: most of the time the main loop
+    is free to reach its own tick (between drains, waiting on `q.get`).
+    See `_run_heartbeat_timer` for the round-1 review MAJOR-1(b) backstop
+    that covers the case this alone does NOT: the main thread blocked
+    inside a single long-running executor call, where this tick never
+    fires at all."""
+    for root in owned.snapshot():
+        conn = conns.get(root)
+        if conn is None:
+            continue
+        try:
+            _claim_ownership(conn, engine_id)
+        except Exception as exc:  # a heartbeat write hiccup must never stop the tick loop
+            sys.stderr.write("tasks worker: heartbeat refresh failed for root %s: %s\n" % (root, exc))
+
+
+def _run_heartbeat_timer(stop_event, owned, engine_id, interval_seconds):
+    """#498 round-1 review MAJOR-1(b): a lightweight background thread,
+    started once per `run_worker` call (only when reconciliation is
+    active), that refreshes every root THIS engine currently owns on its
+    own schedule -- independent of whether the main worker thread is free
+    to reach its own tick. This is what keeps an owned root's heartbeat
+    from freezing for the ENTIRE duration of an executor call that runs
+    longer than the staleness window: `_process_create` calls the
+    executor SYNCHRONOUSLY on the main thread, which cannot service its
+    own periodic tick (or drain anything else) until that call returns --
+    reviewer-confirmed: at production defaults, a 300s harness job was
+    stale ~70% of its life against the 90s window before this fix.
+
+    Uses its OWN short-lived connection per root per wake -- NEVER the
+    long-lived `conns[root]` the main worker thread owns (Sec10.2's
+    single-writer-PER-THREAD discipline: a `sqlite3.Connection` object
+    must never be touched from a thread other than the one that created
+    it). This mirrors `list_tasks`'s own "opens its own short-lived,
+    separate connection per call" precedent, just for a write instead of
+    a read -- WAL + `busy_timeout` (already pragma'd by `_open_conn`)
+    serializes it against the main thread's own writes the same way it
+    already serializes concurrent ENGINE PROCESSES writing `task_owner`
+    (see module docstring's wall-clock/writers note).
+
+    `stop_event.wait(interval_seconds)` (rather than `time.sleep`) doubles
+    as both the sleep and the shutdown signal -- returns `True` (loop
+    exits promptly) the instant the caller's `stop_event.set()` fires,
+    `False` after a normal timeout."""
+    while not stop_event.wait(interval_seconds):
+        for root in owned.snapshot():
+            try:
+                conn = _open_conn(root)
+                try:
+                    _claim_ownership(conn, engine_id)
+                finally:
+                    conn.close()
+            except Exception as exc:  # never let one root's refresh failure kill the timer
+                sys.stderr.write("tasks worker: heartbeat timer refresh failed for root %s: %s\n" % (root, exc))
+
+
+def _maybe_prune_owned_root(conn, root, owned):
+    """#498 round-1 review advisory (a): once a root has no in-flight
+    (`queued`/`started`/`progress`) rows left, THIS engine stops asserting
+    ownership of it. Without this, an engine that drained a root exactly
+    once would keep refreshing its heartbeat forever (both refresh paths
+    iterate `owned` indefinitely) -- blocking every OTHER engine's
+    reconciliation of that root for as long as this process merely stays
+    alive, even with nothing left to protect. Compounds MAJOR-2's wedge
+    risk the same way a never-expiring lock would.
+
+    Ownership is reclaimed automatically the next time this engine
+    actually drains something for the root (`_process_create`'s claim).
+    Until then, the on-disk `task_owner` row is left exactly as it last
+    was -- no explicit release here, no second write -- and simply ages
+    out of the staleness window on its own, indistinguishable from a
+    crashed owner's to any other engine checking it. (Compare
+    `run_worker`'s shutdown-time deletion, advisory (b): THAT is an
+    explicit release for a clean process exit; this is an implicit one
+    for a merely-idle-but-still-alive engine, which must not look
+    "departed" to anyone -- it may drain this same root again any
+    moment.)"""
+    try:
+        placeholders = ", ".join("?" for _ in _RECONCILE_TARGET_STATES)
+        count = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE state IN (" + placeholders + ")",
+            _RECONCILE_TARGET_STATES,
+        ).fetchone()[0]
+        if count == 0:
+            owned.discard(root)
+    except Exception as exc:  # a failed prune check must never fail the task that just finished
+        sys.stderr.write("tasks worker: owned-root prune check failed for root %s: %s\n" % (root, exc))
+
+
+def _owner_blocks_reconciliation(conn, root, engine_id, owner_stale_seconds, traces_queue):
+    """#498: True means "skip `root` this pass" -- see module docstring's
+    "Root ownership / heartbeat" section for the full decision table. Fails
+    CLOSED (also returns True) on a read failure: never risk orphaning a
+    root this engine cannot even confirm is unowned, and never silently --
+    always a trace event plus a stderr line."""
+    try:
+        owner = _read_owner(conn)
+    except Exception as exc:
+        sys.stderr.write("tasks worker: ownership read failed for root %s: %s\n" % (root, exc))
+        if traces_queue is not None:
+            observability.emit(traces_queue, root, {
+                "kind": "task.ownership_check_failed",
+                "payload": {"root": root, "error": str(exc)},
+            })
+        return True
+
+    if owner is None or owner["engine_id"] == engine_id:
+        return False  # no live foreign owner known -- proceed exactly as before #498
+
+    # #498 round-1 review MAJOR-2(a): pid/host were written but never READ.
+    # A fast restart on the SAME host inherits a predecessor's heartbeat
+    # that is still timestamp-fresh (the predecessor only just died) --
+    # without this check, that fresh-looking row would wedge the root
+    # until the staleness window elapses on its own (or, for a
+    # startup-class-only row -- see MAJOR-2(b) -- effectively forever). A
+    # dead pid on THIS host is unambiguous, immediate evidence the owner
+    # is gone -- checked before, and regardless of, heartbeat age. A
+    # foreign host's pid is never checked this way (no portable, safe way
+    # to ask a DIFFERENT machine "is this pid alive"): only the age-based
+    # staleness window governs cross-host recovery.
+    if owner["host"] == socket.gethostname() and not _pid_alive(owner["pid"]):
+        return False
+
+    try:
+        heartbeat_dt = datetime.fromisoformat(owner["heartbeat_at"])
+        age_seconds = (datetime.now(timezone.utc) - heartbeat_dt).total_seconds()
+    except (TypeError, ValueError):
+        # #498 round-1 review MINOR-1: the age SUBTRACTION (not just the
+        # parse) must be inside this try too -- a naive (tzinfo-less)
+        # `heartbeat_at` parses successfully but then raises TypeError
+        # subtracting it from an aware `datetime.now(timezone.utc)`. That
+        # used to escape uncaught here, propagate past this function
+        # entirely, and get swallowed by the CALLER's generic per-root
+        # except handler as an unrelated "reconciliation failed" -- an
+        # untraced fail-CLOSED (root silently skipped), the exact OPPOSITE
+        # of this documented fail-OPEN contract for an unusable timestamp.
+        return False
+
+    is_blocked = age_seconds < owner_stale_seconds
+    if is_blocked and traces_queue is not None:
+        # #498 round-1 review advisory (c): only the FAILURE path traced
+        # before this -- a normal, working skip (the common case, not a
+        # bug) had no visibility at all. Distinct kind from
+        # task.ownership_check_failed: this is "working as designed",
+        # that is "something is broken".
+        observability.emit(traces_queue, root, {
+            "kind": "task.ownership_skip",
+            "payload": {"root": root, "owner_engine_id": owner["engine_id"], "heartbeat_at": owner["heartbeat_at"]},
+        })
+    return is_blocked
+
+
+def _process_create(item, conns, executors, traces_queue, engine_id, owned, owner_stale_seconds):
     """Handles one `{"action": "create", ...}` queue item end to end:
     insert (queued) -> started -> executor -> completed|failed, each
     transition also emitted as a trace event. Never lets an executor's
@@ -478,10 +835,29 @@ def _process_create(item, conns, executors, traces_queue):
         sys.stderr.write("tasks worker: skipping malformed create item: %r\n" % (item,))
         return
 
+    # #498 round-1 review MAJOR-1(a): the minimum gap between two
+    # report_progress-triggered heartbeat refreshes for THIS task -- "~
+    # window/3" (an executor that calls report_progress at least this
+    # often keeps the heartbeat comfortably inside the staleness window
+    # without hammering sqlite on every call, e.g. harness.py's ~2s
+    # cadence). `nonlocal`-mutated by `report_progress` below.
+    heartbeat_refresh_min_interval = owner_stale_seconds / OWNER_STALE_MULTIPLIER
+    last_progress_heartbeat_mono = 0.0
+
     try:
         if root not in conns:
             conns[root] = _open_conn(root)
         conn = conns[root]
+
+        # #498: THIS is a real drain -- the one and only place ownership is
+        # claimed (never by a reconciliation sweep merely scanning `root`).
+        # Isolated try/except: a heartbeat write hiccup must never fail the
+        # task itself, which is real work, not bookkeeping.
+        try:
+            _claim_ownership(conn, engine_id)
+            owned.add(root)
+        except Exception as exc:
+            sys.stderr.write("tasks worker: ownership claim failed for root %s: %s\n" % (root, exc))
 
         _insert(conn, task_id, kind, payload, turn_id)
         _emit(traces_queue, root, "task.queued", task_id, kind, STATE_QUEUED, turn_id=turn_id)
@@ -492,6 +868,7 @@ def _process_create(item, conns, executors, traces_queue):
         error = "task setup failed: %s" % exc
         if root in conns:
             _transition_safe(conns[root], task_id, STATE_FAILED, error=error)
+            _maybe_prune_owned_root(conns[root], root, owned)  # #498 advisory (a)
         _emit(traces_queue, root, "task.failed", task_id, kind, STATE_FAILED, {"error": error}, turn_id=turn_id)
         return
 
@@ -500,9 +877,11 @@ def _process_create(item, conns, executors, traces_queue):
         error = "no executor registered for kind %r" % (kind,)
         _transition_safe(conn, task_id, STATE_FAILED, error=error)
         _emit(traces_queue, root, "task.failed", task_id, kind, STATE_FAILED, {"error": error}, turn_id=turn_id)
+        _maybe_prune_owned_root(conn, root, owned)  # #498 advisory (a)
         return
 
     def report_progress(progress_payload=None, external_job_id=None):
+        nonlocal last_progress_heartbeat_mono
         # AST-070 (see module docstring's "AST-070 extension seam"):
         # external_job_id is OPTIONAL and omitted by every pre-existing
         # caller -- only written into the transition when a caller (a
@@ -515,6 +894,20 @@ def _process_create(item, conns, executors, traces_queue):
         _transition(conn, task_id, STATE_PROGRESS, **fields)
         extra = {"progress": progress_payload} if progress_payload is not None else None
         _emit(traces_queue, root, "task.progress", task_id, kind, STATE_PROGRESS, extra, turn_id=turn_id)
+
+        # #498 round-1 review MAJOR-1(a): rate-limited heartbeat refresh --
+        # an executor that reports progress (harness.py: every ~2s) is the
+        # CHEAPEST possible signal "this root's owner is still genuinely
+        # alive and working", available on the SAME thread/connection this
+        # closure already holds, no extra thread or connection needed.
+        now_mono = time.monotonic()
+        if now_mono - last_progress_heartbeat_mono >= heartbeat_refresh_min_interval:
+            try:
+                _claim_ownership(conn, engine_id)
+                owned.add(root)
+                last_progress_heartbeat_mono = now_mono
+            except Exception as exc:
+                sys.stderr.write("tasks worker: progress-triggered heartbeat refresh failed for root %s: %s\n" % (root, exc))
 
     # AST-070: a task-scoped executor (e.g. harness.run_harness_job) reads
     # this to construct an artifact path deterministically from the task's
@@ -538,6 +931,8 @@ def _process_create(item, conns, executors, traces_queue):
         error = str(exc)
         _transition_safe(conn, task_id, STATE_FAILED, error=error)
         _emit(traces_queue, root, "task.failed", task_id, kind, STATE_FAILED, {"error": error}, turn_id=turn_id)
+
+    _maybe_prune_owned_root(conn, root, owned)  # #498 advisory (a): covers both the completed and failed outcomes above
 
 
 def _orphan_row(conn, root, row, reason, traces_queue):
@@ -702,12 +1097,33 @@ def _is_reconcile_candidate(root):
     return classification.kind == "candidate"
 
 
-def _reconcile_all(repos_getter, conns, resolvers, traces_queue):
+def _reconcile_all(repos_getter, conns, resolvers, traces_queue, engine_id, owner_stale_seconds,
+                    pending_startup_reconcile):
     """Called once, before `run_worker`'s drain loop starts. `conns` is
     `run_worker`'s OWN dict (passed in, not created here) so a connection
     reconciliation opens for a root is the SAME connection the drain loop
     reuses afterward -- single writer per root, never a second connection
-    opened just for this pass."""
+    opened just for this pass.
+
+    #498: `_owner_blocks_reconciliation` runs AFTER the connection is open
+    (the owner row lives inside the same db #497 already gates opening a
+    connection for) but BEFORE `_reconcile_root` touches any task row --
+    this sweep never claims ownership itself (see module docstring), it
+    only ever reads it to decide whether to skip.
+
+    Round-1 review MAJOR-2(b): this ONE-TIME sweep is the ONLY code path
+    that ever reconciles a bare `queued` row or a started-without-
+    external_job_id row (`_reconcile_root`'s full `_RECONCILE_TARGET_STATES`
+    set -- the periodic live pass only ever looks at a narrower,
+    external_job_id-only subset). A root skipped here because a foreign
+    owner's heartbeat was fresh AT THIS ONE MOMENT would otherwise never
+    get another chance for the rest of this process's life -- `queued`/
+    no-external_job_id rows would wedge until restart even after the
+    foreign owner crashes. Every root skipped for ownership (not for
+    #497's own candidate-scoping, which has nothing to defer) is recorded
+    into `pending_startup_reconcile` -- `run_worker`'s periodic tick
+    (`_retry_pending_startup_reconcile`) retries exactly this pass on
+    those roots once ownership stops blocking."""
     try:
         repo_pairs = list(repos_getter())
     except Exception as exc:  # a broken repos_getter must not prevent the worker from starting at all
@@ -719,9 +1135,49 @@ def _reconcile_all(repos_getter, conns, resolvers, traces_queue):
                 if not _is_reconcile_candidate(root):  # issue #497: never CREATE a db just to reconcile it
                     continue
                 conns[root] = _open_conn(root)
+            if _owner_blocks_reconciliation(conns[root], root, engine_id, owner_stale_seconds, traces_queue):
+                pending_startup_reconcile.add(root)  # #498 MAJOR-2(b): retry once ownership stops blocking
+                continue  # #498: a different engine's heartbeat is still fresh -- not ours to touch this pass
             _reconcile_root(conns[root], root, resolvers, traces_queue)
         except Exception as exc:  # one root's reconciliation failing must not block another root's
             sys.stderr.write("tasks worker: reconciliation failed for root %s: %s\n" % (root, exc))
+
+
+def _retry_pending_startup_reconcile(conns, resolvers, traces_queue, engine_id, owner_stale_seconds,
+                                      pending_startup_reconcile):
+    """#498 round-1 review MAJOR-2(b): the periodic-tick counterpart to
+    `_reconcile_all`'s deferral above. For every root the one-time startup
+    sweep skipped for ownership, re-check ownership on each tick; once it
+    no longer blocks (the foreign owner went stale, or MAJOR-2(a)'s
+    same-host-dead-pid check fires), run the FULL startup-class
+    `_reconcile_root` on it -- exactly the pass it missed at boot -- and
+    stop retrying it. Still blocked -> left in the set, tried again next
+    tick. This is deliberately `_reconcile_root`, never
+    `_reconcile_live_root`: the whole point is recovering the WIDER
+    startup-class row set the periodic pass alone never covers.
+
+    Round-2 review, advisory (a) (trace dedup): every root ever added here
+    came from `_reconcile_all`'s own pass over the SAME `repos_getter()`
+    list `_reconcile_live_all` walks every tick -- so a still-candidate
+    root in this set is, by construction, ALSO re-checked by
+    `_reconcile_live_all` on this exact same tick, which already emits its
+    own `task.ownership_skip` if still blocked. Passing `traces_queue=None`
+    here avoids a redundant second trace event for the identical skip
+    decision on the identical root in the identical tick -- this function's
+    own value is the RECONCILE it performs once unblocked, not a second
+    copy of a trace another call site already emits."""
+    for root in list(pending_startup_reconcile):
+        conn = conns.get(root)
+        if conn is None:
+            pending_startup_reconcile.discard(root)  # should not happen -- defensive, never re-tried blind
+            continue
+        try:
+            if _owner_blocks_reconciliation(conn, root, engine_id, owner_stale_seconds, None):
+                continue  # still blocked -- retry next tick
+            _reconcile_root(conn, root, resolvers, traces_queue)
+            pending_startup_reconcile.discard(root)
+        except Exception as exc:  # one root's deferred reconciliation failing must not block another's
+            sys.stderr.write("tasks worker: deferred startup reconciliation failed for root %s: %s\n" % (root, exc))
 
 
 def _reconcile_live_root(conn, root, resolvers, traces_queue):
@@ -746,10 +1202,12 @@ def _reconcile_live_root(conn, root, resolvers, traces_queue):
             sys.stderr.write("tasks worker: live reconciliation failed for task %s: %s\n" % (row.get("id"), exc))
 
 
-def _reconcile_live_all(repos_getter, conns, resolvers, traces_queue):
+def _reconcile_live_all(repos_getter, conns, resolvers, traces_queue, engine_id, owner_stale_seconds):
     """Periodic twin of `_reconcile_all` -- same broken-repos_getter and
-    per-root failure isolation posture, called repeatedly instead of
-    once."""
+    per-root failure isolation posture, called repeatedly instead of once.
+    Same #498 ownership gate as `_reconcile_all` (see its docstring):
+    never claims ownership itself, only reads it to decide whether to
+    skip a root this tick."""
     try:
         repo_pairs = list(repos_getter())
     except Exception as exc:  # a broken repos_getter must not prevent the worker from continuing
@@ -761,21 +1219,25 @@ def _reconcile_live_all(repos_getter, conns, resolvers, traces_queue):
                 if not _is_reconcile_candidate(root):  # issue #497: never CREATE a db just to reconcile it
                     continue
                 conns[root] = _open_conn(root)
+            if _owner_blocks_reconciliation(conns[root], root, engine_id, owner_stale_seconds, traces_queue):
+                continue  # #498: a different engine's heartbeat is still fresh -- not ours to touch this tick
             _reconcile_live_root(conns[root], root, resolvers, traces_queue)
         except Exception as exc:  # one root's reconciliation failing must not block another root's
             sys.stderr.write("tasks worker: live reconciliation failed for root %s: %s\n" % (root, exc))
 
 
 def run_worker(q, stop_event, executors=None, poll_timeout=DEFAULT_POLL_TIMEOUT_SECONDS, traces_queue=None,
-                repos_getter=None, resolvers=None, live_reconcile_interval=DEFAULT_LIVE_RECONCILE_INTERVAL_SECONDS):
-    """See module docstring's Library entry, "Execution model", and
-    "Restart reconciliation" sections. `repos_getter`/`resolvers` are both
-    optional (default `None`/`{}`) so every existing caller/test that
-    constructs this worker without them keeps working unchanged -- the
-    same convention `traces_queue=None` already established. `repos_getter`
-    omitted means reconciliation simply does not run (there is no way to
-    know which roots to check without it) -- this also disables the
-    periodic live re-check below, for the identical reason.
+                repos_getter=None, resolvers=None, live_reconcile_interval=DEFAULT_LIVE_RECONCILE_INTERVAL_SECONDS,
+                engine_id=None, owner_stale_seconds=None):
+    """See module docstring's Library entry, "Execution model",
+    "Restart reconciliation", and (#498) "Root ownership / heartbeat"
+    sections. `repos_getter`/`resolvers` are both optional (default
+    `None`/`{}`) so every existing caller/test that constructs this worker
+    without them keeps working unchanged -- the same convention
+    `traces_queue=None` already established. `repos_getter` omitted means
+    reconciliation simply does not run (there is no way to know which
+    roots to check without it) -- this also disables the periodic live
+    re-check below, for the identical reason.
 
     `live_reconcile_interval` (AST-070 round-1 review MAJOR, issue #345):
     seconds between periodic `_reconcile_live_all` passes, checked once per
@@ -785,12 +1247,51 @@ def run_worker(q, stop_event, executors=None, poll_timeout=DEFAULT_POLL_TIMEOUT_
     for the startup sweep) -- opt-in, existing callers that construct this
     worker without passing it keep the DEFAULT interval, but since
     `repos_getter` also defaults to `None`, no existing caller's behavior
-    changes unless it ALREADY opted into `repos_getter` too."""
+    changes unless it ALREADY opted into `repos_getter` too.
+
+    `engine_id` (#498): this process's identity for ownership claims --
+    defaults to a fresh `uuid4().hex` (one per `run_worker` call, i.e. per
+    process) when omitted, so two independent engines never collide on a
+    shared id by accident. `owner_stale_seconds` defaults to
+    `OWNER_STALE_MULTIPLIER * <effective live-reconcile interval>` (using
+    `DEFAULT_LIVE_RECONCILE_INTERVAL_SECONDS` when periodic reconciliation
+    is disabled, so the staleness window is always well-defined even then)
+    -- see module docstring for the 3x justification. Both are ordinary
+    keyword args, not `None`-means-"feature off" like `repos_getter`:
+    ownership gating is always active once `repos_getter` is given, using
+    whatever `engine_id` this call ends up with.
+
+    Round-1 review MAJOR-1(b): while `repos_getter` is given, a background
+    heartbeat-timer thread (`_run_heartbeat_timer`) runs for this call's
+    entire lifetime, refreshing every currently-owned root on its own
+    schedule -- independent of the main loop's own tick, which cannot fire
+    while this thread is blocked inside a single long-running executor
+    call. Joined (bounded) in `finally`, before this engine's owner rows
+    are released below, so no refresh can race the handoff."""
     executors = executors or {}
     resolvers = resolvers or {}
     conns = {}
+    owned = _OwnedRoots()
+    if engine_id is None:
+        engine_id = uuid.uuid4().hex
+    effective_interval = (
+        live_reconcile_interval if live_reconcile_interval and live_reconcile_interval > 0
+        else DEFAULT_LIVE_RECONCILE_INTERVAL_SECONDS
+    )
+    if owner_stale_seconds is None:
+        owner_stale_seconds = OWNER_STALE_MULTIPLIER * effective_interval
+    pending_startup_reconcile = set()  # #498 MAJOR-2(b): roots the startup sweep deferred, see _reconcile_all
+    heartbeat_timer_thread = None
     if repos_getter is not None:
-        _reconcile_all(repos_getter, conns, resolvers, traces_queue)
+        _reconcile_all(repos_getter, conns, resolvers, traces_queue, engine_id, owner_stale_seconds,
+                        pending_startup_reconcile)
+        heartbeat_timer_thread = threading.Thread(
+            target=_run_heartbeat_timer,
+            args=(stop_event, owned, engine_id, effective_interval),
+            name="assistant-tasks-heartbeat-timer",
+            daemon=True,
+        )
+        heartbeat_timer_thread.start()
     last_live_reconcile = time.monotonic()
     try:
         while not stop_event.is_set():
@@ -801,7 +1302,7 @@ def run_worker(q, stop_event, executors=None, poll_timeout=DEFAULT_POLL_TIMEOUT_
             if item is not None:
                 try:
                     if isinstance(item, dict) and item.get("action") == "create":
-                        _process_create(item, conns, executors, traces_queue)
+                        _process_create(item, conns, executors, traces_queue, engine_id, owned, owner_stale_seconds)
                     else:
                         # ADVISORY 1 (round-2 review, issue #341): a non-dict
                         # item or an unrecognized action used to be silently
@@ -813,10 +1314,55 @@ def run_worker(q, stop_event, executors=None, poll_timeout=DEFAULT_POLL_TIMEOUT_
             if repos_getter is not None and live_reconcile_interval and live_reconcile_interval > 0:
                 now = time.monotonic()
                 if now - last_live_reconcile >= live_reconcile_interval:
-                    _reconcile_live_all(repos_getter, conns, resolvers, traces_queue)
+                    # #498: refresh THIS engine's already-owned roots' heartbeats
+                    # before reconciling -- keeps an idle-but-owned root (no new
+                    # drains, but still legitimately ours) from going stale.
+                    # Cheap/common-case path; _run_heartbeat_timer above is the
+                    # backstop for when this tick itself cannot fire (MAJOR-1b).
+                    _refresh_owned_heartbeats(conns, owned, engine_id)
+                    _reconcile_live_all(repos_getter, conns, resolvers, traces_queue, engine_id, owner_stale_seconds)
+                    # #498 MAJOR-2(b): give any root the startup sweep deferred
+                    # another chance now that ownership may have stopped blocking.
+                    _retry_pending_startup_reconcile(conns, resolvers, traces_queue, engine_id, owner_stale_seconds,
+                                                      pending_startup_reconcile)
                     last_live_reconcile = now
     finally:
-        for conn in conns.values():
+        if heartbeat_timer_thread is not None:
+            # #498 round-2 review: a bounded join alone is a genuine race --
+            # a single in-flight _claim_ownership can legitimately block up
+            # to `busy_timeout` (5s, `_open_conn`'s own pragma) waiting for
+            # a lock, longer than a short bounded join would wait. If the
+            # bounded join times out while that write is still in flight,
+            # the timer thread can land it AFTER the owner-row deletion
+            # below, resurrecting this engine's own row right after this
+            # engine just tried to hand it off -- the opposite of advisory
+            # (b)'s intent. The bounded join is still tried FIRST (the
+            # overwhelmingly common case: nothing contended, exits fast);
+            # the unconditional fallback below is what actually GUARANTEES
+            # no write can ever land after the delete, not a probability --
+            # sqlite's own busy_timeout bounds how long any single claim can
+            # possibly block, so this can never hang forever either.
+            heartbeat_timer_thread.join(timeout=3)
+            if heartbeat_timer_thread.is_alive():
+                heartbeat_timer_thread.join()
+        for root, conn in conns.items():
+            # #498 round-1 review advisory (b): a graceful shutdown releases
+            # THIS engine's ownership immediately -- a departing engine's
+            # heartbeat would otherwise sit "fresh" for the rest of the
+            # staleness window, needlessly blocking a legitimate successor
+            # (e.g. the same repo now routed to a different engine) even
+            # though nobody crashed. `engine_id = ?` guards against ever
+            # deleting a DIFFERENT engine's already-reclaimed row.
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                conn.execute("DELETE FROM task_owner WHERE id = 1 AND engine_id = ?", (engine_id,))
+                conn.execute("COMMIT")
+            except Exception as exc:
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+                sys.stderr.write("tasks worker: could not release ownership for root %s: %s\n" % (root, exc))
             try:
                 conn.close()
             except Exception:

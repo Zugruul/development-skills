@@ -65,7 +65,14 @@ e = engine.AssistantEngine(lambda: repos_holder, os.environ["STATE"])
 # unmatched route -> None (caller 404s)
 print("UNMATCHED", e.handle("GET", "/assistant/nope") is None)
 
-# start() launches exactly the 4 mandated subsystem workers
+# start() launches exactly the 4 mandated subsystem workers -- PLUS #498
+# round-1 review MAJOR-1(b) background heartbeat-timer thread, spawned
+# from WITHIN tasks.run_worker (invisible to e.workers, which only tracks
+# the 4 registered subsystem threads by name) whenever repos_getter is
+# given -- which the tasks slot in engine.py always does. 5 live threads
+# total while running; still 4 registered workers, still 0 after stop()
+# (the timer thread is joined inside run_worker own finally, before
+# run_worker itself returns and e.stop() considers that worker joined).
 e.start()
 names = sorted(n for n, _, _ in e.workers)
 print("WORKER_NAMES", names)
@@ -106,7 +113,8 @@ check_rc "engine unit script exits 0" 0 "$rc"
 check "engine unit: unmatched route returns None" "UNMATCHED True" "$unit_out"
 check "engine unit: worker registry has the four mandated subsystems" \
     "WORKER_NAMES ['distiller', 'index', 'tasks', 'traces']" "$unit_out"
-check "engine unit: start() launches exactly 4 live threads" "THREADS_AFTER_START 4" "$unit_out"
+check "engine unit: start() launches the 4 mandated subsystem threads plus #498's background heartbeat-timer thread" \
+    "THREADS_AFTER_START 5" "$unit_out"
 check "engine unit: status route returns 200" "STATUS_CODE 200" "$unit_out"
 check "engine unit: status content-type is JSON" "CTYPE application/json" "$unit_out"
 check "engine unit: status engine field is ok" "ENGINE_FIELD ok" "$unit_out"
