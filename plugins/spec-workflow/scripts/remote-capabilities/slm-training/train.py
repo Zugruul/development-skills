@@ -161,6 +161,13 @@ def main():
         logging_steps=int(train.get("logging_steps") or 1),
         seed=int(train.get("seed") or 3407),
         report_to="none",
+        # The trainer never checkpoints: adapters are saved explicitly after
+        # train() (below), trainer-state is scratch, and a trainer checkpoint
+        # would torch.save(TrainingArguments) — which crashes with a
+        # class-identity PicklingError once unsloth has patched trl's config
+        # classes (observed live: "Can't pickle SFTConfig: it's not the same
+        # object as trl.trainer.sft_config.SFTConfig").
+        save_strategy="no",
     )
     if train.get("max_steps"):
         common_args["max_steps"] = int(train["max_steps"])
