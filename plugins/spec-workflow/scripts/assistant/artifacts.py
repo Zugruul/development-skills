@@ -68,6 +68,10 @@ section-assistant-artifacts.sh):
      rejected at the ROUTING layer in `engine.py._artifact`, before this
      module or the filesystem is ever touched: real task ids are
      `uuid.uuid4().hex` (tasks.py's `enqueue`), which never contain `/`.
+  6. TOCTOU (issue #502): `resolve()` returns the SAME realpath its
+     containment check validated, never the lexical candidate -- so a
+     symlink swapped after the check but before the caller's open() can't
+     redirect the read (see `resolve()`'s own comment on this).
 
 Size cap (flagged design call): streaming never risks the whole-file-
 in-RAM problem `/file` has regardless of artifact size, but an
@@ -139,12 +143,34 @@ def resolve(root, task_id):
         raise ArtifactError("artifact path must be relative")
     artifacts_root = _artifacts_root(root)
     candidate = os.path.join(artifacts_root, rel)
-    if not _within(candidate, artifacts_root):
+    # Resolve ONCE, then check and use that SAME realpath -- issue #502
+    # (TOCTOU): `_within` already realpath's both sides internally to make
+    # its containment decision, but a caller that gets back the LEXICAL
+    # `candidate` string instead would re-resolve any symlink in it fresh
+    # at open() time. A symlink component swapped after this check passes
+    # but before the caller opens the file would then redirect the read --
+    # the check and the eventual open would target different inodes.
+    # Returning the resolved path here means the caller's open() never
+    # touches the symlink again; a later swap can't redirect it.
+    #
+    # This realpath() call must fail CLOSED the same way `_within`'s own
+    # internal realpath calls do (round-2 review, issue #502): an
+    # embedded-NUL `artifact_path` (or any other path-resolution oddity)
+    # raises `ValueError`/`OSError` here, which -- unlike `ArtifactError`
+    # -- `engine.py._artifact` does not catch, so it would otherwise
+    # surface as an unhandled 500/traceback instead of the module's
+    # promised generic 404 (module docstring: every failure mode
+    # collapses to the SAME response, never a distinguishable one).
+    try:
+        resolved = os.path.realpath(candidate)
+    except Exception as exc:  # noqa: BLE001 -- same fail-closed discipline as _within: any path-resolution oddity is a 404, never an unhandled exception
+        raise ArtifactError(f"artifact path could not be resolved: {exc}") from exc
+    if not _within(resolved, artifacts_root):
         raise ArtifactError("artifact path escapes artifacts root")
-    if not os.path.isfile(candidate):
+    if not os.path.isfile(resolved):
         raise ArtifactError("artifact file missing")
     try:
-        size = os.path.getsize(candidate)
+        size = os.path.getsize(resolved)
     except OSError as exc:
         raise ArtifactError(f"artifact unreadable: {exc}") from exc
-    return candidate, size
+    return resolved, size

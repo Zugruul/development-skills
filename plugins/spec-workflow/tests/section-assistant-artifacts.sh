@@ -217,6 +217,70 @@ PY
 )"
 check "resolve: a symlink escaping the artifacts root is rejected" "RAISED True" "$out"
 
+echo "-- (5) TOCTOU: resolve() returns the REALPATH it validated, not the lexical symlink path -- so a symlink swapped AFTER resolve() returns cannot redirect a later open() (issue #502) --"
+mkdir -p "$d/.claude/assistant/artifacts/toctou_real"
+printf 'legit-data' >"$d/.claude/assistant/artifacts/toctou_real/data.bin"
+ln -s "$d/.claude/assistant/artifacts/toctou_real/data.bin" "$d/.claude/assistant/artifacts/toctou_link.bin"
+aa_insert_task "$d" tid-toctou completed "toctou_link.bin"
+out="$(PYTHONPATH="$AA_SCRIPTS" ROOT="$d" python3 - <<'PY'
+import os
+from assistant import artifacts
+root = os.environ["ROOT"]
+path, _size = artifacts.resolve(root, "tid-toctou")
+print("IS_REALPATH", path == os.path.realpath(path))
+artifacts_root = os.path.realpath(os.path.join(root, artifacts.ARTIFACTS_DIR_REL))
+print("IS_CONTAINED", path == artifacts_root or path.startswith(artifacts_root + os.sep))
+print("RESOLVED_THROUGH_SYMLINK", path.endswith("toctou_real/data.bin"))
+# The attack: AFTER resolve() has already returned `path`, repoint the
+# symlink component to somewhere OUTSIDE the artifacts root entirely (the
+# same "secret/leak.txt" fixture test (1) already proved is off-limits).
+# A caller that re-opens the LEXICAL candidate later would follow the new
+# target; a caller that opens the REALPATH resolve() already validated
+# never touches the (now-swapped) symlink at all.
+os.remove(os.path.join(root, ".claude", "assistant", "artifacts", "toctou_link.bin"))
+os.symlink(os.path.join(root, ".claude", "assistant", "secret", "leak.txt"),
+           os.path.join(root, ".claude", "assistant", "artifacts", "toctou_link.bin"))
+with open(path, "rb") as f:
+    print("CONTENT_AFTER_SWAP", f.read().decode())
+PY
+)"
+check "resolve (TOCTOU): the returned path IS its own realpath" "IS_REALPATH True" "$out"
+check "resolve (TOCTOU): the returned path stays contained in the artifacts root" "IS_CONTAINED True" "$out"
+check "resolve (TOCTOU): the returned path is the symlink's real target, not the symlink itself" "RESOLVED_THROUGH_SYMLINK True" "$out"
+check "resolve (TOCTOU): reading the returned path after the symlink is swapped still returns the ORIGINAL content, not the attacker's" "CONTENT_AFTER_SWAP legit-data" "$out"
+
+echo "-- (6) fail-closed: a path-resolution oddity (embedded NUL byte in artifact_path) during the TOCTOU fix's realpath() call must raise ArtifactError, never an unhandled exception -- otherwise it would surface as an uncaught 500/traceback instead of the module's promised generic 404 (issue #502 round-2 review) --"
+# Bypasses aa_insert_task's env-var plumbing (a NUL byte truncates a POSIX
+# env var) and inserts the row directly, same _insert/_transition helpers,
+# with the NUL embedded as a real Python string literal.
+out="$(PYTHONPATH="$AA_SCRIPTS" ROOT="$d" python3 - <<'PY'
+import os
+from assistant import tasks
+from assistant import artifacts
+
+root = os.environ["ROOT"]
+conn = tasks._open_conn(root)
+try:
+    tasks._insert(conn, "tid-nul", "test-kind", {}, None)
+    tasks._transition(conn, "tid-nul", "completed", artifact_path="evil\x00.bin")
+finally:
+    conn.close()
+
+try:
+    artifacts.resolve(root, "tid-nul")
+    print("RAISED_ARTIFACT_ERROR", False)
+    print("RAISED_OTHER", "none")
+except artifacts.ArtifactError:
+    print("RAISED_ARTIFACT_ERROR", True)
+    print("RAISED_OTHER", "none")
+except Exception as exc:  # noqa: BLE001 -- the whole point: nothing but ArtifactError may escape
+    print("RAISED_ARTIFACT_ERROR", False)
+    print("RAISED_OTHER", type(exc).__name__)
+PY
+)"
+check "resolve: a NUL-byte artifact_path fails closed with ArtifactError" "RAISED_ARTIFACT_ERROR True" "$out"
+check "resolve: no OTHER exception type escapes (that would be an unhandled 500, not the promised generic 404)" "RAISED_OTHER none" "$out"
+
 echo "-- positive control: a legitimate nested subdirectory path is NOT rejected -- proves the containment check is not just always-reject --"
 mkdir -p "$d/.claude/assistant/artifacts/deep/nested/dir"
 printf 'legit' >"$d/.claude/assistant/artifacts/deep/nested/dir/ok.bin"
