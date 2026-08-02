@@ -45,7 +45,7 @@ One verb-based skill named **`remote-compute`** — matching epic E7's own name 
 compute") so the board, the spec, and the skill share one vocabulary (naming decision
 2026-08-02; the earlier working names `compute-resource(s)` and `neural-network-compute`
 were dropped). The short config surfaces keep the short word: the project.local.yaml key
-stays `compute:` and the user registry stays `~/.claude/compute/`. Verb pattern matches
+stays `compute:` and the user registry stays `~/.remote-compute/`. Verb pattern matches
 `board`/`brain`/`checkpoint`:
 
 ```
@@ -93,11 +93,11 @@ live, never assumed):
    command output; per-step failures recorded verbatim as `{error: ...}`, never guessed.
 5. Platform quirks recorded (WSL nvidia-smi path, zsh non-interactive PATH, icmpBlocked,
    macOS mps-not-cuda).
-6. Remote job layout present: `~/.compute-jobs/` exists.
+6. Remote job layout present: `~/.remote-compute/jobs/` exists.
 7. Power policy confirmed by the human (recorded `powerPolicyConfirmed`; the relevant
    per-platform instruction sheet is printed whenever a prerequisite check fails).
 
-Registration is user-level only (`~/.claude/compute/resources.yaml`, machine-local, never
+Registration is user-level only (`~/.remote-compute/resources.yaml`, machine-local, never
 committed, never a repo file). It never touches any repo and never runs sudo — privileged
 steps are printed for the human.
 
@@ -141,7 +141,7 @@ is per-machine — there is nothing to sync), no template entry (same precedent 
 ## 5. Registry descriptor (user registry, v1)
 
 As in the brief (name/transport/ssh/platform+quirks/capabilities/envs/policy/state), with
-`state.lock` = `{holder, reason, since}` or null. `~/.claude/compute/` layout:
+`state.lock` = `{holder, reason, since}` or null. `~/.remote-compute/` layout:
 `resources.yaml`, `jobs/<id>.json`. Overridable for tests and exotic setups via
 `COMPUTE_HOME`, `COMPUTE_SSH_CONFIG`, `COMPUTE_SSH_BIN`/`COMPUTE_KEYSCAN_BIN`/
 `COMPUTE_RSYNC_BIN` (the hermetic-test seam — a scripted fake transport).
@@ -153,7 +153,7 @@ locks, jobs, dispatch). Domains live OUTSIDE it as bundles under
 `scripts/remote-capabilities/<name>/`: a `capability.yaml`
 (`{name, description, payload[], jobs{name: {description, cmd, params, env}}}`)
 plus payload scripts. `install-capability` rsyncs payload to
-`~/.compute-jobs/_caps/<name>/` and declares jobs as `<name>:<job>` through the
+`~/.remote-compute/caps/<name>/` and declares jobs as `<name>:<job>` through the
 same machinery `add-job` uses; `{capdir}`/`{jobdir}` are the only engine-supplied
 placeholders. Adding ComfyUI, a training rig, or an OCR service is a bundle, not
 an engine edit — enforced by a test asserting the engine contains no
@@ -181,7 +181,7 @@ Manual E2E: `tests/e2e-remote-compute-manual.sh` (network-touching, not in the g
 `dispatch`: refuse if locked by someone else or payload contains sudo → take lock →
 rsync inputs (`-az --partial`) → launch detached (`tmux new-session -d` else
 `setsid nohup`), always via `bash -lc` with full paths, always writing `job.log`, `pid`,
-`exitcode` under `~/.compute-jobs/<id>/` → record `~/.claude/compute/jobs/<id>.json`.
+`exitcode` under `~/.remote-compute/jobs/<id>/` → record `~/.remote-compute/jobs/<id>.json`.
 `job-status`/`job-logs`/`job-pull` recover from those files alone — no daemon, no
 orchestrator state; killing the session loses nothing.
 
@@ -193,10 +193,10 @@ orchestrator state; killing the session loses nothing.
    without this it would bypass all three. Never prompt for, store, or transmit
    passwords. Asserted per-invocation in the suite, not by substring search.
 2. Never run sudo, locally or remotely; sudo-containing remote payloads are rejected.
-3. Probes are read-only; dispatch writes only in the declared workdir and `~/.compute-jobs/`.
+3. Probes are read-only; dispatch writes only in the declared workdir and `~/.remote-compute/jobs/`.
 4. Capability claims come from real probe output; failures recorded verbatim; never assumed.
 5. No dispatch to a locked resource; `unlock --force` warns with prior holder context.
-6. `~/.claude/compute/` and `.claude/project.local.yaml` are machine-local, never
+6. `~/.remote-compute/` and `.claude/project.local.yaml` are machine-local, never
    committed; they carry alias + snapshot only.
 7. Health = TCP:22 (`nc -z`), never ping (Windows blocks ICMP; record `icmpBlocked`).
 

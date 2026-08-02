@@ -6,7 +6,7 @@ description: Registers remote machines (SSH, key-only) as user-level compute res
 # remote-compute
 
 Registers machines the human owns as compute resources (user-level registry
-`~/.claude/compute/resources.yaml`, machine-local, never committed) and
+`~/.remote-compute/resources.yaml`, machine-local, never committed) and
 advertises them to projects (a `compute:` section in `.claude/project.local.yaml`
 — the gitignored machine-local overlay; alias + informational capability
 snapshot only, never host/user/secrets, and never the committed project.yaml).
@@ -37,7 +37,7 @@ the human which verb they want. Never guess a nickname.
 
 `register` converges a machine to one declared end-state and is safe to re-run
 any time — every run re-verifies the full checklist (ssh alias, key auth under
-BatchMode, pinned host key, capability probe, remote `~/.compute-jobs/`
+BatchMode, pinned host key, capability probe, remote `~/.remote-compute/jobs/`
 layout). Drive its stop-and-resume statuses like this:
 
 - `UNREACHABLE` (exit 1): the machine is off/asleep or sshd is not listening.
@@ -76,12 +76,12 @@ anything doing real work re-probes first.
 2. Never run sudo, locally or remotely — sudo payloads are rejected (exit 5);
    privileged steps are printed as instructions for the human.
 3. Probes are read-only; dispatch writes only inside the declared workdir and
-   `~/.compute-jobs/`.
+   `~/.remote-compute/jobs/`.
 4. Every capability claim comes from real probe output; failures are recorded
    verbatim in the registry, never guessed.
 5. No dispatch to a resource locked by someone else (exit 6); `unlock --force`
    warns with the prior holder's context.
-6. `~/.claude/compute/` is machine-local and never committed; the repo gets
+6. `~/.remote-compute/` is machine-local and never committed; the repo gets
    alias + snapshot only.
 
 ## declared jobs — dispatch by intent
@@ -107,7 +107,7 @@ and nothing about any particular tool. A DOMAIN arrives as a **bundle** under
 `scripts/remote-capabilities/<name>/` — a `capability.yaml` manifest
 (`{name, description, payload[], jobs{}}`) plus the payload scripts its jobs
 invoke. `install-capability <nick> <bundle-dir>` rsyncs the payload to
-`~/.compute-jobs/_caps/<name>/` and declares the manifest's jobs as
+`~/.remote-compute/caps/<name>/` and declares the manifest's jobs as
 `<name>:<job>`; `capabilities <nick>` lists what a machine has.
 
 Adding a new domain means adding a bundle — never editing `remote-compute.py`.
@@ -154,8 +154,8 @@ reserve hand-written ids for one-off experiments.
 
 `dispatch` takes the cooperative lock, syncs `--inputs` (rsync), launches the
 command detached on the remote (tmux, else setsid nohup) writing `job.log`,
-`pid`, and `exitcode` under `~/.compute-jobs/JOBID/`, and records
-`~/.claude/compute/jobs/JOBID.json` locally. State is recoverable from those
+`pid`, and `exitcode` under `~/.remote-compute/jobs/JOBID/`, and records
+`~/.remote-compute/jobs/JOBID.json` locally. State is recoverable from those
 files alone — `job-status` works after any restart and releases the lock once
 the job has an exitcode. `job-logs` tails the remote log; `job-pull` rsyncs
 artifacts back.
@@ -166,8 +166,8 @@ artifacts back.
 the human runs ON the compute machine (stdlib only, no install):
 
 ```bash
-python3 ~/.compute-jobs/_tools/compute-top.py        # live, refreshing
-python3 ~/.compute-jobs/_tools/compute-top.py --once # one snapshot, pipe-friendly
+python3 ~/.remote-compute/tools/compute-top.py        # live, refreshing
+python3 ~/.remote-compute/tools/compute-top.py --once # one snapshot, pipe-friendly
 ```
 
 Arrow keys navigate, enter opens a job's log tail with its exit code, `f`
@@ -180,7 +180,7 @@ human the one-liner above once it is present.
 
 - Relay script output faithfully — especially LOCKED refusals, verbatim probe
   errors, and the setup sheets; they are written for the human.
-- Prefer the verbs over hand-editing `~/.claude/compute/resources.yaml`: the
+- Prefer the verbs over hand-editing `~/.remote-compute/resources.yaml`: the
   script writes envs (`add-env`), jobs (`add-job`), capabilities
   (`install-capability`) and availability (`enable`). `policy.*` is the one
   block with no verb yet, so power-policy confirmation and

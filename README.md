@@ -156,8 +156,8 @@ Declare the job once, connecting your workflow's nodes to named parameters:
 
 ```bash
 /remote-compute add-job example-remote-machine-name generate-image-v1 \
-  --workdir '~/.compute-jobs/_tools' \
-  --cmd "python3 ~/.compute-jobs/_caps/comfyui/comfy-run.py \
+  --workdir '~/.remote-compute/tools' \
+  --cmd "python3 ~/.remote-compute/caps/comfyui/comfy-run.py \
          --workflow '/mnt/c/ComfyUI/user/default/workflows/generate-image-v1-api.json' \
          --port 8000 --set 40.text={positive} --set 39.text={negative} \
          --set 36.value={seed} --set 29.filename_prefix={prefix}" \
@@ -184,7 +184,7 @@ To watch what the machine is doing, run the dashboard there (or over SSH from
 here — `-t` gives it a terminal to draw in):
 
 ```bash
-ssh -t example-remote-machine-name 'python3 ~/.compute-jobs/_tools/compute-top.py'
+ssh -t example-remote-machine-name 'python3 ~/.remote-compute/tools/compute-top.py'
 ```
 
 It lists running, finished, and failed jobs, opens each one's log and exit

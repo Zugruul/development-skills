@@ -51,8 +51,8 @@ step "4/7 ship comfy-run.py + declare the demo job (pre-authored template only)"
 : "${RC_WORKFLOW:?set RC_WORKFLOW (API-format workflow path on the remote)}"
 SYNCDIR="$(mktemp -d)"; cp "$(dirname "$HERE")/scripts/remote-capabilities/comfyui/comfy-run.py" "$SYNCDIR/"
 python3 "$RC" add-job "$RC_NICK" comfy-txt2img \
-    --workdir "~/.compute-jobs/_tools" \
-    --cmd "python3 ~/.compute-jobs/_tools/comfy-run.py --workflow ${RC_WORKFLOW} --port ${RC_PORT} --prompt {prompt}" \
+    --workdir "~/.remote-compute/tools" \
+    --cmd "python3 ~/.remote-compute/tools/comfy-run.py --workflow ${RC_WORKFLOW} --port ${RC_PORT} --prompt {prompt}" \
     --description "txt2img via the pre-authored API-format workflow ${RC_WORKFLOW}" \
     --param "prompt:[A-Za-z0-9 ,._-]+" || exit 1
 

@@ -7,7 +7,7 @@ layer (the orchestrator session operating machines the human owns, under the
 human's own key). It implements nothing of SPEC-ASSISTANT §14/E7 and must not
 be cited as satisfying any §14 requirement.
 
-Registry lives at $COMPUTE_HOME (default ~/.claude/compute)/resources.yaml —
+Registry lives at $COMPUTE_HOME (default ~/.remote-compute)/resources.yaml —
 machine-local, never committed. `enable` advertises a machine to a project —
 non-exclusive, capability-style (mirrors assistant.capabilities.<name>): the
 repo's .claude/project.yaml `compute:` section gets a map keyed by alias with
@@ -56,6 +56,12 @@ except ImportError:  # same hard-environment stance as config.py
     sys.stderr.write("PREFLIGHT FAIL: PyYAML is required (pip install pyyaml)\n")
     sys.exit(1)
 
+# The remote layout, in ONE place: everything this tool creates on a compute
+# machine lives under ~/.remote-compute/ (jobs, capability payloads), mirroring
+# the local registry root so the two sides read the same on both machines.
+REMOTE_ROOT = "~/.remote-compute"
+REMOTE_JOBS_ROOT = REMOTE_ROOT + "/jobs"
+
 EXIT_UNREACHABLE, EXIT_USAGE, EXIT_KEYAUTH, EXIT_HOSTKEY, EXIT_SUDO, EXIT_LOCKED = 1, 2, 3, 4, 5, 6
 
 
@@ -64,7 +70,7 @@ def _env(name, default):
 
 
 def compute_home():
-    return _env("COMPUTE_HOME", os.path.expanduser("~/.claude/compute"))
+    return _env("COMPUTE_HOME", os.path.expanduser("~/.remote-compute"))
 
 
 def ssh_config_path():
@@ -524,7 +530,7 @@ def cmd_register(args):
     # mkdir lives HERE, in register, not in probe_resource: hard rule 3 says a
     # probe never writes, and probe/enable/add-env all call probe_resource.
     probe_resource(nick, res)
-    ssh_run(nick, "mkdir -p ~/.compute-jobs")
+    ssh_run(nick, "mkdir -p %s %s" % (remote_path(REMOTE_JOBS_ROOT), remote_path(CAPS_REMOTE_ROOT)))
     # no allowSudo key: sudo rejection is unconditional (hard rule 2), and a
     # policy field implying it is togglable would be a lie
     res.setdefault("policy", {"maxConcurrentJobs": 1, "powerPolicyConfirmed": False})
@@ -856,7 +862,7 @@ def _launch_job(reg, res, nick, workdir, cmd, opts):
     # workdir reaches the remote shell too, via `cd <workdir>`; it faces the
     # same sudo guard as --cmd and is quoted at the interpolation site below.
     reject_sudo(workdir)
-    remote_dir = "~/.compute-jobs/%s" % job_id
+    remote_dir = "%s/%s" % (REMOTE_JOBS_ROOT, job_id)
     # {jobdir} is engine-supplied and can only be resolved HERE, once the job
     # id exists. Without this the placeholder reached the remote shell
     # literally, breaking every bundle job that used it. $COMPUTE_JOB_DIR is
@@ -984,13 +990,13 @@ def cmd_envs(nick):
 # A bundle is DATA, not engine code: a directory with capability.yaml
 # {name, description, payload[], jobs{name: {description, cmd, params, env}}}
 # plus the payload files its jobs invoke. install-capability rsyncs the payload
-# to ~/.compute-jobs/_caps/<name>/ and declares the manifest's jobs through the
+# to ~/.remote-compute/caps/<name>/ and declares the manifest's jobs through the
 # same add-job machinery a human would use. The engine stays domain-agnostic —
 # supporting a new domain means adding a bundle, never editing this file.
 # Templates may use {capdir} (the installed payload dir) and {jobdir} (the
 # per-job directory, resolved at dispatch); everything else is a job param.
 
-CAPS_REMOTE_ROOT = "~/.compute-jobs/_caps"
+CAPS_REMOTE_ROOT = "~/.remote-compute/caps"
 
 
 def cmd_install_capability(argv):
@@ -1220,7 +1226,7 @@ def load_job(job_id):
         sys.exit(EXIT_USAGE)
     except ValueError as e:
         print("ERROR: job state at %s is corrupt (%s) — the job may still be "
-              "running; check the remote ~/.compute-jobs/ directory" % (path, e))
+              "running; check the remote ~/.remote-compute/jobs/ directory" % (path, e))
         sys.exit(EXIT_USAGE)
     if not job.get("remoteDir") or not job.get("resource"):
         print("ERROR: job state at %s is incomplete (missing resource/remoteDir)" % path)
@@ -1272,7 +1278,7 @@ def cmd_job_pull(job_id, dest=None):
     os.makedirs(dest, exist_ok=True)
     # pull the job's OWN directory (artifacts + job.log + exitcode), never the
     # shared workdir -- see the COMPUTE_JOB_DIR contract in _launch_job
-    remote_dir = job.get("remoteDir") or ("~/.compute-jobs/%s" % job_id)
+    remote_dir = job.get("remoteDir") or ("%s/%s" % (REMOTE_JOBS_ROOT, job_id))
     rc = subprocess.run(rsync_argv("%s:%s/" % (job["resource"], remote_dir.replace("~/", "")),
                                    dest + "/"), check=False).returncode
     print("pulled %s -> %s" % (job_id, dest) if rc == 0 else "ERROR: rsync exit %s" % rc)

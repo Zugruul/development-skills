@@ -130,7 +130,7 @@ check "ssh config: hostname" "HostName 192.0.2.17" "$(cat "$SSHDIR/config")"
 _unhardened_ssh="$(grep '^ssh ' "$TLOG" | grep -cv 'BatchMode=yes' || true)"
 check "transport: every ssh invocation is BatchMode" "0" "$_unhardened_ssh"
 check "transport: BatchMode always" "-o BatchMode=yes" "$(cat "$TLOG")"
-check "transport: remote job layout converged" ".compute-jobs" "$(cat "$TLOG")"
+check "transport: remote job layout converged" ".remote-compute/jobs" "$(cat "$TLOG")"
 
 # --- register: idempotent convergence (consistent setup every run) -------
 out="$(run_compute register gpubox 2>&1)"; rc=$?
@@ -154,8 +154,8 @@ check_rc "exec: exit 0" 0 "$rc"
 run_compute exec gpubox -- python -c 'import os; print(1)' >/dev/null 2>&1
 check "exec preserves quoting across argv words" "import os; print(1)" "$(cat "$TLOG")"
 : > "$TLOG"
-run_compute exec gpubox -- 'ls ~/.compute-jobs' >/dev/null 2>&1
-check "exec passes a single command-line argument through" "bash -lc 'ls ~/.compute-jobs'" "$(cat "$TLOG")"
+run_compute exec gpubox -- 'ls ~/.remote-compute/jobs' >/dev/null 2>&1
+check "exec passes a single command-line argument through" "bash -lc 'ls ~/.remote-compute/jobs'" "$(cat "$TLOG")"
 out="$(run_compute exec gpubox -- sudo apt install foo 2>&1)"; rc=$?
 check "exec sudo: rejected" "sudo" "$out"
 check_rc "exec sudo: exit 5" 5 "$rc"
@@ -225,7 +225,7 @@ out="$(run_compute job-status j1 2>&1)"
 check "job-status: recovered from files" "completed" "$out"
 # artifacts are pulled from the job's OWN remote dir, not a shared workdir
 : > "$TLOG"; run_compute job-pull j1 --dest "$CT/pulled" >/dev/null 2>&1
-check "job-pull: pulls the per-job dir" ".compute-jobs/j1" "$(cat "$TLOG")"
+check "job-pull: pulls the per-job dir" ".remote-compute/jobs/j1" "$(cat "$TLOG")"
 check_absent "job-pull: not the shared workdir" ":~/train/" "$(cat "$TLOG")"
 # maxConcurrentJobs is enforced, not advisory (two agents share one GPU)
 run_compute dispatch gpubox --workdir "~/train" --cmd "sleep 1" --holder bob --job-id busy1 >/dev/null 2>&1
@@ -289,7 +289,7 @@ printf '#!/usr/bin/env python3\nprint("hi")\n' > "$BUNDLE/runner.py"
 out="$(run_compute install-capability gpubox "$BUNDLE" 2>&1)"; rc=$?
 check_rc "install-capability: exit 0" 0 "$rc"
 check "install-capability: reports the capability" "demo" "$out"
-check "install-capability: rsyncs the payload" "_caps/demo" "$(cat "$TLOG")"
+check "install-capability: rsyncs the payload" "remote-compute/caps/demo" "$(cat "$TLOG")"
 # rsync spawns its own ssh: without -e it bypasses BatchMode, the pinned
 # known_hosts and COMPUTE_SSH_CONFIG entirely (can block on a password prompt)
 _unhardened_rsync="$(grep '^rsync ' "$TLOG" | grep -cv 'BatchMode=yes' || true)"
@@ -298,7 +298,7 @@ check "install-capability: declares bundle jobs" "demo:greet" "$(run_compute job
 check "install-capability: records it on the resource" "demo" "$(run_compute capabilities gpubox 2>&1)"
 out="$(run_compute run gpubox demo:greet --param 'who=World' --job-id capjob 2>&1)"; rc=$?
 check_rc "bundle job runs: exit 0" 0 "$rc"
-check "bundle job: capdir resolved in remote cmd" "_caps/demo/runner.py" "$(cat "$TLOG")"
+check "bundle job: capdir resolved in remote cmd" "remote-compute/caps/demo/runner.py" "$(cat "$TLOG")"
 # a bundle that tries to smuggle sudo is refused at install time
 BADB="$CT/bad-cap"; mkdir -p "$BADB"
 cat > "$BADB/capability.yaml" <<'EOF'
@@ -322,7 +322,7 @@ check_absent "engine has no comfy code" "comfy" "$(grep -iv '^#' "$PLUGIN/script
 SLMB="$PLUGIN/scripts/remote-capabilities/slm-training"
 out="$(run_compute install-capability gpubox "$SLMB" 2>&1)"; rc=$?
 check_rc "slm-training: install exit 0" 0 "$rc"
-check "slm-training: payload rsynced" "_caps/slm-training" "$(cat "$TLOG")"
+check "slm-training: payload rsynced" "remote-compute/caps/slm-training" "$(cat "$TLOG")"
 jobs_out="$(run_compute jobs gpubox 2>&1)"
 check "slm-training: declares sft" "slm-training:sft" "$jobs_out"
 check "slm-training: declares export-gguf" "slm-training:export-gguf" "$jobs_out"
@@ -334,7 +334,7 @@ check "slm-training: hostile config param refused" "ERROR" "$out"
 check_rc "slm-training: bad param exit 2" 2 "$rc"
 out="$(run_compute run gpubox slm-training:sft --param 'config=configs/tiny-sft.yaml' --job-id slm2 2>&1)"; rc=$?
 check_rc "slm-training: sft dispatches" 0 "$rc"
-check "slm-training: capdir resolved in remote cmd" "_caps/slm-training/train.py" "$(cat "$TLOG")"
+check "slm-training: capdir resolved in remote cmd" "remote-compute/caps/slm-training/train.py" "$(cat "$TLOG")"
 check "slm-training: runs under the training env" "activate" "$(cat "$TLOG")"
 run_compute unlock gpubox --force >/dev/null 2>&1
 # the bundle must stay project-agnostic (any project brings its own config)
@@ -384,7 +384,7 @@ check "run: rendered param into remote cmd" "a rubber duck" "$(cat "$TLOG")"
 : > "$TLOG"
 run_compute add-job gpubox jobdir-probe --workdir "~/w" --cmd "echo out={jobdir}" >/dev/null 2>&1
 run_compute run gpubox jobdir-probe --job-id jd1 >/dev/null 2>&1
-check "run: {jobdir} substituted with the job dir" 'out="$HOME"/.compute-jobs/jd1' "$(cat "$TLOG")"
+check "run: {jobdir} substituted with the job dir" 'out="$HOME"/.remote-compute/jobs/jd1' "$(cat "$TLOG")"
 check_absent "run: {jobdir} never passed through literally" "out={jobdir}" "$(cat "$TLOG")"
 # a newline is allowed by the permissive [^`$;|&<>]+ patterns, so quoting --
 # not the regex -- is what stops it becoming a second command
@@ -543,14 +543,14 @@ import importlib.util, sys
 spec = importlib.util.spec_from_file_location("rc", sys.argv[1])
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 print(m.remote_path("~/train"))
-print(m.remote_path("~/.compute-jobs/j9"))
+print(m.remote_path("~/.remote-compute/jobs/j9"))
 PY
 )"
 _wd="$(printf '%s\n' "$_rendered" | sed -n 1p)"
 _jd="$(printf '%s\n' "$_rendered" | sed -n 2p)"
 check_absent "rendered workdir does not quote the tilde" "'~/" "$_wd"
 HOME="$RP/home" bash -c "mkdir -p $_jd && mkdir -p $_wd && cd $_wd" 2>/dev/null
-check "rendered job dir lands under the real HOME" "yes" "$([ -d "$RP/home/.compute-jobs/j9" ] && echo yes || echo no)"
+check "rendered job dir lands under the real HOME" "yes" "$([ -d "$RP/home/.remote-compute/jobs/j9" ] && echo yes || echo no)"
 check "rendered workdir is enterable on a real shell" "yes" "$([ -d "$RP/home/train" ] && echo yes || echo no)"
 check "no literal tilde directory was created" "no" "$([ -d "$RP/home/~" ] && echo yes || echo no)"
 # a workdir with shell metacharacters is still inert after the tilde rewrite

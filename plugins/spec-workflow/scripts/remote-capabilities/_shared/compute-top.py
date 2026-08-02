@@ -2,7 +2,7 @@
 """compute-top — a terminal dashboard for work dispatched to THIS machine.
 
 Run it ON the compute machine (Linux, WSL, or macOS). It watches
-~/.compute-jobs/ — the directory remote-compute dispatches into — and shows
+~/.remote-compute/jobs/ — the directory remote-compute dispatches into — and shows
 what is running now, what finished, and the full history, refreshing in place.
 
     python3 compute-top.py                 # live dashboard
@@ -22,7 +22,7 @@ Keys (live mode):
 In the log view: up/down and page-up/page-down scroll, g jumps to the top,
 G to the end.
 
-A job is a directory ~/.compute-jobs/<id>/ holding job.log, pid, and exitcode.
+A job is a directory ~/.remote-compute/jobs/<id>/ holding job.log, pid, and exitcode.
 Running means no exitcode file yet. Nothing here writes to a job while it runs;
 deletion only ever removes a job directory you selected, and never one that is
 still running.
@@ -70,7 +70,7 @@ def read_jobs(root):
     for name in names:
         d = os.path.join(root, name)
         if not os.path.isdir(d) or name.startswith("_"):
-            continue  # _caps/_tools are payload dirs, not jobs
+            continue  # payload/scratch dirs are not jobs
         job = {"id": name, "dir": d, "exitcode": None, "state": "running",
                "log_size": 0, "started": None, "finished": None, "pid": None}
         try:
@@ -337,8 +337,8 @@ class Ui:
 
 def main():
     ap = argparse.ArgumentParser(description="Watch work dispatched to this machine.")
-    ap.add_argument("--dir", default="~/.compute-jobs",
-                    help="job directory to watch (default ~/.compute-jobs)")
+    ap.add_argument("--dir", default="~/.remote-compute/jobs",
+                    help="job directory to watch (default ~/.remote-compute/jobs)")
     ap.add_argument("--interval", type=float, default=2.0, help="refresh seconds")
     ap.add_argument("--once", action="store_true", help="print once and exit")
     args = ap.parse_args()

@@ -6,7 +6,7 @@ description: Shows what remote-compute work is queued, running, or finished on a
 # compute-top
 
 A terminal dashboard for work dispatched by [`remote-compute`](../remote-compute/SKILL.md).
-It reads a machine's `~/.compute-jobs/` directory -- the place dispatch writes
+It reads a machine's `~/.remote-compute/jobs/` directory -- the place dispatch writes
 `job.log`, `pid`, and `exitcode` for every job -- and shows what is running now,
 what finished, and the whole history, refreshing in place.
 
@@ -21,14 +21,14 @@ that RECEIVED the work. There are two ways to use it:
 **On the compute machine itself** (sitting at the WSL/Linux/macOS box):
 
 ```bash
-python3 ~/.compute-jobs/_tools/compute-top.py
+python3 ~/.remote-compute/tools/compute-top.py
 ```
 
 **From another machine over SSH** -- the usual case, watching a GPU box from a
 laptop:
 
 ```bash
-ssh -t <alias> 'python3 ~/.compute-jobs/_tools/compute-top.py'
+ssh -t <alias> 'python3 ~/.remote-compute/tools/compute-top.py'
 ```
 
 The `-t` is required: it allocates a terminal so the dashboard can draw and so
@@ -47,10 +47,10 @@ two GPU boxes the human runs it twice, once per alias.
 ```bash
 rsync -az -e "ssh -o BatchMode=yes" \
   "../../scripts/remote-capabilities/_shared/compute-top.py" \
-  <alias>:.compute-jobs/_tools/
+  <alias>:.remote-compute/jobs/_tools/
 ```
 
-If `~/.compute-jobs/` does not exist yet, nothing has been dispatched to that
+If `~/.remote-compute/jobs/` does not exist yet, nothing has been dispatched to that
 machine -- the directory is created by the first dispatch, and the script says
 so rather than failing obscurely.
 
@@ -63,7 +63,7 @@ running one. `running` means no
 directories (`_caps`, `_tools`) are not jobs and are never listed.
 
 ```
-/home/user/.compute-jobs — 34 job(s): 1 running, 32 done, 1 failed
+/home/user/.remote-compute/jobs — 34 job(s): 1 running, 32 done, 1 failed
 running   train-run-042                age 12m03s   took 12m03s  exit -      log 4.3K
 done      render-duck                  age 2h11m    took 25s     exit 0      log 285B
 failed    render-broken-workflow       age 2h14m    took 1s      exit 2      log 345B
@@ -89,7 +89,7 @@ top, `G` to the end.
 - `--once` -- print one snapshot and exit. Also what happens automatically when
   stdout is not a terminal, so it is safe in pipes and scripts.
 - `--interval N` -- refresh every N seconds (default 2).
-- `--dir PATH` -- watch a different job directory (default `~/.compute-jobs`).
+- `--dir PATH` -- watch a different job directory (default `~/.remote-compute/jobs`).
 
 ## Rules
 
