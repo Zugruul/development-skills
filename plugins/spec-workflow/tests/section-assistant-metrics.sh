@@ -617,3 +617,56 @@ check "metrics endpoint: a fresh root with no traces db returns 200, never an er
 check "metrics endpoint: a fresh root has zero turn duration count" "TURN_DURATION_COUNT 0" "$zero_out"
 check "metrics endpoint: a fresh root has zero provider errors" "PROVIDER_ERRORS 0" "$zero_out"
 rm -rf "$_amz_root"
+
+# ------------------------------------------------------------------------
+echo "-- integration: metrics port already held -> start() degrades (warns, no server), never a boot crash --"
+# 2026-08-02 live incident: a stale neural-view from another worktree kept
+# holding the SHARED exposition port (Sec10.4: one server per machine), so
+# every later `serve` died at boot inside engine.start() on EADDRINUSE --
+# taking the WHOLE server down over an optional observability side-car.
+# Bind failure must degrade exactly like the whisper sidecar's boot posture:
+# one stderr line, no metrics server mounted, everything else up.
+_amb_root="$(mktemp -d)"
+_amb_port="$(_rand_port)"
+am_repo "$_amb_root" jarvis true 127.0.0.1 "$_amb_port"
+
+bindfail_out="$(SCRIPTS_DIR="$AM_SCRIPTS" ROOT="$_amb_root" PORT="$_amb_port" python3 - 2>&1 <<'PY'
+import os, socket, sys
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import engine
+
+root = os.environ["ROOT"]
+port = int(os.environ["PORT"])
+blocker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+blocker.bind(("127.0.0.1", port))
+blocker.listen(1)
+
+state_dir = os.path.join(root, ".claude", "assistant-engine-state")
+e = engine.AssistantEngine(lambda: [("jarvis", root)], state_dir)
+try:
+    e.start()
+    print("START_SURVIVED", True)
+except OSError:
+    # RED state: start() raised AFTER its non-daemon workers spawned --
+    # stop() them or this fixture process never exits.
+    print("START_SURVIVED", False)
+    e.stop()
+    blocker.close()
+    raise SystemExit(0)
+try:
+    print("METRICS_SERVER_NONE", e._metrics_server is None)
+    print("METRICS_THREAD_NONE", e._metrics_thread is None)
+finally:
+    e.stop()
+    print("STOP_OK", True)
+blocker.close()
+PY
+)"
+check "bind-failure: engine.start() survives an already-held metrics port" "START_SURVIVED True" "$bindfail_out"
+check "bind-failure: no metrics server object is mounted" "METRICS_SERVER_NONE True" "$bindfail_out"
+check "bind-failure: no metrics thread is left behind" "METRICS_THREAD_NONE True" "$bindfail_out"
+check "bind-failure: stop() still shuts down cleanly" "STOP_OK True" "$bindfail_out"
+check "bind-failure: one warning names the disabled exposition" "metrics exposition disabled" "$bindfail_out"
+check "bind-failure: the warning names the exact port it could not bind" "$_amb_port" "$bindfail_out"
+rm -rf "$_amb_root"

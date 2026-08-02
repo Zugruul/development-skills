@@ -429,3 +429,87 @@ python3 "$NV" stop >/dev/null
 unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT
 rm -rf "$_pfstate" "$_pfroot"
 
+
+echo "== neural-view (stop --force clears the shared assistant metrics port, 2026-08-02 live incident) =="
+# A stale neural-view from ANOTHER worktree can outlive this state dir's
+# pidfile (a later crashed `serve` overwrites it) while still holding the
+# SHARED Prometheus exposition port (SPEC-ASSISTANT.md Sec10.4: one metrics
+# server per machine). Pre-fix, `stop --force` only ever probed the MAIN
+# port -- free in this scenario -- so it found nothing to do and every later
+# `serve` kept dying at boot on EADDRINUSE. It must ALSO probe each metrics
+# port the repos file's roots configure and clear a neural-view-looking
+# holder there, with the same SCRIPT_NAME refusal guard (#67) as the main
+# port. Fixture salting mirrors the #416 zombie above.
+_mstate="$(mktemp -d)"
+_mroot="$(mktemp -d)"
+_mport="$(_rand_port)"      # the metrics port the fixture root configures
+_mmain="$(_rand_port)"      # main port: free the whole time (that's the point)
+mkdir -p "$_mroot/.claude"
+printf '%s\n' '# neural-network' >"$_mroot/.claude/.neural-network"
+cat >"$_mroot/.claude/project.yaml" <<EOF
+schemaVersion: 2
+assistant:
+    version: 1
+    enabled: true
+    names: [jarvis]
+    systemPrompt: |
+        You are jarvis.
+    llm:
+        provider: openai
+        model: gpt-5.6-sol
+    observability:
+        metrics:
+            prometheus:
+                enabled: true
+                host: 127.0.0.1
+                port: $_mport
+EOF
+printf '%s\n' "[[\"jarvis\", \"$_mroot\"]]" >"$_mstate/repos.json"
+NVBIND_PORT="$_mport" python3 - neural-view.py-stale-metrics-holder-fixture <<'PY' &
+import os, socket, time
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", int(os.environ["NVBIND_PORT"])))
+s.listen(1)
+time.sleep(20)
+PY
+_mzpid=$!
+sleep 0.3   # let the fixture actually bind before stop --force probes it
+export NEURAL_VIEW_STATE="$_mstate" NEURAL_VIEW_PORT="$_mmain"
+out="$(python3 "$NV" stop --force 2>&1)"; rc=$?
+check "stale metrics holder: stop --force kills it and names the PID" "killed zombie PID $_mzpid" "$out"
+check "stale metrics holder: success message names the metrics port" "metrics port $_mport" "$out"
+check_rc "stale metrics holder: stop --force exits 0" 0 "$rc"
+check "stale metrics holder: process no longer alive" "ok" "$(kill -0 "$_mzpid" 2>/dev/null && echo FAIL || echo ok)"
+_mfreed=0
+for _ in $(seq 1 30); do
+    if ! (exec 3<>"/dev/tcp/127.0.0.1/$_mport") 2>/dev/null; then _mfreed=1; break; fi
+    sleep 0.1
+done
+check "stale metrics holder: metrics port actually freed" "1" "$_mfreed"
+kill "$_mzpid" 2>/dev/null || true
+wait "$_mzpid" 2>/dev/null || true
+
+# A FOREIGN process on the metrics port (port 9464 is OTel's standard
+# exporter port -- a legitimate collision) must never be killed, and must
+# never turn the stop into a failure either: post-fix the engine degrades
+# instead of crashing at boot, so a squatter is a note, not a blocker.
+NVBIND_PORT="$_mport" python3 - <<'PY' &
+import os, socket, time
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", int(os.environ["NVBIND_PORT"])))
+s.listen(1)
+time.sleep(20)
+PY
+_mfpid=$!
+sleep 0.3
+out="$(python3 "$NV" stop --force 2>&1)"; rc=$?
+check "foreign metrics holder: stop --force names it but leaves it alone" "leaving it alone" "$out"
+check_rc "foreign metrics holder: a squatter never fails the stop (exit 0)" 0 "$rc"
+if kill -0 "$_mfpid" 2>/dev/null; then echo "ok   foreign metrics holder: still alive after stop --force"
+else echo "FAIL foreign metrics holder: still alive after stop --force — it got killed"; fails=$((fails + 1)); fi
+kill "$_mfpid" 2>/dev/null || true
+wait "$_mfpid" 2>/dev/null || true
+unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT
+rm -rf "$_mstate" "$_mroot"
