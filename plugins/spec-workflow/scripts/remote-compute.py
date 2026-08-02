@@ -1041,6 +1041,7 @@ def cmd_install_capability(argv):
             "params": {k: (dict(v) if isinstance(v, dict) else {"pattern": v})
                        for k, v in (job.get("params") or {}).items()},
             "capability": cap,
+            "jobIdSchema": manifest.get("jobIdSchema") or job.get("jobIdSchema"),
         }
         declared.append(key)
     res.setdefault("capabilities_installed", {})[cap] = {
@@ -1124,6 +1125,37 @@ def cmd_jobs(nick):
     return 0
 
 
+def slug(value, limit=24):
+    """A shell-inert, filename-safe fragment of a param value: lowercased,
+    extension dropped, runs of non-alphanumerics collapsed to a single dash.
+    Used only for building job ids, never for anything the remote executes."""
+    text = str(value).rsplit(".", 1)[0] if "." in str(value) else str(value)
+    text = re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-").lower()
+    return text[:limit].strip("-")
+
+
+def render_job_id(schema, given):
+    """Build a job id from a capability's declared template, e.g.
+    'img-{model}-{seed}'. Every substituted value is slugified, so a hostile
+    param can never shape the id; the result still faces JOB_ID_RE."""
+    template = (schema or {}).get("template")
+    if not template:
+        return None
+    out = template
+    for name, value in given.items():
+        out = out.replace("{%s}" % name, slug(value))
+    unfilled = re.search(r"\{[^}]*\}", out) is not None
+    out = re.sub(r"\{[^}]*\}", "", out)          # drop unfilled placeholders
+    out = re.sub(r"-{2,}", "-", out).strip("-")   # tidy the seams
+    if unfilled or not out:
+        # The template referenced params this job does not declare, so the id
+        # would be a CONSTANT -- every run would reuse it and clobber the
+        # previous run's state file. Fall back to a unique suffix.
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S%f")[:20]
+        out = ("%s-%s" % (out, stamp)).strip("-")
+    return out or None
+
+
 def cmd_run(argv):
     nick, job_name = argv[0], argv[1] if len(argv) > 1 else None
     reg = load_registry()
@@ -1167,7 +1199,13 @@ def cmd_run(argv):
         # reaches the remote shell unquoted (mirrors SPEC-ASSISTANT §11.5)
         rendered = rendered.replace("{%s}" % name, shlex.quote(value))
     reject_sudo(rendered)
-    launch_opts = {"--holder": opts["--holder"], "--job-id": opts["--job-id"],
+    job_id = opts["--job-id"]
+    if not job_id and job.get("jobIdSchema"):
+        # the capability declares how its artifact runs should be named, so a
+        # batch is identifiable afterwards (which model, which seed) without
+        # opening a single log
+        job_id = render_job_id(job["jobIdSchema"], given)
+    launch_opts = {"--holder": opts["--holder"], "--job-id": job_id,
                    "--inputs": opts["--inputs"], "--env": job.get("env")}
     return _launch_job(reg, res, nick, job["workdir"], rendered, launch_opts)
 

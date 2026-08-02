@@ -625,6 +625,57 @@ out="$(run_compute add-job gpubox bad-default --workdir "~/w" --cmd "echo {n}" \
 check "default that violates its own pattern is refused" "does not match" "$out"
 check_rc "bad default: exit 2" 2 "$rc"
 
+# --- job-id schema: artifact jobs get consistent, sortable ids -------------
+# A capability may declare how job ids are built, so every artifact run is
+# identifiable after the fact (which model, which seed) without opening logs.
+IDB="$CT/idcap"; mkdir -p "$IDB"
+cat > "$IDB/capability.yaml" <<'EOF'
+version: 1
+name: idcap
+description: capability declaring a job-id schema
+payload:
+-   run.py
+jobIdSchema:
+    template: "img-{model}-{seed}"
+    description: prefix, model slug, then the seed as the suffix
+jobs:
+    render:
+        description: fake render
+        cmd: python3 {capdir}/run.py --seed {seed} --model {model}
+        params:
+            seed: "[0-9]+"
+            model: "[^`$;|&<>]+"
+EOF
+printf '#!/usr/bin/env python3\nprint("ok")\n' > "$IDB/run.py"
+run_compute install-capability gpubox "$IDB" >/dev/null 2>&1
+: > "$TLOG"
+run_compute run gpubox idcap:render --param seed=12345 --param 'model=waiIllustriousSDXL_v150.safetensors' >/dev/null 2>&1
+_ids="$(ls "$CH/jobs" 2>/dev/null)"
+check "job id is derived from the declared schema" "img-waiillustrioussdxl-v150-12345.json" "$_ids"
+# an explicit --job-id still wins over the schema
+run_compute run gpubox idcap:render --param seed=999 --param 'model=x.safetensors' --job-id explicit-wins >/dev/null 2>&1
+check "explicit --job-id overrides the schema" "explicit-wins.json" "$(ls "$CH/jobs")"
+# the rendered id must satisfy the same validation as a hand-typed one
+# a ';' is already refused by the param pattern, so use a value the pattern
+# ALLOWS but that would still be ugly in a filename (spaces, slashes)
+run_compute run gpubox idcap:render --param seed=77 --param 'model=a b/c d.safetensors' >/dev/null 2>&1
+check_absent "schema-derived ids carry no path separators" "a b/c" "$(ls "$CH/jobs")"
+check "schema slugifies a hostile model name" "img-a-b-c-d-77.json" "$(ls "$CH/jobs")"
+# a template whose placeholders the job does not declare must NOT collapse to
+# a constant: two runs would share one id and the second would clobber the
+# first's state file
+_uniq="$(python3 - "$COMPUTE" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("rc", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+a = m.render_job_id({"template": "img-{model}-{seed}"}, {"port": "8000"})
+b = m.render_job_id({"template": "img-{model}-{seed}"}, {"port": "8000"})
+print("A", a); print("B", b); print("DIFFER", a != b)
+PY
+)"
+check "unfilled placeholders still yield a unique id" "DIFFER True" "$_uniq"
+check "unfilled placeholders keep the prefix and add a unique suffix" "A img-" "$_uniq"
+
 # --- remove --------------------------------------------------------------
 out="$(run_compute remove gpubox 2>&1)"
 check_absent "remove: gone from registry" "gpubox" "$(cat "$CH/resources.yaml")"

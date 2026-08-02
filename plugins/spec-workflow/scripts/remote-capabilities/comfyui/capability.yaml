@@ -5,6 +5,17 @@ description: >-
     remote machine, bound to its own loopback. Jobs submit a PRE-AUTHORED
     API-format workflow file and only ever change input VALUES on it -- never
     graph structure (compute-registry-plan-v3 §3.6 / SPEC-ASSISTANT §14.2).
+# How artifact runs are named when --job-id is omitted. Artifacts outlive the
+# session that made them, so an id has to say WHAT produced it: a stable
+# prefix identifies the kind, the model slug says which checkpoint ran, and
+# the seed goes last so a batch sorts together and one image is reproducible
+# from its id alone.
+jobIdSchema:
+    template: "img-{model}-{seed}"
+    description: >-
+        img-<model-slug>-<seed>. Pass --job-id explicitly to override. Values
+        are slugified (lowercased, extension dropped, non-alphanumerics to
+        dashes), so the id is always filename- and shell-safe.
 payload:
 -   comfy-run.py
 jobs:
@@ -18,6 +29,13 @@ jobs:
             workflow: "[^`$;|&<>]+"
             port: "[0-9]+"
             sets: "[^`$;|&<>]*"
+    list-nodes:
+        description: >-
+            Print every settable node/input of a workflow file, so you can write
+            the --set bindings for a NEW workflow without opening it.
+        cmd: python3 {capdir}/comfy-run.py --list-nodes --workflow {workflow}
+        params:
+            workflow: "[^`$;|&<>]+"
     list-models:
         description: List the checkpoints this ComfyUI server offers.
         cmd: python3 {capdir}/comfy-run.py --list-models --port {port}

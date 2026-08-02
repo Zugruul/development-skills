@@ -76,7 +76,10 @@ def apply_set(workflow, spec):
     name_input, _, value = spec.partition("=")
     name, _, input_name = name_input.rpartition(".")
     if not name or not input_name:
-        raise KeyError("--set needs NAME.INPUT=VALUE (got %r)" % spec)
+        raise KeyError(
+            "--set needs NAME.INPUT=VALUE (got %r). If this is part of a value "
+            "containing spaces, quote it inside --sets, e.g. "
+            "--sets '40.text=\"a b c\" 36.value=42'" % spec)
     nid = find_node(workflow, name)
     inputs = workflow[nid].setdefault("inputs", {})
     old = inputs.get(input_name)
@@ -149,10 +152,17 @@ def main():
                          "since each param is shell-quoted into one argv word")
     ap.add_argument("--list-models", action="store_true",
                     help="print the checkpoints this ComfyUI offers, then exit")
+    ap.add_argument("--list-nodes", action="store_true",
+                    help="print every settable node/input in --workflow, then exit "
+                         "(use it to write the --set bindings for a NEW workflow)")
     args = ap.parse_args()
 
     if not args.workflow and not args.list_models:
         print("ERROR: --workflow is required (except with --list-models)")
+        return 2
+
+    if args.list_nodes and not args.workflow:
+        print("ERROR: --list-nodes needs --workflow")
         return 2
 
     if args.list_models:
@@ -186,6 +196,24 @@ def main():
               "Settings -> Dev mode, then 'Save (API Format)'), and point --workflow "
               "at that file." % args.workflow)
         return 2
+    if args.list_nodes:
+        # what a caller can bind: literal inputs only. A list value is a LINK
+        # from another node -- setting it would rewire the graph, which this
+        # tool never does, so those are shown as (linked) and not settable.
+        for nid in sorted(workflow, key=lambda k: int(k) if k.isdigit() else 0):
+            node = workflow[nid]
+            title = (node.get("_meta") or {}).get("title") or ""
+            print("%-5s %-28s %s" % (nid, node.get("class_type", "?"), title))
+            for iname, ival in (node.get("inputs") or {}).items():
+                if isinstance(ival, list):
+                    print("        %-22s (linked)" % iname)
+                else:
+                    shown = str(ival)
+                    if len(shown) > 60:
+                        shown = shown[:57] + "..."
+                    print("        %-22s = %s" % (iname, shown))
+        return 0
+
     if args.prompt is not None:
         nid = substitute_prompt(workflow, args.prompt, args.prompt_node)
         print("prompt -> node %s" % nid)

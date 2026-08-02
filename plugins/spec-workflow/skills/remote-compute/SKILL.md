@@ -124,6 +124,32 @@ pipelines) from model output. A real end-to-end walkthrough lives in
 `tests/e2e-remote-compute-manual.sh` (manual, network-touching — deliberately
 not part of the hermetic gate).
 
+## naming artifact jobs
+
+For jobs that PRODUCE artifacts (images, video, models), let the capability
+name the run: omit `--job-id` and the bundle's `jobIdSchema` builds one. The
+shipped comfyui bundle uses `img-{model}-{seed}`, so a render lands as
+`img-waiillustrioussdxl-v150-129381729381723211`.
+
+The shape matters because artifacts outlive the session that made them:
+
+- a stable **prefix** says what kind of run it was (`img-`, `vid-`),
+- the **model slug** says which checkpoint produced it,
+- the **seed last** makes a batch sort together and makes any single output
+  reproducible from its id alone.
+
+A bundle declares it in `capability.yaml`:
+
+```yaml
+jobIdSchema:
+    template: "img-{model}-{seed}"
+```
+
+Any `{param}` of that job may appear in the template; values are slugified, so
+the id is always filename- and shell-safe. An explicit `--job-id` always wins.
+Recommend the schema-derived id when the human is generating artifacts, and
+reserve hand-written ids for one-off experiments.
+
 ## dispatch and jobs
 
 `dispatch` takes the cooperative lock, syncs `--inputs` (rsync), launches the
