@@ -147,23 +147,70 @@ def _lock_path(root):
     return os.path.join(os.path.realpath(claude_dir), ".setup-assistant.lock")
 
 
+# Review round 1 (#496, MAJOR): _project_yaml_lock went from ONE
+# acquisition site (ensure_project_yaml_assistant) to FOUR (that one plus
+# apply_setting, ensure_agents_md, _update_persona_block) in the locking
+# fix below, and fix 3 further down wraps PAIRS of those in one outer
+# `with`. fcntl.flock() locks are per open-file-description, NOT reentrant
+# within a process -- a second bare os.open()+flock() on the same path from
+# the SAME process blocks on its own outer lock. `_PROJECT_YAML_LOCK_STATE`
+# makes `_project_yaml_lock` reentrant, ported verbatim from brain.py's
+# `_BRAIN_LOCK_STATE`/`brain_lock` (same repo, same hazard, already solved
+# there for the identical reason -- see brain.py's module-level comment
+# above `_BRAIN_LOCK_STATE` for the full mechanism explanation).
+#
+# Round-2 note: this dict is PROCESS-global (module-level), not
+# thread-local -- fine today, since every caller in this module's call
+# graph runs single-threaded per CLI invocation (one process, one thread,
+# calling into itself). It becomes a latent trap the moment anything
+# imports this module and calls into it from MULTIPLE THREADS of the same
+# process (e.g. a future in-process engine handling concurrent requests):
+# two threads would see the SAME dict entry and treat each other's
+# unrelated acquisitions as reentrant no-ops, defeating the mutual
+# exclusion this lock exists to provide. Not a risk for the current CLI
+# entrypoint; would need real thread-local state (or a per-thread key) if
+# this module ever grows an in-process, multi-threaded caller.
+_PROJECT_YAML_LOCK_STATE = {}
+
+
 @contextlib.contextmanager
 def _project_yaml_lock(root):
     """Cross-process exclusive lock guarding the whole read-decide-write
     critical section against a concurrent setup-assistant invocation on the
-    same root (review r2 finding 1)."""
+    same root (review r2 finding 1). Originally scoped to
+    `ensure_project_yaml_assistant`'s project.yaml critical section; issue
+    #496 widened its callers to `apply_setting` (every settings verb) and
+    both AGENTS.md writers (`ensure_agents_md`, `_update_persona_block`) --
+    one lock for both per-root config files, since nothing in this module's
+    call graph ever acquires it while already holding it from a DIFFERENT,
+    unrelated critical section (every call site is sequential/standalone or
+    a deliberate outer wrapper -- see each caller's docstring). Reentrant
+    WITHIN a single process (review round 1 MAJOR) via
+    `_PROJECT_YAML_LOCK_STATE` above -- a second acquisition from the SAME
+    process is a cheap no-op rather than a silent self-deadlock."""
     path = _lock_path(root)
+    state = _PROJECT_YAML_LOCK_STATE.get(path)
+    if state is not None:
+        state[1] += 1
+        try:
+            yield
+        finally:
+            state[1] -= 1
+        return
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
     except Exception:
         os.close(fd)
         raise
+    _PROJECT_YAML_LOCK_STATE[path] = [fd, 1]
     try:
         yield
     finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
+        entry = _PROJECT_YAML_LOCK_STATE.pop(path, None)
+        if entry is not None:
+            fcntl.flock(entry[0], fcntl.LOCK_UN)
+            os.close(entry[0])
 
 
 def _parse_text(text):
@@ -553,30 +600,44 @@ def _default_agents_md(main_name, block, persona_block=None):
 def ensure_agents_md(root):
     """Create-if-absent persona AGENTS.md; always regenerate the marker-
     delimited enabled-skills block in place (§11.9), leaving any prose
-    outside the markers untouched."""
+    outside the markers untouched.
+
+    Issue #496: the read-modify-write critical section runs under
+    `_project_yaml_lock` -- reused rather than a dedicated
+    `_agents_md_lock` because (a) it's the simplest fix that closes the
+    race and (b) project.yaml and AGENTS.md are both per-root config this
+    same settings/scaffold call graph touches, always sequentially within
+    one call chain (never nested -- see `apply_setting`'s docstring and
+    `scaffold`'s call order below), so sharing one lock costs nothing but a
+    slightly coarser cross-process serialization and avoids a second lock
+    file to keep in sync. Without this, `scaffold`'s call here and a
+    concurrent `set-persona`'s `_update_persona_block` call race the SAME
+    file's read-modify-write, each computing its new content from a
+    `before` read that the other's write can invalidate mid-flight."""
     path = os.path.join(root, AGENTS_MD_REL)
-    cfg_path = os.path.join(root, PROJECT_YAML_REL)
-    cfg = _load(root, cfg_path)
-    names = project_config.dig(cfg, "assistant.names") or ["assistant"]
-    main_name = names[0] if names else "assistant"
-    block = _skills_block(_enabled_capabilities(root))
+    with _project_yaml_lock(root):
+        cfg_path = os.path.join(root, PROJECT_YAML_REL)
+        cfg = _load(root, cfg_path)
+        names = project_config.dig(cfg, "assistant.names") or ["assistant"]
+        main_name = names[0] if names else "assistant"
+        block = _skills_block(_enabled_capabilities(root))
 
-    if not os.path.exists(path):
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(_default_agents_md(main_name, block))
-        return True
+        if not os.path.exists(path):
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(_default_agents_md(main_name, block))
+            return True
 
-    with open(path, "r", encoding="utf-8") as fh:
-        before = fh.read()
-    after = _replace_or_append_block(before, block)
-    # the file-output contract regenerates in place the same way (its own
-    # marker pair), so existing personas pick it up on the next scaffold.
-    after = _replace_or_append_block(after, _output_contract_block(), start=OUT_START, end=OUT_END)
-    if after != before:
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(after)
-        return True
-    return False
+        with open(path, "r", encoding="utf-8") as fh:
+            before = fh.read()
+        after = _replace_or_append_block(before, block)
+        # the file-output contract regenerates in place the same way (its own
+        # marker pair), so existing personas pick it up on the next scaffold.
+        after = _replace_or_append_block(after, _output_contract_block(), start=OUT_START, end=OUT_END)
+        if after != before:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(after)
+            return True
+        return False
 
 
 def _place_persona_before_generated_blocks(text, block):
@@ -613,44 +674,54 @@ def _update_persona_block(root, text):
     exact line isn't found.
 
     May raise OSError (e.g. an unwritable AGENTS.md) — callers decide how
-    to report that; `set_persona` catches it, see its docstring."""
+    to report that; `set_persona` catches it, see its docstring.
+
+    Issue #496: the read-modify-write critical section runs under
+    `_project_yaml_lock`, same reuse rationale as `ensure_agents_md` above
+    (both writers touch the same file and this same lock already
+    serializes `scaffold`'s call to `ensure_agents_md`, so racing the two
+    against each other closes the whole AGENTS.md race in one lock rather
+    than two). `set_persona` calls `apply_setting` (locks, then releases)
+    BEFORE calling this (locks again) -- sequential, never nested, so no
+    self-deadlock."""
     path = os.path.join(root, AGENTS_MD_REL)
     block = f"{PERSONA_START}\n{text}\n{PERSONA_END}"
 
-    cfg_path = os.path.join(root, PROJECT_YAML_REL)
-    cfg = _load(root, cfg_path)
-    names = project_config.dig(cfg, "assistant.names") or ["assistant"]
-    main_name = names[0] if names else "assistant"
+    with _project_yaml_lock(root):
+        cfg_path = os.path.join(root, PROJECT_YAML_REL)
+        cfg = _load(root, cfg_path)
+        names = project_config.dig(cfg, "assistant.names") or ["assistant"]
+        main_name = names[0] if names else "assistant"
 
-    if not os.path.exists(path):
-        skills_block = _skills_block(_enabled_capabilities(root))
-        content = _default_agents_md(main_name, skills_block, persona_block=block)
+        if not os.path.exists(path):
+            skills_block = _skills_block(_enabled_capabilities(root))
+            content = _default_agents_md(main_name, skills_block, persona_block=block)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(content)
+            return True
+
+        with open(path, "r", encoding="utf-8") as fh:
+            before = fh.read()
+        lines = before.split("\n")
+
+        if any(line.strip() == PERSONA_START for line in lines):
+            # Already personalized once (a re-run) -- regenerate in place.
+            after = _replace_or_append_block(before, block, start=PERSONA_START, end=PERSONA_END)
+        else:
+            bare = _bare_intro_line(main_name)
+            after = None
+            for i, line in enumerate(lines):
+                if line.strip() == bare:
+                    after = "\n".join(lines[:i] + block.split("\n") + lines[i + 1:])
+                    break
+            if after is None:
+                after = _place_persona_before_generated_blocks(before, block)
+
+        if after == before:
+            return False
         with open(path, "w", encoding="utf-8") as fh:
-            fh.write(content)
+            fh.write(after)
         return True
-
-    with open(path, "r", encoding="utf-8") as fh:
-        before = fh.read()
-    lines = before.split("\n")
-
-    if any(line.strip() == PERSONA_START for line in lines):
-        # Already personalized once (a re-run) -- regenerate in place.
-        after = _replace_or_append_block(before, block, start=PERSONA_START, end=PERSONA_END)
-    else:
-        bare = _bare_intro_line(main_name)
-        after = None
-        for i, line in enumerate(lines):
-            if line.strip() == bare:
-                after = "\n".join(lines[:i] + block.split("\n") + lines[i + 1:])
-                break
-        if after is None:
-            after = _place_persona_before_generated_blocks(before, block)
-
-    if after == before:
-        return False
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(after)
-    return True
 
 
 # --- scaffold entrypoint -------------------------------------------------------
@@ -674,22 +745,85 @@ def scaffold(root, names=None, provider=None, model=None):
 
 # --- settings editor ------------------------------------------------------------
 
-def apply_setting(root, mutator):
-    """Snapshot project.yaml, run mutator(path), validate; revert + return
-    errors on failure, else (True, [])."""
+def _require_project_yaml(root):
+    """Return `None` if `root`'s project.yaml exists, else the `(False,
+    [errors])` tuple `apply_setting` returns for a missing one.
+
+    Review round 2 (#496): extracted so callers that wrap `apply_setting`
+    in their OWN outer `_project_yaml_lock` acquisition (`enable_capability`,
+    `disable_capability`, `set_persona` -- see round 1 fix 3) can call this
+    BEFORE taking that outer lock, and return early without ever acquiring
+    it. Round 1 fix 1 hoisted `apply_setting`'s OWN existence check above
+    ITS lock acquisition to stop a refused verb from littering
+    `.claude/.setup-assistant.lock` into a non-assistant root -- but fix 3's
+    outer-lock wrapping (landed in the SAME round) re-introduced exactly
+    that regression for those three verbs: their outer lock is acquired
+    (creating `.claude/`) BEFORE `apply_setting`'s own hoisted check ever
+    runs. Calling this helper first, in the wrapper, closes that gap."""
     path = os.path.join(root, PROJECT_YAML_REL)
     if not os.path.exists(path):
         return False, [f"{path}: no project.yaml — run setup-assistant scaffold first"]
-    with open(path, "r", encoding="utf-8") as fh:
-        original = fh.read()
-    mutator(path)
-    cfg = _load(root, path)
-    errors = validate_assistant(cfg.get("assistant") or {})
-    if errors:
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(original)
-        return False, errors
-    return True, []
+    return None
+
+
+def apply_setting(root, mutator):
+    """Snapshot project.yaml, run mutator(path), validate; revert + return
+    errors on failure, else (True, []).
+
+    Issue #496: the whole snapshot->mutate->validate->revert critical
+    section runs under `_project_yaml_lock` (the same cross-process flock
+    `ensure_project_yaml_assistant` already uses) -- previously only the
+    scaffold path was locked, so two concurrent settings verbs (set-model,
+    set-provider, enable/disable-capability, set-persona's project.yaml
+    half) racing `mutator`'s own unlocked read-modify-write
+    (`config.set_config`, a plain `open(...).write()`, not atomic) could
+    torn-write project.yaml, or read a torn intermediate state and revert a
+    perfectly valid concurrent write out from under it. No caller invokes
+    `apply_setting` while already holding this lock (each call site --
+    `set_provider`/`set_model`/`enable_capability`/`disable_capability`/
+    `set_persona` -- calls it standalone, never nested inside another
+    locked section, or -- after review round 1 fix 2 -- wraps it in its own
+    outer acquisition of the SAME lock, which is now reentrant), so this
+    can't self-deadlock.
+
+    Review round 1 fix 1 (MINOR, confirmed regression): the project.yaml
+    existence check (`_require_project_yaml`) runs BEFORE the lock is ever
+    taken -- `_lock_path`'s `os.makedirs(root/.claude, exist_ok=True)` is a
+    side effect of merely ACQUIRING the lock, so taking it first (the
+    original shape of this fix) littered `.claude/.setup-assistant.lock`
+    into any root a settings verb was run against, even one with no
+    project.yaml and no other assistant footprint at all. A second check
+    remains INSIDE the lock (a concurrent process could delete project.yaml
+    between the two checks; re-checking under the lock is what makes the
+    whole thing correct, not just fast)."""
+    path = os.path.join(root, PROJECT_YAML_REL)
+    pre = _require_project_yaml(root)
+    if pre is not None:
+        return pre
+    with _project_yaml_lock(root):
+        pre = _require_project_yaml(root)
+        if pre is not None:
+            return pre
+        with open(path, "r", encoding="utf-8") as fh:
+            original = fh.read()
+        mutator(path)
+        cfg = _load(root, path)
+        errors = validate_assistant(cfg.get("assistant") or {})
+        if errors:
+            # Review round 1 advisory: the revert write goes through the
+            # same write-to-temp-then-os.replace discipline as every other
+            # write in this module (issue #447/review r2 finding 1) rather
+            # than a plain truncate-and-write -- a concurrent reader (or a
+            # second racing writer, now excluded by the lock above, but a
+            # bare `open(root's project.yaml)` from OUTSIDE this module,
+            # e.g. a human's editor autosave, isn't) never observes a
+            # partially-written revert. `config.set_config`'s own
+            # non-atomic write (the success path just above, via `mutator`)
+            # is a separate, out-of-scope follow-up -- noted in the #496
+            # report, not fixed here.
+            _atomic_write_text(path, original)
+            return False, errors
+        return True, []
 
 
 def set_provider(root, provider):
@@ -701,21 +835,45 @@ def set_model(root, model):
 
 
 def enable_capability(root, name):
-    ok, errors = apply_setting(
-        root, lambda p: project_config.set_config(p, f"assistant.capabilities.{name}.enabled", True)
-    )
-    if ok:
-        ensure_agents_md(root)  # §11.9: keep the generated roster in sync with every flip
-    return ok, errors
+    # Review round 1 fix 3, round-2 correction: the flip (apply_setting)
+    # and roster refresh (ensure_agents_md) are wrapped in one outer lock
+    # for consistency with set_persona's pairing below -- but unlike
+    # set_persona's project.yaml/AGENTS.md pair, no real split-brain was
+    # ever possible here: ensure_agents_md always re-derives the enabled-
+    # capabilities list from DISK at call time (_enabled_capabilities ->
+    # _load), so whichever refresh runs last is correct by construction
+    # regardless of interleaving. (The original round 1 comment here
+    # claimed a stale-refresh bug that doesn't actually exist -- corrected.)
+    #
+    # Round-2 fix: check project.yaml existence BEFORE this outer lock, not
+    # just inside apply_setting's own (now-too-late) check -- see
+    # _require_project_yaml's docstring for why the outer-lock wrapping
+    # re-introduced fix 1's lock-litter regression for this verb.
+    pre = _require_project_yaml(root)
+    if pre is not None:
+        return pre
+    with _project_yaml_lock(root):
+        ok, errors = apply_setting(
+            root, lambda p: project_config.set_config(p, f"assistant.capabilities.{name}.enabled", True)
+        )
+        if ok:
+            ensure_agents_md(root)  # §11.9: keep the generated roster in sync with every flip
+        return ok, errors
 
 
 def disable_capability(root, name):
-    ok, errors = apply_setting(
-        root, lambda p: project_config.set_config(p, f"assistant.capabilities.{name}.enabled", False)
-    )
-    if ok:
-        ensure_agents_md(root)  # §11.9: keep the generated roster in sync with every flip
-    return ok, errors
+    # Same rationale as enable_capability above (both the outer-lock
+    # pairing and the round-2 pre-lock existence check).
+    pre = _require_project_yaml(root)
+    if pre is not None:
+        return pre
+    with _project_yaml_lock(root):
+        ok, errors = apply_setting(
+            root, lambda p: project_config.set_config(p, f"assistant.capabilities.{name}.enabled", False)
+        )
+        if ok:
+            ensure_agents_md(root)  # §11.9: keep the generated roster in sync with every flip
+        return ok, errors
 
 
 # Review round 1 finding 1: DEFAULT_COMPONENT_BUDGETS["persona"] (turns.py)
@@ -778,7 +936,30 @@ def set_persona(root, text):
     message and a nonzero exit even though `project.yaml` was already
     changed — the two are now out of sync; re-running `set-persona` with
     the same text is how a human/agent recovers, since `project.yaml`
-    already has the target value.
+    already has the target value. That's a genuine local I/O failure and
+    can still happen even under the lock below (this process's own write
+    can fail); what the lock rules out is a DIFFERENT, purely CONCURRENCY-
+    driven way to reach the same out-of-sync state -- see the next
+    paragraph.
+
+    Review round 1 fix 3 (MINOR): the `project.yaml` write (via
+    `apply_setting`) and the `AGENTS.md` write (via `_update_persona_block`)
+    are two separately-locked phases -- each was individually atomic, but a
+    concurrent `set-persona` (or `scaffold`) call could interleave BETWEEN
+    them, so the LAST writer to `project.yaml` and the LAST writer to
+    `AGENTS.md` could legitimately be two DIFFERENT processes, leaving the
+    two files holding two different personas -- both calls reporting
+    success. Wrapping the pair in one outer `with _project_yaml_lock(root)`
+    (safe now that the lock is reentrant -- fix 2 above) makes the whole
+    two-file write atomic as a unit against any other concurrent settings
+    verb.
+
+    Review round 2 (#496): project.yaml existence (`_require_project_yaml`)
+    is checked BEFORE this outer lock, not just inside `apply_setting`'s
+    own (now-too-late) check -- same lock-litter regression, and same fix,
+    as `enable_capability`/`disable_capability` above; see
+    `_require_project_yaml`'s docstring. This rejection keeps the
+    `REJECTED:`-prefixed shape every other message in the False case uses.
 
     Returns (True, [warnings]) on success, (False, [messages]) on
     rejection/partial failure — every message in the False case is already
@@ -794,33 +975,39 @@ def set_persona(root, text):
             "on the next scaffold/set-persona re-run; remove or rephrase that line"
         ]
 
-    ok, errors = apply_setting(root, lambda p: project_config.set_config(p, "assistant.systemPrompt", text))
-    if not ok:
-        return False, [f"REJECTED: {e}" for e in errors]
+    pre = _require_project_yaml(root)
+    if pre is not None:
+        _, pre_errors = pre
+        return False, [f"REJECTED: {e}" for e in pre_errors]
 
-    warnings = []
-    if len(text) > _PERSONA_RUNTIME_CLIP:
-        warnings.append(
-            f"WARNING: persona text is {len(text)} chars -- turns.py clips the persona "
-            f"component (systemPrompt + the names line) to {_PERSONA_RUNTIME_CLIP} chars "
-            "at compose time by default, so only the first "
-            f"{_PERSONA_RUNTIME_CLIP} chars are used in a live turn (the full text is "
-            "still stored in assistant.systemPrompt and AGENTS.md's persona block -- "
-            "consider tightening systemPrompt and moving the rest into AGENTS.md prose)."
-        )
+    with _project_yaml_lock(root):
+        ok, errors = apply_setting(root, lambda p: project_config.set_config(p, "assistant.systemPrompt", text))
+        if not ok:
+            return False, [f"REJECTED: {e}" for e in errors]
 
-    try:
-        _update_persona_block(root, text)
-    except OSError as e:
-        warnings.append(
-            "REJECTED: assistant.systemPrompt was updated in project.yaml, but writing "
-            f"the AGENTS.md persona block failed ({e.strerror or e}) -- project.yaml and "
-            "AGENTS.md are now OUT OF SYNC; fix the AGENTS.md write problem and re-run "
-            "set-persona with the same text to bring it back in sync."
-        )
-        return False, warnings
+        warnings = []
+        if len(text) > _PERSONA_RUNTIME_CLIP:
+            warnings.append(
+                f"WARNING: persona text is {len(text)} chars -- turns.py clips the persona "
+                f"component (systemPrompt + the names line) to {_PERSONA_RUNTIME_CLIP} chars "
+                "at compose time by default, so only the first "
+                f"{_PERSONA_RUNTIME_CLIP} chars are used in a live turn (the full text is "
+                "still stored in assistant.systemPrompt and AGENTS.md's persona block -- "
+                "consider tightening systemPrompt and moving the rest into AGENTS.md prose)."
+            )
 
-    return True, warnings
+        try:
+            _update_persona_block(root, text)
+        except OSError as e:
+            warnings.append(
+                "REJECTED: assistant.systemPrompt was updated in project.yaml, but writing "
+                f"the AGENTS.md persona block failed ({e.strerror or e}) -- project.yaml and "
+                "AGENTS.md are now OUT OF SYNC; fix the AGENTS.md write problem and re-run "
+                "set-persona with the same text to bring it back in sync."
+            )
+            return False, warnings
+
+        return True, warnings
 
 
 def set_default(root, name):

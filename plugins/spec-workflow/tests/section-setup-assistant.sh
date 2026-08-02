@@ -679,4 +679,237 @@ check "set-persona: --file - prints OK" "OK" "$sa_sp_stdin_out"
 check "set-persona: stdin persona text lands in assistant.systemPrompt" \
     "You are Jarvis, from stdin." "$(sa_get "$sa_d" assistant.systemPrompt)"
 rm -rf "$sa_d"
+
+# --- issue #496: apply_setting (set-provider/set-model/enable-capability/
+# set-persona) and the AGENTS.md writers (ensure_agents_md/
+# _update_persona_block) race project.yaml / AGENTS.md under concurrent
+# invocations -- only ensure_project_yaml_assistant's scaffold path was
+# under _project_yaml_lock; the settings verbs and AGENTS.md read-modify-
+# write were not. Mirrors the existing 12-concurrent-scaffold shape above
+# (finding 1) but targets the settings-editor + AGENTS.md-writer surface
+# instead of scaffold's own composition.
+
+# N concurrent set-model invocations against ONE already-scaffolded root,
+# each with a DISTINCT value -- pins that the final project.yaml (a) still
+# parses, (b) is still a VALID assistant: section, (c) holds EXACTLY ONE of
+# the N raced values (a torn/interleaved write would produce a value that
+# matches none of them, or an unparseable file), and (d) every one of the N
+# processes actually completed (printed OK, exit 0) rather than seeing a
+# torn intermediate read and REJECTING under validate_assistant.
+sa_lock_d="$(mktemp -d)"
+bash "$SA_SCRIPT" --root "$sa_lock_d" scaffold --name jarvis >/dev/null 2>&1
+sa_lock_out_d="$(mktemp -d)"
+sa_lock_n=16
+sa_lock_pids=()
+sa_lock_t0=$(date +%s)
+for i in $(seq 1 "$sa_lock_n"); do
+    ( bash "$SA_SCRIPT" --root "$sa_lock_d" set-model "race-model-$i" \
+        >"$sa_lock_out_d/$i.out" 2>&1; echo $? >"$sa_lock_out_d/$i.rc" ) &
+    sa_lock_pids+=("$!")
+done
+for _p in "${sa_lock_pids[@]}"; do wait "$_p"; done
+sa_lock_t1=$(date +%s)
+sa_lock_elapsed=$((sa_lock_t1 - sa_lock_t0))
+
+sa_lock_parse="$(python3 -c '
+import sys, yaml
+try:
+    d = yaml.safe_load(open(sys.argv[1], encoding="utf-8").read())
+    print("PARSE_OK" if isinstance(d, dict) and isinstance(d.get("assistant"), dict) else "BAD_SHAPE")
+except Exception as e:
+    print("PARSE_FAIL", e)
+' "$sa_lock_d/.claude/project.yaml" 2>&1)"
+check "#496 concurrency: project.yaml parses as a mapping after $sa_lock_n concurrent set-model calls" \
+    "PARSE_OK" "$sa_lock_parse"
+
+sa_lock_validate="$(bash "$SA_SCRIPT" --root "$sa_lock_d" validate 2>&1)"
+check "#496 concurrency: assistant: section is still VALID after concurrent set-model calls" \
+    "VALID" "$sa_lock_validate"
+
+sa_lock_final_model="$(sa_get "$sa_lock_d" assistant.llm.model)"
+sa_lock_model_matches="$(printf '%s\n' "$sa_lock_final_model" | grep -cE '^race-model-([1-9]|1[0-6])$' | tr -d ' ')"
+check "#496 concurrency: final assistant.llm.model is EXACTLY ONE of the raced values (no torn write)" \
+    "1" "$sa_lock_model_matches"
+
+sa_lock_rejects=0
+for i in $(seq 1 "$sa_lock_n"); do
+    rc="$(cat "$sa_lock_out_d/$i.rc" 2>/dev/null)"
+    [[ "$rc" == "0" ]] || sa_lock_rejects=$((sa_lock_rejects + 1))
+done
+check "#496 concurrency: all $sa_lock_n concurrent set-model calls exit 0 (none see a torn intermediate read)" \
+    "0" "$sa_lock_rejects"
+
+[[ $sa_lock_elapsed -lt 60 ]] && r=yes || r=no
+check "#496 concurrency: $sa_lock_n concurrent set-model calls complete without deadlock (bounded runtime)" \
+    "yes" "$r"
+
+rm -rf "$sa_lock_d" "$sa_lock_out_d"
+
+# Concurrent set-persona + scaffold racing AGENTS.md's read-modify-write --
+# scaffold's ensure_agents_md and set-persona's _update_persona_block both
+# read-modify-write the SAME file (GEN/OUT markers vs. the PERSONA marker).
+#
+# Round-1 review fix 3 strengthening: each set-persona call uses a DISTINCT
+# text (VARIANT-1..VARIANT-12) rather than one shared text -- reviewer
+# proved by hand that without wrapping set_persona's project.yaml write and
+# its AGENTS.md write in ONE outer lock, the two phases can interleave
+# against a DIFFERENT concurrent set-persona's two phases, landing
+# project.yaml on one variant and AGENTS.md's persona block on another --
+# both processes still exit 0, so nothing ever reports the drift. Asserting
+# marker-count structural integrity alone (as the original same-text
+# version of this test did) cannot catch that: it only proves the FILE
+# isn't torn, not that the TWO FILES agree. The decisive assertion is
+# below: project.yaml's assistant.systemPrompt and AGENTS.md's persona
+# block must be the byte-identical SAME variant once the dust settles.
+sa_am_d="$(mktemp -d)"
+bash "$SA_SCRIPT" --root "$sa_am_d" scaffold --name jarvis >/dev/null 2>&1
+sa_am_out_d="$(mktemp -d)"
+sa_am_pids=()
+sa_am_t0=$(date +%s)
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    printf '%s\n' "VARIANT-$i-persona-text-for-496-fix3" > "$sa_am_out_d/persona-$i.txt"
+    ( bash "$SA_SCRIPT" --root "$sa_am_d" set-persona --file "$sa_am_out_d/persona-$i.txt" \
+        >"$sa_am_out_d/sp-$i.out" 2>&1; echo $? >"$sa_am_out_d/sp-$i.rc" ) &
+    sa_am_pids+=("$!")
+    ( bash "$SA_SCRIPT" --root "$sa_am_d" scaffold --name jarvis \
+        >"$sa_am_out_d/sc-$i.out" 2>&1; echo $? >"$sa_am_out_d/sc-$i.rc" ) &
+    sa_am_pids+=("$!")
+done
+for _p in "${sa_am_pids[@]}"; do wait "$_p"; done
+sa_am_t1=$(date +%s)
+sa_am_elapsed=$((sa_am_t1 - sa_am_t0))
+
+sa_am_content="$(cat "$sa_am_d/AGENTS.md" 2>/dev/null)"
+sa_am_gen_start_n="$(grep -cF -- '<!-- >>> spec-workflow generated: enabled skills' <<<"$sa_am_content")"
+sa_am_gen_end_n="$(grep -cF -- '<!-- <<< spec-workflow generated: enabled skills' <<<"$sa_am_content")"
+sa_am_out_start_n="$(grep -cF -- '<!-- >>> spec-workflow generated: file output contract -->' <<<"$sa_am_content")"
+sa_am_out_end_n="$(grep -cF -- '<!-- <<< spec-workflow generated: file output contract -->' <<<"$sa_am_content")"
+sa_am_persona_start_n="$(grep -cF -- '<!-- >>> spec-workflow generated: persona (setup-assistant set-persona) -->' <<<"$sa_am_content")"
+sa_am_persona_end_n="$(grep -cF -- '<!-- <<< spec-workflow generated: persona (setup-assistant set-persona) -->' <<<"$sa_am_content")"
+
+check "#496 concurrency: AGENTS.md GENERATED skills START marker present exactly once" "1" "$sa_am_gen_start_n"
+check "#496 concurrency: AGENTS.md GENERATED skills END marker present exactly once" "1" "$sa_am_gen_end_n"
+check "#496 concurrency: AGENTS.md file-output-contract START marker present exactly once" "1" "$sa_am_out_start_n"
+check "#496 concurrency: AGENTS.md file-output-contract END marker present exactly once" "1" "$sa_am_out_end_n"
+check "#496 concurrency: AGENTS.md persona START marker present exactly once" "1" "$sa_am_persona_start_n"
+check "#496 concurrency: AGENTS.md persona END marker present exactly once" "1" "$sa_am_persona_end_n"
+
+# round-1 fix 3 pin: the winning variant is EXACTLY ONE of the 12 raced
+# texts (not corrupted), AND project.yaml/AGENTS.md agree on WHICH one.
+sa_am_yaml_prompt="$(sa_get "$sa_am_d" assistant.systemPrompt)"
+sa_am_persona_block="$(python3 -c '
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+m = re.search(
+    r"<!-- >>> spec-workflow generated: persona \(setup-assistant set-persona\) -->\n"
+    r"(.*?)\n"
+    r"<!-- <<< spec-workflow generated: persona \(setup-assistant set-persona\) -->",
+    text, re.S)
+print(m.group(1) if m else "NO_PERSONA_BLOCK_FOUND")
+' "$sa_am_d/AGENTS.md")"
+sa_am_variant_match="$(printf '%s\n' "$sa_am_yaml_prompt" | grep -cE '^VARIANT-([1-9]|1[0-2])-persona-text-for-496-fix3$' | tr -d ' ')"
+check "#496 round1 fix3: winning persona is exactly one of the 12 raced variants (no torn write)" \
+    "1" "$sa_am_variant_match"
+[[ "$sa_am_yaml_prompt" == "$sa_am_persona_block" ]] && r=MATCH || r=MISMATCH
+check "#496 round1 fix3: project.yaml assistant.systemPrompt matches AGENTS.md persona block (never split out of sync)" \
+    "MATCH" "$r"
+
+sa_am_rejects=0
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    sp_rc="$(cat "$sa_am_out_d/sp-$i.rc" 2>/dev/null)"
+    sc_rc="$(cat "$sa_am_out_d/sc-$i.rc" 2>/dev/null)"
+    [[ "$sp_rc" == "0" ]] || sa_am_rejects=$((sa_am_rejects + 1))
+    [[ "$sc_rc" == "0" ]] || sa_am_rejects=$((sa_am_rejects + 1))
+done
+check "#496 concurrency: all concurrent set-persona/scaffold calls exit 0" "0" "$sa_am_rejects"
+
+[[ $sa_am_elapsed -lt 60 ]] && r=yes || r=no
+check "#496 concurrency: concurrent set-persona + scaffold complete without deadlock (bounded runtime)" \
+    "yes" "$r"
+
+rm -rf "$sa_am_d" "$sa_am_out_d"
+
+# --- issue #496 review round 1, fix 1 (MINOR, confirmed regression):
+# apply_setting used to take _project_yaml_lock BEFORE checking whether
+# project.yaml exists -- _lock_path's os.makedirs(...) then littered
+# ROOT/.claude/.setup-assistant.lock into ANY root a settings verb was run
+# against, including a totally non-assistant one (e.g. --root ~). A verb
+# that refuses (no project.yaml present) must create NOTHING on disk.
+#
+# Round-2 widening: round 1's pin only covered set-model, and reviewer
+# proved by hand that the fix-3 outer-lock wrapping (landed in the SAME
+# round) RE-INTRODUCED this exact regression for enable-capability,
+# disable-capability, and set-persona -- their outer _project_yaml_lock is
+# acquired (creating .claude/) BEFORE apply_setting's own hoisted check
+# ever runs. This loop covers all FIVE settings verbs so no future wrapper
+# can regress this silently again.
+sa_empty_check() { # verb-and-args...
+    local spec_label="$*"
+    sa_empty_d="$(mktemp -d)"
+    sa_empty_out="$(bash "$SA_SCRIPT" --root "$sa_empty_d" "$@" 2>&1)"
+    sa_empty_rc=$?
+    sa_empty_after="$(find "$sa_empty_d" -mindepth 1 2>/dev/null | wc -l | tr -d ' ')"
+    [[ -e "$sa_empty_d/.claude" ]] && sa_empty_claude=EXISTS || sa_empty_claude=ABSENT
+    check_rc "#496 round1 fix1: '$spec_label' against a project-yaml-less root exits nonzero" 1 "$sa_empty_rc"
+    check "#496 round1 fix1: '$spec_label' refusal still prints REJECTED" "REJECTED" "$sa_empty_out"
+    check "#496 round1 fix1: '$spec_label' against an empty dir creates NOTHING on disk" "0" "$sa_empty_after"
+    check "#496 round1 fix1: '$spec_label' never creates .claude/ (and its lock file) via a refused verb" \
+        "ABSENT" "$sa_empty_claude"
+    rm -rf "$sa_empty_d"
+}
+
+sa_empty_persona_file="$(mktemp)"
+printf 'A persona for the empty-dir round1-fix1 pin.\n' > "$sa_empty_persona_file"
+
+sa_empty_check set-provider openai
+sa_empty_check set-model gpt-nope
+sa_empty_check enable-capability codex
+sa_empty_check disable-capability codex
+sa_empty_check set-persona --file "$sa_empty_persona_file"
+
+rm -f "$sa_empty_persona_file"
+
+# --- issue #496 review round 1, fix 2 (MAJOR, latent): _project_yaml_lock
+# went from ONE acquisition site (ensure_project_yaml_assistant) to FOUR
+# (that plus apply_setting, ensure_agents_md, _update_persona_block) --
+# fcntl.flock() is per open-file-description, NOT reentrant within a
+# process, so a SECOND acquisition from the same process (e.g. a future
+# caller nesting two of these calls, or fix 3 below wrapping a pair in one
+# outer `with`) would silently hang forever rather than erroring. Proven by
+# running the nested acquisition in a CHILD process with a hard wall-clock
+# timeout enforced by the PARENT python (not a shell `timeout` binary,
+# which this macOS box doesn't ship) -- a real self-deadlock in the child
+# shows up as a clean DEADLOCK_TIMEOUT marker instead of hanging the whole
+# test suite.
+sa_reentrant_d="$(mktemp -d)"
+sa_reentrant_child="$(mktemp)"
+cat > "$sa_reentrant_child" <<'PYEOF'
+import sys, os
+sys.path.insert(0, sys.argv[2])
+from assistant import setup
+root = sys.argv[1]
+os.makedirs(os.path.join(root, ".claude"), exist_ok=True)
+with setup._project_yaml_lock(root):
+    with setup._project_yaml_lock(root):
+        pass
+print("NESTED_LOCK_OK")
+PYEOF
+sa_reentrant_out="$(python3 -c '
+import subprocess, sys
+try:
+    r = subprocess.run(
+        [sys.executable, sys.argv[1], sys.argv[2], sys.argv[3]],
+        timeout=10, capture_output=True, text=True)
+    out = r.stdout.strip()
+    if r.returncode != 0:
+        out = out + " RC=" + str(r.returncode) + " ERR=" + r.stderr.strip()[-300:]
+    print(out)
+except subprocess.TimeoutExpired:
+    print("DEADLOCK_TIMEOUT")
+' "$sa_reentrant_child" "$sa_reentrant_d" "$PLUGIN/scripts")"
+check "#496 round1 fix2: nested _project_yaml_lock acquisition from one process completes (no self-deadlock)" \
+    "NESTED_LOCK_OK" "$sa_reentrant_out"
+rm -f "$sa_reentrant_child"
+rm -rf "$sa_reentrant_d"
+
 rm -f "$sa_persona_file"
