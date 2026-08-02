@@ -386,4 +386,100 @@ check "artifact route: an artifact past the size cap is 413" "413" "$code"
 python3 "$NV" stop >/dev/null
 unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_SCAN ASSISTANT_ARTIFACT_MAX_BYTES
 
+# ------------------------------------------------------------------------
+echo "-- integration: real server, large artifact -- peak-RSS proof that a full download of a real multi-ten-MB fixture never loads the whole file into RAM (AST-068's own headline claim, SPEC-ASSISTANT.md Sec12.2) --"
+# AST-068's REVIEW finding (issue #343 retro-review) was that every fixture
+# above is 16 bytes, so replacing _send_file_streamed_ranged's chunked
+# read()/write() loop with a single whole-file read() leaves the entire
+# section green -- status codes, headers, and even byte-for-byte Range
+# slices come out identical either way at 16 bytes. This is the ONE check
+# in the section that can tell the two implementations apart: it needs a
+# fixture large enough that "read it all before responding" is an
+# observably different amount of memory than "read one 256KiB chunk at a
+# time" (_ARTIFACT_CHUNK_SIZE, defined just above _send_file_streamed_ranged).
+_aa3_root="$(mktemp -d)"
+_aa3_state="$(mktemp -d)"
+_aa3_scan_empty="$(mktemp -d)"
+aa_repo "$_aa3_root" jarvis
+
+# A real (non-sparse) fixture, generated at test time -- never committed as
+# a binary fixture in the repo. Content is uniform (/dev/zero) rather than
+# the distinguishable-per-offset bytes the Range-correctness tests above
+# use: this test only cares about the BYTE COUNT the server has to move
+# through memory, not which bytes they are (that's already covered). A
+# real file (not one extended past its written length via seek, which some
+# filesystems store as a sparse hole) still forces genuine page-cache-to-
+# userspace copies on every read(), the same as it would for a real video.
+_LARGE_MB=96
+_expect_bytes=$((_LARGE_MB * 1048576))
+mkdir -p "$_aa3_root/.claude/assistant/artifacts"
+dd if=/dev/zero "of=$_aa3_root/.claude/assistant/artifacts/huge.bin" bs=1048576 "count=$_LARGE_MB" >/dev/null 2>&1
+_dd_rc=$?
+check_rc "large artifact: the ${_LARGE_MB}MB fixture is generated successfully (dd)" 0 "$_dd_rc"
+aa_insert_task "$_aa3_root" tid-huge completed "huge.bin"
+
+export NEURAL_VIEW_STATE="$_aa3_state" NEURAL_VIEW_SCAN="$_aa3_scan_empty"
+lifecycle_start "large artifact: neural-view starts" NEURAL_VIEW_PORT 'python3 "$NV" start --dir "$_aa3_root"'
+
+_au3="http://127.0.0.1:$NEURAL_VIEW_PORT/assistant/artifact/tid-huge"
+_srv_pid="$(cat "$_aa3_state/pid" 2>/dev/null)"
+
+# Sample PEAK RSS across the ENTIRE download, not a single before/after
+# pair. A naive before/after comparison is flaky in the wrong direction: a
+# single ~96MB allocation is large enough that CPython/glibc typically
+# routes it through mmap and munmaps it again the instant the buffer is
+# freed, so a sample taken strictly AFTER the download finishes can find
+# the spike already gone -- even under the buggy whole-file-read()
+# mutation. Polling in a tight loop for the whole request instead is safe
+# either way: the buggy version holds the entire file in memory for as
+# long as it takes to write the whole response (which takes real wall-clock
+# time even over loopback), so the poll loop has that entire window to
+# catch it, while the real streaming implementation never holds more than
+# one _ARTIFACT_CHUNK_SIZE (256 KiB) chunk at a time, so its peak stays
+# near baseline throughout.
+_rss_kb() { ps -o rss= -p "$1" 2>/dev/null | tr -d ' '; }
+_base_rss="$(_rss_kb "$_srv_pid")"
+[[ "$_base_rss" =~ ^[0-9]+$ ]] || _base_rss=0
+# Round-1 review (dev-499): without this check the whole tripwire silently
+# disarms if the instrument itself is broken -- an unreadable pidfile or a
+# `ps` that can't be found makes every sample empty, so base=peak=0,
+# delta=0, and the RSS check below reports a false PASS regardless of what
+# the server actually did. Fail this LOUDLY and distinctly instead of
+# letting a broken measurement masquerade as bounded memory.
+if [ "$_base_rss" -gt 0 ]; then _base_ok_rc=0; else _base_ok_rc=1; fi
+check_rc "large artifact: baseline RSS instrumentation reads a real positive number (pidfile+ps working, got ${_base_rss}KB)" 0 "$_base_ok_rc"
+_peak_rss="$_base_rss"
+_curl_meta="$(mktemp)"
+curl -s --max-time 60 -o /dev/null -w '%{http_code} %{size_download}' "$_au3" >"$_curl_meta" &
+_curl_pid=$!
+_poll_deadline=$((SECONDS + 20))
+while kill -0 "$_curl_pid" 2>/dev/null && [ "$SECONDS" -lt "$_poll_deadline" ]; do
+    _cur="$(_rss_kb "$_srv_pid")"
+    if [ -n "$_cur" ] && [ "$_cur" -gt "$_peak_rss" ]; then
+        _peak_rss="$_cur"
+    fi
+done
+wait "$_curl_pid" 2>/dev/null
+read -r _http_code _dl_bytes <"$_curl_meta"
+rm -f "$_curl_meta"
+# Round-1 review (dev-499): without these two checks a FAILED download
+# (404, connection reset, truncated body) also silently passes -- a short
+# or empty response gives a small, comfortably-under-threshold RSS delta
+# for the wrong reason (nothing was ever served), not because streaming
+# worked. Pinning the exact byte count actually received closes that hole.
+check "large artifact: the full download actually succeeded (HTTP 200)" "200" "$_http_code"
+check "large artifact: the full download received every one of the ${_expect_bytes} fixture bytes" "$_expect_bytes" "$_dl_bytes"
+_delta_kb=$((_peak_rss - _base_rss))
+# 25% of the fixture size in KiB: comfortable headroom above a single
+# 256KiB chunk plus interpreter/GC/ps-sampling noise, comfortably below the
+# ~100% delta a whole-file read() shows (proven against the mutation
+# below, before this test was committed).
+_threshold_kb=$((_LARGE_MB * 1024 / 4))
+if [ "$_delta_kb" -lt "$_threshold_kb" ]; then _rss_rc=0; else _rss_rc=1; fi
+check_rc "large artifact: a full download's peak RSS delta (${_delta_kb}KB, base ${_base_rss}KB, peak ${_peak_rss}KB) stays under 25% of the ${_LARGE_MB}MB fixture (threshold ${_threshold_kb}KB) -- never loads the whole file into RAM" 0 "$_rss_rc"
+
+python3 "$NV" stop >/dev/null
+unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_SCAN
+rm -rf "$_aa3_root" "$_aa3_state" "$_aa3_scan_empty"
+
 rm -rf "$_aa_root" "$_aa_state" "$_aa_scan_empty" "$_aa2_root" "$_aa2_state" "$_aa2_scan_empty" "$d" "$d0"
