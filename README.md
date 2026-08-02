@@ -68,160 +68,25 @@ Allows quick iterations over UI before its implementation. With i18n and theming
 
 ### Remote compute
 
-Use another machine as compute. You register a machine once, then send jobs to
-it over SSH from wherever you work.
+Use another computer as compute. Register a machine once, then send work to it
+from wherever you are working — typically driving a GPU box from a laptop.
 
-- Key-based SSH only. The skill never asks for or stores a password.
-- Jobs run detached. They keep running if your session ends.
-- Tools like ComfyUI are **capability bundles** — data, not code. Adding a new
-  one never means changing the skill.
+- **Key-based SSH only.** Never a password prompt, never a stored secret.
+- **Jobs run detached** and survive your session ending; state lives in files on
+  the machine, so status and logs are recoverable afterwards.
+- **Tools plug in as data.** Supporting a new tool (image generation, model
+  training) means adding a small bundle folder, never changing the software.
+- **Safe by construction.** Values are validated then quoted, workflows are
+  never rewritten, and it never runs privileged commands — those are printed
+  for you instead.
 
-Example: a Windows laptop with WSL2 and an RTX 5090 runs ComfyUI. You drive it
-from a Mac.
+A machine is registered once, told which environments and tools it has, and then
+given named job recipes you run with different parameters. A terminal dashboard
+on the machine shows what is queued, running, and finished.
 
-#### 1. Set up the machine (once)
-
-On the Windows/WSL side:
-
-- Leave ComfyUI on its own loopback address. Never start it with `--listen 0.0.0.0`.
-- Install SSH in WSL: `sudo apt install -y openssh-server && sudo systemctl enable --now ssh`
-- Put `networkingMode=mirrored` in `%UserProfile%\.wslconfig` so WSL shares the
-  laptop's LAN IP.
-- Give the laptop a DHCP reservation so its IP stops moving.
-
-Run `remote-compute setup-sheet wsl2` to print this list. Linux and macOS have
-their own sheets. If a check fails during registration, the matching sheet is
-printed automatically.
-
-#### 2. Export the workflow from ComfyUI
-
-Build the workflow as usual, then choose **Workflow → Export (API)**. On older
-builds, turn on Settings → Dev mode first, then use **Save (API Format)**.
-
-This matters: the normal save is a picture of the canvas, and ComfyUI's API
-refuses it. The API export is the executable form. Pass the wrong one and the
-skill says so and tells you how to fix it.
-
-#### 3. Register the machine
-
-```bash
-/remote-compute register example-remote-machine-name your-user@machine-lan-ip
-```
-
-Replace `your-user` with the username on that machine, and `machine-lan-ip`
-with its address on your network. To find the address: `ipconfig` on Windows
-(use the Wi-Fi or Ethernet IPv4, not a `vEthernet` one), or `ifconfig` on macOS
-and Linux. The name in front is yours to pick; it becomes the SSH alias you use
-from then on.
-
-Registration is safe to re-run. Each run re-checks the SSH alias, key access,
-the pinned host key, the hardware probe, and the remote job folder.
-
-If something is missing, it stops and tells you what to do — the exact
-`ssh-copy-id` command when keys aren't set up, or the host key fingerprint to
-confirm before it is trusted.
-
-When it succeeds, you see what was actually measured on the machine:
-
-```
-REGISTERED example-remote-machine-name (your-user@machine-lan-ip)
-  os:     windows-wsl2
-  gpu:    NVIDIA GeForce RTX 5090 Laptop GPU  vramMB: 24463  cuda: 13.3  driver: 610.62
-  ramGB:  94        (ramScope: wsl2-vm — what WSL can use, not the 192GB host)
-  disk:   /            freeGB: 876
-  disk:   /mnt/c       freeGB: 720     (slow: DrvFs/9p)
-```
-
-Nothing here is assumed. Every value comes from a real command on the machine,
-and anything that can't be read is recorded as an error instead of a guess.
-
-#### 4. Add ComfyUI support and make the machine available
-
-```bash
-/remote-compute install-capability example-remote-machine-name plugins/spec-workflow/scripts/remote-capabilities/comfyui
-/remote-compute enable example-remote-machine-name --role render
-```
-
-`enable` says "this project can use that machine". It does not reserve it —
-several projects can use the same machine, and a lock keeps jobs from
-colliding.
-
-Availability is saved to `.claude/project.local.yaml`, which is gitignored. The
-machines you can reach depend on your hardware, not on the repository, so this
-never gets committed. No hostname, username, or secret goes into the repo.
-
-#### 5. Generate
-
-Declare the job once, connecting your workflow's nodes to named parameters:
-
-```bash
-/remote-compute add-job example-remote-machine-name generate-image-v1 \
-  --workdir '~/.remote-compute/tools' \
-  --cmd "python3 ~/.remote-compute/caps/comfyui/comfy-run.py \
-         --workflow '/mnt/c/ComfyUI/user/default/workflows/generate-image-v1-api.json' \
-         --port 8000 --set 40.text={positive} --set 39.text={negative} \
-         --set 36.value={seed} --set 29.filename_prefix={prefix}" \
-  --param 'seed:[0-9]+' --param 'positive:[^`$;|&<>]+' \
-  --param 'negative:[^`$;|&<>]+' --param 'prefix:[^`$;|&<>]+'
-```
-
-Then run it by name, as often as you like:
-
-```bash
-/remote-compute run example-remote-machine-name generate-image-v1 \
-  --param seed=846151159261372 \
-  --param 'positive=masterpiece,best quality,1girl,white hair' \
-  --param 'negative=bad quality,watermark,text' \
-  --param 'prefix=demo/'
-
-/remote-compute job-status <id>
-/remote-compute job-pull <id> --dest ./out
-```
-
-For a batch, loop the `run` command with a different seed each time.
-
-To watch what the machine is doing, run the dashboard there (or over SSH from
-here — `-t` gives it a terminal to draw in):
-
-```bash
-ssh -t example-remote-machine-name 'python3 ~/.remote-compute/tools/compute-top.py'
-```
-
-It lists running, finished, and failed jobs, opens each one's log and exit
-code, and lets you prune old ones. See the `compute-top` skill for the keys.
-
-The job starts in a tmux session on the machine and writes its log, process id,
-and exit code to disk. If your session dies, `job-status` picks the job back up
-from those files.
-
-#### What the skill guarantees
-
-- **Your workflow is never rewritten.** Only input values change. The graph
-  itself is left exactly as you built it.
-- **Bad values fail fast.** Parameters are checked against the patterns you
-  declared, and choices like `ckpt_name` or `sampler_name` are checked against
-  the server before anything is queued. A wrong model name comes back in
-  milliseconds, listing the models that do exist.
-- **No sudo, ever.** Not locally, not remotely. Anything needing admin rights is
-  printed for you instead.
-- **One job at a time**, unless you raise `maxConcurrentJobs`. Two agents
-  sharing a GPU can't trip over each other.
-
-#### Adding more
-
-A second ComfyUI machine is the same four commands with a new name. The bundle
-works on any machine, so nothing needs to change.
-
-A different kind of work — a training box with torch and unsloth, say — is a new
-bundle plus one command:
-
-```bash
-/remote-compute add-env example-remote-machine-name training \
-  --activate 'source ~/.venv/bin/activate'
-```
-
-That checks the environment right away and records what it found, so the
-registry reflects what is really installed.
+**→ Full guide: [docs/remote-compute.md](./docs/remote-compute.md)** — setup,
+registering a machine, declaring jobs, running and watching work, sharing a
+machine between projects, and adding support for a new tool.
 
 ## Update
 

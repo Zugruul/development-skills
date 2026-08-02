@@ -15,7 +15,9 @@ Availability is capability-style and NON-exclusive, mirroring how
 same machine; the machine-local cooperative lock is what serializes actual
 use, never the project declaration.
 
-Design: `docs/design/remote-compute-plan.md`. This is the human
+Human-facing guide: `docs/remote-compute.md` (concepts, setup, worked example)
+— point the human there rather than explaining the model from scratch.
+Design/rationale: `docs/design/remote-compute-plan.md`. This is the human
 dev-workflow layer; it implements nothing of SPEC-ASSISTANT §14/E7 and must
 never be cited as satisfying any §14 requirement.
 
