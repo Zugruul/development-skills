@@ -1345,10 +1345,13 @@ def main(argv):
     if verb == "exec" and rest:
         nick = rest[0]
         argv = rest[2:] if len(rest) > 1 and rest[1] == "--" else rest[1:]
-        # shlex.join, not " ".join: the caller already split these into argv
-        # words, so joining raw re-splits them on the remote shell (python -c
-        # 'import os; print(1)' became two commands)
-        payload = shlex.join(argv) if argv else ""
+        # Two legitimate shapes:
+        #  - ONE argument is already a whole command line ("ls ~/x"): pass it
+        #    through, since quoting it would make it a single command NAME.
+        #  - MULTIPLE argv words came pre-split by the caller's shell: rejoin
+        #    with shlex.join so quoting survives (python -c 'import os; print(1)'
+        #    must not be re-split remotely).
+        payload = argv[0] if len(argv) == 1 else (shlex.join(argv) if argv else "")
         if not payload:
             print("ERROR: exec needs a command after --")
             return EXIT_USAGE

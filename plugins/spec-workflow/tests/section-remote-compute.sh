@@ -145,6 +145,17 @@ check "list: shows resource" "gpubox" "$out"
 # --- exec: payload runs, sudo rejected -----------------------------------
 out="$(run_compute exec gpubox -- echo hi 2>&1)"; rc=$?
 check_rc "exec: exit 0" 0 "$rc"
+# exec has two legitimate shapes and must handle both:
+#  - multiple argv words: quoting must be PRESERVED (python -c 'import os; print(1)'
+#    must not be re-split by the remote shell)
+#  - one argument that is already a whole command line: it must pass through,
+#    not be quoted into a single unrunnable command name
+: > "$TLOG"
+run_compute exec gpubox -- python -c 'import os; print(1)' >/dev/null 2>&1
+check "exec preserves quoting across argv words" "import os; print(1)" "$(cat "$TLOG")"
+: > "$TLOG"
+run_compute exec gpubox -- 'ls ~/.compute-jobs' >/dev/null 2>&1
+check "exec passes a single command-line argument through" "bash -lc 'ls ~/.compute-jobs'" "$(cat "$TLOG")"
 out="$(run_compute exec gpubox -- sudo apt install foo 2>&1)"; rc=$?
 check "exec sudo: rejected" "sudo" "$out"
 check_rc "exec sudo: exit 5" 5 "$rc"
@@ -535,6 +546,29 @@ PY
 rm -f /tmp/RC_SHOULD_NOT_EXIST
 HOME="$RP/home" bash -c "mkdir -p $_hostile" 2>/dev/null
 check "hostile workdir stays inert after tilde rewrite" "no" "$([ -f /tmp/RC_SHOULD_NOT_EXIST ] && echo yes || echo no)"
+
+# --- compute-top: the on-machine job monitor ------------------------------
+TOP="$PLUGIN/scripts/remote-capabilities/_shared/compute-top.py"
+JT="$CT/jobsdir"; mkdir -p "$JT/j-run" "$JT/j-ok" "$JT/j-bad" "$JT/_caps"
+printf 'still going\n' > "$JT/j-run/job.log"
+printf 'all good\n' > "$JT/j-ok/job.log"; printf '0\n' > "$JT/j-ok/exitcode"
+printf 'boom\n' > "$JT/j-bad/job.log"; printf '7\n' > "$JT/j-bad/exitcode"
+out="$(python3 "$TOP" --dir "$JT" --once 2>&1)"; rc=$?
+check_rc "compute-top --once: exit 0" 0 "$rc"
+check "compute-top: counts running/done/failed" "1 running, 1 done, 1 failed" "$out"
+check "compute-top: running job has no exit code" "running   j-run" "$out"
+check "compute-top: failed job shows its code" "exit 7" "$out"
+check_absent "compute-top: payload dirs are not jobs" "_caps" "$out"
+out="$(python3 "$TOP" --dir "$CT/nope" --once 2>&1)"; rc=$?
+check_rc "compute-top: missing dir exits 1, no traceback" 1 "$rc"
+check_absent "compute-top: missing dir has no traceback" "Traceback" "$out"
+# a half-written job (dispatch in flight) must not crash the reader
+mkdir -p "$JT/j-partial"
+out="$(python3 "$TOP" --dir "$JT" --once 2>&1)"
+check "compute-top: tolerates a half-created job dir" "running   j-partial" "$out"
+printf 'not-a-number\n' > "$JT/j-partial/exitcode"
+out="$(python3 "$TOP" --dir "$JT" --once 2>&1)"; rc=$?
+check_rc "compute-top: unreadable exitcode does not crash" 0 "$rc"
 
 # --- remove --------------------------------------------------------------
 out="$(run_compute remove gpubox 2>&1)"
