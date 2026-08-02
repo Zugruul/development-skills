@@ -2524,6 +2524,25 @@ def port_zombie(port):
     return pid, (_pid_cmdline(pid) if pid is not None else None)
 
 
+def metrics_ports():
+    """Every assistant metrics (Prometheus exposition, SPEC-ASSISTANT.md
+    Sec10.4) port a `serve` from this state dir would try to bind: the same
+    per-root discovery engine.start() runs, over the repo list the last
+    server persisted (REPOSFILE). 2026-08-02 live incident: this port is
+    machine-wide (one shared exposition server), so a stale neural-view
+    from ANOTHER worktree can hold it while this state dir's MAIN port is
+    free and its pidfile points at a dead pid — invisible to every probe
+    `stop --force` did before this helper existed. Deduped, discovery
+    order. Empty when no discovered root enables prometheus (then no serve
+    from here would bind a metrics port, so there is nothing to sweep) or
+    when discovery itself fails (best-effort, never raises)."""
+    try:
+        configs = AssistantEngine(load_repos_file, S)._discover_metrics_configs()
+    except Exception:  # noqa: BLE001 — a sweep helper must never break `stop`
+        return []
+    return list(dict.fromkeys(port for _root, _host, port in configs))
+
+
 def zombie_diagnosis(port, zombie):
     """Human-readable "port <p> held by ..." fragment — no leading verb/verdict
     (callers prepend "STALE:"/"FAILED to start:" as fits their context)."""
@@ -3039,6 +3058,36 @@ def main():
                     print(f"refusing to kill {zombie_diagnosis(port, zombie)} — its command line does "
                           f"not look like {SCRIPT_NAME}; kill it yourself if that's intended")
                     sys.exit(1)
+            # 2026-08-02 live incident: the shared assistant metrics port
+            # (Sec10.4 — one exposition server per machine) can be held by a
+            # stale neural-view from ANOTHER worktree while THIS state dir's
+            # main port is free and its pidfile is dead (a crashed later
+            # `serve` overwrote it), so the sweep above never saw it and
+            # every restart died at boot on EADDRINUSE. Probe each
+            # discovered metrics port too, under the same SCRIPT_NAME
+            # refusal guard (#415) and killed-and-verified escalation
+            # (#416). A FOREIGN holder is a note, not a failure: post-fix
+            # the engine degrades (no exposition) instead of crashing, so
+            # a squatter no longer blocks start — and killing something
+            # that merely sits on 9464 (OTel's standard exporter port)
+            # could hit an unrelated, legitimate exporter.
+            for mport in metrics_ports():
+                if mport == port:
+                    continue    # already handled by the main-port sweep above
+                mzombie = port_zombie(mport)
+                if mzombie is None:
+                    continue
+                zpid, zcmd = mzombie
+                if zpid is not None and zcmd and SCRIPT_NAME in zcmd:
+                    escalation = kill_and_verify(zpid, mport)
+                    if escalation is None:
+                        print(f"FAILED to kill PID {zpid} — still alive after SIGKILL")
+                        sys.exit(1)
+                    print(f"killed zombie PID {zpid} holding metrics port {mport} ({escalation})")
+                else:
+                    print(f"note: {zombie_diagnosis(mport, mzombie)} — its command line does not "
+                          f"look like {SCRIPT_NAME}; leaving it alone (metrics exposition stays "
+                          f"disabled until it exits)")
 
     elif cmd == "dev":
         # Foreground dev loop: serve with NEURAL_VIEW_DEV=1 and auto-restart

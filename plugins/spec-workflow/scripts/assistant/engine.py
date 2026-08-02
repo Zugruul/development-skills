@@ -44,6 +44,7 @@ an explicit shutdown path and once via `atexit`) without raising.
 import os
 import queue
 import sqlite3
+import sys
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -607,13 +608,24 @@ class AssistantEngine:
             # per scrape) regardless of whose host/port was used to bind
             # it.
             enabled = self._discover_metrics_configs()
+            self._metrics_server = None
+            self._metrics_thread = None
             if enabled:
                 _root, host, port = enabled[0]
-                self._metrics_server, self._metrics_thread = observability.start_metrics_server(
-                    host, port, self._metrics_roots_provider)
-            else:
-                self._metrics_server = None
-                self._metrics_thread = None
+                # 2026-08-02 live incident: the shared port is machine-wide,
+                # so a stale neural-view from another worktree (or any other
+                # squatter -- 9464 is also OTel's standard exporter port)
+                # already holding it made this raise EADDRINUSE out of
+                # start() and killed the WHOLE server at boot. Metrics are
+                # an optional side-car: bind failure is one stderr line and
+                # no exposition, never a boot blocker (same posture as
+                # neural-view.py's whisper-sidecar autostart).
+                try:
+                    self._metrics_server, self._metrics_thread = observability.start_metrics_server(
+                        host, port, self._metrics_roots_provider)
+                except OSError as e:
+                    print(f"assistant: metrics exposition disabled -- cannot bind {host}:{port} ({e})",
+                          file=sys.stderr)
 
     def stop(self, timeout=5.0):
         """Signal every worker's stop_event and join each with a bounded

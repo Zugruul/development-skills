@@ -457,6 +457,11 @@ assistant:
     llm:
         provider: openai
         model: gpt-5.6-sol
+    capabilities:
+        codex:
+            enabled: true
+            provisioning:
+                bin: codex
     observability:
         metrics:
             prometheus:
