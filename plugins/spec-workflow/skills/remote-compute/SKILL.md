@@ -134,6 +134,22 @@ files alone — `job-status` works after any restart and releases the lock once
 the job has an exitcode. `job-logs` tails the remote log; `job-pull` rsyncs
 artifacts back.
 
+## Watching work on the machine itself
+
+`scripts/remote-capabilities/_shared/compute-top.py` is a terminal dashboard
+the human runs ON the compute machine (stdlib only, no install):
+
+```bash
+python3 ~/.compute-jobs/_tools/compute-top.py        # live, refreshing
+python3 ~/.compute-jobs/_tools/compute-top.py --once # one snapshot, pipe-friendly
+```
+
+Arrow keys navigate, enter opens a job's log tail with its exit code, `f`
+filters (all/running/finished/failed), `d` removes one job from history (never
+one that is still running), `D` purges finished jobs. Ship it alongside a
+capability payload with the same rsync `install-capability` uses, or tell the
+human the one-liner above once it is present.
+
 ## Rules
 
 - Relay script output faithfully — especially LOCKED refusals, verbatim probe
