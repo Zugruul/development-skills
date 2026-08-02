@@ -344,6 +344,24 @@ check_absent "slm-training payload is project-agnostic" "fab" \
 check_absent "engine has no training-domain code" "unsloth" \
     "$(grep -iv '^#' "$PLUGIN/scripts/remote-compute.py" | grep -i 'unsloth\|slm-training')"
 
+# --- APP-021 (fab-cli issue #133): export_gguf.py's llama.cpp smoke-test
+# extension to the export-gguf job (optional `smoke` config section). No
+# python executes in this hermetic suite, so what's provable here is that
+# capability.yaml is still valid (install succeeds) and the job roster is
+# unchanged — the smoke logic itself (grammar-constrained decoding, JSON
+# extraction, shallow schema check) is exercised by fab-cli's own pipeline
+# test suite and the real 5090 run, not here.
+out="$(run_compute install-capability gpubox "$SLMB" 2>&1)"; rc=$?
+check_rc "slm-training: install exit 0 after APP-021 smoke extension" 0 "$rc"
+jobs_out="$(run_compute jobs gpubox 2>&1)"
+check "slm-training: job roster unchanged after APP-021 (sft)" "slm-training:sft" "$jobs_out"
+check "slm-training: job roster unchanged after APP-021 (export-gguf)" "slm-training:export-gguf" "$jobs_out"
+check "slm-training: job roster unchanged after APP-021 (eval)" "slm-training:eval" "$jobs_out"
+check "slm-training: job roster unchanged after APP-021 (gpu-check)" "slm-training:gpu-check" "$jobs_out"
+check "slm-training: capability.yaml documents the optional smoke section" "smoke" \
+    "$(cat "$SLMB/capability.yaml")"
+run_compute unlock gpubox --force >/dev/null 2>&1
+
 # --- declared jobs: capability-style dispatch by intent -------------------
 # A resource declares named jobs (template + schema-validated params, like
 # capability.yaml invoke); `run` maps a job name to a real detached dispatch.
