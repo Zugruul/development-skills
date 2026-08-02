@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# stub ping -- records argv, exits with FAKE_PING_RC (default 1 = ICMP blocked,
+# the common Windows case). The gate must never emit real ICMP.
+printf 'ping %s\n' "$*" >> "${FAKE_TRANSPORT_LOG:?FAKE_TRANSPORT_LOG unset}"
+exit "${FAKE_PING_RC:-1}"

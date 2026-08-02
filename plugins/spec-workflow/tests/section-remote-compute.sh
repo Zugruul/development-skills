@@ -55,6 +55,7 @@ run_compute() {
     COMPUTE_HOME="$CH" COMPUTE_SSH_CONFIG="$SSHDIR/config" \
     COMPUTE_SSH_BIN="$CSTUB/ssh" COMPUTE_NC_BIN="$CSTUB/nc" \
     COMPUTE_KEYSCAN_BIN="$CSTUB/ssh-keyscan" COMPUTE_RSYNC_BIN="$CSTUB/rsync" \
+    COMPUTE_PING_BIN="$CSTUB/ping" \
     FAKE_TRANSPORT_LOG="$TLOG" FAKE_SSH_HANDLER="$HANDLER" FIXDIR="$CFIX" \
     python3 "$COMPUTE" "$@"
 }
@@ -119,6 +120,8 @@ check "registry: slow drvfs mount" "slow" "$reg"
 # on WSL, free reports the VM's allotment (typically half the host's RAM) --
 # label it, so a 94GB reading on a 192GB machine is not a wrong-looking claim
 check "registry: RAM scope labelled on WSL" "wsl2-vm" "$reg"
+check "registry: icmpBlocked recorded from a real probe" "icmpBlocked" "$reg"
+check "gate stays hermetic: ping goes through the stub seam" "ping " "$(cat "$TLOG")"
 check "ssh config: alias block" "Host gpubox" "$(cat "$SSHDIR/config")"
 check "ssh config: hostname" "HostName 192.0.2.17" "$(cat "$SSHDIR/config")"
 # hard rule 1 is per-INVOCATION: assert EVERY ssh and EVERY rsync carries the
@@ -351,7 +354,7 @@ check "run: rendered param into remote cmd" "a rubber duck" "$(cat "$TLOG")"
 : > "$TLOG"
 run_compute add-job gpubox jobdir-probe --workdir "~/w" --cmd "echo out={jobdir}" >/dev/null 2>&1
 run_compute run gpubox jobdir-probe --job-id jd1 >/dev/null 2>&1
-check "run: {jobdir} substituted with the job dir" "out=~/.compute-jobs/jd1" "$(cat "$TLOG")"
+check "run: {jobdir} substituted with the job dir" 'out="$HOME"/.compute-jobs/jd1' "$(cat "$TLOG")"
 check_absent "run: {jobdir} never passed through literally" "out={jobdir}" "$(cat "$TLOG")"
 # a newline is allowed by the permissive [^`$;|&<>]+ patterns, so quoting --
 # not the regex -- is what stops it becoming a second command
@@ -498,6 +501,39 @@ run_compute register gpubox testuser@192.0.2.99 --accept-hostkey >/dev/null 2>&1
 check "register rewrites HostName on retarget" "HostName 192.0.2.99" "$(cat "$SSHDIR/config")"
 check "register: still exactly one alias block" "1" "$(grep -c '^Host gpubox$' "$SSHDIR/config")"
 run_compute register gpubox testuser@192.0.2.17 --accept-hostkey >/dev/null 2>&1
+
+# --- rendered payloads must WORK on a real shell, not merely look quoted --
+# The fake transport records argv and never executes it, so a payload can be
+# perfectly quoted and still be broken (a tilde inside single quotes is
+# literal: `cd '~/train'` fails and `mkdir -p '~/x'` makes a dir named "~").
+# Render the real thing and run it under a scratch HOME.
+RP="$CT/realpath-probe"; mkdir -p "$RP/home"
+_rendered="$(python3 - "$PLUGIN/scripts/remote-compute.py" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("rc", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+print(m.remote_path("~/train"))
+print(m.remote_path("~/.compute-jobs/j9"))
+PY
+)"
+_wd="$(printf '%s\n' "$_rendered" | sed -n 1p)"
+_jd="$(printf '%s\n' "$_rendered" | sed -n 2p)"
+check_absent "rendered workdir does not quote the tilde" "'~/" "$_wd"
+HOME="$RP/home" bash -c "mkdir -p $_jd && mkdir -p $_wd && cd $_wd" 2>/dev/null
+check "rendered job dir lands under the real HOME" "yes" "$([ -d "$RP/home/.compute-jobs/j9" ] && echo yes || echo no)"
+check "rendered workdir is enterable on a real shell" "yes" "$([ -d "$RP/home/train" ] && echo yes || echo no)"
+check "no literal tilde directory was created" "no" "$([ -d "$RP/home/~" ] && echo yes || echo no)"
+# a workdir with shell metacharacters is still inert after the tilde rewrite
+_hostile="$(python3 - "$PLUGIN/scripts/remote-compute.py" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("rc", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+print(m.remote_path("~/w; touch /tmp/RC_SHOULD_NOT_EXIST"))
+PY
+)"
+rm -f /tmp/RC_SHOULD_NOT_EXIST
+HOME="$RP/home" bash -c "mkdir -p $_hostile" 2>/dev/null
+check "hostile workdir stays inert after tilde rewrite" "no" "$([ -f /tmp/RC_SHOULD_NOT_EXIST ] && echo yes || echo no)"
 
 # --- remove --------------------------------------------------------------
 out="$(run_compute remove gpubox 2>&1)"

@@ -238,7 +238,8 @@ def ssh_opts():
 
 def rsync_argv(*args):
     """rsync with the same transport hardening as ssh_argv."""
-    ssh_cmd = " ".join([_bin("COMPUTE_SSH_BIN", "ssh")] + [shlex.quote(o) for o in ssh_opts()])
+    ssh_cmd = " ".join(shlex.quote(part)
+                       for part in [_bin("COMPUTE_SSH_BIN", "ssh")] + ssh_opts())
     return [_bin("COMPUTE_RSYNC_BIN", "rsync"), "-az", "--partial", "-e", ssh_cmd] + list(args)
 
 
@@ -258,6 +259,23 @@ def ssh_run(alias, payload, timeout=60):
         return p.returncode, p.stdout.strip(), p.stderr.strip()
     except subprocess.TimeoutExpired:
         return 124, "", "timeout after %ss" % timeout
+
+
+def remote_path(p):
+    """Quote a remote path WITHOUT killing tilde expansion.
+
+    A tilde inside single quotes is literal, so shlex.quote("~/train") yields
+    '~/train' and the remote shell then does `cd '~/train'` (fails) or creates
+    a directory literally named "~". Rewrite a leading ~/ as "$HOME"/ — $HOME
+    is expanded by the shell but is not operator-controlled — and quote only
+    the remainder, which is the part that could carry metacharacters.
+    """
+    p = (p or "").strip()
+    if p in ("~", "~/"):
+        return '"$HOME"'
+    if p.startswith("~/"):
+        return '"$HOME"/%s' % shlex.quote(p[2:])
+    return shlex.quote(p)
 
 
 def reject_sudo(payload):
@@ -283,9 +301,15 @@ def ensure_alias(nick, host, user):
         # HostName/User. Returning early left the alias pointing at the OLD
         # machine while the registry described the new one, so every later
         # probe and dispatch silently described the wrong host.
-        if existing.group(0).strip() == block.strip():
+        old = existing.group(0)
+        # keep any directive the human added (Port, IdentityFile, ProxyJump...)
+        # -- converging the target must not silently delete their config
+        extra = [ln for ln in old.splitlines()[1:]
+                 if ln.strip() and not re.match(r"\s*(HostName|User)\s", ln)]
+        new_block = block + ("\n".join(extra) + "\n" if extra else "")
+        if old.strip() == new_block.strip():
             return False
-        text = text[:existing.start()] + block + text[existing.end():]
+        text = text[:existing.start()] + new_block + text[existing.end():]
     else:
         if text and not text.endswith("\n"):
             text += "\n"
@@ -374,9 +398,15 @@ def probe_resource(nick, res):
     # letting a future reader mistake silence for "down" (design §7 rule 7).
     host = (res.get("ssh") or {}).get("host")
     if host:
-        pinged = subprocess.run(["ping", "-c", "1", "-W", "2", host],
-                                capture_output=True).returncode
-        platform["quirks"]["icmpBlocked"] = pinged != 0
+        try:
+            pinged = subprocess.run([_bin("COMPUTE_PING_BIN", "ping"), "-c", "1", host],
+                                    capture_output=True, timeout=3).returncode
+            # NOTE: no -W. Its unit differs by platform (macOS milliseconds,
+            # Linux seconds), so a normal Wi-Fi RTT was being recorded as
+            # icmpBlocked. The subprocess timeout is portable.
+            platform["quirks"]["icmpBlocked"] = pinged != 0
+        except (subprocess.TimeoutExpired, OSError):
+            platform["quirks"]["icmpBlocked"] = True
     if platform["os"] == "macos":
         platform["quirks"]["acceleratorIsMpsNotCuda"] = True
     # envs: verify each configured env with a real import, record verbatim
@@ -755,9 +785,9 @@ def _running_jobs(nick):
         remote_dir = job.get("remoteDir")
         if not remote_dir:
             continue
+        q_rd = remote_path(remote_dir)
         rc, out, _ = ssh_run(nick, "if [ -d %s ]; then cat %s/exitcode 2>/dev/null "
-                             "|| echo __RUNNING__; else echo __GONE__; fi"
-                             % (shlex.quote(remote_dir), shlex.quote(remote_dir)))
+                             "|| echo __RUNNING__; else echo __GONE__; fi" % (q_rd, q_rd))
         state = out.strip()
         if rc != 0:
             # FAIL CLOSED: an unreachable/slow resource is exactly when the
@@ -795,7 +825,7 @@ def _atomic_json(path, data):
 
 # A job id becomes BOTH a remote path segment and a local filename, so it is
 # restricted to characters that are inert in a shell and cannot traverse.
-JOB_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+JOB_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 
 
 def _launch_job(reg, res, nick, workdir, cmd, opts):
@@ -820,7 +850,7 @@ def _launch_job(reg, res, nick, workdir, cmd, opts):
     # --job-id is interpolated into the remote payload AND used as a local
     # filename: an unvalidated value is remote command injection plus path
     # traversal, and it lands after the sudo check on --cmd.
-    if not JOB_ID_RE.match(job_id):
+    if not JOB_ID_RE.fullmatch(job_id):
         print("ERROR: --job-id must match [A-Za-z0-9][A-Za-z0-9._-]{0,63} (got %r)" % job_id)
         sys.exit(EXIT_USAGE)
     # workdir reaches the remote shell too, via `cd <workdir>`; it faces the
@@ -831,7 +861,7 @@ def _launch_job(reg, res, nick, workdir, cmd, opts):
     # id exists. Without this the placeholder reached the remote shell
     # literally, breaking every bundle job that used it. $COMPUTE_JOB_DIR is
     # the equivalent for payloads that prefer reading the environment.
-    cmd = cmd.replace("{jobdir}", remote_dir)
+    cmd = cmd.replace("{jobdir}", remote_path(remote_dir))
 
     # cooperative lock for the duration of the job. Never overwrite a human's
     # manual `lock --reason`: same holder keeps their reason, so job-status
@@ -867,7 +897,7 @@ def _launch_job(reg, res, nick, workdir, cmd, opts):
     # workdir and remote_dir are QUOTED here: both carry operator-supplied
     # text into a remote shell. cmd is already built from regex-validated,
     # shell-quoted params (or an explicit --cmd the caller dictated).
-    q_wd, q_rd = shlex.quote(workdir), shlex.quote(remote_dir)
+    q_wd, q_rd = remote_path(workdir), remote_path(remote_dir)
     inner = "cd %s && export COMPUTE_JOB_DIR=%s && %s%s > %s/job.log 2>&1; echo $? > %s/exitcode" % (
         q_wd, q_rd, env_prefix, cmd, q_rd, q_rd)
     launch = ("mkdir -p %s && if command -v tmux >/dev/null 2>&1; then "
@@ -988,7 +1018,7 @@ def cmd_install_capability(argv):
         sys.exit(EXIT_USAGE)
 
     capdir = "%s/%s" % (CAPS_REMOTE_ROOT, cap)
-    ssh_run(nick, "mkdir -p %s" % capdir)
+    ssh_run(nick, "mkdir -p %s" % remote_path(capdir))
     for rel in (manifest.get("payload") or []):
         src = os.path.join(bundle, rel)
         if not os.path.exists(src):
@@ -1006,7 +1036,7 @@ def cmd_install_capability(argv):
         res.setdefault("jobs", {})[key] = {
             "description": job.get("description") or "",
             "workdir": job.get("workdir") or capdir,
-            "cmd": (job.get("cmd") or "").replace("{capdir}", capdir),
+            "cmd": (job.get("cmd") or "").replace("{capdir}", remote_path(capdir)),
             "env": job.get("env") or opts["--env"],
             "params": {k: {"pattern": v} for k, v in (job.get("params") or {}).items()},
             "capability": cap,

@@ -79,7 +79,11 @@ Running it on a new nickname sets the machine up; re-running it on an existing o
 re-verifies everything and repairs drift. The end-state checklist (each item verified
 live, never assumed):
 
-1. `~/.ssh/config` has a `Host <nickname>` block (HostName/User; created or left intact).
+1. `~/.ssh/config` has a `Host <nickname>` block. Created when absent, and
+   CONVERGED when the target changed — re-registering with a new user@host
+   rewrites HostName/User (leaving it stale meant the alias pointed at the old
+   machine while the registry described the new one). Any other directive the
+   human added to that block (Port, IdentityFile, ProxyJump...) is preserved.
 2. Key auth works under `BatchMode=yes` (on failure: emit `NEEDS_KEY_AUTH` + the exact
    `ssh-copy-id user@host` line; the agent relays it, waits, re-runs register).
 3. Host key present in `known_hosts` (fingerprint shown, human-acked before keyscan;
@@ -203,6 +207,13 @@ Windows+WSL2 (mirrored networking, firewall rule, ext4-not-DrvFs, driver-on-Wind
 Linux (openssh-server, ufw, no-suspend), macOS (Remote Login, pmset, MPS/MLX probes).
 
 ## 9. Testing (hermetic gate)
+
+Paths that reach the remote shell go through `remote_path()`, which rewrites a
+leading `~/` as `"$HOME"/` and quotes only the remainder: a tilde inside single
+quotes is literal, so plain quoting would make `cd '~/train'` fail and
+`mkdir -p '~/x'` create a directory named `~`. Because the fake transport
+records argv without executing it, the suite also RENDERS a payload and runs it
+under a scratch `HOME` — quoting that merely looks right is not enough.
 
 `tests/section-remote-compute.sh`: probe parsers against captured fixtures (nvidia-smi, free,
 df, system_profiler), registration convergence incl. NEEDS_KEY_AUTH stop/resume and

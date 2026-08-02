@@ -324,7 +324,10 @@ def main(path):
     # unreachable in the intended flow and a malformed overlay (roles as a
     # bare string, say) reaches consumers through config.py unchecked.
     overlay_path = os.path.join(os.path.dirname(os.path.abspath(path)), "project.local.yaml")
-    if os.path.exists(overlay_path) and "compute" not in cfg:
+    # overlay WINS, matching config.py's _apply_local_overlay: validating the
+    # committed value while consumers receive the overlay's would check the
+    # wrong thing.
+    if os.path.exists(overlay_path):
         try:
             overlay = _load(overlay_path) or {}
         except Exception as e:  # noqa: BLE001
