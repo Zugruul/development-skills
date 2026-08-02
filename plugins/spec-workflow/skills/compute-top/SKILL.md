@@ -24,8 +24,8 @@ that RECEIVED the work. There are two ways to use it:
 python3 ~/.remote-compute/tools/compute-top.py
 ```
 
-**From another machine over SSH** -- the usual case, watching a GPU box from a
-laptop:
+**From the machine you dispatch FROM** -- the usual case, watching a GPU box
+from a laptop over the SSH connection registration already set up:
 
 ```bash
 ssh -t <alias> 'python3 ~/.remote-compute/tools/compute-top.py'

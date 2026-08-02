@@ -296,27 +296,106 @@ session that started the work still being alive.
 
 ## Part 6 — Watching a machine
 
-There is a dashboard you run **on the machine** — the one receiving the work,
-not the one sending it:
+There is a live dashboard showing every run on a machine: what is going now,
+how long each took, what succeeded, what failed. It reads that machine's own
+job folder, so it always reports on the machine *receiving* the work.
+
+You do not have to sit at that machine to use it.
+
+### From the computer you dispatch from (the usual way)
 
 ```bash
 ssh -t <nickname> 'python3 ~/.remote-compute/tools/compute-top.py'
 ```
 
-The `-t` matters: it gives the dashboard a screen to draw on. Without one it
-prints a plain snapshot instead, which is what you want when piping it
-somewhere.
+This is the everyday command: you stay on your laptop, and the dashboard runs
+over the SSH connection you already set up during registration. Press ctrl-c to
+come back to your own machine.
 
-It shows every run: whether it is going, how long it has taken, whether it
-succeeded, and how much it printed. Arrow keys move, `L` opens a run's log
-(scroll with arrows and page keys), `f` filters to just the running or just the
-failed ones, `d` removes a run from the history, `D` clears all finished ones.
-It refuses to delete something still running.
+The `-t` is not optional. It asks for a terminal on the far side, which the
+dashboard needs in order to draw and to receive your keystrokes. Leave it off
+and you get a plain text snapshot instead.
 
-Each machine shows its own work. If you have two machines, you look at two
-dashboards.
+**Run this in a real terminal application.** If you run it inside something
+that captures output — a tool's command box, a script, a pipe — there is no
+terminal to draw on, and it prints a one-time snapshot instead. That is a
+deliberate fallback, not a failure.
 
----
+### While sitting at the machine itself
+
+```bash
+python3 ~/.remote-compute/tools/compute-top.py
+```
+
+Identical, minus the SSH hop.
+
+### A quick look without the interface
+
+For a fast check, or for feeding into something else, ask for a single
+snapshot:
+
+```bash
+ssh <nickname> 'python3 ~/.remote-compute/tools/compute-top.py --once'
+```
+
+Or through the tool itself, which is handy when you have not set up a shell
+alias:
+
+```bash
+remote-compute exec <nickname> -- 'python3 ~/.remote-compute/tools/compute-top.py --once'
+```
+
+Either prints something like:
+
+```
+/home/<user>/.remote-compute/jobs — 34 job(s): 1 running, 32 done, 1 failed
+running   creature-portrait-042        age 12m03s   took 12m03s  exit -    log 4.3K
+done      creature-portrait-041        age 2h11m    took 25s     exit 0    log 285B
+failed    creature-portrait-040        age 2h14m    took 1s      exit 2    log 345B
+```
+
+`running` means no exit code has appeared yet. Duration is time from start to
+finish for a completed run, and time elapsed so far for one still going.
+
+### Using it
+
+| Key | What it does |
+|---|---|
+| up / down | move between runs |
+| `L` or enter | open that run's log |
+| arrows, page up / page down | scroll the log; `g` top, `G` end |
+| esc or `q` | leave the log |
+| `f` | show all / only running / only finished / only failed |
+| `d` | delete the selected run from history |
+| `D` | delete every finished run |
+| `r` | refresh now |
+| ctrl-c | quit |
+
+It refuses to delete a run that is still going. Deleting is permanent and
+removes that run's log and results from the machine.
+
+### Watching more than one machine
+
+Each dashboard shows one machine, because each machine keeps its own job
+folder. With two machines, open two terminals:
+
+```bash
+ssh -t <first-machine> 'python3 ~/.remote-compute/tools/compute-top.py'
+ssh -t <second-machine> 'python3 ~/.remote-compute/tools/compute-top.py'
+```
+
+### If the dashboard is not there
+
+It is a single file and can simply be copied over:
+
+```bash
+rsync -az -e "ssh -o BatchMode=yes" \
+  <path-to>/compute-top.py \
+  <nickname>:.remote-compute/tools/
+```
+
+If it reports no job folder, nothing has been sent to that machine yet — the
+folder is created by the first dispatch.
 
 ## Part 7 — Sharing a machine
 
