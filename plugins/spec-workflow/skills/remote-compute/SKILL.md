@@ -136,8 +136,13 @@ artifacts back.
 
 - Relay script output faithfully — especially LOCKED refusals, verbatim probe
   errors, and the setup sheets; they are written for the human.
-- Do not edit `~/.claude/compute/resources.yaml` or the `compute:` section by
-  hand while the script can do it; hand-edits are for fields the script never
-  writes (policy.powerPolicyConfirmed, envs.NAME.activate).
+- Prefer the verbs over hand-editing `~/.claude/compute/resources.yaml`: the
+  script writes envs (`add-env`), jobs (`add-job`), capabilities
+  (`install-capability`) and availability (`enable`). `policy.*` is the one
+  block with no verb yet, so power-policy confirmation and
+  `maxConcurrentJobs` are hand-edited today.
+- A hand-edited `activate` line is still re-checked for sudo when a job
+  dispatches, so editing the file cannot smuggle privileged commands past
+  hard rule 2.
 - `remove` unregisters only — it never touches the remote machine and leaves
   the ssh alias in place (say so when you use it).

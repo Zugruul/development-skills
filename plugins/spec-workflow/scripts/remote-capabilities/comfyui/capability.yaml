@@ -13,7 +13,7 @@ jobs:
             Render a pre-authored API-format workflow. Pass workflow= the path
             on the remote machine, and sets= a space-separated list of
             NODE.INPUT=VALUE pairs (node id or _meta.title).
-        cmd: python3 {capdir}/comfy-run.py --workflow {workflow} --port {port} --timeout 900 --out {jobdir} {sets}
+        cmd: python3 {capdir}/comfy-run.py --workflow {workflow} --port {port} --timeout 900 --out {jobdir} --sets {sets}
         params:
             workflow: "[^`$;|&<>]+"
             port: "[0-9]+"

@@ -183,8 +183,11 @@ orchestrator state; killing the session loses nothing.
 
 ## 7. Hard rules (enforced in code where possible)
 
-1. Key auth only; `BatchMode=yes` on every ssh invocation (transport hardcodes it);
-   never prompt for, store, or transmit passwords.
+1. Key auth only. `ssh_opts()` is the single source of the transport hardening
+   (`BatchMode=yes`, `StrictHostKeyChecking=yes`, pinned `UserKnownHostsFile`)
+   and BOTH `ssh_argv` and rsync's `-e` use it — rsync spawns its own ssh, so
+   without this it would bypass all three. Never prompt for, store, or transmit
+   passwords. Asserted per-invocation in the suite, not by substring search.
 2. Never run sudo, locally or remotely; sudo-containing remote payloads are rejected.
 3. Probes are read-only; dispatch writes only in the declared workdir and `~/.compute-jobs/`.
 4. Capability claims come from real probe output; failures recorded verbatim; never assumed.

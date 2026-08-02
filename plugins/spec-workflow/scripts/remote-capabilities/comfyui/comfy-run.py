@@ -140,9 +140,13 @@ def main():
     ap.add_argument("--port", type=int, default=8188)
     ap.add_argument("--timeout", type=int, default=600)
     ap.add_argument("--out")
-    ap.add_argument("--set", action="append", default=[], dest="sets",
+    ap.add_argument("--set", action="append", default=[], dest="sets_repeated",
                     metavar="NAME.INPUT=VALUE",
                     help="set an existing input's value by node id or _meta.title (repeatable)")
+    ap.add_argument("--sets", default="",
+                    help="space-separated NODE.INPUT=VALUE pairs in ONE argument; "
+                         "this is what a single validated job param can carry, "
+                         "since each param is shell-quoted into one argv word")
     ap.add_argument("--list-models", action="store_true",
                     help="print the checkpoints this ComfyUI offers, then exit")
     args = ap.parse_args()
@@ -161,8 +165,17 @@ def main():
             print(name)
         return 0
 
-    with open(args.workflow) as f:
-        workflow = json.load(f)
+    try:
+        with open(args.workflow) as f:
+            workflow = json.load(f)
+    except FileNotFoundError:
+        print("ERROR: workflow %s not found ON THIS MACHINE (the path is "
+              "resolved where ComfyUI runs, not where you typed the command)"
+              % args.workflow)
+        return 2
+    except ValueError as e:
+        print("ERROR: workflow %s is not valid JSON (%s)" % (args.workflow, e))
+        return 2
     # ComfyUI's /prompt accepts ONLY the API format (a flat map of
     # node-id -> {class_type, inputs}). A UI save carries nodes/links arrays
     # and is silently unusable here — say so with the exact fix.
@@ -176,8 +189,10 @@ def main():
     if args.prompt is not None:
         nid = substitute_prompt(workflow, args.prompt, args.prompt_node)
         print("prompt -> node %s" % nid)
+    import shlex as _shlex
+    all_sets = list(args.sets_repeated) + _shlex.split(args.sets or "")
     touched = []
-    for spec in args.sets:
+    for spec in all_sets:
         try:
             nid = apply_set(workflow, spec)
         except (KeyError, ValueError) as e:

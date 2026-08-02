@@ -319,6 +319,21 @@ def main(path):
                 elif not sp.strip():
                     errs.append("commit.systemPrompt: must not be empty")
 
+    # The compute section normally lives in the gitignored machine-local
+    # overlay, so validate THAT too when present -- otherwise this block is
+    # unreachable in the intended flow and a malformed overlay (roles as a
+    # bare string, say) reaches consumers through config.py unchecked.
+    overlay_path = os.path.join(os.path.dirname(os.path.abspath(path)), "project.local.yaml")
+    if os.path.exists(overlay_path) and "compute" not in cfg:
+        try:
+            overlay = _load(overlay_path) or {}
+        except Exception as e:  # noqa: BLE001
+            errs.append(f"project.local.yaml: cannot parse ({e})")
+            overlay = {}
+        if isinstance(overlay, dict) and "compute" in overlay:
+            cfg = dict(cfg)
+            cfg["compute"] = overlay["compute"]
+
     # compute: remote resources AVAILABLE to this project, written by the
     # remote-compute skill (docs/design/remote-compute-plan.md).
     # Capability-style and non-exclusive (mirrors assistant.capabilities.<name>):

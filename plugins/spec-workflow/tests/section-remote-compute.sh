@@ -40,6 +40,11 @@ check "df parser: drvfs slow" '"slow": true' "$out"
 out="$(python3 "$COMPUTE" parse profiler < "$CFIX/system-profiler.txt")"
 check "profiler parser: chip" "Apple M3 Max" "$out"
 check "profiler parser: mps" '"mps": true' "$out"
+# hard rule 4: mps must be DERIVED from the output, not asserted. An Intel Mac
+# with an AMD GPU must not be claimed as MPS-capable.
+out="$(printf 'Graphics/Displays:\n\n    AMD Radeon Pro 5500M:\n\n      Chipset Model: AMD Radeon Pro 5500M\n' | python3 "$COMPUTE" parse profiler)"
+check "profiler parser: non-Apple GPU is not claimed as mps" '"mps": false' "$out"
+check "profiler parser: still reports the real chip" "AMD Radeon Pro 5500M" "$out"
 
 # --- shared hermetic environment ----------------------------------------
 CT="$(mktemp -d)"
@@ -116,6 +121,10 @@ check "registry: slow drvfs mount" "slow" "$reg"
 check "registry: RAM scope labelled on WSL" "wsl2-vm" "$reg"
 check "ssh config: alias block" "Host gpubox" "$(cat "$SSHDIR/config")"
 check "ssh config: hostname" "HostName 192.0.2.17" "$(cat "$SSHDIR/config")"
+# hard rule 1 is per-INVOCATION: assert EVERY ssh and EVERY rsync carries the
+# hardening, not merely that it appears somewhere in the log
+_unhardened_ssh="$(grep '^ssh ' "$TLOG" | grep -cv 'BatchMode=yes' || true)"
+check "transport: every ssh invocation is BatchMode" "0" "$_unhardened_ssh"
 check "transport: BatchMode always" "-o BatchMode=yes" "$(cat "$TLOG")"
 check "transport: remote job layout converged" ".compute-jobs" "$(cat "$TLOG")"
 
@@ -188,7 +197,12 @@ out="$(run_compute dispatch gpubox --workdir "~/train" --cmd "python train.py" -
 check_rc "dispatch: exit 0" 0 "$rc"
 check "dispatch: job id echoed" "j1" "$out"
 check "dispatch: state file exists" "j1" "$(ls "$CH/jobs")"
-check "dispatch: rsync/launch detached via bash -lc" "bash -lc" "$(cat "$TLOG")"
+# assert on THIS dispatch only (a cumulative log makes "bash -lc" trivially
+# present); pin the detached-launch shape, not merely that ssh ran
+: > "$TLOG"
+run_compute dispatch gpubox --workdir "~/train" --cmd "python train.py" --holder bob --job-id jshape >/dev/null 2>&1
+check "dispatch: launches detached (tmux else setsid)" "tmux new-session -d" "$(cat "$TLOG")"
+check "dispatch: writes exitcode for file-only recovery" "exitcode" "$(cat "$TLOG")"
 check "dispatch: exports COMPUTE_JOB_DIR for artifacts" "COMPUTE_JOB_DIR" "$(cat "$TLOG")"
 out="$(run_compute dispatch gpubox --workdir "~/train" --cmd "sudo python train.py" --holder bob --job-id j2 2>&1)"; rc=$?
 check_rc "dispatch sudo: exit 5" 5 "$rc"
@@ -221,6 +235,24 @@ check "envs: verification recorded in registry" "2.7.1" "$(cat "$CH/resources.ya
 out="$(run_compute add-env gpubox evil --activate 'sudo su' 2>&1)"; rc=$?
 check_rc "add-env: sudo activate rejected" 5 "$rc"
 
+# hard rule 3: a probe is READ-ONLY. Creating the remote job layout belongs to
+# register's convergence, not to probe/enable/add-env.
+: > "$TLOG"; run_compute probe gpubox >/dev/null 2>&1
+check_absent "probe is read-only: no mkdir on the remote" "mkdir" "$(cat "$TLOG")"
+# hard rule 2 defence in depth: a hand-edited env activate must not smuggle
+# sudo into a dispatched command
+run_compute add-env gpubox tainted --activate "source ~/ok/bin/activate" >/dev/null 2>&1
+python3 - "$CH/resources.yaml" <<'PY'
+import sys, yaml
+p = sys.argv[1]
+d = yaml.safe_load(open(p))
+d["resources"]["gpubox"]["envs"]["tainted"]["activate"] = "sudo -i"
+yaml.safe_dump(d, open(p, "w"), default_flow_style=False, sort_keys=False, indent=4)
+PY
+out="$(run_compute dispatch gpubox --workdir "~/w" --cmd "echo hi" --env tainted --job-id tainted1 2>&1)"; rc=$?
+check "hand-edited sudo activate refused at dispatch" "sudo" "$out"
+check_rc "hand-edited sudo activate: exit 5" 5 "$rc"
+
 # --- capability bundles: the core stays domain-agnostic -------------------
 # A bundle is DATA (manifest + payload) that the generic engine installs; the
 # engine must learn nothing about any specific domain to support a new one.
@@ -243,6 +275,10 @@ out="$(run_compute install-capability gpubox "$BUNDLE" 2>&1)"; rc=$?
 check_rc "install-capability: exit 0" 0 "$rc"
 check "install-capability: reports the capability" "demo" "$out"
 check "install-capability: rsyncs the payload" "_caps/demo" "$(cat "$TLOG")"
+# rsync spawns its own ssh: without -e it bypasses BatchMode, the pinned
+# known_hosts and COMPUTE_SSH_CONFIG entirely (can block on a password prompt)
+_unhardened_rsync="$(grep '^rsync ' "$TLOG" | grep -cv 'BatchMode=yes' || true)"
+check "transport: every rsync carries a hardened -e ssh" "0" "$_unhardened_rsync"
 check "install-capability: declares bundle jobs" "demo:greet" "$(run_compute jobs gpubox 2>&1)"
 check "install-capability: records it on the resource" "demo" "$(run_compute capabilities gpubox 2>&1)"
 out="$(run_compute run gpubox demo:greet --param 'who=World' --job-id capjob 2>&1)"; rc=$?
@@ -317,6 +353,15 @@ run_compute add-job gpubox jobdir-probe --workdir "~/w" --cmd "echo out={jobdir}
 run_compute run gpubox jobdir-probe --job-id jd1 >/dev/null 2>&1
 check "run: {jobdir} substituted with the job dir" "out=~/.compute-jobs/jd1" "$(cat "$TLOG")"
 check_absent "run: {jobdir} never passed through literally" "out={jobdir}" "$(cat "$TLOG")"
+# a newline is allowed by the permissive [^`$;|&<>]+ patterns, so quoting --
+# not the regex -- is what stops it becoming a second command
+: > "$TLOG"
+run_compute add-job gpubox quote-probe --workdir "~/w" --cmd "echo {v}" --param 'v:[^`$;|&<>]+' >/dev/null 2>&1
+run_compute run gpubox quote-probe --param "v=$(printf 'a\nrm -rf /tmp/x')" --job-id q1 >/dev/null 2>&1
+# quoting neutralizes the newline in place rather than removing it, so assert
+# the UNQUOTED form never appears: quoted renders `echo '...'a`, a regression
+# renders bare `echo a` followed by a live newline
+check_absent "param values are shell-quoted, not just regex-checked" "echo a" "$(cat "$TLOG")"
 out="$(run_compute run gpubox gen-duck --param "prompt=x; rm -rf /" --job-id j4 2>&1)"; rc=$?
 check "run: param failing pattern rejected" "ERROR" "$out"
 check_rc "run: bad param exit 2" 2 "$rc"
@@ -392,6 +437,67 @@ check "comfy-run: enumerates model options" "OPTS ['a.safetensors', 'b.safetenso
 check "comfy-run: rejects unavailable model" "is not offered by this server" "$out"
 check "comfy-run: names available models" "a.safetensors, b.safetensors" "$out"
 check "comfy-run: accepts an offered model" "GOOD []" "$out"
+
+# --- the SHIPPED comfyui bundle must be invocable, not just installable ---
+# (its render job was unrunnable for every input: the manifest documented a
+# space-separated `sets` list, but a param is shell-quoted into ONE argv word
+# and the payload declared no positional argument)
+out="$(python3 "$PLUGIN/scripts/remote-capabilities/comfyui/comfy-run.py" --workflow "$CT/missing.json" --sets "A.text=hello world" 2>&1)"; rc=$?
+check "comfy-run: --sets accepts one quoted multi-pair argument" "not found ON THIS MACHINE" "$out"
+check_rc "comfy-run: missing workflow exits 2, no traceback" 2 "$rc"
+check_absent "comfy-run: missing workflow has no traceback" "Traceback" "$out"
+: > "$TLOG"
+run_compute install-capability gpubox "$PLUGIN/scripts/remote-capabilities/comfyui" >/dev/null 2>&1
+run_compute run gpubox comfyui:render --param workflow=/tmp/wf.json --param port=8000 \
+    --param "sets=Seed.value=1 Prompt.text=a duck" --job-id rendercheck >/dev/null 2>&1
+check "comfyui:render renders --sets into the remote command" "--sets" "$(cat "$TLOG")"
+check "comfyui:render passes the pairs through" "Seed.value=1 Prompt.text=a duck" "$(cat "$TLOG")"
+
+# --- a dispatched job must actually run inside its declared env ----------
+run_compute add-env gpubox envprobe --activate "source ~/envprobe/bin/activate" >/dev/null 2>&1
+: > "$TLOG"
+run_compute dispatch gpubox --workdir "~/w" --cmd "python train.py" --env envprobe --job-id envjob >/dev/null 2>&1
+check "dispatched job activates its env before the command" "source ~/envprobe/bin/activate && python train.py" "$(cat "$TLOG")"
+
+# --- an env activate line may hold a token: it must not be republished ----
+run_compute add-env gpubox secretenv --activate "export TOK=s3cr3t-value && source ~/v/bin/activate" >/dev/null 2>&1
+run_compute enable gpubox --root "$REPO" --role training >/dev/null 2>&1
+check_absent "enable never publishes the activate line into the repo" "s3cr3t-value" "$(cat "$REPO/.claude/project.local.yaml")"
+check "enable still names the env" "secretenv" "$(cat "$REPO/.claude/project.local.yaml")"
+
+# --- injection: operator-facing flags reach the remote shell --------------
+: > "$TLOG"
+out="$(run_compute dispatch gpubox --workdir "~/w" --cmd "echo hi" --job-id 'j1; touch /tmp/PWNED' 2>&1)"; rc=$?
+check "job-id injection refused" "ERROR" "$out"
+check_rc "job-id injection: exit 2" 2 "$rc"
+check_absent "job-id injection never reached the remote" "touch /tmp/PWNED" "$(cat "$TLOG")"
+out="$(run_compute dispatch gpubox --workdir "~/w" --cmd "echo hi" --job-id '../../ESCAPED' 2>&1)"; rc=$?
+check_rc "job-id path traversal: exit 2" 2 "$rc"
+: > "$TLOG"
+out="$(run_compute dispatch gpubox --workdir '~/w; sudo rm -rf /' --cmd "echo hi" --job-id wd1 2>&1)"; rc=$?
+check "workdir sudo smuggling refused" "sudo" "$out"
+check_rc "workdir sudo smuggling: exit 5" 5 "$rc"
+: > "$TLOG"
+run_compute dispatch gpubox --workdir '~/w; touch /tmp/OOPS' --cmd "echo hi" --job-id wd2 >/dev/null 2>&1
+# quoted renders `cd '~/w; touch /tmp/OOPS'`; a regression renders `cd ~/w; touch ...`
+check_absent "workdir metacharacters never reach the remote unquoted" "cd ~/w;" "$(cat "$TLOG")"
+run_compute unlock gpubox --force >/dev/null 2>&1
+
+# --- host-key gate must not be skippable by substring collision -----------
+mkdir -p "$CT/sshdir3"
+printf '192.0.2.170 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeOther\n' > "$CT/sshdir3/known_hosts"
+out="$(COMPUTE_SSH_CONFIG="$CT/sshdir3/config" COMPUTE_HOME="$CT/ch3" \
+    COMPUTE_SSH_BIN="$CSTUB/ssh" COMPUTE_NC_BIN="$CSTUB/nc" COMPUTE_KEYSCAN_BIN="$CSTUB/ssh-keyscan" \
+    COMPUTE_RSYNC_BIN="$CSTUB/rsync" FAKE_TRANSPORT_LOG="$TLOG" FAKE_SSH_HANDLER="$HANDLER" FIXDIR="$CFIX" \
+    python3 "$COMPUTE" register other testuser@192.0.2.17 2>&1)"; rc=$?
+check "host-key gate: substring collision still requires ack" "NEEDS_HOSTKEY_ACK" "$out"
+check_rc "host-key gate: exit 4" 4 "$rc"
+
+# --- register converges a CHANGED target, not just a missing alias --------
+run_compute register gpubox testuser@192.0.2.99 --accept-hostkey >/dev/null 2>&1
+check "register rewrites HostName on retarget" "HostName 192.0.2.99" "$(cat "$SSHDIR/config")"
+check "register: still exactly one alias block" "1" "$(grep -c '^Host gpubox$' "$SSHDIR/config")"
+run_compute register gpubox testuser@192.0.2.17 --accept-hostkey >/dev/null 2>&1
 
 # --- remove --------------------------------------------------------------
 out="$(run_compute remove gpubox 2>&1)"

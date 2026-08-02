@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""compute.py — remote-compute: register remote machines as user-level
+"""remote-compute.py — register remote machines as user-level
 compute resources and advertise their availability to projects.
 
 Design: docs/design/remote-compute-plan.md. This is the HUMAN dev-workflow
@@ -96,8 +96,20 @@ def load_registry():
     return data
 
 
-def save_registry(data):
+def save_registry(data, touched=None):
+    """Persist the registry. `touched` names the resource this caller actually
+    modified: the file is re-read immediately before writing and only that
+    resource is applied, so a long-running verb (dispatch holds its copy across
+    many seconds of ssh) cannot silently erase another process's concurrent
+    write to a different resource — or to jobs/envs on the same one."""
     os.makedirs(compute_home(), mode=0o700, exist_ok=True)
+    if touched:
+        fresh = load_registry()
+        if touched in data.get("resources", {}):
+            fresh.setdefault("resources", {})[touched] = data["resources"][touched]
+        else:
+            fresh.get("resources", {}).pop(touched, None)
+        data = fresh
     fd, tmp = tempfile.mkstemp(dir=compute_home(), prefix=".resources.")
     with os.fdopen(fd, "w") as f:
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False, indent=4)
@@ -200,7 +212,11 @@ def parse_df(text):
 def parse_profiler(text):
     m = re.search(r"Chipset Model:\s*(.+)", text)
     name = m.group(1).strip() if m else None
-    return {"present": bool(name), "name": name, "mps": True, "cuda": None}
+    # MPS is an Apple-silicon capability: DERIVE it from the reported chip
+    # rather than assuming every Mac has it (an Intel Mac with an AMD GPU does
+    # not). Hard rule 4: claims come from real output.
+    mps = bool(name) and re.match(r"Apple\s+M\d", name) is not None
+    return {"present": bool(name), "name": name, "mps": mps, "cuda": None}
 
 
 # --- transport (BatchMode always; the fake-transport env seam for tests) ----
@@ -209,19 +225,31 @@ def _bin(var, default):
     return _env(var, default)
 
 
+def ssh_opts():
+    """The hardening every remote connection must carry (hard rule 1). Shared
+    by ssh_argv and by rsync's -e, because rsync spawns its OWN ssh: without
+    this it would bypass BatchMode (and could block on a password prompt in an
+    autonomous loop), the pinned known_hosts, and COMPUTE_SSH_CONFIG."""
+    return ["-F", ssh_config_path(), "-o", "BatchMode=yes",
+            "-o", "StrictHostKeyChecking=yes",
+            "-o", "UserKnownHostsFile=%s" % known_hosts_path(),
+            "-o", "ConnectTimeout=8"]
+
+
+def rsync_argv(*args):
+    """rsync with the same transport hardening as ssh_argv."""
+    ssh_cmd = " ".join([_bin("COMPUTE_SSH_BIN", "ssh")] + [shlex.quote(o) for o in ssh_opts()])
+    return [_bin("COMPUTE_RSYNC_BIN", "rsync"), "-az", "--partial", "-e", ssh_cmd] + list(args)
+
+
 def ssh_argv(alias, payload):
     # ssh JOINS everything after the destination into one string that the
     # remote LOGIN shell (possibly zsh) re-parses — so the payload must be
     # shipped as a single, fully-quoted `bash -lc <payload>` word, or a
     # multi-word payload silently loses its arguments/operators to the outer
     # shell (found live on a zsh WSL2 box: `free -g` ran as plain `free`).
-    return [
-        _bin("COMPUTE_SSH_BIN", "ssh"), "-F", ssh_config_path(),
-        "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
-        "-o", "UserKnownHostsFile=%s" % known_hosts_path(),
-        "-o", "ConnectTimeout=8",
-        alias, "bash -lc %s" % shlex.quote(payload),
-    ]
+    return ([_bin("COMPUTE_SSH_BIN", "ssh")] + ssh_opts()
+            + [alias, "bash -lc %s" % shlex.quote(payload)])
 
 
 def ssh_run(alias, payload, timeout=60):
@@ -248,13 +276,22 @@ def ensure_alias(nick, host, user):
     if os.path.exists(path):
         with open(path) as f:
             text = f.read()
-    if re.search(r"(?m)^Host %s$" % re.escape(nick), text):
-        return False
     block = "Host %s\n    HostName %s\n    User %s\n" % (nick, host, user)
-    if text and not text.endswith("\n"):
-        text += "\n"
+    existing = re.search(r"(?ms)^Host %s$.*?(?=^Host |\Z)" % re.escape(nick), text)
+    if existing:
+        # CONVERGE, don't skip: re-registering with a new target must rewrite
+        # HostName/User. Returning early left the alias pointing at the OLD
+        # machine while the registry described the new one, so every later
+        # probe and dispatch silently described the wrong host.
+        if existing.group(0).strip() == block.strip():
+            return False
+        text = text[:existing.start()] + block + text[existing.end():]
+    else:
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text = text + block
     with open(path, "w") as f:
-        f.write(text + block)
+        f.write(text)
     os.chmod(path, 0o600)
     return True
 
@@ -327,17 +364,32 @@ def probe_resource(nick, res):
     caps["disks"] = parse_df(out)["disks"] if rc == 0 else []
     rc, out, err = ssh_run(nick, 'echo "$SHELL"')
     if rc == 0 and out:
-        platform["quirks"]["defaultShell"] = os.path.basename(out)
-    # convergence: the remote job layout always exists after a probe
-    ssh_run(nick, "mkdir -p ~/.compute-jobs")
+        shell = os.path.basename(out)
+        platform["quirks"]["defaultShell"] = shell
+        # a non-bash login shell re-parses whatever ssh hands it, which is why
+        # payloads ship as one quoted `bash -lc` word (see ssh_argv)
+        platform["quirks"]["nonBashLoginShell"] = shell != "bash"
+    # ICMP is blocked by default on Windows, so a failed ping says nothing
+    # about reachability -- TCP:22 already answered. Record it rather than
+    # letting a future reader mistake silence for "down" (design §7 rule 7).
+    host = (res.get("ssh") or {}).get("host")
+    if host:
+        pinged = subprocess.run(["ping", "-c", "1", "-W", "2", host],
+                                capture_output=True).returncode
+        platform["quirks"]["icmpBlocked"] = pinged != 0
+    if platform["os"] == "macos":
+        platform["quirks"]["acceleratorIsMpsNotCuda"] = True
     # envs: verify each configured env with a real import, record verbatim
     envs = res.get("envs") or {}
     for name, env in envs.items():
         activate = env.get("activate")
         if not activate:
             continue
-        snippet = env.get("verify") or (
-            "import torch; print(torch.__version__, torch.cuda.is_available())")
+        default_probe = ("import torch; print(torch.__version__, "
+                         "torch.backends.mps.is_available())"
+                         if platform["os"] == "macos" else
+                         "import torch; print(torch.__version__, torch.cuda.is_available())")
+        snippet = env.get("verify") or default_probe
         rc, out, err = ssh_run(nick, "%s && python -c %s" % (activate, shlex.quote(snippet)))
         if rc == 0 and out:
             # record the verification output VERBATIM — never a guess
@@ -387,11 +439,28 @@ def cmd_register(args):
 
     # 2. host key: pinned known_hosts; fingerprint shown, human-acked keyscan
     kh = known_hosts_path()
-    known = ""
+    # EXACT host match per entry, never a substring of the file: "192.0.2.1"
+    # occurs inside "192.0.2.17", and any short name can collide with a base64
+    # key blob, which silently skipped the acknowledgement gate and left the
+    # new host unpinned. known_hosts' first field may list comma-separated
+    # hosts and may be bracketed with a port.
+    host_known = False
     if os.path.exists(kh):
         with open(kh) as f:
-            known = f.read()
-    if host not in known:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                for entry in line.split()[0].split(","):
+                    entry = entry.strip()
+                    if entry.startswith("[") and "]" in entry:
+                        entry = entry[1:entry.index("]")]
+                    if entry == host:
+                        host_known = True
+                        break
+                if host_known:
+                    break
+    if not host_known:
         scan = subprocess.run([_bin("COMPUTE_KEYSCAN_BIN", "ssh-keyscan"), "-T", "5", host],
                               capture_output=True, text=True).stdout.strip()
         if not scan:
@@ -421,12 +490,16 @@ def cmd_register(args):
         sys.exit(EXIT_KEYAUTH)
     res["ssh"]["batchModeVerified"] = True
 
-    # 5. capability probe + persist
+    # 5. capability probe (read-only) + converge the remote job layout. The
+    # mkdir lives HERE, in register, not in probe_resource: hard rule 3 says a
+    # probe never writes, and probe/enable/add-env all call probe_resource.
     probe_resource(nick, res)
-    res.setdefault("policy", {"maxConcurrentJobs": 1, "allowSudo": False,
-                              "powerPolicyConfirmed": False})
+    ssh_run(nick, "mkdir -p ~/.compute-jobs")
+    # no allowSudo key: sudo rejection is unconditional (hard rule 2), and a
+    # policy field implying it is togglable would be a lie
+    res.setdefault("policy", {"maxConcurrentJobs": 1, "powerPolicyConfirmed": False})
     reg["resources"][nick] = res
-    save_registry(reg)
+    save_registry(reg, touched=nick)
 
     caps = res.get("capabilities", {})
     gpu = caps.get("gpu", {})
@@ -487,7 +560,7 @@ def _write_compute_section(cfg_path, mutate):
     if not text.strip():
         text = ("# Machine-local overlay (gitignored, see local-state.manifest).\n"
                 "# config.py merges ONLY the allowlisted overlay keys (today: compute)\n"
-                "# over project.yaml — written by compute.py, safe to delete.\n")
+                "# over project.yaml — written by remote-compute.py, safe to delete.\n")
     existing = (yaml.safe_load(text) or {}).get("compute") or {}
     resources = existing.get("resources") or {}
     resources = mutate(dict(resources))
@@ -524,10 +597,15 @@ def cmd_enable(args):
     # never advertise from a stale snapshot — re-probe live
     probe_resource(nick, res)
     reg["resources"][nick] = res
-    save_registry(reg)
+    save_registry(reg, touched=nick)
 
     caps = res.get("capabilities", {})
-    envs = [{"name": k, "activate": v.get("activate"), "verified": v.get("verified")}
+    # NOTE: `activate` is deliberately NOT published. It is free-form shell a
+    # human may have written with an inline token (export HF_TOKEN=... &&
+    # source ...), and this snapshot lands in a repo file whose contract says
+    # it carries no secrets. Consumers resolve envs by NAME against the
+    # machine-local registry.
+    envs = [{"name": k, "verified": v.get("verified")}
             for k, v in (res.get("envs") or {}).items()]
     entry = {
         "enabled": True,
@@ -586,7 +664,7 @@ def cmd_lock(nick, holder, reason):
             nick, lock.get("holder"), lock.get("reason"), lock.get("since")))
         sys.exit(EXIT_LOCKED)
     res.setdefault("state", {})["lock"] = {"holder": holder, "reason": reason, "since": now_iso()}
-    save_registry(reg)
+    save_registry(reg, touched=nick)
     print("locked %s (holder: %s)" % (nick, holder))
     return 0
 
@@ -609,7 +687,7 @@ def cmd_unlock(nick, holder, force):
         print("WARNING: force-unlocking %s — was held by %s (reason: %s, since %s)" % (
             nick, lock.get("holder"), lock.get("reason"), lock.get("since")))
     res["state"]["lock"] = None
-    save_registry(reg)
+    save_registry(reg, touched=nick)
     print("unlocked %s" % nick)
     return 0
 
@@ -674,11 +752,50 @@ def _running_jobs(nick):
             continue
         if job.get("resource") != nick or job.get("finishedAt"):
             continue
-        rc, out, _ = ssh_run(nick, "cat %s/exitcode 2>/dev/null || echo __RUNNING__"
-                             % job.get("remoteDir", ""))
-        if rc == 0 and out.strip() == "__RUNNING__":
+        remote_dir = job.get("remoteDir")
+        if not remote_dir:
+            continue
+        rc, out, _ = ssh_run(nick, "if [ -d %s ]; then cat %s/exitcode 2>/dev/null "
+                             "|| echo __RUNNING__; else echo __GONE__; fi"
+                             % (shlex.quote(remote_dir), shlex.quote(remote_dir)))
+        state = out.strip()
+        if rc != 0:
+            # FAIL CLOSED: an unreachable/slow resource is exactly when the
+            # limit matters most. Treating "unknown" as idle would let a second
+            # job land on a saturated GPU.
+            running.append("%s (status unknown)" % (job.get("id") or name[:-5]))
+        elif state == "__RUNNING__":
             running.append(job.get("id") or name[:-5])
+        else:
+            # finished (exitcode present) or its remote dir is gone (reboot,
+            # tmp cleanup): record it so we never re-probe this job again
+            _mark_job_finished(os.path.join(jobs_dir(), name))
     return running
+
+
+def _mark_job_finished(path):
+    try:
+        with open(path) as f:
+            job = json.load(f)
+        job["finishedAt"] = now_iso()
+        _atomic_json(path, job)
+    except (OSError, ValueError):
+        pass
+
+
+def _atomic_json(path, data):
+    """Write job state atomically: a crash mid-write must not leave a truncated
+    file that later raises an uncaught ValueError from load_job."""
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".job.")
+    with os.fdopen(fd, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, path)
+
+
+# A job id becomes BOTH a remote path segment and a local filename, so it is
+# restricted to characters that are inert in a shell and cannot traverse.
+JOB_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 def _launch_job(reg, res, nick, workdir, cmd, opts):
@@ -700,6 +817,15 @@ def _launch_job(reg, res, nick, workdir, cmd, opts):
             nick, lock.get("holder"), lock.get("reason"), lock.get("since")))
         sys.exit(EXIT_LOCKED)
     job_id = opts["--job-id"] or datetime.datetime.now(datetime.timezone.utc).strftime("j%Y%m%d%H%M%S")
+    # --job-id is interpolated into the remote payload AND used as a local
+    # filename: an unvalidated value is remote command injection plus path
+    # traversal, and it lands after the sudo check on --cmd.
+    if not JOB_ID_RE.match(job_id):
+        print("ERROR: --job-id must match [A-Za-z0-9][A-Za-z0-9._-]{0,63} (got %r)" % job_id)
+        sys.exit(EXIT_USAGE)
+    # workdir reaches the remote shell too, via `cd <workdir>`; it faces the
+    # same sudo guard as --cmd and is quoted at the interpolation site below.
+    reject_sudo(workdir)
     remote_dir = "~/.compute-jobs/%s" % job_id
     # {jobdir} is engine-supplied and can only be resolved HERE, once the job
     # id exists. Without this the placeholder reached the remote shell
@@ -707,15 +833,22 @@ def _launch_job(reg, res, nick, workdir, cmd, opts):
     # the equivalent for payloads that prefer reading the environment.
     cmd = cmd.replace("{jobdir}", remote_dir)
 
-    # cooperative lock for the duration of the job
-    res.setdefault("state", {})["lock"] = {"holder": holder, "reason": "job %s" % job_id,
-                                           "since": now_iso()}
-    save_registry(reg)
+    # cooperative lock for the duration of the job. Never overwrite a human's
+    # manual `lock --reason`: same holder keeps their reason, so job-status
+    # cannot silently clear a lock a person took deliberately.
+    existing = (res.get("state") or {}).get("lock")
+    manual_lock = bool(existing) and not str(existing.get("reason", "")).startswith("job ")
+    if not manual_lock:
+        # take (or RE-POINT) the job lock: a second dispatch by the same holder
+        # must move the lock to the newer job, otherwise job-status on the
+        # first job releases a lock while the second is still running
+        res.setdefault("state", {})["lock"] = {"holder": holder, "reason": "job %s" % job_id,
+                                               "since": now_iso()}
+    save_registry(reg, touched=nick)
 
     if opts["--inputs"]:
-        subprocess.run([_bin("COMPUTE_RSYNC_BIN", "rsync"), "-az", "--partial",
-                        opts["--inputs"].rstrip("/") + "/", "%s:%s/" % (nick, workdir)],
-                       check=False)
+        subprocess.run(rsync_argv(opts["--inputs"].rstrip("/") + "/",
+                                  "%s:%s/" % (nick, workdir)), check=False)
 
     env_prefix = ""
     envs = res.get("envs") or {}
@@ -724,28 +857,38 @@ def _launch_job(reg, res, nick, workdir, cmd, opts):
         if not env or not env.get("activate"):
             print("ERROR: env '%s' is not configured on %s" % (opts["--env"], nick))
             sys.exit(EXIT_USAGE)
+        # re-check here, not only at add-env: the registry is a plain YAML file
+        # a human can edit, so an install-time check alone is defeatable
+        reject_sudo(env["activate"])
         env_prefix = env["activate"] + " && "
     # COMPUTE_JOB_DIR is the per-job artifact contract: payloads write outputs
     # there (never into the shared workdir), so job-pull returns THIS job's
     # results instead of every previous job's leftovers.
+    # workdir and remote_dir are QUOTED here: both carry operator-supplied
+    # text into a remote shell. cmd is already built from regex-validated,
+    # shell-quoted params (or an explicit --cmd the caller dictated).
+    q_wd, q_rd = shlex.quote(workdir), shlex.quote(remote_dir)
     inner = "cd %s && export COMPUTE_JOB_DIR=%s && %s%s > %s/job.log 2>&1; echo $? > %s/exitcode" % (
-        workdir, remote_dir, env_prefix, cmd, remote_dir, remote_dir)
+        q_wd, q_rd, env_prefix, cmd, q_rd, q_rd)
     launch = ("mkdir -p %s && if command -v tmux >/dev/null 2>&1; then "
               "tmux new-session -d -s cj-%s %s && tmux list-panes -t cj-%s -F '#{pane_pid}' > %s/pid; "
               "else setsid nohup bash -c %s >/dev/null 2>&1 & echo $! > %s/pid; fi") % (
-        remote_dir, job_id, shlex.quote("bash -lc %s" % shlex.quote(inner)), job_id, remote_dir,
-        shlex.quote(inner), remote_dir)
+        q_rd, job_id, shlex.quote("bash -lc %s" % shlex.quote(inner)), job_id, q_rd,
+        shlex.quote(inner), q_rd)
     rc, out, err = ssh_run(nick, launch, timeout=120)
     if rc != 0:
+        # release the lock we just took: otherwise a failed launch leaves the
+        # resource LOCKED with no job state, recoverable only via --force
+        if not manual_lock:
+            res.setdefault("state", {})["lock"] = None
+            save_registry(reg, touched=nick)
         print("ERROR: launch failed on %s: %s" % (nick, err or out))
         sys.exit(1)
 
-    os.makedirs(jobs_dir(), mode=0o700, exist_ok=True)
     state = {"id": job_id, "resource": nick, "workdir": workdir, "cmd": cmd,
              "env": opts["--env"], "holder": holder, "remoteDir": remote_dir,
              "submittedAt": now_iso()}
-    with open(os.path.join(jobs_dir(), "%s.json" % job_id), "w") as f:
-        json.dump(state, f, indent=2)
+    _atomic_json(os.path.join(jobs_dir(), "%s.json" % job_id), state)
     print("DISPATCHED %s on %s (workdir %s)" % (job_id, nick, workdir))
     print("follow: job-status %s | job-logs %s | job-pull %s" % (job_id, job_id, job_id))
     return 0
@@ -780,12 +923,12 @@ def cmd_add_env(argv):
         "kind": opts["--kind"], "activate": opts["--activate"],
         "verify": opts["--verify"], "verified": None,
     }
-    save_registry(reg)
+    save_registry(reg, touched=nick)
     # verify immediately — a declared env that has never been exercised is a
     # claim, and claims must come from real output (hard rule 4)
     probe_resource(nick, res)
     reg["resources"][nick] = res
-    save_registry(reg)
+    save_registry(reg, touched=nick)
     v = (res["envs"][env_name] or {}).get("verified") or {}
     print("declared env '%s' on %s" % (env_name, nick))
     print("  activate: %s" % opts["--activate"])
@@ -851,8 +994,8 @@ def cmd_install_capability(argv):
         if not os.path.exists(src):
             print("ERROR: payload file %s declared in the manifest is missing" % src)
             sys.exit(EXIT_USAGE)
-        rc = subprocess.run([_bin("COMPUTE_RSYNC_BIN", "rsync"), "-az", "--partial", src,
-                             "%s:%s/" % (nick, capdir.replace("~/", ""))], check=False).returncode
+        rc = subprocess.run(rsync_argv(src, "%s:%s/" % (nick, capdir.replace("~/", ""))),
+                            check=False).returncode
         if rc != 0:
             print("ERROR: rsync of %s failed (exit %s)" % (rel, rc))
             sys.exit(1)
@@ -873,7 +1016,7 @@ def cmd_install_capability(argv):
         "version": manifest.get("version"), "installedAt": now_iso(),
         "description": manifest.get("description") or "", "jobs": declared,
     }
-    save_registry(reg)
+    save_registry(reg, touched=nick)
     print("installed capability '%s' on %s (payload -> %s)" % (cap, nick, capdir))
     for key in declared:
         print("  job: %s" % key)
@@ -914,7 +1057,7 @@ def cmd_add_job(argv):
         "description": opts["--description"], "workdir": opts["--workdir"],
         "cmd": opts["--cmd"], "env": opts["--env"], "params": params,
     }
-    save_registry(reg)
+    save_registry(reg, touched=nick)
     print("declared job '%s' on %s (params: %s)" % (job_name, nick, ", ".join(params) or "none"))
     return 0
 
@@ -981,10 +1124,18 @@ def load_job(job_id):
     path = os.path.join(jobs_dir(), "%s.json" % job_id)
     try:
         with open(path) as f:
-            return json.load(f)
+            job = json.load(f)
     except FileNotFoundError:
         print("ERROR: no job state at %s" % path)
         sys.exit(EXIT_USAGE)
+    except ValueError as e:
+        print("ERROR: job state at %s is corrupt (%s) — the job may still be "
+              "running; check the remote ~/.compute-jobs/ directory" % (path, e))
+        sys.exit(EXIT_USAGE)
+    if not job.get("remoteDir") or not job.get("resource"):
+        print("ERROR: job state at %s is incomplete (missing resource/remoteDir)" % path)
+        sys.exit(EXIT_USAGE)
+    return job
 
 
 def cmd_job_status(job_id):
@@ -1007,7 +1158,9 @@ def cmd_job_status(job_id):
         lock = (res.get("state") or {}).get("lock")
         if lock and lock.get("reason") == "job %s" % job_id:
             res["state"]["lock"] = None
-            save_registry(reg)
+            save_registry(reg, touched=job["resource"])
+    # record the terminal state so _running_jobs never re-probes this job
+    _mark_job_finished(os.path.join(jobs_dir(), "%s.json" % job_id))
     return 0
 
 
@@ -1025,9 +1178,8 @@ def cmd_job_pull(job_id, dest=None):
     # pull the job's OWN directory (artifacts + job.log + exitcode), never the
     # shared workdir -- see the COMPUTE_JOB_DIR contract in _launch_job
     remote_dir = job.get("remoteDir") or ("~/.compute-jobs/%s" % job_id)
-    rc = subprocess.run([_bin("COMPUTE_RSYNC_BIN", "rsync"), "-az", "--partial",
-                         "%s:%s/" % (job["resource"], remote_dir.replace("~/", "")),
-                         dest + "/"], check=False).returncode
+    rc = subprocess.run(rsync_argv("%s:%s/" % (job["resource"], remote_dir.replace("~/", "")),
+                                   dest + "/"), check=False).returncode
     print("pulled %s -> %s" % (job_id, dest) if rc == 0 else "ERROR: rsync exit %s" % rc)
     return 0 if rc == 0 else 1
 
@@ -1065,7 +1217,7 @@ def cmd_remove(nick):
     reg = load_registry()
     if nick in reg["resources"]:
         del reg["resources"][nick]
-        save_registry(reg)
+        save_registry(reg, touched=nick)
         print("removed %s from the registry (remote machine untouched;"
               " ssh alias kept in %s — delete by hand if unwanted)" % (nick, ssh_config_path()))
     else:
@@ -1140,7 +1292,7 @@ def main(argv):
             return EXIT_USAGE
         probe_resource(rest[0], res)
         reg["resources"][rest[0]] = res
-        save_registry(reg)
+        save_registry(reg, touched=rest[0])
         print(json.dumps({"capabilities": res.get("capabilities", {}),
                           "platform": res.get("platform", {}),
                           "envs": {k: v.get("verified") for k, v in (res.get("envs") or {}).items()}}))
@@ -1157,7 +1309,11 @@ def main(argv):
         return cmd_disable(rest)
     if verb == "exec" and rest:
         nick = rest[0]
-        payload = " ".join(rest[2:] if len(rest) > 1 and rest[1] == "--" else rest[1:])
+        argv = rest[2:] if len(rest) > 1 and rest[1] == "--" else rest[1:]
+        # shlex.join, not " ".join: the caller already split these into argv
+        # words, so joining raw re-splits them on the remote shell (python -c
+        # 'import os; print(1)' became two commands)
+        payload = shlex.join(argv) if argv else ""
         if not payload:
             print("ERROR: exec needs a command after --")
             return EXIT_USAGE
