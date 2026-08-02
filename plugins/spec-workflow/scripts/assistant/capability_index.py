@@ -173,9 +173,19 @@ import re
 
 SUPPORTED_VERSION_RANGE = (1, 1)
 
-_TOP_LEVEL_KEYS = {"version", "provisioning", "permissions", "invoke"}
+_TOP_LEVEL_KEYS = {"version", "provisioning", "permissions", "invoke", "longRunning"}
 
-Capability = collections.namedtuple("Capability", ["version", "provisioning", "permissions", "invoke"])
+# #508 (SPEC-ASSISTANT.md Sec9.4, docs/design/ast-E6.md sequence 3): the
+# additive, optional async marker -- a capability whose invoke won't finish
+# inline declares `longRunning: true` in its capability.yaml so the turn
+# pipeline routes it through tasks.enqueue instead of an inline invoke_argv/
+# invoke_mcp call. Absent entirely on every pre-existing capability.yaml
+# (this key did not exist before #508); defaults to False, never a compile
+# failure -- see `_check_long_running`/`load_capability` below.
+Capability = collections.namedtuple(
+    "Capability", ["version", "provisioning", "permissions", "invoke", "long_running"],
+    defaults=(False,),
+)
 CapabilityError = collections.namedtuple("CapabilityError", ["reason"])
 
 
@@ -215,6 +225,11 @@ def _check_permissions(perms, where, errs):
     for i, p in enumerate(perms):
         if not isinstance(p, str):
             errs.append(f"{where}[{i}]: must be a string (got {type(p).__name__})")
+
+
+def _check_long_running(value, where, errs):
+    if not isinstance(value, bool):
+        errs.append(f"{where}: must be a bool (got {type(value).__name__})")
 
 
 def _check_invoke(invoke, where, errs):
@@ -262,6 +277,9 @@ def validate_capability(capability, where="capability.yaml"):
     if invoke is not None:
         _check_invoke(invoke, f"{where}.invoke", errs)
 
+    if "longRunning" in capability:
+        _check_long_running(capability["longRunning"], f"{where}.longRunning", errs)
+
     return errs
 
 
@@ -297,6 +315,7 @@ def load_capability(skill_dir):
         provisioning=data["provisioning"],
         permissions=data["permissions"],
         invoke=data["invoke"],
+        long_running=bool(data.get("longRunning", False)),
     )
 
 
@@ -758,6 +777,37 @@ def nearest_entries(index, query, top_n=DEFAULT_NEAREST_TOP_N):
     return [entry for entry, _score_val in scored[:top_n]]
 
 
+def resolve_by_name(index, name):
+    """#508 (docs/design/ast-E6.md sequence 2, docs/spec-deltas/applied/
+    346.md owner decision 1): resolves an EXPLICIT, structured capability
+    request (a parsed turn directive naming a capability) against an
+    already-compiled `index` by NAME, case-insensitively -- completely
+    independent of `roster_for_turn`/`nearest_entries`'s relevance
+    SCORING. Those two functions answer "what is most likely relevant to
+    this free-text query"; this one answers a different question the model
+    itself already resolved for us: "does the capability I explicitly
+    asked for actually exist and is it usable". Sec11.2's "two
+    invisibility tiers" design means a disabled (or version-incompatible)
+    capability's name never appears in `index.entries` at all, so a
+    directive naming one is indistinguishable here from a directive naming
+    a capability that was never installed -- both correctly resolve to
+    `None` (Sec17.2 holds without this function needing its own enablement
+    check).
+
+    Returns the matching `CapabilityIndexEntry`, or `None` for: no match,
+    an empty/`None` index, or an empty/`None` name -- never raises."""
+    if not index or not name:
+        return None
+    entries = index.entries or ()
+    lname = name.strip().lower()
+    if not lname:
+        return None
+    for entry in entries:
+        if entry.name.lower() == lname:
+            return entry
+    return None
+
+
 def roster_for_turn(index, query, top_n):
     """Relevance-filtered, HARD-capped top-`top_n` read of an already-
     compiled `index` (Sec11.3). Never compiles, never does I/O -- pure,
@@ -1003,3 +1053,61 @@ def invoke_capability(name, capability, params, assistant_cfg, *, skill_dir=None
     if "mcp" in invoke:
         return adapters.invoke_mcp(capability, params, **kwargs)
     return adapters.invoke_argv(capability, params, **kwargs)
+
+
+# ------------------------------------------------------------------------
+# #508 (SPEC-ASSISTANT.md Sec9.4, docs/design/ast-E6.md sequence 3): the
+# tasks-worker executor for a longRunning capability invocation.
+# ------------------------------------------------------------------------
+
+# The task `kind` engine.py's turn-side hook enqueues onto the SAME
+# generic tasks.sqlite queue/state-machine AST-066 already built (mirrors
+# harness.py's own `KIND = "harness-job"` -- one executor per task kind,
+# registered into engine.py's `start()` executors mapping, tasks.py itself
+# stays business-logic-free per its own module docstring).
+KIND = "capability-invoke"
+
+
+def run_capability_invoke_task(payload, report_progress):
+    """The `tasks.py` executor(payload, report_progress) -> dict contract
+    (see tasks.py's `_process_create`'s docstring for the exact calling
+    convention) for the `KIND` task kind: runs on the tasks WORKER thread
+    (never the chat/HTTP request thread, Sec9.5/Sec17.7 -- this is what
+    makes a longRunning capability genuinely non-blocking), dispatching to
+    the SAME `invoke_capability` choke point the inline (synchronous)
+    invocation path uses -- one execution primitive, one enablement gate,
+    for both the inline and the queued path (Sec17.2 holds identically for
+    both).
+
+    `payload` is engine.py's own construction: `{"name", "capability":
+    <Capability._asdict()>, "params", "skill_dir", "assistant_cfg",
+    "timeout"}` -- a plain, JSON-serializable dict (tasks.py's `_insert`
+    calls `json.dumps` on the whole payload before ever queuing it), so the
+    `Capability` namedtuple travels as its `_asdict()` mapping and is
+    reconstructed here via `Capability(**payload["capability"])` (round-
+    trips exactly: every field of a parsed capability.yaml -- provisioning/
+    permissions/invoke dicts/lists of primitives, plus the bool
+    long_running -- is itself JSON-safe).
+
+    `report_progress` is accepted (the executor contract requires it) but
+    unused: this is a single invoke_capability call with no meaningful
+    intermediate progress to report, unlike harness.py's multi-step agentic
+    job.
+
+    Returns `{"result": {...}}` -- the `InvokeResult`/`McpInvokeResult`
+    namedtuple, converted via `._asdict()` so it round-trips through
+    tasks.py's own `json.dumps(result, sort_keys=True)` on the `completed`
+    transition (Sec12.3's task-row `result` column). Raises whatever
+    `invoke_capability` itself raises (`CapabilityDisabledError`,
+    `adapters.ParamValidationError`, `adapters.Timeout`, ...) -- `tasks.
+    _process_create` already catches any executor exception and records it
+    as the task's `failed` state/error (never crashes the worker thread),
+    so this function does not need its own try/except."""
+    capability = Capability(**payload["capability"])
+    result = invoke_capability(
+        payload["name"], capability, payload.get("params") or {},
+        payload.get("assistant_cfg") or {},
+        skill_dir=payload.get("skill_dir"),
+        timeout=payload.get("timeout"),
+    )
+    return {"result": result._asdict()}

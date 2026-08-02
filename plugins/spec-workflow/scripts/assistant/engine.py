@@ -118,6 +118,37 @@ TRACES_QUEUE_MAXSIZE = 1000
 # magic number.
 ROSTER_TOP_N = capability_index.DEFAULT_ROSTER_TOP_N
 
+# #508 (SPEC-ASSISTANT.md Sec9.4/Sec9.5, design point 2 "bounded timeout"):
+# the mandatory timeout an INLINE (synchronous, request-thread-blocking)
+# capability invocation gets -- distinct from `adapters.
+# DEFAULT_TIMEOUT_SECONDS` (60s, the provider-CLI adapter's own timeout):
+# an invoked capability's own subprocess is a different kind of call than
+# an LLM completion, and this bounds how long ONE HTTP request thread can
+# be tied up per turn (Sec9.5: the TURN never blocks on the distiller/
+# index/task queue, but an inline invoke is explicitly synchronous within
+# the turn itself -- this constant is that invariant's actual bound). A
+# bare module-level constant (not a per-call parameter) so tests can
+# monkeypatch it down, same posture `section-assistant-engine.sh` already
+# uses for other module-level knobs.
+CAPABILITY_INVOKE_TIMEOUT_SECONDS = 30
+
+# #508 round-1 review, HIGH finding 1: a QUEUED (longRunning) capability
+# runs on the tasks worker thread, never the HTTP request thread -- there
+# is no request thread left to protect, so reusing the 30s INLINE bound
+# above was simply wrong: it silently killed a task the user had already
+# been told was "safely queued", with the failure never reaching the
+# conversation at all (a live bug the reviewer reproduced). This is a
+# SEPARATE, deliberately more generous bound for the queued path only,
+# matching `harness.DEFAULT_HARNESS_TIMEOUT_SECONDS` (300s) -- the SAME
+# default this codebase already uses for its OTHER async-task mechanism
+# (dispatched harness jobs), for exactly the same reason: background work
+# has no request thread to bound, but the tasks worker is a SINGLE SERIAL
+# thread (tasks.py's own documented execution model) that a genuinely
+# hung subprocess would otherwise block forever, starving every other
+# queued task (harness jobs included) behind it -- so a bound still
+# exists, just a much longer one than the inline path's.
+CAPABILITY_TASK_TIMEOUT_SECONDS = 300
+
 
 def _heartbeat_worker(stop_event):
     """v1 no-op worker body: parks on `stop_event` until told to stop. No
@@ -525,13 +556,28 @@ class AssistantEngine:
                     # kind still has no executor/resolver registered, so an
                     # unrelated enqueued kind still fails/orphans
                     # specifically and immediately, exactly as before.
+                    # #508 (Sec9.4 sequence 3): also registers
+                    # `capability_index.run_capability_invoke_task` under
+                    # `capability_index.KIND` -- the executor a longRunning
+                    # capability's queued invocation runs on this worker
+                    # thread (never the chat/HTTP thread). No RESOLVER is
+                    # registered for this kind: every capability-invoke task
+                    # runs entirely in-process (never carries an
+                    # `external_job_id`), so a row still `started`/
+                    # `progress` at restart is genuinely unreconcilable --
+                    # tasks.py's own restart-reconciliation logic already
+                    # marks a no-`external_job_id` in-flight row `orphaned`,
+                    # exactly the correct outcome for this local-only kind.
                     thread = threading.Thread(
                         target=tasks.run_worker,
                         args=(self.queues["tasks"], stop_event),
                         kwargs={
                             "traces_queue": self.queues["traces"],
                             "repos_getter": self._repos_getter,
-                            "executors": {harness.KIND: harness.run_harness_job},
+                            "executors": {
+                                harness.KIND: harness.run_harness_job,
+                                capability_index.KIND: capability_index.run_capability_invoke_task,
+                            },
                             "resolvers": {harness.KIND: harness.resolve_harness_job},
                         },
                         name=f"assistant-{name}",
@@ -1231,7 +1277,284 @@ class AssistantEngine:
             except queue.Full:
                 pass
 
-    def _capability_gap_check(self, root, turn_id, message):
+    def _trace_directive(self, root, turn_id, directive, status):
+        """#508: one `skill.request` trace event per parsed directive
+        (Sec10.1) -- `status` is `"parsed"` for the directive
+        `_capability_reply_hook_for` is about to act on, or `"ignored"`
+        for any EXTRA directive found beyond the first (v1: at most one
+        capability invocation per turn, no chains; docs/spec-deltas/
+        508.md). A `turns.CapabilityDirectiveError` (malformed JSON, or a
+        block missing a usable `name`) traces its `reason` instead of a
+        name/params pair -- still one event, never silently dropped."""
+        if isinstance(directive, turns.CapabilityDirectiveError):
+            payload = {"reason": directive.reason}
+        else:
+            payload = {"name": directive.name, "params": directive.params}
+        self._emit_trace(root, "skill.request", turn_id=turn_id, status=status, payload=payload)
+
+    def _capability_reply_hook_for(self, root, turn_id, user_message, assistant_cfg):
+        """#508 (SPEC-ASSISTANT.md Sec9.4/Sec9.5, Sec11.5, Sec11.8,
+        docs/design/ast-E6.md sequences 2/3/5): builds the `on_reply` hook
+        `turns.run_turn` calls (see that function's docstring for the
+        exact contract) -- the request -> resolve -> invoke -> (gap) loop
+        this task exists to wire up. Returns a closure so `_chat` can bind
+        `root`/`turn_id`/`user_message`/`assistant_cfg` (the resolved
+        `section` dict) once per turn without a longer positional
+        signature on the hook itself.
+
+        `_hook(first_text, context_for_adapter, complete_fn,
+        adapter_kwargs)`:
+          1. Parses EVERY directive out of `first_text` (`turns.
+             parse_capability_directives`). NO directive at all -> returns
+             `None` immediately, touching NOTHING else (capability_index,
+             adapters, the tasks queue, or any trace event) -- the
+             flooding-guard discipline #346 already established for
+             `_capability_gap_check`, extended here to the WHOLE loop:
+             ordinary chat stays exactly as cheap as before this task.
+          2. Traces every directive as `skill.request` (the ACTED-ON one
+             -- `directives[0]`, and only when it is also `actionable` --
+             as `"parsed"`; every OTHER directive found, including a
+             VALID `directives[0]` that failed the trailing-position
+             check, as `"ignored"` -- v1 never chains, and round-1 review
+             finding 3 ("teach-then-quote": a model demonstrating the
+             syntax mid-explanation, confirmed live by review, must never
+             fire) means being FIRST is necessary but not sufficient; see
+             `turns.parse_capability_directives`'s own docstring for the
+             exact `actionable` rule).
+          3. A malformed FIRST directive (`CapabilityDirectiveError`) never
+             reaches capability_index at all -- traced as `skill.error`
+             (reason `"invalid_directive"`) and replied to honestly,
+             UNCONDITIONALLY (regardless of trailing position -- a
+             malformed block's intent can never be inferred from where it
+             sits, so it is always surfaced the same way).
+          4. Resolves `directives[0]`'s name against the already-compiled
+             index (`capability_index.resolve_by_name` -- case-
+             insensitive, independent of any relevance score, Sec11.2's
+             "two invisibility tiers" mean a disabled capability is
+             indistinguishable here from a never-installed one). No
+             match -> `_capability_gap_check(..., requested_name=...)`
+             (the SAME #346 gap machinery, now given the real trigger it
+             was missing) and its refusal text becomes the turn's reply.
+          5. A match with `provisioned_ok` false -> a refusal naming the
+             capability and its `unavailable_reason` (Sec11.4: never
+             present an unavailable ability as usable) -- traced as
+             `skill.error` (reason `"unprovisioned"`), never a gap
+             (something WAS found, just not usable right now).
+          6. A match whose `capability.yaml` declares `longRunning: true`
+             -> `tasks.enqueue`s a `capability_index.KIND` task instead of
+             invoking inline (Sec9.4 sequence 3) under
+             `CAPABILITY_TASK_TIMEOUT_SECONDS` (round-1 review, HIGH
+             finding 1 -- a DISTINCT, more generous bound than the inline
+             path's; reusing the inline bound silently killed a queued
+             task the user had already been told was safely backgrounded)
+             and replies that the work is queued -- no inline spawn.
+          7. Otherwise: `capability_index.invoke_capability` under
+             `CAPABILITY_INVOKE_TIMEOUT_SECONDS`, bracketed by
+             `skill.invoke` start/ok trace events sharing one span_id
+             (parent_span_id=turn_id, i.e. turn-linked); `adapters.
+             ParamValidationError` (invalid/missing params -- rejected
+             BEFORE any spawn, by `invoke_argv`/`invoke_mcp`'s own
+             pre-substitution validation) and `adapters.Timeout` each get
+             their own `skill.error` status/reason and a graceful reply;
+             any other `adapters.AdapterError` is caught the same way. On
+             success, the result (`turns.render_capability_result_text`,
+             size-capped with an explicit truncation marker) drives ONE
+             same-turn follow-up `complete_fn` call
+             (`turns.render_capability_result_followup` reuses the
+             ALREADY-composed system prompt -- no second recall/compose)
+             whose reply becomes the turn's final text. That follow-up
+             call is itself wrapped in `adapters.AdapterError` handling
+             (round-1 review finding 4): the capability has, at this
+             point, ALREADY run -- letting a follow-up failure propagate
+             up to `_chat`'s outer handler would 502 with NO exchange
+             ever appended, discarding the executed action AND inviting a
+             retry that would run it AGAIN, so a failed follow-up
+             degrades to `turns.render_capability_completed_fallback`
+             instead (a plain, result-bearing reply), traced as
+             `skill.error` (reason `"followup_failed"`). The follow-up's
+             OWN reply is re-scanned for a directive -- v1 NEVER honors
+             one from a follow-up (one invocation per turn, full stop),
+             so every directive found there is traced `"ignored"`
+             regardless of its own `actionable` status. A follow-up reply
+             that strips down to nothing (round-1 review finding 5 -- the
+             model's follow-up was itself just another directive block,
+             with no surrounding prose) falls back to the SAME
+             result-bearing template rather than an empty 200.
+
+        The ENTIRE hook body (from the first directive check onward) runs
+        under one broad `try/except Exception` (round-1 review finding 8):
+        the SAME "never raise into the caller, degrade to a traced error +
+        plain reply" discipline `_capability_gap_check` already
+        established -- an unexpected internal bug anywhere in this loop
+        must never turn into a dropped connection with no `turn.end`
+        event, it must degrade exactly like every OTHER failure mode
+        above does."""
+        def _hook(first_text, context_for_adapter, complete_fn, adapter_kwargs):
+            visible_text, directives, actionable = turns.parse_capability_directives(first_text)
+            if not directives:
+                return None  # ordinary reply -- zero capability machinery touched
+
+            try:
+                primary = directives[0]
+                for ignored in directives[1:]:
+                    self._trace_directive(root, turn_id, ignored, status="ignored")
+
+                if isinstance(primary, turns.CapabilityDirectiveError):
+                    self._emit_trace(root, "skill.error", turn_id=turn_id, status="error", payload={
+                        "reason": "invalid_directive", "detail": primary.reason,
+                    })
+                    return {"text": visible_text or "I could not understand that capability request."}
+
+                if actionable is None:
+                    # a VALID directive was found but is not the reply's
+                    # trailing element (round-1 review finding 3:
+                    # teach-then-quote) -- traced for observability, never
+                    # invoked; the visible reply (fence already stripped)
+                    # stands on its own. round-2 review (optional nit): NO
+                    # "could not understand" fallback here -- unlike the
+                    # malformed-directive branch above, `visible_text` can
+                    # never be empty in this branch by construction: a
+                    # valid `primary` only fails the trailing check when
+                    # genuine, non-whitespace prose follows its fence (see
+                    # parse_capability_directives's own `actionable` rule),
+                    # and that same prose is what `visible_text` carries.
+                    self._trace_directive(root, turn_id, primary, status="ignored")
+                    return {"text": visible_text}
+
+                self._trace_directive(root, turn_id, primary, status="parsed")
+
+                index = self.capability_index_for(root)
+                entry = capability_index.resolve_by_name(index, primary.name)
+                if entry is None:
+                    gap = self._capability_gap_check(root, turn_id, user_message, requested_name=primary.name)
+                    return {"text": gap.text if gap is not None else visible_text}
+
+                if not entry.provisioned_ok:
+                    reason = entry.unavailable_reason or "not currently available"
+                    self._emit_trace(root, "skill.error", turn_id=turn_id, status="refused", payload={
+                        "reason": "unprovisioned", "capability": entry.name, "detail": reason,
+                    })
+                    return {"text": "%s is enabled but not available right now: %s" % (entry.name, reason)}
+
+                skill_dir = os.path.join(str(root), ".claude", "skills", entry.name)
+                capability = capability_index.load_capability(skill_dir)
+                if isinstance(capability, capability_index.CapabilityError):
+                    self._emit_trace(root, "skill.error", turn_id=turn_id, status="error", payload={
+                        "reason": "reload_failed", "capability": entry.name, "detail": capability.reason,
+                    })
+                    return {"text": "%s could not be loaded right now." % entry.name}
+
+                if capability.long_running:
+                    task_payload = {
+                        "name": entry.name,
+                        "capability": capability._asdict(),
+                        "params": primary.params,
+                        "skill_dir": skill_dir,
+                        "assistant_cfg": assistant_cfg if isinstance(assistant_cfg, dict) else {},
+                        "timeout": CAPABILITY_TASK_TIMEOUT_SECONDS,
+                    }
+                    task_id = tasks.enqueue(self.queues["tasks"], root, capability_index.KIND,
+                                             payload=task_payload, turn_id=turn_id)
+                    if task_id is None:
+                        self._emit_trace(root, "skill.error", turn_id=turn_id, status="error", payload={
+                            "reason": "queue_full", "capability": entry.name,
+                        })
+                        return {"text": ("I could not queue %s right now (the task queue is full) -- "
+                                           "please try again shortly." % entry.name)}
+                    return {"text": ("I have queued %s to run in the background -- watch the "
+                                       "artifact panel for the result." % entry.name)}
+
+                span_id = uuid.uuid4().hex
+                self._emit_trace(root, "skill.invoke", turn_id=turn_id, span_id=span_id,
+                                  parent_span_id=turn_id, status="start",
+                                  payload={"capability": entry.name})
+                try:
+                    result = capability_index.invoke_capability(
+                        entry.name, capability, primary.params, assistant_cfg,
+                        skill_dir=skill_dir, timeout=CAPABILITY_INVOKE_TIMEOUT_SECONDS)
+                except capability_index.CapabilityDisabledError as exc:
+                    self._emit_trace(root, "skill.error", turn_id=turn_id, span_id=span_id,
+                                      parent_span_id=turn_id, status="refused", payload={
+                                          "reason": "disabled", "capability": entry.name, "detail": str(exc),
+                                      })
+                    return {"text": "%s is disabled." % entry.name}
+                except adapters.Timeout as exc:
+                    self._emit_trace(root, "skill.error", turn_id=turn_id, span_id=span_id,
+                                      parent_span_id=turn_id, status="timeout", payload={
+                                          "capability": entry.name, "error": str(exc),
+                                      })
+                    return {"text": "%s took too long to respond, so I stopped waiting." % entry.name}
+                except adapters.ParamValidationError as exc:
+                    self._emit_trace(root, "skill.error", turn_id=turn_id, span_id=span_id,
+                                      parent_span_id=turn_id, status="refused", payload={
+                                          "reason": "invalid_params", "capability": entry.name, "detail": str(exc),
+                                      })
+                    return {"text": "I could not call %s: %s" % (entry.name, exc)}
+                except adapters.AdapterError as exc:
+                    self._emit_trace(root, "skill.error", turn_id=turn_id, span_id=span_id,
+                                      parent_span_id=turn_id, status="error", payload={
+                                          "capability": entry.name, "error": str(exc),
+                                          "error_type": type(exc).__name__,
+                                      })
+                    return {"text": "%s failed: %s" % (entry.name, exc)}
+
+                result_text, truncated = turns.render_capability_result_text(result)
+                self._emit_trace(root, "skill.invoke", turn_id=turn_id, span_id=span_id,
+                                  parent_span_id=turn_id, status="ok", payload={
+                                      "capability": entry.name,
+                                      "argv": list(getattr(result, "argv", None) or []),
+                                      "truncated": truncated,
+                                  })
+                fallback_text = turns.render_capability_completed_fallback(entry.name, result_text)
+
+                followup_context = turns.render_capability_result_followup(
+                    context_for_adapter, entry.name, result_text)
+                try:
+                    followup = complete_fn(followup_context, **(adapter_kwargs or {}))
+                except adapters.AdapterError as exc:
+                    # round-1 review finding 4: the capability ALREADY ran
+                    # -- losing that outcome (and inviting a retry that
+                    # would re-run it) is worse than a rougher, templated
+                    # reply. Degrade here, never let this propagate up to
+                    # _chat's outer AdapterError handler, which 502s with
+                    # NO exchange ever appended.
+                    self._emit_trace(root, "skill.error", turn_id=turn_id, span_id=span_id,
+                                      parent_span_id=turn_id, status="error", payload={
+                                          "reason": "followup_failed", "capability": entry.name,
+                                          "error": str(exc), "error_type": type(exc).__name__,
+                                      })
+                    return {"text": fallback_text}
+
+                followup_visible, followup_directives, _followup_actionable = (
+                    turns.parse_capability_directives(followup.get("text", "")))
+                for found in followup_directives:
+                    # v1: NOTHING from a follow-up reply is ever honored,
+                    # one invocation per turn, full stop -- every directive
+                    # found here is traced ignored regardless of its own
+                    # actionable/trailing-position status.
+                    self._trace_directive(root, turn_id, found, status="ignored")
+                return {
+                    # round-1 review finding 5: a follow-up that stripped
+                    # down to nothing but a (never-honored) directive block
+                    # falls back to the same result-bearing template as a
+                    # failed follow-up call, never a blank reply.
+                    "text": followup_visible or fallback_text,
+                    "usage": followup.get("usage"),
+                    "timings": followup.get("timings"),
+                }
+            except Exception as exc:
+                # round-1 review finding 8: the SAME "never raise into the
+                # caller" discipline _capability_gap_check already
+                # established, extended to the whole hook -- an unexpected
+                # internal bug here must degrade to a traced error + plain
+                # reply, never a dropped connection with no turn.end.
+                self._emit_trace(root, "skill.error", turn_id=turn_id, status="error", payload={
+                    "reason": "internal_exception", "error": str(exc), "error_type": type(exc).__name__,
+                })
+                return {"text": "Something went wrong while handling that request."}
+        return _hook
+
+    def _capability_gap_check(self, root, turn_id, message, requested_name=None):
         """AST-071 (SPEC-ASSISTANT.md Sec11.8, docs/design/ast-E6.md
         sequence 5): runs `turns.capability_gap_reply` off the SAME
         already-compiled index `_roster_provider_for` reads (Sec11.3: no
@@ -1248,58 +1571,61 @@ class AssistantEngine:
         ("every error... SHALL be a first-class event linked from its
         turn") an internal failure is not silently swallowed either: it is
         reported as a `skill.gap.error` trace event carrying the turn_id
-        and the error (review round 1 fix #5).
+        and the error (review round 1 fix #5). Returns the `CapabilityGap`
+        namedtuple on a genuine gap, `None` otherwise (#508: `_chat`'s
+        directive-driven caller uses `gap.text` as the turn's actual reply;
+        every #346-era caller that ignores the return value is unaffected).
 
-        NOT auto-wired into every `_chat` call (flagged design decision,
-        docs/spec-deltas/346.md -- read this if extending the wiring;
-        production wiring into a real request path is tracked separately
-        as task #508, not this one). `capability_index.roster_for_turn`
-        returns `[]` (a "gap" by this function's own contract) both for a
-        genuinely empty index (no capabilities installed at all -- the
-        common v1 default) AND for any ordinary conversational turn that
-        simply does not mention an installed capability; `_roster_provider_for`'s
-        own docstring already establishes that AST-061 treats BOTH as
-        "ordinary chat, completely unaffected" for roster injection.
-        Calling this unconditionally on every turn was tried and reverted:
-        an 8-turn conversation against a skill-less assistant fixture
-        minted 8 near-duplicate acquire-offer plan notes (one per turn)
-        instead of the expected single distilled summary note -- a real,
-        demonstrated flooding regression (it broke
+        NOT auto-wired into EVERY `_chat` call with no signal at all
+        (flagged design decision, docs/spec-deltas/346.md -- read this if
+        extending the wiring further). `capability_index.roster_for_turn`
+        returns `[]` (the pre-#508 gap trigger, still used when
+        `requested_name` is omitted) both for a genuinely empty index (no
+        capabilities installed at all -- the common v1 default) AND for
+        any ordinary conversational turn that simply does not mention an
+        installed capability; `_roster_provider_for`'s own docstring
+        already establishes that AST-061 treats BOTH as "ordinary chat,
+        completely unaffected" for roster injection. Calling this
+        unconditionally on every turn (with NO `requested_name`) was tried
+        and reverted: an 8-turn conversation against a skill-less
+        assistant fixture minted 8 near-duplicate acquire-offer plan notes
+        (one per turn) instead of the expected single distilled summary
+        note -- a real, demonstrated flooding regression (it broke
         section-assistant-distill.sh's "N turns... trigger a real
-        distilled mint" integration test), confirming that distinguishing
-        "this message is an action request" from ordinary conversation
-        needs a real trigger (an actual capability-invocation attempt)
-        this task does not build (no MCP/argv invoke changes, per the task
-        brief's non-scope) -- rather than a heuristic that would either
-        miss real gaps or flood the brain on skill-less/off-topic turns.
-        This method is therefore shipped as a complete, directly-callable,
-        fully-tested building block (section-assistant-engine.sh calls it
-        directly) for a FUTURE caller that already knows a specific
-        request could not be resolved to a capability (e.g. an explicit
-        invocation-attempt path, once one exists, or task #508's
-        production wiring) -- not invoked from the general chat pipeline
-        in this task."""
+        distilled mint" integration test).
+
+        `requested_name` (#508, optional, `None` by default -- every
+        pre-#508 caller/behavior is unaffected): threaded straight through
+        to `turns.capability_gap_reply`'s own `requested_name` param -- see
+        that function's docstring for the embedding-mode-independent,
+        explicit-request gap trigger this enables. `_chat`'s directive-
+        driven hook (`_capability_reply_hook_for` below) is the FIRST
+        caller that supplies it, precisely the "actual capability-
+        invocation attempt path" this method's docstring previously named
+        as the missing trigger #508 needed to build."""
         try:
             index = self.capability_index_for(root)
-            gap = turns.capability_gap_reply(index, message)
+            gap = turns.capability_gap_reply(index, message, requested_name=requested_name)
         except Exception as exc:
             self._emit_trace(root, "skill.gap.error", turn_id=turn_id, status="error", payload={
                 "error": str(exc), "error_type": type(exc).__name__,
             })
-            return
+            return None
         if gap is None:
-            return
+            return None
         # review round 2 (NEW-2): `plan_note_drafted` was dropped from this
         # payload -- `turns.capability_gap_reply` now drafts a plan note
         # unconditionally on every gap (see `_draft_capability_acquire_offer`'s
         # docstring), so the field was always True and carried no signal.
         self._emit_trace(root, "skill.gap", turn_id=turn_id, status="gap", payload={
             "nearest": [entry.name for entry in gap.nearest],
+            "requested_name": requested_name,
         })
         plan_note = dict(gap.plan_note)
         plan_note["turn_id"] = turn_id
         plan_note["created"] = _now_iso()
         self._enqueue_gap_note(root, plan_note)
+        return gap
 
     def _emit_trace(self, root, kind, turn_id=None, span_id=None,
                      parent_span_id=None, status=None, payload=None,
@@ -1455,7 +1781,17 @@ class AssistantEngine:
                         prev_out_files = set(os.listdir(out_dir))
                     except OSError:
                         persona_cfg.pop("_fileOutputDir", None)
-                result = turns.run_turn(persona_cfg, roster_provider, None, session_state, message)
+                # #508 (SPEC-ASSISTANT.md Sec9.4/Sec9.5, Sec11.5, Sec11.8):
+                # the request -> resolve -> invoke -> (gap) loop's engine-
+                # side entry point -- see `_capability_reply_hook_for`'s
+                # docstring for the full contract; `section` (the resolved
+                # assistant config, captured before `persona_cfg` gets its
+                # per-turn `_nowText`/`_fileOutputDir` keys mixed in) is
+                # what `invoke_capability` needs as `assistant_cfg`.
+                capability_reply_hook = self._capability_reply_hook_for(
+                    root, turn_id, message, section)
+                result = turns.run_turn(persona_cfg, roster_provider, None, session_state, message,
+                                         on_reply=capability_reply_hook)
             except adapters.AdapterError as exc:
                 # provider CLI failure (Sec8.5) -- a clean upstream error,
                 # never a raw traceback, and never a persisted exchange

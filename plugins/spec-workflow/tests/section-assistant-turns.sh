@@ -595,3 +595,513 @@ PY
 )"
 check "capability_gap_reply: a clear match is not a capability gap" "MATCH_IS_NOT_A_GAP True" "$out"
 check "capability_gap_reply: a genuine tie (AskInsteadOfGuess) is not a capability gap either" "TIE_IS_NOT_A_GAP True" "$out"
+
+# ==========================================================================
+# #508 (SPEC-ASSISTANT.md Sec9.4/Sec9.5, Sec11.5, Sec11.8, docs/design/
+# ast-E6.md sequences 2/3/5, docs/spec-deltas/applied/346.md): request ->
+# resolve -> invoke -> (gap) wiring, the pure turns.py half. The model signals
+# a capability request with a single fenced "capability" JSON code block per
+# reply (never by vibes); parse_capability_directives is the ONLY place
+# that syntax is understood, and it never leaks a raw directive block into
+# the user-visible text, valid or not.
+# ==========================================================================
+echo "-- unit: parse_capability_directives -- one valid directive is parsed and stripped from the visible reply --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+# NOTE: the triple-backtick fence is built via chr(96) rather than written
+# literally -- a raw literal backtick character inside a heredoc nested in
+# a bash $(...) command substitution trips a well-known bash lexer quirk
+# (cumulative backtick-parity tracking that ignores heredoc quoting), so
+# every fenced-block fixture in this file is built this way.
+FENCE = chr(96) * 3
+reply = "Sure, let me check.\n" + FENCE + 'capability\n{"name": "weather", "params": {"city": "Rome"}}\n' + FENCE + "\nOne moment."
+visible, directives, actionable = turns.parse_capability_directives(reply)
+print("VISIBLE_NO_FENCE", (FENCE + "capability") not in visible)
+print("VISIBLE_NO_JSON", '"name"' not in visible)
+print("VISIBLE_KEEPS_PROSE", "Sure, let me check." in visible and "One moment." in visible)
+print("DIRECTIVE_COUNT", len(directives))
+print("DIRECTIVE_NAME", directives[0].name)
+print("DIRECTIVE_PARAMS", directives[0].params)
+PY
+)"
+check "parse_capability_directives: fenced block removed from visible text" "VISIBLE_NO_FENCE True" "$out"
+check "parse_capability_directives: raw JSON never leaks into visible text" "VISIBLE_NO_JSON True" "$out"
+check "parse_capability_directives: surrounding prose is preserved" "VISIBLE_KEEPS_PROSE True" "$out"
+check "parse_capability_directives: exactly one directive parsed" "DIRECTIVE_COUNT 1" "$out"
+check "parse_capability_directives: name extracted" "DIRECTIVE_NAME weather" "$out"
+check "parse_capability_directives: params extracted" "DIRECTIVE_PARAMS {'city': 'Rome'}" "$out"
+
+echo "-- unit: parse_capability_directives -- no directive at all -- text unchanged, empty list (flooding-guard precondition) --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+reply = "just an ordinary reply, nothing to see here"
+visible, directives, actionable = turns.parse_capability_directives(reply)
+print("VISIBLE_UNCHANGED", visible == reply)
+print("DIRECTIVE_COUNT", len(directives))
+PY
+)"
+check "parse_capability_directives: ordinary text passes through unchanged" "VISIBLE_UNCHANGED True" "$out"
+check "parse_capability_directives: no directives found" "DIRECTIVE_COUNT 0" "$out"
+
+echo "-- unit: parse_capability_directives -- malformed JSON / missing name are stripped as errors, never leaked verbatim --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+FENCE = chr(96) * 3
+bad_json = FENCE + "capability\n{not json at all\n" + FENCE
+visible1, directives1, actionable1 = turns.parse_capability_directives(bad_json)
+print("BAD_JSON_STRIPPED", "not json at all" not in visible1)
+print("BAD_JSON_IS_ERROR", isinstance(directives1[0], turns.CapabilityDirectiveError))
+
+missing_name = FENCE + 'capability\n{"params": {}}\n' + FENCE
+visible2, directives2, actionable2 = turns.parse_capability_directives(missing_name)
+print("MISSING_NAME_STRIPPED", "params" not in visible2)
+print("MISSING_NAME_IS_ERROR", isinstance(directives2[0], turns.CapabilityDirectiveError))
+PY
+)"
+check "parse_capability_directives: invalid JSON never leaks into the visible reply" "BAD_JSON_STRIPPED True" "$out"
+check "parse_capability_directives: invalid JSON is reported as a CapabilityDirectiveError" "BAD_JSON_IS_ERROR True" "$out"
+check "parse_capability_directives: a directive missing 'name' never leaks into the visible reply" "MISSING_NAME_STRIPPED True" "$out"
+check "parse_capability_directives: a directive missing 'name' is reported as a CapabilityDirectiveError" "MISSING_NAME_IS_ERROR True" "$out"
+
+echo "-- unit: parse_capability_directives -- v1 is ONE per turn: extra directives are still parsed (in order) so the caller can trace+ignore them, never silently dropped or merged --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+FENCE = chr(96) * 3
+reply = (FENCE + 'capability\n{"name": "first"}\n' + FENCE + '\n'
+         'text between\n'
+         + FENCE + 'capability\n{"name": "second"}\n' + FENCE)
+visible, directives, actionable = turns.parse_capability_directives(reply)
+print("COUNT", len(directives))
+print("FIRST_NAME", directives[0].name)
+print("SECOND_NAME", directives[1].name)
+print("VISIBLE_NO_FENCES", (FENCE + "capability") not in visible)
+PY
+)"
+check "parse_capability_directives: multiple directives are all parsed, in order" "COUNT 2" "$out"
+check "parse_capability_directives: first directive name" "FIRST_NAME first" "$out"
+check "parse_capability_directives: second directive name (caller decides to ignore it, v1 one-per-turn)" "SECOND_NAME second" "$out"
+check "parse_capability_directives: every fenced block is stripped regardless of how many" "VISIBLE_NO_FENCES True" "$out"
+
+echo "-- unit: _render_roster_entries teaches the directive syntax whenever there is a real, named capability to invoke --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+FENCE = chr(96) * 3
+with_real = turns._render_roster_entries([{"name": "weather", "one-liner": "checks weather", "available": True}])
+print("TEACHES_WHEN_REAL", (FENCE + "capability") in "\n".join(with_real))
+print("SHOWS_NAME_PARAMS_SHAPE", '"name"' in "\n".join(with_real) and '"params"' in "\n".join(with_real))
+
+empty = turns._render_roster_entries([])
+print("NO_TEACHING_WHEN_EMPTY", (FENCE + "capability") not in "\n".join(empty))
+
+ambiguous_only = turns._render_roster_entries([{"name": "(ambiguous)", "one-liner": "x", "available": False}])
+print("NO_TEACHING_WHEN_AMBIGUOUS_ONLY", (FENCE + "capability") not in "\n".join(ambiguous_only))
+PY
+)"
+check "roster teaching: the directive syntax is taught when a real capability is in the roster" "TEACHES_WHEN_REAL True" "$out"
+check "roster teaching: the taught syntax shows the name/params shape" "SHOWS_NAME_PARAMS_SHAPE True" "$out"
+check "roster teaching: never taught for an empty roster (nothing to invoke)" "NO_TEACHING_WHEN_EMPTY True" "$out"
+check "roster teaching: never taught for the ambiguous-only sentinel (Sec11.3 asks-instead-of-guess already covers it)" "NO_TEACHING_WHEN_AMBIGUOUS_ONLY True" "$out"
+
+echo "-- unit: render_capability_result_text -- truncates with an explicit marker, never silently, for both invoke flavors --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import collections
+from assistant import turns
+
+InvokeResult = collections.namedtuple("InvokeResult", ["argv", "returncode", "stdout", "stderr"])
+McpInvokeResult = collections.namedtuple(
+    "McpInvokeResult", ["argv", "request", "response", "result", "returncode", "stdout", "stderr"])
+
+huge = InvokeResult(argv=["x"], returncode=0, stdout="A" * 10000, stderr="")
+text, truncated = turns.render_capability_result_text(huge, cap_chars=200)
+print("ARGV_TRUNCATED", truncated)
+print("ARGV_LEN_CAPPED", len(text) <= 200)
+print("ARGV_HAS_MARKER", "truncat" in text.lower())
+
+small = InvokeResult(argv=["x"], returncode=0, stdout="hello", stderr="")
+text2, truncated2 = turns.render_capability_result_text(small, cap_chars=200)
+print("ARGV_SMALL_NOT_TRUNCATED", truncated2 is False)
+print("ARGV_SMALL_HAS_STDOUT", "hello" in text2)
+
+mcp = McpInvokeResult(argv=["x"], request={}, response={}, result={"data": "B" * 10000},
+                       returncode=0, stdout="", stderr="")
+text3, truncated3 = turns.render_capability_result_text(mcp, cap_chars=200)
+print("MCP_TRUNCATED", truncated3)
+print("MCP_LEN_CAPPED", len(text3) <= 200)
+PY
+)"
+check "render_capability_result_text: a huge argv result is truncated" "ARGV_TRUNCATED True" "$out"
+check "render_capability_result_text: truncated argv text respects the cap" "ARGV_LEN_CAPPED True" "$out"
+check "render_capability_result_text: truncation carries an explicit marker, never silent" "ARGV_HAS_MARKER True" "$out"
+check "render_capability_result_text: a small result is never truncated" "ARGV_SMALL_NOT_TRUNCATED True" "$out"
+check "render_capability_result_text: a small argv result includes its stdout" "ARGV_SMALL_HAS_STDOUT True" "$out"
+check "render_capability_result_text: a huge MCP result is also truncated" "MCP_TRUNCATED True" "$out"
+check "render_capability_result_text: truncated MCP text respects the cap" "MCP_LEN_CAPPED True" "$out"
+
+echo "-- unit: render_capability_result_followup -- reuses the SAME system prompt (no second recall/compose), embeds the result, preserves model --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+original = {"system": "PERSONA+ROSTER+NOTES", "input": "book me a flight", "model": "gpt-5.6-sol"}
+followup = turns.render_capability_result_followup(original, "weather", "sunny, 22C")
+print("SYSTEM_UNCHANGED", followup["system"] == original["system"])
+print("MODEL_PRESERVED", followup.get("model") == "gpt-5.6-sol")
+print("INPUT_HAS_ORIGINAL_MESSAGE", "book me a flight" in followup["input"])
+print("INPUT_HAS_CAPABILITY_NAME", "weather" in followup["input"])
+print("INPUT_HAS_RESULT", "sunny, 22C" in followup["input"])
+PY
+)"
+check "render_capability_result_followup: system prompt is reused verbatim (no second compose/recall)" "SYSTEM_UNCHANGED True" "$out"
+check "render_capability_result_followup: adapter-relevant keys (model) survive" "MODEL_PRESERVED True" "$out"
+check "render_capability_result_followup: the follow-up input still carries the original user message" "INPUT_HAS_ORIGINAL_MESSAGE True" "$out"
+check "render_capability_result_followup: names which capability produced the result" "INPUT_HAS_CAPABILITY_NAME True" "$out"
+check "render_capability_result_followup: embeds the actual result text" "INPUT_HAS_RESULT True" "$out"
+
+echo "-- unit: capability_gap_reply(requested_name=...) -- the REAL gap trigger (docs/spec-deltas/applied/346.md owner decision 1): fires on an explicit unresolved request, independent of the roster_for_turn score gates --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+from assistant import capability_index as ci
+
+entries = (
+    ci.CapabilityIndexEntry(name="weather", one_liner="checks the weather forecast", keywords=["weather", "forecast"],
+                              embedding=None, enabled=True, provisioned_ok=True, unavailable_reason=None),
+)
+index = ci.CapabilityIndex(entries=entries)
+
+# The raw user_message DOES relate to "weather" (roster_for_turn would find
+# a real match for it) -- yet the model explicitly requested a DIFFERENT,
+# unresolvable name ("book-flight"). The #508 gap trigger must still fire:
+# an explicit request that fails to resolve IS the gap, regardless of what
+# the ambient message would have scored on its own (this is the fix for
+# the embedding-mode inertness finding from #346 -- score==0 is NOT the signal
+# here, resolution failure is).
+gap = turns.capability_gap_reply(index, "what is the weather like, also please book a flight",
+                                  requested_name="book-flight", embed_fn=lambda texts: None)
+print("IS_GAP", gap is not None)
+lowered = gap.text.lower()
+print("REQUEST_TEXT_MENTIONS_UNRESOLVED",
+      "cannot" in lowered or "do not have" in lowered or "closest" in lowered
+      or "related" in lowered or "not enabled" in lowered)
+
+# a requested_name that DOES resolve is never a gap, regardless of the
+# roster_for_turn outcome for the raw message.
+resolved_gap = turns.capability_gap_reply(index, "anything", requested_name="weather", embed_fn=lambda texts: None)
+print("RESOLVED_NAME_NOT_A_GAP", resolved_gap is None)
+
+# case-insensitive resolution.
+resolved_gap_ci = turns.capability_gap_reply(index, "anything", requested_name="WEATHER", embed_fn=lambda texts: None)
+print("RESOLVED_NAME_CASE_INSENSITIVE_NOT_A_GAP", resolved_gap_ci is None)
+PY
+)"
+check "capability_gap_reply(requested_name=...): an explicit unresolved request IS a gap" "IS_GAP True" "$out"
+check "capability_gap_reply(requested_name=...): the refusal is honest about not having/resolving it" "REQUEST_TEXT_MENTIONS_UNRESOLVED True" "$out"
+check "capability_gap_reply(requested_name=...): a name that DOES resolve is never a gap" "RESOLVED_NAME_NOT_A_GAP True" "$out"
+check "capability_gap_reply(requested_name=...): resolution is case-insensitive" "RESOLVED_NAME_CASE_INSENSITIVE_NOT_A_GAP True" "$out"
+
+echo "-- unit: capability_gap_reply(requested_name=...) -- nearest is scored off the REQUESTED name, so a real nearest signal exists (owner decision 3: slugs become meaningful once a real nearest signal exists) --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+from assistant import capability_index as ci
+
+# NOTE: capability_index._extract_keywords treats a hyphenated word as ONE
+# token (its word regex allows hyphens mid-token), so the query
+# "book-flight" extracts the single keyword "book-flight" -- not "book"
+# and "flight" separately. The entry below includes that exact compound
+# token among its own keywords (alongside its split-word siblings) so the
+# Jaccard keyword-overlap fallback (embed_fn=None below) has a genuine,
+# deterministic, nonzero signal to find -- this is what "a real nearest
+# signal now exists" concretely looks like on the keyword-overlap path.
+entries = (
+    ci.CapabilityIndexEntry(name="flight-tracker", one_liner="tracks flight status and books flights",
+                              keywords=["flight", "book", "tracker", "status", "book-flight"],
+                              embedding=None, enabled=True, provisioned_ok=True, unavailable_reason=None),
+    ci.CapabilityIndexEntry(name="weather", one_liner="checks the weather", keywords=["weather", "forecast"],
+                              embedding=None, enabled=True, provisioned_ok=True, unavailable_reason=None),
+)
+index = ci.CapabilityIndex(entries=entries)
+
+gap = turns.capability_gap_reply(index, "please book-flight to mars", requested_name="book-flight",
+                                  embed_fn=lambda texts: None)
+print("IS_GAP", gap is not None)
+print("NEAREST_NAMES_REAL_CANDIDATE", any(e.name == "flight-tracker" for e in gap.nearest))
+print("PLAN_NOTE_NEAREST_NOT_ALWAYS_EMPTY", gap.plan_note.get("nearest") != [])
+PY
+)"
+check "capability_gap_reply(requested_name=...): still a gap even with a plausible sibling capability nearby" "IS_GAP True" "$out"
+check "capability_gap_reply(requested_name=...): nearest now names a REAL, keyword-related candidate (unlike the score==0 path)" "NEAREST_NAMES_REAL_CANDIDATE True" "$out"
+check "capability_gap_reply(requested_name=...): the plan-note payload nearest field is no longer provably always empty" "PLAN_NOTE_NEAREST_NOT_ALWAYS_EMPTY True" "$out"
+
+echo "-- unit: run_turn(on_reply=...) -- the hook can replace the reply text with a same-turn follow-up completion; session state advances with the FINAL text, not the first --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+persona_cfg = {"llm": {"provider": "fake"}}
+calls = []
+
+def fake_adapter(context, **kwargs):
+    calls.append(context["input"])
+    return {"text": "first-reply-with-directive", "usage": {"n": len(calls)}, "timings": None}
+
+def get_adapter(provider):
+    return fake_adapter
+
+seen_hook_args = {}
+def on_reply(first_text, context_for_adapter, complete_fn, adapter_kwargs):
+    seen_hook_args["first_text"] = first_text
+    seen_hook_args["has_system"] = "system" in context_for_adapter
+    followup = complete_fn({"system": context_for_adapter["system"], "input": "followup-input"},
+                            **(adapter_kwargs or {}))
+    return {"text": "FINAL:" + followup["text"]}
+
+session_state = {"summary": "", "turns": [], "turn_count": 0}
+result = turns.run_turn(persona_cfg, None, None, session_state, "hello",
+                         get_adapter=get_adapter, on_reply=on_reply)
+
+print("HOOK_SAW_FIRST_TEXT", seen_hook_args["first_text"] == "first-reply-with-directive")
+print("HOOK_SAW_CONTEXT", seen_hook_args["has_system"])
+print("FINAL_TEXT", result["text"])
+print("ADAPTER_CALLED_TWICE", len(calls) == 2)
+print("SECOND_CALL_INPUT", calls[1])
+print("SESSION_LAST_ASSISTANT", result["updated_session_state"]["turns"][-1])
+
+# on_reply returning None leaves the first completion text untouched.
+def on_reply_noop(first_text, context_for_adapter, complete_fn, adapter_kwargs):
+    return None
+
+session_state2 = {"summary": "", "turns": [], "turn_count": 0}
+calls.clear()
+result2 = turns.run_turn(persona_cfg, None, None, session_state2, "hi",
+                          get_adapter=get_adapter, on_reply=on_reply_noop)
+print("NOOP_TEXT_UNCHANGED", result2["text"] == "first-reply-with-directive")
+print("NOOP_ADAPTER_CALLED_ONCE", len(calls) == 1)
+PY
+)"
+check "run_turn(on_reply): the hook receives the first completion text" "HOOK_SAW_FIRST_TEXT True" "$out"
+check "run_turn(on_reply): the hook receives the composed context (system prompt) for reuse" "HOOK_SAW_CONTEXT True" "$out"
+check "run_turn(on_reply): the returned hook text becomes the turn final text" "FINAL_TEXT FINAL:first-reply-with-directive" "$out"
+check "run_turn(on_reply): a hook that calls complete_fn again drives a real second adapter call" "ADAPTER_CALLED_TWICE True" "$out"
+check "run_turn(on_reply): the second call receives whatever input the hook built" "SECOND_CALL_INPUT followup-input" "$out"
+check "run_turn(on_reply): the session_state assistant entry reflects the FINAL text, not the first completion" \
+    "SESSION_LAST_ASSISTANT {'role': 'assistant', 'text': 'FINAL:first-reply-with-directive'}" "$out"
+check "run_turn(on_reply): returning None leaves the original completion text untouched" "NOOP_TEXT_UNCHANGED True" "$out"
+check "run_turn(on_reply): a no-op hook never triggers a second adapter call" "NOOP_ADAPTER_CALLED_ONCE True" "$out"
+
+# ==========================================================================
+# #508 ROUND-1 REVIEW fixes (pinning tests, written and verified RED against
+# the pre-fix code before the fixes landed): case-varied/dangling fences
+# (finding 2), the "teach-then-quote" trailing-element policy + line-
+# anchored fence matching (finding 3), and usage aggregation across a
+# same-turn follow-up completion (finding 7, LOW).
+# ==========================================================================
+echo "-- round-1 review: parse_capability_directives now returns a 3-tuple (visible, directives, actionable) -- the trailing-element policy needs the extra field --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+FENCE = chr(96) * 3
+reply = FENCE + 'capability\n{"name": "weather", "params": {}}\n' + FENCE
+visible, directives, actionable = turns.parse_capability_directives(reply)
+print("RETURNS_3TUPLE", True)
+print("ACTIONABLE_IS_THE_DIRECTIVE", actionable is directives[0])
+PY
+)"
+check "round-1 review: parse_capability_directives returns a 3-tuple without raising" "RETURNS_3TUPLE True" "$out"
+check "round-1 review: a single, trailing, valid directive is actionable" "ACTIONABLE_IS_THE_DIRECTIVE True" "$out"
+
+echo "-- round-1 review finding 2: a case-varied fence language tag (mixed-case or upper-case capability) is still recognized as a real directive --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+FENCE = chr(96) * 3
+mixed_case = FENCE + 'Capability\n{"name": "weather", "params": {}}\n' + FENCE
+visible, directives, actionable = turns.parse_capability_directives(mixed_case)
+print("MIXED_CASE_PARSED", len(directives) == 1 and isinstance(directives[0], turns.CapabilityDirective))
+print("MIXED_CASE_STRIPPED", (FENCE + "Capability") not in visible)
+
+upper_case = FENCE + 'CAPABILITY\n{"name": "weather", "params": {}}\n' + FENCE
+visible2, directives2, actionable2 = turns.parse_capability_directives(upper_case)
+print("UPPER_CASE_PARSED", len(directives2) == 1 and isinstance(directives2[0], turns.CapabilityDirective))
+PY
+)"
+check "round-1 review finding 2: Capability (mixed case) is recognized" "MIXED_CASE_PARSED True" "$out"
+check "round-1 review finding 2: the mixed-case fence is stripped from the visible reply" "MIXED_CASE_STRIPPED True" "$out"
+check "round-1 review finding 2: CAPABILITY (upper case) is recognized" "UPPER_CASE_PARSED True" "$out"
+
+echo "-- round-1 review finding 2: an UNTERMINATED fence (no closing marker -- e.g. a reply truncated mid-JSON) never leaks raw directive text, and is reported as an error --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+FENCE = chr(96) * 3
+truncated = "Let me check.\n" + FENCE + 'capability\n{"name": "weather", "para'
+visible, directives, actionable = turns.parse_capability_directives(truncated)
+print("NO_FENCE_LEAK", (FENCE + "capability") not in visible)
+print("NO_RAW_JSON_LEAK", '"name": "weather"' not in visible)
+print("KEEPS_LEADING_PROSE", "Let me check." in visible)
+print("REPORTED_AS_ERROR", len(directives) == 1 and isinstance(directives[0], turns.CapabilityDirectiveError))
+print("ACTIONABLE_IS_NONE", actionable is None)
+PY
+)"
+check "round-1 review finding 2: an unterminated fence never leaks the raw fence marker" "NO_FENCE_LEAK True" "$out"
+check "round-1 review finding 2: an unterminated fence never leaks the raw JSON body" "NO_RAW_JSON_LEAK True" "$out"
+check "round-1 review finding 2: leading prose before the dangling fence survives" "KEEPS_LEADING_PROSE True" "$out"
+check "round-1 review finding 2: an unterminated fence is reported as a CapabilityDirectiveError" "REPORTED_AS_ERROR True" "$out"
+check "round-1 review finding 2: an unterminated fence is never actionable" "ACTIONABLE_IS_NONE True" "$out"
+
+echo "-- round-1 review finding 3: teach-then-quote -- a directive followed by MORE PROSE (an example inside an explanation) is found but never actionable --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+FENCE = chr(96) * 3
+reply = ("Here is how you would ask for it:\n" + FENCE + 'capability\n{"name": "weather", "params": {}}\n'
+         + FENCE + "\nBut I cannot actually run this for you right now.")
+visible, directives, actionable = turns.parse_capability_directives(reply)
+print("DIRECTIVE_STILL_FOUND", len(directives) == 1 and isinstance(directives[0], turns.CapabilityDirective))
+print("NOT_ACTIONABLE", actionable is None)
+print("FENCE_STRIPPED", (FENCE + "capability") not in visible)
+print("LEADING_PROSE_KEPT", "Here is how you would ask for it:" in visible)
+print("TRAILING_PROSE_KEPT", "But I cannot actually run this for you right now." in visible)
+PY
+)"
+check "round-1 review finding 3: a directive followed by more prose is still parsed (for tracing)" "DIRECTIVE_STILL_FOUND True" "$out"
+check "round-1 review finding 3: it is NEVER actionable when more prose follows it (teach-then-quote)" "NOT_ACTIONABLE True" "$out"
+check "round-1 review finding 3: the fence itself is still stripped from the visible reply" "FENCE_STRIPPED True" "$out"
+check "round-1 review finding 3: prose BEFORE the fence survives" "LEADING_PROSE_KEPT True" "$out"
+check "round-1 review finding 3: prose AFTER the fence survives" "TRAILING_PROSE_KEPT True" "$out"
+
+echo "-- round-1 review finding 3: a fence mentioned MID-LINE (not at line start) is never matched at all -- anchored to line start (re.MULTILINE ^) --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+FENCE = chr(96) * 3
+reply = "You could phrase it like this: " + FENCE + 'capability\n{"name": "weather", "params": {}}\n' + FENCE
+visible, directives, actionable = turns.parse_capability_directives(reply)
+print("MID_LINE_FENCE_NEVER_MATCHED", directives == [])
+print("ACTIONABLE_NONE", actionable is None)
+PY
+)"
+check "round-1 review finding 3: a fence embedded mid-line is never recognized as a directive at all" "MID_LINE_FENCE_NEVER_MATCHED True" "$out"
+check "round-1 review finding 3: never actionable for a mid-line mention" "ACTIONABLE_NONE True" "$out"
+
+echo "-- round-1 review finding 3: multiple TRAILING directives (nothing but whitespace between/after) -- the FIRST one is actionable, later ones are not (still parsed, for tracing) --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+FENCE = chr(96) * 3
+reply = (FENCE + 'capability\n{"name": "first"}\n' + FENCE + "\n"
+         + FENCE + 'capability\n{"name": "second"}\n' + FENCE)
+visible, directives, actionable = turns.parse_capability_directives(reply)
+print("COUNT", len(directives))
+print("ACTIONABLE_IS_FIRST", actionable is not None and actionable.name == "first")
+print("ACTIONABLE_IS_NOT_LAST", actionable is not directives[-1])
+PY
+)"
+check "round-1 review finding 3: both trailing directives are still parsed" "COUNT 2" "$out"
+check "round-1 review finding 3 (mutation guard): the FIRST directive is the actionable one" "ACTIONABLE_IS_FIRST True" "$out"
+check "round-1 review finding 3 (mutation guard, kills the directives[-1] mutant): the LAST one is never the actionable one" "ACTIONABLE_IS_NOT_LAST True" "$out"
+
+echo "-- round-1 review finding 5 support: render_capability_completed_fallback exists and states the capability + its result plainly --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+text = turns.render_capability_completed_fallback("weather", "sunny, 22C")
+print("NAMES_CAPABILITY", "weather" in text)
+print("HAS_RESULT", "sunny, 22C" in text)
+PY
+)"
+check "render_capability_completed_fallback: names the capability" "NAMES_CAPABILITY True" "$out"
+check "render_capability_completed_fallback: includes the actual result" "HAS_RESULT True" "$out"
+
+echo "-- round-1 review finding 7 (LOW): run_turn aggregates usage across the first completion AND a hook-driven follow-up completion, never discards the first --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+persona_cfg = {"llm": {"provider": "fake"}}
+calls = []
+
+def fake_adapter(context, **kwargs):
+    calls.append(context)
+    if len(calls) == 1:
+        return {"text": "first", "usage": {"input_tokens": 10, "output_tokens": 5}, "timings": None}
+    return {"text": "FINAL", "usage": {"input_tokens": 7, "output_tokens": 3}, "timings": None}
+
+def get_adapter(provider):
+    return fake_adapter
+
+def on_reply(first_text, context_for_adapter, complete_fn, adapter_kwargs):
+    followup = complete_fn({"system": context_for_adapter["system"], "input": "x"}, **(adapter_kwargs or {}))
+    return {"text": followup["text"], "usage": followup.get("usage")}
+
+session_state = {"summary": "", "turns": [], "turn_count": 0}
+result = turns.run_turn(persona_cfg, None, None, session_state, "hello",
+                         get_adapter=get_adapter, on_reply=on_reply)
+usage = result["usage"] or {}
+print("USAGE", usage)
+print("INPUT_TOKENS_SUMMED", usage.get("input_tokens") == 17)
+print("OUTPUT_TOKENS_SUMMED", usage.get("output_tokens") == 8)
+
+# a hook that supplies NO usage at all (e.g. a refusal, no second completion
+# ever ran) must leave the first completion own usage COMPLETELY untouched.
+def on_reply_noop(first_text, context_for_adapter, complete_fn, adapter_kwargs):
+    return {"text": "refused"}
+
+calls.clear()
+session_state2 = {"summary": "", "turns": [], "turn_count": 0}
+result2 = turns.run_turn(persona_cfg, None, None, session_state2, "hello",
+                          get_adapter=get_adapter, on_reply=on_reply_noop)
+print("NOOP_USAGE_UNCHANGED", result2["usage"] == {"input_tokens": 10, "output_tokens": 5})
+PY
+)"
+check "round-1 review finding 7: run_turn returns SOME usage dict, not empty" "USAGE {'input_tokens': 17, 'output_tokens': 8}" "$out"
+check "round-1 review finding 7: input_tokens across both completions are SUMMED, not overwritten" "INPUT_TOKENS_SUMMED True" "$out"
+check "round-1 review finding 7: output_tokens across both completions are SUMMED, not overwritten" "OUTPUT_TOKENS_SUMMED True" "$out"
+check "round-1 review finding 7: a hook that supplies no usage at all leaves the first completion usage untouched" "NOOP_USAGE_UNCHANGED True" "$out"
+
+# ==========================================================================
+# #508 ROUND-2 REVIEW fixes (pinning tests, written and verified RED against
+# the pre-fix code before the fixes landed): the trailing-element rule must
+# actually be TAUGHT (NEW-MEDIUM), not just enforced silently, and the
+# dangling-fence detector must not false-positive on an unrelated language
+# tag that merely starts with "capability" (NEW-LOW).
+# ==========================================================================
+echo "-- round-2 review, NEW-MEDIUM: the roster teaching text states the trailing rule -- explanation BEFORE the block, never after -- so the model does not silently no-op while telling the user an action is underway --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+joined = "\n".join(turns._CAPABILITY_DIRECTIVE_TEACHING_LINES).lower()
+print("STATES_LAST_OR_TRAILING", "last thing" in joined or "trailing" in joined)
+print("STATES_BEFORE_NOT_AFTER", "before" in joined and "after" in joined)
+PY
+)"
+check "round-2 review NEW-MEDIUM: the teaching text states the block must be last/trailing" "STATES_LAST_OR_TRAILING True" "$out"
+check "round-2 review NEW-MEDIUM: the teaching text distinguishes explanation-before from explanation-after" "STATES_BEFORE_NOT_AFTER True" "$out"
+
+echo "-- round-2 review, NEW-LOW: an UNRELATED, well-formed fenced block whose language tag merely STARTS WITH capability (e.g. capability-notes) must never be treated as a dangling directive -- real trailing content must survive intact --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+from assistant import turns
+
+FENCE = chr(96) * 3
+reply = ("Please read this:\n" + FENCE + "capability-notes\n"
+         "Some real content that absolutely must survive this parse.\n" + FENCE
+         + "\nThanks for reading!")
+visible, directives, actionable = turns.parse_capability_directives(reply)
+print("REAL_CONTENT_SURVIVES", "Some real content that absolutely must survive this parse." in visible)
+print("TRAILING_TEXT_SURVIVES", "Thanks for reading!" in visible)
+print("NO_SPURIOUS_ERROR", directives == [])
+print("FENCE_TAG_ITSELF_SURVIVES", "capability-notes" in visible)
+
+# capability.md (a different separator) must be equally unaffected.
+reply2 = FENCE + "capability.md\nreal content here too\n" + FENCE + "\nmore text after"
+visible2, directives2, actionable2 = turns.parse_capability_directives(reply2)
+print("DOT_VARIANT_CONTENT_SURVIVES", "real content here too" in visible2 and "more text after" in visible2)
+print("DOT_VARIANT_NO_SPURIOUS_ERROR", directives2 == [])
+PY
+)"
+check "round-2 review NEW-LOW: real content inside an unrelated capability-notes block survives" "REAL_CONTENT_SURVIVES True" "$out"
+check "round-2 review NEW-LOW: real trailing text after the unrelated block survives" "TRAILING_TEXT_SURVIVES True" "$out"
+check "round-2 review NEW-LOW: no spurious CapabilityDirectiveError is reported for it" "NO_SPURIOUS_ERROR True" "$out"
+check "round-2 review NEW-LOW: the unrelated fence own tag is never stripped" "FENCE_TAG_ITSELF_SURVIVES True" "$out"
+check "round-2 review NEW-LOW: the capability.md variant is equally unaffected" "DOT_VARIANT_CONTENT_SURVIVES True" "$out"
+check "round-2 review NEW-LOW: the capability.md variant reports no spurious error either" "DOT_VARIANT_NO_SPURIOUS_ERROR True" "$out"

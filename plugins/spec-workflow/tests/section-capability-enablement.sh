@@ -398,3 +398,132 @@ check "end-to-end: roster -- only the enabled skill is ever a candidate" "ROSTER
 check "end-to-end: rendered prompt -- the enabled skill's name IS present" "PROMPT_HAS_ENABLED_NAME True" "$out"
 check "end-to-end: rendered prompt -- the disabled skill's name is NEVER present, despite matching just as strongly" \
     "PROMPT_HAS_DISABLED_NAME False" "$out"
+
+# ==========================================================================
+# #508 (SPEC-ASSISTANT.md Sec9.4, Sec11.5, docs/design/ast-E6.md sequences
+# 2/3): the directive-driven turn wiring's capability_index.py half --
+# resolving a NAMED request against the compiled index (independent of any
+# relevance score), and the additive `longRunning` capability.yaml marker
+# that routes a capability through the async task queue instead of an
+# inline invocation.
+# ==========================================================================
+echo "-- unit: validate_capability -- longRunning is an additive, optional bool marker (Sec9.4) --"
+cat >"$CE_TMPPY/long_running_schema.py" <<'PYEOF'
+from assistant import capability_index as ci
+
+base = {
+    "version": 1,
+    "provisioning": {"check": ["true"], "ttlSeconds": 60},
+    "permissions": [],
+    "invoke": {"exec": ["x"]},
+}
+
+no_key = dict(base)
+print("ABSENT_IS_VALID", ci.validate_capability(no_key) == [])
+
+with_true = dict(base, longRunning=True)
+print("TRUE_IS_VALID", ci.validate_capability(with_true) == [])
+
+with_false = dict(base, longRunning=False)
+print("FALSE_IS_VALID", ci.validate_capability(with_false) == [])
+
+with_string = dict(base, longRunning="yes")
+errs = ci.validate_capability(with_string)
+print("STRING_IS_INVALID", len(errs) > 0)
+print("STRING_ERROR_NAMES_KEY", any("longRunning" in e for e in errs))
+PYEOF
+out="$(ce_run "$CE_TMPPY/long_running_schema.py" 2>&1)"
+check "validate_capability: no longRunning key at all is still valid (additive, optional)" "ABSENT_IS_VALID True" "$out"
+check "validate_capability: longRunning: true is valid" "TRUE_IS_VALID True" "$out"
+check "validate_capability: longRunning: false is valid" "FALSE_IS_VALID True" "$out"
+check "validate_capability: a non-bool longRunning is rejected" "STRING_IS_INVALID True" "$out"
+check "validate_capability: the rejection names the offending key" "STRING_ERROR_NAMES_KEY True" "$out"
+
+echo "-- unit: load_capability -- longRunning defaults to False when absent, and round-trips when present --"
+cat >"$CE_TMPPY/long_running_load.py" <<'PYEOF'
+import os, tempfile
+from assistant import capability_index as ci
+
+def write(dirpath, extra=""):
+    os.makedirs(dirpath, exist_ok=True)
+    with open(os.path.join(dirpath, "capability.yaml"), "w") as fh:
+        fh.write("version: 1\nprovisioning:\n    check: [\"true\"]\n    ttlSeconds: 60\n"
+                  "permissions: []\ninvoke:\n    exec: [\"x\"]\n" + extra)
+
+root = tempfile.mkdtemp(prefix="ce-longrunning-")
+default_dir = os.path.join(root, "default")
+write(default_dir)
+default_cap = ci.load_capability(default_dir)
+print("DEFAULT_IS_FALSE", default_cap.long_running is False)
+
+slow_dir = os.path.join(root, "slow")
+write(slow_dir, "longRunning: true\n")
+slow_cap = ci.load_capability(slow_dir)
+print("EXPLICIT_TRUE_ROUND_TRIPS", slow_cap.long_running is True)
+PYEOF
+out="$(ce_run "$CE_TMPPY/long_running_load.py" 2>&1)"
+check "load_capability: longRunning defaults to False when the key is absent" "DEFAULT_IS_FALSE True" "$out"
+check "load_capability: an explicit longRunning: true round-trips onto Capability.long_running" "EXPLICIT_TRUE_ROUND_TRIPS True" "$out"
+
+echo "-- unit: resolve_by_name -- case-insensitive exact-name lookup against an already-compiled index, independent of any relevance score --"
+cat >"$CE_TMPPY/resolve_by_name.py" <<'PYEOF'
+from assistant import capability_index as ci
+
+entries = (
+    ci.CapabilityIndexEntry(name="Weather", one_liner="checks the weather", keywords=[], embedding=None,
+                              enabled=True, provisioned_ok=True, unavailable_reason=None),
+)
+index = ci.CapabilityIndex(entries=entries)
+
+print("EXACT_MATCH", ci.resolve_by_name(index, "Weather") is not None)
+print("CASE_INSENSITIVE_LOWER", ci.resolve_by_name(index, "weather") is not None)
+print("CASE_INSENSITIVE_UPPER", ci.resolve_by_name(index, "WEATHER") is not None)
+print("UNKNOWN_NAME_IS_NONE", ci.resolve_by_name(index, "does-not-exist") is None)
+print("EMPTY_INDEX_IS_NONE", ci.resolve_by_name(ci.CapabilityIndex(entries=()), "weather") is None)
+print("EMPTY_NAME_IS_NONE", ci.resolve_by_name(index, "") is None)
+print("NONE_NAME_IS_NONE", ci.resolve_by_name(index, None) is None)
+print("NONE_INDEX_IS_NONE", ci.resolve_by_name(None, "weather") is None)
+PYEOF
+out="$(ce_run "$CE_TMPPY/resolve_by_name.py" 2>&1)"
+check "resolve_by_name: exact-case name resolves" "EXACT_MATCH True" "$out"
+check "resolve_by_name: resolution is case-insensitive (lowercase request)" "CASE_INSENSITIVE_LOWER True" "$out"
+check "resolve_by_name: resolution is case-insensitive (uppercase request)" "CASE_INSENSITIVE_UPPER True" "$out"
+check "resolve_by_name: an unknown name returns None (never fabricates a match)" "UNKNOWN_NAME_IS_NONE True" "$out"
+check "resolve_by_name: an empty index always returns None" "EMPTY_INDEX_IS_NONE True" "$out"
+check "resolve_by_name: an empty name returns None, never crashes" "EMPTY_NAME_IS_NONE True" "$out"
+check "resolve_by_name: name=None returns None, never crashes" "NONE_NAME_IS_NONE True" "$out"
+check "resolve_by_name: index=None returns None, never crashes" "NONE_INDEX_IS_NONE True" "$out"
+
+echo "-- unit: run_capability_invoke_task -- the tasks-worker executor for the 'capability-invoke' kind; dispatches to invoke_capability the SAME way the inline path does --"
+cat >"$CE_TMPPY/invoke_task_executor.py" <<'PYEOF'
+from assistant import capability_index as ci
+
+cap = ci.Capability(version=1, provisioning={}, permissions=[],
+                     invoke={"exec": ["argvecho", "--city={city}"], "params": {"city": {"type": "string"}}})
+cfg = {"capabilities": {"weather": {"enabled": True}}}
+payload = {
+    "name": "weather",
+    "capability": cap._asdict(),
+    "params": {"city": "Rome"},
+    "skill_dir": None,
+    "assistant_cfg": cfg,
+    "timeout": 5,
+}
+outcome = ci.run_capability_invoke_task(payload, lambda *a, **k: None)
+print("HAS_RESULT_KEY", "result" in outcome)
+print("RESULT_ARGV", outcome["result"]["argv"])
+print("RESULT_RETURNCODE", outcome["result"]["returncode"])
+
+disabled_cfg = {"capabilities": {"weather": {"enabled": False}}}
+disabled_payload = dict(payload, assistant_cfg=disabled_cfg)
+try:
+    ci.run_capability_invoke_task(disabled_payload, lambda *a, **k: None)
+    print("DISABLED_RAISED", False)
+except ci.CapabilityDisabledError:
+    print("DISABLED_RAISED", True)
+PYEOF
+out="$(PATH="$CE_ARGVECHO_BIN:$PATH" ce_run "$CE_TMPPY/invoke_task_executor.py" 2>&1)"
+check "run_capability_invoke_task: matches the tasks.py executor(payload, report_progress) -> dict contract" "HAS_RESULT_KEY True" "$out"
+check "run_capability_invoke_task: the underlying argv was substituted from params" "RESULT_ARGV ['argvecho', '--city=Rome']" "$out"
+check "run_capability_invoke_task: the underlying invocation actually ran" "RESULT_RETURNCODE 0" "$out"
+check "run_capability_invoke_task: still refuses a disabled capability (Sec17.2 holds for the async path too)" "DISABLED_RAISED True" "$out"

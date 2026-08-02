@@ -66,6 +66,8 @@ reports `over_budget: True` truthfully rather than lying about a hidden
 truncation -- Sec8.2's "user message" is never on the chopping block.
 """
 import hashlib
+import json
+import re
 import threading
 import time
 from collections import OrderedDict, namedtuple
@@ -295,7 +297,7 @@ def _render_capability_gap_refusal(nearest, total_enabled, available_count):
     return "\n".join(lines)
 
 
-def _draft_capability_acquire_offer(user_message, nearest, total_enabled):
+def _draft_capability_acquire_offer(user_message, nearest, total_enabled, requested_name=None):
     """Sec11.8 "MAY offer to acquire the ability by drafting a plan into the
     brain repo (parking lot)". MAY-offer POLICY (review round 2, NEW-2 --
     an orchestrator decision that REVERSED round 1's "only when
@@ -332,17 +334,30 @@ def _draft_capability_acquire_offer(user_message, nearest, total_enabled):
     queue (the engine's one sanctioned brain-write thread, Sec17.5) --
     `distill.mint_gap_note` is the function that actually mints it, adding
     `turn_id`/`created` to this payload before handing it off (mirrors
-    `_enqueue_artifact_note`'s own payload-shaping)."""
-    return {
+    `_enqueue_artifact_note`'s own payload-shaping).
+
+    `requested_name` (#508, optional, `None` by default -- every
+    pre-#508 caller is unaffected): when `capability_gap_reply` is called
+    with a `requested_name` (an explicit, structured directive that failed
+    to resolve), it is carried in this payload too, alongside `nearest`
+    (which, for THAT call shape, is scored off the requested name itself
+    -- see `capability_gap_reply`'s docstring -- and is therefore no
+    longer provably always `[]`, per owner decision 3 in docs/spec-deltas/
+    applied/346.md: 'production gap-note slugs become meaningful only once
+    a real nearest signal exists')."""
+    payload = {
         "request_excerpt": (user_message or "")[:200],
         "nearest": [entry.name for entry in nearest],
         "total_enabled": total_enabled,
     }
+    if requested_name is not None:
+        payload["requested_name"] = requested_name
+    return payload
 
 
 def capability_gap_reply(index, user_message, *, embed_fn=None,
                           nearest_top_n=NEAREST_ABILITIES_TOP_N,
-                          roster_top_n=None):
+                          roster_top_n=None, requested_name=None):
     """SPEC-ASSISTANT.md Sec11.8, AST-071, docs/design/ast-E6.md sequence 5:
     "roster/index produce no match for a request -> turns.py returns an
     in-persona refusal naming the nearest enabled abilities (from the
@@ -428,13 +443,51 @@ def capability_gap_reply(index, user_message, *, embed_fn=None,
     OWN contract is unconditional and honest: called with an index and a
     message, it reports the true state of that index/query match (or its
     absence) every time -- what a caller does with a `None` vs. a
-    populated result is that caller's decision."""
-    roster_top_n = (roster_top_n if roster_top_n is not None
-                     else capability_index.DEFAULT_ROSTER_TOP_N)
-    query = capability_index.embed_query(user_message, embed_fn)
-    roster_result = capability_index.roster_for_turn(index, query, roster_top_n)
-    if not (isinstance(roster_result, list) and not roster_result):
-        return None  # a real match, or AskInsteadOfGuess -- not a gap
+    populated result is that caller's decision.
+
+    `requested_name` (#508, optional, `None` by default -- every
+    pre-#508 caller/behavior is completely unaffected): the ANSWER to the
+    exact gap this docstring's ARCHITECTURAL NOTE and docs/spec-deltas/
+    applied/346.md's owner comment (1) flagged as missing -- "the gap
+    needs a signal that fires in embedding mode: gap when the model
+    EXPLICITLY requested an action AND resolution fails, not just
+    score==0." When a caller (engine.py, having just parsed an explicit
+    `Sec.508` directive off the model's own reply) supplies
+    `requested_name`, this function switches its ENTIRE gap-detection
+    rule: instead of re-running `roster_for_turn` and checking for `[]`
+    (a relevance-SCORE-based signal that `_score`'s cosine path makes
+    "essentially never exactly 0.0" for real embeddings, per the
+    architectural note above), it resolves `requested_name` against
+    `index` BY NAME (`capability_index.resolve_by_name`, case-
+    insensitive, exact-match, zero relevance scoring involved) -- a
+    binary, deterministic, embedding-mode-INDEPENDENT signal: either the
+    exact capability the model asked for exists and is enabled, or it
+    does not. `roster_for_turn`/`AskInsteadOfGuess` are NEVER consulted
+    on this path (they answer a different question -- "what's plausibly
+    relevant to this free-text message" -- than "does the capability I
+    was explicitly told to invoke actually resolve").
+
+    A resolving name is never a gap (returns `None` immediately -- the
+    caller already has what it needs to proceed to invocation). An
+    unresolved name IS a gap, and `nearest` is then scored off a query
+    built from `requested_name` itself (not the raw `user_message`) --
+    a sharper, more specific signal than the ambient conversational text,
+    which is WHY `nearest` is no longer provably always `[]` on this path
+    (owner decision 3: "production gap-note slugs become meaningful only
+    once a real nearest signal exists"). `_draft_capability_acquire_offer`
+    also receives `requested_name` so the minted plan note/slug can key
+    off the actual requested capability, not just an excerpt hash."""
+    if requested_name is not None:
+        if capability_index.resolve_by_name(index, requested_name) is not None:
+            return None  # the exact requested name DOES resolve -- not a gap
+        query = capability_index.embed_query(requested_name, embed_fn)
+    else:
+        roster_top_n = (roster_top_n if roster_top_n is not None
+                         else capability_index.DEFAULT_ROSTER_TOP_N)
+        query = capability_index.embed_query(user_message, embed_fn)
+        roster_result = capability_index.roster_for_turn(index, query, roster_top_n)
+        if not (isinstance(roster_result, list) and not roster_result):
+            return None  # a real match, or AskInsteadOfGuess -- not a gap
 
     entries = index.entries if index else ()
     nearest = capability_index.nearest_entries(index, query, nearest_top_n)
@@ -443,8 +496,271 @@ def capability_gap_reply(index, user_message, *, embed_fn=None,
     return CapabilityGap(
         text=_render_capability_gap_refusal(nearest, total_enabled, available_count),
         nearest=nearest,
-        plan_note=_draft_capability_acquire_offer(user_message, nearest, total_enabled),
+        plan_note=_draft_capability_acquire_offer(user_message, nearest, total_enabled, requested_name),
     )
+
+
+# ------------------------------------------------------- capability directive (#508, Sec9.4/Sec11.5)
+
+
+# The ONE greppable, model-facing syntax a reply uses to request a
+# capability invocation (docs/spec-deltas/508.md): a single fenced code
+# block whose LANGUAGE TAG is exactly this constant, containing one JSON
+# object `{"name": "<capability-name>", "params": {...}}`. Chosen over any
+# vaguer "just mention the capability by name" convention because a
+# fenced, tagged, JSON-shaped block is trivially greppable/parseable and
+# unambiguous to strip from the user-visible reply -- "never by vibes" is
+# the whole point (a similarity score is not a request).
+CAPABILITY_DIRECTIVE_FENCE_LANG = "capability"
+
+# Built from chr(96) rather than a literal backtick string: this constant
+# itself never needs to appear inside a bash heredoc, but every TEST that
+# exercises it does, and a raw literal backtick (or an unpaired quote)
+# inside a heredoc nested in a bash $(...) command substitution trips a
+# well-known bash lexer quirk (cumulative quote-parity tracking that
+# ignores heredoc quoting) -- documented here once so the convention is
+# discoverable from the constant itself, not just from the test files.
+_CAPABILITY_FENCE_TOKEN = chr(96) * 3
+
+# #508 round-1 review, finding 2/3: the opening fence is anchored to the
+# START OF A LINE (re.MULTILINE `^`) -- a fence mentioned mid-sentence
+# ("like this: ```capability...") is prose ABOUT the syntax, not a real
+# fenced block, and must never match. re.IGNORECASE covers a case-varied
+# language tag (```Capability, ```CAPABILITY -- the only letters in this
+# pattern are the tag itself, so IGNORECASE has no other effect). The
+# closing fence must end its own line too (trailing spaces/tabs allowed).
+_CAPABILITY_DIRECTIVE_RE = re.compile(
+    r"^" + re.escape(_CAPABILITY_FENCE_TOKEN) + CAPABILITY_DIRECTIVE_FENCE_LANG
+    + r"[ \t]*\n(.*?)\n?" + re.escape(_CAPABILITY_FENCE_TOKEN) + r"[ \t]*$",
+    re.DOTALL | re.MULTILINE | re.IGNORECASE,
+)
+
+# #508 round-1 review, finding 2: a DANGLING opening fence with no
+# matching close (e.g. a reply truncated mid-JSON by a token limit).
+# `parse_capability_directives` only ever runs this against text that has
+# ALREADY had every COMPLETE pair (`_CAPABILITY_DIRECTIVE_RE` above)
+# stripped out -- so any leftover occurrence of the opening marker is, by
+# construction, unterminated; matches to end-of-string.
+#
+# #508 round-2 review, NEW-LOW: the original `\b.*\Z` suffix used a bare
+# word-boundary after the language tag, which false-positives on ANY
+# unrelated fenced block whose tag merely STARTS WITH "capability" (e.g.
+# ```capability-notes, ```capability.md -- `\b` only requires a
+# word/non-word transition, and both `-` and `.` are non-word characters,
+# so the boundary is satisfied immediately after "capability" regardless
+# of what follows). That match then deleted EVERY character from that
+# point to end-of-string -- real, unrelated content, plus the closing
+# fence of an entirely different code block -- and reported a spurious
+# `CapabilityDirectiveError`. `[ \t]*$` requires "capability" to be the
+# COMPLETE tag on its own line (only trailing spaces/tabs allowed before
+# the line ends) -- the SAME discipline `_CAPABILITY_DIRECTIVE_RE`'s
+# opening fence already applies -- so a genuinely dangling directive
+# (nothing else on that line) still matches, while `capability-notes`/
+# `capability.md` (real, non-whitespace characters immediately after the
+# tag, on the SAME line) never does.
+_CAPABILITY_DANGLING_OPEN_RE = re.compile(
+    r"^" + re.escape(_CAPABILITY_FENCE_TOKEN) + CAPABILITY_DIRECTIVE_FENCE_LANG + r"[ \t]*$.*\Z",
+    re.DOTALL | re.MULTILINE | re.IGNORECASE,
+)
+
+CapabilityDirective = namedtuple("CapabilityDirective", ["name", "params"])
+CapabilityDirectiveError = namedtuple("CapabilityDirectiveError", ["raw", "reason"])
+
+
+def _parse_one_directive(raw):
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return CapabilityDirectiveError(raw=raw, reason=f"invalid JSON: {exc}")
+    if not isinstance(data, dict):
+        return CapabilityDirectiveError(raw=raw, reason=f"must be a JSON object, got {type(data).__name__}")
+    name = data.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return CapabilityDirectiveError(raw=raw, reason="must carry a non-empty string 'name'")
+    params = data.get("params", {})
+    if not isinstance(params, dict):
+        return CapabilityDirectiveError(raw=raw, reason=f"'params' must be a JSON object, got {type(params).__name__}")
+    return CapabilityDirective(name=name.strip(), params=params)
+
+
+def parse_capability_directives(reply_text):
+    """Parses EVERY ```capability fenced block out of `reply_text` (Sec9.4/
+    Sec11.5, docs/spec-deltas/508.md's directive contract) and returns
+    `(visible_text, directives, actionable)`:
+
+      - `visible_text`: `reply_text` with every matched fenced block
+        REMOVED (never leaked to the user) -- valid or not, complete or
+        dangling: a directive block is never something a user should see
+        raw JSON for, whatever shape it took. Runs of 3+ blank lines left
+        behind by the removal are collapsed to a single blank line, and
+        the whole result is stripped, so removing a mid-reply block does
+        not leave a visible gap of empty lines.
+      - `directives`: an ORDERED list, one entry per fenced block found (in
+        the order they appeared -- a dangling/unterminated block, if any,
+        always sorts last since it can only ever be found after every
+        complete pair has already been extracted), each either a
+        `CapabilityDirective(name, params)` (valid: the block parsed as
+        JSON, was an object, and carried a non-empty string `name`;
+        `params` defaults to `{}` when absent, and is itself rejected as
+        an error if present but not a JSON object) or a
+        `CapabilityDirectiveError(raw, reason)` (invalid: unparseable
+        JSON, not a JSON object, `name` missing/empty/non-string, `params`
+        present but not itself an object, OR an unterminated fence with no
+        closing marker at all) -- this function makes NO decision about
+        which directive (if any) a caller should act on beyond the
+        `actionable` field below; v1's "one invocation per turn, extra
+        directives ignored+traced" policy is the CALLER's decision
+        (engine.py), applied uniformly regardless of whether the extra
+        directive came from this same reply or a later same-turn
+        follow-up completion.
+      - `actionable`: the ONE `CapabilityDirective` (never a
+        `CapabilityDirectiveError`) this reply's own SHAPE actually
+        requests right now, or `None`. Two conditions must BOTH hold for
+        `directives[0]` to become `actionable` (round-1 review finding
+        3 -- "teach-then-quote": a model DEMONSTRATING the syntax inside
+        an explanation, then continuing with more prose, must never be
+        treated as a real invocation, live-confirmed by review):
+          1. `directives[0]` parsed as a valid `CapabilityDirective`
+             (never an Error -- a malformed FIRST directive is handled on
+             its own dedicated path by the caller, UNCONDITIONALLY,
+             regardless of position -- see the caller's own docstring).
+          2. `directives[0]` is the reply's TRAILING element: nothing but
+             whitespace (and/or later fenced directive blocks, which are
+             ALWAYS ignored anyway under v1's one-per-turn rule) follows
+             its closing fence. A directive followed by more real prose
+             ("...but I cannot actually run this for you") is presumed to
+             be an EXAMPLE, not a request, and is never actionable --
+             still stripped from the visible reply (never leaked raw
+             either way), just never invoked.
+        KNOWN v1 LIMITATION (documented per round-1 review, recorded in
+        docs/spec-deltas/508.md): in-band signalling inside the model's
+        own free-text output is inherently ambiguous; this trailing-
+        position heuristic is a cheap, mostly-effective mitigation, not a
+        proof. It is a mechanical CHEAP filter, not model understanding --
+        a sufficiently unusual reply shape can still misfire in either
+        direction (e.g. a genuine request immediately followed by an
+        unrelated trailing remark is currently never actionable)."""
+    reply_text = reply_text or ""
+    directives = []
+    matches = list(_CAPABILITY_DIRECTIVE_RE.finditer(reply_text))
+
+    pieces = []
+    cursor = 0
+    for m in matches:
+        pieces.append(reply_text[cursor:m.start()])
+        directives.append(_parse_one_directive(m.group(1)))
+        cursor = m.end()
+    pieces.append(reply_text[cursor:])
+    remainder = "".join(pieces)
+
+    dangling = _CAPABILITY_DANGLING_OPEN_RE.search(remainder)
+    if dangling:
+        directives.append(CapabilityDirectiveError(
+            raw=remainder[dangling.start():], reason="unterminated fence (no closing marker found)"))
+        remainder = remainder[:dangling.start()] + remainder[dangling.end():]
+
+    visible = re.sub(r"\n{3,}", "\n\n", remainder).strip()
+
+    actionable = None
+    if matches and isinstance(directives[0], CapabilityDirective):
+        tail_parts = []
+        cursor = matches[0].end()
+        for m in matches[1:]:
+            tail_parts.append(reply_text[cursor:m.start()])
+            cursor = m.end()
+        tail_parts.append(reply_text[cursor:])
+        if not "".join(tail_parts).strip():
+            actionable = directives[0]
+
+    return visible, directives, actionable
+
+
+# #508 design point 2: "cap result size injected -- truncate with a
+# marker, never unbounded". Char cap on the RENDERED result text handed to
+# the same-turn follow-up completion.
+CAPABILITY_RESULT_CHAR_CAP = 4000
+
+
+def render_capability_result_text(invoke_result, cap_chars=CAPABILITY_RESULT_CHAR_CAP):
+    """Renders an `adapters.InvokeResult` (argv flavor) or
+    `adapters.McpInvokeResult` (mcp flavor) into plain text for the
+    same-turn follow-up completion (docs/spec-deltas/508.md #2), then
+    hard-truncates to `cap_chars` -- never unbounded, and never SILENTLY:
+    a truncated result has an explicit `"... [truncated N chars]"` marker
+    appended, itself counted within `cap_chars` (the returned text never
+    exceeds the cap, marker included). This is a hand-rolled cap-and-mark
+    rather than a reuse of `_truncate_chars` (that helper's contract is
+    "slice, no marker" -- every OTHER caller in this module reports
+    truncation only via `budget_report`'s `clipped_components`, which has
+    no equivalent for a same-turn adapter completion; the model itself
+    needs to SEE that a result was cut, in-band, since there is no
+    separate side-channel here).
+
+    Duck-typed on shape rather than `isinstance` against adapters.py's
+    namedtuples (this module has no import-time dependency on which
+    invoke flavor produced the result): an `McpInvokeResult` carries a
+    `result` field (the JSON-RPC response's already-extracted `result`
+    object) that an `InvokeResult` does not."""
+    if hasattr(invoke_result, "result"):
+        try:
+            body = json.dumps(invoke_result.result, sort_keys=True, indent=2)
+        except (TypeError, ValueError):
+            body = str(invoke_result.result)
+        raw = "mcp tool result:\n%s" % body
+    else:
+        parts = ["exit code: %s" % invoke_result.returncode]
+        if invoke_result.stdout:
+            parts.append("stdout:\n%s" % invoke_result.stdout)
+        if invoke_result.stderr:
+            parts.append("stderr:\n%s" % invoke_result.stderr)
+        raw = "\n".join(parts)
+    if len(raw) <= cap_chars:
+        return raw, False
+    marker = "... [truncated %d chars]" % (len(raw) - cap_chars)
+    keep = max(0, cap_chars - len(marker))
+    return raw[:keep] + marker, True
+
+
+def render_capability_result_followup(context_for_adapter, capability_name, result_text):
+    """Builds the SAME-turn follow-up completion's context (docs/spec-
+    deltas/508.md #2, design doc sequence 2): reuses the ORIGINAL turn's
+    already-composed `system` prompt VERBATIM (persona + roster + recalled
+    notes + summary were already composed exactly once for this turn --
+    Sec9.1/Sec17.7: recall runs at most once per turn, this function never
+    triggers a second compose/recall pass) and builds a fresh `input`
+    that hands the model the capability's result to synthesize its final,
+    user-facing reply from. Any OTHER adapter-relevant key in
+    `context_for_adapter` (e.g. `model`, `fileOutputDir`) survives
+    unchanged into the returned dict -- this is a shallow copy plus two
+    field overrides (`system` restated for clarity, `input` replaced),
+    never a from-scratch context."""
+    system = (context_for_adapter or {}).get("system", "")
+    original_input = (context_for_adapter or {}).get("input", "")
+    input_text = (
+        "%s\n\n[capability %r result]\n%s\n\nUsing the result above, write your "
+        "final reply to the user now, in plain language. Do not include another "
+        "capability request block unless a second, genuinely different action "
+        "is truly required -- only the FIRST capability request per turn is "
+        "ever honored." % (original_input, capability_name, result_text)
+    )
+    followup = dict(context_for_adapter or {})
+    followup["system"] = system
+    followup["input"] = input_text
+    return followup
+
+
+def render_capability_completed_fallback(capability_name, result_text):
+    """#508 round-1 review, findings 4/5: a template reply for when the
+    same-turn follow-up completion cannot supply a usable final reply --
+    either because the follow-up `complete_fn` call itself raised (the
+    capability ALREADY ran; losing that outcome entirely, and inviting a
+    retry that would re-run it, is worse than a rougher templated reply),
+    or because the follow-up's OWN reply stripped down to nothing (e.g.
+    the model's follow-up was itself just another directive block, with
+    no surrounding prose). Either way, the capability genuinely completed
+    and its result is genuinely known -- this states that plainly rather
+    than returning a blank or dropping the turn's outcome on the floor."""
+    return "%s completed. Result:\n%s" % (capability_name, result_text)
 
 
 # ------------------------------------------------------------- recall seam
@@ -542,6 +858,34 @@ def _render_persona(persona_cfg):
     return "\n".join(lines)
 
 
+# #508 design point 1: the roster prompt text is what TEACHES the model
+# the directive syntax -- an explicit request is the signal that fires in
+# embedding mode, not a similarity score, so the model has to actually be
+# told the exact shape once, every turn a real capability is on offer.
+# Built from _CAPABILITY_FENCE_TOKEN (chr(96)-based, see that constant's
+# own docstring for why) rather than a literal backtick sequence.
+_CAPABILITY_DIRECTIVE_TEACHING_LINES = (
+    "To use one of the capabilities above right now, reply with exactly "
+    "one fenced block, at most, shaped like this:",
+    _CAPABILITY_FENCE_TOKEN + CAPABILITY_DIRECTIVE_FENCE_LANG,
+    '{"name": "<capability-name>", "params": {...}}',
+    _CAPABILITY_FENCE_TOKEN,
+    "Only include this block when you actually intend to invoke that "
+    "capability right now -- never as an example, and never more than one "
+    "per reply. The block itself is never shown to the user; only invoke "
+    "a capability that was actually listed above as available. "
+    # #508 round-2 review, NEW-MEDIUM: this rule is ENFORCED by the parser
+    # (turns.parse_capability_directives's trailing-position `actionable`
+    # check) but was never TAUGHT -- an ordinary "Let me check...
+    # [block]... One moment!" reply used to silently do nothing while its
+    # visible text told the user an action was underway. Stated explicitly
+    # so the model puts any explanation BEFORE the block, never after it.
+    "The block must be the LAST thing in your reply -- put any explanation "
+    "BEFORE it, never after: if you say anything more once the block ends, "
+    "it will not be treated as a real request.",
+)
+
+
 def _render_roster_entries(entries):
     """Renders `roster_provider()`'s entry dicts into system-prompt lines.
 
@@ -551,12 +895,27 @@ def _render_roster_entries(entries):
     CapabilityIndexEntry, threaded through by engine.py's
     `_roster_provider_for`) inline, so the persona's own system context
     states WHY a plausible-looking capability can't be used right now,
-    never just a bare "(unavailable)" tag a model could talk past."""
+    never just a bare "(unavailable)" tag a model could talk past.
+
+    #508: appends the directive-syntax TEACHING block (see
+    `_CAPABILITY_DIRECTIVE_TEACHING_LINES`) whenever `entries` contains at
+    least one REAL, named capability -- i.e. NOT the empty-roster
+    placeholder shape (nothing to invoke) and NOT ONLY the `(ambiguous)`
+    sentinel `_roster_provider_for` synthesizes for `AskInsteadOfGuess`
+    (that sentinel's own one-liner already instructs "ask before using any
+    capability" -- teaching invoke syntax alongside it would contradict
+    that instruction). An entry list that mixes the sentinel with real
+    entries (not a shape `_roster_provider_for` currently produces, but not
+    excluded by this function either) still teaches the syntax, since real,
+    named candidates are genuinely present to invoke."""
     if not entries:
         return ["(no roster entries -- capability roster compilation lands in AST-061/E6)"]
     lines = ["Available capabilities:"]
+    real_entries = False
     for entry in entries:
         name = entry.get("name", "?")
+        if name != "(ambiguous)":
+            real_entries = True
         one_liner = entry.get("one-liner") or entry.get("one_liner") or ""
         if entry.get("available"):
             lines.append("- %s (available): %s" % (name, one_liner))
@@ -564,6 +923,8 @@ def _render_roster_entries(entries):
             reason = entry.get("reason") or entry.get("unavailable_reason")
             suffix = " -- %s" % reason if reason else ""
             lines.append("- %s (unavailable%s): %s" % (name, suffix, one_liner))
+    if real_entries:
+        lines.extend(_CAPABILITY_DIRECTIVE_TEACHING_LINES)
     return lines
 
 
@@ -781,16 +1142,77 @@ def compose_context(persona_cfg, roster_provider, recall_fn, session_state,
 # ------------------------------------------------------------- run_turn
 
 
+def _merge_usage(first, second):
+    """#508 round-1 review (LOW finding 7): a hook-driven same-turn
+    follow-up completion (`on_reply`) is a SECOND real adapter call --
+    its token usage is real spend, not a replacement for the first
+    completion's. AGGREGATES rather than overwrites: every numeric field
+    present in BOTH dicts is SUMMED (e.g. `input_tokens`/`output_tokens`);
+    a field present in only one side, or not itself numeric on both
+    sides, is carried through from whichever side has it (`second` wins
+    on a genuine conflict -- the more complete/final report). `None` on
+    either side degrades to returning the other side unchanged (never a
+    crash, never a fabricated total from a missing report)."""
+    if first is None:
+        return second
+    if second is None:
+        return first
+    if not isinstance(first, dict) or not isinstance(second, dict):
+        return second
+    merged = dict(first)
+    for key, value in second.items():
+        prior = merged.get(key)
+        if (isinstance(value, (int, float)) and not isinstance(value, bool)
+                and isinstance(prior, (int, float)) and not isinstance(prior, bool)):
+            merged[key] = prior + value
+        else:
+            merged[key] = value
+    return merged
+
+
 def run_turn(persona_cfg, roster_provider, recall_fn, session_state, user_message,
              *, budgets=None, cache=None, summarizer=None,
              get_adapter=adapters.get_adapter, adapter_kwargs=None,
-             refresh_every=SUMMARY_REFRESH_EVERY_K_TURNS):
-    """Runs one turn: compose -> adapter.complete -> advance session_state.
+             refresh_every=SUMMARY_REFRESH_EVERY_K_TURNS, on_reply=None):
+    """Runs one turn: compose -> adapter.complete -> [on_reply] -> advance
+    session_state.
 
     Returns {"text", "chips", "usage", "timings", "updated_session_state"}
     (Sec8.1's adapter shape plus chips + session_state) with an additive
     "budget_report" key for callers (E2's overlay, debugging) that want it.
-    """
+
+    `on_reply` (#508, optional, `None` by default -- every pre-#508 caller
+    is unaffected): a callable `on_reply(first_text, context_for_adapter,
+    complete_fn, adapter_kwargs) -> {"text"?, "usage"?, "timings"?} | None`
+    invoked, when given, EXACTLY ONCE per turn, immediately after the
+    FIRST completion returns. This is the seam a caller (engine.py) uses
+    to drive a same-turn, same-session-context follow-up completion (e.g.
+    after invoking a capability the model's first reply requested) WITHOUT
+    this module having to know anything about capabilities, directives, or
+    adapters.py's invoke primitives -- `compose_context` still runs
+    EXACTLY ONCE (Sec9.1/Sec17.7: recall never runs twice for one user
+    message), and `on_reply` receives the ALREADY-COMPOSED context so it
+    can reuse the same system prompt for a second `complete_fn` call of
+    its own choosing (or none at all).
+
+    A `None` return (or no `on_reply` at all) leaves the first
+    completion's `text`/`usage`/`timings` completely untouched -- this
+    keeps the DEFAULT turn shape (ordinary chat, most of the time) exactly
+    as fast and simple as before this parameter existed: one adapter call,
+    one session_state advance, nothing else. A dict return REPLACES
+    `text`/`timings` with whatever it supplies (falling back to the first
+    completion's own value for anything it omits), but MERGES `usage` via
+    `_merge_usage` rather than replacing it outright (round-1 review
+    finding 7: a hook that drives a real second adapter call spends real
+    tokens on TOP of the first call, so the turn's reported usage must
+    reflect both, not just the last one reported) -- a hook that never
+    supplies `usage` at all (e.g. a gap refusal or a validation error,
+    where no second completion ever ran) leaves the first completion's
+    own usage completely untouched, exactly as before this fix.
+    `session_state` always advances with the FINAL text (post-hook),
+    never the first completion's raw text, so a hook that drives a second
+    completion never lets a stale/pre-invocation reply leak into the
+    durable transcript."""
     resolved = _resolve_budgets(budgets)
     composed = compose_context(persona_cfg, roster_provider, recall_fn,
                                 session_state, user_message, budgets, cache=cache)
@@ -799,16 +1221,28 @@ def run_turn(persona_cfg, roster_provider, recall_fn, session_state, user_messag
     complete_fn = get_adapter(provider)
     result = complete_fn(composed["context_for_adapter"], **(adapter_kwargs or {}))
 
+    text = result.get("text", "")
+    usage = result.get("usage")
+    timings = result.get("timings")
+
+    if on_reply is not None:
+        outcome = on_reply(text, composed["context_for_adapter"], complete_fn, adapter_kwargs)
+        if outcome is not None:
+            text = outcome.get("text", text)
+            if "usage" in outcome:
+                usage = _merge_usage(usage, outcome["usage"])
+            timings = outcome.get("timings", timings)
+
     updated_state = _advance_session_state(
-        session_state or {}, user_message, result.get("text", ""),
+        session_state or {}, user_message, text,
         summarizer or default_summarizer, refresh_every,
         _cap_chars(resolved, "summary"))
 
     return {
-        "text": result.get("text", ""),
+        "text": text,
         "chips": composed["chips"],
-        "usage": result.get("usage"),
-        "timings": result.get("timings"),
+        "usage": usage,
+        "timings": timings,
         "updated_session_state": updated_state,
         "budget_report": composed["budget_report"],
     }
