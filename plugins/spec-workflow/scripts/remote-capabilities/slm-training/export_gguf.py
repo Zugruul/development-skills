@@ -288,7 +288,17 @@ def main():
     for quant in quants:
         print("exporting %s…" % quant)
         model.save_pretrained_gguf(gguf_dir, tokenizer, quantization_method=quant)
-        # save_pretrained_gguf names files itself; pick up whatever is new
+        # save_pretrained_gguf names files itself — and current unsloth
+        # writes them to a SIBLING dir named "<dir>_gguf" (observed live:
+        # asked for .../gguf, files landed in .../gguf_gguf). Normalize:
+        # move any *.gguf from the sibling into gguf_dir before scanning,
+        # so artifacts, manifests, and job-pull all see one canonical dir.
+        import shutil
+        sibling = gguf_dir + "_gguf"
+        if os.path.isdir(sibling):
+            for name in sorted(os.listdir(sibling)):
+                if name.endswith(".gguf"):
+                    shutil.move(os.path.join(sibling, name), os.path.join(gguf_dir, name))
         for name in sorted(os.listdir(gguf_dir)):
             path = os.path.join(gguf_dir, name)
             if name.endswith(".gguf") and all(p["file"] != name for p in produced):
