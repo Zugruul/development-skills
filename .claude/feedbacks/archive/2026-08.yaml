@@ -209,3 +209,85 @@ items:
     action: ignore
     ref: already durable as the completion-contract block in dev briefs + dev-idle-recovery-ladder
       note
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-08-02T08:35:00Z'
+iteration:
+  task: 496+498+499+502 (overnight P2 batch) + session close
+  outcome: merged
+  reviewRounds: 7
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: incident
+  area: merge
+  severity: high
+  summary: A silenced stash-pop conflict left the primary checkout unmergeable until
+    the human hit it
+  detail: Push sequences racing the changelog cron wrapped stash pops in quiet flags
+    with stderr discarded; one pop conflicted on a guard script and the conflict sat
+    unnoticed in the primary checkout until the human's own git pull refused with
+    unmerged files. Resolution kept the committed side (stashed side was a stale older
+    version; nothing lost), but the human was blocked at exactly the moment they wanted
+    to restart the stack.
+  generalized: 'Automation must never silence stash or merge plumbing: no -q with
+    discarded stderr around stash push/pop, and every stash cycle ends by asserting
+    the tree is conflict-free (git status --porcelain contains no U). Better: avoid
+    stash entirely for push races — commit first, then pull --rebase, then push; a
+    dirty-tree push race is a smell that something wasn''t committed when it should
+    have been.'
+  routing:
+    action: brain-note
+    ref: orchestrator
+- category: friction
+  area: board
+  severity: medium
+  summary: Global last-gate-wins pass recording forced serializing a fresh gate per
+    lane just to park parallel tasks
+  detail: The gate pass file records at the primary root regardless of which worktree
+    ran the gate, and both board-move guards evaluate the session's pinned worktree,
+    so parking four parallel lanes required one fresh full-suite gate immediately
+    before each move, and one lane's move was blocked by a different lane's branch
+    history.
+  generalized: Move-time guards must resolve their target tree and branch from the
+    task being moved, not from the invoking session's checkout or a global last-writer
+    pass file — otherwise parallel lanes serialize on gate runs and cross-block on
+    unrelated histories.
+  routing:
+    action: ignore
+    ref: already tracked with the same evidence as Zugruul/development-skills#521
+      (guards must resolve the task's tree)
+- category: worked-well
+  area: concurrency
+  severity: medium
+  summary: Three parallel single-purpose lanes with one shared reviewer closed an
+    entire hardening cluster overnight
+  detail: Non-overlapping P2 tasks ran as isolated worktree lanes with pin-verification
+    briefs; a single reviewer batch-covered the two smallest diffs; all four tasks
+    landed reviewer-approved within one overnight stretch with no cross-lane contamination.
+  generalized: For small non-overlapping hardening tasks, parallel worktree lanes
+    plus a batched reviewer for the smallest diffs is an efficient shape — the constraint
+    to watch is file overlap between lanes, checked before opening each lane.
+  routing:
+    action: ignore
+    ref: 'already durable: worktree-lane-default note + concurrency reference cover
+      the lane pattern'
+- category: friction
+  area: briefing
+  severity: low
+  summary: An agent oscillated about its own identity across three messages after
+    inheriting another lane's transcript context
+  detail: A newly spawned lane agent carried a prior agent's task list and disputed
+    its assignment twice (claiming to be the prior agent, then itself, then the prior
+    agent again); a single orchestrator message asserting ground truth with concrete
+    evidence (the prior task's recorded completion, the board state) and a direct
+    do-not-relitigate order ended it.
+  generalized: When a subagent disputes its own assignment or identity, the orchestrator
+    should answer once with verifiable ground truth (what is already recorded as complete,
+    where) plus an explicit 'proceed; no further identity clarifications' instruction
+    — repeated gentle clarifications feed the oscillation.
+  routing:
+    action: brain-note
+    ref: orchestrator

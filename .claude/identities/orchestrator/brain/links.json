@@ -54,6 +54,11 @@
     "last": null,
     "weight": 0.5
   },
+  "no-silenced-stash-plumbing->retroactive-records-honesty": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "ping-gated-lane-sequencing->brief-collisions-and-inflight-siblings": {
     "fires": 0,
     "last": null,
