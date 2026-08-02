@@ -4,6 +4,110 @@
 
 ## v0.64.2 — 2026-08-02
 
+### Features
+- **slm-training:** generic dataset.chat_template_kwargs pass-through — lets configs disable template-default reasoning blocks (e.g. Qwen3 enable_thinking=false) (`962949c`)
+  > Claude-Session: https://claude.ai/code/session_01EysHtmuW6BJUFuJf5smDbE
+- **remote-compute:** compute-top — on-machine terminal monitor for dispatched work (#524) (`bf40b86`)
+  > Runs ON the compute machine (Linux/WSL/macOS, stdlib curses only) and watches
+  > ~/.compute-jobs: what is running now, what finished, full history, refreshing
+  > in place. Arrow keys navigate, enter opens the log tail with exit code and
+  > paths, f cycles all/running/finished/failed, d deletes a job from history
+  > (refusing while it is still running), D purges all finished. --once prints a
+  > plain snapshot for pipes and non-TTY use.
+  > 
+  > Reads defensively: a half-created job directory (dispatch in flight) reads as
+  > running with no log rather than crashing, and an unparseable exitcode is
+  > ignored instead of raising. Payload dirs (_caps/_tools) are not listed as jobs.
+  > 
+  > Also fixes a bug this work surfaced: my earlier shlex.join change made
+  >  quote a whole command line into a single unrunnable
+  > command NAME. exec now passes a lone argument through and only rejoins when
+  > the caller's shell pre-split it into several words — both shapes tested.
+  > 
+  > Verified live on a real WSL2 machine against 33 real jobs.
+- **slm-training:** export-gguf llama.cpp smoke test — load + JSON-schema-constrained completion (`bbebf2c`)
+  > Extends export_gguf.py with an optional `smoke` config section
+  > {prompt, json_schema, max_tokens, llama_cli}. When present, every produced
+  > GGUF is loaded in llama-cli and asked for one completion under llama.cpp's
+  > verified `-j`/`--json-schema` grammar-constrained decoding flag; the raw
+  > output (truncated to 2000 chars) and a shallow, stdlib-only, top-level
+  > JSON-Schema check (required keys + declared property types) are recorded
+  > into export-summary.json's new `smoke.perFile` alongside `smoke.schema`.
+  > A file that fails to load or fails to parse makes the job exit nonzero — a
+  > GGUF that can't produce parseable constrained output must never look
+  > eligible for packaging — but the summary (including the failing
+  > diagnostics) is written first, so the failure stays auditable.
+  > 
+  > llama_cli defaults to ~/llama.cpp/build/bin/llama-cli, falling back to
+  > discovery (cwd then $HOME, searching llama.cpp*/ dirs for llama-cli/main
+  > under build/bin/ or at the dir root) when that default is missing — this is
+  > where unsloth's own from-source build typically lands. Absent `smoke`
+  > entirely, behavior is unchanged (backward compatible).
+  > 
+  > capability.yaml's export-gguf job description documents the new smoke key.
+  > section-remote-compute.sh gets a small appended block proving capability.yaml
+  > still installs cleanly and the job roster is unchanged post-extension — no
+  > python executes in this hermetic suite, so that's what's provable here; the
+  > smoke logic itself is exercised by the consuming project's own test suite
+  > and the real GPU run.
+  > 
+  > Requested by an external caller's remote-capabilities consumer (fab-cli's
+  > pipeline/src/export/); the bundle itself stays project-agnostic per its own
+  > "any project brings its own config" contract — no project-specific
+  > references were added to the payload.
+  > 
+  > Claude-Session: https://claude.ai/code/session_01EysHtmuW6BJUFuJf5smDbE
+- **compute-top:** duration column, L opens logs, ctrl-c replaces q-to-quit (#524) (`f9dd0f6`)
+  > - DURATION per job: start->exit for a finished job, elapsed-so-far for a
+  >   running one, in the list, the one-shot output and the log header
+  > - L (and l, and enter) opens the log view; esc or q leaves it
+  > - q no longer quits the dashboard from the list -- ctrl-c does, and the footer
+  >   says so, so a stray q cannot drop the human out of a live view
+  > 
+  > Also adds optional job params: --param-default NAME=VALUE makes a param
+  > omittable with that value, validated against its own pattern at declaration
+  > time so a default can never be a trap. Bundle manifests may declare one too.
+- **remote-compute:** capability-declared job-id schema + comfyui node discovery (#524) (`280a6db`)
+  > Artifacts outlive the session that made them, so a job id has to say what
+  > produced it. A capability may now declare jobIdSchema.template (e.g.
+  > 'img-{model}-{seed}'): when --job-id is omitted, the id is built from that
+  > job's own params -- stable prefix, model slug, seed last, so a batch sorts
+  > together and one output is reproducible from its id alone. Values are
+  > slugified, so a param can never shape the id into something unsafe, and the
+  > result still faces JOB_ID_RE. An explicit --job-id always wins.
+  > 
+  > Caught while wiring it: a template referencing params the job does NOT declare
+  > collapsed to a constant ('img'), so every run of comfyui:render would reuse
+  > one id and clobber the previous run's state file. Unfilled placeholders now
+  > fall back to a unique timestamp suffix.
+  > 
+  > Also:
+  > - comfy-run --list-nodes prints every settable node/input of a workflow (and
+  >   marks link-fed inputs as unsettable), which is what you need to write the
+  >   --set bindings for a NEW workflow without opening it. Exposed as
+  >   comfyui:list-nodes.
+  > - the --set parse error now tells you to quote values containing spaces inside
+  >   --sets, which is the one sharp edge of the generic path.
+  > 
+  > Verified live: comfyui:render against the real workflow with arbitrary sets
+  > produced an image under an auto-generated id.
+- **remote-compute:** remove-job and remove-capability, plus @workflow keep-value sentinel (#524) (`68eeb1f`)
+  > Retiring things had no verb: a declared job or an installed bundle could only
+  > be removed by hand-editing the registry.
+  > 
+  > - remove-job <nick> NAME drops one job, local only, and says when the job came
+  >   from a bundle (re-installing declares it again)
+  > - remove-capability <nick> NAME uninstalls a bundle and every job it declared.
+  >   The remote payload is LEFT IN PLACE by default -- 'stop offering this here'
+  >   does not imply deleting files on someone else's machine -- and
+  >   --purge-remote opts into removing that one capability's directory
+  > - both refuse an unknown name and print what IS declared/installed
+  > 
+  > Also: an 'optional' param still SUBSTITUTES its default, so a job template's
+  > --set always overwrote whatever the workflow itself declared. The @workflow
+  > sentinel means 'leave this input at the workflow's own value'. An empty value
+  > is deliberately NOT a skip, since an empty negative prompt is legitimate.
+
 ### Fixes
 - **remote-compute:** tilde-safe remote paths + reviewer round 3 (#524) (`86fe2ba`)
   > BLOCKING regression from the injection hardening: shlex.quote on a tilde path
@@ -44,6 +148,69 @@
   > Also documents that {jobdir}/{capdir} must be used bare in bundle templates:
   > they expand to an already-quoted path, so wrapping them in further quotes
   > breaks the nesting.
+- **slm-training:** disable trainer checkpointing — unsloth-patched trl config classes crash torch.save with a class-identity PicklingError (`c91f6b7`)
+  > Observed on the first real GPU run: training completed 2/2 steps, then the
+  > trainer's checkpoint save crashed pickling SFTConfig. Adapters were already
+  > saved explicitly post-train; trainer-state is scratch, so save_strategy=no is
+  > both the fix and the honest contract.
+  > 
+  > Claude-Session: https://claude.ai/code/session_01EysHtmuW6BJUFuJf5smDbE
+- **slm-training:** collect GGUFs from unsloth's '<dir>_gguf' sibling output dir (observed live: files land beside, not inside, the requested dir) (`860df3e`)
+  > Claude-Session: https://claude.ai/code/session_01EysHtmuW6BJUFuJf5smDbE
+
+### Refactoring
+- **remote-compute:** move all state under ~/.remote-compute on both sides (#524) (`8e0e6f7`)
+  > The tool's own state no longer hides inside ~/.claude/ or a bare
+  > ~/.compute-jobs at the home root. One name on both machines:
+  > 
+  >   local  ~/.claude/compute/resources.yaml -> ~/.remote-compute/resources.yaml
+  >          ~/.claude/compute/jobs/          -> ~/.remote-compute/jobs/
+  >   remote ~/.compute-jobs/<id>/            -> ~/.remote-compute/jobs/<id>/
+  >          ~/.compute-jobs/_caps/<name>/    -> ~/.remote-compute/caps/<name>/
+  >          ~/.compute-jobs/_tools/          -> ~/.remote-compute/tools/
+  > 
+  > The remote layout now has ONE definition (REMOTE_ROOT/REMOTE_JOBS_ROOT)
+  > instead of being spelled out at each call site. COMPUTE_HOME still overrides
+  > the local root, so the hermetic suite is unaffected.
+  > 
+  > Migration performed on the live machine: payloads, tools and all 43 job
+  > directories moved, bundle jobs reinstalled and hand-declared job commands
+  > rewritten, then verified by dispatching a real job end to end.
+  > 
+  > Docs updated in the same pass: both skills, both READMEs, the design doc, the
+  > schema description, and the manual e2e script.
+
+### Documentation
+- **remote-compute:** document compute-top in the skill and plugin README (`c0a7b88`)
+- **compute-top:** add the skill + README coverage for the job dashboard (#524) (`12af96a`)
+  > New skill documents both ways to run it: on the compute machine itself, or
+  > over 'ssh -t <alias>' from elsewhere -- and why -t matters (no TTY means it
+  > falls back to a one-shot snapshot instead of drawing). Covers which machine it
+  > reports on (the one that RECEIVED the work, not the orchestrator), how to copy
+  > it onto a new machine, the keys, the flags, and the rules that matter: never
+  > delete a running job, deletion is permanent, and acting on a job goes through
+  > remote-compute's job-status/job-logs/job-pull so orchestrator state stays
+  > consistent.
+- standalone remote-compute guide; README keeps a summary and links to it (#524) (`83340e5`)
+  > docs/remote-compute.md is a human-facing guide written in plain language:
+  > the mental model (machine, registry, capability, job, dispatch), preparing and
+  > registering a machine, declaring environments and installing tool support,
+  > declaring jobs and — the part that confuses people — how a job's parameter
+  > names map onto a workflow's real addresses, running and watching work, sharing
+  > a machine, cleaning up, where state lives, the rules the tool will not break,
+  > what each failure means, and how to add support for a new tool.
+  > 
+  > Uses placeholders throughout (no machine names, addresses or usernames) with a
+  > fictional image-generation workflow as the worked example.
+  > 
+  > README's Remote compute section shrinks to a short summary plus a link, and
+  > the skill now points an agent at the guide rather than re-explaining the model.
+- **remote-compute:** expand the monitoring section with dispatch-side SSH usage (`d54720b`)
+  > Leads with the everyday command -- running the dashboard from the computer you
+  > dispatch from, over the SSH connection registration already set up -- and
+  > explains why -t is required and why a non-terminal host prints a snapshot
+  > instead. Adds the one-shot forms for quick checks, a key table, watching two
+  > machines at once, and how to copy the dashboard onto a machine that lacks it.
 
 ### Tests
 - **remote-compute:** silence SC2016 for the deliberately-literal $HOME assertion (#524) (`073d6ed`)
@@ -51,6 +218,13 @@
   > checks that the payload handed to ssh carries it for the REMOTE shell to
   > expand. Single quotes are correct here, so the check is disabled with that
   > reason recorded.
+- **remote-compute:** pin that a bundle manifest's env: reaches the payload (#527) (`a8bc5de`)
+  > env: was honored in code but only ever exercised via add-job --env. The
+  > shipped training bundle declares it on all four jobs, so a regression would
+  > have silently run training outside its virtualenv. Verified by mutation:
+  > ignoring the manifest's env now fails the suite.
+  > 
+  > Closes #527.
 
 ### Chores
 - **release:** spec-workflow v0.64.2 (`c77e16e`)
