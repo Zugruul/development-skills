@@ -180,6 +180,16 @@ Then run it by name, as often as you like:
 
 For a batch, loop the `run` command with a different seed each time.
 
+To watch what the machine is doing, run the dashboard there (or over SSH from
+here — `-t` gives it a terminal to draw in):
+
+```bash
+ssh -t example-remote-machine-name 'python3 ~/.compute-jobs/_tools/compute-top.py'
+```
+
+It lists running, finished, and failed jobs, opens each one's log and exit
+code, and lets you prune old ones. See the `compute-top` skill for the keys.
+
 The job starts in a tmux session on the machine and writes its log, process id,
 and exit code to disk. If your session dies, `job-status` picks the job back up
 from those files.
@@ -305,6 +315,7 @@ Spec-driven autonomous build workflow. A repo declares its boards, specs, epics,
 | `neural-view` | Live JARVIS-style visualization of the identity brains — notes as neurons, recalls lighting up in real time |
 | `feedback` | Structured per-iteration process feedback about the workflow itself (`methodology.feedback`); triaged into backlog/brain-note/graduate/upstream/ignore at retro time |
 | `sync-project-configs` | Discover every anchored repo and bring its `.claude/project.yaml` up to the plugin's current config surface via versioned sync rules; dry-run by default |
+| `compute-top` | Terminal dashboard, on the machine or over SSH, for what remote-compute work is running/finished there; opens logs, prunes history |
 | `remote-compute` | Register remote machines (SSH, key-only) as user-level compute resources; enable their availability per project (gitignored local overlay, non-exclusive); declared jobs for dispatch-by-intent (e.g. ComfyUI from a pre-authored workflow), exec/lock/dispatch with file-recoverable job state |
 | `changelog-generate` | Fully regenerates `CHANGELOG.md` from git history, versioned by `plugin.json`'s semver windows and grouped by conventional-commit type; idempotent, kept fresh on every push to `main` by a GitHub Action |
 
