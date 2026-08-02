@@ -1420,15 +1420,21 @@ class AssistantEngine:
                 # always []) -- see `_roster_provider_for`'s docstring for
                 # the ask-instead-of-guess rendering this closure applies.
                 roster_provider = self._roster_provider_for(root, message)
-                # File output (2026-07-29, human-directed): resolve the
-                # sanctioned per-assistant output directory (the brain's
-                # media/chat/, the SAME relative base the chat renderer's
-                # /file/ links resolve) and inject it per-turn as
-                # `_fileOutputDir` -- turns.compose_context states it in
-                # the system prompt and the claude adapter scope-opens its
-                # Write tool to exactly that directory. `fileOutput: false`
-                # in the assistant section disables it; a dir that cannot
-                # be created degrades silently to the read-only turn shape.
+                # File output (2026-07-29, human-directed; codex parity
+                # 2026-08-01, issue #518): resolve the sanctioned
+                # per-assistant output directory (the brain's media/chat/,
+                # the SAME relative base the chat renderer's /file/ links
+                # resolve) and inject it per-turn as `_fileOutputDir` --
+                # turns.compose_context states it in the system prompt and
+                # BOTH provider adapters relay it: claude.py scope-opens its
+                # Write tool to an isolated cwd and publishes from there;
+                # codex.py runs `-s workspace-write` confined to its `-C`
+                # workdir and publishes from there (issue #518 -- codex
+                # never wired the second half of this until then). `fileOutput:
+                # false` in the assistant section disables it; a dir that
+                # cannot be created degrades silently to the no-file-output
+                # turn shape (the adapter still runs, just with no
+                # fileOutputDir in context to publish into).
                 persona_cfg = dict(section) if isinstance(section, dict) else section
                 # Temporal grounding (2026-07-29, human-directed): the
                 # assistant always knows the current wall clock, so

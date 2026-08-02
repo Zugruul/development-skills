@@ -162,6 +162,115 @@ ac_stub_cwd="$(cat "$ac_cwd_file")"
 check_absent "isolated cwd: the stub's cwd is NOT this test process's cwd" "$PWD" "$ac_stub_cwd"
 rm -f "$ac_cwd_file"
 
+# ---------------------------------------------------------- publish relay: workdir file -> fileOutputDir (issue #518 round-1 review item 1: fee53259 shipped zero tests for this)
+# fee53259 built the workdir-publish relay for claude.py but shipped no
+# test covering it at all. The stub already receives `cwd=` pointed at the
+# isolated workdir (see the isolated-cwd test above), so it can write
+# directly into os.getcwd() -- proves a file the model writes there is
+# published into `fileOutputDir` before the workdir is destroyed.
+AC_PUBLISH_DIR="$(mktemp -d)"
+cat >"$AC_TMPPY/publish.py" <<PYEOF
+import os
+from assistant import claude
+
+publish_dir = os.environ["AC_PUBLISH_DIR"]
+context = {
+    "model": "claude-fable-5",
+    "system": None,
+    "input": "make me a 3D model",
+    "fileOutputDir": publish_dir,
+}
+claude.complete(context, timeout=10)
+print("PUBLISHED", sorted(os.listdir(publish_dir)))
+with open(os.path.join(publish_dir, "duck.obj")) as fh:
+    print("CONTENT", fh.read().strip())
+PYEOF
+out="$(PATH="$AC_STUB_BIN:$PATH" CLAUDE_STUB_MODE=ok CLAUDE_STUB_WRITE_FILE=duck.obj AC_PUBLISH_DIR="$AC_PUBLISH_DIR" PYTHONPATH="$AC_SCRIPTS" python3 "$AC_TMPPY/publish.py" 2>&1)"
+check "publish relay: a file the stub wrote into its isolated cwd is published to fileOutputDir" \
+    "PUBLISHED ['duck.obj']" "$out"
+check "publish relay: the published file's content survives the move" "CONTENT stub file content" "$out"
+rm -rf "$AC_PUBLISH_DIR"
+
+# ---------------------------------------------------------- publish relay hardening: cross-filesystem fallback (round-1 review item 1)
+# Same reviewer-reproduced bug as codex.py's: os.replace cannot cross
+# filesystem boundaries and the original loop's except OSError: pass
+# swallowed that silently. Both adapters now call the ONE shared
+# adapters.publish_workdir_files, so this proves the fallback for the
+# claude integration path too, not just codex's. Fails ONLY the first
+# os.replace call (the direct src->dst attempt across the simulated device
+# boundary) -- the fallback's OWN final tmp->dst replace (round-2 review
+# item 1) stays within publish_dir, same device, and must still succeed.
+AC_XDEV_DIR="$(mktemp -d)"
+cat >"$AC_TMPPY/xdev.py" <<PYEOF
+import os
+from assistant import claude
+
+publish_dir = os.environ["AC_XDEV_DIR"]
+real_replace = os.replace
+_calls = {"n": 0}
+def _boom_once(*a, **kw):
+    _calls["n"] += 1
+    if _calls["n"] == 1:
+        raise OSError(18, "Invalid cross-device link")
+    return real_replace(*a, **kw)
+os.replace = _boom_once
+try:
+    context = {
+        "model": "claude-fable-5",
+        "system": None,
+        "input": "make me a 3D model",
+        "fileOutputDir": publish_dir,
+    }
+    claude.complete(context, timeout=10)
+finally:
+    os.replace = real_replace
+print("PUBLISHED", sorted(os.listdir(publish_dir)))
+with open(os.path.join(publish_dir, "duck.obj")) as fh:
+    print("CONTENT", fh.read().strip())
+PYEOF
+out="$(PATH="$AC_STUB_BIN:$PATH" CLAUDE_STUB_MODE=ok CLAUDE_STUB_WRITE_FILE=duck.obj AC_XDEV_DIR="$AC_XDEV_DIR" PYTHONPATH="$AC_SCRIPTS" python3 "$AC_TMPPY/xdev.py" 2>&1)"
+check "cross-filesystem fallback: the file still lands when os.replace raises (simulated EXDEV)" \
+    "PUBLISHED ['duck.obj']" "$out"
+check "cross-filesystem fallback: content survives the copy+remove fallback" "CONTENT stub file content" "$out"
+rm -rf "$AC_XDEV_DIR"
+
+# ---------------------------------------------------------- publish relay hardening: symlink + hardlink rejected (round-1 review item 4)
+# Both adapters share adapters.publish_workdir_files's loop -- proves the
+# claude integration path rejects the same hostile-link channels
+# section-assistant-adapter.sh already pins for codex.
+AC_SYMLINK_PUBLISH_DIR="$(mktemp -d)"
+AC_CANARY="$AC_TMPPY/canary-secret.txt"
+printf '%s\n' "TOP SECRET -- must never be published" >"$AC_CANARY"
+cat >"$AC_TMPPY/symlink.py" <<PYEOF
+import os
+from assistant import claude
+
+publish_dir = os.environ["AC_SYMLINK_PUBLISH_DIR"]
+context = {"model": "claude-fable-5", "system": None, "input": "hi", "fileOutputDir": publish_dir}
+claude.complete(context, timeout=10)
+print("PUBLISHED", sorted(os.listdir(publish_dir)))
+PYEOF
+out="$(PATH="$AC_STUB_BIN:$PATH" CLAUDE_STUB_MODE=ok \
+    CLAUDE_STUB_WRITE_SYMLINK=leak.txt CLAUDE_STUB_SYMLINK_TARGET="$AC_CANARY" \
+    AC_SYMLINK_PUBLISH_DIR="$AC_SYMLINK_PUBLISH_DIR" PYTHONPATH="$AC_SCRIPTS" python3 "$AC_TMPPY/symlink.py" 2>&1)"
+check "symlink rejected: publish dir ends up empty, not carrying the link" "PUBLISHED []" "$out"
+rm -rf "$AC_SYMLINK_PUBLISH_DIR"
+
+AC_HARDLINK_PUBLISH_DIR="$(mktemp -d)"
+cat >"$AC_TMPPY/hardlink.py" <<PYEOF
+import os
+from assistant import claude
+
+publish_dir = os.environ["AC_HARDLINK_PUBLISH_DIR"]
+context = {"model": "claude-fable-5", "system": None, "input": "hi", "fileOutputDir": publish_dir}
+claude.complete(context, timeout=10)
+print("PUBLISHED", sorted(os.listdir(publish_dir)))
+PYEOF
+out="$(PATH="$AC_STUB_BIN:$PATH" CLAUDE_STUB_MODE=ok CLAUDE_STUB_WRITE_HARDLINK=leak2.txt \
+    AC_HARDLINK_PUBLISH_DIR="$AC_HARDLINK_PUBLISH_DIR" PYTHONPATH="$AC_SCRIPTS" python3 "$AC_TMPPY/hardlink.py" 2>&1)"
+check "hardlink rejected: publish dir ends up empty, not carrying the hardlinked name" "PUBLISHED []" "$out"
+rm -rf "$AC_HARDLINK_PUBLISH_DIR"
+
 # ---------------------------------------------------------- registry seam + provider-switch (config-only)
 cat >"$AC_TMPPY/registry.py" <<PYEOF
 from assistant import adapters, claude, codex

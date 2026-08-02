@@ -34,6 +34,61 @@ if argv_file:
         for arg in sys.argv[1:]:
             fh.write(arg + "\n")
 
+# CODEX_STUB_CWD_FILE (round-1 review, issue #518) -- records this
+# invocation's actual OS cwd, the same mechanism stub-claude's
+# CLAUDE_STUB_CWD_FILE already uses. codex.py now pins `cwd=workdir` on
+# the invoke_cli call as belt-and-suspenders alongside `-C` (round-1
+# review: `-C` alone only tells codex where to point ITSELF, the child
+# process still inherits the real cwd at Popen time otherwise) -- this
+# proves that mechanism is real, not merely documented.
+cwd_file = os.environ.get("CODEX_STUB_CWD_FILE")
+if cwd_file:
+    with open(cwd_file, "w") as fh:
+        fh.write(os.getcwd() + "\n")
+
+# CODEX_STUB_WRITE_FILE / CODEX_STUB_WRITE_SYMLINK / CODEX_STUB_WRITE_HARDLINK
+# (issue #518, workdir publish relay parity + round-1 review hardening) --
+# writes a marker file / symlink / hardlink of that name into the directory
+# passed via `-C` BEFORE producing any mode output, the same way a real
+# `codex exec -s workspace-write -C <dir> ...` invocation would leave
+# something the model created sitting in its pinned working root. Parses
+# `-C`'s value straight out of argv (belt-and-suspenders with
+# CODEX_STUB_CWD_FILE above -- either os.getcwd() or the -C value works
+# here since codex.py now pins both to the same directory) so a test can
+# assert codex.py's complete() relays a plain file out to `fileOutputDir`
+# while REJECTING a symlink or hardlink planted the same way (the
+# publish-loop hardening adapters.publish_workdir_files performs).
+write_file = os.environ.get("CODEX_STUB_WRITE_FILE")
+write_symlink = os.environ.get("CODEX_STUB_WRITE_SYMLINK")
+symlink_target = os.environ.get("CODEX_STUB_SYMLINK_TARGET")
+write_hardlink = os.environ.get("CODEX_STUB_WRITE_HARDLINK")
+if write_file or write_symlink or write_hardlink:
+    _argv_rest = sys.argv[1:]
+    _c_dir = _argv_rest[_argv_rest.index("-C") + 1] if "-C" in _argv_rest else os.getcwd()
+    if write_file:
+        try:
+            with open(os.path.join(_c_dir, write_file), "w") as fh:
+                fh.write("stub file content\n")
+        except OSError:
+            pass
+    if write_symlink and symlink_target:
+        try:
+            os.symlink(symlink_target, os.path.join(_c_dir, write_symlink))
+        except OSError:
+            pass
+    if write_hardlink:
+        # A hardlink needs an existing same-filesystem file to link TO --
+        # write one directly inside -C (guaranteed same filesystem) and
+        # hardlink the requested name onto it, rather than requiring the
+        # caller to hand in an external same-volume path.
+        try:
+            _real = os.path.join(_c_dir, ".hardlink-source")
+            with open(_real, "w") as fh:
+                fh.write("hardlinked secret content\n")
+            os.link(_real, os.path.join(_c_dir, write_hardlink))
+        except OSError:
+            pass
+
 # CODEX_STUB_HOME_FILE (AST-011 review r1 fix) -- records the CODEX_HOME
 # this invocation actually sees, INSPECTED FROM INSIDE the subprocess (the
 # adapter's isolated CODEX_HOME temp dir is removed once complete()

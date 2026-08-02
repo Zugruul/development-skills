@@ -273,23 +273,16 @@ def complete(context, *, timeout=DEFAULT_MODEL_TIMEOUT_SECONDS, env=None):
         result = adapters.invoke_cli(argv, timeout=timeout, env=call_env, cwd=workdir)
         elapsed = time.monotonic() - start
     finally:
-        # publish-from-workdir (2026-07-29): any plain file the model wrote
-        # into its isolated cwd moves into the sanctioned output dir before
-        # the workdir is destroyed. Same-name collisions overwrite
-        # (re-generating a file IS the intent); failures are best-effort --
-        # a missed publish loses the file, never the turn.
+        # publish-from-workdir (2026-07-29; hardened + shared with codex.py
+        # 2026-08-01, issue #518 round-1 review): any plain file the model
+        # wrote into its isolated cwd moves into the sanctioned output dir
+        # before the workdir is destroyed, via adapters.py's ONE shared,
+        # hardened implementation (cross-filesystem-safe, symlink- and
+        # hardlink-rejecting -- see its own docstring) rather than a
+        # second copy of this loop living here.
         _publish_dir = context.get("fileOutputDir")
         if _publish_dir:
-            try:
-                for _name in os.listdir(workdir):
-                    _src = os.path.join(workdir, _name)
-                    if os.path.isfile(_src) and not _name.startswith("."):
-                        try:
-                            os.replace(_src, os.path.join(_publish_dir, _name))
-                        except OSError:
-                            pass
-            except OSError:
-                pass
+            adapters.publish_workdir_files(workdir, _publish_dir)
         shutil.rmtree(workdir, ignore_errors=True)
 
     combined = (result.stdout or "") + "\n" + (result.stderr or "")

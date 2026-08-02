@@ -24,13 +24,61 @@ researched against codex-cli 0.144.4's `codex exec --help`:
 
     --json                  machine-parseable JSONL event stream (Sec8.1);
                              required to parse the completion at all.
-    -s / --sandbox read-only
-                             any shell tool the model attempts is confined
-                             to read-only effects -- the closest available
-                             approximation of "harness tool use disabled".
-                             GAP (see below): there is no flag that fully
-                             disables tool-calling; this only bounds the
-                             blast radius of a tool call, if one happens.
+    -s / --sandbox read-only (default, no `fileOutputDir`) or
+    -s / --sandbox workspace-write (`fileOutputDir` present in context)
+                             file-output variant (2026-08-01, issue #518 --
+                             mirrors claude.py's own `_PINNED_FLAGS`/
+                             `_WRITE_FLAGS` two-set design verbatim, gated
+                             on the SAME `context["fileOutputDir"]` key,
+                             round-1 review decision): a real codex-backed
+                             persona hit a "file creation is blocked by the
+                             current read-only sandbox" refusal live -- the
+                             persona output contract (setup.py's OUT block,
+                             turns.py's fileOutput system-prompt text)
+                             promises every turn's workdir is WRITABLE and
+                             its files get published (fee53259's
+                             workdir-publish relay), and `read-only` made
+                             that a lie whenever the engine had actually
+                             resolved a `fileOutputDir` for this turn. Only
+                             THAT case widens to `workspace-write`, paired
+                             with `-C <isolated_dir>` (below) -- the SAME
+                             confinement shape harness.py's own harness-job
+                             sandbox posture already established (Sec9.4):
+                             writes are bounded to a fresh, empty, per-turn
+                             directory and nowhere else, and that directory
+                             is thrown away (`shutil.rmtree`) once
+                             `complete()` publishes whatever landed in it
+                             via `adapters.publish_workdir_files` -- the
+                             SAME shared, hardened relay claude.py's
+                             `_WRITE_FLAGS` path calls (fee53259 +
+                             #518's round-1 hardening). A turn with no
+                             file-output dir keeps the ORIGINAL `read-only`
+                             bound untouched -- this is a relocated
+                             boundary for the file-output case only, not a
+                             blanket loosening: the sandbox flag + isolated
+                             `-C` dir are still a PINNED PAIR (Sec17
+                             invariant 2) in both branches, the pair's
+                             VALUES just differ by branch. GAP (unchanged
+                             from before this fix, see below): there is
+                             still no flag that fully disables
+                             tool-calling; `-s` only bounds what a tool
+                             call may DO. TMPDIR leakage (anything a shell
+                             tool writes outside `-C` but inside the OS
+                             temp root) is accepted in the workspace-write
+                             branch the same way harness.py already
+                             accepts it for harness jobs -- not a new risk
+                             this change introduces, and moot in the
+                             read-only branch (no leakage is possible from
+                             a read-only sandbox by construction). Known
+                             edge, documented not silent (docs/spec-deltas/
+                             518.md): a persona with `fileOutput: false`
+                             keeps the OLD read-only refusal behavior by
+                             design -- setup.py's OUT block still promises
+                             file output unconditionally in its prompt
+                             text, so such a persona's own turns can still
+                             hit a spurious-sounding refusal; narrowing
+                             that prompt text to the per-persona
+                             `fileOutput` flag is out of this task's scope.
     --skip-git-repo-check   lets codex run from an isolated scratch
                              directory that is not a git repo, instead of
                              requiring one.
@@ -67,12 +115,16 @@ never travels. This is what actually satisfies Sec8.4's "no user-global
 instruction ingestion" clause; `-C` alone did not.
 
 DOCUMENTED GAP (Sec8.4 third clause, Sec16 -- report in the AST-011
-handoff; candidate for docs/spec-deltas/AST-011.md): codex-cli 0.144.4 has
-no discovered flag or `-c` config key that fully disables the model's
+handoff; candidate for docs/spec-deltas/AST-011.md; boundary value updated
+2026-08-01 per issue #518, see docs/spec-deltas/518.md): codex-cli 0.144.4
+has no discovered flag or `-c` config key that fully disables the model's
 ability to REQUEST a tool/shell call mid-turn ("harness tool use disabled")
--- `--sandbox read-only` only bounds what such a call may DO. A turn is not
-currently guaranteed to be pure text-in/text-out; it is guaranteed to be
-side-effect-bounded to read-only.
+-- `--sandbox` only bounds what such a call may DO, whichever value is
+pinned for this turn. A turn is not currently guaranteed to be pure
+text-in/text-out; it is guaranteed to be side-effect-bounded to `-C`'s
+isolated, throwaway workdir -- read-only by default, or workspace-write
+(issue #518) exactly when this turn's context carries a `fileOutputDir`,
+so the workdir-publish relay has files to relay.
 
 Output parsing provenance:
   - SUCCESS path (`item.completed`/agent_message text, `turn.completed`/
@@ -102,6 +154,21 @@ DEFAULT_MODEL_TIMEOUT_SECONDS = 60
 _PINNED_FLAGS = (
     "--json",
     "-s", "read-only",
+    "--skip-git-repo-check",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "--ephemeral",
+)
+
+# File-output variant (2026-08-01, issue #518 -- round-1 review decision:
+# gate on context["fileOutputDir"] exactly like claude.py's own
+# _PINNED_FLAGS/_WRITE_FLAGS split, not an unconditional widening). See the
+# module docstring's `-s` bullet for the full reasoning: only a turn that
+# actually has a sanctioned output dir to publish into gets
+# `workspace-write`; every other turn keeps `-s read-only` untouched.
+_WRITE_FLAGS = (
+    "--json",
+    "-s", "workspace-write",
     "--skip-git-repo-check",
     "--ignore-user-config",
     "--ignore-rules",
@@ -155,9 +222,9 @@ def _build_prompt(context):
     return user
 
 
-def _build_argv(model, workdir):
+def _build_argv(model, workdir, file_output_dir=None):
     argv = ["codex", "exec"]
-    argv.extend(_PINNED_FLAGS)
+    argv.extend(_WRITE_FLAGS if file_output_dir else _PINNED_FLAGS)
     argv.extend(["-m", model, "-C", workdir])
     return argv
 
@@ -206,8 +273,9 @@ def complete(context, *, timeout=DEFAULT_MODEL_TIMEOUT_SECONDS, env=None):
     prompt = _build_prompt(context)
     workdir = _isolated_cwd()
     codex_home = _isolated_codex_home()
+    file_output_dir = context.get("fileOutputDir")
     try:
-        argv = _build_argv(model, workdir) + [prompt]
+        argv = _build_argv(model, workdir, file_output_dir) + [prompt]
         # Isolation is a hard invariant, not an opt-in: whatever env the
         # caller supplies (or the inherited os.environ, if none), CODEX_HOME
         # is always overridden to the isolated one built above -- a caller
@@ -215,9 +283,30 @@ def complete(context, *, timeout=DEFAULT_MODEL_TIMEOUT_SECONDS, env=None):
         call_env = dict(env) if env is not None else dict(os.environ)
         call_env["CODEX_HOME"] = codex_home
         start = time.monotonic()
-        result = adapters.invoke_cli(argv, timeout=timeout, env=call_env)
+        # cwd=workdir (round-1 review, issue #518): `-C` is codex's OWN
+        # flag for pinning its working root, but the CHILD PROCESS itself
+        # still inherits this process's real cwd (a live repo) at Popen
+        # time unless told otherwise -- belt-and-suspenders, the same
+        # defense-in-depth harness.py and claude.py already both apply
+        # (harness.py's codex path passes `cwd=workdir` alongside `-C` too;
+        # claude.py has no `-C` equivalent at all and relies on `cwd=`
+        # alone). Never relied upon in place of `-C` -- both are pinned.
+        result = adapters.invoke_cli(argv, timeout=timeout, env=call_env, cwd=workdir)
         elapsed = time.monotonic() - start
     finally:
+        # publish-from-workdir (2026-08-01, issue #518): any plain file the
+        # model wrote into its pinned `-C` workdir (writable only when this
+        # turn requested file output -- see `_WRITE_FLAGS` above) moves
+        # into the sanctioned output dir before the workdir is destroyed,
+        # via adapters.py's ONE shared, hardened implementation
+        # (cross-filesystem-safe, symlink- and hardlink-rejecting -- see
+        # its own docstring) -- the SAME relay claude.py's complete() calls
+        # (fee53259 + #518's round-1 hardening). The sandbox-flag change
+        # above only opens the door for the file-output case; this step is
+        # what actually walks a file through it, which is the part that
+        # was missing for codex turns before this fix.
+        if file_output_dir:
+            adapters.publish_workdir_files(workdir, file_output_dir)
         shutil.rmtree(workdir, ignore_errors=True)
         shutil.rmtree(codex_home, ignore_errors=True)
 

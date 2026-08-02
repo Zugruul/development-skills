@@ -69,12 +69,25 @@ and are sent as the JSON-RPC request's structured `arguments` object
 (never argv-templated: unlike `invoke.exec`, `invoke.mcp.server` is a
 FIXED launch argv with no placeholders, since params travel as JSON data,
 not as shell-adjacent string substitution).
+
+Issue #518 adds `publish_workdir_files`: the workdir-publish relay
+(fee53259) that moves a file a turn's model wrote into its isolated,
+per-turn workdir out to the sanctioned `fileOutputDir` before that workdir
+is destroyed. Both `claude.py` and `codex.py` call this ONE shared,
+hardened implementation (cross-filesystem-safe, symlink- and
+hardlink-rejecting -- see its own docstring) instead of each running its
+own copy of the loop, the same "exactly one place" posture `invoke_cli`
+already established for the subprocess call itself.
 """
 import collections
 import importlib
 import json
+import os
 import re
+import shutil
+import stat
 import subprocess
+import tempfile
 import time
 
 # No infinite path: every invoke_cli() call gets a timeout, even a caller
@@ -166,6 +179,102 @@ def invoke_cli(argv, *, timeout=DEFAULT_TIMEOUT_SECONDS, env=None, cwd=None, inp
         raise NotFound(
             f"provider CLI '{argv[0]}' could not be executed: {exc}"
         ) from exc
+
+
+def publish_workdir_files(workdir, publish_dir):
+    """The workdir-publish relay both provider adapters run, after a turn
+    whose context carried a `fileOutputDir`, moving every plain file the
+    model wrote directly into its isolated turn `workdir` into
+    `publish_dir` before the workdir is destroyed (issue #518; the
+    claude-adapter half shipped in fee53259, the codex-adapter half in
+    #518). Shared here so both adapters run the identical, identically
+    hardened loop instead of two copies that can silently drift apart.
+
+    Hardening (review round 1, issue #518, items 1 and 4; round-2 review
+    item 1):
+      - Same-filesystem moves stay an atomic `os.replace` (existing
+        behavior; same-name collisions overwrite -- re-generating a file
+        IS the intent). A cross-filesystem `publish_dir` (turn workdir and
+        the sanctioned output dir on different mounts) makes `os.replace`
+        raise `OSError` (EXDEV) -- previously swallowed silently, losing
+        the file outright (reproduced live with a RAM-disk temp root).
+        The fallback copies the bytes across the boundary into a TEMP name
+        in `publish_dir` first, then `os.replace`s that temp name onto the
+        final one (`_copy_into_publish_dir`, the same tmp-file-then-
+        os.replace house pattern as `store.py`'s `save_state` /
+        `harness.py`'s `_publish_artifact`) -- a mid-copy failure (e.g.
+        ENOSPC) can therefore never leave a partially-written file sitting
+        at the FINAL name where the engine's own before/after `os.listdir`
+        diff (`engine.py`) would see it and mint a truncated artifact as
+        if it were the model's real output. `src` is only removed after
+        the temp-file replace succeeds, so a failed copy leaves the
+        original untouched in `workdir` -- best-effort still means "lose
+        the file", never "publish a corrupt one".
+      - A SYMLINK sitting in the workdir is never published: `os.replace`
+        moves the link itself (not its target), so publishing it would
+        hand the chat media library / `/file` route a link to whatever
+        arbitrary path this process can already read, as if the model had
+        actually produced that content.
+      - A file with `st_nlink > 1` (a HARDLINK to something else, on the
+        same volume) is never published either: it survives an
+        `os.path.islink` check, but moving or copying it exposes the
+        linked file's real content through the same route -- same threat,
+        different channel.
+    Every failure here is best-effort (matches the pre-existing contract):
+    a file that cannot be published is skipped, never raises, and never
+    fails a turn that has already completed successfully.
+    """
+    try:
+        names = os.listdir(workdir)
+    except OSError:
+        return
+    for name in names:
+        if name.startswith("."):
+            continue
+        src = os.path.join(workdir, name)
+        try:
+            if os.path.islink(src):
+                continue
+            st = os.lstat(src)
+        except OSError:
+            continue
+        if not stat.S_ISREG(st.st_mode) or st.st_nlink > 1:
+            continue
+        dst = os.path.join(publish_dir, name)
+        try:
+            os.replace(src, dst)
+        except OSError:
+            try:
+                _copy_into_publish_dir(src, dst, publish_dir)
+            except OSError:
+                pass
+
+
+def _copy_into_publish_dir(src, dst, publish_dir):
+    """The cross-filesystem fallback `publish_workdir_files` uses when
+    `os.replace` can't (EXDEV): copies `src` into a temp name inside
+    `publish_dir` (`tempfile.mkstemp`, so the name is unique and already
+    on the right filesystem), then `os.replace`s that temp name onto the
+    real `dst` -- same tmp-file-then-os.replace house pattern as
+    `store.py`'s `save_state` / `harness.py`'s `_publish_artifact`. A
+    partial write during the copy therefore never reaches `dst` at all;
+    the half-written temp file is removed and the OSError re-raised (the
+    caller's own `except OSError: pass` makes this best-effort, matching
+    the loop's pre-existing "lose the file, never the turn" contract).
+    `src` is removed only after the replace succeeds, so a failed copy
+    leaves the original in the turn workdir untouched."""
+    fd, tmp = tempfile.mkstemp(prefix=".publish-tmp-", dir=publish_dir)
+    os.close(fd)
+    try:
+        shutil.copy2(src, tmp)
+        os.replace(tmp, dst)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+    os.remove(src)
 
 
 # provider name -> registered complete(context, **kwargs) callable. Adapter

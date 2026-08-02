@@ -31,8 +31,11 @@ killing the child, never an unbounded wait) -- this is the same primitive
 family, not a second, laxer one.
 
 Own sandbox posture (§9.4, distinct from turns.py's context, Sec8.4):
-    - codex: `-s workspace-write` (not turns' `read-only` -- a harness job
-      is allowed to actually do work) still `-C <isolated dir>` (bounded to
+    - codex: `-s workspace-write` UNCONDITIONALLY (a harness job is always
+      allowed to actually do work -- unlike a turn, whose codex.py adapter
+      only widens to `workspace-write` when that specific turn's context
+      carries a `fileOutputDir`, issue #518; every other turn stays
+      `read-only`, same as before that fix) still `-C <isolated dir>` (bounded to
       a fresh, empty, per-job temp directory -- work products never land
       outside it) plus every other turn-isolation flag (`--ignore-user-
       config`, `--ignore-rules`, `--ephemeral`, an isolated `CODEX_HOME`

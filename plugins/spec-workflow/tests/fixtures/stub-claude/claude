@@ -51,6 +51,35 @@ if cwd_file:
     with open(cwd_file, "w") as fh:
         fh.write(os.getcwd() + "\n")
 
+# CLAUDE_STUB_WRITE_FILE / CLAUDE_STUB_WRITE_SYMLINK / CLAUDE_STUB_WRITE_HARDLINK
+# (issue #518 round-1 review: "add the missing claude-side relay test" +
+# hostile-link probes, mirroring stub-codex's own mechanism) -- claude.py
+# already points the real subprocess `cwd=` at its isolated workdir, so
+# this stub just writes directly into os.getcwd(), no argv-parsing needed.
+write_file = os.environ.get("CLAUDE_STUB_WRITE_FILE")
+if write_file:
+    try:
+        with open(os.path.join(os.getcwd(), write_file), "w") as fh:
+            fh.write("stub file content\n")
+    except OSError:
+        pass
+write_symlink = os.environ.get("CLAUDE_STUB_WRITE_SYMLINK")
+symlink_target = os.environ.get("CLAUDE_STUB_SYMLINK_TARGET")
+if write_symlink and symlink_target:
+    try:
+        os.symlink(symlink_target, os.path.join(os.getcwd(), write_symlink))
+    except OSError:
+        pass
+write_hardlink = os.environ.get("CLAUDE_STUB_WRITE_HARDLINK")
+if write_hardlink:
+    try:
+        _real = os.path.join(os.getcwd(), ".hardlink-source")
+        with open(_real, "w") as fh:
+            fh.write("hardlinked secret content\n")
+        os.link(_real, os.path.join(os.getcwd(), write_hardlink))
+    except OSError:
+        pass
+
 mode = os.environ.get("CLAUDE_STUB_MODE", "ok")
 
 if mode == "ok":
