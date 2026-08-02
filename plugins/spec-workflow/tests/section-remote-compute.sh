@@ -6,6 +6,7 @@
 # job-state recovery from files alone. No network, no real ssh, ever.
 # shellcheck disable=SC2088  # quoted tildes are payloads for the REMOTE shell (bash -lc expands them there), never the local one
 # shellcheck disable=SC2153  # FIX is set by run-tests.sh before sourcing; CFIX is derived from it, not a typo
+# shellcheck disable=SC2016  # $HOME in an expected-value string is LITERAL on purpose: the assertion checks that the payload sent to the remote carries the unexpanded "$HOME" for the REMOTE shell to expand
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== remote-compute =="
 
