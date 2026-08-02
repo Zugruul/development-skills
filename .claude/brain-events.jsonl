@@ -2468,3 +2468,8 @@
 {"key": "no-silenced-stash-plumbing->retroactive-records-honesty", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-02T08:08:35+00:00", "type": "LinkFormed", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "subagent-pin-verification", "strength": 2, "ts": "2026-08-02T08:08:35+00:00", "type": "NoteMinted", "v": 1}
 {"itemCount": 4, "itemTs": "2026-08-02T08:35:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-02T08:08:35+00:00", "type": "FeedbackArchived", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "ssh-joins-argv-remote-shell-reparses", "strength": 1, "ts": "2026-08-02T11:24:49+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "capture-real-output-as-fixtures", "strength": 1, "ts": "2026-08-02T11:25:01+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "bash-test-sections-shared-state", "strength": 1, "ts": "2026-08-02T11:25:13+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "engine-agnostic-domains-as-bundles", "strength": 1, "ts": "2026-08-02T11:25:29+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "documented-placeholder-never-substituted", "strength": 1, "ts": "2026-08-02T11:25:45+00:00", "type": "NoteMinted", "v": 1}
