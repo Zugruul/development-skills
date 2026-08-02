@@ -65,6 +65,11 @@
   > - minted: no-silenced-stash-plumbing (direct, from the primary-checkout conflict incident); subagent-pin-verification bumped to strength 2 with the assert-once identity-dispute rule
   > - gate-coupling friction cited to the existing tracker issue; parallel-lane win recorded as already-durable
   > - feed archived to 2026-08; directory regenerated
+- retro(524): 5 notes minted from the remote-compute session (`37fb33d`)
+  > dev: ssh joins argv and the remote login shell re-parses it; capture real
+  > output as fixtures rather than inventing them; shared shell state between
+  > bash test-section checks; a documented placeholder nobody substitutes.
+  > orchestrator: keep the engine domain-agnostic, ship domains as data bundles.
 
 ## v0.64.0 — 2026-08-01
 
