@@ -12,12 +12,15 @@ what is running now, what finished, and the full history, refreshing in place.
 
 Keys (live mode):
     up/down or k/j   move the selection
-    enter or l       open the selected job (log tail, exit code, paths)
-    q or esc         back / quit
+    L, l or enter    open the selected job (log tail, exit code, duration, paths)
+    esc or q         leave the log view (in the list, quit with ctrl-c)
     d                delete the selected job from history (asks first)
     D                delete ALL finished jobs (asks first)
     r                refresh now
     f                cycle filter: all -> running -> finished -> failed
+
+In the log view: up/down and page-up/page-down scroll, g jumps to the top,
+G to the end.
 
 A job is a directory ~/.compute-jobs/<id>/ holding job.log, pid, and exitcode.
 Running means no exitcode file yet. Nothing here writes to a job while it runs;
@@ -114,6 +117,16 @@ def tail(path, lines=200, max_bytes=200000):
     return text[-lines:] or ["(log is empty)"]
 
 
+def duration(job, now=None):
+    """How long the job ran: wall time to its exit for a finished job, elapsed
+    so far for a running one. None when we cannot tell (no start recorded)."""
+    start = job.get("started")
+    if not start:
+        return None
+    end = job.get("finished") or (now if now is not None else time.time())
+    return max(0.0, end - start)
+
+
 def matches(job, flt):
     if flt == "all":
         return True
@@ -139,9 +152,12 @@ def render_once(root, stream=sys.stdout):
     now = time.time()
     for j in jobs:
         age = human_age(now - (j["started"] or now))
+        dur = duration(j, now)
+        dur_s = "-" if dur is None else human_age(dur)
         code = "-" if j["exitcode"] is None else str(j["exitcode"])
-        stream.write("%-9s %-28s age %-8s exit %-4s log %s\n"
-                     % (j["state"], j["id"][:28], age, code, human_size(j["log_size"])))
+        stream.write("%-9s %-28s age %-8s took %-8s exit %-4s log %s\n"
+                     % (j["state"], j["id"][:28], age, dur_s, code,
+                        human_size(j["log_size"])))
     return 0
 
 
@@ -166,7 +182,8 @@ class Ui:
         stat = " %d running · %d done · %d failed · filter:%s " % (run, ok, bad, self.filter)
         scr.addnstr(0, 0, head.ljust(w - len(stat)) + stat, w - 1, curses.A_REVERSE)
 
-        cols = " %-9s %-30s %-9s %-6s %-8s" % ("STATE", "JOB", "AGE", "EXIT", "LOG")
+        cols = " %-9s %-28s %-9s %-9s %-6s %-8s" % (
+            "STATE", "JOB", "AGE", "DURATION", "EXIT", "LOG")
         scr.addnstr(1, 0, cols.ljust(w - 1), w - 1, curses.A_BOLD)
 
         now = time.time()
@@ -176,9 +193,11 @@ class Ui:
             if row >= h - 2:
                 break
             age = human_age(now - (j["started"] or now))
+            dur = duration(j, now)
+            dur_s = "-" if dur is None else human_age(dur)
             code = "-" if j["exitcode"] is None else str(j["exitcode"])
-            line = " %-9s %-30s %-9s %-6s %-8s" % (
-                j["state"], j["id"][:30], age, code, human_size(j["log_size"]))
+            line = " %-9s %-28s %-9s %-9s %-6s %-8s" % (
+                j["state"], j["id"][:28], age, dur_s, code, human_size(j["log_size"]))
             attr = curses.A_REVERSE if i == self.sel else curses.A_NORMAL
             if j["state"] == "failed":
                 attr |= curses.color_pair(1)
@@ -189,7 +208,7 @@ class Ui:
         if not jobs:
             scr.addnstr(3, 2, "no jobs match filter '%s'" % self.filter, w - 3)
 
-        foot = " up/down move · enter open · d delete · D purge finished · f filter · r refresh · q quit "
+        foot = " up/down move · L/enter logs · d delete · D purge · f filter · r refresh · ctrl-c quit "
         if self.message:
             foot = " " + self.message + " "
         scr.addnstr(h - 1, 0, foot.ljust(w - 1), w - 1, curses.A_REVERSE)
@@ -201,7 +220,10 @@ class Ui:
             self.detail = None
             return
         code = "-" if job["exitcode"] is None else str(job["exitcode"])
-        head = " %s · %s · exit %s · pid %s " % (job["id"], job["state"], code, job["pid"] or "-")
+        dur = duration(job)
+        head = " %s · %s · took %s · exit %s · pid %s " % (
+            job["id"], job["state"], "-" if dur is None else human_age(dur),
+            code, job["pid"] or "-")
         scr.addnstr(0, 0, head.ljust(w - 1), w - 1, curses.A_REVERSE)
         scr.addnstr(1, 0, (" " + job["dir"]).ljust(w - 1), w - 1, curses.A_DIM)
 
@@ -210,7 +232,7 @@ class Ui:
         self.scroll = max(0, min(self.scroll, max(0, len(lines) - view)))
         for i, line in enumerate(lines[self.scroll:self.scroll + view]):
             scr.addnstr(2 + i, 0, line[:w - 1], w - 1)
-        foot = " up/down scroll · g top · G end · q back · r refresh "
+        foot = " up/down + pgup/pgdn scroll · g top · G end · esc/q back · r refresh "
         scr.addnstr(h - 1, 0, foot.ljust(w - 1), w - 1, curses.A_REVERSE)
 
     # --- actions ----------------------------------------------------------
@@ -292,13 +314,11 @@ class Ui:
                 elif ch == ord("r"):
                     last = 0.0
                 continue
-            if ch in (ord("q"), 27):
-                return
             if ch in (curses.KEY_DOWN, ord("j")):
                 self.sel += 1
             elif ch in (curses.KEY_UP, ord("k")):
                 self.sel = max(0, self.sel - 1)
-            elif ch in (curses.KEY_ENTER, 10, 13, ord("l")):
+            elif ch in (curses.KEY_ENTER, 10, 13, ord("l"), ord("L")):
                 jobs = [j for j in self.jobs if matches(j, self.filter)]
                 if jobs:
                     self.detail, self.scroll = jobs[self.sel]["id"], 10 ** 6

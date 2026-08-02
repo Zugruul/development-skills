@@ -573,6 +573,7 @@ printf 'all good\n' > "$JT/j-ok/job.log"; printf '0\n' > "$JT/j-ok/exitcode"
 printf 'boom\n' > "$JT/j-bad/job.log"; printf '7\n' > "$JT/j-bad/exitcode"
 out="$(python3 "$TOP" --dir "$JT" --once 2>&1)"; rc=$?
 check_rc "compute-top --once: exit 0" 0 "$rc"
+check "compute-top: reports each job's duration" "took" "$out"
 check "compute-top: counts running/done/failed" "1 running, 1 done, 1 failed" "$out"
 check "compute-top: running job has no exit code" "running   j-run" "$out"
 check "compute-top: failed job shows its code" "exit 7" "$out"
@@ -587,6 +588,42 @@ check "compute-top: tolerates a half-created job dir" "running   j-partial" "$ou
 printf 'not-a-number\n' > "$JT/j-partial/exitcode"
 out="$(python3 "$TOP" --dir "$JT" --once 2>&1)"; rc=$?
 check_rc "compute-top: unreadable exitcode does not crash" 0 "$rc"
+# duration: finished jobs measure start->exit, running jobs measure elapsed
+out="$(python3 - "$TOP" <<'PY'
+import importlib.util, sys, time
+spec = importlib.util.spec_from_file_location("ct", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+now = 1000.0
+print("FIN", m.duration({"started": 900.0, "finished": 960.0}, now))
+print("RUN", m.duration({"started": 940.0, "finished": None}, now))
+print("UNK", m.duration({"started": None, "finished": None}, now))
+PY
+)"
+check "duration: finished job measures start to exit" "FIN 60.0" "$out"
+check "duration: running job measures elapsed so far" "RUN 60.0" "$out"
+check "duration: unknown start reports nothing rather than guessing" "UNK None" "$out"
+# key bindings: L opens logs, esc leaves the log view, q does NOT quit the list
+_src="$(cat "$TOP")"
+check "compute-top: L opens the log view" 'ord("L")' "$_src"
+check "compute-top: esc leaves the log view" 'ord("q"), 27, ord("h")' "$_src"
+check "compute-top: footer tells the human ctrl-c quits" "ctrl-c quit" "$_src"
+
+# --- optional params: a declared default makes a param omittable ----------
+run_compute add-job gpubox with-default --workdir "~/w" --cmd "echo m={model} p={prompt}" \
+    --param 'prompt:[^`$;|&<>]+' --param-default 'model=base.safetensors' >/dev/null 2>&1
+: > "$TLOG"
+run_compute run gpubox with-default --param "prompt=hi" --job-id od1 >/dev/null 2>&1
+check "omitted param falls back to its default" "m=base.safetensors" "$(cat "$TLOG")"
+: > "$TLOG"
+run_compute run gpubox with-default --param "prompt=hi" --param "model=other.safetensors" --job-id od2 >/dev/null 2>&1
+check "supplied value overrides the default" "m=other.safetensors" "$(cat "$TLOG")"
+out="$(run_compute jobs gpubox 2>&1)"
+check "jobs listing marks a param as optional" "model (optional" "$out"
+# a default must still satisfy the declared pattern, or the job is a trap
+out="$(run_compute add-job gpubox bad-default --workdir "~/w" --cmd "echo {n}" \
+    --param 'n:[0-9]+' --param-default 'n=abc' 2>&1)"; rc=$?
+check "default that violates its own pattern is refused" "does not match" "$out"
+check_rc "bad default: exit 2" 2 "$rc"
 
 # --- remove --------------------------------------------------------------
 out="$(run_compute remove gpubox 2>&1)"

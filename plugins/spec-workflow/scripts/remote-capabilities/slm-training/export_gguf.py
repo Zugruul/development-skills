@@ -215,7 +215,18 @@ def run_smoke_for_file(gguf_path, smoke_cfg, llama_cli):
     raw = (proc.stdout or "")[:CONSTRAINED_OUTPUT_TRUNCATE]
     parsed_ok = False
     if loaded:
-        candidate = extract_last_json_object(proc.stdout or "")
+        # Scan ONLY the continuation, not the echoed prompt: a few-shot
+        # prompt that itself ends with a well-formed JSON example would
+        # otherwise satisfy the last-balanced-object scan when the model's
+        # own output got truncated mid-object (reviewer-reproduced false
+        # positive). llama-cli decorates stdout before the echo, so slice
+        # after the LAST occurrence of the prompt text; if the echo isn't
+        # found verbatim (future llama-cli formatting change), fall back to
+        # the whole-stdout scan rather than failing a legitimate smoke.
+        stdout = proc.stdout or ""
+        echo_at = stdout.rfind(prompt)
+        continuation = stdout[echo_at + len(prompt):] if echo_at != -1 else stdout
+        candidate = extract_last_json_object(continuation)
         if candidate is not None:
             try:
                 parsed = json.loads(candidate)

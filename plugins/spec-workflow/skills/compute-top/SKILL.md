@@ -56,15 +56,17 @@ so rather than failing obscurely.
 
 ## Reading the output
 
-Each row is one job: state, id, age, exit code, log size. `running` means no
+Each row is one job: state, id, age, duration, exit code, log size. Duration is
+wall time from start to exit for a finished job, and elapsed-so-far for a
+running one. `running` means no
 `exitcode` file has appeared yet; `failed` means a non-zero exit code. Payload
 directories (`_caps`, `_tools`) are not jobs and are never listed.
 
 ```
 /home/user/.compute-jobs — 34 job(s): 1 running, 32 done, 1 failed
-running   train-run-042                age 12m03s   exit -      log 4.3K
-done      render-duck                  age 2h11m    exit 0      log 285B
-failed    render-broken-workflow       age 2h14m    exit 2      log 345B
+running   train-run-042                age 12m03s   took 12m03s  exit -      log 4.3K
+done      render-duck                  age 2h11m    took 25s     exit 0      log 285B
+failed    render-broken-workflow       age 2h14m    took 1s      exit 2      log 345B
 ```
 
 ## Keys (interactive mode)
@@ -72,8 +74,8 @@ failed    render-broken-workflow       age 2h14m    exit 2      log 345B
 | Key | Action |
 |---|---|
 | up/down, `k`/`j` | move the selection |
-| enter, `l` | open the job: log tail, exit code, pid, paths |
-| `q`, esc | back out of a job, or quit |
+| `L`, `l`, enter | open the job: log tail, duration, exit code, pid, paths |
+| esc, `q` | leave the log view (in the list, quit with ctrl-c) |
 | `f` | cycle filter: all -> running -> finished -> failed |
 | `d` | delete the selected job from history (asks first) |
 | `D` | delete ALL finished jobs (asks first) |

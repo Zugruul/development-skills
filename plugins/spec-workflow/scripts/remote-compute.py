@@ -1038,7 +1038,8 @@ def cmd_install_capability(argv):
             "workdir": job.get("workdir") or capdir,
             "cmd": (job.get("cmd") or "").replace("{capdir}", remote_path(capdir)),
             "env": job.get("env") or opts["--env"],
-            "params": {k: {"pattern": v} for k, v in (job.get("params") or {}).items()},
+            "params": {k: (dict(v) if isinstance(v, dict) else {"pattern": v})
+                       for k, v in (job.get("params") or {}).items()},
             "capability": cap,
         }
         declared.append(key)
@@ -1069,7 +1070,8 @@ def cmd_capabilities(nick):
 def cmd_add_job(argv):
     nick, job_name = argv[0], argv[1]
     opts = _parse_opts(argv[1:], {"--workdir": None, "--cmd": None, "--env": None,
-                                  "--description": ""}, repeat=("--param",))
+                                  "--description": ""},
+                       repeat=("--param", "--param-default"))
     if not opts["--workdir"] or not opts["--cmd"]:
         print("ERROR: add-job needs --workdir and --cmd")
         sys.exit(EXIT_USAGE)
@@ -1078,6 +1080,17 @@ def cmd_add_job(argv):
     for p in opts["--param"]:
         name, _, pattern = p.partition(":")
         params[name] = {"pattern": pattern or DEFAULT_PARAM_PATTERN}
+    # --param-default NAME=VALUE declares an OPTIONAL param: callers may omit
+    # it and get VALUE. The default must satisfy the pattern, otherwise the
+    # job is a trap that only fails once someone omits the value.
+    for d in opts["--param-default"]:
+        name, _, value = d.partition("=")
+        spec = params.setdefault(name, {"pattern": DEFAULT_PARAM_PATTERN})
+        if not re.fullmatch(spec.get("pattern") or DEFAULT_PARAM_PATTERN, value):
+            print("ERROR: default %r for param '%s' does not match its pattern %r"
+                  % (value, name, spec.get("pattern")))
+            sys.exit(EXIT_USAGE)
+        spec["default"] = value
     reg = load_registry()
     res = reg["resources"].get(nick)
     if res is None:
@@ -1100,8 +1113,14 @@ def cmd_jobs(nick):
         return 0
     for name, job in jobs.items():
         print("%-16s %s" % (name, job.get("description") or "(no description)"))
+        rendered = []
+        for pname, pspec in (job.get("params") or {}).items():
+            if isinstance(pspec, dict) and "default" in pspec:
+                rendered.append("%s (optional, default %s)" % (pname, pspec["default"]))
+            else:
+                rendered.append(pname)
         print("                 params: %s  workdir: %s" % (
-            ", ".join(job.get("params") or {}) or "none", job.get("workdir")))
+            ", ".join(rendered) or "none", job.get("workdir")))
     return 0
 
 
@@ -1133,9 +1152,12 @@ def cmd_run(argv):
     rendered = job["cmd"]
     for name, spec in declared.items():
         if name not in given:
-            print("ERROR: job '%s' requires param '%s' (pattern: %s)" % (
-                job_name, name, spec.get("pattern")))
-            sys.exit(EXIT_USAGE)
+            if "default" in spec:
+                given[name] = spec["default"]
+            else:
+                print("ERROR: job '%s' requires param '%s' (pattern: %s)" % (
+                    job_name, name, spec.get("pattern")))
+                sys.exit(EXIT_USAGE)
         value = given[name]
         if not re.fullmatch(spec.get("pattern") or DEFAULT_PARAM_PATTERN, value):
             print("ERROR: param '%s' value %r does not match its declared pattern %r" % (
