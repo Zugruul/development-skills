@@ -69,10 +69,20 @@ def find_node(workflow, name):
     raise KeyError("title %r matches nodes %s — use the node id" % (name, ", ".join(matches)))
 
 
+# A job template always contains its --set flags, so an "optional" param
+# substitutes its DEFAULT rather than omitting the flag -- which silently
+# overwrites whatever the workflow itself declares. This sentinel is how a
+# caller says "leave this input exactly as the workflow has it". An empty
+# value is deliberately NOT a skip: an empty negative prompt is legitimate.
+KEEP_WORKFLOW_VALUE = "@workflow"
+
+
 def apply_set(workflow, spec):
     """--set NAME.INPUT=VALUE — NAME is a node id or _meta.title. Only the
     VALUE of an existing input changes (type-preserved: int/float/bool inputs
-    are cast); graph structure is never touched. Returns the node id."""
+    are cast); graph structure is never touched. Returns the node id.
+
+    VALUE of "@workflow" leaves the input at the workflow's own value."""
     name_input, _, value = spec.partition("=")
     name, _, input_name = name_input.rpartition(".")
     if not name or not input_name:
@@ -82,6 +92,8 @@ def apply_set(workflow, spec):
             "--sets '40.text=\"a b c\" 36.value=42'" % spec)
     nid = find_node(workflow, name)
     inputs = workflow[nid].setdefault("inputs", {})
+    if value == KEEP_WORKFLOW_VALUE:
+        return nid  # caller asked for the workflow's own value
     old = inputs.get(input_name)
     if isinstance(old, bool):
         value = value.lower() in ("1", "true", "yes")
@@ -226,6 +238,10 @@ def main():
         except (KeyError, ValueError) as e:
             print("ERROR: %s" % e)
             return 2
+        if spec.split("=", 1)[-1] == KEEP_WORKFLOW_VALUE:
+            print("kept %s at the workflow's own value (node %s)"
+                  % (spec.split("=", 1)[0], nid))
+            continue
         touched.append((nid, spec.split("=", 1)[0].rpartition(".")[2]))
         print("set %s -> node %s" % (spec.split("=", 1)[0], nid))
 

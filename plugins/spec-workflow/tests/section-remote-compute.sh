@@ -676,6 +676,54 @@ PY
 check "unfilled placeholders still yield a unique id" "DIFFER True" "$_uniq"
 check "unfilled placeholders keep the prefix and add a unique suffix" "A img-" "$_uniq"
 
+# --- @workflow: leave an input at whatever the workflow itself declares ----
+# An optional param still SUBSTITUTES its default, so the workflow's own value
+# is overwritten. The @workflow sentinel means "do not touch this input".
+_wfkeep="$(python3 - "$PLUGIN/scripts/remote-capabilities/comfyui/comfy-run.py" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("cr", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+wf = {"29": {"class_type": "SaveImage", "inputs": {"filename_prefix": "workflow/own/value"}},
+      "40": {"class_type": "CLIPTextEncode", "inputs": {"text": "orig"}}}
+print("SKIPPED", m.apply_set(wf, "29.filename_prefix=@workflow"))
+print("KEPT", wf["29"]["inputs"]["filename_prefix"])
+m.apply_set(wf, "40.text=")
+print("EMPTY_STILL_SETS", repr(wf["40"]["inputs"]["text"]))
+PY
+)"
+check "@workflow leaves the input untouched" "KEPT workflow/own/value" "$_wfkeep"
+check "@workflow reports the node it skipped" "SKIPPED 29" "$_wfkeep"
+check "an empty value is still a real value, not a skip" "EMPTY_STILL_SETS ''" "$_wfkeep"
+
+# --- remove-job: retire a declared job without touching the machine --------
+run_compute add-job gpubox scratch-job --workdir "~/w" --cmd "echo hi" >/dev/null 2>&1
+check "remove-job: job exists first" "scratch-job" "$(run_compute jobs gpubox 2>&1)"
+out="$(run_compute remove-job gpubox scratch-job 2>&1)"; rc=$?
+check_rc "remove-job: exit 0" 0 "$rc"
+check_absent "remove-job: job is gone" "scratch-job" "$(run_compute jobs gpubox 2>&1)"
+out="$(run_compute remove-job gpubox no-such-job 2>&1)"; rc=$?
+check "remove-job: unknown job names what IS declared" "declared jobs:" "$out"
+check_rc "remove-job: unknown job exit 2" 2 "$rc"
+
+# --- remove-capability: uninstall a bundle and its declared jobs -----------
+run_compute install-capability gpubox "$BUNDLE" >/dev/null 2>&1
+check "remove-capability: installed first" "demo" "$(run_compute capabilities gpubox 2>&1)"
+out="$(run_compute remove-capability gpubox demo 2>&1)"; rc=$?
+check_rc "remove-capability: exit 0" 0 "$rc"
+check_absent "remove-capability: gone from the roster" "demo" "$(run_compute capabilities gpubox 2>&1)"
+check_absent "remove-capability: its jobs go too" "demo:greet" "$(run_compute jobs gpubox 2>&1)"
+check "remove-capability: says the payload stayed" "payload" "$out"
+# --purge-remote additionally deletes the payload directory on the machine
+run_compute install-capability gpubox "$BUNDLE" >/dev/null 2>&1
+: > "$TLOG"
+out="$(run_compute remove-capability gpubox demo --purge-remote 2>&1)"; rc=$?
+check_rc "remove-capability --purge-remote: exit 0" 0 "$rc"
+check "purge-remote deletes only the capability dir" "rm -rf" "$(cat "$TLOG")"
+check "purge-remote targets that capability path" "caps/demo" "$(cat "$TLOG")"
+out="$(run_compute remove-capability gpubox nope 2>&1)"; rc=$?
+check "remove-capability: unknown names what IS installed" "installed:" "$out"
+check_rc "remove-capability: unknown exit 2" 2 "$rc"
+
 # --- remove --------------------------------------------------------------
 out="$(run_compute remove gpubox 2>&1)"
 check_absent "remove: gone from registry" "gpubox" "$(cat "$CH/resources.yaml")"

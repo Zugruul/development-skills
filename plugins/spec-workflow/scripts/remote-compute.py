@@ -28,6 +28,7 @@ CLI verbs (machine-readable output; interactivity is the calling agent's job):
     disable <nick> --root <repo>                  keep entry, enabled: false
     add-env <nick> NAME --activate CMD [--verify SNIPPET] | envs <nick>
     install-capability <nick> <bundle-dir> | capabilities <nick>
+    remove-capability <nick> NAME [--purge-remote]
     exec <nick> -- <cmd...>
     lock <nick> [--holder H] [--reason R] | unlock <nick> [--force]
     dispatch <nick> --workdir W --cmd C [--env E] [--inputs DIR]
@@ -1061,6 +1062,47 @@ def cmd_install_capability(argv):
     return 0
 
 
+def cmd_remove_capability(argv):
+    """Uninstall a capability: drop it from the roster and remove the jobs it
+    declared. The remote payload is LEFT IN PLACE by default -- deleting files
+    on someone's machine is not implied by 'stop offering this here' --
+    --purge-remote opts into removing that one capability's directory."""
+    nick, cap = argv[0], argv[1]
+    purge = "--purge-remote" in argv
+    reg = load_registry()
+    res = reg["resources"].get(nick)
+    if res is None:
+        print("ERROR: '%s' is not registered" % nick)
+        sys.exit(EXIT_USAGE)
+    installed = res.get("capabilities_installed") or {}
+    if cap not in installed:
+        print("ERROR: '%s' has no capability '%s' — installed: %s"
+              % (nick, cap, ", ".join(installed) or "none"))
+        sys.exit(EXIT_USAGE)
+
+    jobs = res.get("jobs") or {}
+    dropped = [name for name, job in jobs.items() if job.get("capability") == cap]
+    for name in dropped:
+        del jobs[name]
+    del installed[cap]
+    save_registry(reg, touched=nick)
+
+    print("removed capability '%s' from %s" % (cap, nick))
+    for name in dropped:
+        print("  dropped job: %s" % name)
+    capdir = "%s/%s" % (CAPS_REMOTE_ROOT, cap)
+    if purge:
+        rc, out, err = ssh_run(nick, "rm -rf %s" % remote_path(capdir))
+        if rc == 0:
+            print("  purged remote payload at %s" % capdir)
+        else:
+            print("  WARNING: could not purge %s: %s" % (capdir, err or out))
+    else:
+        print("  payload left on the machine at %s "
+              "(add --purge-remote to delete it)" % capdir)
+    return 0
+
+
 def cmd_capabilities(nick):
     res = get_resource(nick)
     caps = res.get("capabilities_installed") or {}
@@ -1109,6 +1151,29 @@ def cmd_add_job(argv):
     }
     save_registry(reg, touched=nick)
     print("declared job '%s' on %s (params: %s)" % (job_name, nick, ", ".join(params) or "none"))
+    return 0
+
+
+def cmd_remove_job(nick, job_name):
+    """Retire a declared job. Local-only: the remote machine keeps its payload
+    and any job directories -- this just stops offering the job by name."""
+    reg = load_registry()
+    res = reg["resources"].get(nick)
+    if res is None:
+        print("ERROR: '%s' is not registered" % nick)
+        sys.exit(EXIT_USAGE)
+    jobs = res.get("jobs") or {}
+    if job_name not in jobs:
+        print("ERROR: '%s' has no job '%s' — declared jobs: %s"
+              % (nick, job_name, ", ".join(jobs) or "none"))
+        sys.exit(EXIT_USAGE)
+    cap = jobs[job_name].get("capability")
+    del jobs[job_name]
+    save_registry(reg, touched=nick)
+    print("removed job '%s' from %s (the machine is untouched)" % (job_name, nick))
+    if cap:
+        print("NOTE: it came from capability '%s' — re-installing that bundle "
+              "will declare it again." % cap)
     return 0
 
 
@@ -1440,6 +1505,8 @@ def main(argv):
         return cmd_dispatch(rest)
     if verb == "install-capability" and len(rest) >= 2:
         return cmd_install_capability(rest)
+    if verb == "remove-capability" and len(rest) >= 2:
+        return cmd_remove_capability(rest)
     if verb == "capabilities" and rest:
         return cmd_capabilities(rest[0])
     if verb == "add-env" and len(rest) >= 2:
@@ -1448,6 +1515,8 @@ def main(argv):
         return cmd_envs(rest[0])
     if verb == "add-job" and len(rest) >= 2:
         return cmd_add_job(rest)
+    if verb == "remove-job" and len(rest) >= 2:
+        return cmd_remove_job(rest[0], rest[1])
     if verb == "jobs" and rest:
         return cmd_jobs(rest[0])
     if verb == "run" and rest:

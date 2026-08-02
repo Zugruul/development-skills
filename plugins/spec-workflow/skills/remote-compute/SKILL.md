@@ -24,6 +24,8 @@ All verbs go through the one script (run it with python3):
 ```bash
 python3 "../../scripts/remote-compute.py" register gpubox testuser@192.0.2.17
 python3 "../../scripts/remote-compute.py" enable gpubox --root "$(git rev-parse --show-toplevel)" --role training
+python3 "../../scripts/remote-compute.py" remove-job gpubox old-job
+python3 "../../scripts/remote-compute.py" remove-capability gpubox comfyui
 python3 "../../scripts/remote-compute.py" list
 python3 "../../scripts/remote-compute.py" exec gpubox -- nvidia-smi
 python3 "../../scripts/remote-compute.py" dispatch gpubox --workdir "~/train" --cmd "python train.py" --env fab-training
@@ -159,6 +161,20 @@ command detached on the remote (tmux, else setsid nohup) writing `job.log`,
 files alone — `job-status` works after any restart and releases the lock once
 the job has an exitcode. `job-logs` tails the remote log; `job-pull` rsyncs
 artifacts back.
+
+## Retiring things
+
+- `remove-job <nick> NAME` drops one declared job. Local only -- the machine
+  keeps its payload and job directories. If the job came from a bundle, say so:
+  re-installing that bundle declares it again.
+- `remove-capability <nick> NAME` uninstalls a bundle: it leaves the roster and
+  every job it declared goes with it. The remote payload is LEFT IN PLACE,
+  because "stop offering this here" does not imply deleting files on someone's
+  machine. `--purge-remote` opts into removing that one capability's directory.
+- `remove <nick>` unregisters the machine itself and never touches the remote.
+
+None of these delete job history or artifacts. Use `compute-top` on the machine
+for that, or delete a job directory there deliberately.
 
 ## Watching work on the machine itself
 
