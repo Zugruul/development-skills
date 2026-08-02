@@ -129,3 +129,83 @@ items:
   routing:
     action: backlog
     ref: Zugruul/development-skills#517
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-08-02T03:15:00Z'
+iteration:
+  task: 497+518+508 (second merge batch)
+  outcome: merged
+  reviewRounds: 6
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Multi-round adversarial review on a model-directed-execution surface converged
+    cleanly while security held every probe
+  detail: Three rounds on the turn-capability wiring drove out one HIGH and five MEDIUM
+    functional bugs while every §17 boundary probe (argv containment, schema-validation-before-spawn,
+    disabled gate, artifact-path isolation, flooding guard) held in all rounds; mutation
+    sensitivity went from 3 surviving mutants to 11/12 killed.
+  generalized: On security-sensitive surfaces, expect the adversarial review to converge
+    over ~3 rounds with security probes passing throughout while functional edges
+    get driven out — plan round budget accordingly rather than treating REQUEST-CHANGES
+    rounds as failure.
+  routing:
+    action: ignore
+    ref: converges pattern noted; reviewer brain already carries confirmed-over-plausible
+- category: incident
+  area: concurrency
+  severity: medium
+  summary: Freshly spawned dev agents inherited the orchestrator session's pinned
+    worktree instead of their assigned lane, twice
+  detail: Two consecutive dev agents were pinned by the launcher into whatever worktree
+    the orchestrator session occupied (one got a sibling lane's worktree, one got
+    the previous task's); both caught it — one via the Edit-tool isolation guard,
+    one via a pwd check — flagged instead of proceeding, and self-recovered by re-pinning
+    with the worktree-entry tool.
+  generalized: 'Subagent working-directory pinning follows the spawning session''s
+    cwd, not the brief: every agent brief that names a worktree must instruct the
+    agent to verify pwd against the brief before its first write and re-pin itself
+    if they disagree; the orchestrator must likewise remember that path-guarded tools
+    and tree-fingerprint hooks evaluate ITS pinned tree, not the task''s.'
+  routing:
+    action: brain-note
+    ref: orchestrator
+- category: recommendation
+  area: board
+  severity: medium
+  summary: The In-review move guard fingerprints the session's pinned tree, coupling
+    unrelated lanes
+  detail: Parking one task at In review was blocked because a DIFFERENT lane's worktree
+    (where the orchestrator session is pinned) had work-in-progress; the move only
+    succeeded once that unrelated tree went green again.
+  generalized: A gate-fingerprint guard on board moves should evaluate the tree of
+    the branch/task being moved (or accept an explicit tree argument), not the invoking
+    session's current checkout — otherwise multi-lane orchestration serializes on
+    whichever worktree the session happens to sit in.
+  proposal:
+    target: scripts/guard-board-move.sh + gate-preflight
+    change: resolve the tree to fingerprint from the task's branch/worktree, or add
+      --tree
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#521
+- category: worked-well
+  area: briefing
+  severity: low
+  summary: Completion-contract briefs eliminated the idle-with-uncommitted-work pattern
+  detail: After encoding the completion contract (tree clean + recorded gate + report
+    = only done state) into dev briefs, later lanes landed their commits red-first
+    without orchestrator takeover; remaining idles were notification noise rather
+    than stalls.
+  generalized: A brief that defines the ONLY acceptable end state (artifacts landed
+    + verification recorded + report sent) measurably reduces agent stalls compared
+    to task-description-only briefs; keep the contract block in every dev brief template.
+  routing:
+    action: ignore
+    ref: already durable as the completion-contract block in dev briefs + dev-idle-recovery-ladder
+      note

@@ -84,6 +84,16 @@
     "last": null,
     "weight": 0.5
   },
+  "subagent-pin-verification->dev-idle-recovery-ladder": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "subagent-pin-verification->worktree-lane-default": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "verify-state-before-assuming-stalled->self-authored-code-needs-adversarial-review": {
     "fires": 0,
     "last": null,
