@@ -11,6 +11,27 @@
   > - fast-restart never wedges: same-host dead-pid fast path + deferred startup-class re-run of ownership-skipped roots
   > - ownership pruned when idle, released on graceful stop, skips traced; transaction hygiene on claim failure
   > - spec delta docs/spec-deltas/498.md (§12.4 owner-heartbeat contract)
+- **remote-compute:** register remote machines, advertise availability, dispatch jobs by intent (#524) (`746f46e`)
+  > Adds the remote-compute skill: register machines over key-only SSH, declare
+  > environments and capability bundles on them, and dispatch detached jobs whose
+  > state survives the orchestrator.
+  > 
+  > - scripts/remote-compute.py: register (idempotent convergence), enable/disable
+  >   (non-exclusive availability via the gitignored project.local.yaml overlay),
+  >   probe/list/status, exec, lock/unlock, dispatch + job-status/logs/pull with
+  >   file-only recovery, add-env/envs, add-job/jobs/run, install-capability,
+  >   setup sheets for wsl2/linux/macos
+  > - capability bundles keep the engine domain-agnostic: comfyui (pre-authored
+  >   API workflows, value-substitution only, model enumeration + enum
+  >   pre-validation) and slm-training (unsloth QLoRA SFT/DPO, GGUF export, eval)
+  >   ship as data under scripts/remote-capabilities/
+  > - config.py merges an optional gitignored .claude/project.local.yaml overlay
+  >   for an allowlisted key set (today: compute)
+  > - hard rules enforced in code: BatchMode always, sudo rejected, no dispatch to
+  >   a locked resource, maxConcurrentJobs enforced, probes never guess
+  > - red-first classifier fix: a red commit may carry its design doc
+  > 
+  > Verified end to end against a real WSL2/RTX 5090 machine running ComfyUI.
 
 ### Fixes
 - **setup-assistant:** serialize settings verbs + AGENTS.md writers under the project-yaml lock (#496) (`378548c`)
