@@ -22,8 +22,10 @@
 # Algorithm: `git log --reverse <mainBranch>..<branch>` gives the branch's
 # commits unique to it, oldest-to-newest. Each commit's changed files
 # (`git show --name-only --format=`) classify the commit as:
-#   test-only    every changed path is under a tests/ or __tests__/
-#                directory, or is a *.test.* / *.spec.* file (test files
+#   test-only    every changed path is under a test/, tests/ or __tests__/
+#                directory, or is a *.test.* / *.spec.* file, or follows the
+#                pytest/Go/Ruby suffix convention (*_test.py|go|rb, test_*.py)
+#                (test files
 #                colocated beside sources are standard in JS/TS repos)
 #   doc-only     every changed path is *.md or under docs/
 #   impl-touching  anything else (at least one changed file is neither)
@@ -71,7 +73,10 @@ while IFS= read -r sha; do
     kind="$(python3 - "$files" <<'PY'
 import re, sys
 files = [f for f in sys.argv[1].splitlines() if f.strip()]
-def is_test(p): return re.search(r'(^|/)(tests|__tests__)/', p) is not None or re.search(r'\.(test|spec)\.[A-Za-z]+$', p) is not None
+def is_test(p): return (re.search(r'(^|/)(test|tests|__tests__)/', p) is not None
+                        or re.search(r'\.(test|spec)\.[A-Za-z]+$', p) is not None
+                        or re.search(r'_test\.(py|go|rb)$', p) is not None
+                        or re.search(r'(^|/)test_[^/]+\.py$', p) is not None)
 def is_doc(p): return p.lower().endswith('.md') or p.startswith('docs/') or '/docs/' in p
 if not files:
     print("doc")
