@@ -344,6 +344,14 @@ assistant:
   Reconciliation (startup and periodic) SHALL open a root's queue only when the root is
   an assistant candidate AND already has a tasks database on disk — discovery of a repo
   is never a side effect that creates one.
+  Reconciliation is additionally guarded by a per-root owner heartbeat (a single-row
+  `task_owner` table in the same tasks database: engine id, pid, host, heartbeat ts,
+  refreshed by the draining worker via progress reports and a timer backstop): both
+  sweeps skip a root whose FOREIGN owner heartbeat is fresh; a stale heartbeat, or a
+  same-host owner whose pid is dead, falls through to normal reconciliation, and roots
+  skipped for ownership at startup are re-run startup-class once the owner stops
+  blocking — crash recovery is bounded, never wedged. Graceful shutdown releases
+  ownership; ownership lapses when a root has nothing in flight.
 - §12.5 WHILE tasks run, chat/voice remain fully usable; a queue indicator on the voice
   panel lists running/queued tasks; completion opens the artifact panel and announces
   (TTS when voice on); failures surface in-chat with the trace linked.
