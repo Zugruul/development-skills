@@ -184,11 +184,6 @@
     "last": "2026-07-29",
     "weight": 0.5
   },
-  "extract-harness-new-callee-sweep->anonymous-listener-slice-eval": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "fake-cli-exit-code-is-contract->circular-fixture-detector": {
     "fires": 26,
     "last": "2026-07-29",
@@ -232,6 +227,11 @@
   "heredoc-commit-messages->bash32-empty-array-set-u": {
     "fires": 26,
     "last": "2026-07-29",
+    "weight": 0.5
+  },
+  "hermetic-fake-cannot-prove-execution->verify-assertions-by-mutation": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "hermetic-fixture-pins-all-search-paths->inspect-red-before-trusting": {
@@ -374,11 +374,6 @@
     "last": "2026-07-29",
     "weight": 0.5
   },
-  "protocol-layer-failure-enumeration->validate-the-declaration-not-just-values": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "proxy-checks-vs-true-invariants->contract-invariant-preservation": {
     "fires": 4,
     "last": "2026-07-29",
@@ -392,11 +387,6 @@
   "read-validator-before-fixtures->capture-dont-transcribe": {
     "fires": 1,
     "last": "2026-07-22",
-    "weight": 0.5
-  },
-  "record-gate-pass-after-final-commit->gate-runs-take-minutes": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "red-commit-as-you-go->batch-red-across-surfaces": {
@@ -607,6 +597,16 @@
   "vendored-split-build-import-guard->red-static-vs-wiring-checks": {
     "fires": 12,
     "last": "2026-07-27",
+    "weight": 0.5
+  },
+  "verify-assertions-by-mutation->bash-test-sections-shared-state": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "verify-assertions-by-mutation->hermetic-fake-cannot-prove-execution": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "verify-brief-characterizations-independently->respect-named-scope-boundaries": {

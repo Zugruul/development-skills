@@ -2473,3 +2473,26 @@
 {"repo": "Zugruul/development-skills", "role": "dev", "slug": "bash-test-sections-shared-state", "strength": 1, "ts": "2026-08-02T11:25:13+00:00", "type": "NoteMinted", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "engine-agnostic-domains-as-bundles", "strength": 1, "ts": "2026-08-02T11:25:29+00:00", "type": "NoteMinted", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "dev", "slug": "documented-placeholder-never-substituted", "strength": 1, "ts": "2026-08-02T11:25:45+00:00", "type": "NoteMinted", "v": 1}
+{"idx": 0, "itemTs": "2026-08-02T21:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-03T00:00:39+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 1, "itemTs": "2026-08-02T21:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-03T00:00:39+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 2, "itemTs": "2026-08-02T21:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-03T00:00:39+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 3, "itemTs": "2026-08-02T21:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-03T00:00:39+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 4, "itemTs": "2026-08-02T21:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-03T00:00:39+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 5, "itemTs": "2026-08-02T21:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-03T00:00:39+00:00", "type": "FeedbackEmitted", "v": 1}
+{"action": "brain-note", "idx": 0, "itemTs": "2026-08-02T21:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-03T00:01:17+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 1, "itemTs": "2026-08-02T21:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-03T00:01:17+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 2, "itemTs": "2026-08-02T21:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-03T00:01:17+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 3, "itemTs": "2026-08-02T21:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-03T00:01:17+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 4, "itemTs": "2026-08-02T21:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-03T00:01:17+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 5, "itemTs": "2026-08-02T21:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-03T00:01:17+00:00", "type": "FeedbackRouted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "hermetic-fake-cannot-prove-execution", "strength": 1, "ts": "2026-08-03T00:01:31+00:00", "type": "NoteMinted", "v": 1}
+{"key": "hermetic-fake-cannot-prove-execution->verify-assertions-by-mutation", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-08-03T00:01:31+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "verify-assertions-by-mutation", "strength": 1, "ts": "2026-08-03T00:01:43+00:00", "type": "NoteMinted", "v": 1}
+{"key": "verify-assertions-by-mutation->bash-test-sections-shared-state", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-08-03T00:01:43+00:00", "type": "LinkFormed", "v": 1}
+{"key": "verify-assertions-by-mutation->hermetic-fake-cannot-prove-execution", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-08-03T00:01:43+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "two-independent-reviews-that-can-fail", "strength": 1, "ts": "2026-08-03T00:02:02+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "never-relax-a-gate-you-are-blocked-by", "strength": 1, "ts": "2026-08-03T00:02:02+00:00", "type": "NoteMinted", "v": 1}
+{"key": "extract-harness-new-callee-sweep->anonymous-listener-slice-eval", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-08-03T00:02:18+00:00", "type": "LinkPruned", "v": 1}
+{"key": "protocol-layer-failure-enumeration->validate-the-declaration-not-just-values", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-08-03T00:02:18+00:00", "type": "LinkPruned", "v": 1}
+{"key": "record-gate-pass-after-final-commit->gate-runs-take-minutes", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-08-03T00:02:18+00:00", "type": "LinkPruned", "v": 1}
+{"itemCount": 6, "itemTs": "2026-08-02T21:40:00Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-08-03T00:02:28+00:00", "type": "FeedbackArchived", "v": 1}

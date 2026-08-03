@@ -291,3 +291,133 @@ items:
   routing:
     action: brain-note
     ref: orchestrator
+---
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-08-02T21:40:00Z'
+iteration:
+  task: '524'
+  outcome: merged
+  reviewRounds: 3
+source:
+  role: orchestrator
+  model: claude-fable-5
+items:
+- category: worked-well
+  area: review
+  severity: high
+  summary: Two independent review passes, run as separate adversarial subagents and
+    required to reach a verdict, found two proven remote command injections and three
+    hard rules the design asserted but the code did not honor — all in work that had
+    already been merged.
+  detail: Both reviewers reproduced findings by executing the real code rather than
+    reading the diff, and both rejected my first round of fixes. One of my own fixes
+    then introduced a worse regression, which round three caught. Without the mandated
+    second pass this would have shipped.
+  evidence:
+  - Zugruul/development-skills#524
+  generalized: Requiring two independent review passes with an explicit PASS/FAIL
+    verdict, run by agents briefed to reproduce rather than read, catches defect classes
+    a single self-review does not — including regressions introduced by the fixes
+    for earlier findings. Budget for multiple rounds; a first-round FAIL is the normal
+    case, not an exception.
+  routing:
+    action: brain-note
+    ref: Zugruul/development-skills#524
+- category: incident
+  area: testing
+  severity: high
+  summary: 'A hermetic suite that records a command''s arguments without ever executing
+    them proved structurally unable to catch a broken payload: quoting that looked
+    correct in the recorded text failed on a real shell, so no dispatched work could
+    start while every test stayed green.'
+  detail: The fake transport logs argv and pattern-matches. A path fix wrapped a value
+    that had to stay shell-expandable, which is invisible to a text assertion. The
+    fix was to render the real payload and execute it under a scratch environment
+    inside the suite.
+  evidence:
+  - Zugruul/development-skills#524
+  generalized: When a hermetic fake records a command instead of running it, tests
+    can only prove the command LOOKS right, never that it works. For any layer that
+    builds a string another interpreter will execute, add at least one test that renders
+    the real artifact and executes it in a sandbox — otherwise a whole class of quoting
+    and escaping bugs is invisible to a green suite.
+  routing:
+    action: brain-note
+    ref: Zugruul/development-skills#524
+- category: incident
+  area: testing
+  severity: high
+  summary: Test fixtures written from memory instead of captured from the real environment
+    encoded the same wrong assumption twice — in the parser and in the test — so the
+    suite passed while production recorded null for fields that were plainly available.
+  detail: An invented fixture used field labels that the real tool does not emit on
+    that platform. Tests were green; the live probe recorded nulls for working hardware.
+    Capturing the actual output and committing it as the fixture fixed both at once.
+  evidence:
+  - Zugruul/development-skills#524
+  generalized: For any parser of an external tool's output, capture that tool's real
+    output from a real target and commit it as the fixture BEFORE writing the parser.
+    An invented fixture makes the test agree with the parser's assumption rather than
+    with reality, which produces a green suite over a broken feature.
+  routing:
+    action: brain-note
+    ref: Zugruul/development-skills#524
+- category: friction
+  area: testing
+  severity: medium
+  summary: Assertions written against a log that accumulates across an entire test
+    file passed regardless of the behavior under test; a reviewer proved several survived
+    deliberate mutation of the code they claimed to cover.
+  detail: 'Shared shell state also caused two harness bugs during authoring: a reused
+    output variable silently rebound between an assignment and the checks consuming
+    it, and a cooperative lock taken by one test leaked into later ones.'
+  evidence:
+  - Zugruul/development-skills#524
+  generalized: Assertions against cumulative shared state (an append-only log, a global
+    variable, a lock) can pass without exercising anything. Reset the state immediately
+    before the action under test, and verify each load-bearing assertion by mutation
+    — break the code deliberately and confirm the test fails. Any test that survives
+    its own mutation is decoration.
+  routing:
+    action: brain-note
+    ref: Zugruul/development-skills#524
+- category: recommendation
+  area: other
+  severity: medium
+  summary: Keeping a generic engine free of any specific domain required a structural
+    boundary plus a test that asserts the absence of domain-specific identifiers in
+    the engine, not just a convention.
+  detail: The engine contained no domain code, but the domain's helper script sat
+    beside it in the same directory, which structurally implied it was core. Moving
+    domains into self-describing data bundles, and adding a test that the engine contains
+    no domain identifier, made the boundary enforceable — the test later fired on
+    a comment naming a tool.
+  evidence:
+  - Zugruul/development-skills#524
+  generalized: A layering rule that exists only in documentation erodes. Express it
+    as a test the build enforces — for an engine/plugin split, assert the engine contains
+    no plugin-specific identifier, and keep each domain a self-describing data bundle
+    so adding one never edits the engine.
+  routing:
+    action: brain-note
+    ref: Zugruul/development-skills#524
+- category: friction
+  area: review
+  severity: medium
+  summary: A red-first ordering gate classified any commit mixing test files with
+    documentation as an implementation commit, blocking a branch that had followed
+    the discipline correctly.
+  detail: Documentation-only and test-only commits were each accepted, but the mix
+    was not, so committing a failing suite together with its design document read
+    as skipping the failing-test-first step.
+  evidence:
+  - Zugruul/development-skills#524
+  generalized: A heuristic gate that buckets commits by file type should treat a non-implementation
+    category (documentation) as neutral when mixed with the category it is testing
+    for, or it produces false positives against work that followed the rule. Relaxing
+    such a gate on the branch it is blocking is a conflict of interest and deserves
+    explicit human sign-off, even when the reasoning holds.
+  routing:
+    action: brain-note
+    ref: Zugruul/development-skills#524
