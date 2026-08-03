@@ -229,6 +229,22 @@
 ### Chores
 - **release:** spec-workflow v0.64.2 (`c77e16e`)
 
+### Other
+- retro(524): 6 feedback items routed to brain-note, 4 new notes minted (`6d872ce`)
+  > dev: a recording test double can never prove a built command actually works
+  > (add one test that renders the real artifact and executes it in a sandbox);
+  > prove an assertion by breaking the code it covers, since several load-bearing
+  > assertions were shown to survive mutation.
+  > 
+  > orchestrator: two independent reviews each allowed to FAIL the work, briefed to
+  > reproduce rather than read — including that the fixes for round-one findings
+  > introduced a worse regression only a third round caught; never relax a quality
+  > gate on the branch that gate is blocking.
+  > 
+  > Feed archived to .claude/feedbacks/archive/2026-08.yaml. Links pruned (3 aged
+  > out in dev), retro #122 marked, DIRECTORY.md regenerated. Ran from recorded
+  > feedback text — no subagent interview (the review agents had already reported).
+
 ## v0.64.1 — 2026-08-02
 
 ### Features
