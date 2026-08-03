@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Tests for export_gguf.py's llama-server-based smoke test.
 
-Context (fab-cli issue #221): the smoke vehicle moved off llama-cli's CLI
-onto llama-server's HTTP API. On the only real GPU box (storm590x),
+Context (issue #221): the smoke vehicle moved off llama-cli's CLI onto
+llama-server's HTTP API. On the only real GPU box (storm590x),
 llama-cli's `--json-schema`/`--json-schema-file` failed at sampler init
 identically across three independent llama.cpp builds, and routing around it
 via `--grammar-file` made llama-cli busy-loop its interactive "> " prompt
@@ -235,9 +235,10 @@ class RunSmokeForFileTests(unittest.TestCase):
                 {"prompt": "p", "json_schema": self.SCHEMA, "max_tokens": 32},
                 "/opt/llama.cpp/build/bin/llama-server",
             )
-        # exact SmokeFileResult contract (fab-cli pipeline/src/export/types.ts's
-        # SmokeFileResult minus `file`, which the caller in main() adds) --
-        # must not gain or lose keys across the vehicle switch.
+        # exact SmokeFileResult contract (the caller's config-surface type
+        # for this bundle's export-gguf job, minus `file`, which the caller
+        # in main() adds) -- must not gain or lose keys across the vehicle
+        # switch.
         self.assertEqual(set(result.keys()), {"loaded", "constrainedOutputRaw", "parsedOk"})
         self.assertEqual(result, {"loaded": True, "constrainedOutputRaw": '{"ok": true}', "parsedOk": True})
         proc.terminate.assert_called_once()

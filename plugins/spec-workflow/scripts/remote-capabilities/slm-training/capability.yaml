@@ -48,12 +48,14 @@ jobs:
             (required), adapters (path to a trained adapter dir, optional
             — omit to export the base model as-is), quantizations (list,
             default [q8_0]), max_seq_length, smoke (optional: {prompt,
-            json_schema, max_tokens, llama_cli} — when present, every
-            produced GGUF is loaded in llama-cli and smoke-tested with one
-            JSON-schema-constrained completion; a failing file makes the
-            job exit nonzero). Writes gguf/ plus export-summary.json
-            (files + sha256, and smoke.perFile when smoke was configured)
-            to the job dir.
+            json_schema, max_tokens, llama_server, llama_cli (deprecated
+            alias for llama_server, see export_gguf.py's doc comment)} —
+            when present, every produced GGUF is booted as an llama-server
+            HTTP server and smoke-tested with one JSON-schema-constrained
+            /completion call, then the server is always terminated; a
+            failing file makes the job exit nonzero). Writes gguf/ plus
+            export-summary.json (files + sha256, and smoke.perFile when
+            smoke was configured) to the job dir.
         cmd: python3 {capdir}/export_gguf.py --config {config}
         env: training
         params:
