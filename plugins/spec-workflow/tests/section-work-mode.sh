@@ -158,3 +158,53 @@ check "build-next SKILL.md: autoMerge false + local leaves branch unmerged for t
 ARBODY2="$(cat "$PLUGIN/skills/build-next/references/auto-review.md" 2>/dev/null)"
 check "auto-review.md: local mode board announce carries the merge SHA" "board announce carries the merge SHA" "$ARBODY2"
 check "auto-review.md: work-mode.sh names the deferral helper" "work-mode.sh" "$ARBODY2"
+
+echo "== #532 work.checkout: config accessor + validator =="
+WC="$(mktemp -d)"; mkdir -p "$WC/.claude"
+cp "$FIX/valid.project.yaml" "$WC/.claude/project.yaml"
+wcget() { python3 "$PLUGIN/scripts/config.py" "$WC" get "$1"; }
+check "work.checkout defaults to worktree when work absent" "worktree" "$(wcget work.checkout)"
+python3 "$PLUGIN/scripts/config.py" "$WC" set work.checkout '"main"' >/dev/null
+check "work.checkout reads back main" "main" "$(wcget work.checkout)"
+
+# checkout is delivery-agnostic (worktree-vs-main is WHERE work happens,
+# pr-vs-local is HOW it lands) -- unlike work.sync it must validate under the
+# DEFAULT work.type (pr) and under local alike.
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$WC/.claude/project.yaml")"
+check "work.checkout main under (default) type pr validates" "VALID: " "$out"
+python3 "$PLUGIN/scripts/config.py" "$WC" set work.type '"local"' >/dev/null
+python3 "$PLUGIN/scripts/config.py" "$WC" set work.checkout '"worktree"' >/dev/null
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$WC/.claude/project.yaml")"
+check "work.checkout worktree under type local validates" "VALID: " "$out"
+python3 "$PLUGIN/scripts/config.py" "$WC" set work.checkout '"branchless"' >/dev/null
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$WC/.claude/project.yaml" || true)"
+check "work.checkout invalid enum rejected" "work.checkout must be 'worktree' or 'main'" "$out"
+rm -rf "$WC"
+
+echo "== #532 work-mode.sh: checkout verb =="
+WK="$(mktemp -d)"; mkdir -p "$WK/.claude"
+cp "$FIX/valid.project.yaml" "$WK/.claude/project.yaml"
+wk() { (cd "$WK" && bash "$PLUGIN/scripts/work-mode.sh" "$@"); }
+check "work-mode.sh checkout defaults to worktree" "worktree" "$(wk checkout)"
+python3 "$PLUGIN/scripts/config.py" "$WK" set work.checkout '"main"' >/dev/null
+check "work-mode.sh checkout reflects main" "main" "$(wk checkout)"
+rm -rf "$WK"
+
+WKD="$(mktemp -d)"  # no config file at all: pure script-side default
+wkd() { (cd "$WKD" && bash "$PLUGIN/scripts/work-mode.sh" "$@"); }
+check "work-mode.sh checkout defaults to worktree with no config file" "worktree" "$(wkd checkout)"
+rm -rf "$WKD"
+
+echo "== #532 skill docs: work.checkout wiring (register-first worktrees, serialized main) =="
+BNS3="$(cat "$PLUGIN/skills/build-next/SKILL.md" 2>/dev/null)"
+check "build-next SKILL.md: work.checkout governs WHERE work happens" "work.checkout governs WHERE" "$BNS3"
+check "build-next SKILL.md: session-start checkout question recommends worktree" "worktree (Recommended)" "$BNS3"
+check "build-next SKILL.md: main-mode concurrency serializes uncommitted work" "one worker's uncommitted changes at a time" "$BNS3"
+
+ITS3="$(cat "$PLUGIN/skills/implement-task/SKILL.md" 2>/dev/null)"
+check "implement-task SKILL.md: worktree mode registers the work first" "register the work" "$ITS3"
+check "implement-task SKILL.md: draft PR opened before implementation" "open the draft PR BEFORE implementation" "$ITS3"
+check "implement-task SKILL.md: allow-empty registration commit makes the empty PR possible" "allow-empty" "$ITS3"
+
+SPS3="$(cat "$PLUGIN/skills/setup-project/SKILL.md" 2>/dev/null)"
+check "setup-project SKILL.md: asks the work.checkout preference at setup" "work.checkout" "$SPS3"
