@@ -157,6 +157,47 @@
   > Claude-Session: https://claude.ai/code/session_01EysHtmuW6BJUFuJf5smDbE
 - **slm-training:** collect GGUFs from unsloth's '<dir>_gguf' sibling output dir (observed live: files land beside, not inside, the requested dir) (`860df3e`)
   > Claude-Session: https://claude.ai/code/session_01EysHtmuW6BJUFuJf5smDbE
+- **slm-training:** green — export_gguf.py smoke vehicle switched to llama-server (issue #221) (`b8ad6a8`)
+  > llama-cli's grammar-sampler init failure ("error initializing grammar
+  > sampler for grammar:") and stdin-EOF interactive-REPL busy-loop, reproduced
+  > identically across three independent llama.cpp builds on storm590x, made
+  > the CLI-based smoke unusable. Replaces it with llama-server's HTTP API:
+  > start the server on a free loopback port, poll GET /health (bounded by
+  > SMOKE_TIMEOUT_SEC) until {"status":"ok"}, POST /completion with
+  > {prompt, json_schema, n_predict, temperature: 0} (field names verified
+  > against current llama.cpp server docs), validate `content` parses as JSON
+  > matching the schema (reusing extract_last_json_object/check_schema_shallow
+  > unchanged), then always terminate the server in a finally block (kill()
+  > fallback if terminate() doesn't land within 10s) -- structurally impossible
+  > to leave a runaway process behind, unlike the busy-loop this replaces.
+  > 
+  > The SmokeFileResult contract (file, loaded, constrainedOutputRaw, parsedOk)
+  > is unchanged. Config key renamed smoke.llama_cli -> smoke.llama_server;
+  > llama_cli stays accepted as a deprecated alias, deriving the server binary
+  > from the cli path's own directory (same build/bin/, both binaries ship
+  > together) with a logged warning, falling through to normal discovery if no
+  > sibling llama-server/server exists. capability.yaml's export-gguf job
+  > description updated to match. Fixed two "fab-cli issue #221" mentions the
+  > docstring/tests briefly introduced, which would have broken this bundle's
+  > own project-agnostic hermetic check (tests/section-remote-compute.sh greps
+  > slm-training/ for fabrary|fab-cli|fab-app and must find none).
+  > 
+  > 21/21 stdlib-unittest tests green (subprocess/HTTP mocked, no GPU/network):
+  > python3 plugins/spec-workflow/scripts/remote-capabilities/slm-training/tests/test_export_gguf.py
+- **neural-view:** GREEN - survive a held metrics port at boot; stop --force sweeps it (2026-08-02 incident) (`2f69b81`)
+  > engine.start(): binding the shared Prometheus exposition port now
+  > degrades on OSError (one stderr line, no exposition) instead of
+  > crashing the whole server at boot -- same posture as the whisper
+  > sidecar autostart.
+  > 
+  > stop --force: after the main-port sweep, probe every metrics port the
+  > repos file's roots configure (engine's own _discover_metrics_configs)
+  > and clear a neural-view-looking holder there under the same SCRIPT_NAME
+  > refusal guard (#415) and killed-and-verified escalation (#416). A
+  > foreign holder is a note, never a stop failure. Test fixture needed
+  > capabilities.codex to classify as a candidate root.
+  > 
+  > Claude-Session: https://claude.ai/code/session_01EzNH8czvn8a1XVxYjsWLMm
 
 ### Refactoring
 - **remote-compute:** move all state under ~/.remote-compute on both sides (#524) (`8e0e6f7`)
@@ -225,6 +266,25 @@
   > ignoring the manifest's env now fails the suite.
   > 
   > Closes #527.
+- **slm-training:** red — llama-server smoke vehicle for export_gguf.py (fab-cli #221) (`cb523ba`)
+  > llama-cli's grammar-sampler init failure and stdin-EOF interactive-REPL
+  > busy-loop, reproduced identically across three independent llama.cpp builds
+  > on storm590x, made the CLI-based smoke unusable. Adds stdlib-unittest
+  > coverage (subprocess/HTTP mocked, no GPU/network) for the replacement
+  > llama-server HTTP-API vehicle: resolve_llama_server's discovery + deprecated
+  > llama_cli-key derivation, find_free_port, wait_for_health, post_completion,
+  > and run_smoke_for_file's SmokeFileResult contract + always-terminate-the-
+  > server lifecycle. None of these functions exist yet — 21/21 tests error.
+- **neural-view:** RED - pin 2026-08-02 metrics-port incident (boot crash + stop --force blind spot) (`4075442`)
+  > A stale neural-view from another worktree held the shared Prometheus
+  > exposition port (Sec10.4): every later serve died at boot on EADDRINUSE
+  > inside engine.start(), and stop --force found nothing to kill because it
+  > only ever probes the MAIN port. Pins: (1) engine.start() must degrade
+  > (warn, no metrics server) instead of crashing; (2) stop --force must also
+  > probe configured metrics ports, kill a neural-view-looking holder, and
+  > leave a foreign holder alive without failing.
+  > 
+  > Claude-Session: https://claude.ai/code/session_01EzNH8czvn8a1XVxYjsWLMm
 
 ### Chores
 - **release:** spec-workflow v0.64.2 (`c77e16e`)
