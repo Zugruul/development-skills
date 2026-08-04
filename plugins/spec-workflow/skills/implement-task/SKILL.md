@@ -14,11 +14,18 @@ You (the orchestrator) do **not** write the implementation. You brief a subagent
 1. `board.sh show N` — read body **and all comments** (human steering lives there). If comments change scope: fold them into the body via `board.sh edit-body`, then acknowledge via `board.sh comment` (see `next-task`).
 2. Read the task's acceptance criteria in `<cfg:specs[].backlogPath>` and the referenced sections of `<cfg:specs[].specPath>`. **Stale-criteria check**: criteria are written at seed time and the spec moves on — any criterion that contradicts the CURRENT spec/design doc (renamed concepts, dropped features, superseded contracts) gets flagged on the issue (`board.sh comment`) and resolved (spec wins) BEFORE the brief; implementing a stale criterion is a wasted PR.
 3. **Design-doc guard**: the task's epic must have `<cfg:paths.designDir|docs/design>/<spec-id>-<epic-id>.md`. Missing → YOU write it now from the spec §s (format: `../../skills/implement-task/references/design-and-deltas.md` §1) and commit it before briefing anyone. Existing → read it; it constrains the brief.
-4. Branch + board (same step, real time):
-   ```bash
-   git switch -c <branch from cfg:project.branchPattern, e.g. cp/012-error-model>
-   board.sh move N "In progress"        # respect cfg:methodology.maxInProgress
-   ```
+4. Branch + board (same step, real time) — the branch step follows the session's checkout mode (`work.checkout`, absent == `worktree`; see build-next "Checkout mode", #532):
+   - **`worktree` (default)** — register the work BEFORE implementation: the branch, its worktree, and the draft PR all exist before any code is written, so in-flight work is always visible even if it dies early. The `--allow-empty` registration commit is what makes an effectively-empty draft PR possible (GitHub refuses a PR with zero commits).
+     ```bash
+     git worktree add .claude/worktrees/<task-id> -b <branch from cfg:project.branchPattern, e.g. cp/012-error-model> <cfg:project.mainBranch>
+     cd .claude/worktrees/<task-id>
+     git commit --allow-empty -m "chore(<task-id>): register work (#N)"
+     git push -u origin <branch>
+     gh pr create --draft --title "<title per cfg:commit.convention>" --body "Closes #N"   # open the draft PR BEFORE implementation
+     board.sh move N "In progress"        # respect cfg:methodology.maxInProgress
+     ```
+     The dev agent works inside that worktree; its pushes update this SAME PR, and gate-green flips it out of draft with `gh pr ready` (brief step 4 below: the PR already exists — never open a second one). Under `work.type: local`, skip the push and the draft PR (no PR is ever opened in local delivery — the branch + worktree themselves are the registration); everything else stands.
+   - **`main`** — no branch, no worktree: stay on `<cfg:project.mainBranch>`; just `board.sh move N "In progress"`. The brief must mandate small complete commits directly on main as the work goes (never a long-lived dirty tree), and with `methodology.maxInProgress > 1` the orchestrator serializes workers' edits — one worker's uncommitted changes at a time, tree verified clean between hand-offs (protocol: build-next "Checkout mode").
 
 ## 1. Spawn the dev agent
 Resolve the dev identity for THIS task's paths first: `bash "../../scripts/identity.sh" dev <a representative changed/expected path>`. In a monorepo the `covers` globs route to the right per-package dev agent; with a single dev identity it just returns that one. The resolved `models:` line is that agent's ALLOWED set — pick the most SUITABLE one for this task (cheaper/smaller for a simple change, a larger-context `[1m]` variant for a big diff), never reflexively the most powerful. Under Codex, resolve with `identity.sh --host codex dev <path>` and pick the model from its `codex-capability:` line (or the host's own default if it reads `(unset — host default)`) — never a Claude-only model id. Under Claude Code, resolve normally (no `--host` flag) and pick from `models:`, as today. Delegate to a fresh implementation agent when the host supports delegation, with `model: <the id you chose from that allowed set>` and `name: dev-<task-id>` (role-prefix FIRST, then the scope it serves — e.g. `dev-cp012`; a re-brief on the same task appends a letter, `dev-cp012-b`; never a bare counter — see build-next `references/concurrency.md` §Naming). (On Claude Code, this is the Agent tool with `subagent_type: general-purpose`.) One agent = one task. Fill EVERY section of the brief — specific WHAT/WHY beats generic. The subagent sees ONLY the brief: paste actual text (criteria, spec excerpts, invariants, error output), never write "as discussed" or "see above".
@@ -28,7 +35,7 @@ If per-identity brains exist (`.claude/identities/`), prepend the dev role's `RO
 ```
 You are a senior engineer implementing ONE task of <cfg:project.name> (<cfg:project.description>).
 Work strictly TDD. Do NOT touch the project board (the orchestrator owns it).
-Branch already checked out: <branch>.
+Branch already checked out: <branch, in worktree <path> — or "<mainBranch> (work.checkout: main — commit small complete units directly on it as you go; never leave work uncommitted)">.
 
 ## WHAT
 - Task: <id>: <title> (GitHub issue #N)
@@ -49,8 +56,10 @@ Branch already checked out: <branch>.
 3. Tests: unit + integration where a real boundary is crossed. Deterministic time/ids in
    tested paths. <if cfg:methodology.isolationSuite: "Changes touching protected resources
    must add cases under <isolationSuite>.">
-4. Run `<cfg:commands.gate>` until GREEN. Then push the branch and open a PR with body
-   "Closes #N". Report the PR URL.
+4. Run `<cfg:commands.gate>` until GREEN. Then push the branch and mark the already-open
+   draft PR ready (`gh pr ready`) — the orchestrator registered it before you started;
+   never open a second PR. (Under work.checkout: main there is no PR — your commits on
+   <mainBranch> are the deliverable.) Report the PR URL.
    Commit subjects AND the PR title MUST follow the configured convention
    (`<cfg:commit.convention>`, default conventional-commits) — under conventional-commits
    that's a conventional commit line, `type(scope): description`, allowed types

@@ -264,20 +264,25 @@ def main(path):
             if "entityEdgeColor" in neural_view and not isinstance(neural_view["entityEdgeColor"], str):
                 errs.append("neuralView.entityEdgeColor must be a string (\"gradient\" or a CSS color)")
 
-    # work: PR-less local delivery (type) + board-sync batching policy (sync).
-    # Absent == {type: pr}; sync is only meaningful (and only accepted) under
-    # type: local -- see schemas/project-config.schema.json's `work` object.
+    # work: PR-less local delivery (type) + board-sync batching policy (sync)
+    # + checkout placement (#532). Absent == {type: pr, checkout: worktree};
+    # sync is only meaningful (and only accepted) under type: local; checkout
+    # is delivery-agnostic (valid under pr AND local -- it governs WHERE work
+    # happens, type governs HOW it lands) -- see
+    # schemas/project-config.schema.json's `work` object.
     work = cfg.get("work")
     if work is not None:
         if not isinstance(work, dict):
-            errs.append("work: must be a mapping with 'type' and optional 'sync'")
+            errs.append("work: must be a mapping with 'type' and optional 'sync'/'checkout'")
         else:
             for k in work:
-                if k not in ("type", "sync"):
-                    errs.append(f"work.{k}: unknown key (allowed: ['sync', 'type'])")
+                if k not in ("type", "sync", "checkout"):
+                    errs.append(f"work.{k}: unknown key (allowed: ['checkout', 'sync', 'type'])")
             wtype = work.get("type", "pr")
             if "type" in work and work["type"] not in ("pr", "local"):
                 errs.append(f"work.type must be 'pr' or 'local' (got {work.get('type')!r})")
+            if "checkout" in work and work["checkout"] not in ("worktree", "main"):
+                errs.append(f"work.checkout must be 'worktree' or 'main' (got {work.get('checkout')!r})")
             sync = work.get("sync")
             if sync is not None:
                 if wtype != "local":
