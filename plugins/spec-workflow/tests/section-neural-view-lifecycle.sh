@@ -476,7 +476,7 @@ s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 s.bind(("127.0.0.1", int(os.environ["NVBIND_PORT"])))
 s.listen(1)
-time.sleep(20)
+time.sleep(180)   # generous: the sweep imports the engine + runs discovery; a slow CI runner outlived sleep(20) and the fixture died mid-assertion
 PY
 _mzpid=$!
 sleep 0.3   # let the fixture actually bind before stop --force probes it
@@ -505,7 +505,7 @@ s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 s.bind(("127.0.0.1", int(os.environ["NVBIND_PORT"])))
 s.listen(1)
-time.sleep(20)
+time.sleep(180)   # generous lifetime for the same slow-CI reason as the salted fixture above
 PY
 _mfpid=$!
 sleep 0.3
