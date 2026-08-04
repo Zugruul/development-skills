@@ -4,6 +4,7 @@
 # per work.sync.mode's batching cadence (#79).
 #   work-mode.sh type                 # prints pr | local (default: pr)
 #   work-mode.sh sync-mode            # prints realtime | task-close | session-end | manual (default: realtime)
+#   work-mode.sh checkout             # prints worktree | main (default: worktree, #532 — WHERE work happens)
 #   work-mode.sh should-sync <event>  # event in {transition, task-close, session-end, blocked, new-item}
 #                                      # prints "now" or "defer"
 #
@@ -47,9 +48,16 @@ sync_mode() {
     echo "${m:-realtime}"
 }
 
+checkout_mode() {
+    local c
+    c="$(jget work.checkout)"
+    echo "${c:-worktree}"
+}
+
 case "${1:-}" in
     type) work_type ;;
     sync-mode) sync_mode ;;
+    checkout) checkout_mode ;;
     should-sync)
         event="${2:-}"
         case "$event" in
@@ -66,5 +74,5 @@ case "${1:-}" in
             echo "defer"
         fi
         ;;
-    *) echo "usage: work-mode.sh {type|sync-mode|should-sync <event>}" >&2; exit 2 ;;
+    *) echo "usage: work-mode.sh {type|sync-mode|checkout|should-sync <event>}" >&2; exit 2 ;;
 esac

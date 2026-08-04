@@ -183,15 +183,16 @@ def load_config(root=None, path=None, warn=True):
     return _apply_local_overlay(cfg, p)
 
 
-# work.type / work.sync.mode: the only dotted paths with a script-side
-# default resolved by `get` itself (so bash callers never special-case
-# "key absent" -- config.py get work.type always prints a value when a
-# config file exists). See work-mode.sh, which resolves the same pair when
-# NO config file exists at all (this map is only consulted once cfg is
+# work.type / work.sync.mode / work.checkout: the only dotted paths with a
+# script-side default resolved by `get` itself (so bash callers never
+# special-case "key absent" -- config.py get work.type always prints a value
+# when a config file exists). See work-mode.sh, which resolves the same set
+# when NO config file exists at all (this map is only consulted once cfg is
 # already loaded).
 WORK_DEFAULTS = {
     "work.type": "pr",
     "work.sync.mode": "realtime",
+    "work.checkout": "worktree",
 }
 
 

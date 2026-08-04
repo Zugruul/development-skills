@@ -135,8 +135,18 @@
         "work": {
             "type": "object",
             "additionalProperties": false,
-            "description": "PR-less local delivery + board-sync batching policy (SW-079). Absent == { type: pr } (today's default: push a branch, open a GitHub PR, review + merge via gh).",
+            "description": "PR-less local delivery + board-sync batching policy (SW-079) + checkout placement (#532). Absent == { type: pr, checkout: worktree } (today's default: push a branch, open a GitHub PR, review + merge via gh; each task's work happens in its own git worktree, registered up front via a draft PR).",
             "properties": {
+                "checkout": {
+                    "type": "string",
+                    "enum": ["worktree", "main"],
+                    "default": "worktree",
+                    "description": "WHERE a task's work happens (#532) — delivery-agnostic (valid under type: pr and local alike; work.type governs HOW work lands, this governs WHERE it is written). worktree (default, preferred): each task gets its own git worktree + branch, registered BEFORE implementation (empty registration commit, push, draft PR). main: no branch — work lands directly on project.mainBranch; with methodology.maxInProgress > 1 the orchestrator serializes workers' edits and requires complete small commits as the work goes. The build-next/implement-task skills ask which to use once per session (worktree recommended); the in-session answer wins over this recorded preference.",
+                    "enumDescriptions": [
+                        "Each task in its own git worktree + branch; the work is registered up front — branch pushed and draft PR opened (even effectively empty) BEFORE implementation starts.",
+                        "No branch — commits land directly on project.mainBranch; concurrent workers are serialized by the orchestrator (one worker's uncommitted changes at a time, complete small commits as they go)."
+                    ]
+                },
                 "type": {
                     "type": "string",
                     "enum": ["pr", "local"],
