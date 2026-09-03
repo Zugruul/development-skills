@@ -21,7 +21,7 @@ Everything project-specific lives in the consumer repo's **`.claude/project.yaml
 | `queue` | Read-only: renders the upcoming build-next picks (priority-first, with blocked reasons) — never mutates the board |
 | `find-task` | Ranked search of existing board issues (open + closed) by title/body similarity — the read side of dedup |
 | `create-inbound` | Search-first, dedup-gated capture of ad-hoc ideas/bugs/requests — the write side of dedup |
-| `implement-task` | One task: brief a dev subagent (what/how/why), verify, drive the board |
+| `implement-task` | One task: brief a dev subagent (what/how/why), verify, drive the board — accepts a GitHub issue `#N`, or a ClickUp task URL/id when `integrations.clickup` is configured (see "ClickUp task source" below) |
 | `ui-options` | Iterative UI mode: options page with favorite + aspect selection for the human |
 | `refine-task-ui` | Run/resume a task's UI decision to completion, then capture the finalized design as real screenshots folded into the task's issue body with resolved acceptance criteria |
 | `gate` | The single green-before-advance quality command |
@@ -129,6 +129,27 @@ catches it when step 7 was silently skipped. `feedback`, forced externally
 like this, WILL emit an additional record each iteration on top of step 8's
 own — treat that as a deliberate second reflection pass (a meta-process check
 on the loop itself), not a bug; it isn't deduped against step 8's emission.
+
+## ClickUp task source (`integrations.clickup`)
+
+`implement-task` can work a task that lives in ClickUp instead of on the GitHub board: hand it a task URL (`https://app.clickup.com/t/<id>`), `clickup:<id>`, or `CU-<id>`, with this section in `.claude/project.yaml`:
+
+```yaml
+integrations:
+    clickup:
+        enabled: true            # default true when the section exists
+        mcp: clickup             # MCP server whose tools serve ClickUp calls, and/or:
+        apiTokenEnv: CLICKUP_TOKEN  # env var with a personal API token (curl fallback; the value never goes in this file)
+        actions:                 # SAFEGUARDS — every mutation is opt-in; absent map == strictly read-only
+            move: false          # change the task's ClickUp status (via statusMap)
+            comment: false       # post comments (progress, PR link, blockers)
+            assign: false        # change assignees
+        statusMap:               # workflow status -> ClickUp status; only used when actions.move is true;
+            "In progress": "in progress"   # a status missing here is simply never mirrored (per-status opt-in)
+            "In review": "review"
+```
+
+The safeguard contract (full protocol: [`skills/implement-task/references/clickup.md`](./skills/implement-task/references/clickup.md)): reads are always allowed (task body, checklists, comments — human steering, same as issue comments); the ONLY mutations the workflow may ever perform are the three `actions` keys, each defaulting to false; a disallowed action is reported as `CLICKUP SKIPPED (safeguard): ...` and never performed, on any transport; everything else (editing descriptions, creating/deleting tasks, due dates, priority, tags, time tracking) is permanently out of bounds — no config key unlocks it. At least one of `mcp`/`apiTokenEnv` is required while enabled (`validate-config.py` enforces this, plus unknown-key/type/statusMap-vs-statusFlow checks). The rest of the skill — design-doc guard, TDD brief, verify, two-pass review, retro — runs unchanged; branch names use the task id (`cu/<id>-<slug>`), and the PR body links the ClickUp task instead of `Closes #N`.
 
 ## Human steering
 

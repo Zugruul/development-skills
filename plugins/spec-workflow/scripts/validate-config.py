@@ -324,6 +324,58 @@ def main(path):
                 elif not sp.strip():
                     errs.append("commit.systemPrompt: must not be empty")
 
+    # integrations: external task sources (ClickUp today). Absent == none --
+    # additive-only, like work/compute above. Safeguards live in
+    # integrations.clickup.actions: every ClickUp MUTATION (move/comment/
+    # assign) is opt-in and defaults to false, so a bare section is strictly
+    # read-only; statusMap keys must name real statusFlow statuses so an
+    # allowed move can never target a status the workflow doesn't know.
+    integrations = cfg.get("integrations")
+    if integrations is not None:
+        if not isinstance(integrations, dict):
+            errs.append("integrations: must be a mapping (allowed: ['clickup'])")
+        else:
+            for k in integrations:
+                if k != "clickup":
+                    errs.append(f"integrations.{k}: unknown key (allowed: ['clickup'])")
+            cu = integrations.get("clickup")
+            if cu is not None and not isinstance(cu, dict):
+                errs.append("integrations.clickup: must be a mapping "
+                            "(enabled/mcp/apiTokenEnv/actions/statusMap)")
+            elif cu is not None:
+                allowed = ("actions", "apiTokenEnv", "enabled", "mcp", "statusMap")
+                for k in cu:
+                    if k not in allowed:
+                        errs.append(f"integrations.clickup.{k}: unknown key (allowed: {sorted(allowed)})")
+                if "enabled" in cu and not isinstance(cu["enabled"], bool):
+                    errs.append("integrations.clickup.enabled: must be a boolean")
+                for k in ("mcp", "apiTokenEnv"):
+                    if k in cu and (not isinstance(cu[k], str) or not cu[k].strip()):
+                        errs.append(f"integrations.clickup.{k}: must be a non-empty string")
+                if cu.get("enabled") is not False and not (cu.get("mcp") or cu.get("apiTokenEnv")):
+                    errs.append("integrations.clickup: set at least one of 'mcp' or 'apiTokenEnv' "
+                                "(the integration cannot read tasks without a transport)")
+                actions = cu.get("actions")
+                if actions is not None and not isinstance(actions, dict):
+                    errs.append("integrations.clickup.actions: must be a mapping of action -> boolean")
+                elif actions is not None:
+                    known = ("assign", "comment", "move")
+                    for k, v in actions.items():
+                        if k not in known:
+                            errs.append(f"integrations.clickup.actions.{k}: unknown key (allowed: {sorted(known)})")
+                        elif not isinstance(v, bool):
+                            errs.append(f"integrations.clickup.actions.{k}: must be a boolean")
+                sm = cu.get("statusMap")
+                if sm is not None and not (isinstance(sm, dict)
+                                           and all(isinstance(k, str) and isinstance(v, str) for k, v in sm.items())):
+                    errs.append("integrations.clickup.statusMap: must be a map of "
+                                "workflow status (string) -> ClickUp status (string)")
+                elif sm is not None:
+                    flows = {st for b in boards for st in (b.get("statusFlow") or []) if isinstance(b, dict)}
+                    for k in sm:
+                        if flows and k not in flows:
+                            errs.append(f"integrations.clickup.statusMap: '{k}' is not in any board's statusFlow")
+
     # The compute section normally lives in the gitignored machine-local
     # overlay, so validate THAT too when present -- otherwise this block is
     # unreachable in the intended flow and a malformed overlay (roles as a
@@ -394,6 +446,12 @@ def main(path):
         seq = " -> ".join(e["id"] for e in s["epics"])
         print(f"  spec '{s['id']}' [{s['taskPrefix']}] on board '{s['board']}': {s['specPath']}  epics: {seq}")
     print(f"  gate: {cmds.get('gate')}")
+    cu = (cfg.get("integrations") or {}).get("clickup")
+    if isinstance(cu, dict):
+        acts = ",".join(sorted(k for k, v in (cu.get("actions") or {}).items() if v is True)) or "none (read-only)"
+        transport = f"mcp={cu['mcp']}" if cu.get("mcp") else f"api-token-env={cu.get('apiTokenEnv')}"
+        state = "enabled" if cu.get("enabled", True) else "disabled"
+        print(f"  integrations: clickup [{state}] {transport}  allowed actions: {acts}")
     return 0
 
 

@@ -1,6 +1,6 @@
 ---
 name: implement-task
-description: Implements ONE board task end to end — checks for a design-doc guard, briefs a dev subagent with what/how/why under strict TDD, verifies tests-first plus invariants and spec deltas, runs a two-pass review (spec compliance, then code quality), and drives the board throughout. Use when a specific issue #N is picked and ready to build.
+description: Implements ONE board task end to end — checks for a design-doc guard, briefs a dev subagent with what/how/why under strict TDD, verifies tests-first plus invariants and spec deltas, runs a two-pass review (spec compliance, then code quality), and drives the board throughout. Use when a specific issue #N — or a ClickUp task URL/id, if integrations.clickup is configured — is picked and ready to build.
 allowed-tools: Bash
 ---
 
@@ -9,6 +9,8 @@ allowed-tools: Bash
 Pre-start check — run this now, before anything else: `bash "../../scripts/preflight.sh" --spec`. If it prints `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
 You (the orchestrator) do **not** write the implementation. You brief a subagent, verify its result, and keep the board honest. Read `.claude/project.yaml` first — it supplies every `<cfg:...>` value below. `board.sh` = `bash "../../scripts/board.sh"`.
+
+**ClickUp task source**: if the invocation hands a ClickUp task (URL, `clickup:<id>`, or `CU-<id>`) instead of an issue `#N`, follow `references/clickup.md` — it replaces every `board.sh` interaction in this skill with gated ClickUp equivalents. ClickUp mutations are OPT-IN via `<cfg:integrations.clickup.actions>` (absent == strictly read-only: status moves/comments are reported as `CLICKUP SKIPPED (safeguard)`, never performed), reads go through the configured MCP server (`<cfg:integrations.clickup.mcp>`) or the `apiTokenEnv` API fallback, and issue-shaped plumbing (branch name, PR body link, commit scope) uses the ClickUp task id per that reference. Everything else below — design-doc guard, TDD brief, verify, two-pass review, retro — is unchanged.
 
 ## 0. Prep
 1. `board.sh show N` — read body **and all comments** (human steering lives there). If comments change scope: fold them into the body via `board.sh edit-body`, then acknowledge via `board.sh comment` (see `next-task`).

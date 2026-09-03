@@ -213,6 +213,38 @@
                 }
             }
         },
+        "integrations": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "External task sources the workflow can take a task from (ClickUp today). Absent == none (additive-only, like work/compute). A task passed to implement-task by ClickUp URL/id is read from here instead of the GitHub board; the section's `actions` map is the SAFEGUARD contract — every ClickUp mutation is opt-in and defaults to false, so a bare section is strictly read-only and the workflow only ever reports what it WOULD have done.",
+            "properties": {
+                "clickup": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "ClickUp task-source config, read by implement-task's ClickUp route (skills/implement-task/references/clickup.md). At least one of `mcp` or `apiTokenEnv` is required while enabled — without a transport the integration cannot read tasks.",
+                    "properties": {
+                        "enabled": { "type": "boolean", "default": true, "description": "Whether the ClickUp task source is currently offered. false keeps the section on file (transports, safeguards, statusMap) while implement-task refuses ClickUp refs." },
+                        "mcp": { "type": "string", "description": "Name of the MCP server whose tools serve ClickUp reads/writes (e.g. 'clickup' -> tools like mcp__clickup__* under Claude Code; other hosts resolve their own tool naming). Preferred transport when both are set." },
+                        "apiTokenEnv": { "type": "string", "description": "Name of an env var holding a ClickUp personal API token, used for direct https://api.clickup.com/api/v2 calls (curl) when no MCP server is configured or its tools are unavailable. The VALUE never goes in this file — only the env var's name." },
+                        "actions": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "description": "The safeguard contract: which ClickUp MUTATIONS the workflow may perform. Every key defaults to false — absent map == strictly read-only. A disallowed action is never performed silently; the workflow reports it as 'CLICKUP SKIPPED (safeguard): <action>' so the human can do it manually.",
+                            "properties": {
+                                "move": { "type": "boolean", "default": false, "description": "Allow changing a task's ClickUp status (via statusMap). false: status changes are reported as skipped, never applied." },
+                                "comment": { "type": "boolean", "default": false, "description": "Allow posting comments on the ClickUp task (progress notes, PR links, blockers)." },
+                                "assign": { "type": "boolean", "default": false, "description": "Allow changing the task's assignees." }
+                            }
+                        },
+                        "statusMap": {
+                            "type": "object",
+                            "additionalProperties": { "type": "string" },
+                            "description": "Workflow status -> ClickUp status name (e.g. {\"In progress\": \"in progress\", \"In review\": \"review\"}). Only consulted when actions.move is true; keys must name real boards[].statusFlow statuses; a workflow status absent from this map is simply never moved in ClickUp (per-status opt-in on top of the actions.move gate)."
+                        }
+                    }
+                }
+            }
+        },
         "commands": {
             "type": "object",
             "required": ["gate"],
