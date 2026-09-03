@@ -25,6 +25,84 @@ check "legacy reviewModel -> reviewer.models[0]" "sonnet" "$(python3 "$PLUGIN/sc
 check "PROJECT_CONFIG override" "fixture-project" "$(PROJECT_CONFIG="$FIX/valid.project.yaml" python3 "$PLUGIN/scripts/config.py" "$CJ" get project.name)"
 rm -rf "$CJ"
 
+echo "== config.py: .neural-network/ root layout (hard cutover) =="
+NN="$(mktemp -d)"; mkdir -p "$NN/.neural-network"
+cp "$FIX/valid.project.yaml" "$NN/.neural-network/project.yaml"
+check "path resolves .neural-network/project.yaml" ".neural-network/project.yaml" "$(python3 "$PLUGIN/scripts/config.py" "$NN" path)"
+check "get works from new layout" "fixture-project" "$(python3 "$PLUGIN/scripts/config.py" "$NN" get project.name)"
+cp "$FIX/valid.project.json" "$NN/.neural-network/project.json"
+check "yaml preferred over json in new layout" ".neural-network/project.yaml" "$(python3 "$PLUGIN/scripts/config.py" "$NN" path)"
+rm -rf "$NN"
+NNJ="$(mktemp -d)"; mkdir -p "$NNJ/.neural-network"
+cp "$FIX/valid.project.json" "$NNJ/.neural-network/project.json"
+check "legacy json format still read from .neural-network/" "project.json" "$(python3 "$PLUGIN/scripts/config.py" "$NNJ" path 2>/dev/null)"
+rm -rf "$NNJ"
+OLD="$(mktemp -d)"; mkdir -p "$OLD/.claude"
+cp "$FIX/valid.project.yaml" "$OLD/.claude/project.yaml"
+check "old .claude/project.yaml location NOT resolved (hard cutover)" "" "$(python3 "$PLUGIN/scripts/config.py" "$OLD" path)"
+rm -rf "$OLD"
+
+echo "== discovery: .neural-network/ DIRECTORY is the marker (hard cutover) =="
+DM="$(mktemp -d)"; mkdir -p "$DM/.neural-network"
+out="$(PLUGIN_SCRIPTS="$PLUGIN/scripts" python3 -c '
+import os, sys
+sys.path.insert(0, os.environ["PLUGIN_SCRIPTS"])
+from assistant import discovery
+print(discovery.classify_repo(sys.argv[1]).kind)
+' "$DM")"
+check "marker dir + no config classifies past no-marker" "no-config" "$out"
+rm -rf "$DM"
+FM="$(mktemp -d)"; mkdir -p "$FM/.claude"
+echo "# marker" > "$FM/.claude/.neural-network"
+out="$(PLUGIN_SCRIPTS="$PLUGIN/scripts" python3 -c '
+import os, sys
+sys.path.insert(0, os.environ["PLUGIN_SCRIPTS"])
+from assistant import discovery
+print(discovery.classify_repo(sys.argv[1]).kind)
+' "$FM")"
+check "legacy .claude/.neural-network file alone is NOT a marker" "no-marker" "$out"
+rm -rf "$FM"
+
+echo "== config.py: nested .neural-network (monorepo, native folders only) =="
+MR="$(mktemp -d)"
+mkdir -p "$MR/.neural-network" "$MR/services/api/.neural-network" "$MR/services/ext/.neural-network" "$MR/services/ext/.git"
+cp "$FIX/valid.project.yaml" "$MR/.neural-network/project.yaml"
+cat > "$MR/services/api/.neural-network/project.yaml" <<'YAML'
+commands:
+    gate: "api-gate"
+paths:
+    designDir: services/api/docs/design
+YAML
+cp "$MR/services/api/.neural-network/project.yaml" "$MR/services/ext/.neural-network/project.yaml"
+check "root resolution unchanged with no --for" "true" "$(python3 "$PLUGIN/scripts/config.py" "$MR" get commands.gate)"
+check "--for a nested path: nested key wins" "api-gate" "$(python3 "$PLUGIN/scripts/config.py" "$MR" get commands.gate --for services/api/src/x.py)"
+check "--for a nested path: inherited key still from root" "fixture-project" "$(python3 "$PLUGIN/scripts/config.py" "$MR" get project.name --for services/api/src/x.py)"
+check "--for a nested path: nested deep-merge only touches its keys" "docs/handoffs" "$(python3 "$PLUGIN/scripts/config.py" "$MR" get paths.handoffDir --for services/api/src/x.py)"
+check "--for a path outside any nested anchor: root config" "true" "$(python3 "$PLUGIN/scripts/config.py" "$MR" get commands.gate --for docs/README.md)"
+check "--for inside a non-native repo (own .git): nested anchor IGNORED" "true" "$(python3 "$PLUGIN/scripts/config.py" "$MR" get commands.gate --for services/ext/src/x.py)"
+check "anchors verb lists native nested anchors" "services/api" "$(python3 "$PLUGIN/scripts/config.py" "$MR" anchors)"
+out="$(python3 "$PLUGIN/scripts/config.py" "$MR" anchors)"
+check_absent "anchors verb skips non-native (own .git) anchors" "services/ext" "$out"
+rm -rf "$MR"
+
+echo "== validate-config: --fragment (nested partial config) =="
+FR="$(mktemp -d)"
+cat > "$FR/fragment.yaml" <<'YAML'
+commands:
+    gate: "api-gate"
+YAML
+out="$(python3 "$PLUGIN/scripts/validate-config.py" --fragment "$FR/fragment.yaml")"
+check "fragment: partial config valid with --fragment" "VALID" "$out"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FR/fragment.yaml" || true)"
+check "fragment without --fragment still INVALID (missing required keys)" "INVALID" "$out"
+cat > "$FR/bad-fragment.yaml" <<'YAML'
+work:
+    type: "carrier-pigeon"
+YAML
+out="$(python3 "$PLUGIN/scripts/validate-config.py" --fragment "$FR/bad-fragment.yaml" || true)"
+check "fragment: shape checks still enforced" "work.type must be 'pr' or 'local'" "$out"
+rm -rf "$FR"
+
 echo "== validate-config =="
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/valid.project.yaml")"
 check "valid yaml passes" "VALID: " "$out"
