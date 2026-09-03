@@ -11,8 +11,8 @@ allowed-tools: Bash
 ## Bare invocation (status)
 Regenerate and show the map, plus how many notes each role holds:
 ```bash
-brain.sh directory && cat .claude/identities/DIRECTORY.md
-for d in .claude/identities/*/brain/notes; do echo "$(dirname "$(dirname "$d")" | xargs basename): $(ls "$d" 2>/dev/null | wc -l | tr -d ' ') note(s)"; done
+brain.sh directory && cat .neural-network/identities/DIRECTORY.md
+for d in .neural-network/identities/*/brain/notes; do echo "$(dirname "$(dirname "$d")" | xargs basename): $(ls "$d" 2>/dev/null | wc -l | tr -d ' ') note(s)"; done
 ```
 
 ## Subcommands
@@ -32,7 +32,7 @@ status <role>                      # per-role note listing (same lines as direct
                                    # compact outcome tally per note (`3✓ 1✗ 1⚠`) when it has
                                    # recorded outcomes; a note with no outcomes renders
                                    # identically to directory's line for it
-entity-index                       # regenerate .claude/identities/entity-index.json from every role's
+entity-index                       # regenerate .neural-network/identities/entity-index.json from every role's
                                    # entities: frontmatter (frontmatter-only, derived, commit it like
                                    # DIRECTORY.md); symlinked notes attribute to their physical home role
                                    # only. Never read by recall/query — a whole-brain/visualization join

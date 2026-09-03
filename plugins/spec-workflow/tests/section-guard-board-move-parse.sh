@@ -27,9 +27,9 @@ echo "== guard-board-move.sh parser: heredoc/stdin bodies are DATA, not command 
 
 GBMP_T="$(mktemp -d)"
 ( cd "$GBMP_T" && git init -q . && git commit -q --allow-empty -m init )
-mkdir -p "$GBMP_T/.claude"
+mkdir -p "$GBMP_T/.claude" "$GBMP_T/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$GBMP_T/.claude/project.json"
+    "$FIX/valid.project.json" "$GBMP_T/.neural-network/project.json"
 
 # Build multi-line command strings containing literal apostrophes/quotes as
 # TEST DATA via $'...' ANSI-C quoting (every apostrophe explicitly escaped

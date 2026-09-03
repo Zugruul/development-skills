@@ -61,8 +61,11 @@ ScanResult = collections.namedtuple("ScanResult", ["repos", "candidates", "outco
 
 
 def classify_repo(root):
-    marker_path = os.path.join(root, ".claude", MARKER_NAME)
-    if not os.path.isfile(marker_path):
+    # The marker is the root-level .neural-network/ DIRECTORY itself (it also
+    # holds project.yaml + the knowledge bases). The pre-cutover
+    # .neural-network marker FILE is no longer recognized.
+    marker_path = os.path.join(root, MARKER_NAME)
+    if not os.path.isdir(marker_path):
         return Classification("no-marker", None, "no .neural-network marker present")
 
     try:

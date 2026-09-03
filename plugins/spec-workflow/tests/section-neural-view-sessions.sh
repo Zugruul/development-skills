@@ -12,8 +12,8 @@ NVS_CLAUDE="$(mktemp -d)"
 NVS_JOBS="$NVS_CLAUDE/jobs"
 mkdir -p "$NVS_JOBS/job-working" "$NVS_JOBS/job-recent-done" "$NVS_JOBS/job-stale-done" "$NVS_JOBS/job-unmatched-repo"
 NVS_REPO="$(mktemp -d)"
-mkdir -p "$NVS_REPO/.claude"
-: >"$NVS_REPO/.claude/.neural-network"
+mkdir -p "$NVS_REPO/.claude" "$NVS_REPO/.neural-network"
+: >"$NVS_REPO/.neural-network"
 cat >"$NVS_JOBS/job-working/state.json" <<EOF
 {"state":"working","cwd":"$NVS_REPO","name":"messaging","createdAt":"2026-07-07T10:00:00Z","updatedAt":"2026-07-07T10:05:00Z"}
 EOF

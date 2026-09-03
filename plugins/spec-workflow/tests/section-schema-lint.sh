@@ -4,7 +4,7 @@
 # _lib.sh (check/check_rc/check_absent) and set HERE/PLUGIN/FIX/fails/flaky
 # before sourcing this file. Covers #80: the WHOLE project-config schema is
 # hover-complete (editor hover via the `yaml-language-server: $schema=` line
-# atop .claude/project.yaml shows every key's description/enum values/
+# atop .neural-network/project.yaml shows every key's description/enum values/
 # defaults). This is the ONE canonical schema-lint check -- section-work-mode.sh
 # used to carry a work.*-only hand-rolled copy of this same idea; it now
 # points here instead of duplicating it.

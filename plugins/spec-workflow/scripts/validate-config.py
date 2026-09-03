@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate a spec-workflow project config with actionable error messages.
 
-Usage: validate-config.py <path-to-.claude/project.yaml (or legacy .json)>
+Usage: validate-config.py <path-to-.neural-network/project.yaml (or legacy .json)>
 Exit 0 = valid (prints a summary); exit 1 = invalid (prints every problem found).
 YAML (schemaVersion 2) is the current format; legacy JSON (schemaVersion 1, with
 the old delegation.devModel/reviewModel/prReviewModel keys) still validates as v1
@@ -18,12 +18,18 @@ from assistant import config as AC  # noqa: E402  (assistant: section schema, AS
 
 errs = []
 
+# --fragment: validating a nested anchor's PARTIAL project.yaml (monorepo
+# nesting — the root config supplies everything the fragment omits), so
+# missing required keys are fine; shape checks on present keys still run.
+FRAGMENT = False
+
 CODEX_CAPABILITIES = {"fast", "balanced", "deep-review", "large-context"}
 
 
 def need(obj, key, typ, where):
     if key not in obj:
-        errs.append(f"{where}: missing required key '{key}'")
+        if not FRAGMENT:
+            errs.append(f"{where}: missing required key '{key}'")
         return None
     if typ and not isinstance(obj[key], typ):
         errs.append(f"{where}.{key}: expected {typ.__name__}, got {type(obj[key]).__name__}")
@@ -58,7 +64,7 @@ def main(path):
     # YAML is schemaVersion 2 (current); legacy .json is schemaVersion 1.
     legacy = path.endswith(".json")
     want_version = 1 if legacy else 2
-    if cfg.get("schemaVersion") != want_version:
+    if cfg.get("schemaVersion") != want_version and not (FRAGMENT and "schemaVersion" not in cfg):
         errs.append(f"schemaVersion must be {want_version} (got {cfg.get('schemaVersion')!r})")
 
     proj = need(cfg, "project", dict, "$") or {}
@@ -383,10 +389,13 @@ def main(path):
             print(f"  - {e}")
         return 1
 
+    if FRAGMENT:
+        print(f"VALID (fragment): {path}")
+        return 0
     print(f"VALID: {path}")
     if legacy:
         print("  NOTE: legacy schemaVersion 1 JSON — still accepted, but migrate to "
-              ".claude/project.yaml (schemaVersion 2); the setup-project skill converts it.")
+              ".neural-network/project.yaml (schemaVersion 2); the setup-project skill converts it.")
     print(f"  project: {proj.get('name')}  main={proj.get('mainBranch')}  branches={proj.get('branchPattern')}")
     for b in boards:
         print(f"  board '{b['id']}': {b['repo']} project #{b['projectNumber']}  flow: {' -> '.join(b['statusFlow'])}")
@@ -398,5 +407,9 @@ def main(path):
 
 
 if __name__ == "__main__":
-    default = ".claude/project.yaml" if os.path.exists(".claude/project.yaml") else ".claude/project.json"
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else default))
+    args = sys.argv[1:]
+    if "--fragment" in args:
+        FRAGMENT = True
+        args.remove("--fragment")
+    default = ".neural-network/project.yaml" if os.path.exists(".neural-network/project.yaml") else ".neural-network/project.json"
+    sys.exit(main(args[0] if args else default))

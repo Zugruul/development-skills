@@ -88,9 +88,9 @@ rm -rf "$gs_d"
 
 # --- 5. track-path warning fires on this repo's feedbacks rule ---------------
 gs_d="$(mktemp -d)"; gs_gi="$gs_d/.gitignore"
-printf '%s\n' ".claude/feedbacks/" > "$gs_gi"
+printf '%s\n' ".neural-network/feedbacks/" > "$gs_gi"
 gs_warn="$(bash "$GS_SCRIPT" "$gs_gi" 2>&1 >/dev/null)"
-check "gitignore-sync: track warning names the feedbacks path" ".claude/feedbacks/" "$gs_warn"
+check "gitignore-sync: track warning names the feedbacks path" ".neural-network/feedbacks/" "$gs_warn"
 check "gitignore-sync: track warning is flagged WARNING" "WARNING" "$gs_warn"
 # the block is still written normally despite the warning (rc 0, not an error)
 bash "$GS_SCRIPT" "$gs_gi" >/dev/null 2>&1

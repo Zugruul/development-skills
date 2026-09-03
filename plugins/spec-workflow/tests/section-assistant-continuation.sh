@@ -14,8 +14,8 @@ AC_SCRIPTS="$PLUGIN/scripts"
 # section-assistant-distill.sh's ad_repo fixture pattern.
 ac_repo() {
     local dir="$1" main="$2"
-    mkdir -p "$dir/.claude"
-    printf "%s\n" "# neural-network" >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf "%s\n" "# neural-network" >"$dir/.neural-network/marker"
     printf "%s\n" \
         "schemaVersion: 2" \
         "assistant:" \
@@ -32,7 +32,7 @@ ac_repo() {
         "            enabled: true" \
         "            provisioning:" \
         "                bin: codex" \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 
 # ------------------------------------------------------------------------
@@ -52,7 +52,7 @@ import brain
 root_a = os.environ["MA"]
 root_b = os.environ["MB"]
 state_dir = os.environ["STATE"]
-identities_a = os.path.join(root_a, ".claude", "identities")
+identities_a = os.path.join(root_a, ".neural-network", "identities")
 
 def stub_complete(context, **kwargs):
     return {"text": "reply about rocket telemetry systems", "usage": None, "timings": None}
@@ -112,7 +112,7 @@ while time.monotonic() < deadline:
     time.sleep(0.2)
 print("MINTED_WHILE_INACTIVE", minted)
 
-events_path = os.path.join(root_a, ".claude", "brain-events.jsonl")
+events_path = os.path.join(root_a, ".neural-network", "brain-events.jsonl")
 events_text = open(events_path, encoding="utf-8").read() if os.path.exists(events_path) else ""
 print("BRAIN_EVENT_WHILE_INACTIVE", '"type": "NoteMinted"' in events_text)
 

@@ -8,9 +8,9 @@ declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tes
 echo "== comment steering (#234, CDX-031 gap #2: human-issue-comment read enforced before In-progress move) =="
 T4P="$(mktemp -d)"
 ( cd "$T4P" && git init -q . && git commit -q --allow-empty -m init )
-mkdir -p "$T4P/.claude"
+mkdir -p "$T4P/.claude" "$T4P/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$T4P/.claude/project.json"
+    "$FIX/valid.project.json" "$T4P/.neural-network/project.json"
 
 # Fake `gh`: a real fixture-project item exists for #9. `project item-edit`
 # touches MUTATION_MARKER; `issue view` (used by `show`) returns a minimal

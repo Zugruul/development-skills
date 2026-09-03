@@ -7,16 +7,16 @@ lesson (a per-PR insight minted into a role's brain). The feed is retro
 INPUT: items routed `brain-note` are minted by the existing retro protocol
 (`brain.py mint`), never by this script.
 
-Config — `methodology.feedback` in `.claude/project.yaml`:
+Config — `methodology.feedback` in `.neural-network/project.yaml`:
     feedback: true                    # shorthand for the defaults below
     feedback:                         # expanded form
         enabled: true
-        feed: .claude/feedbacks/feed.yaml  # relative to repo root
+        feed: .neural-network/feedbacks/feed.yaml  # relative to repo root
         roles: [orchestrator]
         autoTriage: false             # routing creates board items -> explicit consent
 Absent key = disabled. Unknown keys are rejected by validate-config.py.
 
-The feed lives under `.claude/feedbacks/` (plural) — a tracked, orchestrator-
+The feed lives under `.neural-network/feedbacks/` (plural) — a tracked, orchestrator-
 mediated archive: committed and pushed alongside code by default (opt out via
 the repo's own .gitignore), and never read or written by dev/reviewer
 subagents, same isolation as the identity brains. See the `feedback` skill
@@ -32,7 +32,7 @@ migration message instead of silently starting a fresh, empty archive that
 would orphan the old history. An explicit `feed` override bypasses the guard
 entirely — the override is trusted at face value.
 
-Feed format — `.claude/feedbacks/feed.yaml` is a sequence of `---`-separated
+Feed format — `.neural-network/feedbacks/feed.yaml` is a sequence of `---`-separated
 YAML documents, one per emitted record:
 
     schemaVersion: 1
@@ -79,7 +79,7 @@ one place a task ref belongs (they are NOT bound by the generalization ban
 above). A bare `#N` there is ambiguous once an archive spans multiple
 projects, so `emit` and `route` normalize every bare `#N` in those two
 fields to `<project.name>#N`, where `project.name` comes from THIS repo's
-own `.claude/project.yaml` (the emitting project) — never from the record
+own `.neural-network/project.yaml` (the emitting project) — never from the record
 itself. A ref already qualified by ANY project (`<slug>#N`, slug = a run of
 word/hyphen characters immediately before the `#`, no intervening
 whitespace) passes through verbatim — qualification never rewrites another
@@ -102,7 +102,7 @@ the same feed can race.
 
 Feed lifecycle: emit -> route -> archive. Once every item in a document has
 been routed, `archive` moves that document out of the active feed and into
-`.claude/feedbacks/archive/<YYYY-MM>.yaml` (month taken from the document's
+`.neural-network/feedbacks/archive/<YYYY-MM>.yaml` (month taken from the document's
 own `ts`), keeping the active feed small while the archived record remains
 on disk as queryable episodic history. Archiving never rewrites the moved
 bytes through yaml.dump -- the document's raw text, exactly as it sat in the
@@ -118,7 +118,7 @@ CLI:
                                                             # in the feed (sw-089)
     feedback.py <root> archive                             # move fully-routed
                                                             # documents to
-                                                            # .claude/feedbacks/
+                                                            # .neural-network/feedbacks/
                                                             # archive/<YYYY-MM>.yaml
     feedback.py <root> archived [--since YYYY-MM]          # list archived
                                                             # items (same
@@ -144,7 +144,7 @@ ACTIONS = {"backlog", "brain-note", "graduate", "upstream", "ignore"}
 
 DEFAULTS = {
     "enabled": False,
-    "feed": ".claude/feedbacks/feed.yaml",
+    "feed": ".neural-network/feedbacks/feed.yaml",
     "roles": ["orchestrator"],
     "autoTriage": False,
 }
@@ -538,7 +538,7 @@ def cmd_migrate_qualify(root):
     cfg = C.load_config(root, warn=False)
     project_name = C.dig(cfg, "project.name") if cfg else None
     if not project_name:
-        print("ERROR: project.name is not set in .claude/project.yaml — cannot qualify refs")
+        print("ERROR: project.name is not set in .neural-network/project.yaml — cannot qualify refs")
         return 1
     fcfg, feed_overridden = parse_feedback_cfg(cfg)
     guard_err = _legacy_guard_error(root, fcfg, feed_overridden)
@@ -596,7 +596,7 @@ def _atomic_write_bytes(path, data):
 
 def cmd_archive(root):
     """Move every feed document whose items are ALL routed (non-empty
-    `routing.action`) into .claude/feedbacks/archive/<YYYY-MM>.yaml, month
+    `routing.action`) into .neural-network/feedbacks/archive/<YYYY-MM>.yaml, month
     taken from the document's own `ts`. A document with zero items, or with
     at least one unrouted item, is left in the feed untouched.
 

@@ -16,8 +16,8 @@ SA_SCRIPT="$PLUGIN/scripts/setup-assistant.sh"
 ad_repo() {
     local dir="$1" main="$2"
     shift 2
-    mkdir -p "$dir/.claude"
-    printf '%s\n' '# neural-network' >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf '%s\n' '# neural-network' >"$dir/.neural-network/marker"
     local names="$main"
     local a
     for a in "$@"; do
@@ -39,7 +39,7 @@ ad_repo() {
         '            enabled: true' \
         '            provisioning:' \
         '                bin: codex' \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 
 # ad_resolve <state-dir> [--flag NAME] <root>... -- runs the resolve verb.
@@ -234,7 +234,7 @@ else
 fi
 check "stored default: git check-ignore confirms it is gitignored (never a tracked file)" "ignored" "$r"
 check_absent "stored default: assistant-default never appears in project.yaml" \
-    "assistant-default" "$(cat "$ad_a/.claude/project.yaml")"
+    "assistant-default" "$(cat "$ad_a/.neural-network/project.yaml")"
 rm -rf "$ad_a"
 
 # ------------------------------------------------------------ atomic write: no partial/temp file left behind

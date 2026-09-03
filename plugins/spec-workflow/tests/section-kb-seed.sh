@@ -17,7 +17,7 @@ BRAIN_PY="$PLUGIN/scripts/brain.py"
 # assertions below stay readable.
 _kbs_fixture() {
     local d="$1"
-    mkdir -p "$d/docs/design" "$d/docs/spec-deltas/applied" "$d/.claude"
+    mkdir -p "$d/docs/design" "$d/docs/spec-deltas/applied" "$d/.claude" "$d/.neural-network"
     (
         cd "$d" || exit 1
         git init -q
@@ -53,7 +53,7 @@ sections: ["§1"]
 ## §1 -- ADDED
 text
 EOF
-        cat > .claude/project.yaml <<'EOF'
+        cat > .neural-network/project.yaml <<'EOF'
 schemaVersion: 2
 project:
     name: kbs-fixture/proj
@@ -77,7 +77,7 @@ EOF
     )
 }
 
-_kbs_sha() { find "$1/.claude/identities" -type f 2>/dev/null | LC_ALL=C sort | xargs shasum -a 256 2>/dev/null; }
+_kbs_sha() { find "$1/.neural-network/identities" -type f 2>/dev/null | LC_ALL=C sort | xargs shasum -a 256 2>/dev/null; }
 
 # --------------------------------------------------------- AC1: golden seed
 KB1="$(mktemp -d)"
@@ -85,7 +85,7 @@ _kbs_fixture "$KB1"
 out="$(python3 "$KBS_PY" "$KB1" seed; echo "rc=$?")"
 check "seed: exits 0" "rc=0" "$out"
 check "seed: summary reports 9 created" "9 created" "$out"
-KB1_NOTES="$KB1/.claude/identities/knowledge/brain/notes"
+KB1_NOTES="$KB1/.neural-network/identities/knowledge/brain/notes"
 for slug in spec-sw backlog-sw epic-sw-e0 design-foo design-bar spec-delta-1 doc-readme project-layout git-history; do
     if [[ -f "$KB1_NOTES/$slug.md" ]]; then
         echo "ok   seed: notes/$slug.md exists"
@@ -102,7 +102,7 @@ check "seed: spec-sw tagged with the spec id" "tags: [spec, sw]" "$SPEC_NOTE"
 check "seed: spec-sw body reflects the source file's headers" "## Section A" "$SPEC_NOTE"
 EPIC_NOTE="$(cat "$KB1_NOTES/epic-sw-e0.md" 2>/dev/null)"
 check "seed: epic note names the epic id, title, spec and task range" "Epic E0 — Foo epic (spec sw, tasks 1-9)" "$EPIC_NOTE"
-check "brain.sh directory: knowledge role listed" "## knowledge" "$(bash "$PLUGIN/scripts/brain.sh" "$KB1" directory 2>&1; cat "$KB1/.claude/identities/DIRECTORY.md" 2>/dev/null)"
+check "brain.sh directory: knowledge role listed" "## knowledge" "$(bash "$PLUGIN/scripts/brain.sh" "$KB1" directory 2>&1; cat "$KB1/.neural-network/identities/DIRECTORY.md" 2>/dev/null)"
 
 # ---------------------------------------------------- AC2: idempotent no-op
 _kbs_sha "$KB1" > "$KB1/before.sha"

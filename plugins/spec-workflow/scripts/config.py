@@ -1,31 +1,50 @@
 #!/usr/bin/env python3
 """config.py — the ONE shared config loader for the spec-workflow plugin.
 
-Consumer repos declare config in `.claude/project.yaml` (schemaVersion 2). This
-module finds it, parses it (PyYAML), and normalizes legacy `.claude/project.json`
-(schemaVersion 1) to the v2 shape in memory so every script sees one shape.
+Consumer repos declare config in `.neural-network/project.yaml` (schemaVersion 2)
+at the repo root — the `.neural-network/` directory is also the discovery marker
+and holds the repo's knowledge bases (identities/, feedbacks/, brain-events.jsonl,
+plus the gitignored project.local.yaml overlay). This module finds the config,
+parses it (PyYAML), and normalizes legacy `project.json` (schemaVersion 1) to the
+v2 shape in memory so every script sees one shape.
+
+Monorepo nesting: a NATIVE subfolder (one with no .git of its own between it and
+the root — externally cloned-in repos are never nested) may carry its own
+`.neural-network/` with a PARTIAL project.yaml. The root config is the source of
+truth; for work under that subtree the nested keys deep-merge OVER the root
+(dicts merge per key, nested wins on scalars/lists), everything else inherited.
 
 Library:
-    load_config(root=None, path=None) -> dict | None
-        Resolution order: explicit `path` > $PROJECT_CONFIG > <root>/.claude/project.yaml
-        > <root>/.claude/project.json. Returns None when no config file exists.
+    load_config(root=None, path=None, for_path=None) -> dict | None
+        Resolution order: explicit `path` > $PROJECT_CONFIG >
+        <root>/.neural-network/project.yaml > .../project.json. Returns None when
+        no config file exists. `for_path` (repo-relative) additionally deep-merges
+        the nearest native nested anchor's fragment over the root config.
         Legacy json (or schemaVersion 1) is normalized to v2 and emits ONE
         deprecation line to stderr. Raises ConfigError on parse failure. If a
         .yaml file is present but PyYAML is not installed, prints the PREFLIGHT
         FAIL line and exits 1 (a hard environment failure, by design).
     find_config(root=None) -> str | None    # resolved path, no parse
+    find_anchors(root) -> [relpath, ...]    # native nested .neural-network dirs
+    anchor_for(root, relpath) -> str | None # deepest native anchor covering relpath
+    deep_merge(base, over) -> dict          # per-key dict merge, `over` wins on leaves
 
 CLI (for bash callers):
     config.py <root> path                        # print resolved config path (empty if none)
-    config.py <root> get <dot.path>              # print a value (empty if absent); list/dict -> JSON
+    config.py <root> get <dot.path> [--for <p>]  # print a value (empty if absent); list/dict -> JSON
     config.py <root> set <dot.path> <json-value> # surgically set a key (YAML: only that key's
                                                  #   line changes — comments/formatting survive)
-    config.py <root> json                        # print the whole normalized config as JSON
+    config.py <root> json [--for <p>]            # print the whole normalized config as JSON
+    config.py <root> anchors                     # print native nested anchor dirs, one per line
 Dot paths index lists by integer segment, e.g. delegation.identities.dev.0.models.1.
+`--for <repo-relative path>` resolves through the nested anchor covering that path.
 """
 import json
 import os
 import sys
+
+# The one canonical name for the config/knowledge directory AND discovery marker.
+CONFIG_DIR = ".neural-network"
 
 YAML_MISSING = "PREFLIGHT FAIL: PyYAML required — pip3 install pyyaml"
 
@@ -44,12 +63,67 @@ def find_config(root=None):
     env = os.environ.get("PROJECT_CONFIG")
     if env:
         return env if os.path.exists(env) else None
-    base = os.path.join(root or ".", ".claude")
+    base = os.path.join(root or ".", CONFIG_DIR)
     for name in ("project.yaml", "project.yml", "project.json"):
         p = os.path.join(base, name)
         if os.path.exists(p):
             return p
     return None
+
+
+# --- monorepo nesting (native folders only) ---------------------------------
+# A nested anchor is a subdirectory carrying its own .neural-network/ dir.
+# NATIVE means no .git boundary between the root and the anchor: a repo cloned
+# INSIDE the monorepo (its own .git dir or file) is a separate project and is
+# never treated as nested — its subtree is skipped entirely.
+_WALK_PRUNE = {".git", "node_modules", ".claude", CONFIG_DIR}
+
+
+def find_anchors(root):
+    """Repo-relative dirs (sorted) of native nested .neural-network anchors."""
+    root = root or "."
+    anchors = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        if dirpath != root and (".git" in dirnames or ".git" in filenames):
+            dirnames[:] = []  # non-native subtree: never descend
+            continue
+        if dirpath != root and CONFIG_DIR in dirnames:
+            anchors.append(os.path.relpath(dirpath, root))
+        dirnames[:] = [d for d in dirnames if d not in _WALK_PRUNE]
+    return sorted(anchors)
+
+
+def anchor_for(root, relpath):
+    """Deepest native anchor whose dir contains `relpath`. None if none does."""
+    if not relpath:
+        return None
+    norm = os.path.normpath(relpath)
+    if os.path.isabs(norm) or norm.startswith(os.pardir):
+        return None
+    best = None
+    node = os.path.dirname(norm)
+    parts = [p for p in node.split(os.sep) if p and p != "."]
+    # Walk root -> deeper; stop at the first .git boundary (non-native below it).
+    cur = root or "."
+    rel = ""
+    for part in parts:
+        cur = os.path.join(cur, part)
+        rel = os.path.join(rel, part) if rel else part
+        if os.path.isdir(os.path.join(cur, ".git")) or os.path.isfile(os.path.join(cur, ".git")):
+            break  # cloned-in repo: nothing at or below this dir is native
+        if os.path.isdir(os.path.join(cur, CONFIG_DIR)):
+            best = rel
+    return best
+
+
+def deep_merge(base, over):
+    """Per-key recursive dict merge; `over` wins on scalars and lists."""
+    if not isinstance(base, dict) or not isinstance(over, dict):
+        return over
+    out = dict(base)
+    for k, v in over.items():
+        out[k] = deep_merge(base[k], v) if k in base and isinstance(base.get(k), dict) and isinstance(v, dict) else v
+    return out
 
 
 def _parse(path):
@@ -141,7 +215,7 @@ def normalize(cfg):
     return cfg, warnings
 
 
-# .claude/project.local.yaml — OPTIONAL machine-local overlay, gitignored
+# .neural-network/project.local.yaml — OPTIONAL machine-local overlay, gitignored
 # (see local-state.manifest). Only the keys listed here are read from it,
 # local winning over project.yaml; every other key in the local file is
 # deliberately ignored so a gitignored file can never silently override
@@ -164,8 +238,12 @@ def _apply_local_overlay(cfg, cfg_path):
     return cfg
 
 
-def load_config(root=None, path=None, warn=True):
-    """Load + normalize the config. None if no file. Raises ConfigError on parse error."""
+def load_config(root=None, path=None, warn=True, for_path=None):
+    """Load + normalize the config. None if no file. Raises ConfigError on parse error.
+
+    `for_path` (repo-relative): deep-merge the nearest native nested anchor's
+    partial config over the root config for work under that subtree.
+    """
     p = path or find_config(root)
     if not p or not os.path.exists(p):
         return None
@@ -175,12 +253,22 @@ def load_config(root=None, path=None, warn=True):
         if warn:
             rel = os.path.basename(p)
             sys.stderr.write(
-                f"DEPRECATION: .claude/{rel} (schemaVersion 1) is legacy — migrate to "
-                ".claude/project.yaml (schemaVersion 2); the setup-project skill converts it.\n"
+                f"DEPRECATION: {CONFIG_DIR}/{rel} (schemaVersion 1) is legacy — migrate to "
+                f"{CONFIG_DIR}/project.yaml (schemaVersion 2); the setup-project skill converts it.\n"
             )
             for w in warnings:
                 sys.stderr.write(f"  note: {w}\n")
-    return _apply_local_overlay(cfg, p)
+    cfg = _apply_local_overlay(cfg, p)
+    if for_path and not path:  # explicit `path` bypasses nesting (caller chose the file)
+        anchor = anchor_for(root, for_path)
+        if anchor:
+            for name in ("project.yaml", "project.yml", "project.json"):
+                fp = os.path.join(root or ".", anchor, CONFIG_DIR, name)
+                if os.path.exists(fp):
+                    fragment = _apply_local_overlay(_parse(fp), fp)
+                    cfg = deep_merge(cfg, fragment)
+                    break
+    return cfg
 
 
 # work.type / work.sync.mode / work.checkout: the only dotted paths with a
@@ -334,14 +422,28 @@ def set_config(path, dotpath, value):
 
 
 def _cli(argv):
+    # --for <repo-relative path>: nested-anchor resolution for get/json (stripped
+    # here so verb parsing below stays positional).
+    for_path = None
+    if "--for" in argv:
+        i = argv.index("--for")
+        if i + 1 >= len(argv):
+            sys.stderr.write("config.py: --for requires a repo-relative path\n")
+            return 2
+        for_path = argv[i + 1]
+        argv = argv[:i] + argv[i + 2:]
     if len(argv) < 2:
-        sys.stderr.write("usage: config.py <root> {path|get <dot.path>|set <dot.path> <json-value>|json}\n")
+        sys.stderr.write("usage: config.py <root> {path|get <dot.path>|set <dot.path> <json-value>|json|anchors} [--for <path>]\n")
         return 2
     root, verb = argv[0], argv[1]
     if verb == "path":
         p = find_config(root)
         if p:
             print(p)
+        return 0
+    if verb == "anchors":
+        for a in find_anchors(root):
+            print(a)
         return 0
     if verb == "set":
         if len(argv) < 4:
@@ -359,7 +461,7 @@ def _cli(argv):
         set_config(p, argv[2], value)
         return 0
     try:
-        cfg = load_config(root)
+        cfg = load_config(root, for_path=for_path)
     except ConfigError as e:
         sys.stderr.write(f"PREFLIGHT FAIL: {e} — STOP: fix the config, then re-run.\n")
         return 1

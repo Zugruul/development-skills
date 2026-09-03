@@ -38,15 +38,15 @@ this is the only remotely destructive path in an otherwise read-only tool.
 Repo discovery (both apply; results are deduped and sorted by repo name):
   - --dir / $NEURAL_VIEW_DIR: that root is ALWAYS included, marker or not.
   - Scan base (--scan, else $NEURAL_VIEW_SCAN, else ~/Development): every
-    immediate child directory that has a <child>/.claude/.neural-network
+    immediate child directory that has a <child>/.neural-network
     marker FILE is included. Directories without the marker are ignored,
     even if they have brains — inclusion is explicit and cheap.
   - If neither yields anything (no flags/env at all, empty scan base), falls
     back to the git root of the cwd — the old single-repo default — and, as a
-    side effect, creates that repo's own <root>/.claude/.neural-network
+    side effect, creates that repo's own <root>/.neural-network
     marker if it's missing, so a bare `start` from inside a fresh repo opts
     it into every future multi-repo scan too, not just this one-off session.
-  A discovered repo with no `.claude/identities/` brains yet still appears as
+  A discovered repo with no `.neural-network/identities/` brains yet still appears as
   an empty, labeled region on the canvas (nodes/edges: none) rather than being
   dropped — it shows the constellation is there, just not yet populated.
 
@@ -61,7 +61,7 @@ removal is boot-only); repos.json is rewritten with the union and one
 rescan thread never rebuilds graphs or reads brain contents; clients pick up
 a newly-registered repo on their normal polls.
 
-Brains live at <root>/.claude/identities/<role>/brain/ — notes/<slug>.md
+Brains live at <root>/.neural-network/identities/<role>/brain/ — notes/<slug>.md
 (YAML-ish frontmatter + body + [[slug]] wikilinks), links.json, and
 .activation.jsonl. Everything is read READ-ONLY; absent dirs/files just yield
 an empty graph. Graph node ids are "<repo>/<role>/<slug>" (unique across repos);
@@ -83,10 +83,10 @@ right checkout regardless of GitHub repo/clone state.
 GET /projects: {repo: {ok, statusCounts:{status:N}, inProgress:[title], inReview:[title]}}
 or {repo: {ok:false, error}} — per-repo board state, read via THIS plugin's
 board.sh (never `gh project` directly) with cwd=<repo root>, so it resolves
-that repo's own .claude/project.yaml. Cached for $NEURAL_VIEW_PROJECTS_TTL
+that repo's own .neural-network/project.yaml. Cached for $NEURAL_VIEW_PROJECTS_TTL
 seconds (default 60), subprocess bounded by $NEURAL_VIEW_BOARD_TIMEOUT seconds
 (default 12) so a hung `gh` never blocks other routes for long. A repo with
-no .claude/project.yaml or .json is omitted entirely (not an error).
+no .neural-network/project.yaml or .json is omitted entirely (not an error).
 
 GET /sessions: [{repo, description, state, startedAt}] — best-effort local
 Claude Code session discovery from ~/.claude/jobs/<id>/state.json (harness job
@@ -318,19 +318,16 @@ MARKER_CONTENT = "# neural-view discovery marker — repos with this file are in
 
 
 def ensure_marker(root):
-    """Create <root>/.claude/.neural-network if missing, so a repo you start
-    neural-view against (the single-repo cwd fallback — no --dir/--scan match)
-    joins the aggregate on every future scan too, not just this one-off
-    session. Best-effort: a read-only .claude/ or missing .claude/ dir must
-    never fail `start` — same philosophy as board.sh/telemetry.py's cache
-    writes."""
+    """Create the <root>/.neural-network marker DIRECTORY if missing, so a repo
+    you start neural-view against (the single-repo cwd fallback — no
+    --dir/--scan match) joins the aggregate on every future scan too, not just
+    this one-off session. Best-effort: a read-only root must never fail
+    `start` — same philosophy as board.sh/telemetry.py's cache writes."""
     try:
-        claude_dir = Path(root) / ".claude"
-        marker = claude_dir / MARKER_NAME
-        if marker.is_file():
+        marker = Path(root) / MARKER_NAME
+        if marker.is_dir():
             return
-        claude_dir.mkdir(parents=True, exist_ok=True)
-        marker.write_text(MARKER_CONTENT)
+        marker.mkdir(parents=True, exist_ok=True)
     except OSError:
         pass
 FAVICON = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
@@ -375,11 +372,11 @@ SESSION_RECENT_SECS = float(os.environ.get("NEURAL_VIEW_SESSION_RECENT_SECS", "9
 # Brain reading (all read-only)
 # ---------------------------------------------------------------------------
 def identities_dir(root):
-    return Path(root) / ".claude" / "identities"
+    return Path(root) / ".neural-network" / "identities"
 
 
 def iter_brains(root):
-    """Yield (role, brain_dir) for every <root>/.claude/identities/<role>/brain."""
+    """Yield (role, brain_dir) for every <root>/.neural-network/identities/<role>/brain."""
     d = identities_dir(root)
     if not d.is_dir():
         return
@@ -532,7 +529,7 @@ def entity_edge_color(root):
 
 
 def load_entity_index(root):
-    """Parsed `.claude/identities/entity-index.json` for `root`, or None if
+    """Parsed `.neural-network/identities/entity-index.json` for `root`, or None if
     absent/unreadable -- callers fall back to derive_entity_map() so the view
     never requires a regen. {key: {"anchor": role/slug|None, "notes": [[role,
     slug], ...]}}."""
@@ -1259,7 +1256,7 @@ def open_note_externally(path):
 # ---------------------------------------------------------------------------
 def _repo_config_path(root):
     for name in ("project.yaml", "project.json"):
-        p = Path(root) / ".claude" / name
+        p = Path(root) / ".neural-network" / name
         if p.is_file():
             return p
     return None
@@ -1310,7 +1307,7 @@ def _classify_board_failure(raw):
 
 def _run_board_list(root):
     """Invoke THIS plugin's board.sh (never `gh project` directly) with
-    cwd=root, so it resolves and reads THAT repo's own .claude/project.yaml —
+    cwd=root, so it resolves and reads THAT repo's own .neural-network/project.yaml —
     the only board-access path, per the plugin's invariant."""
     try:
         proc = subprocess.run([str(BOARD_SH), "list"], cwd=str(root), capture_output=True,
@@ -1350,7 +1347,7 @@ def _stale_copy(name, now, note):
 def project_state(name, root):
     """A repo's board state, cached for PROJECTS_TTL seconds. Returns None
     (caller omits the repo entirely, per the /projects contract) if the repo
-    has no .claude/project.yaml or .json at all — a repo that never opted
+    has no .neural-network/project.yaml or .json at all — a repo that never opted
     into the board should not even show a "board unavailable" badge.
 
     GraphQL-budget discipline (the board reads share the user's 5000/hr
@@ -2779,7 +2776,7 @@ def discover_repos(args):
     - the explicit --dir/$NEURAL_VIEW_DIR root, if given — ALWAYS included,
       marker or not;
     - every immediate child of the scan base (--scan/$NEURAL_VIEW_SCAN, else
-      ~/Development) that carries a <child>/.claude/.neural-network marker
+      ~/Development) that carries a <child>/.neural-network marker
       FILE. Children without the marker are ignored even if they have brains.
     Falls back to the git root of cwd if nothing was found at all (no flags,
     no env, empty/absent scan base) — the old single-repo default. Repo name
@@ -2802,7 +2799,7 @@ def discover_repos(args):
         children = []
     for child in children:
         try:
-            if child.is_dir() and (child / ".claude" / MARKER_NAME).is_file():
+            if child.is_dir() and (child / MARKER_NAME).is_dir():
                 found.setdefault(str(child.resolve()), child)
         except OSError:   # e.g. permission denied traversing into `child`
             continue

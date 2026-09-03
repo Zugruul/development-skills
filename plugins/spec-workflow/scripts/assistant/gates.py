@@ -187,11 +187,9 @@ def _write_fixture_repo(root, name="gatesbot"):
     engine.sh's ae_repo / section-assistant-terminal.sh's at_repo so the
     fixture shape stays consistent with the rest of the assistant test
     suite."""
-    claude = os.path.join(root, ".claude")
-    os.makedirs(claude, exist_ok=True)
-    with open(os.path.join(claude, ".neural-network"), "w", encoding="utf-8") as fh:
-        fh.write("# neural-network\n")
-    with open(os.path.join(claude, "project.yaml"), "w", encoding="utf-8") as fh:
+    nn = os.path.join(root, ".neural-network")
+    os.makedirs(nn, exist_ok=True)
+    with open(os.path.join(nn, "project.yaml"), "w", encoding="utf-8") as fh:
         fh.write(
             "schemaVersion: 2\n"
             "assistant:\n"
@@ -481,7 +479,7 @@ def run_n2(mode, *, root=None, role=None, n_samples=30, ts=None):
             root = tempfile.mkdtemp(prefix="ast017-n2-root-")
             cleanup_paths.append(root)
             role = role or "gatesbrain"
-            identities = os.path.join(root, ".claude", "identities")
+            identities = os.path.join(root, ".neural-network", "identities")
             os.makedirs(identities, exist_ok=True)
             for i in range(6):
                 brain_module.mint(
@@ -504,7 +502,7 @@ def run_n2(mode, *, root=None, role=None, n_samples=30, ts=None):
         else:
             if not root or not role:
                 raise ValueError("real mode requires --root and --brain-role")
-            identities = os.path.join(root, ".claude", "identities")
+            identities = os.path.join(root, ".neural-network", "identities")
             queries = _n2_real_queries(n_samples)
 
         recall_fn = turns_module.make_default_recall(identities, root, role=role, k=8 if mode == "real" else 4)
@@ -728,7 +726,7 @@ def run_n4(mode, *, ts=None):
         session_jsonl_parses_no_warnings = not hist["warnings"]
 
         links_json_ok = True  # vacuously true if absent -- see docstring
-        links_path = os.path.join(fixture_root, ".claude", "identities", "assistant", "brain", "links.json")
+        links_path = os.path.join(fixture_root, ".neural-network", "identities", "assistant", "brain", "links.json")
         if os.path.isfile(links_path):
             try:
                 with open(links_path, encoding="utf-8") as fh:

@@ -15,7 +15,7 @@ REPO="$(cd "$PLUGIN/../.." && pwd)"
 AGENTS_MD="$REPO/AGENTS.md"
 CLAUDE_MD="$REPO/CLAUDE.md"
 
-# The gate command is read live from .claude/project.yaml (commands.gate)
+# The gate command is read live from .neural-network/project.yaml (commands.gate)
 # rather than hardcoded, so this test can't drift from the real command.
 gate_cmd="$(python3 "$PLUGIN/scripts/config.py" "$REPO" get commands.gate 2>/dev/null)"
 check "commands.gate resolved from project.yaml" "run-tests.sh" "$gate_cmd"

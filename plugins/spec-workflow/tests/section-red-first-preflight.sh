@@ -24,9 +24,9 @@ _rf_repo() {
     git -C "$dir" config user.name "Fixture Human"
     git -C "$dir" config user.email "fixture@example.com"
     ( cd "$dir" && git commit -q --allow-empty -m init )
-    mkdir -p "$dir/.claude"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
     python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-        "$FIX/valid.project.json" "$dir/.claude/project.json"
+        "$FIX/valid.project.json" "$dir/.neural-network/project.json"
     ( cd "$dir" && git add -A && git commit -q -m "fixture config" )
     ( cd "$dir" && git checkout -q -b feature )
 }

@@ -7,7 +7,7 @@ description: Registers remote machines (SSH, key-only) as user-level compute res
 
 Registers machines the human owns as compute resources (user-level registry
 `~/.remote-compute/resources.yaml`, machine-local, never committed) and
-advertises them to projects (a `compute:` section in `.claude/project.local.yaml`
+advertises them to projects (a `compute:` section in `.neural-network/project.local.yaml`
 — the gitignored machine-local overlay; alias + informational capability
 snapshot only, never host/user/secrets, and never the committed project.yaml).
 Availability is capability-style and NON-exclusive, mirroring how
@@ -61,10 +61,10 @@ Registration is user-level only — it never touches any repo.
 
 ## enable / disable (availability, not allocation)
 
-Run inside a repo with `.claude/project.yaml` (pass `--root` explicitly).
+Run inside a repo with `.neural-network/project.yaml` (pass `--root` explicitly).
 `enable` re-probes the device live, then rewrites the `compute:` section
 idempotently — a map keyed by alias with `{enabled, roles, probedAt,
-capabilities}` — in `.claude/project.local.yaml` (gitignored machine-local
+capabilities}` — in `.neural-network/project.local.yaml` (gitignored machine-local
 overlay, created if missing; the committed `project.yaml` is never touched).
 Reads go through `config.py`, which merges the overlay's `compute` key over
 the committed config. Tell the human the resource is now available to this project

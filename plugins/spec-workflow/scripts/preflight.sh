@@ -8,7 +8,7 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
 
 if [[ -z "$CONFIG" || ! -f "$CONFIG" ]]; then
-    echo "PREFLIGHT FAIL: no .claude/project.yaml — STOP: run /spec-workflow:setup-project first (it will suggest /spec-workflow:craft-spec if there is no spec yet)."
+    echo "PREFLIGHT FAIL: no .neural-network/project.yaml — STOP: run /spec-workflow:setup-project first (it will suggest /spec-workflow:craft-spec if there is no spec yet)."
     exit 0
 fi
 
@@ -46,7 +46,7 @@ bash "$HERE/identity.sh" --check
 # blocks: preflight.py's own contract is "always exit 0, print advisory
 # lines" -- the model reads a printed FAIL line and redirects the human,
 # exactly like every other check in this script.
-if [[ -f "$ROOT/.claude/.neural-network" ]]; then
+if [[ -d "$ROOT/.neural-network" ]]; then
     python3 "$HERE/assistant/preflight.py" "$ROOT"
 fi
 

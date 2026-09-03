@@ -10,8 +10,8 @@ declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tes
 echo "== neural-view rescan_once() (pure unit, no server) =="
 NV="$PLUGIN/scripts/neural-view.py"
 _rusb="$(mktemp -d)"          # scan base
-_ru_a="$_rusb/repo-a"; mkdir -p "$_ru_a/.claude"
-: >"$_ru_a/.claude/.neural-network"   # anchored at "boot"
+_ru_a="$_rusb/repo-a"; mkdir -p "$_ru_a/.claude" "$_ru_a/.neural-network"
+# anchored at "boot" (the .neural-network marker dir was created above)
 
 RUOUT="$(python3 - "$NV" "$_rusb" "$_ru_a" <<'PY'
 import importlib.util, sys
@@ -33,14 +33,14 @@ print("TICK1_SAME_OBJECT", new1 is boot)
 # anchor a second repo AFTER "boot"
 repob = Path(scanbase) / "repo-b"
 (repob / ".claude").mkdir(parents=True)
-(repob / ".claude" / ".neural-network").write_text("")
+(repob / ".neural-network").mkdir(parents=True, exist_ok=True)
 new2, added2 = nv.rescan_once(new1, args)
 print("TICK2_ADDED", [n for n, _ in added2])
 print("TICK2_NAMES", [n for n, _ in new2])
 print("TICK2_EXISTING_PRESERVED_FIRST", new2[0] == boot[0])
 
 # remove the repo-a marker -- it must stay registered (removal is boot-only)
-(Path(repoa) / ".claude" / ".neural-network").unlink()
+__import__("shutil").rmtree(Path(repoa) / ".neural-network")
 new3, added3 = nv.rescan_once(new2, args)
 print("TICK3_ADDED", added3)
 print("TICK3_NAMES", sorted(n for n, _ in new3))
@@ -67,8 +67,8 @@ echo "== neural-view rescan (live server, --rescan flag) =="
 _rlscan="$(mktemp -d)"
 _rlstate="$(mktemp -d)"
 _rlrepoA="$_rlscan/live-alpha"
-mkdir -p "$_rlrepoA/.claude"
-: >"$_rlrepoA/.claude/.neural-network"
+mkdir -p "$_rlrepoA/.claude" "$_rlrepoA/.neural-network"
+# marker dir created above
 
 export NEURAL_VIEW_STATE="$_rlstate" NEURAL_VIEW_SCAN="$_rlscan"
 lifecycle_start "neural-view starts with a short --rescan tick" NEURAL_VIEW_PORT 'python3 "$NV" start --rescan 1'
@@ -76,8 +76,8 @@ out="$(python3 "$NV" status)"; check "boot: repos=1 (only live-alpha anchored so
 
 # anchor a second repo AFTER boot -- must appear within a couple of rescan ticks
 _rlrepoB="$_rlscan/live-beta"
-mkdir -p "$_rlrepoB/.claude"
-: >"$_rlrepoB/.claude/.neural-network"
+mkdir -p "$_rlrepoB/.claude" "$_rlrepoB/.neural-network"
+: >"$_rlrepoB/.neural-network"
 for _ in $(seq 1 40); do
     out="$(python3 "$NV" status)"
     grep -qF "repos=2" <<<"$out" && break
@@ -89,7 +89,7 @@ out="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/graph")"
 check "graph repos list includes the post-boot repo" '"live-beta"' "$out"
 
 # remove live-alpha's marker while the server is up -- must NOT be dropped mid-flight
-rm -f "$_rlrepoA/.claude/.neural-network"
+rm -f "$_rlrepoA/.neural-network"
 sleep 2
 out="$(python3 "$NV" status)"
 check "removing a marker after boot never shrinks the registered repo count" "repos=2" "$out"
@@ -101,14 +101,14 @@ echo "== neural-view rescan disabled (--rescan 0 / NEURAL_VIEW_RESCAN=0) =="
 _rdscan="$(mktemp -d)"
 _rdstate="$(mktemp -d)"
 _rdrepoA="$_rdscan/dis-alpha"
-mkdir -p "$_rdrepoA/.claude"
-: >"$_rdrepoA/.claude/.neural-network"
+mkdir -p "$_rdrepoA/.claude" "$_rdrepoA/.neural-network"
+: >"$_rdrepoA/.neural-network"
 
 export NEURAL_VIEW_STATE="$_rdstate" NEURAL_VIEW_SCAN="$_rdscan"
 lifecycle_start "neural-view starts with --rescan 0" NEURAL_VIEW_PORT 'python3 "$NV" start --rescan 0'
 _rdrepoB="$_rdscan/dis-beta"
-mkdir -p "$_rdrepoB/.claude"
-: >"$_rdrepoB/.claude/.neural-network"
+mkdir -p "$_rdrepoB/.claude" "$_rdrepoB/.neural-network"
+: >"$_rdrepoB/.neural-network"
 sleep 2
 out="$(python3 "$NV" status)"
 check "rescan 0 disables the background thread -- post-boot repo never appears" "repos=1" "$out"

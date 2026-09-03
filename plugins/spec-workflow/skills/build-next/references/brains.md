@@ -2,16 +2,16 @@
 
 Each identity (dev / reviewer / orchestrator, extensible) owns a **private** brain of
 atomic zettel notes under `<identities-dir>/<role>/brain/` (default identities dir
-`.claude/identities`). Brains give each role durable memory that evolves separately —
+`.neural-network/identities`). Brains give each role durable memory that evolves separately —
 a hard product requirement. **Only the orchestrator process ever reads or writes a
 brain.** Subagents never see a brain path; recalled lessons reach them as pasted text.
 
 `brain.sh` = `bash "${CLAUDE_PLUGIN_ROOT}/scripts/brain.sh"` (resolves the repo root from
-git; writes into `<root>/.claude/identities/`).
+git; writes into `<root>/.neural-network/identities/`).
 
 ## Layout (per role)
 ```
-.claude/identities/
+.neural-network/identities/
   DIRECTORY.md                     # regenerated map: titles + tags only, never bodies
   retros.log                       # one line per retro (bumped by retro-mark)
   <role>/

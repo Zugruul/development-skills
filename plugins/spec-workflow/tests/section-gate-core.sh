@@ -8,9 +8,9 @@ declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tes
 echo "== gate enforcement (gate.sh + guard-board-move hook) =="
 T3="$(mktemp -d)"
 ( cd "$T3" && git init -q . && git commit -q --allow-empty -m init )
-mkdir -p "$T3/.claude"
+mkdir -p "$T3/.claude" "$T3/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$T3/.claude/project.json"
+    "$FIX/valid.project.json" "$T3/.neural-network/project.json"
 # hookjson/hookjsonpy are shared guard-hook stdin builders defined in _lib.sh
 # (always sourced) so a single-section --section run still has them in scope.
 out="$(hookjson 'bash board.sh move 7 \"In review\"' | (cd "$T3" && bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
@@ -54,7 +54,7 @@ out="$(hookjson 'bash board.sh move 7 QA' | (cd "$T3" && bash "$PLUGIN/scripts/g
 check "non-review moves unaffected" "rc=0" "$out"
 out="$(hookjson 'ls -la' | (cd "$T3" && bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
 check "unrelated commands unaffected" "rc=0" "$out"
-python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="false"; json.dump(c,open(sys.argv[1],"w"))' "$T3/.claude/project.json"
+python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="false"; json.dump(c,open(sys.argv[1],"w"))' "$T3/.neural-network/project.json"
 out="$( (cd "$T3" && bash "$PLUGIN/scripts/gate.sh") 2>&1; echo "rc=$?")"
 check "red gate clears pass" "GATE RED" "$out"
 check "gate telemetry: ok:false event recorded on red" '"ok": false' "$(cat "$T3/.claude/telemetry.jsonl" 2>/dev/null)"

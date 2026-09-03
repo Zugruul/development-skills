@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# work-mode.sh — resolve work.type / work.sync.mode (.claude/project.yaml, or
+# work-mode.sh — resolve work.type / work.sync.mode (.neural-network/project.yaml, or
 # legacy .json) and decide whether a board-sync event fires now or defers,
 # per work.sync.mode's batching cadence (#79).
 #   work-mode.sh type                 # prints pr | local (default: pr)

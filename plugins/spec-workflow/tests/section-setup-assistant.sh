@@ -7,7 +7,6 @@ echo "== setup-assistant (AST-005: scaffold + settings editor, SPEC-ASSISTANT.md
 
 SA_SCRIPT="$PLUGIN/scripts/setup-assistant.sh"
 SA_CONFIG="$PLUGIN/scripts/config.py"
-SA_MARKER='# neural-view discovery marker — repos with this file are included in the aggregated neural view'
 
 # sa_get <root> <dot.path> -- prints the resolved assistant.* value via
 # config.py's own `get` verb (never re-parses the raw YAML text by hand, so
@@ -22,20 +21,18 @@ sa_rc=$?
 check_rc "scaffold: exits 0 on a fresh repo" 0 "$sa_rc"
 check "scaffold: prints changed" "changed" "$sa_out"
 
-[[ -f "$sa_d/.claude/.neural-network" ]] && r=yes || r=no
-check "scaffold: creates .claude/.neural-network" "yes" "$r"
-sa_marker_content="$(cat "$sa_d/.claude/.neural-network" 2>/dev/null)"
-check "scaffold: marker content matches §6.2 shipped marker" "$SA_MARKER" "$sa_marker_content"
+[[ -d "$sa_d/.neural-network" ]] && r=yes || r=no
+check "scaffold: creates the .neural-network marker DIRECTORY" "yes" "$r"
 
-[[ -f "$sa_d/.claude/project.yaml" ]] && r=yes || r=no
-check "scaffold: creates .claude/project.yaml" "yes" "$r"
-sa_yaml="$(cat "$sa_d/.claude/project.yaml" 2>/dev/null)"
+[[ -f "$sa_d/.neural-network/project.yaml" ]] && r=yes || r=no
+check "scaffold: creates .neural-network/project.yaml" "yes" "$r"
+sa_yaml="$(cat "$sa_d/.neural-network/project.yaml" 2>/dev/null)"
 check "scaffold: project.yaml has assistant: section" "assistant:" "$sa_yaml"
 check "scaffold: names uses --name jarvis" 'names: ["jarvis"]' "$sa_yaml"
 check "scaffold: llm.provider defaults to claude" 'provider: "claude"' "$sa_yaml"
 check "scaffold: claude-code capability enabled" "claude-code:" "$sa_yaml"
 
-[[ -d "$sa_d/.claude/identities/assistant/brain/notes" ]] && r=yes || r=no
+[[ -d "$sa_d/.neural-network/identities/assistant/brain/notes" ]] && r=yes || r=no
 check "scaffold: creates brain notes/ dir" "yes" "$r"
 
 [[ -f "$sa_d/AGENTS.md" ]] && r=yes || r=no
@@ -238,14 +235,14 @@ rm -rf "$sa_explicit_d"
 
 # --- existing-file preservation: unrelated keys + persona prose survive -------
 sa_d="$(mktemp -d)"
-mkdir -p "$sa_d/.claude"
+mkdir -p "$sa_d/.claude" "$sa_d/.neural-network"
 # shellcheck disable=SC2016  # literal $schema= text in a fixture file, not an expansion
 printf '%s\n' \
     '# yaml-language-server: $schema=https://example.invalid/schema.json' \
     'project:' \
     '    name: myproj' \
     'unrelatedTopLevelKey: keep-me' \
-    > "$sa_d/.claude/project.yaml"
+    > "$sa_d/.neural-network/project.yaml"
 printf '%s\n' \
     '# My Custom Persona' \
     '' \
@@ -254,7 +251,7 @@ printf '%s\n' \
     'More hand-written prose after where the block will land.' \
     > "$sa_d/AGENTS.md"
 bash "$SA_SCRIPT" --root "$sa_d" scaffold --name custodian >/dev/null 2>&1
-sa_yaml2="$(cat "$sa_d/.claude/project.yaml" 2>/dev/null)"
+sa_yaml2="$(cat "$sa_d/.neural-network/project.yaml" 2>/dev/null)"
 check "preservation: pre-existing project.yaml key 'project:' survives" "project:" "$sa_yaml2"
 check "preservation: pre-existing project.yaml key 'name: myproj' survives" "name: myproj" "$sa_yaml2"
 check "preservation: unrelated top-level key survives" "unrelatedTopLevelKey: keep-me" "$sa_yaml2"
@@ -298,7 +295,7 @@ sa_sm="$(bash "$SA_SCRIPT" --root "$sa_d" set-model gpt-5.6-sol 2>&1)"
 sa_sm_rc=$?
 check_rc "set-model: accepted (opaque string per §6.5)" 0 "$sa_sm_rc"
 check "set-model: OK" "OK" "$sa_sm"
-check "set-model: model written verbatim" 'model: "gpt-5.6-sol"' "$(cat "$sa_d/.claude/project.yaml")"
+check "set-model: model written verbatim" 'model: "gpt-5.6-sol"' "$(cat "$sa_d/.neural-network/project.yaml")"
 
 sa_ec="$(bash "$SA_SCRIPT" --root "$sa_d" enable-capability codex 2>&1)"
 check_rc "enable-capability: codex accepted (claude-code stays enabled too)" 0 $?
@@ -315,14 +312,14 @@ rm -rf "$sa_d"
 # --- settings editor: §6.5-violating flip is rejected AND reverted ------------
 sa_d="$(mktemp -d)"
 bash "$SA_SCRIPT" --root "$sa_d" scaffold >/dev/null 2>&1   # provider=claude, codex disabled
-cp "$sa_d/.claude/project.yaml" "$sa_d/before.yaml"
+cp "$sa_d/.neural-network/project.yaml" "$sa_d/before.yaml"
 
 sa_bad="$(bash "$SA_SCRIPT" --root "$sa_d" set-provider openai 2>&1)"
 sa_bad_rc=$?
 check_rc "§6.5 violation: set-provider openai (codex disabled) is rejected" 1 "$sa_bad_rc"
 check "§6.5 violation: REJECTED with the specific message" \
     "requires capabilities.codex.enabled: true" "$sa_bad"
-cmp -s "$sa_d/before.yaml" "$sa_d/.claude/project.yaml" && r=SAME || r=DIFF
+cmp -s "$sa_d/before.yaml" "$sa_d/.neural-network/project.yaml" && r=SAME || r=DIFF
 check "§6.5 violation: project.yaml reverted byte-identical on rejection" "SAME" "$r"
 
 # now the legal path: enable codex first, then the same flip succeeds
@@ -351,7 +348,7 @@ sa_def_content="$(cat "$sa_d/.claude/neural-view/assistant-default" 2>/dev/null)
 check "set-default: file content is the assistant name" "jarvis" "$sa_def_content"
 # NOT written into any tracked file: project.yaml has no `default` key
 check_absent "set-default: never written into project.yaml (§6.3: never a tracked file)" \
-    "default:" "$(cat "$sa_d/.claude/project.yaml")"
+    "default:" "$(cat "$sa_d/.neural-network/project.yaml")"
 rm -rf "$sa_d"
 
 # --- SKILL.md is script-driven, not prose-only ---------------------------------
@@ -391,7 +388,7 @@ try:
     print("PARSE_OK" if isinstance(d, dict) and isinstance(d.get("assistant"), dict) else "BAD_SHAPE")
 except Exception as e:
     print("PARSE_FAIL", e)
-' "$sa_d/.claude/project.yaml" 2>&1)"
+' "$sa_d/.neural-network/project.yaml" 2>&1)"
 check "concurrency: project.yaml parses as a mapping after 12 concurrent scaffolds" \
     "PARSE_OK" "$sa_conc_parse"
 sa_conc_validate="$(bash "$SA_SCRIPT" --root "$sa_d" validate 2>&1)"
@@ -421,15 +418,15 @@ rm -rf "$sa_d"
 # --- review r2 finding 2: pre-existing non-mapping assistant: is refused,
 # file left completely untouched (never a partial/invalid insertion) -------
 sa_d="$(mktemp -d)"
-mkdir -p "$sa_d/.claude"
-printf '%s\n' 'assistant: not-a-mapping' 'other: 1' > "$sa_d/.claude/project.yaml"
-cp "$sa_d/.claude/project.yaml" "$sa_d/before.yaml"
+mkdir -p "$sa_d/.claude" "$sa_d/.neural-network"
+printf '%s\n' 'assistant: not-a-mapping' 'other: 1' > "$sa_d/.neural-network/project.yaml"
+cp "$sa_d/.neural-network/project.yaml" "$sa_d/before.yaml"
 sa_bad_scaffold="$(bash "$SA_SCRIPT" --root "$sa_d" scaffold --name jarvis 2>&1)"
 sa_bad_scaffold_rc=$?
 check_rc "finding 2: scaffold onto a non-mapping assistant: exits nonzero" 1 "$sa_bad_scaffold_rc"
 check "finding 2: refusal names the specific problem" \
     "assistant: is a str, not a mapping" "$sa_bad_scaffold"
-cmp -s "$sa_d/before.yaml" "$sa_d/.claude/project.yaml" && r=UNTOUCHED || r=CHANGED
+cmp -s "$sa_d/before.yaml" "$sa_d/.neural-network/project.yaml" && r=UNTOUCHED || r=CHANGED
 check "finding 2: project.yaml is byte-identical (never partially inserted)" \
     "UNTOUCHED" "$r"
 rm -rf "$sa_d"
@@ -437,8 +434,8 @@ rm -rf "$sa_d"
 # --- review r2 finding 2: a genuinely malformed (unparseable) project.yaml
 # produces a clean CLI error, not a raw Python traceback -----------------------
 sa_d="$(mktemp -d)"
-mkdir -p "$sa_d/.claude"
-printf '%s\n' '[this is a list, not a mapping]' > "$sa_d/.claude/project.yaml"
+mkdir -p "$sa_d/.claude" "$sa_d/.neural-network"
+printf '%s\n' '[this is a list, not a mapping]' > "$sa_d/.neural-network/project.yaml"
 sa_traceback_out="$(bash "$SA_SCRIPT" --root "$sa_d" validate 2>&1)"
 sa_traceback_rc=$?
 check_rc "finding 2: malformed project.yaml validate exits nonzero" 1 "$sa_traceback_rc"
@@ -453,18 +450,18 @@ rm -rf "$sa_d"
 # loop is what calls _parse_text repeatedly, before ever reaching apply's
 # validate_assistant pass). -------------------------------------------------
 sa_d="$(mktemp -d)"
-mkdir -p "$sa_d/.claude"
+mkdir -p "$sa_d/.claude" "$sa_d/.neural-network"
 # genuinely UNPARSEABLE yaml (stray colons inside a flow sequence) -- a
 # parseable-but-wrong-shape fixture would exercise the non-mapping refusal
 # path instead and keep passing even with the yaml.YAMLError wrap reverted.
-printf 'assistant: [1,2\n  bad: yaml: ::\n' > "$sa_d/.claude/project.yaml"
-cp "$sa_d/.claude/project.yaml" "$sa_d/before.yaml"
+printf 'assistant: [1,2\n  bad: yaml: ::\n' > "$sa_d/.neural-network/project.yaml"
+cp "$sa_d/.neural-network/project.yaml" "$sa_d/before.yaml"
 sa_r3_out="$(bash "$SA_SCRIPT" --root "$sa_d" scaffold --name jarvis 2>&1)"
 sa_r3_rc=$?
 check_rc "r3: scaffold on unparseable project.yaml exits nonzero" 1 "$sa_r3_rc"
 check "r3: scaffold reports a clean PREFLIGHT FAIL, not a traceback" "PREFLIGHT FAIL" "$sa_r3_out"
 check_absent "r3: no raw Python traceback leaks from scaffold" "Traceback (most recent call last)" "$sa_r3_out"
-cmp -s "$sa_d/before.yaml" "$sa_d/.claude/project.yaml" && r=UNTOUCHED || r=CHANGED
+cmp -s "$sa_d/before.yaml" "$sa_d/.neural-network/project.yaml" && r=UNTOUCHED || r=CHANGED
 check "r3: project.yaml is byte-identical (never partially written)" "UNTOUCHED" "$r"
 rm -rf "$sa_d"
 
@@ -503,8 +500,8 @@ sa_pp_out="$(PYTHONPATH="$PLUGIN/scripts" bash "$SA_SCRIPT" --root "$sa_d" scaff
 sa_pp_rc=$?
 check_rc "#437: scaffold exits 0 under gate.sh's PYTHONPATH=scripts/ env (scripts/ must still win over scripts/assistant/)" 0 "$sa_pp_rc"
 check_absent "#437: no AttributeError from the shadowed engine-config module leaks out" "AttributeError" "$sa_pp_out"
-[[ -f "$sa_d/.claude/project.yaml" ]] && r=yes || r=no
-check "#437: scaffold under PYTHONPATH=scripts/ still creates .claude/project.yaml" "yes" "$r"
+[[ -f "$sa_d/.neural-network/project.yaml" ]] && r=yes || r=no
+check "#437: scaffold under PYTHONPATH=scripts/ still creates .neural-network/project.yaml" "yes" "$r"
 rm -rf "$sa_d"
 
 # --- set-persona (task #486): the /setup-assistant persona interview writes
@@ -588,7 +585,7 @@ check "set-persona: hand-written prose outside the markers survives a re-run" \
 # AGENTS.md's own reserved marker lines is rejected outright -- both files
 # left byte-identical, never silently corrupting the generated-block
 # scanner on a later scaffold/set-persona re-run.
-cp "$sa_d/.claude/project.yaml" "$sa_d/before-marker.yaml"
+cp "$sa_d/.neural-network/project.yaml" "$sa_d/before-marker.yaml"
 cp "$sa_d/AGENTS.md" "$sa_d/before-marker.md"
 sa_marker_file="$(mktemp)"
 printf '%s\n%s\n' \
@@ -599,7 +596,7 @@ sa_sp_marker_out="$(bash "$SA_SCRIPT" --root "$sa_d" set-persona --file "$sa_mar
 sa_sp_marker_rc=$?
 check_rc "set-persona: text containing a reserved AGENTS.md marker line is rejected" 1 "$sa_sp_marker_rc"
 check "set-persona: marker-conflict rejection prints REJECTED" "REJECTED" "$sa_sp_marker_out"
-cmp -s "$sa_d/before-marker.yaml" "$sa_d/.claude/project.yaml" && r=SAME || r=DIFF
+cmp -s "$sa_d/before-marker.yaml" "$sa_d/.neural-network/project.yaml" && r=SAME || r=DIFF
 check "set-persona: marker-conflict rejection leaves project.yaml byte-identical" "SAME" "$r"
 cmp -s "$sa_d/before-marker.md" "$sa_d/AGENTS.md" && r=SAME || r=DIFF
 check "set-persona: marker-conflict rejection leaves AGENTS.md byte-identical" "SAME" "$r"
@@ -607,7 +604,7 @@ rm -f "$sa_marker_file" "$sa_d/before-marker.yaml" "$sa_d/before-marker.md"
 
 # empty/whitespace-only text is rejected: nonzero exit, project.yaml AND
 # AGENTS.md both byte-identical (not just project.yaml)
-cp "$sa_d/.claude/project.yaml" "$sa_d/before-persona.yaml"
+cp "$sa_d/.neural-network/project.yaml" "$sa_d/before-persona.yaml"
 cp "$sa_d/AGENTS.md" "$sa_d/before-persona.md"
 sa_empty_file="$(mktemp)"
 printf '   \n\n  \n' > "$sa_empty_file"
@@ -615,7 +612,7 @@ sa_sp_empty_out="$(bash "$SA_SCRIPT" --root "$sa_d" set-persona --file "$sa_empt
 sa_sp_empty_rc=$?
 check_rc "set-persona: empty/whitespace-only text is rejected" 1 "$sa_sp_empty_rc"
 check "set-persona: rejection prints REJECTED with a specific message" "REJECTED" "$sa_sp_empty_out"
-cmp -s "$sa_d/before-persona.yaml" "$sa_d/.claude/project.yaml" && r=SAME || r=DIFF
+cmp -s "$sa_d/before-persona.yaml" "$sa_d/.neural-network/project.yaml" && r=SAME || r=DIFF
 check "set-persona: rejected write leaves project.yaml byte-identical" "SAME" "$r"
 cmp -s "$sa_d/before-persona.md" "$sa_d/AGENTS.md" && r=SAME || r=DIFF
 check "set-persona: rejected write leaves AGENTS.md byte-identical too" "SAME" "$r"
@@ -718,7 +715,7 @@ try:
     print("PARSE_OK" if isinstance(d, dict) and isinstance(d.get("assistant"), dict) else "BAD_SHAPE")
 except Exception as e:
     print("PARSE_FAIL", e)
-' "$sa_lock_d/.claude/project.yaml" 2>&1)"
+' "$sa_lock_d/.neural-network/project.yaml" 2>&1)"
 check "#496 concurrency: project.yaml parses as a mapping after $sa_lock_n concurrent set-model calls" \
     "PARSE_OK" "$sa_lock_parse"
 

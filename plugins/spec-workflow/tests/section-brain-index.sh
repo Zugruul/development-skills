@@ -21,7 +21,7 @@ PY
 STUB_CMD="python3 $STUB"
 
 idx_table() { # role -> tab-separated rows: slug content_hash vector updated_at
-    python3 - "$BIT/.claude/identities/$1/brain/index.sqlite3" <<'PY'
+    python3 - "$BIT/.neural-network/identities/$1/brain/index.sqlite3" <<'PY'
 import sqlite3, sys
 path = sys.argv[1]
 conn = sqlite3.connect(path)
@@ -31,7 +31,7 @@ PY
 }
 
 db_exists() {
-    [[ -f "$BIT/.claude/identities/$1/brain/index.sqlite3" ]] && echo yes || echo no
+    [[ -f "$BIT/.neural-network/identities/$1/brain/index.sqlite3" ]] && echo yes || echo no
 }
 
 # ---- fresh build (no capability present, no BRAIN_EMBED_CMD) -----------
@@ -53,7 +53,7 @@ printf 'Body one.\n' | brainidx2 mint idx alpha --tags a >/dev/null
 printf 'Body two.\n' | brainidx2 mint idx beta --tags b >/dev/null
 BRAIN_EMBED_CMD="$STUB_CMD" brainidx2 index idx >/dev/null 2>&1
 idx_table_2() {
-    python3 - "$BIT2/.claude/identities/idx/brain/index.sqlite3" <<'PY'
+    python3 - "$BIT2/.neural-network/identities/idx/brain/index.sqlite3" <<'PY'
 import sqlite3, sys
 conn = sqlite3.connect(sys.argv[1])
 for row in conn.execute("SELECT slug, content_hash, vector, updated_at FROM notes ORDER BY slug"):
@@ -81,7 +81,7 @@ check "hash-stable no-op leaves table identical" "$before" "$after"
 before_rows="$(idx_table_2)"
 before_alpha="$(grep '^alpha' <<<"$before_rows")"
 before_beta="$(grep '^beta' <<<"$before_rows")"
-alpha_note="$BIT2/.claude/identities/idx/brain/notes/alpha.md"
+alpha_note="$BIT2/.neural-network/identities/idx/brain/notes/alpha.md"
 # hand-edit the note body directly (evolve doesn't exist yet -- MEM-043)
 python3 - "$alpha_note" <<'PY'
 import sys
@@ -111,7 +111,7 @@ rebuild_slughash="$(idx_table_2 | cut -f1,2 | sort)"
 check "rebuild matches incremental (slug+content_hash, modulo updated_at)" "$incremental_slughash" "$rebuild_slughash"
 
 # ---- stale cleanup: rebuild drops rows for deleted notes -----------------
-rm -f "$BIT2/.claude/identities/idx/brain/notes/gamma.md"
+rm -f "$BIT2/.neural-network/identities/idx/brain/notes/gamma.md"
 BRAIN_EMBED_CMD="$STUB_CMD" brainidx2 index idx --rebuild >/dev/null 2>&1
 check_absent "rebuild removes stale row for deleted note" "gamma" "$(idx_table_2)"
 
@@ -121,7 +121,7 @@ check_absent "rebuild removes stale row for deleted note" "gamma" "$(idx_table_2
 BIT4="$(mktemp -d)"
 brainidx4() { python3 "$BRAIN_IDX" "$BIT4" "$@"; }
 idx_table_4() {
-    python3 - "$BIT4/.claude/identities/idx/brain/index.sqlite3" <<'PY'
+    python3 - "$BIT4/.neural-network/identities/idx/brain/index.sqlite3" <<'PY'
 import sqlite3, sys
 conn = sqlite3.connect(sys.argv[1])
 for row in conn.execute("SELECT slug, content_hash, vector, updated_at FROM notes ORDER BY slug"):
@@ -132,7 +132,7 @@ printf 'Keep me.\n' | brainidx4 mint idx keep --tags k >/dev/null
 printf 'Delete me.\n' | brainidx4 mint idx doomed --tags d >/dev/null
 BRAIN_EMBED_CMD="$STUB_CMD" brainidx4 index idx >/dev/null 2>&1
 before_keep="$(idx_table_4 | grep '^keep')"
-rm -f "$BIT4/.claude/identities/idx/brain/notes/doomed.md"
+rm -f "$BIT4/.neural-network/identities/idx/brain/notes/doomed.md"
 BRAIN_EMBED_CMD="$STUB_CMD" brainidx4 index idx >/dev/null 2>&1
 after_tbl_4="$(idx_table_4)"
 check_absent "incremental (non-rebuild) run removes stale row for deleted note" "doomed" "$after_tbl_4"
@@ -147,6 +147,6 @@ out="$(brainidx3 recall idx --paths "x/**" --keywords "" 2>&1)"
 rc=$?
 check_rc "recall with no index.sqlite3 exits 0" 0 "$rc"
 check "recall with no index.sqlite3 still returns note content" "Never indexed" "$out"
-check "recall in BIT3 never created a db file" "no" "$([[ -f "$BIT3/.claude/identities/idx/brain/index.sqlite3" ]] && echo yes || echo no)"
+check "recall in BIT3 never created a db file" "no" "$([[ -f "$BIT3/.neural-network/identities/idx/brain/index.sqlite3" ]] && echo yes || echo no)"
 
 rm -rf "$BIT" "$BIT2" "$BIT3"

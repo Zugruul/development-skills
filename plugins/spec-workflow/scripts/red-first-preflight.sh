@@ -57,7 +57,7 @@ done
 
 MAIN="$(python3 "$HERE/config.py" "$ROOT" get project.mainBranch 2>/dev/null)"
 if [[ -z "$MAIN" ]]; then
-    echo "BLOCKED: red-first preflight could not resolve project.mainBranch from config -- check .claude/project.yaml (or project.json)." >&2
+    echo "BLOCKED: red-first preflight could not resolve project.mainBranch from config -- check .neural-network/project.yaml (or project.json)." >&2
     exit 2
 fi
 

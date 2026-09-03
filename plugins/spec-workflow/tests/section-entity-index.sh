@@ -22,7 +22,7 @@ printf 'Unrelated note.\n' | ebrain mint dev unrelated --tags misc --paths "x/**
 
 out="$(ebrain entity-index)"
 check "entity-index reports success" "wrote" "$out"
-IDX="$ET/.claude/identities/entity-index.json"
+IDX="$ET/.neural-network/identities/entity-index.json"
 idx="$(cat "$IDX")"
 check "entity-index.json names its generator" '"generated-by": "brain.py entity-index"' "$idx"
 check "entity-index.json has the correlated entity key" '"card:gone-in-a-flash"' "$idx"
@@ -36,9 +36,9 @@ idx2="$(cat "$IDX")"
 check "entity-index regeneration is diff-stable (identical bytes)" "$idx" "$idx2"
 
 # symlinked notes attribute ONLY to their physical home role (never double-counted)
-mkdir -p "$ET/.claude/identities/reviewer/brain/notes"
-ln -sf "$ET/.claude/identities/dev/brain/notes/card-gone-in-a-flash.md" \
-    "$ET/.claude/identities/reviewer/brain/notes/kw-card-gone-in-a-flash.md"
+mkdir -p "$ET/.neural-network/identities/reviewer/brain/notes"
+ln -sf "$ET/.neural-network/identities/dev/brain/notes/card-gone-in-a-flash.md" \
+    "$ET/.neural-network/identities/reviewer/brain/notes/kw-card-gone-in-a-flash.md"
 ebrain entity-index >/dev/null
 idx3="$(cat "$IDX")"
 check_absent "symlinked note is not attributed to the role it's symlinked INTO" "kw-card-gone-in-a-flash" "$idx3"
@@ -47,19 +47,19 @@ check_absent "symlinked note is not attributed to the role it's symlinked INTO" 
 printf 'A card nobody else references yet.\n' \
     | ebrain mint dev card-solo --tags card --paths "cards/**" --source g --entities "card:solo-card"
 ebrain entity-index >/dev/null
-idx4="$(cat "$ET/.claude/identities/entity-index.json")"
+idx4="$(cat "$ET/.neural-network/identities/entity-index.json")"
 check "entity-index includes a single-note entity (isolated neuron)" '"card:solo-card"' "$idx4"
 
 echo "== brain.py entity-index: anchor resolution via methodology.entityKinds =="
-mkdir -p "$ET/.claude"
-cat > "$ET/.claude/project.yaml" <<'YAML'
+mkdir -p "$ET/.claude" "$ET/.neural-network"
+cat > "$ET/.neural-network/project.yaml" <<'YAML'
 schemaVersion: 2
 methodology:
     entityKinds:
         card: dev
 YAML
 ebrain entity-index >/dev/null
-idx5="$(cat "$ET/.claude/identities/entity-index.json")"
+idx5="$(cat "$ET/.neural-network/identities/entity-index.json")"
 check "anchor resolves to the sole home-role (dev) note for card:gone-in-a-flash" '"anchor": "dev/card-gone-in-a-flash"' "$idx5"
 
 # ambiguous home role (two dev notes both declare the same entity) -> anchor null
@@ -70,7 +70,7 @@ out6="$(python3 -c '
 import json, sys
 d = json.load(open(sys.argv[1]))
 print(d["entities"]["card:gone-in-a-flash"]["anchor"])
-' "$ET/.claude/identities/entity-index.json")"
+' "$ET/.neural-network/identities/entity-index.json")"
 check "anchor is null when the home role has more than one declaring note" "None" "$out6"
 
 # an entity kind with no methodology.entityKinds mapping has anchor null
@@ -81,9 +81,9 @@ out7="$(python3 -c '
 import json, sys
 d = json.load(open(sys.argv[1]))
 print(d["entities"]["widget:no-mapping"]["anchor"])
-' "$ET/.claude/identities/entity-index.json")"
+' "$ET/.neural-network/identities/entity-index.json")"
 check "anchor is null for a kind absent from methodology.entityKinds" "None" "$out7"
-rm -f "$ET/.claude/project.yaml"
+rm -f "$ET/.neural-network/project.yaml"
 
 echo "== brain.py entity-index: duplicate entity key within one note's frontmatter is deduped (#163 review, SHOULD-FIX) =="
 # --entities "card:x,card:x" must not double-count the SAME (role, slug) pair
@@ -92,8 +92,8 @@ echo "== brain.py entity-index: duplicate entity key within one note's frontmatt
 # a duplicate entity edge downstream in neural-view.
 ET2="$(mktemp -d)"
 ebrain2() { python3 "$BRAIN" "$ET2" "$@"; }
-mkdir -p "$ET2/.claude"
-cat > "$ET2/.claude/project.yaml" <<'YAML'
+mkdir -p "$ET2/.claude" "$ET2/.neural-network"
+cat > "$ET2/.neural-network/project.yaml" <<'YAML'
 schemaVersion: 2
 methodology:
     entityKinds:
@@ -104,12 +104,12 @@ printf 'Declares the same entity key twice in its own frontmatter list.\n' \
 printf 'A ruling about it.\n' \
     | ebrain2 mint reviewer dup-ruling --tags ruling --paths "rulings/**" --source g --entities "card:dup"
 ebrain2 entity-index >/dev/null
-dupidx="$(cat "$ET2/.claude/identities/entity-index.json")"
+dupidx="$(cat "$ET2/.neural-network/identities/entity-index.json")"
 n_dup_notes="$(python3 -c '
 import json, sys
 d = json.load(open(sys.argv[1]))
 print(len(d["entities"]["card:dup"]["notes"]))
-' "$ET2/.claude/identities/entity-index.json")"
+' "$ET2/.neural-network/identities/entity-index.json")"
 check "a duplicate entity key within one note's frontmatter contributes exactly ONE notes[] entry, not two" "2" "$n_dup_notes"
 check "anchor still resolves despite the duplicate declaration (home role genuinely has exactly one note)" '"anchor": "dev/dup-card"' "$dupidx"
 rm -rf "$ET2"
@@ -119,7 +119,7 @@ EEMPTY="$(mktemp -d)"
 out="$(python3 "$BRAIN" "$EEMPTY" entity-index)"
 check "entity-index on a brainless root still succeeds" "wrote" "$out"
 check "entity-index on a brainless root writes an empty entities map" '"entities": {}' \
-    "$(cat "$EEMPTY/.claude/identities/entity-index.json")"
+    "$(cat "$EEMPTY/.neural-network/identities/entity-index.json")"
 rm -rf "$EEMPTY"
 
 rm -rf "$ET"

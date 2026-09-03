@@ -10,7 +10,7 @@ from its trace events", but `traces.sqlite` (§10.2) does not exist yet --
 it is E4. This module builds the SAME response shape §7.8 promises from
 what DOES exist today per assistant repo:
 
-  - minted notes: `<root>/.claude/brain-events.jsonl` (brain.py's
+  - minted notes: `<root>/.neural-network/brain-events.jsonl` (brain.py's
     `emit_event`, already a per-repo, append-only, JSON-per-line feed --
     Sec8.1/8.2's `NoteMinted` events specifically), filtered to `role`
     (default "assistant", matching turns.py's `make_default_recall`
@@ -76,7 +76,7 @@ def _after(ts_raw, since_dt):
 
 
 def _notes_minted_since(root, since_dt, role):
-    path = os.path.join(str(root), ".claude", BRAIN_EVENTS_FILE_NAME)
+    path = os.path.join(str(root), ".neural-network", BRAIN_EVENTS_FILE_NAME)
     notes = []
     try:
         with open(path, "r", encoding="utf-8") as fh:

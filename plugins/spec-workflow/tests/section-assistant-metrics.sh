@@ -13,8 +13,8 @@ AM_SCRIPTS="$PLUGIN/scripts"
 
 am_repo() {
     local dir="$1" main="$2" prom_enabled="$3" host="$4" port="$5"
-    mkdir -p "$dir/.claude"
-    printf "%s\n" "# neural-network" >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf "%s\n" "# neural-network" >"$dir/.neural-network/marker"
     {
         printf "%s\n" \
             "schemaVersion: 2" \
@@ -38,7 +38,7 @@ am_repo() {
             "                enabled: $prom_enabled" \
             "                host: $host" \
             "                port: $port"
-    } >"$dir/.claude/project.yaml"
+    } >"$dir/.neural-network/project.yaml"
 }
 
 # ------------------------------------------------------------------------
@@ -365,9 +365,8 @@ from assistant import engine
 
 root = tempfile.mkdtemp(prefix="am-cfg-")
 os.makedirs(os.path.join(root, ".claude"), exist_ok=True)
-with open(os.path.join(root, ".claude", ".neural-network"), "w") as f:
-    f.write("# neural-network\n")
-with open(os.path.join(root, ".claude", "project.yaml"), "w") as f:
+os.makedirs(os.path.join(root, ".neural-network"), exist_ok=True)
+with open(os.path.join(root, ".neural-network", "project.yaml"), "w") as f:
     f.write(
         "schemaVersion: 2\n"
         "assistant:\n"
@@ -434,8 +433,8 @@ check_absent "#392: daemon_threads is removed (HTTPServer is not threaded, the a
 
 echo "-- #392: omitted host/port end-to-end falls back to 127.0.0.1:DEFAULT_METRICS_PORT --"
 _amf_root="$(mktemp -d)"
-mkdir -p "$_amf_root/.claude"
-printf "%s\n" "# neural-network" >"$_amf_root/.claude/.neural-network"
+mkdir -p "$_amf_root/.claude" "$_amf_root/.neural-network"
+printf "%s\n" "# neural-network" >"$_amf_root/.neural-network/marker"
 printf "%s\n" \
     "schemaVersion: 2" \
     "assistant:" \
@@ -456,7 +455,7 @@ printf "%s\n" \
     "        metrics:" \
     "            prometheus:" \
     "                enabled: true" \
-    >"$_amf_root/.claude/project.yaml"
+    >"$_amf_root/.neural-network/project.yaml"
 amf_port="$(_rand_port)"
 
 fallback_out="$(SCRIPTS_DIR="$AM_SCRIPTS" ROOT="$_amf_root" PORT="$amf_port" python3 - <<'PY'
@@ -521,8 +520,8 @@ echo "-- integration: GET /assistant/metrics returns the same counters metrics_t
 _ame2_root="$(mktemp -d)"
 at_repo_for_metrics() {
     local dir="$1" main="$2"
-    mkdir -p "$dir/.claude"
-    printf "%s\n" "# neural-network" >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf "%s\n" "# neural-network" >"$dir/.neural-network/marker"
     printf "%s\n" \
         "schemaVersion: 2" \
         "assistant:" \
@@ -539,7 +538,7 @@ at_repo_for_metrics() {
         "            enabled: true" \
         "            provisioning:" \
         "                bin: codex" \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 at_repo_for_metrics "$_ame2_root" jarvis
 

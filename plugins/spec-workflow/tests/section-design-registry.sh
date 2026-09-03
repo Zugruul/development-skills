@@ -333,9 +333,9 @@ check_rc "design-registry-preflight: that other issue exits 2" 2 "$rc"
 echo "-- integration: board.sh move to In review is mechanically blocked by an UNAPPLIED registered design (#461) --"
 T4P="$(mktemp -d)"
 ( cd "$T4P" && git init -q . && git commit -q --allow-empty -m init )
-mkdir -p "$T4P/.claude" "$T4P/docs/ui-options" "$T4P/plugins/spec-workflow/templates"
+mkdir -p "$T4P/.claude" "$T4P/.neural-network" "$T4P/docs/ui-options" "$T4P/plugins/spec-workflow/templates"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$T4P/.claude/project.json"
+    "$FIX/valid.project.json" "$T4P/.neural-network/project.json"
 # same as the real repos own .gitignore -- without this, a plain `git add
 # -A` sweeps gate.sh own gate-pass/telemetry artifacts into a commit, and a
 # LATER gate.sh run then dirties them as modified TRACKED files, tripping
@@ -403,9 +403,9 @@ fi
 echo "-- integration: guard-board-move.sh (the Claude PreToolUse hook) independently blocks the same scenario --"
 T4H="$(mktemp -d)"
 ( cd "$T4H" && git init -q . && git commit -q --allow-empty -m init )
-mkdir -p "$T4H/.claude" "$T4H/docs/ui-options" "$T4H/plugins/spec-workflow/templates"
+mkdir -p "$T4H/.claude" "$T4H/.neural-network" "$T4H/docs/ui-options" "$T4H/plugins/spec-workflow/templates"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$T4H/.claude/project.json"
+    "$FIX/valid.project.json" "$T4H/.neural-network/project.json"
 printf ".claude/gate-pass\n.claude/telemetry.jsonl\n" >"$T4H/.gitignore"
 echo template >"$T4H/plugins/spec-workflow/templates/neural-view.html"
 ( cd "$T4H" && git add -A && git commit -q -m "add template" )

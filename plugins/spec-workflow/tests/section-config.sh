@@ -6,18 +6,18 @@
 # those are already in scope.
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== config.py (shared loader) =="
-CT="$(mktemp -d)"; mkdir -p "$CT/.claude"
-cp "$FIX/valid.project.yaml" "$CT/.claude/project.yaml"
+CT="$(mktemp -d)"; mkdir -p "$CT/.claude" "$CT/.neural-network"
+cp "$FIX/valid.project.yaml" "$CT/.neural-network/project.yaml"
 check "yaml dot-path get" "fixture-project" "$(python3 "$PLUGIN/scripts/config.py" "$CT" get project.name)"
 check "yaml nested get" "true" "$(python3 "$PLUGIN/scripts/config.py" "$CT" get commands.gate)"
 check "path verb resolves yaml" "project.yaml" "$(python3 "$PLUGIN/scripts/config.py" "$CT" path)"
 check "json verb emits normalized" '"schemaVersion"' "$(python3 "$PLUGIN/scripts/config.py" "$CT" json)"
 check "v2 dev array models get" "claude-haiku-4-5" "$(python3 "$PLUGIN/scripts/config.py" "$CT" get delegation.identities.dev.1.models.1)"
-cp "$FIX/valid.project.json" "$CT/.claude/project.json"
+cp "$FIX/valid.project.json" "$CT/.neural-network/project.json"
 check "yaml preferred over json" "project.yaml" "$(python3 "$PLUGIN/scripts/config.py" "$CT" path)"
 rm -rf "$CT"
-CJ="$(mktemp -d)"; mkdir -p "$CJ/.claude"
-cp "$FIX/valid.project.json" "$CJ/.claude/project.json"
+CJ="$(mktemp -d)"; mkdir -p "$CJ/.claude" "$CJ/.neural-network"
+cp "$FIX/valid.project.json" "$CJ/.neural-network/project.json"
 check "legacy json deprecation warning" "DEPRECATION" "$(python3 "$PLUGIN/scripts/config.py" "$CJ" json 2>&1 >/dev/null)"
 check "legacy path resolves json" "project.json" "$(python3 "$PLUGIN/scripts/config.py" "$CJ" path 2>/dev/null)"
 check "legacy devModel -> dev.models[0]" "sonnet" "$(python3 "$PLUGIN/scripts/config.py" "$CJ" get delegation.identities.dev.models.0 2>/dev/null)"
@@ -37,7 +37,7 @@ NNJ="$(mktemp -d)"; mkdir -p "$NNJ/.neural-network"
 cp "$FIX/valid.project.json" "$NNJ/.neural-network/project.json"
 check "legacy json format still read from .neural-network/" "project.json" "$(python3 "$PLUGIN/scripts/config.py" "$NNJ" path 2>/dev/null)"
 rm -rf "$NNJ"
-OLD="$(mktemp -d)"; mkdir -p "$OLD/.claude"
+OLD="$(mktemp -d)"; mkdir -p "$OLD/.claude"  # legacy layout on purpose
 cp "$FIX/valid.project.yaml" "$OLD/.claude/project.yaml"
 check "old .claude/project.yaml location NOT resolved (hard cutover)" "" "$(python3 "$PLUGIN/scripts/config.py" "$OLD" path)"
 rm -rf "$OLD"
@@ -52,7 +52,7 @@ print(discovery.classify_repo(sys.argv[1]).kind)
 ' "$DM")"
 check "marker dir + no config classifies past no-marker" "no-config" "$out"
 rm -rf "$DM"
-FM="$(mktemp -d)"; mkdir -p "$FM/.claude"
+FM="$(mktemp -d)"; mkdir -p "$FM/.claude"  # legacy layout on purpose
 echo "# marker" > "$FM/.claude/.neural-network"
 out="$(PLUGIN_SCRIPTS="$PLUGIN/scripts" python3 -c '
 import os, sys
@@ -180,8 +180,8 @@ check "valid recencyDecayGraceRetros/recencyDecayFactor pass" "VALID: " "$out"
 rm -rf "$RDC"
 
 echo "== validate-config: models.codex.capability (additive, CDX-020, #185) =="
-check "this repo's own .claude/project.yaml (flat models arrays) still validates unmodified -- additivity proof" "VALID: " \
-    "$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/../../.claude/project.yaml")"
+check "this repo's own .neural-network/project.yaml (flat models arrays) still validates unmodified -- additivity proof" "VALID: " \
+    "$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/../../.neural-network/project.yaml")"
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/codex-capability-good.project.yaml")"
 check "models object form {claude, codex.capability: balanced} is VALID" "VALID: " "$out"
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/codex-capability-bad.project.yaml" || true)"
@@ -390,6 +390,6 @@ out="$(python3 "$PLUGIN/scripts/validate-config.py" "$CMT/not-a-map.project.yaml
 check "commit: non-mapping rejected" "commit: must be a mapping" "$out"
 rm -rf "$CMT"
 
-check "this repo's own .claude/project.yaml (commit block set per #418) still validates" "VALID: " \
-    "$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/../../.claude/project.yaml")"
+check "this repo's own .neural-network/project.yaml (commit block set per #418) still validates" "VALID: " \
+    "$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/../../.neural-network/project.yaml")"
 

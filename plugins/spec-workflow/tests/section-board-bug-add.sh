@@ -6,8 +6,8 @@
 # those are already in scope.
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== board.sh bug verb (fake gh: item-add + eventual consistency) =="
-BG="$(mktemp -d)"; mkdir -p "$BG/.claude"
-cp "$FIX/valid.project.yaml" "$BG/.claude/project.yaml"
+BG="$(mktemp -d)"; mkdir -p "$BG/.claude" "$BG/.neural-network"
+cp "$FIX/valid.project.yaml" "$BG/.neural-network/project.yaml"
 FGH="$(mktemp -d)"
 cat >"$FGH/gh" <<'FAKE'
 #!/usr/bin/env bash
@@ -85,8 +85,8 @@ check "bug verb: move/prio failure exits nonzero" "rc=1" "$out"
 rm -rf "$BG" "$FGH" "$LOG1" "$CC1" "$LOG2" "$CC2" "$LOG3" "$CC3" "$LOG4" "$CC4"
 
 echo "== board.sh add verb (SW-003: generalized bug -> add --type, fake gh) =="
-AG="$(mktemp -d)"; mkdir -p "$AG/.claude"
-cp "$FIX/valid.project.yaml" "$AG/.claude/project.yaml"
+AG="$(mktemp -d)"; mkdir -p "$AG/.claude" "$AG/.neural-network"
+cp "$FIX/valid.project.yaml" "$AG/.neural-network/project.yaml"
 AGH="$(mktemp -d)"
 cat >"$AGH/gh" <<'FAKE'
 #!/usr/bin/env bash
@@ -170,8 +170,8 @@ check "add: unknown --type exits nonzero" "rc=1" "$out"
 rm -rf "$AG" "$AGH" "$LOGA1" "$CCA1" "$LOGA2" "$CCA2" "$LOGA3" "$CCA3" "$LOGA4" "$CCA4" "$LOGA5" "$CCA5"
 
 echo "== board.sh ensure-labels (SW-046: a configured label must exist on the repo before a runtime path applies it) =="
-EG="$(mktemp -d)"; mkdir -p "$EG/.claude"
-cp "$FIX/valid.project.yaml" "$EG/.claude/project.yaml"
+EG="$(mktemp -d)"; mkdir -p "$EG/.claude" "$EG/.neural-network"
+cp "$FIX/valid.project.yaml" "$EG/.neural-network/project.yaml"
 EGH="$(mktemp -d)"
 cat >"$EGH/gh" <<'FAKE'
 #!/usr/bin/env bash

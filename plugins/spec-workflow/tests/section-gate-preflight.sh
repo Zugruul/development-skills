@@ -8,9 +8,9 @@ declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tes
 echo "== gate preflight (CDX-030: hook-independent enforcement in board.sh itself) =="
 T3P="$(mktemp -d)"
 ( cd "$T3P" && git init -q . && git commit -q --allow-empty -m init )
-mkdir -p "$T3P/.claude"
+mkdir -p "$T3P/.claude" "$T3P/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$T3P/.claude/project.json"
+    "$FIX/valid.project.json" "$T3P/.neural-network/project.json"
 
 # Fake `gh`: a real fixture-project item exists for #7. project item-edit
 # touches MUTATION_MARKER -- lets the test assert whether the mutation
@@ -102,9 +102,9 @@ fi
 # in the loop (simulated hook JSON, no board.sh invocation at all here).
 T3PH="$(mktemp -d)"
 ( cd "$T3PH" && git init -q . && git commit -q --allow-empty -m init )
-mkdir -p "$T3PH/.claude"
+mkdir -p "$T3PH/.claude" "$T3PH/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$T3PH/.claude/project.json"
+    "$FIX/valid.project.json" "$T3PH/.neural-network/project.json"
 out="$(hookjson 'bash board.sh move 7 \"In review\"' | (cd "$T3PH" && bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
 check "preflight: hook-based path (guard-board-move.sh) still independently blocks" "BLOCKED: no recorded gate pass" "$out"
 check "preflight: hook-based path still exits 2" "rc=2" "$out"

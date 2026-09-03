@@ -9,7 +9,7 @@ context:
   scaffold_script: |
     git init -q .
     mkdir -p .claude docs
-    cat > .claude/project.yaml <<'EOF'
+    cat > .neural-network/project.yaml <<'EOF'
     schemaVersion: 2
     project: { name: fixture, description: eval fixture, mainBranch: main, branchPattern: "fx/<id>-<slug>" }
     boards:

@@ -19,7 +19,7 @@ printf 'real note body.\n' | sg1 mint dev real --tags r --paths "r/**" --source 
 python3 - "$SG1" <<'PY'
 import json, os, sys
 root = sys.argv[1]
-p = os.path.join(root, ".claude/identities/dev/brain/links.json")
+p = os.path.join(root, ".neural-network/identities/dev/brain/links.json")
 links = {}
 for i in range(1, 7):
     links["orphan%d->missing%d" % (i, i)] = {"fires": 0}
@@ -27,10 +27,10 @@ for i in range(1, 5):
     links["keep%d->real" % i] = {"fires": 1}
 json.dump(links, open(p, "w"), indent=2, sort_keys=True)
 PY
-SG1_LINKS="$SG1/.claude/identities/dev/brain/links.json"
+SG1_LINKS="$SG1/.neural-network/identities/dev/brain/links.json"
 SG1_SNAPSHOT="$SG1/links.snapshot.json"
 cp "$SG1_LINKS" "$SG1_SNAPSHOT"
-: >"$SG1/.claude/brain-events.jsonl"
+: >"$SG1/.neural-network/brain-events.jsonl"
 
 out="$(sg1 prune dev --apply; echo "rc=$?")"
 check "over-threshold: refuses (non-zero exit)" "rc=1" "$out"
@@ -49,7 +49,7 @@ else
     echo "FAIL over-threshold: links.json byte-identical after refusal (cmp) — files differ"
     fails=$((fails + 1))
 fi
-out="$(python3 - "$SG1/.claude/brain-events.jsonl" <<'PY'
+out="$(python3 - "$SG1/.neural-network/brain-events.jsonl" <<'PY'
 import json, sys
 n = 0
 if __import__("os").path.isfile(sys.argv[1]):
@@ -69,10 +69,10 @@ out="$(sg1 prune dev --apply --force; echo "rc=$?")"
 check "force: proceeds (exit 0)" "rc=0" "$out"
 check "force: loud override summary" "SHRINK GUARD OVERRIDDEN (--force): removing 6/10 link(s) (60%" "$out"
 check "force: loud summary shows a sample candidate key" "orphan1->missing1" "$out"
-out="$(cat "$SG1/.claude/identities/dev/brain/links.json")"
+out="$(cat "$SG1/.neural-network/identities/dev/brain/links.json")"
 check_absent "force: candidate link actually removed" "orphan1->missing1" "$out"
 check "force: kept links survive" "keep1->real" "$out"
-out="$(python3 - "$SG1/.claude/brain-events.jsonl" <<'PY'
+out="$(python3 - "$SG1/.neural-network/brain-events.jsonl" <<'PY'
 import json, sys
 n = 0
 for line in open(sys.argv[1]):
@@ -96,7 +96,7 @@ printf 'real note body.\n' | sg2 mint dev real --tags r --paths "r/**" --source 
 python3 - "$SG2" <<'PY'
 import json, os, sys
 root = sys.argv[1]
-p = os.path.join(root, ".claude/identities/dev/brain/links.json")
+p = os.path.join(root, ".neural-network/identities/dev/brain/links.json")
 links = {
     "orphan1->missing1": {"fires": 0},
     "orphan2->missing2": {"fires": 0},
@@ -107,7 +107,7 @@ PY
 out="$(sg2 prune dev --apply; echo "rc=$?")"
 check "small-brain floor: passes without --force (exit 0)" "rc=0" "$out"
 check "small-brain floor: removal message unchanged" "removed 2 link(s)" "$out"
-out="$(cat "$SG2/.claude/identities/dev/brain/links.json")"
+out="$(cat "$SG2/.neural-network/identities/dev/brain/links.json")"
 check_absent "small-brain floor: candidate link removed" "orphan1->missing1" "$out"
 check "small-brain floor: kept link survives" "keep1->real" "$out"
 rm -rf "$SG2"
@@ -117,8 +117,8 @@ rm -rf "$SG2"
 # so 60% is now under threshold and prune --apply must succeed without --force.
 SG3="$(mktemp -d)"
 sg3() { python3 "$SG_BRAIN" "$SG3" "$@"; }
-mkdir -p "$SG3/.claude"
-cat >"$SG3/.claude/project.yaml" <<'YAML'
+mkdir -p "$SG3/.claude" "$SG3/.neural-network"
+cat >"$SG3/.neural-network/project.yaml" <<'YAML'
 schemaVersion: 2
 methodology:
     shrinkGuardFraction: 0.9
@@ -127,7 +127,7 @@ printf 'real note body.\n' | sg3 mint dev real --tags r --paths "r/**" --source 
 python3 - "$SG3" <<'PY'
 import json, os, sys
 root = sys.argv[1]
-p = os.path.join(root, ".claude/identities/dev/brain/links.json")
+p = os.path.join(root, ".neural-network/identities/dev/brain/links.json")
 links = {}
 for i in range(1, 7):
     links["orphan%d->missing%d" % (i, i)] = {"fires": 0}
@@ -150,7 +150,7 @@ printf 'real note body.\n' | sg5 mint dev real --tags r --paths "r/**" --source 
 python3 - "$SG5" <<'PY'
 import json, os, sys
 root = sys.argv[1]
-p = os.path.join(root, ".claude/identities/dev/brain/links.json")
+p = os.path.join(root, ".neural-network/identities/dev/brain/links.json")
 links = {}
 for i in range(1, 7):
     links["orphan%d->missing%d" % (i, i)] = {"fires": 0}

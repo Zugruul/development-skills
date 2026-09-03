@@ -10,12 +10,12 @@ echo "== brain-event feed (E2/MEM-020: emit_event schema + atomic emitter) =="
 BE_SCRIPTS="$PLUGIN/scripts"
 
 # ---------------------------------------------------------------- schema fields
-# emit_event(root, obj) appends ONE line to <root>/.claude/brain-events.jsonl
+# emit_event(root, obj) appends ONE line to <root>/.neural-network/brain-events.jsonl
 # carrying the v1 baseline {v, ts, repo, role, type} plus the caller's payload.
 BE="$(mktemp -d)"
 # project.yaml present -> repo derives from project.name
-mkdir -p "$BE/.claude"
-cat >"$BE/.claude/project.yaml" <<'YAML'
+mkdir -p "$BE/.claude" "$BE/.neural-network"
+cat >"$BE/.neural-network/project.yaml" <<'YAML'
 schemaVersion: 2
 project:
     name: acme/widgets
@@ -27,7 +27,7 @@ sys.path.insert(0, os.environ["PLUGIN_SCRIPTS"])
 import brain
 root = sys.argv[1]
 brain.emit_event(root, {"role": "dev", "type": "NoteMinted", "slug": "yaml-key-order"})
-lines = open(os.path.join(root, ".claude", "brain-events.jsonl"), encoding="utf-8").read().splitlines()
+lines = open(os.path.join(root, ".neural-network", "brain-events.jsonl"), encoding="utf-8").read().splitlines()
 assert len(lines) == 1, "expected exactly one line, got %d" % len(lines)
 ev = json.loads(lines[0])
 print("V=%r" % ev.get("v"))
@@ -54,7 +54,7 @@ sys.path.insert(0, os.environ["PLUGIN_SCRIPTS"])
 import brain
 root = sys.argv[1]
 brain.emit_event(root, {"role": "reviewer", "type": "RecallPerformed"})
-ev = json.loads(open(os.path.join(root, ".claude", "brain-events.jsonl")).readline())
+ev = json.loads(open(os.path.join(root, ".neural-network", "brain-events.jsonl")).readline())
 print("REPO=%s" % ev.get("repo"))
 ' "$BE" 2>&1)"
 check "schema: repo falls back to root basename" "REPO=$reponame" "$out"
@@ -93,7 +93,7 @@ import brain
 root = sys.argv[1]
 brain.emit_event(root, {"role": "dev", "type": "NoteMinted", "slug": "a"})
 brain.emit_event(root, {"role": "dev", "type": "NoteMinted", "slug": "b"})
-data = open(os.path.join(root, ".claude", "brain-events.jsonl"), "rb").read()
+data = open(os.path.join(root, ".neural-network", "brain-events.jsonl"), "rb").read()
 print("ENDSNL=%s" % (data.endswith(b"\n")))
 print("NLINES=%d" % data.count(b"\n"))
 ' "$BE" 2>&1)"
@@ -105,10 +105,10 @@ rm -rf "$BE"
 # §8.1.1: an unwritable feed target must NOT raise; emit_event returns falsy and
 # prints a warning, and the caller's own work continues unaffected.
 BE="$(mktemp -d)"
-# Make .claude a read-only regular file so <root>/.claude/brain-events.jsonl can
-# neither be created nor its parent dir made -> the append is doomed.
-printf '' >"$BE/.claude"
-chmod 000 "$BE/.claude" 2>/dev/null || true
+# Make .neural-network a read-only regular file so <root>/.neural-network/brain-events.jsonl
+# can neither be created nor its parent dir made -> the append is doomed.
+printf '' >"$BE/.neural-network"
+chmod 000 "$BE/.neural-network" 2>/dev/null || true
 out="$(PLUGIN_SCRIPTS="$BE_SCRIPTS" python3 -c '
 import os, sys
 sys.path.insert(0, os.environ["PLUGIN_SCRIPTS"])
@@ -149,7 +149,7 @@ wait
 out="$(PLUGIN_SCRIPTS="$BE_SCRIPTS" python3 -c '
 import json, os, sys
 root, n = sys.argv[1], int(sys.argv[2])
-p = os.path.join(root, ".claude", "brain-events.jsonl")
+p = os.path.join(root, ".neural-network", "brain-events.jsonl")
 lines = open(p, encoding="utf-8").read().splitlines()
 valid = 0
 idxs = set()
@@ -206,7 +206,7 @@ BW="$(mktemp -d)"
 bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
 printf 'alpha body\n\nrel: [[foo]] and [[bar]]\n' \
     | bw mint dev alpha --tags t --paths "p/**" --source "PR#1" >/dev/null
-out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+out="$(bw_summary "$BW/.neural-network/brain-events.jsonl")"
 check "mint emits exactly one NoteMinted"        "NoteMinted=1"        "$out"
 check "mint emits one LinkFormed per new wikilink" "LinkFormed=2"      "$out"
 check "mint NoteMinted carries the slug"          "SLUGS=alpha"        "$out"
@@ -214,7 +214,7 @@ check "mint LinkFormed carries the new link keys" "KEYS=alpha->bar,alpha->foo" "
 # re-mint the SAME body: no genuinely-new wikilink => +1 NoteMinted, +0 LinkFormed.
 printf 'alpha body\n\nrel: [[foo]] and [[bar]]\n' \
     | bw mint dev alpha --tags t --paths "p/**" --source "PR#1" >/dev/null
-out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+out="$(bw_summary "$BW/.neural-network/brain-events.jsonl")"
 check "re-mint adds a NoteMinted"                 "NoteMinted=2"       "$out"
 check "re-mint forms no new links (existing keys)" "LinkFormed=2"      "$out"
 rm -rf "$BW"
@@ -225,16 +225,16 @@ BW="$(mktemp -d)"
 bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
 printf 'a body\n\nrel: [[b]]\n' | bw mint dev a --tags x --paths "p/**" >/dev/null
 printf 'b body\n'               | bw mint dev b --tags y --paths "q/**" >/dev/null
-: >"$BW/.claude/brain-events.jsonl"   # isolate recall events from the mint events above
+: >"$BW/.neural-network/brain-events.jsonl"   # isolate recall events from the mint events above
 bw recall dev --paths "p/foo" --keywords "" >/dev/null
-out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+out="$(bw_summary "$BW/.neural-network/brain-events.jsonl")"
 check "recall emits exactly one RecallPerformed"  "RecallPerformed=1"  "$out"
 check "recall emits one LinkFired per traversed link" "LinkFired=1"    "$out"
 check "recall LinkFired carries the traversed key" "KEYS=a->b"         "$out"
 # a second recall call fires the same link again (traversed is per-call) => +1 LinkFired.
-: >"$BW/.claude/brain-events.jsonl"
+: >"$BW/.neural-network/brain-events.jsonl"
 bw recall dev --paths "p/foo" --keywords "" >/dev/null
-out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+out="$(bw_summary "$BW/.neural-network/brain-events.jsonl")"
 check "2nd recall fires the link again (per-call)" "LinkFired=1"       "$out"
 check "2nd recall emits one RecallPerformed"       "RecallPerformed=1" "$out"
 rm -rf "$BW"
@@ -243,9 +243,9 @@ rm -rf "$BW"
 BW="$(mktemp -d)"
 bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
 printf 'reviewer rule body\n' | bw mint reviewer verify-tests --tags review --paths "**" >/dev/null
-: >"$BW/.claude/brain-events.jsonl"
+: >"$BW/.neural-network/brain-events.jsonl"
 bw consult dev reviewer verify-tests >/dev/null
-out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+out="$(bw_summary "$BW/.neural-network/brain-events.jsonl")"
 check "consult emits exactly one ConsultPerformed" "ConsultPerformed=1" "$out"
 check "consult ConsultPerformed carries the slug"  "SLUGS=verify-tests" "$out"
 rm -rf "$BW"
@@ -254,15 +254,15 @@ rm -rf "$BW"
 BW="$(mktemp -d)"
 bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
 printf 'gradbody\n' | bw mint dev gradme --tags g --paths "g/**" >/dev/null
-: >"$BW/.claude/brain-events.jsonl"
+: >"$BW/.neural-network/brain-events.jsonl"
 bw graduate dev gradme >/dev/null
-out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+out="$(bw_summary "$BW/.neural-network/brain-events.jsonl")"
 check "graduate emits exactly one NoteGraduated"  "NoteGraduated=1"    "$out"
 check "graduate NoteGraduated carries the slug"   "SLUGS=gradme"       "$out"
 # read-only failure: graduating a nonexistent slug must emit NOTHING.
-: >"$BW/.claude/brain-events.jsonl"
+: >"$BW/.neural-network/brain-events.jsonl"
 bw graduate dev nope 2>/dev/null || true
-out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+out="$(bw_summary "$BW/.neural-network/brain-events.jsonl")"
 check "graduate on missing slug emits no event"   "NoteGraduated=0"    "$out"
 rm -rf "$BW"
 
@@ -272,15 +272,15 @@ bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
 # two links whose targets never exist => both are prune candidates (target missing).
 printf 'src body\n\nrel: [[ghost-one]] and [[ghost-two]]\n' \
     | bw mint dev src --tags s --paths "s/**" >/dev/null
-: >"$BW/.claude/brain-events.jsonl"
+: >"$BW/.neural-network/brain-events.jsonl"
 # read-only: prune WITHOUT --apply must emit nothing.
 bw prune dev >/dev/null
-out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+out="$(bw_summary "$BW/.neural-network/brain-events.jsonl")"
 check "prune without --apply emits no LinkPruned" "LinkPruned=0"       "$out"
 # --apply removes both candidate links => exactly 2 LinkPruned.
-: >"$BW/.claude/brain-events.jsonl"
+: >"$BW/.neural-network/brain-events.jsonl"
 bw prune dev --apply >/dev/null
-out="$(bw_summary "$BW/.claude/brain-events.jsonl")"
+out="$(bw_summary "$BW/.neural-network/brain-events.jsonl")"
 check "prune --apply emits one LinkPruned per removed link" "LinkPruned=2" "$out"
 check "prune LinkPruned carries the removed keys"  "KEYS=src->ghost-one,src->ghost-two" "$out"
 check "prune LinkPruned carries a reason"          "target missing"     "$out"
@@ -321,8 +321,8 @@ def rd(root, rel):
     p = os.path.join(root, rel)
     return open(p, "rb").read() if os.path.exists(p) else b""
 
-al = os.path.join(".claude", "identities", "dev", "brain", ".activation.jsonl")
-lj = os.path.join(".claude", "identities", "dev", "brain", "links.json")
+al = os.path.join(".neural-network", "identities", "dev", "brain", ".activation.jsonl")
+lj = os.path.join(".neural-network", "identities", "dev", "brain", "links.json")
 print("ACTIVATION_IDENTICAL=%s" % (rd(off, al) == rd(on, al)))
 print("LINKS_IDENTICAL=%s" % (rd(off, lj) == rd(on, lj)))
 PY
@@ -332,18 +332,18 @@ check "byte-identity: links.json unchanged by emit"        "LINKS_IDENTICAL=True
 rm -rf "$BW_OFF" "$BW_ON"
 
 # ------------------------------------------------------------- feed unavailable breaks nothing (DoD)
-# Make the feed path a DIRECTORY so the append is doomed, while .claude/identities
+# Make the feed path a DIRECTORY so the append is doomed, while .neural-network/identities
 # stays writable. The command's real work (note + links.json) must complete, exit 0,
 # and only a warning is printed.
 BW="$(mktemp -d)"
 bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
-mkdir -p "$BW/.claude/brain-events.jsonl"   # feed target unwritable
+mkdir -p "$BW/.neural-network/brain-events.jsonl"   # feed target unwritable
 out="$(printf 'body\n\nrel: [[x]]\n' | bw mint dev survivor --tags t --paths "p/**" 2>&1)"; rc=$?
 check_rc "feed-unwritable: mint still exits 0"     0 "$rc"
 check "feed-unwritable: mint still reports minted" "minted dev/survivor" "$out"
 check "feed-unwritable: a warning is printed"      "warning"             "$out"
 check_absent "feed-unwritable: no traceback"       "Traceback"           "$out"
-check "feed-unwritable: links.json still written"  "survivor->x" "$(cat "$BW/.claude/identities/dev/brain/links.json")"
+check "feed-unwritable: links.json still written"  "survivor->x" "$(cat "$BW/.neural-network/identities/dev/brain/links.json")"
 rm -rf "$BW"
 
 echo "== verify-feed (MEM-023: fold LinkFormed/LinkFired/LinkPruned, diff against links.json) =="
@@ -351,18 +351,18 @@ echo "== verify-feed (MEM-023: fold LinkFormed/LinkFired/LinkPruned, diff agains
 # vf_seed_feed <root> <line...> -- write one brain-events.jsonl line per arg
 vf_seed_feed() {
     local root="$1"; shift
-    mkdir -p "$root/.claude"
-    : >"$root/.claude/brain-events.jsonl"
+    mkdir -p "$root/.claude" "$root/.neural-network"
+    : >"$root/.neural-network/brain-events.jsonl"
     for ln in "$@"; do
-        printf '%s\n' "$ln" >>"$root/.claude/brain-events.jsonl"
+        printf '%s\n' "$ln" >>"$root/.neural-network/brain-events.jsonl"
     done
 }
 
 # vf_seed_links <root> <role> <json> -- write links.json verbatim for a role
 vf_seed_links() {
     local root="$1" role="$2" json="$3"
-    mkdir -p "$root/.claude/identities/$role/brain"
-    printf '%s' "$json" >"$root/.claude/identities/$role/brain/links.json"
+    mkdir -p "$root/.neural-network/identities/$role/brain"
+    printf '%s' "$json" >"$root/.neural-network/identities/$role/brain/links.json"
 }
 
 # ------------------------------------------------------- clean fold: exit 0
@@ -414,7 +414,7 @@ out="$(vf verify-feed dev 2>&1)"; rc=$?
 check_rc "verify-feed: no feed file exits 0"    0 "$rc"
 check "verify-feed: no feed file is clean"      "verify-feed: dev clean" "$out"
 
-: >"$VF/.claude/brain-events.jsonl"   # exists but empty
+: >"$VF/.neural-network/brain-events.jsonl"   # exists but empty
 out="$(vf verify-feed dev 2>&1)"; rc=$?
 check_rc "verify-feed: empty feed file exits 0" 0 "$rc"
 check "verify-feed: empty feed file is clean"   "verify-feed: dev clean" "$out"

@@ -13,7 +13,7 @@ _nvroot="$(mktemp -d)"          # brains root (--dir)
 _nvstate="$(mktemp -d)"         # server state (pid/port)
 _nvscan_empty="$(mktemp -d)"    # empty scan base so real ~/Development repos never leak into these tests
 _nvrepo="$(basename "$_nvroot")"
-_nvbrain="$_nvroot/.claude/identities/dev/brain"
+_nvbrain="$_nvroot/.neural-network/identities/dev/brain"
 mkdir -p "$_nvbrain/notes"
 cat >"$_nvbrain/notes/cas-retry.md" <<'EOF'
 ---
@@ -111,12 +111,12 @@ python3 "$NV" stop >/dev/null
 # findings 1 + 3: offset-cursor /events — completeness from per-brain byte offsets, not sort order.
 _nvev="$(mktemp -d)"
 _nvevrepo="$(basename "$_nvev")"
-for r in dev reviewer orchestrator; do mkdir -p "$_nvev/.claude/identities/$r/brain"; done
+for r in dev reviewer orchestrator; do mkdir -p "$_nvev/.neural-network/identities/$r/brain"; done
 lifecycle_start "neural-view starts (events root)" NEURAL_VIEW_PORT 'python3 "$NV" start --dir "$_nvev"'
 evout="$(P="$NEURAL_VIEW_PORT" R="$_nvev" python3 - <<'PY'
 import json, os, urllib.request
 P, R = os.environ["P"], os.environ["R"]
-log = lambda role: os.path.join(R, ".claude/identities", role, "brain", ".activation.jsonl")
+log = lambda role: os.path.join(R, ".neural-network/identities", role, "brain", ".activation.jsonl")
 def append(role, i, ts):
     with open(log(role), "a") as f:
         f.write(json.dumps({"ts": ts, "role": role, "event": "seed", "note": "n%d" % i, "id": i}) + "\n")
@@ -170,15 +170,16 @@ unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_SCAN
 # shellcheck disable=SC2154
 rm -rf "$_nvroot" "$_nvstate" "$_nvev" "$_nvempty" "$_nvscan_empty" "${_hubtmp:-}"
 
-echo "== neural-view (multi-repo aggregation via .claude/.neural-network marker) =="
+echo "== neural-view (multi-repo aggregation via .neural-network marker) =="
 _scanbase="$(mktemp -d)"
 _scanstate="$(mktemp -d)"
 _repoA="$_scanbase/repo-alpha"; _repoB="$_scanbase/repo-beta"; _repoC="$_scanbase/repo-gamma"
-mkdir -p "$_repoA/.claude" "$_repoB/.claude" "$_repoC/.claude"
-: >"$_repoA/.claude/.neural-network"   # marker + brains
-: >"$_repoB/.claude/.neural-network"   # marker, no brains at all
-# repoC: NO marker — must be excluded even though it has a brain
-_alphabrain="$_repoA/.claude/identities/dev/brain"
+mkdir -p "$_repoA/.claude" "$_repoA/.neural-network" "$_repoB/.claude" "$_repoC/.claude"
+mkdir -p "$_repoB/.neural-network"   # marker dir, no brains at all
+# repoC: NO marker dir — must be excluded even though it has brain-like
+# content (left at the pre-cutover .claude/identities location, which is
+# exactly what an unmigrated repo looks like).
+_alphabrain="$_repoA/.neural-network/identities/dev/brain"   # marker dir + brains
 mkdir -p "$_alphabrain/notes"
 cat >"$_alphabrain/notes/seed-note.md" <<'EOF'
 ---
@@ -194,7 +195,7 @@ EOF
 # #75: repo-alpha also grows a non-canonical "ops" role brain, to pin that
 # repoRoles is canonical-roles UNION discovered-on-disk roles, not just the
 # hardcoded three.
-_alphaopsbrain="$_repoA/.claude/identities/ops/brain"
+_alphaopsbrain="$_repoA/.neural-network/identities/ops/brain"
 mkdir -p "$_alphaopsbrain/notes"
 cat >"$_alphaopsbrain/notes/ops-note.md" <<'EOF'
 ---
@@ -281,9 +282,9 @@ if [[ "$(id -u)" != "0" ]]; then   # permission tests are meaningless as root (b
     echo "== neural-view (scan base with an unreadable child directory) =="
     _permbase="$(mktemp -d)"
     _permstate="$(mktemp -d)"
-    _goodrepo="$_permbase/good-repo"; mkdir -p "$_goodrepo/.claude"
-    : >"$_goodrepo/.claude/.neural-network"
-    _denied="$_permbase/denied-repo"; mkdir -p "$_denied/.claude"
+    _goodrepo="$_permbase/good-repo"; mkdir -p "$_goodrepo/.claude" "$_goodrepo/.neural-network"
+    : >"$_goodrepo/.neural-network"
+    _denied="$_permbase/denied-repo"; mkdir -p "$_denied/.claude" "$_denied/.neural-network"
     chmod 000 "$_denied"   # simulates a scan-base child neural-view can't traverse into
     export NEURAL_VIEW_STATE="$_permstate" NEURAL_VIEW_SCAN="$_permbase"
     lifecycle_start "neural-view survives an unreadable scan-base child (starts)" NEURAL_VIEW_PORT 'python3 "$NV" start 2>&1'
@@ -399,7 +400,7 @@ echo "== neural-view (process identity, #415: named 'neural-view', not python3/P
 # portable part (the process-name symlink itself gets created/refreshed).
 _pnstate="$(mktemp -d)"
 _pnroot="$(mktemp -d)"
-mkdir -p "$_pnroot/.claude"
+mkdir -p "$_pnroot/.claude" "$_pnroot/.neural-network"
 export NEURAL_VIEW_STATE="$_pnstate"
 lifecycle_start "process-name: neural-view starts" NEURAL_VIEW_PORT 'python3 "$NV" start --dir "$_pnroot"'
 _pnpid="$(cat "$_pnstate/pid")"
@@ -419,7 +420,7 @@ rm -rf "$_pnstate" "$_pnroot"
 echo "== neural-view (process identity: naming failure never blocks startup, #415) =="
 _pfstate="$(mktemp -d)"
 _pfroot="$(mktemp -d)"
-mkdir -p "$_pfroot/.claude"
+mkdir -p "$_pfroot/.claude" "$_pfroot/.neural-network"
 : >"$_pfstate/bin"   # pre-occupy the bin path with a plain FILE so the symlink/mkdir must fail
 export NEURAL_VIEW_STATE="$_pfstate"
 lifecycle_start "process-name: start still succeeds when the rename link can't be created" NEURAL_VIEW_PORT 'python3 "$NV" start --dir "$_pfroot"'
@@ -444,9 +445,9 @@ _mstate="$(mktemp -d)"
 _mroot="$(mktemp -d)"
 _mport="$(_rand_port)"      # the metrics port the fixture root configures
 _mmain="$(_rand_port)"      # main port: free the whole time (that's the point)
-mkdir -p "$_mroot/.claude"
-printf '%s\n' '# neural-network' >"$_mroot/.claude/.neural-network"
-cat >"$_mroot/.claude/project.yaml" <<EOF
+mkdir -p "$_mroot/.claude" "$_mroot/.neural-network"
+printf '%s\n' '# neural-network' >"$_mroot/.neural-network"
+cat >"$_mroot/.neural-network/project.yaml" <<EOF
 schemaVersion: 2
 assistant:
     version: 1

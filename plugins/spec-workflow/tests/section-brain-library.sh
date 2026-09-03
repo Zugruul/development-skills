@@ -22,7 +22,7 @@ root, scripts = sys.argv[1], sys.argv[2]
 sys.path.insert(0, scripts)
 import brain
 
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
@@ -68,7 +68,7 @@ check "recall() injected count is 1" "RECALL_INJECTED:1" "$out"
 
 # side effects a subprocess CLI shim would have relied on are still present:
 # NoteMinted + LinkFormed + RecallPerformed on the unified brain-event feed.
-events="$(cat "$BL1/.claude/brain-events.jsonl" 2>/dev/null || true)"
+events="$(cat "$BL1/.neural-network/brain-events.jsonl" 2>/dev/null || true)"
 check "mint() still emits NoteMinted to brain-events.jsonl" '"type": "NoteMinted"' "$events"
 check "mint() still emits LinkFormed to brain-events.jsonl" '"type": "LinkFormed"' "$events"
 check "recall() still emits RecallPerformed to brain-events.jsonl" '"type": "RecallPerformed"' "$events"
@@ -94,7 +94,7 @@ import sys, os
 root, scripts = sys.argv[1], sys.argv[2]
 sys.path.insert(0, scripts)
 import brain
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 notes = brain.load_notes(identities, "dev")
 fm = notes["eq-note"]["fm"]
 # a rendering of the CLI mint above -- reconstruct via the same format
@@ -119,7 +119,7 @@ import sys, os
 root, scripts = sys.argv[1], sys.argv[2]
 sys.path.insert(0, scripts)
 import brain
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 result = brain.recall(identities, "dev", root, paths="eq/x.sh", keywords="")
 text = "\n".join(result["blocks"])
 print(text if text else "(no lessons recalled)")
@@ -137,7 +137,7 @@ import sys, os
 root, scripts = sys.argv[1], sys.argv[2]
 sys.path.insert(0, scripts)
 import brain
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 result = brain.recall(identities, "dev", root, paths="nowhere/nothing.sh", keywords="no-such-keyword")
 text = "\n".join(result["blocks"])
 print(text if text else "(no lessons recalled)")
@@ -154,7 +154,7 @@ import sys, os
 root, scripts = sys.argv[1], sys.argv[2]
 sys.path.insert(0, scripts)
 import brain
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 result = brain.recall(identities, "dev", root, paths="eq/x.sh", keywords="", budget=8)
 text = "\n".join(result["blocks"])
 print(text if text else "(no lessons recalled)")
@@ -177,7 +177,7 @@ root, scripts = sys.argv[1], sys.argv[2]
 sys.path.insert(0, scripts)
 import brain
 
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 
 m1 = brain.mint(identities, "dev", "roundtrip-note", root,
                  "Round trip body, no wikilinks.\n",

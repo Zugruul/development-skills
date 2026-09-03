@@ -90,7 +90,7 @@ iso_assert_clean() {
 
 # --- fixture assistant repo: a brain with ONLY persona-appropriate notes ---
 AI_ROOT="$(mktemp -d)"
-AI_IDENTITIES="$AI_ROOT/.claude/identities"
+AI_IDENTITIES="$AI_ROOT/.neural-network/identities"
 mkdir -p "$AI_IDENTITIES"
 AI_TMPPY="$(mktemp -d)"
 

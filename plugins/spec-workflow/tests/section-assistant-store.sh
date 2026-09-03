@@ -18,8 +18,8 @@ NV="$PLUGIN/scripts/neural-view.py"
 # assistant: section (mirrors section-assistant-engine.sh's ae_repo).
 as_repo() {
     local dir="$1" main="$2"
-    mkdir -p "$dir/.claude"
-    printf '%s\n' '# neural-network' >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf '%s\n' '# neural-network' >"$dir/.neural-network/marker"
     printf '%s\n' \
         'schemaVersion: 2' \
         'assistant:' \
@@ -36,7 +36,7 @@ as_repo() {
         '            enabled: true' \
         '            provisioning:' \
         '                bin: codex' \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 
 # --------------------------------------------------------------- unit: append/read round trip

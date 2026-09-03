@@ -1,6 +1,6 @@
 # SPEC-GRAPHIFY — Graphify-inspired improvements to the skillset
 
-Status: **APPROVED 2026-07-20** — human validated; §16 defaults accepted (Q1: C1–C3 merge, C4 deferred; Q2: graphify vocabulary verbatim; Q3: report opens retro; Q4: impact-first epic order). Registered in `.claude/project.yaml` as spec `gl`, seeded to the board.
+Status: **APPROVED 2026-07-20** — human validated; §16 defaults accepted (Q1: C1–C3 merge, C4 deferred; Q2: graphify vocabulary verbatim; Q3: report opens retro; Q4: impact-first epic order). Registered in `.neural-network/project.yaml` as spec `gl`, seeded to the board.
 
 ## §1 Overview
 
@@ -78,7 +78,7 @@ Every merge keeps the backing script and its tests untouched in the same PR that
 The missing feedback edge: recall → task → outcome → ranking. All data lands in the per-role brain dir (orchestrator-mediated, same privacy model).
 
 - **R7.1** WHEN the orchestrator closes a task for which a brief contained recalled notes, THE SYSTEM SHALL support recording one outcome per recalled note via `brain.sh outcome <role> <slug> useful|dead_end|corrected [--task <ref>]`, appended to `<brain>/outcomes.jsonl` (new file; append-only; atomic single-write like `emit_event`).
-- **R7.2** WHEN an outcome is recorded, THE SYSTEM SHALL emit a `RecallOutcome` event to `.claude/brain-events.jsonl` (never load-bearing, warn-on-failure).
+- **R7.2** WHEN an outcome is recorded, THE SYSTEM SHALL emit a `RecallOutcome` event to `.neural-network/brain-events.jsonl` (never load-bearing, warn-on-failure).
 - **R7.3** WHEN `corrected` is recorded, THE SYSTEM SHALL require a `--note "<what was wrong>"` payload so the retro has material to re-mint from.
 - **R7.4** WHEN recall ranks candidates, THE SYSTEM SHALL apply an outcome multiplier to seed activation: notes whose recent outcomes are net-positive rank up, net-negative rank down; a note with zero outcomes is unchanged (byte-identical ranking to today — G6).
 - **R7.5** WHILE a note is contested (≥1 `useful` AND ≥1 `corrected`/`dead_end` within the last N retros, N default 3), THE SYSTEM SHALL render it in recall output with a `⚠ contested` marker instead of silently ranking it.
@@ -157,7 +157,7 @@ Unit tests per script function (existing pattern: one test file per module under
 
 ## §17 Knowledge-graph seeding: `/knowledge-base-seed` (impact — new, epic E5) — ADDED
 
-- **R17.1** THE SYSTEM SHALL provide a `/knowledge-base-seed` skill that explores the current project — each `specs[].specPath`/`backlogPath` in `.claude/project.yaml`, `specs[].epics` (board epics read from config, never a live `gh` call), `paths.designDir` markdown files, applied spec-deltas under `paths.specDeltaDir/applied/`, root `README.md`/`AGENTS.md`/`CLAUDE.md`, the top-level directory layout, and recent git history (stdlib `git log` parsing only) — and seeds/updates zettel notes in a new `knowledge` identity brain (`.claude/identities/knowledge/brain/`), via a tested script (`kb-seed.py`, stdlib + PyYAML only) invoked by a thin `kb-seed.sh` wrapper following the existing `brain.sh` pattern.
+- **R17.1** THE SYSTEM SHALL provide a `/knowledge-base-seed` skill that explores the current project — each `specs[].specPath`/`backlogPath` in `.neural-network/project.yaml`, `specs[].epics` (board epics read from config, never a live `gh` call), `paths.designDir` markdown files, applied spec-deltas under `paths.specDeltaDir/applied/`, root `README.md`/`AGENTS.md`/`CLAUDE.md`, the top-level directory layout, and recent git history (stdlib `git log` parsing only) — and seeds/updates zettel notes in a new `knowledge` identity brain (`.neural-network/identities/knowledge/brain/`), via a tested script (`kb-seed.py`, stdlib + PyYAML only) invoked by a thin `kb-seed.sh` wrapper following the existing `brain.sh` pattern.
 - **R17.2** `knowledge` SHALL be a brain-only role: it has no commit identity and no `delegation.identities.knowledge` entry. Its existence SHALL NOT change behavior for `dev`/`reviewer`/`orchestrator`/any other brain — with no `knowledge` brain present, every existing role's `recall`/`status`/`directory` output is byte-identical to before this feature (regression invariant, see §13).
 - **R17.3** THE SYSTEM SHALL reuse `brain.py`'s note/link serialization, `notes_dir`/`links_path`/`load_notes`/`load_links`/`save_links`/`render_note`/`parse_note`, and the shrink guard (`_shrink_guard`, §13) BY IMPORT — `kb-seed.py` SHALL NOT reimplement frontmatter or `links.json` serialization. `brain.py`'s `KEY_ORDER` gains two additive-only frontmatter keys, `seed-path` and `seed-commit`; a note that never sets them renders identically to before this feature.
 - **R17.4** Every seeded note SHALL carry provenance frontmatter distinguishing it from a retro-minted note: `source: seed`, `seed-path` (the source file/config path, or a bracketed synthetic token like `(git log)` for non-file sources), and `seed-commit` (the repo HEAD SHA at seed time).

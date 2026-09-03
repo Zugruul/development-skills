@@ -18,7 +18,7 @@ LS_LIB="$PLUGIN/scripts/lib/local-state.sh"
 # manifest and both parsers must agree with these lists exactly.
 LS_EXP_IGNORE="$(printf '%s\n' \
     '.claude/CHECKPOINT' \
-    '.claude/project.local.yaml' \
+    '.neural-network/project.local.yaml' \
     '.claude/ITERATIVE_UI_OFF' \
     '.claude/ui-hub/' \
     '.claude/gate-pass' \
@@ -32,16 +32,15 @@ LS_EXP_IGNORE="$(printf '%s\n' \
     '.claude/merge-dance.lock/' \
     '.claude/.flush*' \
     '.claude/worktrees/' \
-    '.claude/identities/*/brain/index.sqlite3' \
-    '.claude/identities/*/brain/.staleness-cache.json' \
+    '.neural-network/identities/*/brain/index.sqlite3' \
+    '.neural-network/identities/*/brain/.staleness-cache.json' \
     '.claude/assistant/' \
     '.claude/skills/whisper-sidecar/')"
 LS_EXP_TRACK="$(printf '%s\n' \
-    '.claude/feedbacks/' \
-    '.claude/identities/' \
-    '.claude/brain-events.jsonl' \
-    '.claude/.neural-network' \
-    '.claude/project.yaml')"
+    '.neural-network/feedbacks/' \
+    '.neural-network/identities/' \
+    '.neural-network/brain-events.jsonl' \
+    '.neural-network/project.yaml')"
 
 # --- manifest exists ------------------------------------------------------
 if [[ -f "$LS_MANIFEST" ]]; then present=yes; else present=no; fi
@@ -59,9 +58,9 @@ check "local-state: bash track list matches spec" "EQUAL" "$r"
 # --- bash helper: policy lookup by path -----------------------------------
 r="$(bash -c '. "$1" 2>/dev/null && spec_workflow_local_state_policy .claude/CHECKPOINT' _ "$LS_LIB" 2>/dev/null)"
 check "local-state: bash policy(.claude/CHECKPOINT)=ignore" "ignore" "$r"
-r="$(bash -c '. "$1" 2>/dev/null && spec_workflow_local_state_policy .claude/project.yaml' _ "$LS_LIB" 2>/dev/null)"
-check "local-state: bash policy(.claude/project.yaml)=track" "track" "$r"
-r="$(bash -c '. "$1" 2>/dev/null && spec_workflow_local_state_policy .claude/identities/*/brain/index.sqlite3' _ "$LS_LIB" 2>/dev/null)"
+r="$(bash -c '. "$1" 2>/dev/null && spec_workflow_local_state_policy .neural-network/project.yaml' _ "$LS_LIB" 2>/dev/null)"
+check "local-state: bash policy(.neural-network/project.yaml)=track" "track" "$r"
+r="$(bash -c '. "$1" 2>/dev/null && spec_workflow_local_state_policy .neural-network/identities/*/brain/index.sqlite3' _ "$LS_LIB" 2>/dev/null)"
 check "local-state: bash policy(index.sqlite3)=ignore" "ignore" "$r"
 bash -c '. "$1" 2>/dev/null && spec_workflow_local_state_policy .claude/does-not-exist' _ "$LS_LIB" >/dev/null 2>&1
 check_rc "local-state: bash policy(unknown) exits nonzero" 1 "$?"
@@ -75,7 +74,7 @@ ls_py_track="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import l
 [[ "$ls_py_track" == "$LS_EXP_TRACK" ]] && r=EQUAL || r="DIFFER"
 check "local-state: python track list matches spec" "EQUAL" "$r"
 
-r="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import local_state; print(local_state.policy_of(".claude/brain-events.jsonl"))' "$PLUGIN/scripts/lib" 2>/dev/null)"
+r="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import local_state; print(local_state.policy_of(".neural-network/brain-events.jsonl"))' "$PLUGIN/scripts/lib" 2>/dev/null)"
 check "local-state: python policy(brain-events.jsonl)=track" "track" "$r"
 r="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import local_state; print(local_state.policy_of(".claude/nope") is None)' "$PLUGIN/scripts/lib" 2>/dev/null)"
 check "local-state: python policy(unknown) is None" "True" "$r"

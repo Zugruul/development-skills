@@ -42,7 +42,7 @@ check_absent "graduated note not injected" "sort_keys=False" "$out"
 check "graduated note still bridges to B" "merge-yaml" "$out"
 
 # activation log: every line valid JSON with the frozen contract fields
-LOG="$BT/.claude/identities/dev/brain/.activation.jsonl"
+LOG="$BT/.neural-network/identities/dev/brain/.activation.jsonl"
 out="$(python3 - "$LOG" <<'PY'
 import json, sys
 seen = set()
@@ -66,7 +66,7 @@ check "activation log has inject event" "inject" "$out"
 
 # directory lists titles + tags, never bodies
 brain directory >/dev/null
-out="$(cat "$BT/.claude/identities/DIRECTORY.md")"
+out="$(cat "$BT/.neural-network/identities/DIRECTORY.md")"
 check "directory lists a slug" "yaml-key-order" "$out"
 check "directory lists tags" "merge" "$out"
 check_absent "directory omits bodies" "sort_keys=False" "$out"
@@ -80,7 +80,7 @@ check_absent "consult no recurrence first time" "RECURRENCE" "$out"
 out="$(brain consult dev reviewer verify-tests)"
 check "consult recurrence on 2nd" "RECURRENCE" "$out"
 check "consult recurrence names consumer" "dev's brain" "$out"
-out="$(cat "$BT/.claude/identities/reviewer/brain/.activation.jsonl")"
+out="$(cat "$BT/.neural-network/identities/reviewer/brain/.activation.jsonl")"
 check "consult logged to owner brain" '"event": "consult"' "$out"
 check "consult log names consumer" '"consumer": "dev"' "$out"
 
@@ -94,7 +94,7 @@ out="$(brain recall dev --paths "bud/x.txt" --keywords "" --budget 5 \
 check "budget accounting stays within bound" "WITHIN" "$out"
 
 # finding 2 — consult log lines omit activation; seed/hop/inject carry it
-out="$(python3 - "$BT/.claude/identities/dev/brain/.activation.jsonl" "$BT/.claude/identities/reviewer/brain/.activation.jsonl" <<'PY'
+out="$(python3 - "$BT/.neural-network/identities/dev/brain/.activation.jsonl" "$BT/.neural-network/identities/reviewer/brain/.activation.jsonl" <<'PY'
 import json, sys
 ok = True
 for path in sys.argv[1:]:
@@ -117,12 +117,12 @@ check "consult omits activation; others keep it" "FIELD-SETS-OK" "$out"
 printf 'quoted comma tag note.\n' | brain mint dev qtag --tags placeholder --paths "qt/**" --source x >/dev/null
 python3 - "$BT" <<'PY'
 import os, re, sys
-p = os.path.join(sys.argv[1], ".claude/identities/dev/brain/notes/qtag.md")
+p = os.path.join(sys.argv[1], ".neural-network/identities/dev/brain/notes/qtag.md")
 s = open(p).read()
 open(p, "w").write(re.sub(r"tags: .*", 'tags: ["a,b", "c"]', s))
 PY
 brain directory >/dev/null
-out="$(cat "$BT/.claude/identities/DIRECTORY.md")"
+out="$(cat "$BT/.neural-network/identities/DIRECTORY.md")"
 check "comma-containing tag survives parse" "a,b" "$out"
 check_absent "comma tag not split into fragments" 'b" ' "$out"
 # recall still surfaces the note by its intact second tag
@@ -136,7 +136,7 @@ printf 'Target of the stale link.\n' \
     | brain mint dev stale-dst --tags stale --paths "nope2/**" --source "old"
 python3 - "$BT" <<'PY'
 import os, re, sys
-p = os.path.join(sys.argv[1], ".claude/identities/dev/brain/notes/stale-src.md")
+p = os.path.join(sys.argv[1], ".neural-network/identities/dev/brain/notes/stale-src.md")
 s = open(p).read()
 open(p, "w").write(re.sub(r"created: .*", "created: 2020-01-01", s))
 PY
@@ -154,7 +154,7 @@ printf 'Above threshold, a hard rule.\n' | brain mint dev gc-above --tags invari
 printf 'Above threshold but already graduated.\n' | brain mint dev gc-graduated --tags process --paths "gc/**" --source x
 python3 - "$BT" <<'PY2'
 import os, re, sys
-d = os.path.join(sys.argv[1], ".claude/identities/dev/brain/notes")
+d = os.path.join(sys.argv[1], ".neural-network/identities/dev/brain/notes")
 patch = {"gc-below": (2, False), "gc-at": (3, False), "gc-above": (5, False), "gc-graduated": (5, True)}
 for slug, (strength, graduated) in patch.items():
     p = os.path.join(d, slug + ".md")
@@ -174,9 +174,9 @@ check "graduate-check proposes test-or-lint for testing/ci tags" "test-or-lint" 
 check "graduate-check proposes an invariant entry for contract/invariant tags" "specs[].invariants entry" "$out"
 
 # read-only: strength/graduated on disk are unchanged after graduate-check runs
-before="$(grep -E 'strength:|graduated:' "$BT/.claude/identities/dev/brain/notes/gc-at.md")"
+before="$(grep -E 'strength:|graduated:' "$BT/.neural-network/identities/dev/brain/notes/gc-at.md")"
 brain graduate-check dev >/dev/null
-after="$(grep -E 'strength:|graduated:' "$BT/.claude/identities/dev/brain/notes/gc-at.md")"
+after="$(grep -E 'strength:|graduated:' "$BT/.neural-network/identities/dev/brain/notes/gc-at.md")"
 check "graduate-check is read-only (frontmatter unchanged)" "$before" "$after"
 
 # empty case: a threshold nothing clears exits 0 with a clean message
@@ -185,8 +185,8 @@ check "graduate-check empty case message" "no notes at/above threshold 100 for d
 check "graduate-check empty case exits 0" "rc=0" "$out"
 
 # threshold configurable via project.yaml (methodology.graduationThreshold): cutoff shifts
-mkdir -p "$BT/.claude"
-cat > "$BT/.claude/project.yaml" <<'YAML'
+mkdir -p "$BT/.claude" "$BT/.neural-network"
+cat > "$BT/.neural-network/project.yaml" <<'YAML'
 schemaVersion: 2
 methodology:
     graduationThreshold: 2
@@ -198,7 +198,7 @@ check "custom threshold (2) picks up the below-default note" "gc-below" "$out"
 out="$(brain graduate-check dev --threshold 4)"
 check_absent "CLI --threshold overrides config (gc-at strength 3 excluded at threshold 4)" "gc-at" "$out"
 check "CLI --threshold overrides config (gc-above strength 5 still included)" "gc-above" "$out"
-rm -f "$BT/.claude/project.yaml"
+rm -f "$BT/.neural-network/project.yaml"
 
 # entities: optional frontmatter list, round-trips through mint/parse/render,
 # and does not perturb recall for notes that carry it (#163).
@@ -206,26 +206,26 @@ before_recall="$(brain recall dev --paths "scripts/foo.sh" --keywords "")"
 printf 'A card fact note.\n' \
     | brain mint dev entity-note --tags card --paths "cards/**" --source "gen" --entities "card:gone-in-a-flash,card:fleeing-starbreeze"
 check "mint --entities round-trips into frontmatter" 'entities: [card:gone-in-a-flash, card:fleeing-starbreeze]' \
-    "$(cat "$BT/.claude/identities/dev/brain/notes/entity-note.md")"
+    "$(cat "$BT/.neural-network/identities/dev/brain/notes/entity-note.md")"
 after_recall="$(brain recall dev --paths "scripts/foo.sh" --keywords "")"
 check "recall output unchanged for unrelated notes once another note carries entities (#163)" "$before_recall" "$after_recall"
 
 # a note with no --entities never gets an entities: line at all (optional field)
 printf 'No entities here.\n' | brain mint dev no-entity-note --tags misc --paths "x/**" --source g
 check_absent "note minted without --entities has no entities: line" "entities:" \
-    "$(cat "$BT/.claude/identities/dev/brain/notes/no-entity-note.md")"
+    "$(cat "$BT/.neural-network/identities/dev/brain/notes/no-entity-note.md")"
 
 # re-mint WITH entities again survives (like tags/paths, must be re-passed to persist)
 printf 'A card fact note, v2.\n' \
     | brain mint dev entity-note --tags card --paths "cards/**" --source "gen" --entities "card:gone-in-a-flash"
 check "re-mint with --entities keeps the field" 'entities: [card:gone-in-a-flash]' \
-    "$(cat "$BT/.claude/identities/dev/brain/notes/entity-note.md")"
+    "$(cat "$BT/.neural-network/identities/dev/brain/notes/entity-note.md")"
 
 # re-mint WITHOUT --entities drops it, same as tags/paths would if omitted
 printf 'A card fact note, v3.\n' \
     | brain mint dev entity-note --tags card --paths "cards/**" --source "gen"
 check_absent "re-mint without --entities drops the field (matches tags/paths behavior)" "entities:" \
-    "$(cat "$BT/.claude/identities/dev/brain/notes/entity-note.md")"
+    "$(cat "$BT/.neural-network/identities/dev/brain/notes/entity-note.md")"
 
 rm -rf "$BT"
 
@@ -240,7 +240,7 @@ check_absent "brain.sh flag-less: no unbound-variable error" "unbound variable" 
 check "brain.sh mint (no --dir) exits 0" "rc=0" "$out"
 out="$(cd "$BW" && bash "$PLUGIN/scripts/brain.sh" directory 2>&1; echo "rc=$?")"
 check "brain.sh directory (no --dir) exits 0" "rc=0" "$out"
-check "brain.sh wrote into default .claude/identities" "wrapper-note" "$(cat "$BW/.claude/identities/DIRECTORY.md" 2>/dev/null)"
+check "brain.sh wrote into default .neural-network/identities" "wrapper-note" "$(cat "$BW/.neural-network/identities/DIRECTORY.md" 2>/dev/null)"
 # BRAIN_DIR override path still works
 out="$(cd "$BW" && printf 'override body.\n' | BRAIN_DIR=".claude/custom" bash "$PLUGIN/scripts/brain.sh" mint dev ov-note --tags o --paths "y/**" --source "test" 2>&1; echo "rc=$?")"
 check "brain.sh BRAIN_DIR override succeeds" "rc=0" "$out"

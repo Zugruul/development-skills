@@ -13,8 +13,8 @@ ASW_SCRIPTS="$PLUGIN/scripts"
 # asw_repo <dir> <main> -- mirrors section-assistant-selection-memory.sh's asm_repo.
 asw_repo() {
     local dir="$1" main="$2"
-    mkdir -p "$dir/.claude"
-    printf '%s\n' '# neural-network' >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf '%s\n' '# neural-network' >"$dir/.neural-network/marker"
     printf '%s\n' \
         'schemaVersion: 2' \
         'assistant:' \
@@ -31,7 +31,7 @@ asw_repo() {
         '            enabled: true' \
         '            provisioning:' \
         '                bin: codex' \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 
 echo "-- engine: digest.py module (notes/exchanges since ts, tasks pending-E4) --"
@@ -54,7 +54,7 @@ print("EMPTY_EXCHANGES", d0["exchanges"])
 print("EMPTY_TASKS", d0["tasks"])
 print("EMPTY_TASKS_SOURCE", d0["tasksSource"])
 
-events_path = os.path.join(root, ".claude", "brain-events.jsonl")
+events_path = os.path.join(root, ".neural-network", "brain-events.jsonl")
 os.makedirs(os.path.dirname(events_path), exist_ok=True)
 with open(events_path, "w", encoding="utf-8") as fh:
     fh.write(json.dumps({"v": 1, "ts": "2020-01-01T00:00:00+00:00", "repo": "jarvis",
@@ -143,7 +143,7 @@ code, p2, _ = e.handle("POST", "/assistant/select", body={"name": "jarvis"})
 print("RESELECT_HAS_DIGEST", "digest" in p2)
 
 # ---- seed friday brain-events with a note BEFORE it is ever active ------
-events_path = os.path.join(root_b, ".claude", "brain-events.jsonl")
+events_path = os.path.join(root_b, ".neural-network", "brain-events.jsonl")
 os.makedirs(os.path.dirname(events_path), exist_ok=True)
 with open(events_path, "w", encoding="utf-8") as fh:
     fh.write(json.dumps({"v": 1, "ts": "2020-01-01T00:00:00+00:00", "repo": "friday",

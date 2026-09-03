@@ -14,9 +14,9 @@ echo "== repo-hygiene =="
 
 REPO="$(cd "$PLUGIN/../.." && pwd)"
 
-git -C "$REPO" check-ignore .claude/feedbacks/feed.yaml >/dev/null 2>&1
+git -C "$REPO" check-ignore .neural-network/feedbacks/feed.yaml >/dev/null 2>&1
 rc=$?
 check_rc "feedbacks/ is NOT gitignored (git check-ignore exits nonzero)" 1 "$rc"
 
 manifest="$(cat "$PLUGIN/scripts/local-state.manifest" 2>/dev/null)"
-check "local-state.manifest tracks .claude/feedbacks/" "track	.claude/feedbacks/" "$manifest"
+check "local-state.manifest tracks .neural-network/feedbacks/" "track	.neural-network/feedbacks/" "$manifest"

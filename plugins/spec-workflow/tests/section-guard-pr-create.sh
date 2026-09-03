@@ -17,8 +17,8 @@ echo "== guard-pr-create.sh (#76) =="
 
 GT="$(mktemp -d)"
 ( cd "$GT" && git init -q . && git commit -q --allow-empty -m init && git branch -m fx/76-board-enforcement )
-mkdir -p "$GT/.claude"
-cp "$FIX/valid.project.yaml" "$GT/.claude/project.yaml"
+mkdir -p "$GT/.claude" "$GT/.neural-network"
+cp "$FIX/valid.project.yaml" "$GT/.neural-network/project.yaml"
 
 hookjson_pr() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]}}))' "$1"; }
 guard() { (cd "$GT" && bash "$PLUGIN/scripts/guard-pr-create.sh" 2>&1); }

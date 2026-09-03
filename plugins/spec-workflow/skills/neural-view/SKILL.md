@@ -29,10 +29,10 @@ add: *open it and leave it open — recalls light up live as the identities read
 brains.* Options: `--port N` (default 4748), `--dir ROOT` (a brains root always included,
 marker or not; default none), `--scan BASE` (scan base for marker-based multi-repo
 discovery; default `~/Development`) — every immediate child of the scan base with a
-`.claude/.neural-network` marker file is aggregated onto the same page as a labeled
+`.neural-network` marker file is aggregated onto the same page as a labeled
 "constellation", alongside `--dir` if given. With none of these set and an empty/absent
 scan base, falls back to the git root of cwd (single-repo behavior) — and that repo's
-own `.claude/.neural-network` marker is created if it doesn't already have one, so a
+own `.neural-network` marker is created if it doesn't already have one, so a
 bare `start` from inside a repo opts it into every future multi-repo scan too, not just
 this session. `--rescan SECS` (default 60; `0` disables) — the running server re-runs
 discovery on this interval and registers any repo anchored (marker file added) after it

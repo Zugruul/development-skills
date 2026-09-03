@@ -21,7 +21,7 @@ the EXISTING knowledge notes in one invocation refuses, reusing
 
 Python 3 standard library + PyYAML only (via config.py). Usage:
 
-    kb-seed.py <root> seed [--dir .claude/identities] [--role knowledge] [--force] [--dry-run]
+    kb-seed.py <root> seed [--dir .neural-network/identities] [--role knowledge] [--force] [--dry-run]
 """
 import argparse
 import os
@@ -120,7 +120,7 @@ def _epic_sources(spec):
         range_str = ", ".join("%s-%s" % (r[0], r[1]) for r in ranges if len(r) == 2) or "unspecified"
         body = "Epic %s — %s (spec %s, tasks %s).\n" % (eid, etitle, sid, range_str)
         yield {"slug": "epic-%s-%s" % (sid.lower(), eid.lower()), "tags": ["epic", sid],
-               "paths": [], "seed_path": ".claude/project.yaml", "body": body}
+               "paths": [], "seed_path": ".neural-network/project.yaml", "body": body}
 
 
 def _design_doc_sources(root, cfg):
@@ -301,7 +301,7 @@ def main(argv):
     p = argparse.ArgumentParser(
         prog="kb-seed.py", description="Seed/update a knowledge identity brain from project sources (GL-050).")
     p.add_argument("root", help="consumer repo root")
-    p.add_argument("--dir", default=".claude/identities", help="identities dir (relative to root)")
+    p.add_argument("--dir", default=".neural-network/identities", help="identities dir (relative to root)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser("seed")

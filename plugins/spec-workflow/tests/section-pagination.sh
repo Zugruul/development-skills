@@ -6,8 +6,8 @@
 # those are already in scope.
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== board.sh pagination (SW-013: no silent 400/500-item truncation, SPEC 7.4) =="
-PG="$(mktemp -d)"; mkdir -p "$PG/.claude"
-cp "$FIX/valid.project.yaml" "$PG/.claude/project.yaml"
+PG="$(mktemp -d)"; mkdir -p "$PG/.claude" "$PG/.neural-network"
+cp "$FIX/valid.project.yaml" "$PG/.neural-network/project.yaml"
 PGH="$(mktemp -d)"
 cat >"$PGH/gh" <<'FAKE'
 #!/usr/bin/env bash
@@ -126,8 +126,8 @@ check_absent "hard cap: warning stays on stderr, doesn't corrupt stdout output" 
 rm -rf "$PG" "$PGH" "$LOGP1" "$CCP1" "$LOGP3" "$LOGP4" "$CCP4"
 
 echo "== seed-board.sh pagination (SW-013: sees + doesn't recreate a page-2 item) =="
-SBG="$(mktemp -d)"; mkdir -p "$SBG/.claude"
-cp "$FIX/valid.project.yaml" "$SBG/.claude/project.yaml"
+SBG="$(mktemp -d)"; mkdir -p "$SBG/.claude" "$SBG/.neural-network"
+cp "$FIX/valid.project.yaml" "$SBG/.neural-network/project.yaml"
 SBTASKS="$(mktemp)"
 cat >"$SBTASKS" <<'TASKS'
 FX-005|P0|5|E1|page two existing task

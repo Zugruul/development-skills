@@ -11,7 +11,7 @@ T4="$(mktemp -d)"
 out="$(cd "$T4" && bash "$PLUGIN/scripts/session-start.sh"; echo "rc=$?")"
 check "silent without config" "rc=0" "$out"
 check_absent "no output without config" "spec-workflow is active" "$out"
-mkdir -p "$T4/.claude" && cp "$FIX/valid.project.json" "$T4/.claude/project.json" && echo reason > "$T4/.claude/CHECKPOINT"
+mkdir -p "$T4/.claude" "$T4/.neural-network" && cp "$FIX/valid.project.json" "$T4/.neural-network/project.json" && echo reason > "$T4/.claude/CHECKPOINT"
 out="$(cd "$T4" && bash "$PLUGIN/scripts/session-start.sh")"
 check "announces project" "spec-workflow is active for 'fixture-project'" "$out"
 check "announces paused loop" "CHECKPOINT flag is present" "$out"
@@ -45,7 +45,7 @@ check "fresh config is yaml" "project.yaml" "$out"
 check "projectId captured" "PVT_live1234567890" "$out"
 out="$(python3 -c "
 import yaml
-c = yaml.safe_load(open('$T2/.claude/project.yaml'))
+c = yaml.safe_load(open('$T2/.neural-network/project.yaml'))
 b = c['boards'][0]
 assert c['schemaVersion'] == 2, c['schemaVersion']
 assert b['projectId'] == 'PVT_live1234567890', b['projectId']

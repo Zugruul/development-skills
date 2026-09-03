@@ -19,8 +19,8 @@ echo "== board.sh audit (#76) =="
 _asetup() { # -> sets AQ (fixture repo dir) and FGH (fake-gh dir on PATH)
     AQ="$(mktemp -d)"
     ( cd "$AQ" && git init -q . && git commit -q --allow-empty -m "init #0" && git branch -m main )
-    mkdir -p "$AQ/.claude"
-    cp "$FIX/valid.project.yaml" "$AQ/.claude/project.yaml"
+    mkdir -p "$AQ/.claude" "$AQ/.neural-network"
+    cp "$FIX/valid.project.yaml" "$AQ/.neural-network/project.yaml"
     FGH="$(mktemp -d)"
     cat >"$FGH/gh" <<'FAKE'
 #!/usr/bin/env bash

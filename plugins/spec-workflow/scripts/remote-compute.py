@@ -10,7 +10,7 @@ be cited as satisfying any §14 requirement.
 Registry lives at $COMPUTE_HOME (default ~/.remote-compute)/resources.yaml —
 machine-local, never committed. `enable` advertises a machine to a project —
 non-exclusive, capability-style (mirrors assistant.capabilities.<name>): the
-repo's .claude/project.yaml `compute:` section gets a map keyed by alias with
+repo's .neural-network/project.yaml `compute:` section gets a map keyed by alias with
 {enabled, roles, probedAt, informational capability snapshot}; never
 host/user/secrets. Many projects may enable the same machine — the machine-
 local cooperative lock serializes actual use. Consumers re-probe before real
@@ -577,14 +577,14 @@ def _strip_top_block(text, key):
 
 
 def _project_cfg_path(root):
-    """Availability lives in .claude/project.local.yaml — the gitignored,
+    """Availability lives in .neural-network/project.local.yaml — the gitignored,
     machine-local overlay config.py merges over project.yaml (compute key
     only). Missing local file is normal: created on first enable. The repo
     must still be a spec-workflow repo (project.yaml present)."""
-    if not os.path.exists(os.path.join(root, ".claude", "project.yaml")):
-        print("ERROR: %s/.claude/project.yaml not found — this verb runs inside a spec-workflow repo" % root)
+    if not os.path.exists(os.path.join(root, ".neural-network", "project.yaml")):
+        print("ERROR: %s/.neural-network/project.yaml not found — this verb runs inside a spec-workflow repo" % root)
         sys.exit(EXIT_USAGE)
-    return os.path.join(root, ".claude", "project.local.yaml")
+    return os.path.join(root, ".neural-network", "project.local.yaml")
 
 
 def _write_compute_section(cfg_path, mutate):

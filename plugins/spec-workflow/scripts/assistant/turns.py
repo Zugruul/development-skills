@@ -769,7 +769,7 @@ def render_capability_completed_fallback(capability_name, result_text):
 def make_default_recall(identities, root, role="assistant",
                          k=RECALL_TOP_K, budget=None):
     """Thin wrapper around brain.recall for the assistant's own brain
-    (Sec4: `.claude/identities/assistant/brain/`). Imports brain.py lazily
+    (Sec4: `.neural-network/identities/assistant/brain/`). Imports brain.py lazily
     (inside the closure, not at module top) so importing turns.py alone
     never imports brain.py -- same lazy-import discipline adapters.py uses
     for provider modules (Sec17.1: isolation extends to import time)."""

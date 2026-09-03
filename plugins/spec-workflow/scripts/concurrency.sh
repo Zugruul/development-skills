@@ -16,7 +16,7 @@ source "$HERE/lib/repo-root.sh"
 # main checkout's project.yaml, not create a divergent worktree-local copy.
 ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 1; }
 CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
-[[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .claude/project.yaml (or legacy .json) — run the setup-project skill first" >&2; exit 1; }
+[[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .neural-network/project.yaml (or legacy .json) — run the setup-project skill first" >&2; exit 1; }
 
 get() { python3 "$HERE/config.py" "$ROOT" get "$1"; }
 

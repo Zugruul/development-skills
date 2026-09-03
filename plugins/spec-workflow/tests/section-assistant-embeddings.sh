@@ -43,7 +43,7 @@ AESTUB_CMD="python3 $AESTUB"
 # vector scheme, so embeddings-on-by-default recall (make_default_recall
 # reaching brain.recall's hybrid path whenever index.sqlite3 exists) HITS it.
 AE1="$(mktemp -d)"
-AE1_IDENTITIES="$AE1/.claude/identities"
+AE1_IDENTITIES="$AE1/.neural-network/identities"
 mkdir -p "$AE1_IDENTITIES"
 out="$(PYTHONPATH="$AE_SCRIPTS" BRAIN_EMBED_CMD="$AESTUB_CMD" python3 - "$AE1" "$AE1_IDENTITIES" <<'PY'
 import sys
@@ -78,7 +78,7 @@ rm -rf "$AE1"
 # (the "one batch cycle" the distiller's future worker loop will perform)
 # makes it recallable immediately, with no rebuild/restart of anything else.
 AE2="$(mktemp -d)"
-AE2_IDENTITIES="$AE2/.claude/identities"
+AE2_IDENTITIES="$AE2/.neural-network/identities"
 mkdir -p "$AE2_IDENTITIES"
 out="$(PYTHONPATH="$AE_SCRIPTS" BRAIN_EMBED_CMD="$AESTUB_CMD" python3 - "$AE2" "$AE2_IDENTITIES" <<'PY'
 import sys
@@ -114,7 +114,7 @@ rm -rf "$AE2"
 # (importable library entry point, same shape as brain.recall/brain.mint's
 # own CLI-vs-library extraction pattern, AST-003).
 AE3="$(mktemp -d)"
-AE3_IDENTITIES="$AE3/.claude/identities"
+AE3_IDENTITIES="$AE3/.neural-network/identities"
 mkdir -p "$AE3_IDENTITIES"
 out="$(PYTHONPATH="$AE_SCRIPTS" BRAIN_EMBED_CMD="$AESTUB_CMD" python3 - "$AE3" "$AE3_IDENTITIES" <<'PY'
 import sys
@@ -143,7 +143,7 @@ rm -rf "$AE3"
 # "no index built yet", this is "index build was attempted but the
 # capability failed", exercised by simply never wiring BRAIN_EMBED_CMD).
 AE4="$(mktemp -d)"
-AE4_IDENTITIES="$AE4/.claude/identities"
+AE4_IDENTITIES="$AE4/.neural-network/identities"
 mkdir -p "$AE4_IDENTITIES"
 # CAPABILITY_HOME pinned to an empty dir: "unavailable" must hold even on a
 # machine where the real embeddings capability IS installed (MEM-030 slow

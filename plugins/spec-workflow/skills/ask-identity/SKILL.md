@@ -1,6 +1,6 @@
 ---
 name: ask-identity
-description: Asks one identity's brain — dev, reviewer, orchestrator, or any custom role with a brain directory under .claude/identities/ — a question, and answers it grounded in what that one role has learned, without running a build iteration or touching the board. Use for '/spec-workflow:ask-identity' with an identity name and a question — e.g. clicked from a neural-view "Talk" deep link, or any time you want a quick answer informed by one role's accumulated lessons instead of a full build-loop pass.
+description: Asks one identity's brain — dev, reviewer, orchestrator, or any custom role with a brain directory under .neural-network/identities/ — a question, and answers it grounded in what that one role has learned, without running a build iteration or touching the board. Use for '/spec-workflow:ask-identity' with an identity name and a question — e.g. clicked from a neural-view "Talk" deep link, or any time you want a quick answer informed by one role's accumulated lessons instead of a full build-loop pass.
 allowed-tools: Bash, Read, Write, Edit, AskUserQuestion
 ---
 
@@ -15,7 +15,7 @@ instead of just doing it here.
 
 ## Steps
 
-1. Confirm the brain exists: `.claude/identities/<identity>/brain/notes/`. If
+1. Confirm the brain exists: `.neural-network/identities/<identity>/brain/notes/`. If
    the directory is missing or empty, say so plainly — don't fabricate
    lessons that role hasn't learned yet — but you can still answer from
    general reasoning if useful, clearly labeled as not brain-grounded.
@@ -28,8 +28,8 @@ instead of just doing it here.
    question itself. See the `brain` skill for the full contract.
 3. If recall comes back empty (common for open-ended questions that don't
    land on any note's tags), fall back to a direct skim: read
-   `.claude/identities/<identity>/DIRECTORY.md` or
-   `.claude/identities/<identity>/brain/notes/*.md` — these brains are small
+   `.neural-network/identities/<identity>/DIRECTORY.md` or
+   `.neural-network/identities/<identity>/brain/notes/*.md` — these brains are small
    (a handful to a few dozen notes), so reading them directly is cheap and
    more reliable than forcing a keyword match.
 4. Answer using ONLY what that identity's brain actually says as grounding.
@@ -71,7 +71,7 @@ instead of just doing it here.
 6. **Cross-identity awareness, never auto-consult** (#163, human decision —
    see `docs/design/cross-identity-correlation.md` §6.2, hard rule). If the
    recalled note(s) carry `entities:` and
-   `.claude/identities/entity-index.json` shows another role holds notes
+   `.neural-network/identities/entity-index.json` shows another role holds notes
    correlated to the same entity, you may STATE that fact — "the `<role>`
    brain holds N note(s) about `<entity>`" — and point the user at
    `/spec-workflow:ask-identity <that-role> ...` or an explicit `consult`.

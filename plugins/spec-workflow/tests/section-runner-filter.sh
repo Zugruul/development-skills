@@ -59,7 +59,7 @@ check_absent "env filter excludes non-matches" "== syntax =="    "$out"
 #    subset. Driven in a throwaway git repo whose commands.gate is the cheap
 #    fixture ("true") so there is no suite recursion here.
 gt="$(mktemp -d)"
-( cd "$gt" && git init -q . && mkdir -p .claude && cp "$FIX/valid.project.json" .claude/project.json )
+( cd "$gt" && git init -q . && mkdir -p .claude .neural-network && cp "$FIX/valid.project.json" .neural-network/project.json )
 out="$(cd "$gt" && SPEC_TESTS_SECTION=preflight bash "$PLUGIN/scripts/gate.sh" 2>&1)"; rc=$?
 check        "gate refuses a filtered run"  "SPEC_TESTS_SECTION" "$out"
 check_rc     "gate refusal exits 2"         2 "$rc"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# merge-mode.sh — show or configure auto-merge for this project (.claude/project.yaml).
+# merge-mode.sh — show or configure auto-merge for this project (.neural-network/project.yaml).
 #   merge-mode.sh                 # or: status -> autoMerge / reviewer models / mergeMethod / reviewerTokenEnv
 #   merge-mode.sh on|off          # sets methodology.autoMerge
 #   merge-mode.sh model <model>[,<model>...]   # sets delegation.identities.reviewer.models (allowed set)
@@ -87,7 +87,7 @@ fi
 
 if [[ "${1:-}" == "requirements" ]]; then
     CONFIG="$(PYTHONPATH="$HERE" python3 "$HERE/config.py" "$ROOT" path)"
-    [[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .claude/project.yaml (or legacy .json) — run the setup-project skill first" >&2; exit 1; }
+    [[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .neural-network/project.yaml (or legacy .json) — run the setup-project skill first" >&2; exit 1; }
     jget() { python3 "$HERE/config.py" "$ROOT" get "$1"; }
     repo="$(jget boards.0.repo)"
     main="$(jget project.mainBranch)"
@@ -165,7 +165,7 @@ with open(sys.argv[2], "w") as f:
 fi
 
 CONFIG="$(PYTHONPATH="$HERE" python3 "$HERE/config.py" "$ROOT" path)"
-[[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .claude/project.yaml (or legacy .json) — run the setup-project skill first" >&2; exit 1; }
+[[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .neural-network/project.yaml (or legacy .json) — run the setup-project skill first" >&2; exit 1; }
 
 # Config reads + surgical writes both go through the shared loader (config.py).
 jset() { python3 "$HERE/config.py" "$ROOT" set "$1" "$2"; }  # jset <dot.path> <json-value>

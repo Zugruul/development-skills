@@ -161,42 +161,42 @@ check "exec sudo: rejected" "sudo" "$out"
 check_rc "exec sudo: exit 5" 5 "$rc"
 
 # --- enable: advertises the resource via the gitignored local overlay ----
-REPO="$CT/repo"; mkdir -p "$REPO/.claude"
-cp "$FIX/valid.project.yaml" "$REPO/.claude/project.yaml"
+REPO="$CT/repo"; mkdir -p "$REPO/.claude" "$REPO/.neural-network"
+cp "$FIX/valid.project.yaml" "$REPO/.neural-network/project.yaml"
 out="$(run_compute enable gpubox --root "$REPO" --role training 2>&1)"; rc=$?
 check_rc "enable: exit 0" 0 "$rc"
 check "enable: AVAILABLE line" "AVAILABLE gpubox" "$out"
 check "enable: says non-exclusive" "non-exclusive" "$out"
-pyl="$(cat "$REPO/.claude/project.local.yaml")"
+pyl="$(cat "$REPO/.neural-network/project.local.yaml")"
 check "enable: writes the LOCAL overlay" "compute:" "$pyl"
 check "enable: alias-keyed map" "gpubox:" "$pyl"
 check "enable: enabled true" "enabled: true" "$pyl"
 check "enable: role" "training" "$pyl"
 check "enable: snapshot vram" "24463" "$pyl"
 check_absent "enable: no host leaked" "192.0.2.17" "$pyl"
-check_absent "enable: committed project.yaml untouched" "compute:" "$(cat "$REPO/.claude/project.yaml")"
+check_absent "enable: committed project.yaml untouched" "compute:" "$(cat "$REPO/.neural-network/project.yaml")"
 run_compute enable gpubox --root "$REPO" --role training >/dev/null 2>&1
-check "re-enable: single entry" "1" "$(grep -c 'gpubox:' "$REPO/.claude/project.local.yaml")"
-check "enable: committed config still VALID" "VALID" "$(python3 "$PLUGIN/scripts/validate-config.py" "$REPO/.claude/project.yaml" 2>&1)"
+check "re-enable: single entry" "1" "$(grep -c 'gpubox:' "$REPO/.neural-network/project.local.yaml")"
+check "enable: committed config still VALID" "VALID" "$(python3 "$PLUGIN/scripts/validate-config.py" "$REPO/.neural-network/project.yaml" 2>&1)"
 # config.py merges the overlay: compute is readable through the ONE loader
 check "overlay: merged read via config.py" "training" "$(python3 "$PLUGIN/scripts/config.py" "$REPO" get compute.resources.gpubox.roles.0)"
 check "overlay: enabled flag merged" "true" "$(python3 "$PLUGIN/scripts/config.py" "$REPO" get compute.resources.gpubox.enabled)"
 # non-allowlisted overlay keys are deliberately ignored (no silent override)
-printf 'project:\n    name: hacked-by-overlay\n' >> "$REPO/.claude/project.local.yaml"
+printf 'project:\n    name: hacked-by-overlay\n' >> "$REPO/.neural-network/project.local.yaml"
 check "overlay: non-allowlisted key ignored" "fixture-project" "$(python3 "$PLUGIN/scripts/config.py" "$REPO" get project.name)"
 # a missing local file is the normal case, never an error
-REPO2="$CT/repo2"; mkdir -p "$REPO2/.claude"
-cp "$FIX/valid.project.yaml" "$REPO2/.claude/project.yaml"
+REPO2="$CT/repo2"; mkdir -p "$REPO2/.claude" "$REPO2/.neural-network"
+cp "$FIX/valid.project.yaml" "$REPO2/.neural-network/project.yaml"
 check "overlay: absent file is fine" "fixture-project" "$(python3 "$PLUGIN/scripts/config.py" "$REPO2" get project.name)"
 # a SECOND project can enable the same machine — availability is not exclusive
 out="$(run_compute enable gpubox --root "$REPO2" --role inference 2>&1)"; rc=$?
 check_rc "enable second project: exit 0" 0 "$rc"
-check "enable second project: entry present" "gpubox:" "$(cat "$REPO2/.claude/project.local.yaml")"
-check "first project untouched by second enable" "training" "$(cat "$REPO/.claude/project.local.yaml")"
+check "enable second project: entry present" "gpubox:" "$(cat "$REPO2/.neural-network/project.local.yaml")"
+check "first project untouched by second enable" "training" "$(cat "$REPO/.neural-network/project.local.yaml")"
 # disable keeps the entry, capability-style
 out="$(run_compute disable gpubox --root "$REPO2" 2>&1)"; rc=$?
 check_rc "disable: exit 0" 0 "$rc"
-check "disable: entry kept with enabled false" "enabled: false" "$(cat "$REPO2/.claude/project.local.yaml")"
+check "disable: entry kept with enabled false" "enabled: false" "$(cat "$REPO2/.neural-network/project.local.yaml")"
 
 # --- lock semantics ------------------------------------------------------
 run_compute lock gpubox --holder alice --reason training >/dev/null 2>&1
@@ -495,8 +495,8 @@ check "dispatched job activates its env before the command" "source ~/envprobe/b
 # --- an env activate line may hold a token: it must not be republished ----
 run_compute add-env gpubox secretenv --activate "export TOK=s3cr3t-value && source ~/v/bin/activate" >/dev/null 2>&1
 run_compute enable gpubox --root "$REPO" --role training >/dev/null 2>&1
-check_absent "enable never publishes the activate line into the repo" "s3cr3t-value" "$(cat "$REPO/.claude/project.local.yaml")"
-check "enable still names the env" "secretenv" "$(cat "$REPO/.claude/project.local.yaml")"
+check_absent "enable never publishes the activate line into the repo" "s3cr3t-value" "$(cat "$REPO/.neural-network/project.local.yaml")"
+check "enable still names the env" "secretenv" "$(cat "$REPO/.neural-network/project.local.yaml")"
 
 # --- injection: operator-facing flags reach the remote shell --------------
 : > "$TLOG"

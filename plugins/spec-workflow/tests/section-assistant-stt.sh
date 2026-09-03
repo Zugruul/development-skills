@@ -948,8 +948,8 @@ echo "-- engine.py: POST /assistant/voice-event -- gated off per §17.9, bridges
 AST_STT_SCRIPTS="$PLUGIN/scripts"
 stt_repo() {
     local dir="$1" main="$2"
-    mkdir -p "$dir/.claude"
-    printf "%s\n" "# neural-network" >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf "%s\n" "# neural-network" >"$dir/.neural-network/marker"
     printf "%s\n" \
         "schemaVersion: 2" \
         "assistant:" \
@@ -966,7 +966,7 @@ stt_repo() {
         "            enabled: true" \
         "            provisioning:" \
         "                bin: codex" \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 _ast_stt_root="$(mktemp -d)"
 stt_repo "$_ast_stt_root" jarvis

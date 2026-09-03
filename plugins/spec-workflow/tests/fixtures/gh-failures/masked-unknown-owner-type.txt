@@ -1,7 +1,7 @@
 # provenance: GraphQL rate-limit exhaustion masked as an unrelated
 # owner-resolution error by `gh project item-list`/`item-add`/`item-edit`.
 # original live incident: 2026-07-08T03:05:00Z, task #68 (see
-# .claude/feedbacks/feed.yaml, ts 2026-07-08T03:05:00Z, and issue #90's
+# .neural-network/feedbacks/feed.yaml, ts 2026-07-08T03:05:00Z, and issue #90's
 # body) -- graphql remaining=0, board writes blocked ~15 minutes until the
 # reset window; this exact text ("unknown owner type") is what gh printed
 # instead of any rate-limit wording, which is why board-queue.sh's
@@ -17,7 +17,7 @@
 # account state at the cross-validation capture: graphql remaining=41/5000
 # (NOT exhausted -- this repro used a bad --owner value, a different route
 # to the same gh error string, not an actual rate-limit trigger).
-# source: .claude/feedbacks/feed.yaml (ts 2026-07-08T03:05:00Z); issue #90;
+# source: .neural-network/feedbacks/feed.yaml (ts 2026-07-08T03:05:00Z); issue #90;
 # board-queue.sh:37 comment; live gh CLI invocation, this task.
 
 unknown owner type

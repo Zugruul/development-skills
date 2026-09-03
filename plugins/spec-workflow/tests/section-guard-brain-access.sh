@@ -11,21 +11,21 @@ echo "== guard-brain-access hook (#237, CDX-031 gap #5) =="
 GUARD="$PLUGIN/scripts/guard-brain-access.sh"
 
 # 1. Read on a brain note -> blocked, actionable message naming brain.sh.
-out="$(hookjson_named Read file_path ".claude/identities/dev/brain/notes/x.md" | bash "$GUARD" 2>&1; echo "rc=$?")"
+out="$(hookjson_named Read file_path ".neural-network/identities/dev/brain/notes/x.md" | bash "$GUARD" 2>&1; echo "rc=$?")"
 check "Read of brain note blocked" "BLOCKED" "$out"
 check "Read block names brain.sh" "brain.sh" "$out"
 check "Read block exit code 2" "rc=2" "$out"
 
 # 2. Read on ROLE.md -> allowed (regression: always-legitimate verbatim read).
-out="$(hookjson_named Read file_path ".claude/identities/dev/ROLE.md" | bash "$GUARD" 2>&1; echo "rc=$?")"
+out="$(hookjson_named Read file_path ".neural-network/identities/dev/ROLE.md" | bash "$GUARD" 2>&1; echo "rc=$?")"
 check "Read of ROLE.md allowed" "rc=0" "$out"
 
 # 3. Read on DIRECTORY.md -> allowed.
-out="$(hookjson_named Read file_path ".claude/identities/DIRECTORY.md" | bash "$GUARD" 2>&1; echo "rc=$?")"
+out="$(hookjson_named Read file_path ".neural-network/identities/DIRECTORY.md" | bash "$GUARD" 2>&1; echo "rc=$?")"
 check "Read of DIRECTORY.md allowed" "rc=0" "$out"
 
 # 4. Bash cat of a brain file -> blocked.
-out="$(hookjsonpy 'cat .claude/identities/reviewer/brain/links.json' | bash "$GUARD" 2>&1; echo "rc=$?")"
+out="$(hookjsonpy 'cat .neural-network/identities/reviewer/brain/links.json' | bash "$GUARD" 2>&1; echo "rc=$?")"
 check "Bash cat of brain file blocked" "rc=2" "$out"
 check "Bash cat block names brain.sh" "brain.sh" "$out"
 
@@ -43,7 +43,7 @@ check "Bash repo-wide grep allowed" "rc=0" "$out"
 
 # 8. Bash bash -c "cat .../brain/notes/x.md" (wrapped) -> blocked, same
 # recursion handling as guard-board-move.sh.
-BASHC_CAT='bash -c "cat .claude/identities/dev/brain/notes/x.md"'
+BASHC_CAT='bash -c "cat .neural-network/identities/dev/brain/notes/x.md"'
 out="$(hookjsonpy "$BASHC_CAT" | bash "$GUARD" 2>&1; echo "rc=$?")"
 check "bash -c wrapped cat of brain file blocked" "rc=2" "$out"
 
@@ -55,7 +55,7 @@ check "bash -c wrapped cat of brain file blocked" "rc=2" "$out"
 # token containing the whole source string, so the anchor must not apply.
 PY_ONELINER="$(python3 -c '
 import json
-cmd = "python3 -c \"print(open(\x27.claude/identities/dev/brain/links.json\x27).read())\""
+cmd = "python3 -c \"print(open(\x27.neural-network/identities/dev/brain/links.json\x27).read())\""
 print(json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}}))
 ')"
 out="$(printf '%s' "$PY_ONELINER" | bash "$GUARD" 2>&1; echo "rc=$?")"
@@ -67,7 +67,7 @@ check "python3 one-liner with mid-token brain path blocked" "rc=2" "$out"
 # one-liner's argv is suspicious enough on its own (pass-2 review finding).
 PATHLIB_ONELINER="$(python3 -c '
 import json
-cmd = "python3 -c \"import pathlib; print(pathlib.Path(\x27.claude/identities/dev/brain/notes/x.md\x27).read_text())\""
+cmd = "python3 -c \"import pathlib; print(pathlib.Path(\x27.neural-network/identities/dev/brain/notes/x.md\x27).read_text())\""
 print(json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}}))
 ')"
 out="$(printf '%s' "$PATHLIB_ONELINER" | bash "$GUARD" 2>&1; echo "rc=$?")"
@@ -75,7 +75,7 @@ check "python3 pathlib .read_text() one-liner with brain path blocked" "rc=2" "$
 
 NODE_ONELINER="$(python3 -c '
 import json
-cmd = "node -e \"console.log(require(\x27fs\x27).readFileSync(\x27.claude/identities/dev/brain/notes/x.md\x27,\x27utf8\x27))\""
+cmd = "node -e \"console.log(require(\x27fs\x27).readFileSync(\x27.neural-network/identities/dev/brain/notes/x.md\x27,\x27utf8\x27))\""
 print(json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}}))
 ')"
 out="$(printf '%s' "$NODE_ONELINER" | bash "$GUARD" 2>&1; echo "rc=$?")"
@@ -93,11 +93,11 @@ check "unrelated python3 one-liner (no brain path) allowed" "rc=0" "$out"
 
 # 9. Unrelated tool_name values (Write/Edit/Grep) -> allowed unconditionally,
 # regardless of path.
-out="$(hookjson_named Write file_path ".claude/identities/dev/brain/notes/x.md" | bash "$GUARD" 2>&1; echo "rc=$?")"
+out="$(hookjson_named Write file_path ".neural-network/identities/dev/brain/notes/x.md" | bash "$GUARD" 2>&1; echo "rc=$?")"
 check "Write tool_name allowed regardless of path" "rc=0" "$out"
-out="$(hookjson_named Edit file_path ".claude/identities/dev/brain/notes/x.md" | bash "$GUARD" 2>&1; echo "rc=$?")"
+out="$(hookjson_named Edit file_path ".neural-network/identities/dev/brain/notes/x.md" | bash "$GUARD" 2>&1; echo "rc=$?")"
 check "Edit tool_name allowed regardless of path" "rc=0" "$out"
-out="$(hookjson_named Grep pattern ".claude/identities/dev/brain/notes/x.md" | bash "$GUARD" 2>&1; echo "rc=$?")"
+out="$(hookjson_named Grep pattern ".neural-network/identities/dev/brain/notes/x.md" | bash "$GUARD" 2>&1; echo "rc=$?")"
 check "Grep tool_name allowed regardless of path" "rc=0" "$out"
 
 # 10. Hook payload with no tool_name field at all (old-style hookjson()
@@ -105,5 +105,5 @@ check "Grep tool_name allowed regardless of path" "rc=0" "$out"
 # matcher stay green and unaffected by this new script's addition.
 out="$(hookjson 'bash board.sh move 7 \"In review\"' | bash "$GUARD" 2>&1; echo "rc=$?")"
 check "no tool_name field treated as Bash, non-brain command allowed" "rc=0" "$out"
-out="$(hookjson 'cat .claude/identities/dev/brain/notes/x.md' | bash "$GUARD" 2>&1; echo "rc=$?")"
+out="$(hookjson 'cat .neural-network/identities/dev/brain/notes/x.md' | bash "$GUARD" 2>&1; echo "rc=$?")"
 check "no tool_name field treated as Bash, brain-dump command blocked" "rc=2" "$out"

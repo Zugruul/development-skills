@@ -5,8 +5,8 @@
 
 Library:
     scaffold(root, names=None, provider=None, model=None) -> dict
-        Idempotent, create-if-absent scaffold: `.claude/.neural-network`
-        marker, `assistant:` section of `.claude/project.yaml` (per-leaf
+        Idempotent, create-if-absent scaffold: `.neural-network`
+        marker, `assistant:` section of `.neural-network/project.yaml` (per-leaf
         skip-if-present — never overwrites an existing value), empty brain
         dirs, every `BASE_CAPABILITIES` skill materialized into
         `.claude/skills/<name>/` (issue #447, always refreshed to match
@@ -234,8 +234,8 @@ def _parse_text(text):
     return data if isinstance(data, dict) else {}
 
 
-PROJECT_YAML_REL = os.path.join(".claude", "project.yaml")
-BRAIN_NOTES_REL = os.path.join(".claude", "identities", "assistant", "brain", "notes")
+PROJECT_YAML_REL = os.path.join(".neural-network", "project.yaml")
+BRAIN_NOTES_REL = os.path.join(".neural-network", "identities", "assistant", "brain", "notes")
 AGENTS_MD_REL = "AGENTS.md"
 STATE_DEFAULT_REL = os.path.join(".claude", "neural-view")  # already gitignored (manifest)
 SKILLS_DIR_REL = os.path.join(".claude", "skills")
@@ -288,13 +288,11 @@ def _base_capability_source_dir(name):
 # --- marker -----------------------------------------------------------------
 
 def ensure_marker(root):
-    """Create <root>/.claude/.neural-network if absent; leave untouched if present."""
-    path = os.path.join(root, ".claude", MARKER_NAME)
-    if os.path.exists(path):
+    """Create the <root>/.neural-network marker DIRECTORY if absent."""
+    path = os.path.join(root, MARKER_NAME)
+    if os.path.isdir(path):
         return False
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(MARKER_CONTENT)
+    os.makedirs(path, exist_ok=True)
     return True
 
 
@@ -351,7 +349,7 @@ def _default_assistant_section(names, provider, model):
 
 
 def ensure_project_yaml_assistant(root, names=None, provider=None, model=None):
-    """Create-if-absent .claude/project.yaml; insert every MISSING leaf of the
+    """Create-if-absent .neural-network/project.yaml; insert every MISSING leaf of the
     default `assistant:` section (per-leaf: an already-present key, at any
     value including a falsy one, is left alone — §6.4/idempotence).
 
@@ -554,7 +552,7 @@ def _output_contract_block():
         "You CAN produce files. Write them as plain filenames in your "
         "current working directory during a turn -- the engine publishes "
         "them into your brain's media library "
-        "(`.claude/identities/assistant/brain/media/chat/`) automatically. "
+        "(`.neural-network/identities/assistant/brain/media/chat/`) automatically. "
         "Link them in your reply with note-style markdown, using paths "
         "relative to the brain directory:\n\n"
         "- `![alt](media/chat/duck.png)` — images render inline in the chat\n"

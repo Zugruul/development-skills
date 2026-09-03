@@ -30,7 +30,7 @@ Python 3 standard library only (no pyyaml). Usage:
     brain.py <root> path <role> <slug-a> <slug-b>
 
 `<root>` is the consumer repo root; identities live under `--dir` (default
-`.claude/identities`).
+`.neural-network/identities`).
 """
 
 import argparse
@@ -370,7 +370,7 @@ def _feed_repo(root):
 
 
 def emit_event(root, obj, identities=None):
-    """Append ONE JSON line to <root>/.claude/brain-events.jsonl (§8.1, §8.2).
+    """Append ONE JSON line to <root>/.neural-network/brain-events.jsonl (§8.1, §8.2).
 
     The line is written in a SINGLE os.write() to an O_APPEND file descriptor;
     on POSIX, concurrent appends of a whole line under PIPE_BUF (~4KB) are
@@ -394,7 +394,7 @@ def emit_event(root, obj, identities=None):
         event = {"v": BRAIN_EVENT_SCHEMA_VERSION, "ts": now_iso(), "repo": _feed_repo(root)}
         event.update(obj)
         line = json.dumps(event, sort_keys=True) + "\n"
-        p = os.path.join(root, ".claude", BRAIN_EVENTS_FILENAME)
+        p = os.path.join(root, ".neural-network", BRAIN_EVENTS_FILENAME)
         os.makedirs(os.path.dirname(p), exist_ok=True)
         if identities is not None:
             with brain_lock(identities):
@@ -428,7 +428,7 @@ def outcomes_path(identities, role):
 
 def _qualify_task_ref(root, ref):
     """Normalize a bare `#N` task ref to `<project.name>#N` (project.name from
-    THIS repo's .claude/project.yaml, mirroring feedback.py's ref
+    THIS repo's .neural-network/project.yaml, mirroring feedback.py's ref
     qualification). A ref already qualified by any project (has a prefix
     before the `#`) passes through unchanged; no-op if project.name is
     unset -- don't guess."""
@@ -488,7 +488,7 @@ def cmd_outcome(identities, args):
     # has its line. Skip cleanly (no emit_event call, no directory created) when
     # the repo has no .claude/ root at all; otherwise reuse emit_event as-is,
     # which is itself never load-bearing (warns and returns on failure).
-    if os.path.isdir(os.path.join(args.root, ".claude")):
+    if os.path.isdir(os.path.join(args.root, ".neural-network")):
         emit_event(args.root, {
             "role": role,
             "type": "RecallOutcome",
@@ -1826,7 +1826,7 @@ def cmd_verify_feed(identities, args):
     if a future event payload adds `weight`, this function needs a matching
     comparison added explicitly, it will not start comparing it on its own."""
     role = args.role
-    p = os.path.join(args.root, ".claude", BRAIN_EVENTS_FILENAME)
+    p = os.path.join(args.root, ".neural-network", BRAIN_EVENTS_FILENAME)
     folded = {}
     if os.path.isfile(p):
         for line in open(p, encoding="utf-8"):
@@ -2161,7 +2161,7 @@ def cmd_index(identities, args):
 def main(argv):
     p = argparse.ArgumentParser(prog="brain.py", description="Per-identity zettel memory engine.")
     p.add_argument("root", help="consumer repo root")
-    p.add_argument("--dir", default=".claude/identities", help="identities dir (relative to root)")
+    p.add_argument("--dir", default=".neural-network/identities", help="identities dir (relative to root)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser("recall")

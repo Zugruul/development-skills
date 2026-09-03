@@ -373,7 +373,7 @@ check "AST-032 regression: note-wins -- fresher note ordered after the stale sum
 
 # ------------------------------------------------------- (14) integration-ish: real brain.recall against a scaffolded temp brain
 AT_ROOT="$(mktemp -d)"
-AT_IDENTITIES="$AT_ROOT/.claude/identities"
+AT_IDENTITIES="$AT_ROOT/.neural-network/identities"
 mkdir -p "$AT_IDENTITIES"
 out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$AT_ROOT" "$AT_IDENTITIES" <<'PY'
 import sys

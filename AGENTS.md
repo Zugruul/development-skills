@@ -11,11 +11,11 @@ That dogfooding isn't incidental: this repo is built by the `spec-workflow` plug
 - [`SPEC.md`](SPEC.md) — spec-workflow's own contract (the plugin most of this repo's work targets).
 - [`SPEC-CODEX-COMPAT.md`](SPEC-CODEX-COMPAT.md) — the dual-host (Claude Code + Codex) compatibility spec that this file itself exists to satisfy (§6.5).
 - [`docs/BACKLOG-CODEX-COMPAT.md`](docs/BACKLOG-CODEX-COMPAT.md) — the task backlog for that compatibility work.
-- [`.claude/project.yaml`](.claude/project.yaml) — machine-readable config: boards, specs, epics, invariants, and the gate command below.
+- [`.neural-network/project.yaml`](.neural-network/project.yaml) — machine-readable config: boards, specs, epics, invariants, and the gate command below.
 
 ## Validating a change
 
-The single command that proves a change is correct in this repo (`.claude/project.yaml`'s `commands.gate`, quoted verbatim):
+The single command that proves a change is correct in this repo (`.neural-network/project.yaml`'s `commands.gate`, quoted verbatim):
 
 ```
 bash plugins/spec-workflow/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/scripts/lib/*.sh plugins/spec-workflow/tests/*.sh && claude plugin validate plugins/spec-workflow

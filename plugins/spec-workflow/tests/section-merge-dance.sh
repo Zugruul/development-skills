@@ -97,9 +97,9 @@ echo "== guard-board-move.sh (serialDelivery slot-count move guard, #423) =="
 _dance_repo() {
     T="$(mktemp -d)"
     ( cd "$T" && git init -q . && git commit -q --allow-empty -m init )
-    mkdir -p "$T/.claude"
-    cp "$FIX/valid.project.yaml" "$T/.claude/project.yaml"
-    python3 - "$T/.claude/project.yaml" "$1" <<'PY'
+    mkdir -p "$T/.claude" "$T/.neural-network"
+    cp "$FIX/valid.project.yaml" "$T/.neural-network/project.yaml"
+    python3 - "$T/.neural-network/project.yaml" "$1" <<'PY'
 import sys
 p, n = sys.argv[1], sys.argv[2]
 text = open(p).read()

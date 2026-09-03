@@ -23,8 +23,8 @@ AT_STUB_CODEX="$FIX/stub-codex"
 # ad_repo).
 at_repo() {
     local dir="$1" main="$2"
-    mkdir -p "$dir/.claude"
-    printf '%s\n' '# neural-network' >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf '%s\n' '# neural-network' >"$dir/.neural-network/marker"
     printf '%s\n' \
         'schemaVersion: 2' \
         'assistant:' \
@@ -41,15 +41,15 @@ at_repo() {
         '            enabled: true' \
         '            provisioning:' \
         '                bin: codex' \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 
 # at_no_assistant_repo <dir> -- marker'd but no assistant: section, i.e.
 # not a candidate (mirrors ae_repo_b in section-assistant-engine.sh).
 at_no_assistant_repo() {
     local dir="$1"
-    mkdir -p "$dir/.claude"
-    printf '%s\n' '# neural-network' >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf '%s\n' '# neural-network' >"$dir/.neural-network/marker"
 }
 
 # review r1 LOW 1: PATH is scoped to the ONE `lifecycle_start`/`start`
@@ -517,8 +517,8 @@ if [[ "$h_out" != *"CAVEAT_PRINTED True"* ]]; then echo "$h_out" >&2; fi
 echo "-- assistant prune: dormant-root escape hatch (issue #391, no server needed) --"
 _at_g_root="$(mktemp -d)"
 _at_g_state="$(mktemp -d)"
-mkdir -p "$_at_g_root/.claude"
-printf '%s\n' '# neural-network' >"$_at_g_root/.claude/.neural-network"
+mkdir -p "$_at_g_root/.claude" "$_at_g_root/.neural-network"
+printf '%s\n' '# neural-network' >"$_at_g_root/.neural-network/marker"
 printf '%s\n' \
     'schemaVersion: 2' \
     'assistant:' \
@@ -540,7 +540,7 @@ printf '%s\n' \
     '            sqlite:' \
     '                retainDays: 1' \
     '                maxMB: 500' \
-    >"$_at_g_root/.claude/project.yaml"
+    >"$_at_g_root/.neural-network/project.yaml"
 
 prune_out="$(SCRIPTS_DIR="$PLUGIN/scripts" ROOT="$_at_g_root" STATE="$_at_g_state" python3 - "$AT_NV" <<'PY'
 import importlib.util, os, sys, sqlite3

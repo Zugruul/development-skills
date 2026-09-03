@@ -10,7 +10,7 @@ status --json`), always under a timeout, never a turn/completion call.
 
 Discovery here is intentionally minimal (§7.1's full discovery UX is
 AST-020/E2): this module only inspects the ONE given `root` -- marker
-presence (`.claude/.neural-network`, reused via assistant.marker.read_marker)
+presence (`.neural-network`, reused via assistant.marker.read_marker)
 plus a valid, enabled `assistant:` section of project.yaml. Per §6.2 a
 marker with no assistant section is not an error -- that repo is simply not
 an assistant repo, reported as an informational line, not a FAIL.
@@ -185,8 +185,8 @@ def _run_probe(bin_path, args, timeout):
 
 
 def preflight_lines(root, state_dir=None, probe_timeout=5.0):
-    marker_path = os.path.join(root, ".claude", MARKER_NAME)
-    if not os.path.isfile(marker_path):
+    marker_path = os.path.join(root, MARKER_NAME)
+    if not os.path.isdir(marker_path):
         return []  # no marker at all -- not a candidate, zero noise
 
     # Presence-only reuse of assistant.marker per §6.1: the marker itself
@@ -199,10 +199,9 @@ def preflight_lines(root, state_dir=None, probe_timeout=5.0):
 
     cfg_path = project_config.find_config(root)
     if cfg_path is None:
-        return [
-            f"assistant preflight: {root}: marker present, no assistant section "
-            "(not an assistant repo)"
-        ]
+        # Post-cutover the marker dir doubles as the config/knowledge home, so
+        # a marker with no config is an ordinary non-assistant repo: zero noise.
+        return []
 
     try:
         cfg = project_config.load_config(root=root, path=cfg_path, warn=False)
@@ -216,10 +215,10 @@ def preflight_lines(root, state_dir=None, probe_timeout=5.0):
 
     assistant_section = (cfg or {}).get("assistant")
     if assistant_section is None:
-        return [
-            f"assistant preflight: {root}: marker present, no assistant section "
-            "(not an assistant repo)"
-        ]
+        # Same rationale as the no-config branch above: every configured repo
+        # carries the marker dir now, so no assistant section is the normal
+        # case, not worth a line of output.
+        return []
 
     errs = validate_assistant(assistant_section)
     if errs:

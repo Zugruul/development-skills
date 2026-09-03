@@ -6,44 +6,44 @@
 # those are already in scope.
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== feedback (loop feedback feed) =="
-FT="$(mktemp -d)"; mkdir -p "$FT/.claude"
-cp "$FIX/valid.project.yaml" "$FT/.claude/project.yaml"
+FT="$(mktemp -d)"; mkdir -p "$FT/.claude" "$FT/.neural-network"
+cp "$FIX/valid.project.yaml" "$FT/.neural-network/project.yaml"
 fb() { (cd "$FT" && python3 "$PLUGIN/scripts/feedback.py" "$FT" "$@"); }
 
 # config parsing: shorthand + expanded forms via config.py get
 python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback true >/dev/null
 check "shorthand feedback=true readable" "true" "$(python3 "$PLUGIN/scripts/config.py" "$FT" get methodology.feedback)"
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.claude/project.yaml")"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.neural-network/project.yaml")"
 check "validator accepts shorthand feedback" "VALID: " "$out"
-python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": ".claude/feedbacks/feed.yaml", "roles": ["orchestrator"], "autoTriage": false}' >/dev/null
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.claude/project.yaml")"
+python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": ".neural-network/feedbacks/feed.yaml", "roles": ["orchestrator"], "autoTriage": false}' >/dev/null
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.neural-network/project.yaml")"
 check "validator accepts expanded feedback" "VALID: " "$out"
 python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "bogus": 1}' >/dev/null
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.claude/project.yaml" || true)"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.neural-network/project.yaml" || true)"
 check "validator rejects unknown feedback key" "unknown key" "$out"
-python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": ".claude/feedbacks/feed.yaml", "roles": ["orchestrator"], "autoTriage": false}' >/dev/null
+python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": ".neural-network/feedbacks/feed.yaml", "roles": ["orchestrator"], "autoTriage": false}' >/dev/null
 
 # feed path containment: absolute paths and ../ escapes are rejected by the validator
 python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": "/tmp/escape-feed.yaml"}' >/dev/null
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.claude/project.yaml" || true)"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.neural-network/project.yaml" || true)"
 check "validator rejects absolute feed path" "must be repo-relative" "$out"
 python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": "../../escape/feed.yaml"}' >/dev/null
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.claude/project.yaml" || true)"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FT/.neural-network/project.yaml" || true)"
 check "validator rejects ../ escaping feed path" "must not escape" "$out"
-python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": ".claude/feedbacks/feed.yaml", "roles": ["orchestrator"], "autoTriage": false}' >/dev/null
+python3 "$PLUGIN/scripts/config.py" "$FT" set methodology.feedback '{"enabled": true, "feed": ".neural-network/feedbacks/feed.yaml", "roles": ["orchestrator"], "autoTriage": false}' >/dev/null
 
 # status: disabled by default (no methodology.feedback key)
-FD="$(mktemp -d)"; mkdir -p "$FD/.claude"; cp "$FIX/valid.project.yaml" "$FD/.claude/project.yaml"
+FD="$(mktemp -d)"; mkdir -p "$FD/.claude" "$FD/.neural-network"; cp "$FIX/valid.project.yaml" "$FD/.neural-network/project.yaml"
 out="$(cd "$FD" && python3 "$PLUGIN/scripts/feedback.py" "$FD" status)"
 check "status: disabled by default" "feedback: disabled" "$out"
 rm -rf "$FD"
 
-check "status: enabled + feed path + pending=0" "feedback: enabled feed=.claude/feedbacks/feed.yaml pending=0" "$(fb status)"
+check "status: enabled + feed path + pending=0" "feedback: enabled feed=.neural-network/feedbacks/feed.yaml pending=0" "$(fb status)"
 
 # emit: valid record round-trips into the feed
 out="$(fb emit "$FIX/feedback-valid.yaml")"
 check "emit ok" "OK" "$out"
-check "feed file created" "loop-feedback" "$(cat "$FT/.claude/feedbacks/feed.yaml" 2>/dev/null)"
+check "feed file created" "loop-feedback" "$(cat "$FT/.neural-network/feedbacks/feed.yaml" 2>/dev/null)"
 check "status: pending reflects 2 unrouted items" "pending=2" "$(fb status)"
 
 # emit: rejects a second record reusing an already-emitted ts (would make routing ambiguous)
@@ -92,7 +92,7 @@ check "route rejects unknown action" "unknown routing action" "$out"
 fb route "2026-07-01T10:00:00Z" 0 brain-note "friction-self-approval" >/dev/null
 fb route "2026-07-01T10:00:00Z" 1 backlog "#41" >/dev/null
 check "status: pending drops to zero after routing" "pending=0" "$(fb status)"
-check "routing written into feed" "brain-note" "$(cat "$FT/.claude/feedbacks/feed.yaml")"
+check "routing written into feed" "brain-note" "$(cat "$FT/.neural-network/feedbacks/feed.yaml")"
 
 # route: re-routing an already-routed item is allowed but names the prior action
 out="$(fb route "2026-07-01T10:00:00Z" 0 graduate "graduated-lesson")"
@@ -101,10 +101,10 @@ rm -rf "$FT"
 
 # route: a hand-crafted feed with a duplicate ts is refused as ambiguous rather than
 # silently rewriting the first match and stranding the second
-DT="$(mktemp -d)"; mkdir -p "$DT/.claude/feedbacks"
-cp "$FIX/valid.project.yaml" "$DT/.claude/project.yaml"
+DT="$(mktemp -d)"; mkdir -p "$DT/.neural-network/feedbacks"
+cp "$FIX/valid.project.yaml" "$DT/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$DT" set methodology.feedback true >/dev/null
-cat >"$DT/.claude/feedbacks/feed.yaml" <<'YAML'
+cat >"$DT/.neural-network/feedbacks/feed.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: "2026-08-01T00:00:00Z"
@@ -128,10 +128,10 @@ rm -rf "$DT"
 
 # feedback.py independently refuses to write outside the repo root, even if a bad
 # config slipped past validate-config.py (defense in depth)
-ESC="$(mktemp -d)"; mkdir -p "$ESC/.claude"
+ESC="$(mktemp -d)"; mkdir -p "$ESC/.claude" "$ESC/.neural-network"
 ESCTARGET="$ESC-escape"  # unique per run (derived from $ESC), never left dangling across runs
 rm -rf "$ESCTARGET"
-cp "$FIX/valid.project.yaml" "$ESC/.claude/project.yaml"
+cp "$FIX/valid.project.yaml" "$ESC/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$ESC" set methodology.feedback "{\"enabled\": true, \"feed\": \"../$(basename "$ESCTARGET")/feed.yaml\"}" >/dev/null
 out="$(cd "$ESC" && python3 "$PLUGIN/scripts/feedback.py" "$ESC" emit "$FIX/feedback-valid.yaml" 2>&1; echo "rc=$?")"
 check "feedback.py refuses to emit outside repo root" "ERROR" "$out"
@@ -141,7 +141,7 @@ rm -rf "$ESC" "$ESCTARGET"
 
 # --- legacy-path migration guard (sw-062) --------------------------------
 # .claude/feedback/ (singular) was the old, gitignored home of the feed;
-# .claude/feedbacks/ (plural) is the new tracked archive. When the DEFAULT
+# .neural-network/feedbacks/ (plural) is the new tracked archive. When the DEFAULT
 # feed path is in effect (no explicit methodology.feedback.feed override)
 # and a legacy feed exists but the new path doesn't, every subcommand that
 # touches the feed must refuse and point at the migration rather than
@@ -150,7 +150,7 @@ rm -rf "$ESC" "$ESCTARGET"
 # case 1: legacy exists, new path absent, DEFAULT (no override) -> every
 # feed-touching subcommand fails loudly with a migration message.
 LG="$(mktemp -d)"; mkdir -p "$LG/.claude/feedback"
-cp "$FIX/valid.project.yaml" "$LG/.claude/project.yaml"
+cp "$FIX/valid.project.yaml" "$LG/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$LG" set methodology.feedback true >/dev/null
 cat >"$LG/.claude/feedback/feed.yaml" <<'YAML'
 schemaVersion: 1
@@ -171,13 +171,13 @@ out="$(lg emit "$FIX/feedback-valid.yaml")"
 check "legacy guard: emit fails" "rc=1" "$out"
 out="$(lg route "2026-06-01T00:00:00Z" 0 ignore "n/a")"
 check "legacy guard: route fails" "rc=1" "$out"
-check "legacy guard: never created the new feed" "MISSING" "$([[ -f "$LG/.claude/feedbacks/feed.yaml" ]] && echo FOUND || echo MISSING)"
+check "legacy guard: never created the new feed" "MISSING" "$([[ -f "$LG/.neural-network/feedbacks/feed.yaml" ]] && echo FOUND || echo MISSING)"
 rm -rf "$LG"
 
 # case 2: legacy exists, but an explicit methodology.feedback.feed override
 # is set -> guard does not apply, override path used as normal.
-LO="$(mktemp -d)"; mkdir -p "$LO/.claude/feedback"
-cp "$FIX/valid.project.yaml" "$LO/.claude/project.yaml"
+LO="$(mktemp -d)"; mkdir -p "$LO/.claude/feedback" "$LO/.neural-network"
+cp "$FIX/valid.project.yaml" "$LO/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$LO" set methodology.feedback '{"enabled": true, "feed": ".claude/custom-feed.yaml"}' >/dev/null
 cat >"$LO/.claude/feedback/feed.yaml" <<'YAML'
 schemaVersion: 1
@@ -193,11 +193,11 @@ check "override: legacy guard does not apply" "feedback: enabled feed=.claude/cu
 rm -rf "$LO"
 
 # case 3: neither legacy nor new path exists -> normal fresh feed (no guard)
-LN="$(mktemp -d)"; mkdir -p "$LN/.claude"
-cp "$FIX/valid.project.yaml" "$LN/.claude/project.yaml"
+LN="$(mktemp -d)"; mkdir -p "$LN/.claude" "$LN/.neural-network"
+cp "$FIX/valid.project.yaml" "$LN/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$LN" set methodology.feedback true >/dev/null
 out="$(cd "$LN" && python3 "$PLUGIN/scripts/feedback.py" "$LN" status)"
-check "fresh feed: no legacy, no guard, starts clean" "feedback: enabled feed=.claude/feedbacks/feed.yaml pending=0" "$out"
+check "fresh feed: no legacy, no guard, starts clean" "feedback: enabled feed=.neural-network/feedbacks/feed.yaml pending=0" "$out"
 rm -rf "$LN"
 
 # --- setup-project no longer gitignores the (now tracked) archive --------
@@ -209,11 +209,11 @@ check_absent "setup-project gitignore printf drops .claude/feedback/" ".claude/f
 # Feedback references must carry the emitting project so a multi-project
 # archive stays unambiguous: bare #N in items[].evidence[] and
 # items[].routing.ref is normalized to <project.name>#N (project.name from
-# THIS repo's own .claude/project.yaml); refs already qualified by ANY
+# THIS repo's own .neural-network/project.yaml); refs already qualified by ANY
 # project (<slug>#N) pass through verbatim.
 
-QR="$(mktemp -d)"; mkdir -p "$QR/.claude"
-cp "$FIX/valid.project.yaml" "$QR/.claude/project.yaml"
+QR="$(mktemp -d)"; mkdir -p "$QR/.claude" "$QR/.neural-network"
+cp "$FIX/valid.project.yaml" "$QR/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$QR" set methodology.feedback true >/dev/null
 qr() { (cd "$QR" && python3 "$PLUGIN/scripts/feedback.py" "$QR" "$@"); }
 
@@ -239,7 +239,7 @@ items:
     routing: {action: backlog, ref: "#77"}
 YAML
 qr emit "$QRREC" >/dev/null
-out="$(cat "$QR/.claude/feedbacks/feed.yaml")"
+out="$(cat "$QR/.neural-network/feedbacks/feed.yaml")"
 check "emit qualifies bare evidence ref with own project name" "fixture-project#61" "$out"
 check "emit qualifies bare short evidence ref" "fixture-project#5" "$out"
 check "emit leaves foreign-qualified evidence untouched" "comm-platform#71" "$out"
@@ -248,19 +248,19 @@ check_absent "emit does not double-qualify an already-qualified evidence ref" "f
 
 # route: normalizes the ref argument the same way; foreign-qualified refs pass through
 qr route "2026-07-05T00:00:00Z" 0 upstream "#90" >/dev/null
-out="$(cat "$QR/.claude/feedbacks/feed.yaml")"
+out="$(cat "$QR/.neural-network/feedbacks/feed.yaml")"
 check "route normalizes a bare ref argument" "fixture-project#90" "$out"
 
 qr route "2026-07-05T00:00:00Z" 0 upstream "other-repo#12" >/dev/null
-out="$(cat "$QR/.claude/feedbacks/feed.yaml")"
+out="$(cat "$QR/.neural-network/feedbacks/feed.yaml")"
 check "route passes a foreign-qualified ref argument through verbatim" "other-repo#12" "$out"
 rm -rf "$QR"
 
 # generalization ban: extended to also reject qualified refs (<slug>#N), not
 # just bare #N -- a generalized/summary text naming ANY project's issue still
 # leaks project specifics out of the feed.
-GB="$(mktemp -d)"; mkdir -p "$GB/.claude"
-cp "$FIX/valid.project.yaml" "$GB/.claude/project.yaml"
+GB="$(mktemp -d)"; mkdir -p "$GB/.claude" "$GB/.neural-network"
+cp "$FIX/valid.project.yaml" "$GB/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$GB" set methodology.feedback true >/dev/null
 GBREC="$GB/qualified-ref-banned.yaml"
 cat >"$GBREC" <<'YAML'
@@ -289,10 +289,10 @@ rm -rf "$GB"
 # migration: --migrate-qualify normalizes an existing feed's bare refs in
 # evidence[]/routing.ref in place, surgically (every other byte untouched),
 # and is idempotent (a second run changes nothing).
-MG="$(mktemp -d)"; mkdir -p "$MG/.claude/feedbacks"
-cp "$FIX/valid.project.yaml" "$MG/.claude/project.yaml"
+MG="$(mktemp -d)"; mkdir -p "$MG/.neural-network/feedbacks"
+cp "$FIX/valid.project.yaml" "$MG/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$MG" set methodology.feedback true >/dev/null
-cat >"$MG/.claude/feedbacks/feed.yaml" <<'YAML'
+cat >"$MG/.neural-network/feedbacks/feed.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: '2026-06-01T00:00:00Z'
@@ -319,7 +319,7 @@ items:
 YAML
 out="$(cd "$MG" && python3 "$PLUGIN/scripts/feedback.py" "$MG" migrate-qualify)"
 check "migrate-qualify reports success" "OK" "$out"
-post="$(cat "$MG/.claude/feedbacks/feed.yaml")"
+post="$(cat "$MG/.neural-network/feedbacks/feed.yaml")"
 check "migrate-qualify qualifies an evidence ref" "fixture-project#61" "$post"
 check "migrate-qualify leaves a foreign-qualified evidence ref untouched" "comm-platform#71" "$post"
 check "migrate-qualify qualifies routing.ref" "fixture-project#77" "$post"
@@ -329,7 +329,7 @@ check "migrate-qualify preserves unrelated quoting/formatting" "ts: '2026-06-01T
 
 out2="$(cd "$MG" && python3 "$PLUGIN/scripts/feedback.py" "$MG" migrate-qualify)"
 check "migrate-qualify second run reports no changes (idempotent)" "no changes" "$out2"
-post2="$(cat "$MG/.claude/feedbacks/feed.yaml")"
+post2="$(cat "$MG/.neural-network/feedbacks/feed.yaml")"
 check "migrate-qualify idempotent: file byte-identical after second run" "$post" "$post2"
 rm -rf "$MG"
 
@@ -341,14 +341,14 @@ rm -rf "$MG"
 # quoted ISO-8601 string before the duplicate check and before dumping, and
 # route must match legacy (already-in-feed) datetime-typed ts values too.
 
-TS="$(mktemp -d)"; mkdir -p "$TS/.claude"
-cp "$FIX/valid.project.yaml" "$TS/.claude/project.yaml"
+TS="$(mktemp -d)"; mkdir -p "$TS/.claude" "$TS/.neural-network"
+cp "$FIX/valid.project.yaml" "$TS/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$TS" set methodology.feedback true >/dev/null
 ts_() { (cd "$TS" && python3 "$PLUGIN/scripts/feedback.py" "$TS" "$@"); }
 
 ts_ emit "$FIX/feedback-unquoted-ts.yaml" >/dev/null
 check "emit normalizes an unquoted-ISO ts to a quoted feed line" \
-  "ts: '2026-07-02T09:00:00Z'" "$(cat "$TS/.claude/feedbacks/feed.yaml")"
+  "ts: '2026-07-02T09:00:00Z'" "$(cat "$TS/.neural-network/feedbacks/feed.yaml")"
 out="$(ts_ route "2026-07-02T09:00:00Z" 0 ignore "n/a")"
 check "route addresses a record whose ts was normalized at emit time" "OK: routed" "$out"
 rm -rf "$TS"
@@ -356,10 +356,10 @@ rm -rf "$TS"
 # legacy feed: a record already sitting in the feed with a datetime-typed
 # (unquoted) ts -- built by writing the raw line directly, not via emit --
 # must still be addressable by route via the equivalent CLI string.
-TL="$(mktemp -d)"; mkdir -p "$TL/.claude/feedbacks"
-cp "$FIX/valid.project.yaml" "$TL/.claude/project.yaml"
+TL="$(mktemp -d)"; mkdir -p "$TL/.neural-network/feedbacks"
+cp "$FIX/valid.project.yaml" "$TL/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$TL" set methodology.feedback true >/dev/null
-cat >"$TL/.claude/feedbacks/feed.yaml" <<'YAML'
+cat >"$TL/.neural-network/feedbacks/feed.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: 2026-07-03T00:00:00Z
@@ -375,8 +375,8 @@ rm -rf "$TL"
 # duplicate-ts rejection must hold across the string/datetime boundary: an
 # unquoted (datetime-typed) ts and a quoted (string) ts for the same instant
 # must collide, not coexist as two "different" records.
-TD="$(mktemp -d)"; mkdir -p "$TD/.claude"
-cp "$FIX/valid.project.yaml" "$TD/.claude/project.yaml"
+TD="$(mktemp -d)"; mkdir -p "$TD/.claude" "$TD/.neural-network"
+cp "$FIX/valid.project.yaml" "$TD/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$TD" set methodology.feedback true >/dev/null
 td_() { (cd "$TD" && python3 "$PLUGIN/scripts/feedback.py" "$TD" "$@"); }
 td_ emit "$FIX/feedback-unquoted-ts.yaml" >/dev/null
@@ -405,17 +405,17 @@ rm -rf "$TD"
 
 # --- archive (MEM-001) ------------------------------------------------------
 # `archive` moves every feed document whose items are ALL routed into
-# .claude/feedbacks/archive/<YYYY-MM>.yaml (month from the document's ts),
+# .neural-network/feedbacks/archive/<YYYY-MM>.yaml (month from the document's ts),
 # leaving partially/un-routed documents in the feed untouched. Moved bytes
 # must be byte-identical to how they sat in the feed (no yaml.dump round-trip).
 
 # case 1: mixed feed (fully-routed + partially-routed + unrouted) -> only the
 # fully-routed doc moves; survivors stay byte-identical; archive is exact.
-AR="$(mktemp -d)"; mkdir -p "$AR/.claude/feedbacks"
-cp "$FIX/valid.project.yaml" "$AR/.claude/project.yaml"
+AR="$(mktemp -d)"; mkdir -p "$AR/.neural-network/feedbacks"
+cp "$FIX/valid.project.yaml" "$AR/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$AR" set methodology.feedback true >/dev/null
 ar_() { (cd "$AR" && python3 "$PLUGIN/scripts/feedback.py" "$AR" "$@"); }
-cat >"$AR/.claude/feedbacks/feed.yaml" <<'YAML'
+cat >"$AR/.neural-network/feedbacks/feed.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: "2026-07-01T00:00:00Z"
@@ -441,25 +441,25 @@ source: {role: dev, model: claude-sonnet-5}
 items:
   - {category: friction, area: board, severity: low, summary: "wholly unrouted", generalized: "wholly unrouted"}
 YAML
-cp "$AR/.claude/feedbacks/feed.yaml" "$AR/feed-before.yaml"
+cp "$AR/.neural-network/feedbacks/feed.yaml" "$AR/feed-before.yaml"
 out="$(ar_ archive)"
 check "archive: reports success" "OK" "$out"
-post_feed="$(cat "$AR/.claude/feedbacks/feed.yaml")"
+post_feed="$(cat "$AR/.neural-network/feedbacks/feed.yaml")"
 check "archive: survivor doc (partially routed) stays in feed" "FX-101" "$post_feed"
 check "archive: survivor doc (wholly unrouted) stays in feed" "FX-102" "$post_feed"
 check_absent "archive: fully-routed doc leaves the feed" "FX-100" "$post_feed"
-check "archive: month archive file created" "FX-100" "$(cat "$AR/.claude/feedbacks/archive/2026-07.yaml" 2>/dev/null)"
-check "archive: moved doc bytes preserved (routing intact)" "action: ignore" "$(cat "$AR/.claude/feedbacks/archive/2026-07.yaml")"
+check "archive: month archive file created" "FX-100" "$(cat "$AR/.neural-network/feedbacks/archive/2026-07.yaml" 2>/dev/null)"
+check "archive: moved doc bytes preserved (routing intact)" "action: ignore" "$(cat "$AR/.neural-network/feedbacks/archive/2026-07.yaml")"
 rm -f "$AR/feed-before.yaml"
 rm -rf "$AR"
 
 # case 2: month bucketing -- two routed docs in different months land in two
 # distinct archive files.
-AM="$(mktemp -d)"; mkdir -p "$AM/.claude/feedbacks"
-cp "$FIX/valid.project.yaml" "$AM/.claude/project.yaml"
+AM="$(mktemp -d)"; mkdir -p "$AM/.neural-network/feedbacks"
+cp "$FIX/valid.project.yaml" "$AM/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$AM" set methodology.feedback true >/dev/null
 am_() { (cd "$AM" && python3 "$PLUGIN/scripts/feedback.py" "$AM" "$@"); }
-cat >"$AM/.claude/feedbacks/feed.yaml" <<'YAML'
+cat >"$AM/.neural-network/feedbacks/feed.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: "2026-05-15T00:00:00Z"
@@ -478,17 +478,17 @@ items:
 YAML
 out="$(am_ archive)"
 check "archive: month bucketing reports success" "OK" "$out"
-check "archive: may doc in 2026-05.yaml" "may item" "$(cat "$AM/.claude/feedbacks/archive/2026-05.yaml" 2>/dev/null)"
-check "archive: june doc in 2026-06.yaml" "june item" "$(cat "$AM/.claude/feedbacks/archive/2026-06.yaml" 2>/dev/null)"
-check "archive: feed emptied after both docs moved" "" "$(cat "$AM/.claude/feedbacks/feed.yaml" 2>/dev/null)"
+check "archive: may doc in 2026-05.yaml" "may item" "$(cat "$AM/.neural-network/feedbacks/archive/2026-05.yaml" 2>/dev/null)"
+check "archive: june doc in 2026-06.yaml" "june item" "$(cat "$AM/.neural-network/feedbacks/archive/2026-06.yaml" 2>/dev/null)"
+check "archive: feed emptied after both docs moved" "" "$(cat "$AM/.neural-network/feedbacks/feed.yaml" 2>/dev/null)"
 rm -rf "$AM"
 
 # case 3: idempotent second run -- exit 0, no-op, files unchanged.
-AI="$(mktemp -d)"; mkdir -p "$AI/.claude/feedbacks"
-cp "$FIX/valid.project.yaml" "$AI/.claude/project.yaml"
+AI="$(mktemp -d)"; mkdir -p "$AI/.neural-network/feedbacks"
+cp "$FIX/valid.project.yaml" "$AI/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$AI" set methodology.feedback true >/dev/null
 ai_() { (cd "$AI" && python3 "$PLUGIN/scripts/feedback.py" "$AI" "$@"); }
-cat >"$AI/.claude/feedbacks/feed.yaml" <<'YAML'
+cat >"$AI/.neural-network/feedbacks/feed.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: "2026-07-10T00:00:00Z"
@@ -498,35 +498,35 @@ items:
   - {category: friction, area: board, severity: low, summary: "idempotent test", generalized: "idempotent test", routing: {action: ignore, ref: "n/a"}}
 YAML
 ai_ archive >/dev/null
-feed_after_first="$(cat "$AI/.claude/feedbacks/feed.yaml" 2>/dev/null)"
-archive_after_first="$(cat "$AI/.claude/feedbacks/archive/2026-07.yaml")"
+feed_after_first="$(cat "$AI/.neural-network/feedbacks/feed.yaml" 2>/dev/null)"
+archive_after_first="$(cat "$AI/.neural-network/feedbacks/archive/2026-07.yaml")"
 out="$(ai_ archive; echo "rc=$?")"
 check "archive: idempotent second run exits 0" "rc=0" "$out"
 check "archive: idempotent second run is a no-op (message)" "no changes" "$out"
-feed_after_second="$(cat "$AI/.claude/feedbacks/feed.yaml" 2>/dev/null)"
-archive_after_second="$(cat "$AI/.claude/feedbacks/archive/2026-07.yaml")"
+feed_after_second="$(cat "$AI/.neural-network/feedbacks/feed.yaml" 2>/dev/null)"
+archive_after_second="$(cat "$AI/.neural-network/feedbacks/archive/2026-07.yaml")"
 check "archive: idempotent -- feed unchanged" "$feed_after_first" "$feed_after_second"
 check "archive: idempotent -- archive file unchanged" "$archive_after_first" "$archive_after_second"
 rm -rf "$AI"
 
 # case 3b: no feed file / empty feed -> no-op exit 0.
-AN="$(mktemp -d)"; mkdir -p "$AN/.claude"
-cp "$FIX/valid.project.yaml" "$AN/.claude/project.yaml"
+AN="$(mktemp -d)"; mkdir -p "$AN/.claude" "$AN/.neural-network"
+cp "$FIX/valid.project.yaml" "$AN/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$AN" set methodology.feedback true >/dev/null
 out="$(cd "$AN" && python3 "$PLUGIN/scripts/feedback.py" "$AN" archive; echo "rc=$?")"
 check "archive: no feed file is a no-op" "rc=0" "$out"
-mkdir -p "$AN/.claude/feedbacks"
-: >"$AN/.claude/feedbacks/feed.yaml"
+mkdir -p "$AN/.neural-network/feedbacks"
+: >"$AN/.neural-network/feedbacks/feed.yaml"
 out="$(cd "$AN" && python3 "$PLUGIN/scripts/feedback.py" "$AN" archive; echo "rc=$?")"
 check "archive: empty feed file is a no-op" "rc=0" "$out"
 rm -rf "$AN"
 
 # case 4: corrupt document anywhere in the feed -> nonzero exit, byte offset
 # printed, feed AND archive dir left completely untouched.
-AC="$(mktemp -d)"; mkdir -p "$AC/.claude/feedbacks"
-cp "$FIX/valid.project.yaml" "$AC/.claude/project.yaml"
+AC="$(mktemp -d)"; mkdir -p "$AC/.neural-network/feedbacks"
+cp "$FIX/valid.project.yaml" "$AC/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$AC" set methodology.feedback true >/dev/null
-cat >"$AC/.claude/feedbacks/feed.yaml" <<'YAML'
+cat >"$AC/.neural-network/feedbacks/feed.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: "2026-07-11T00:00:00Z"
@@ -537,23 +537,23 @@ items:
 ---
 this is: not: valid: yaml: [unterminated
 YAML
-cp "$AC/.claude/feedbacks/feed.yaml" "$AC/feed-before.yaml"
+cp "$AC/.neural-network/feedbacks/feed.yaml" "$AC/feed-before.yaml"
 out="$(cd "$AC" && python3 "$PLUGIN/scripts/feedback.py" "$AC" archive 2>&1; echo "rc=$?")"
 check "archive: corrupt doc -- nonzero exit" "rc=1" "$out"
 check "archive: corrupt doc -- reports a byte offset" "byte offset" "$out"
-post="$(cat "$AC/.claude/feedbacks/feed.yaml")"
+post="$(cat "$AC/.neural-network/feedbacks/feed.yaml")"
 before="$(cat "$AC/feed-before.yaml")"
 check "archive: corrupt doc -- feed left byte-identical" "$before" "$post"
-check "archive: corrupt doc -- archive dir not created" "MISSING" "$([[ -d "$AC/.claude/feedbacks/archive" ]] && echo FOUND || echo MISSING)"
+check "archive: corrupt doc -- archive dir not created" "MISSING" "$([[ -d "$AC/.neural-network/feedbacks/archive" ]] && echo FOUND || echo MISSING)"
 rm -f "$AC/feed-before.yaml"
 rm -rf "$AC"
 
 # case 5: atomicity -- a write failure (read-only archive/ dir) must leave the
 # feed completely unmodified.
-AA="$(mktemp -d)"; mkdir -p "$AA/.claude/feedbacks/archive"
-cp "$FIX/valid.project.yaml" "$AA/.claude/project.yaml"
+AA="$(mktemp -d)"; mkdir -p "$AA/.neural-network/feedbacks/archive"
+cp "$FIX/valid.project.yaml" "$AA/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$AA" set methodology.feedback true >/dev/null
-cat >"$AA/.claude/feedbacks/feed.yaml" <<'YAML'
+cat >"$AA/.neural-network/feedbacks/feed.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: "2026-07-12T00:00:00Z"
@@ -562,23 +562,23 @@ source: {role: dev, model: claude-sonnet-5}
 items:
   - {category: friction, area: board, severity: low, summary: "blocked by readonly archive dir", generalized: "blocked by readonly archive dir", routing: {action: ignore, ref: "n/a"}}
 YAML
-cp "$AA/.claude/feedbacks/feed.yaml" "$AA/feed-before.yaml"
-chmod 555 "$AA/.claude/feedbacks/archive"
+cp "$AA/.neural-network/feedbacks/feed.yaml" "$AA/feed-before.yaml"
+chmod 555 "$AA/.neural-network/feedbacks/archive"
 out="$(cd "$AA" && python3 "$PLUGIN/scripts/feedback.py" "$AA" archive 2>&1; echo "rc=$?")"
-chmod 755 "$AA/.claude/feedbacks/archive"
+chmod 755 "$AA/.neural-network/feedbacks/archive"
 check "archive: atomicity -- readonly archive dir causes nonzero exit" "rc=1" "$out"
-post="$(cat "$AA/.claude/feedbacks/feed.yaml")"
+post="$(cat "$AA/.neural-network/feedbacks/feed.yaml")"
 before="$(cat "$AA/feed-before.yaml")"
 check "archive: atomicity -- feed left untouched on write failure" "$before" "$post"
 rm -f "$AA/feed-before.yaml"
 rm -rf "$AA"
 
 # case 6: regression -- pending never scans archive/, and emit/route still work.
-AG="$(mktemp -d)"; mkdir -p "$AG/.claude/feedbacks/archive"
-cp "$FIX/valid.project.yaml" "$AG/.claude/project.yaml"
+AG="$(mktemp -d)"; mkdir -p "$AG/.neural-network/feedbacks/archive"
+cp "$FIX/valid.project.yaml" "$AG/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$AG" set methodology.feedback true >/dev/null
 ag_() { (cd "$AG" && python3 "$PLUGIN/scripts/feedback.py" "$AG" "$@"); }
-cat >"$AG/.claude/feedbacks/archive/2026-01.yaml" <<'YAML'
+cat >"$AG/.neural-network/feedbacks/archive/2026-01.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: "2026-01-01T00:00:00Z"
@@ -604,8 +604,8 @@ rm -rf "$AG"
 # (archived docs are, by construction, fully routed -- no unrouted filter).
 
 # case 1: no archive dir at all -> prints nothing, exit 0.
-AD1="$(mktemp -d)"; mkdir -p "$AD1/.claude/feedbacks"
-cp "$FIX/valid.project.yaml" "$AD1/.claude/project.yaml"
+AD1="$(mktemp -d)"; mkdir -p "$AD1/.neural-network/feedbacks"
+cp "$FIX/valid.project.yaml" "$AD1/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$AD1" set methodology.feedback true >/dev/null
 ad1_() { (cd "$AD1" && python3 "$PLUGIN/scripts/feedback.py" "$AD1" "$@"); }
 out="$(ad1_ archived)"; rc=$?
@@ -614,8 +614,8 @@ check_rc "archived: no archive dir -> exit 0" 0 "$rc"
 rm -rf "$AD1"
 
 # case 2: archive dir exists but is empty -> prints nothing, exit 0.
-AD2="$(mktemp -d)"; mkdir -p "$AD2/.claude/feedbacks/archive"
-cp "$FIX/valid.project.yaml" "$AD2/.claude/project.yaml"
+AD2="$(mktemp -d)"; mkdir -p "$AD2/.neural-network/feedbacks/archive"
+cp "$FIX/valid.project.yaml" "$AD2/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$AD2" set methodology.feedback true >/dev/null
 ad2_() { (cd "$AD2" && python3 "$PLUGIN/scripts/feedback.py" "$AD2" "$@"); }
 out="$(ad2_ archived)"; rc=$?
@@ -625,11 +625,11 @@ rm -rf "$AD2"
 
 # case 3: multi-month -- items from all months are listed, in month order,
 # using pending's exact tab-separated rendering.
-AD3="$(mktemp -d)"; mkdir -p "$AD3/.claude/feedbacks/archive"
-cp "$FIX/valid.project.yaml" "$AD3/.claude/project.yaml"
+AD3="$(mktemp -d)"; mkdir -p "$AD3/.neural-network/feedbacks/archive"
+cp "$FIX/valid.project.yaml" "$AD3/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$AD3" set methodology.feedback true >/dev/null
 ad3_() { (cd "$AD3" && python3 "$PLUGIN/scripts/feedback.py" "$AD3" "$@"); }
-cat >"$AD3/.claude/feedbacks/archive/2026-03.yaml" <<'YAML'
+cat >"$AD3/.neural-network/feedbacks/archive/2026-03.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: "2026-03-05T00:00:00Z"
@@ -638,7 +638,7 @@ source: {role: dev, model: claude-sonnet-5}
 items:
   - {category: friction, area: board, severity: low, summary: "march item", generalized: "march item", routing: {action: ignore, ref: "n/a"}}
 YAML
-cat >"$AD3/.claude/feedbacks/archive/2026-05.yaml" <<'YAML'
+cat >"$AD3/.neural-network/feedbacks/archive/2026-05.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: "2026-05-10T00:00:00Z"
@@ -656,11 +656,11 @@ rm -rf "$AD3"
 
 # case 4: --since boundary -- the boundary month is included, earlier months
 # are excluded.
-AD4="$(mktemp -d)"; mkdir -p "$AD4/.claude/feedbacks/archive"
-cp "$FIX/valid.project.yaml" "$AD4/.claude/project.yaml"
+AD4="$(mktemp -d)"; mkdir -p "$AD4/.neural-network/feedbacks/archive"
+cp "$FIX/valid.project.yaml" "$AD4/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$AD4" set methodology.feedback true >/dev/null
 ad4_() { (cd "$AD4" && python3 "$PLUGIN/scripts/feedback.py" "$AD4" "$@"); }
-cat >"$AD4/.claude/feedbacks/archive/2026-01.yaml" <<'YAML'
+cat >"$AD4/.neural-network/feedbacks/archive/2026-01.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: "2026-01-01T00:00:00Z"
@@ -669,7 +669,7 @@ source: {role: dev, model: claude-sonnet-5}
 items:
   - {category: friction, area: board, severity: low, summary: "january item", generalized: "january item", routing: {action: ignore, ref: "n/a"}}
 YAML
-cat >"$AD4/.claude/feedbacks/archive/2026-02.yaml" <<'YAML'
+cat >"$AD4/.neural-network/feedbacks/archive/2026-02.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: "2026-02-01T00:00:00Z"
@@ -678,7 +678,7 @@ source: {role: dev, model: claude-sonnet-5}
 items:
   - {category: friction, area: board, severity: low, summary: "february item (boundary)", generalized: "february item (boundary)", routing: {action: ignore, ref: "n/a"}}
 YAML
-cat >"$AD4/.claude/feedbacks/archive/2026-03.yaml" <<'YAML'
+cat >"$AD4/.neural-network/feedbacks/archive/2026-03.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: "2026-03-01T00:00:00Z"
@@ -707,7 +707,7 @@ check "README describes what archive does" "archive/<YYYY-MM>.yaml" "$readme_ver
 # emit -> FeedbackEmitted (one per item), route -> FeedbackRouted (one per
 # call), archive -> FeedbackArchived (one per document, not per item), all
 # via brain.py's existing emit_event(root, obj) into
-# <root>/.claude/brain-events.jsonl (§8.1/§8.2). Payloads carry itemTs/idx/
+# <root>/.neural-network/brain-events.jsonl (§8.1/§8.2). Payloads carry itemTs/idx/
 # action/itemCount refs only -- never an item's summary/detail/generalized
 # text. The domain timestamp is carried as `itemTs`, NEVER as `ts` -- emit_event
 # already sets its own baseline `ts` (emission time) via `event.update(obj)`,
@@ -721,7 +721,7 @@ fb_events() {
     python3 - "$1" "$2" <<'PY'
 import json, os, sys
 root, want_type = sys.argv[1], sys.argv[2]
-p = os.path.join(root, ".claude", "brain-events.jsonl")
+p = os.path.join(root, ".neural-network", "brain-events.jsonl")
 if os.path.exists(p):
     for ln in open(p, encoding="utf-8"):
         ln = ln.strip()
@@ -739,8 +739,8 @@ PY
 # emit: one FeedbackEmitted per item, correct itemTs+idx, no item body text
 # leaked, and the event's own baseline `ts` (emission time) is untouched --
 # NOT clobbered by the item's domain timestamp.
-EV="$(mktemp -d)"; mkdir -p "$EV/.claude"
-cp "$FIX/valid.project.yaml" "$EV/.claude/project.yaml"
+EV="$(mktemp -d)"; mkdir -p "$EV/.claude" "$EV/.neural-network"
+cp "$FIX/valid.project.yaml" "$EV/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$EV" set methodology.feedback true >/dev/null
 ev_() { (cd "$EV" && python3 "$PLUGIN/scripts/feedback.py" "$EV" "$@"); }
 ev_ emit "$FIX/feedback-valid.yaml" >/dev/null
@@ -749,7 +749,7 @@ check "emit: exactly 2 FeedbackEmitted lines" "2" "$(printf '%s\n' "$out" | grep
 check "emit: item 0 event carries itemTs+idx" "$(printf 'dev\t')" "$(printf '%s\n' "$out" | sed -n '1p')"
 check "emit: item 0 event carries itemTs+idx (value)" "$(printf '2026-07-01T10:00:00Z\t0\t\t')" "$(printf '%s\n' "$out" | sed -n '1p')"
 check "emit: item 1 event carries itemTs+idx (value)" "$(printf '2026-07-01T10:00:00Z\t1\t\t')" "$(printf '%s\n' "$out" | sed -n '2p')"
-raw="$(cat "$EV/.claude/brain-events.jsonl")"
+raw="$(cat "$EV/.neural-network/brain-events.jsonl")"
 check_absent "emit: no summary text leaked into the events feed" "Self-approval safety classifier" "$raw"
 check_absent "emit: no detail text leaked into the events feed" "Happened twice in this repo" "$raw"
 check_absent "emit: no generalized text leaked into the events feed" "Front-load the human merge check-in" "$raw"
@@ -761,7 +761,7 @@ check_absent "emit: no generalized text leaked into the events feed" "Front-load
 tsdiff="$(python3 - "$EV" <<'PY'
 import json, os, sys
 root = sys.argv[1]
-p = os.path.join(root, ".claude", "brain-events.jsonl")
+p = os.path.join(root, ".neural-network", "brain-events.jsonl")
 for ln in open(p, encoding="utf-8"):
     e = json.loads(ln)
     if e.get("type") == "FeedbackEmitted":
@@ -785,11 +785,11 @@ rm -rf "$EV"
 
 # archive: one FeedbackArchived PER DOCUMENT moved, not per item -- a
 # 3-item fully-routed document still yields exactly one event, itemCount=3.
-EA="$(mktemp -d)"; mkdir -p "$EA/.claude/feedbacks"
-cp "$FIX/valid.project.yaml" "$EA/.claude/project.yaml"
+EA="$(mktemp -d)"; mkdir -p "$EA/.neural-network/feedbacks"
+cp "$FIX/valid.project.yaml" "$EA/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$EA" set methodology.feedback true >/dev/null
 ea_() { (cd "$EA" && python3 "$PLUGIN/scripts/feedback.py" "$EA" "$@"); }
-cat >"$EA/.claude/feedbacks/feed.yaml" <<'YAML'
+cat >"$EA/.neural-network/feedbacks/feed.yaml" <<'YAML'
 schemaVersion: 1
 kind: loop-feedback
 ts: "2026-07-01T00:00:00Z"
@@ -813,20 +813,20 @@ out="$(fb_events "$EA" FeedbackArchived)"
 check "archive: exactly 2 FeedbackArchived lines (one per document)" "2" "$(printf '%s\n' "$out" | grep -c .)"
 check "archive: 3-item document carries itemCount=3, not 3 events" "$(printf '2026-07-01T00:00:00Z\t\t\t3')" "$(printf '%s\n' "$out" | sed -n '1p')"
 check "archive: 1-item document carries itemCount=1" "$(printf '2026-07-02T00:00:00Z\t\t\t1')" "$(printf '%s\n' "$out" | sed -n '2p')"
-raw="$(cat "$EA/.claude/brain-events.jsonl")"
+raw="$(cat "$EA/.neural-network/brain-events.jsonl")"
 check_absent "archive: no item summary text leaked into the events feed" '"summary"' "$raw"
 rm -rf "$EA"
 
 # §8.1.1: an unwritable events feed target must not block emit/route/archive's
 # own primary effect -- only a warning, the real operation still succeeds.
-EF="$(mktemp -d)"; mkdir -p "$EF/.claude"
-cp "$FIX/valid.project.yaml" "$EF/.claude/project.yaml"
+EF="$(mktemp -d)"; mkdir -p "$EF/.claude" "$EF/.neural-network"
+cp "$FIX/valid.project.yaml" "$EF/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$EF" set methodology.feedback true >/dev/null
 # events-feed target is a DIRECTORY (not the file itself) so the append is
 # doomed while .claude stays fully writable for the real feedbacks/ write.
-mkdir -p "$EF/.claude/brain-events.jsonl"
+mkdir -p "$EF/.neural-network/brain-events.jsonl"
 out="$(cd "$EF" && python3 "$PLUGIN/scripts/feedback.py" "$EF" emit "$FIX/feedback-valid.yaml" 2>&1)"
 check "emit: feed-unwritable -- primary emit still succeeds" "OK: emitted 2 item(s)" "$out"
 check "emit: feed-unwritable -- a warning is printed" "warning" "$out"
-check "feed.yaml written despite events-feed failure" "loop-feedback" "$(cat "$EF/.claude/feedbacks/feed.yaml" 2>/dev/null)"
+check "feed.yaml written despite events-feed failure" "loop-feedback" "$(cat "$EF/.neural-network/feedbacks/feed.yaml" 2>/dev/null)"
 rm -rf "$EF"

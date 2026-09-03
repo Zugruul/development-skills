@@ -56,7 +56,7 @@ rhc outcome dev combo-note corrected --note "was wrong once" >/dev/null
 python3 - "$RH_C" <<'PY'
 import os, re, sys
 root = sys.argv[1]
-p = os.path.join(root, ".claude/identities/dev/brain/notes/combo-note.md")
+p = os.path.join(root, ".neural-network/identities/dev/brain/notes/combo-note.md")
 s = open(p).read()
 s = re.sub(r"created: .*", "created: 2020-01-01", s)
 s = re.sub(r"last-touched: .*", "last-touched: 2020-01-01", s)

@@ -1,13 +1,13 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "$id": "spec-workflow/project-config/v2",
-    "title": "spec-workflow project config (.claude/project.yaml), schemaVersion 2",
+    "title": "spec-workflow project config (.neural-network/project.yaml), schemaVersion 2",
     "type": "object",
     "required": ["schemaVersion", "project", "boards", "specs", "commands"],
     "properties": {
         "schemaVersion": {
             "const": 2,
-            "description": "Config format version. Always 2 for this file. A legacy schemaVersion 1 .claude/project.json (old delegation.devModel/reviewModel/prReviewModel keys) is still read and normalized on load, with a deprecation warning; init-config.sh converts it to this v2 project.yaml shape."
+            "description": "Config format version. Always 2 for this file. A legacy schemaVersion 1 .neural-network/project.json (old delegation.devModel/reviewModel/prReviewModel keys) is still read and normalized on load, with a deprecation warning; init-config.sh converts it to this v2 project.yaml shape."
         },
         "project": {
             "type": "object",
@@ -352,7 +352,7 @@
                             "additionalProperties": false,
                             "properties": {
                                 "enabled": { "type": "boolean", "default": true, "description": "Whether feedback collection is on. Redundant with the `true` shorthand — set false here (inside the expanded form) to disable while keeping feed/roles/autoTriage overrides on file for later." },
-                                "feed": { "type": "string", "default": ".claude/feedbacks/feed.yaml", "description": "Repo-relative path to the yaml feed file (sequence of --- separated loop-feedback records). Default: .claude/feedbacks/feed.yaml — a tracked, orchestrator-mediated archive (committed alongside code, never read/written by dev/reviewer subagents). The legacy, gitignored .claude/feedback/feed.yaml (singular) path is detected and blocks with a migration message when this default is in effect; an explicit override here is trusted as-is." },
+                                "feed": { "type": "string", "default": ".neural-network/feedbacks/feed.yaml", "description": "Repo-relative path to the yaml feed file (sequence of --- separated loop-feedback records). Default: .neural-network/feedbacks/feed.yaml — a tracked, orchestrator-mediated archive (committed alongside code, never read/written by dev/reviewer subagents). The legacy, gitignored .claude/feedback/feed.yaml (singular) path is detected and blocks with a migration message when this default is in effect; an explicit override here is trusted as-is." },
                                 "roles": { "type": "array", "items": { "type": "string" }, "default": ["orchestrator"], "description": "Which identities are expected to emit feedback." },
                                 "autoTriage": { "type": "boolean", "default": false, "description": "When true, triage routes items (e.g. backlog) without a human check-in — mirrors autoMerge's explicit-consent pattern." }
                             }
@@ -380,7 +380,7 @@
         "compute": {
             "type": "object",
             "additionalProperties": false,
-            "description": "Remote compute resources AVAILABLE to this project, written by the remote-compute skill (docs/design/remote-compute-plan.md). Normally lives in the gitignored machine-local overlay .claude/project.local.yaml (config.py merges its compute key over the committed config; missing overlay = no compute), because which machines a clone can reach is a property of the machine, not the repo. Capability-style and non-exclusive — the same machine may be enabled in many projects (mirrors assistant.capabilities.<name>); the machine-local cooperative lock serializes actual use, never this declaration. Entries carry only the ssh alias plus an informational capability snapshot — never host, user, or secrets (resolution goes through ~/.ssh/config and the machine-local registry ~/.remote-compute/resources.yaml, which is never committed). Snapshots are documentation: consumers re-probe before real dispatch. Absent == no machines advertised (additive-only).",
+            "description": "Remote compute resources AVAILABLE to this project, written by the remote-compute skill (docs/design/remote-compute-plan.md). Normally lives in the gitignored machine-local overlay .neural-network/project.local.yaml (config.py merges its compute key over the committed config; missing overlay = no compute), because which machines a clone can reach is a property of the machine, not the repo. Capability-style and non-exclusive — the same machine may be enabled in many projects (mirrors assistant.capabilities.<name>); the machine-local cooperative lock serializes actual use, never this declaration. Entries carry only the ssh alias plus an informational capability snapshot — never host, user, or secrets (resolution goes through ~/.ssh/config and the machine-local registry ~/.remote-compute/resources.yaml, which is never committed). Snapshots are documentation: consumers re-probe before real dispatch. Absent == no machines advertised (additive-only).",
             "properties": {
                 "resources": {
                     "type": "object",

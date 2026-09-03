@@ -21,8 +21,8 @@ as_repo() {
             names_list="$names_list, $a"
         done
     fi
-    mkdir -p "$dir/.claude"
-    printf '%s\n' '# neural-network' >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf '%s\n' '# neural-network' >"$dir/.neural-network/marker"
     printf '%s\n' \
         'schemaVersion: 2' \
         'assistant:' \
@@ -39,7 +39,7 @@ as_repo() {
         '            enabled: true' \
         '            provisioning:' \
         '                bin: codex' \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 
 echo "-- engine: outcome/candidates/select/skip/gated chat (no server) --"

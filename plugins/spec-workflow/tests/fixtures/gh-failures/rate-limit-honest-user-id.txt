@@ -4,7 +4,7 @@
 # same corpus). Requested verbatim shape per the #91 task brief: GraphQL:
 # API rate limit already exceeded for user ID <n>. This exact byte string
 # was not found committed verbatim anywhere in this repo's history (grepped
-# git log -p and .claude/feedbacks/feed.yaml) -- it is RECONSTRUCTED from
+# git log -p and .neural-network/feedbacks/feed.yaml) -- it is RECONSTRUCTED from
 # GitHub's documented GraphQL rate-limit error format (the "user ID <n>"
 # variant applies to OAuth/PAT-authenticated callers, as this session's own
 # `gh auth status` shows: account Zugruul, a personal token, not a GitHub

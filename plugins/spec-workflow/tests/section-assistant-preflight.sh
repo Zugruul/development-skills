@@ -12,9 +12,9 @@ echo "== assistant preflight (AST-006: enumerated checks, SPEC-ASSISTANT.md §6.
 AP_SCRIPT="$PLUGIN/scripts/assistant/preflight.py"
 
 ap_marker() { # $1: dir -- writes the shipped-verbatim marker
-    mkdir -p "$1/.claude"
+    mkdir -p "$1/.claude" "$1/.neural-network"
     printf '%s\n' '# neural-view discovery marker — repos with this file are included in the aggregated neural view' \
-        >"$1/.claude/.neural-network"
+        >"$1/.neural-network/marker"
 }
 
 # ap_run <root> [state_dir] -- runs preflight.py, isolated NEURAL_VIEW_STATE
@@ -63,19 +63,17 @@ rm -rf "$ap_d"
 ap_d="$(mktemp -d)"
 ap_marker "$ap_d"
 out="$(ap_run "$ap_d")"
-check "legacy marker, no config file: informational, not a failure" \
-    "marker present, no assistant section (not an assistant repo)" "$out"
-check_absent "legacy marker, no config file: never FAILs the whole preflight" "FAIL" "$out"
+check "marker dir, no config file: silent (ordinary non-assistant repo)" "" "$out"
+check_absent "marker dir, no config file: never FAILs the whole preflight" "FAIL" "$out"
 rm -rf "$ap_d"
 
 # --------------------------------------------------------- legacy marker: config, no assistant:
 ap_d="$(mktemp -d)"
 ap_marker "$ap_d"
-printf '%s\n' 'schemaVersion: 2' 'project:' '    name: no-assistant-here' >"$ap_d/.claude/project.yaml"
+printf '%s\n' 'schemaVersion: 2' 'project:' '    name: no-assistant-here' >"$ap_d/.neural-network/project.yaml"
 out="$(ap_run "$ap_d")"
-check "legacy marker, config present but no assistant: section: informational" \
-    "marker present, no assistant section (not an assistant repo)" "$out"
-check_absent "legacy marker, no assistant: section: never a FAIL" "FAIL" "$out"
+check "marker dir, config present but no assistant: section: silent (normal case)" "" "$out"
+check_absent "marker dir, no assistant: section: never a FAIL" "FAIL" "$out"
 rm -rf "$ap_d"
 
 # --------------------------------------------------------- invalid section (structural)
@@ -95,7 +93,7 @@ printf '%s\n' \
     '            enabled: true' \
     '            provisioning:' \
     '                bin: claude' \
-    >"$ap_d/.claude/project.yaml"   # missing required systemPrompt
+    >"$ap_d/.neural-network/project.yaml"   # missing required systemPrompt
 out="$(ap_run "$ap_d")"
 check "invalid section: FAIL naming the exact missing key" \
     "assistant preflight FAIL: $ap_d: invalid assistant section: assistant: missing required key 'systemPrompt'" "$out"
@@ -124,7 +122,7 @@ printf '%s\n' \
     '            enabled: true' \
     '            provisioning:' \
     '                bin: claude' \
-    >"$ap_d/.claude/project.yaml"   # provider openai but codex disabled
+    >"$ap_d/.neural-network/project.yaml"   # provider openai but codex disabled
 out="$(ap_run "$ap_d")"
 check "provider mismatch: FAIL with the both-sides message (config.py's own)" \
     "assistant preflight FAIL: $ap_d: provider mismatch: assistant.llm.provider: 'openai' requires capabilities.codex.enabled: true" "$out"
@@ -153,7 +151,7 @@ ap_valid_yaml() {
         '            enabled: true' \
         '            provisioning:' \
         "                bin: $bin" \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 
 # --------------------------------------------------------- enabled capability bin missing
@@ -205,7 +203,7 @@ printf '%s\n' \
     '            enabled: true' \
     '            provisioning:' \
     '                bin: claude' \
-    >"$ap_d/.claude/project.yaml"
+    >"$ap_d/.neural-network/project.yaml"
 ap_cc_dir="$(mktemp -d)"
 cat >"$ap_cc_dir/claude" <<'STUB'
 #!/usr/bin/env bash
@@ -267,9 +265,9 @@ rm -rf "$ap_d" "$ap_neg_state" "$ap_neg_dir" "$(dirname "$ap_neg_counter")"
 # --------------------------------------------------------- wired into preflight.sh
 pf_d="$(mktemp -d)"
 ( cd "$pf_d" && git init -q . )
-mkdir -p "$pf_d/.claude"
+mkdir -p "$pf_d/.claude" "$pf_d/.neural-network"
 printf '%s\n' '# neural-view discovery marker — repos with this file are included in the aggregated neural view' \
-    >"$pf_d/.claude/.neural-network"
+    >"$pf_d/.neural-network/marker"
 ap_valid_yaml "$pf_d" "codex"
 touch "$pf_d/SPEC.md" 2>/dev/null
 pf_ok_dir="$(ap_stub_dir codex 0)"
@@ -281,7 +279,7 @@ rm -rf "$pf_d" "$pf_ok_dir"
 # a repo with NO marker: preflight.sh's existing output is unchanged (no new noise)
 pf_d2="$(mktemp -d)"
 ( cd "$pf_d2" && git init -q . )
-mkdir -p "$pf_d2/.claude" && cp "$FIX/valid.project.json" "$pf_d2/.claude/project.json"
+mkdir -p "$pf_d2/.claude" "$pf_d2/.neural-network" && cp "$FIX/valid.project.json" "$pf_d2/.neural-network/project.json"
 touch "$pf_d2/SPEC.md"
 pf_out2="$(cd "$pf_d2" && bash "$PLUGIN/scripts/preflight.sh" --spec)"
 check_absent "preflight.sh: no marker -> no assistant preflight noise" "assistant preflight" "$pf_out2"
@@ -292,13 +290,13 @@ rm -rf "$pf_d2"
 # traceback. (Fixture proven to reach the fixed path: chmod 000 makes
 # load_config raise PermissionError before any parse.) ------------------------
 ap_d="$(mktemp -d)"
-mkdir -p "$ap_d/.claude"
+mkdir -p "$ap_d/.claude" "$ap_d/.neural-network"
 ap_marker "$ap_d"
 ap_valid_yaml "$ap_d" "codex"
-chmod 000 "$ap_d/.claude/project.yaml"
+chmod 000 "$ap_d/.neural-network/project.yaml"
 ap_r2_out="$(ap_run "$ap_d" 2>&1)"
 ap_r2_rc=$?
-chmod 644 "$ap_d/.claude/project.yaml"
+chmod 644 "$ap_d/.neural-network/project.yaml"
 check_rc "r2: unreadable config exits 0 (advisory contract)" 0 "$ap_r2_rc"
 check "r2: unreadable config yields an enumerated FAIL line" "cannot read config" "$ap_r2_out"
 check_absent "r2: unreadable config leaks no traceback" "Traceback (most recent call last)" "$ap_r2_out"
@@ -307,7 +305,7 @@ rm -rf "$ap_d"
 # --- review r2 blocker 2: an UNWRITABLE state dir degrades only the cache --
 # the ok verdict must still be reported, no crash. ----------------------------
 ap_d="$(mktemp -d)"; ap_state="$(mktemp -d)"
-mkdir -p "$ap_d/.claude"
+mkdir -p "$ap_d/.claude" "$ap_d/.neural-network"
 ap_marker "$ap_d"
 ap_valid_yaml "$ap_d" "codex"
 ap_stub="$(ap_stub_dir codex 0)"
