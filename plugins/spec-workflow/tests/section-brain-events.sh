@@ -444,3 +444,60 @@ check_rc "verify-feed: pruned-then-absent key exits 0"        0 "$rc"
 check "verify-feed: pruned-then-absent key is clean"          "verify-feed: dev clean" "$out"
 check_absent "verify-feed: pruned key not flagged as missing" "a->ghost" "$out"
 rm -rf "$VF"
+
+# ============================================================ per-writer sharding
+# Conflict-free collaboration: every writer appends ONLY to its own
+# .neural-network/brain-events/<writer>.jsonl — no shared append point, so two
+# people committing events can never produce a git merge conflict. The legacy
+# single brain-events.jsonl is still READ (history), never written.
+echo "== brain-events: per-writer sharding (conflict-free collaboration) =="
+BE="$(mktemp -d)"; mkdir -p "$BE/.claude" "$BE/.neural-network"
+out="$(PLUGIN_SCRIPTS="$BE_SCRIPTS" python3 -c '
+import os, sys
+sys.path.insert(0, os.environ["PLUGIN_SCRIPTS"])
+import brain
+root = sys.argv[1]
+os.environ["SPEC_WORKFLOW_WRITER"] = "alice"
+print("A=%r" % brain.emit_event(root, {"role": "dev", "type": "NoteMinted", "slug": "a"}))
+os.environ["SPEC_WORKFLOW_WRITER"] = "bob"
+print("B=%r" % brain.emit_event(root, {"role": "dev", "type": "NoteMinted", "slug": "b"}))
+' "$BE" 2>&1)"
+check "shard: both emits succeed" "B=True" "$out"
+[[ -f "$BE/.neural-network/brain-events/alice.jsonl" ]] && r=yes || r=no
+check "shard: alice writes only her own file" "yes" "$r"
+[[ -f "$BE/.neural-network/brain-events/bob.jsonl" ]] && r=yes || r=no
+check "shard: bob writes only his own file" "yes" "$r"
+[[ -e "$BE/.neural-network/brain-events.jsonl" ]] && r=yes || r=no
+check "shard: legacy single-file feed is NOT written anymore" "no" "$r"
+check "shard: alice file holds exactly her event" "1" "$(grep -c '"slug": "a"' "$BE/.neural-network/brain-events/alice.jsonl")"
+check_absent "shard: alice file has no bob event" '"slug": "b"' "$(cat "$BE/.neural-network/brain-events/alice.jsonl")"
+# writer id sanitization: hostile chars never leak into a filename
+out="$(PLUGIN_SCRIPTS="$BE_SCRIPTS" SPEC_WORKFLOW_WRITER='Weird User!/..' python3 -c '
+import os, sys
+sys.path.insert(0, os.environ["PLUGIN_SCRIPTS"])
+import brain
+print("WRITER=%s" % brain.writer_id(sys.argv[1]))
+' "$BE")"
+check "shard: writer id sanitized (lowercase, safe charset, no path escapes)" "WRITER=weird-user" "$out"
+# no env override -> derived from git config user.email localpart
+( cd "$BE" && git init -q . && git config user.name "Alice Ann" && git config user.email "Alice.Ann+work@example.com" )
+out="$(PLUGIN_SCRIPTS="$BE_SCRIPTS" python3 -c '
+import os, sys
+sys.path.insert(0, os.environ["PLUGIN_SCRIPTS"])
+os.environ.pop("SPEC_WORKFLOW_WRITER", None)
+import brain
+print("WRITER=%s" % brain.writer_id(sys.argv[1]))
+' "$BE")"
+check "shard: writer id falls back to git email localpart" "WRITER=alice.ann-work" "$out"
+# readers merge legacy + every shard
+printf '%s\n' '{"repo":"r","role":"dev","slug":"legacy-note","ts":"2026-01-01T00:00:00Z","type":"NoteMinted","v":1}' \
+    > "$BE/.neural-network/brain-events.jsonl"
+out="$(PLUGIN_SCRIPTS="$BE_SCRIPTS" python3 -c '
+import os, sys
+sys.path.insert(0, os.environ["PLUGIN_SCRIPTS"])
+import brain
+slugs = sorted(e.get("slug") for e in brain.read_events(sys.argv[1]))
+print("SLUGS=%s" % ",".join(slugs))
+' "$BE")"
+check "shard: read_events merges legacy file + all shards" "SLUGS=a,b,legacy-note" "$out"
+rm -rf "$BE"

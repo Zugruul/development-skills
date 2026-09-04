@@ -393,3 +393,62 @@ rm -rf "$CMT"
 check "this repo's own .neural-network/project.yaml (commit block set per #418) still validates" "VALID: " \
     "$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/../../.neural-network/project.yaml")"
 
+
+# ============================================================ specs out of project.yaml
+# project.yaml holds CONFIGURATION; the work-plan (specs: specPath, taskPrefix,
+# epics, invariants...) lives in per-spec files .neural-network/specs/<id>.yaml.
+# The loader merges them into cfg["specs"] so every consumer keeps reading
+# cfg.specs unchanged. Inline specs: still works (deprecated) when no specs/
+# dir entry exists; the specs/ dir wins when both are present.
+echo "== config.py: per-spec files (.neural-network/specs/<id>.yaml) =="
+SP="$(mktemp -d)"; mkdir -p "$SP/.neural-network/specs"
+python3 - "$FIX/valid.project.yaml" "$SP" <<'PY'
+import sys, yaml
+cfg = yaml.safe_load(open(sys.argv[1]))
+specs = cfg.pop("specs")
+root = sys.argv[2]
+with open(f"{root}/.neural-network/project.yaml", "w") as f:
+    yaml.safe_dump(cfg, f, sort_keys=False)
+with open(f"{root}/.neural-network/specs/core.yaml", "w") as f:
+    yaml.safe_dump(specs[0], f, sort_keys=False)
+PY
+check "spec file merges into cfg.specs" "FX" "$(python3 "$PLUGIN/scripts/config.py" "$SP" get specs.0.taskPrefix)"
+check "spec file: epics readable through cfg.specs" "E0" "$(python3 "$PLUGIN/scripts/config.py" "$SP" get specs.0.epics.1.id)"
+check "spec id defaults to the filename" "core" "$(python3 "$PLUGIN/scripts/config.py" "$SP" get specs.0.id)"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$SP/.neural-network/project.yaml")"
+check "validator: project.yaml without inline specs is VALID (specs/ dir supplies them)" "VALID: " "$out"
+check "validator: summary still lists the spec from its file" "spec 'core' [FX]" "$out"
+# second spec file -> ordered by filename
+cat >"$SP/.neural-network/specs/aux.yaml" <<'YAML'
+board: main
+specPath: SPEC-AUX.md
+taskPrefix: AX
+epics:
+  - id: A0
+    taskRanges: [[1, 5]]
+YAML
+check "multiple spec files: sorted by filename" "AX,FX" "$(python3 "$PLUGIN/scripts/config.py" "$SP" json | python3 -c 'import json,sys; print(",".join(s["taskPrefix"] for s in json.load(sys.stdin)["specs"]))')"
+rm -rf "$SP"
+
+echo "== validate-config / preflight: inline specs deprecated =="
+IS="$(mktemp -d)"; mkdir -p "$IS/.claude" "$IS/.neural-network"
+cp "$FIX/valid.project.yaml" "$IS/.neural-network/project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$IS/.neural-network/project.yaml")"
+check "inline specs still VALID (deprecated, not an error)" "VALID: " "$out"
+check "validator notes the deprecation + new home" "DEPRECATION: inline 'specs:' in project.yaml — migrate to .neural-network/specs/<id>.yaml" "$out"
+( cd "$IS" && git init -q . )
+touch "$IS/SPEC.md" "$IS/docs" 2>/dev/null; mkdir -p "$IS/docs"; touch "$IS/docs/BACKLOG.md"
+out="$(cd "$IS" && bash "$PLUGIN/scripts/preflight.sh" --spec)"
+check "preflight suggests migrating inline specs before starting a task" "suggest: migrate inline specs" "$out"
+# specs/ dir wins over inline
+mkdir -p "$IS/.neural-network/specs"
+cat >"$IS/.neural-network/specs/solo.yaml" <<'YAML'
+board: main
+specPath: SPEC.md
+taskPrefix: SO
+epics:
+  - id: S0
+    taskRanges: [[1, 9]]
+YAML
+check "specs/ dir wins over inline specs" "SO" "$(python3 "$PLUGIN/scripts/config.py" "$IS" get specs.0.taskPrefix)"
+rm -rf "$IS"

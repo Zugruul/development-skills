@@ -830,3 +830,94 @@ check "emit: feed-unwritable -- primary emit still succeeds" "OK: emitted 2 item
 check "emit: feed-unwritable -- a warning is printed" "warning" "$out"
 check "feed.yaml written despite events-feed failure" "loop-feedback" "$(cat "$EF/.neural-network/feedbacks/feed.yaml" 2>/dev/null)"
 rm -rf "$EF"
+
+# ============================================================ sharded feed
+# Conflict-free collaboration: `emit` writes ONE NEW FILE per record under
+# <feed-dir>/ (feed.yaml minus extension), named <ts-compact>-<writer>.yaml.
+# Nobody ever appends to a shared file, so concurrent emitters on different
+# clones can commit without ever conflicting. The single feed.yaml is legacy:
+# still read/routed/archived, never written by emit. Archive moves a shard
+# file byte-identically to archive/<YYYY-MM>/<basename> (per-file, no shared
+# monthly append); legacy docs keep the old monthly-file behavior.
+echo "== feedback: per-writer sharded feed (conflict-free collaboration) =="
+FS="$(mktemp -d)"; mkdir -p "$FS/.claude" "$FS/.neural-network"
+cp "$FIX/valid.project.yaml" "$FS/.neural-network/project.yaml"
+python3 "$PLUGIN/scripts/config.py" "$FS" set methodology.feedback true >/dev/null
+cat >"$FS/rec-alice.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-02-01T10:00:00Z"
+iteration: {task: FX-001, outcome: merged, reviewRounds: 1}
+source: {role: orchestrator, model: claude-sonnet-5}
+items:
+  - {category: friction, area: board, severity: low, summary: "alice item", generalized: "alice item"}
+YAML
+cat >"$FS/rec-bob.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-02-02T11:00:00Z"
+iteration: {task: FX-002, outcome: merged, reviewRounds: 1}
+source: {role: orchestrator, model: claude-sonnet-5}
+items:
+  - {category: friction, area: review, severity: low, summary: "bob item", generalized: "bob item"}
+YAML
+out="$(cd "$FS" && SPEC_WORKFLOW_WRITER=alice python3 "$PLUGIN/scripts/feedback.py" "$FS" emit rec-alice.yaml)"
+check "shard emit: succeeds" "OK: emitted 1 item(s)" "$out"
+ALICE_SHARD="$FS/.neural-network/feedbacks/feed/20260201T100000Z-alice.yaml"
+[[ -f "$ALICE_SHARD" ]] && r=yes || r=no
+check "shard emit: one file per record, named ts-writer" "yes" "$r"
+[[ -e "$FS/.neural-network/feedbacks/feed.yaml" ]] && r=yes || r=no
+check "shard emit: legacy feed.yaml is NOT created" "no" "$r"
+alice_bytes_before="$(cat "$ALICE_SHARD")"
+out="$(cd "$FS" && SPEC_WORKFLOW_WRITER=bob python3 "$PLUGIN/scripts/feedback.py" "$FS" emit rec-bob.yaml)"
+check "shard emit: second writer succeeds" "OK: emitted 1 item(s)" "$out"
+[[ -f "$FS/.neural-network/feedbacks/feed/20260202T110000Z-bob.yaml" ]] && r=yes || r=no
+check "shard emit: second writer gets his own file" "yes" "$r"
+check "shard emit: first writer's file untouched by second emit" "$alice_bytes_before" "$(cat "$ALICE_SHARD")"
+# duplicate ts across shards still rejected (routing identity stays unique)
+out="$(cd "$FS" && SPEC_WORKFLOW_WRITER=carol python3 "$PLUGIN/scripts/feedback.py" "$FS" emit rec-alice.yaml || true)"
+check "shard emit: duplicate ts across shards rejected" "already exists" "$out"
+# pending/status see every shard
+out="$(cd "$FS" && python3 "$PLUGIN/scripts/feedback.py" "$FS" pending)"
+check "shard pending: lists alice's item" "alice item" "$out"
+check "shard pending: lists bob's item" "bob item" "$out"
+out="$(cd "$FS" && python3 "$PLUGIN/scripts/feedback.py" "$FS" status)"
+check "shard status: counts across shards" "pending=2" "$out"
+# route touches ONLY the containing shard
+out="$(cd "$FS" && python3 "$PLUGIN/scripts/feedback.py" "$FS" route "2026-02-02T11:00:00Z" 0 ignore "not-actionable")"
+check "shard route: routes bob's item" "OK: routed" "$out"
+check "shard route: alice's file byte-identical after routing bob" "$alice_bytes_before" "$(cat "$ALICE_SHARD")"
+# archive: bob (fully routed) moves per-file into archive/<YYYY-MM>/, alice stays
+bob_bytes="$(cat "$FS/.neural-network/feedbacks/feed/20260202T110000Z-bob.yaml")"
+out="$(cd "$FS" && python3 "$PLUGIN/scripts/feedback.py" "$FS" archive)"
+check "shard archive: reports the move" "OK: archived 1 document(s)" "$out"
+[[ -f "$FS/.neural-network/feedbacks/archive/2026-02/20260202T110000Z-bob.yaml" ]] && r=yes || r=no
+check "shard archive: routed shard moved to archive/<YYYY-MM>/<basename>" "yes" "$r"
+check "shard archive: archived bytes identical" "$bob_bytes" "$(cat "$FS/.neural-network/feedbacks/archive/2026-02/20260202T110000Z-bob.yaml")"
+[[ -e "$FS/.neural-network/feedbacks/feed/20260202T110000Z-bob.yaml" ]] && r=yes || r=no
+check "shard archive: moved shard leaves the feed dir" "no" "$r"
+[[ -f "$ALICE_SHARD" ]] && r=yes || r=no
+check "shard archive: unrouted shard stays" "yes" "$r"
+out="$(cd "$FS" && python3 "$PLUGIN/scripts/feedback.py" "$FS" archived)"
+check "shard archived: per-file archives are listed" "bob item" "$out"
+# legacy interop: a feed.yaml doc coexists; migrate-shard splits it into shards
+cat >"$FS/.neural-network/feedbacks/feed.yaml" <<'YAML'
+schemaVersion: 1
+kind: loop-feedback
+ts: "2026-01-15T09:00:00Z"
+iteration: {task: FX-000, outcome: merged, reviewRounds: 1}
+source: {role: orchestrator, model: claude-sonnet-5}
+items:
+  - {category: friction, area: docs, severity: low, summary: "legacy item", generalized: "legacy item"}
+YAML
+out="$(cd "$FS" && python3 "$PLUGIN/scripts/feedback.py" "$FS" pending)"
+check "legacy interop: pending lists legacy + shard items" "legacy item" "$out"
+out="$(cd "$FS" && python3 "$PLUGIN/scripts/feedback.py" "$FS" migrate-shard)"
+check "migrate-shard: reports the split" "OK: sharded 1 document(s)" "$out"
+[[ -f "$FS/.neural-network/feedbacks/feed/20260115T090000Z-legacy.yaml" ]] && r=yes || r=no
+check "migrate-shard: legacy doc became its own shard file" "yes" "$r"
+[[ -e "$FS/.neural-network/feedbacks/feed.yaml" ]] && r=yes || r=no
+check "migrate-shard: legacy feed.yaml removed after split" "no" "$r"
+out="$(cd "$FS" && python3 "$PLUGIN/scripts/feedback.py" "$FS" pending)"
+check "migrate-shard: item still pending after split" "legacy item" "$out"
+rm -rf "$FS"
