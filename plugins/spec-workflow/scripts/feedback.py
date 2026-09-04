@@ -361,9 +361,11 @@ def _load_feed(path):
 
 def _shard_dir(feed_path):
     """The sharded-feed directory for a configured feed file: feed.yaml -> feed/.
-    One FILE PER EMITTED RECORD lives here (<ts-compact>-<writer>.yaml), so
-    concurrent emitters on different clones never touch the same file and a
-    committed feed can never merge-conflict. The single feed file itself is
+    Each writer owns a SUBDIRECTORY holding one file per emitted record
+    (feed/<writer>/<ts-compact>.yaml), so concurrent emitters on different
+    clones never touch the same file — or even the same directory — and a
+    committed feed can never merge-conflict. `migrate-shard` files a legacy
+    feed's documents under feed/legacy/. The single feed file itself is
     LEGACY: still read/routed/archived, never written by emit."""
     return os.path.splitext(feed_path)[0]
 
@@ -376,7 +378,13 @@ def _shard_files(feed_path):
     d = _shard_dir(feed_path)
     if not os.path.isdir(d):
         return []
-    return [os.path.join(d, n) for n in sorted(os.listdir(d)) if n.endswith(".yaml")]
+    out = []
+    for writer in sorted(os.listdir(d)):
+        wd = os.path.join(d, writer)
+        if not os.path.isdir(wd):
+            continue
+        out.extend(os.path.join(wd, n) for n in sorted(os.listdir(wd)) if n.endswith(".yaml"))
+    return out
 
 
 def _feed_sources(feed_path):
@@ -447,7 +455,7 @@ def cmd_emit(root, record_path):
     # Sharded write (conflict-free collaboration): ONE NEW FILE per record,
     # named by the record's ts + this writer's id — never an append to any
     # shared file. The legacy feed file is read above but never written here.
-    shard = os.path.join(_shard_dir(feed_path), f"{_ts_compact(rec.get('ts'))}-{brain.writer_id(root)}.yaml")
+    shard = os.path.join(_shard_dir(feed_path), brain.writer_id(root), f"{_ts_compact(rec.get('ts'))}.yaml")
     if os.path.exists(shard):
         print(f"INVALID: shard {shard} already exists — use a distinct ts")
         return 1
@@ -742,7 +750,8 @@ def cmd_archive(root):
             return 1
         fully, month, ts_norm, role, item_count = verdict
         if fully:
-            shard_moves.append((p, os.path.join(archive_dir, month, os.path.basename(p)), ts_norm, role, item_count))
+            writer = os.path.basename(os.path.dirname(p))
+            shard_moves.append((p, os.path.join(archive_dir, month, writer, os.path.basename(p)), ts_norm, role, item_count))
 
     if not legacy_moves and not shard_moves:
         print(f"OK: no changes — nothing fully routed to archive in {feed_path}")
@@ -772,7 +781,7 @@ def cmd_archive(root):
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             with open(src, "rb") as fh:
                 _atomic_write_bytes(dst, fh.read())
-            months.add(os.path.basename(os.path.dirname(dst)))
+            months.add(os.path.basename(os.path.dirname(os.path.dirname(dst))))
     except OSError as e:
         print(f"ERROR: failed writing archive under {archive_dir}: {e} — feed left untouched")
         return 1
@@ -811,9 +820,16 @@ def cmd_archived(root, since=None):
         if name.endswith(".yaml"):
             archive_files.append(p)          # legacy monthly rollup file
         elif os.path.isdir(p):
-            archive_files.extend(            # per-file shard archive: archive/<YYYY-MM>/<name>.yaml
-                os.path.join(p, n) for n in sorted(os.listdir(p)) if n.endswith(".yaml")
-            )
+            # per-file shard archive: archive/<YYYY-MM>/<writer>/<ts>.yaml
+            # (direct .yaml files under the month dir are read too, defensively)
+            for sub in sorted(os.listdir(p)):
+                sp = os.path.join(p, sub)
+                if sub.endswith(".yaml") and os.path.isfile(sp):
+                    archive_files.append(sp)
+                elif os.path.isdir(sp):
+                    archive_files.extend(
+                        os.path.join(sp, n) for n in sorted(os.listdir(sp)) if n.endswith(".yaml")
+                    )
     for p in archive_files:
         for rec in _load_feed(p):
             ts = rec.get("ts", "")
@@ -884,7 +900,7 @@ def cmd_migrate_shard(root):
         if not isinstance(ts_norm, str) or not ts_norm:
             print(f"ERROR: feed document at byte offset {offset} has no usable ts — aborting, no files modified")
             return 1
-        dst = os.path.join(_shard_dir(feed_path), f"{_ts_compact(ts_norm)}-legacy.yaml")
+        dst = os.path.join(_shard_dir(feed_path), "legacy", f"{_ts_compact(ts_norm)}.yaml")
         if os.path.exists(dst) or any(d == dst for _b, d in planned):
             print(f"ERROR: shard target {dst} already exists — aborting, no files modified")
             return 1

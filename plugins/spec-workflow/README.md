@@ -16,12 +16,12 @@ A consumer repo's config **and** its knowledge bases live together in one root-l
     project.local.yaml   # OPTIONAL machine-local overrides (gitignored; allowlisted keys only — today `compute`)
     specs/<id>.yaml      # per-spec work-plan files (taskPrefix, epics, invariants — see below)
     identities/          # per-role zettel brains (committed shared memory)
-    feedbacks/           # process feedback: feed/<ts>-<writer>.yaml shards + archive/ (committed)
+    feedbacks/           # process feedback: feed/<writer>/<ts>.yaml shards + archive/ (committed)
     brain-events/        # brain event feed: one <writer>.jsonl per writer (committed)
     brain-events.jsonl   # LEGACY single feed — still read as history, never written
 ```
 
-**Conflict-free collaboration**: every committed, growing artifact is sharded so no two writers ever append to the same file — `brain-events/<writer>.jsonl` (writer = `$SPEC_WORKFLOW_WRITER` or the git `user.email` localpart, sanitized), one `feedbacks/feed/<ts-compact>-<writer>.yaml` file per emitted feedback record, and per-file archive moves into `feedbacks/archive/<YYYY-MM>/<name>.yaml`. Readers merge the legacy single files (`brain-events.jsonl`, `feedbacks/feed.yaml`, monthly `archive/<YYYY-MM>.yaml`) with every shard, so history needs no rewrite; `feedback.py migrate-shard` splits a legacy feed when you want the old file gone.
+**Conflict-free collaboration**: every committed, growing artifact is sharded so no two writers ever append to the same file — `brain-events/<writer>.jsonl` (writer = `$SPEC_WORKFLOW_WRITER` or the git `user.email` localpart, sanitized), one `feedbacks/feed/<writer>/<ts-compact>.yaml` file per emitted feedback record (each writer owns their whole subdirectory), and per-file archive moves into `feedbacks/archive/<YYYY-MM>/<writer>/<ts>.yaml`. Readers merge the legacy single files (`brain-events.jsonl`, `feedbacks/feed.yaml`, monthly `archive/<YYYY-MM>.yaml`) with every shard, so history needs no rewrite; `feedback.py migrate-shard` splits a legacy feed when you want the old file gone.
 
 **Per-spec files**: `project.yaml` holds CONFIGURATION only; each spec's work-plan (specPath, backlogPath, taskPrefix, epics/taskRanges/blockedBy, invariants) lives in `.neural-network/specs/<id>.yaml` (the basename is the spec id; template `templates/spec.example.yaml`). The loader merges them into `cfg.specs`, so every consumer keeps reading the same shape. An inline `specs:` section still works (deprecated — the validator notes it and the task-start preflight suggests migrating); the `specs/` dir wins when both exist.
 
