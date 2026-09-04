@@ -101,6 +101,13 @@ After a PR merges (or is set aside), the orchestrator runs a retro:
 2. `brain.sh mint <role> <slug> --tags ... --paths ... --source "PR#N ..."` — mint notes in
    **your own wording** (body on stdin), one idea each, wikilinking related slugs. Re-minting
    an existing slug bumps its `strength`.
+
+   **Note style (mandatory)**: write bodies as small, well-structured documents — simple,
+   concise English a human can skim AND an agent can parse. Use markdown structure: `##`
+   sections with clear titles (and subtitles where it helps), short bullet lists, code
+   formatting for identifiers/paths/commands. Never a single dense paragraph-glob: if a body
+   reads as one wall of prose packed with facts, break it into sections. Match the tone of
+   good project docs — the note should read like a mini reference page for its one idea.
 3. `brain.sh status <role>` — per-note `✓/✗/⚠` (useful/dead_end/corrected) outcome tallies;
    a note with repeated `✗` and no `✓` also surfaces in `prune`'s candidate list (SPEC-GRAPHIFY
    §7 R7.6). `brain.sh prune <role>` — review flagged links (never-fired + aged, or target
