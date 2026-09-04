@@ -452,3 +452,16 @@ epics:
 YAML
 check "specs/ dir wins over inline specs" "SO" "$(python3 "$PLUGIN/scripts/config.py" "$IS" get specs.0.taskPrefix)"
 rm -rf "$IS"
+
+echo "== validate-config: brains.noteStyle (mint-style control, doc-consumed like commit.systemPrompt) =="
+BN="$(mktemp -d)"
+sed 's/^methodology:/brains:\n    noteStyle: "Simple English. Sectioned with ## headings. Short bullets."\nmethodology:/' "$FIX/valid.project.yaml" > "$BN/good.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$BN/good.project.yaml")"
+check "brains.noteStyle: valid string accepted" "VALID: " "$out"
+sed 's/^methodology:/brains:\n    noteStyle: ""\nmethodology:/' "$FIX/valid.project.yaml" > "$BN/empty.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$BN/empty.project.yaml" || true)"
+check "brains.noteStyle: empty string rejected" "brains.noteStyle: must not be empty" "$out"
+sed 's/^methodology:/brains:\n    bogusKey: 1\nmethodology:/' "$FIX/valid.project.yaml" > "$BN/unknown.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$BN/unknown.project.yaml" || true)"
+check "brains: unknown key rejected" "brains.bogusKey: unknown key" "$out"
+rm -rf "$BN"
