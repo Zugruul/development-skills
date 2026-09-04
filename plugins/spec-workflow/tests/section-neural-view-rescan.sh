@@ -116,3 +116,46 @@ check_absent "rescan 0: disabled repo is absent from repos.json" "dis-beta" "$(c
 python3 "$NV" stop >/dev/null
 unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_SCAN
 rm -rf "$_rdscan" "$_rdstate"
+
+echo "== neural-view refresh_repos() + repo_branch() (pure units, no server) =="
+_rfb="$(mktemp -d)"
+mkdir -p "$_rfb/repo-a/.neural-network" "$_rfb/repo-b"
+out="$(python3 - "$NV" "$_rfb" <<'PYEOF'
+import importlib.util, sys, os
+spec = importlib.util.spec_from_file_location("nv", sys.argv[1])
+nv = importlib.util.module_from_spec(spec); spec.loader.exec_module(nv)
+base = sys.argv[2]
+args = ["--scan", base]
+boot = nv.discover_repos(args)
+print("BOOT", sorted(n for n, _ in boot))
+# anchor repo-b, drop repo-a's marker -> full refresh must reflect BOTH
+os.makedirs(os.path.join(base, "repo-b", ".neural-network"), exist_ok=True)
+import shutil; shutil.rmtree(os.path.join(base, "repo-a", ".neural-network"))
+new, added, removed = nv.refresh_repos(boot, args)
+print("ADDED", sorted(n for n, _ in added))
+print("REMOVED", sorted(n for n, _ in removed))
+print("NEW", sorted(n for n, _ in new))
+# idempotent second pass
+new2, added2, removed2 = nv.refresh_repos(new, args)
+print("SECOND", sorted(n for n, _ in added2), sorted(n for n, _ in removed2), new2 is new or new2 == new)
+PYEOF
+)"
+check "refresh: boot saw only repo-a" "BOOT ['repo-a']" "$out"
+check "refresh: new anchor joins" "ADDED ['repo-b']" "$out"
+check "refresh: vanished marker drops the repo" "REMOVED ['repo-a']" "$out"
+check "refresh: final set is exactly the live anchors" "NEW ['repo-b']" "$out"
+check "refresh: second pass is a no-op" "SECOND [] [] True" "$out"
+rm -rf "$_rfb"
+_rbg="$(mktemp -d)"
+( cd "$_rbg" && git init -q -b feat/some-branch . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m x )
+out="$(python3 - "$NV" "$_rbg" <<'PYEOF'
+import importlib.util, sys, tempfile
+spec = importlib.util.spec_from_file_location("nv", sys.argv[1])
+nv = importlib.util.module_from_spec(spec); spec.loader.exec_module(nv)
+print("BRANCH", nv.repo_branch(sys.argv[2]))
+print("NOGIT", repr(nv.repo_branch(tempfile.mkdtemp())))
+PYEOF
+)"
+check "repo_branch: reports the checkout's branch" "BRANCH feat/some-branch" "$out"
+check "repo_branch: non-git dir is empty, never an error" "NOGIT ''" "$out"
+rm -rf "$_rbg"

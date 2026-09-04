@@ -224,6 +224,21 @@ out="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/note/repo-alpha/dev/seed-not
 check "multi-repo note fetch addresses by repo/role/slug" "belongs to repo-alpha only" "$out"
 code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$NEURAL_VIEW_PORT/note/repo-gamma/dev/should-not-appear")"
 check "unmarked repo's note is unreachable (404)" "404" "$code"
+# POST /rescan (settings "Refresh repos" button): full refresh without a
+# restart — newly-anchored repos JOIN, repos whose marker dir vanished DROP.
+mkdir -p "$_scanbase/repo-delta/.neural-network"
+out="$(curl -sf -X POST "http://127.0.0.1:$NEURAL_VIEW_PORT/rescan")"
+check "rescan: reports the added repo" '"repo-delta"' "$out"
+out="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/graph")"
+check "rescan: graph now includes repo-delta" '"repo-delta"' "$out"
+rm -rf "$_scanbase/repo-beta/.neural-network"
+out="$(curl -sf -X POST "http://127.0.0.1:$NEURAL_VIEW_PORT/rescan")"
+check "rescan: reports the removed repo" '"repo-beta"' "$out"
+out="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/graph")"
+check_absent "rescan: unmarked repo-beta dropped from the graph" '"repo-beta"' "$out"
+# branches: every repo entry carries its current git branch (worktree-aware),
+# "" for a non-git dir — repo-alpha is not a git repo in this fixture.
+check "graph carries a branches map" '"branches"' "$out"
 python3 "$NV" stop >/dev/null
 unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_SCAN
 rm -rf "$_scanbase" "$_scanstate"
