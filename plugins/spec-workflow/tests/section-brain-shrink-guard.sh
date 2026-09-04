@@ -30,7 +30,7 @@ PY
 SG1_LINKS="$SG1/.neural-network/identities/dev/brain/links.json"
 SG1_SNAPSHOT="$SG1/links.snapshot.json"
 cp "$SG1_LINKS" "$SG1_SNAPSHOT"
-: >"$SG1/.neural-network/brain-events.jsonl"
+: >"$SG1/.neural-network/brain-events/test.jsonl"
 
 out="$(sg1 prune dev --apply; echo "rc=$?")"
 check "over-threshold: refuses (non-zero exit)" "rc=1" "$out"
@@ -49,7 +49,7 @@ else
     echo "FAIL over-threshold: links.json byte-identical after refusal (cmp) — files differ"
     fails=$((fails + 1))
 fi
-out="$(python3 - "$SG1/.neural-network/brain-events.jsonl" <<'PY'
+out="$(python3 - "$SG1/.neural-network/brain-events/test.jsonl" <<'PY'
 import json, sys
 n = 0
 if __import__("os").path.isfile(sys.argv[1]):
@@ -72,7 +72,7 @@ check "force: loud summary shows a sample candidate key" "orphan1->missing1" "$o
 out="$(cat "$SG1/.neural-network/identities/dev/brain/links.json")"
 check_absent "force: candidate link actually removed" "orphan1->missing1" "$out"
 check "force: kept links survive" "keep1->real" "$out"
-out="$(python3 - "$SG1/.neural-network/brain-events.jsonl" <<'PY'
+out="$(python3 - "$SG1/.neural-network/brain-events/test.jsonl" <<'PY'
 import json, sys
 n = 0
 for line in open(sys.argv[1]):

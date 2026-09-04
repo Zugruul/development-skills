@@ -271,7 +271,7 @@ try:
             time.sleep(0.2)
         print("MINTED_VIA_REAL_ENGINE", minted)
 
-        events_path = os.path.join(root, ".neural-network", "brain-events.jsonl")
+        events_path = os.path.join(root, ".neural-network", "brain-events", "test.jsonl")
         events_text = open(events_path, encoding="utf-8").read() if os.path.exists(events_path) else ""
         print("BRAIN_EVENT_NOTE_MINTED", '"type": "NoteMinted"' in events_text)
 finally:
@@ -395,7 +395,7 @@ print("BODY_MENTIONS_HUMAN_APPROVAL", "human must approve" in body)
 print("BODY_HAS_EXCERPT", "duck" in body)
 print("BODY_HAS_NEAREST", "weather" in body and "reminders" in body)
 
-events_path = os.path.join(root, ".neural-network", "brain-events.jsonl")
+events_path = os.path.join(root, ".neural-network", "brain-events", "test.jsonl")
 events = [json.loads(line) for line in open(events_path, encoding="utf-8")]
 minted = [e for e in events if e.get("type") == "NoteMinted" and e.get("slug") == result["slug"]]
 print("BRAIN_EVENT_EMITTED", len(minted) == 1)

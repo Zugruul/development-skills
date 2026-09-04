@@ -5,7 +5,7 @@ description: Helps you write a spec through an assisted, interactive process —
 
 # Craft a spec with the user
 
-Deliverables: a spec document (e.g. `SPEC.md`), a backlog document (e.g. `docs/BACKLOG.md`) with epics + numbered, story-pointed, acceptance-criteria'd tasks, and (if `.neural-network/project.yaml` exists) a registered `specs[]` entry. The spec is the contract every future task is built and judged against — invest accordingly.
+Deliverables: a spec document (e.g. `SPEC.md`), a backlog document (e.g. `docs/BACKLOG.md`) with epics + numbered, story-pointed, acceptance-criteria'd tasks, and (if `.neural-network/project.yaml` exists) a registered spec file (`.neural-network/specs/<id>.yaml`). The spec is the contract every future task is built and judged against — invest accordingly.
 
 Read `../../skills/craft-spec/references/spec-guide.md` **before Phase 2** — it has the document structure, the interview question bank, and the review checklist. On Claude Code, see `references/host-claude.md` for the exact structured-input tool calls this skill's two interview loops use.
 

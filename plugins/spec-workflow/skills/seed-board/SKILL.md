@@ -9,7 +9,7 @@ allowed-tools: Bash
 Pre-start check — run this now, before anything else: `bash "../../scripts/preflight.sh" --spec`. If it prints `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
 ## 1. Build the task file
-From the spec's backlog doc (`specs[].backlogPath` in `.neural-network/project.yaml`), write one line per task to a temp file (`#` comments and blank lines allowed):
+From the spec's backlog doc (`specs[].backlogPath` — per-spec files under `.neural-network/specs/`, merged into the config by the loader), write one line per task to a temp file (`#` comments and blank lines allowed):
 ```
 <task-id>|<priority>|<points>|<epic-id>|<title>
 CP-001|P0|5|E0|Repo scaffold: pnpm workspace + tsconfig

@@ -100,7 +100,22 @@ def main(path):
             if v in json.dumps(b):
                 errs.append(f"{w}: still contains template placeholder '{v}' — run 'board.sh fields' and fill real ids")
 
-    specs = need(cfg, "specs", list, "$") or []
+    # specs: preferred home is the per-spec files .neural-network/specs/<id>.yaml
+    # (project.yaml = configuration only); inline `specs:` still validates but
+    # is deprecated. The dir wins when both exist — mirror config.py exactly.
+    specs_deprecation = None
+    dir_specs = None if FRAGMENT else C._load_specs_dir(path)
+    if dir_specs is not None:
+        specs = dir_specs
+        if "specs" in cfg:
+            specs_deprecation = ("inline 'specs:' in project.yaml is IGNORED — the "
+                                 f"{C.SPECS_DIRNAME}/ dir wins; delete the inline section")
+    else:
+        specs = need(cfg, "specs", list, "$") or []
+        if "specs" in cfg:
+            specs_deprecation = ("inline 'specs:' in project.yaml — migrate to "
+                                 ".neural-network/specs/<id>.yaml (one file per spec; "
+                                 "project.yaml holds configuration only)")
     prefixes = set()
     for i, s in enumerate(specs):
         w = f"specs[{i}]"
@@ -403,6 +418,8 @@ def main(path):
         seq = " -> ".join(e["id"] for e in s["epics"])
         print(f"  spec '{s['id']}' [{s['taskPrefix']}] on board '{s['board']}': {s['specPath']}  epics: {seq}")
     print(f"  gate: {cmds.get('gate')}")
+    if specs_deprecation:
+        print(f"  DEPRECATION: {specs_deprecation}")
     return 0
 
 

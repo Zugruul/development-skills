@@ -43,7 +43,7 @@ check "status: enabled + feed path + pending=0" "feedback: enabled feed=.neural-
 # emit: valid record round-trips into the feed
 out="$(fb emit "$FIX/feedback-valid.yaml")"
 check "emit ok" "OK" "$out"
-check "feed file created" "loop-feedback" "$(cat "$FT/.neural-network/feedbacks/feed.yaml" 2>/dev/null)"
+check "feed shard created (one file per record)" "loop-feedback" "$(cat "$FT/.neural-network/feedbacks/feed/"*.yaml 2>/dev/null)"
 check "status: pending reflects 2 unrouted items" "pending=2" "$(fb status)"
 
 # emit: rejects a second record reusing an already-emitted ts (would make routing ambiguous)
@@ -92,7 +92,7 @@ check "route rejects unknown action" "unknown routing action" "$out"
 fb route "2026-07-01T10:00:00Z" 0 brain-note "friction-self-approval" >/dev/null
 fb route "2026-07-01T10:00:00Z" 1 backlog "#41" >/dev/null
 check "status: pending drops to zero after routing" "pending=0" "$(fb status)"
-check "routing written into feed" "brain-note" "$(cat "$FT/.neural-network/feedbacks/feed.yaml")"
+check "routing written into feed" "brain-note" "$(cat "$FT/.neural-network/feedbacks/feed/"*.yaml)"
 
 # route: re-routing an already-routed item is allowed but names the prior action
 out="$(fb route "2026-07-01T10:00:00Z" 0 graduate "graduated-lesson")"
@@ -239,7 +239,7 @@ items:
     routing: {action: backlog, ref: "#77"}
 YAML
 qr emit "$QRREC" >/dev/null
-out="$(cat "$QR/.neural-network/feedbacks/feed.yaml")"
+out="$(cat "$QR/.neural-network/feedbacks/feed/"*.yaml)"
 check "emit qualifies bare evidence ref with own project name" "fixture-project#61" "$out"
 check "emit qualifies bare short evidence ref" "fixture-project#5" "$out"
 check "emit leaves foreign-qualified evidence untouched" "comm-platform#71" "$out"
@@ -248,11 +248,11 @@ check_absent "emit does not double-qualify an already-qualified evidence ref" "f
 
 # route: normalizes the ref argument the same way; foreign-qualified refs pass through
 qr route "2026-07-05T00:00:00Z" 0 upstream "#90" >/dev/null
-out="$(cat "$QR/.neural-network/feedbacks/feed.yaml")"
+out="$(cat "$QR/.neural-network/feedbacks/feed/"*.yaml)"
 check "route normalizes a bare ref argument" "fixture-project#90" "$out"
 
 qr route "2026-07-05T00:00:00Z" 0 upstream "other-repo#12" >/dev/null
-out="$(cat "$QR/.neural-network/feedbacks/feed.yaml")"
+out="$(cat "$QR/.neural-network/feedbacks/feed/"*.yaml)"
 check "route passes a foreign-qualified ref argument through verbatim" "other-repo#12" "$out"
 rm -rf "$QR"
 
@@ -348,7 +348,7 @@ ts_() { (cd "$TS" && python3 "$PLUGIN/scripts/feedback.py" "$TS" "$@"); }
 
 ts_ emit "$FIX/feedback-unquoted-ts.yaml" >/dev/null
 check "emit normalizes an unquoted-ISO ts to a quoted feed line" \
-  "ts: '2026-07-02T09:00:00Z'" "$(cat "$TS/.neural-network/feedbacks/feed.yaml")"
+  "ts: '2026-07-02T09:00:00Z'" "$(cat "$TS/.neural-network/feedbacks/feed/"*.yaml)"
 out="$(ts_ route "2026-07-02T09:00:00Z" 0 ignore "n/a")"
 check "route addresses a record whose ts was normalized at emit time" "OK: routed" "$out"
 rm -rf "$TS"
@@ -707,7 +707,7 @@ check "README describes what archive does" "archive/<YYYY-MM>.yaml" "$readme_ver
 # emit -> FeedbackEmitted (one per item), route -> FeedbackRouted (one per
 # call), archive -> FeedbackArchived (one per document, not per item), all
 # via brain.py's existing emit_event(root, obj) into
-# <root>/.neural-network/brain-events.jsonl (§8.1/§8.2). Payloads carry itemTs/idx/
+# <root>/.neural-network/brain-events/test.jsonl (§8.1/§8.2). Payloads carry itemTs/idx/
 # action/itemCount refs only -- never an item's summary/detail/generalized
 # text. The domain timestamp is carried as `itemTs`, NEVER as `ts` -- emit_event
 # already sets its own baseline `ts` (emission time) via `event.update(obj)`,
@@ -721,7 +721,7 @@ fb_events() {
     python3 - "$1" "$2" <<'PY'
 import json, os, sys
 root, want_type = sys.argv[1], sys.argv[2]
-p = os.path.join(root, ".neural-network", "brain-events.jsonl")
+p = os.path.join(root, ".neural-network", "brain-events", "test.jsonl")
 if os.path.exists(p):
     for ln in open(p, encoding="utf-8"):
         ln = ln.strip()
@@ -749,7 +749,7 @@ check "emit: exactly 2 FeedbackEmitted lines" "2" "$(printf '%s\n' "$out" | grep
 check "emit: item 0 event carries itemTs+idx" "$(printf 'dev\t')" "$(printf '%s\n' "$out" | sed -n '1p')"
 check "emit: item 0 event carries itemTs+idx (value)" "$(printf '2026-07-01T10:00:00Z\t0\t\t')" "$(printf '%s\n' "$out" | sed -n '1p')"
 check "emit: item 1 event carries itemTs+idx (value)" "$(printf '2026-07-01T10:00:00Z\t1\t\t')" "$(printf '%s\n' "$out" | sed -n '2p')"
-raw="$(cat "$EV/.neural-network/brain-events.jsonl")"
+raw="$(cat "$EV/.neural-network/brain-events/test.jsonl")"
 check_absent "emit: no summary text leaked into the events feed" "Self-approval safety classifier" "$raw"
 check_absent "emit: no detail text leaked into the events feed" "Happened twice in this repo" "$raw"
 check_absent "emit: no generalized text leaked into the events feed" "Front-load the human merge check-in" "$raw"
@@ -761,7 +761,7 @@ check_absent "emit: no generalized text leaked into the events feed" "Front-load
 tsdiff="$(python3 - "$EV" <<'PY'
 import json, os, sys
 root = sys.argv[1]
-p = os.path.join(root, ".neural-network", "brain-events.jsonl")
+p = os.path.join(root, ".neural-network", "brain-events", "test.jsonl")
 for ln in open(p, encoding="utf-8"):
     e = json.loads(ln)
     if e.get("type") == "FeedbackEmitted":
@@ -813,7 +813,7 @@ out="$(fb_events "$EA" FeedbackArchived)"
 check "archive: exactly 2 FeedbackArchived lines (one per document)" "2" "$(printf '%s\n' "$out" | grep -c .)"
 check "archive: 3-item document carries itemCount=3, not 3 events" "$(printf '2026-07-01T00:00:00Z\t\t\t3')" "$(printf '%s\n' "$out" | sed -n '1p')"
 check "archive: 1-item document carries itemCount=1" "$(printf '2026-07-02T00:00:00Z\t\t\t1')" "$(printf '%s\n' "$out" | sed -n '2p')"
-raw="$(cat "$EA/.neural-network/brain-events.jsonl")"
+raw="$(cat "$EA/.neural-network/brain-events/test.jsonl")"
 check_absent "archive: no item summary text leaked into the events feed" '"summary"' "$raw"
 rm -rf "$EA"
 
@@ -824,11 +824,11 @@ cp "$FIX/valid.project.yaml" "$EF/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$EF" set methodology.feedback true >/dev/null
 # events-feed target is a DIRECTORY (not the file itself) so the append is
 # doomed while .claude stays fully writable for the real feedbacks/ write.
-mkdir -p "$EF/.neural-network/brain-events.jsonl"
+mkdir -p "$EF/.neural-network/brain-events/test.jsonl"
 out="$(cd "$EF" && python3 "$PLUGIN/scripts/feedback.py" "$EF" emit "$FIX/feedback-valid.yaml" 2>&1)"
 check "emit: feed-unwritable -- primary emit still succeeds" "OK: emitted 2 item(s)" "$out"
 check "emit: feed-unwritable -- a warning is printed" "warning" "$out"
-check "feed.yaml written despite events-feed failure" "loop-feedback" "$(cat "$EF/.neural-network/feedbacks/feed.yaml" 2>/dev/null)"
+check "feed shard written despite events-feed failure" "loop-feedback" "$(cat "$EF/.neural-network/feedbacks/feed/"*.yaml 2>/dev/null)"
 rm -rf "$EF"
 
 # ============================================================ sharded feed

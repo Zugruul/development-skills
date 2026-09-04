@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Zugruul/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json#/properties/specs/items
+id: peer
+title: Peer review + remote LLM dispatch (SPEC-PEER-REVIEW.md)
+board: main
+specPath: SPEC-PEER-REVIEW.md
+backlogPath: docs/BACKLOG-PEER-REVIEW.md
+taskPrefix: PRV
+epics:
+- id: E0
+  title: /peer-review skill
+  taskRanges:
+  - - 1
+    - 9
+- id: E1
+  title: Remote LLM dispatch
+  taskRanges:
+  - - 10
+    - 19
+invariants:
+- A peer review NEVER writes -- every codex invocation uses --sandbox read-only; the
+  review path contains no file-modifying code.
+- Secrets never enter git -- registry token fields are env-var references only; any
+  inline literal is a refusal, not a warning.
+- Resolved token values never appear in stdout, stderr, logs, or error messages.
+- No persistent process, daemon, heartbeat, or background agent is installed on any
+  machine by this work; everything runs synchronously at the moment of use.
+- Content leaves the machine only to endpoints explicitly declared in .claude/compute-registry.yaml,
+  or to OpenAI via the user-installed codex CLI -- and the latter is disclosed in
+  the skill doc.
+- External-model findings are always labeled with their source and never presented
+  as, or silently merged into, Claude's own judgment.
+- Scripts are bash 3.2-compatible / stdlib-only Python, set -uo pipefail, shellcheck-clean.

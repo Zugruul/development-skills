@@ -31,6 +31,17 @@ if missing:
     print("PREFLIGHT FAIL: spec file(s) missing: " + ", ".join(missing) + " — STOP: run /spec-workflow:craft-spec to create them (or fix specPath in the config).")
 else:
     print("preflight ok: config + " + str(len(specs)) + " spec(s) present")
+# Deprecated inline specs: suggest migrating BEFORE starting new task work
+# (advisory — never blocks). project.yaml should hold configuration only;
+# the work-plan belongs in per-spec files.
+try:
+    raw = C._parse(sys.argv[1])
+except Exception:  # noqa: BLE001
+    raw = {}
+specs_dir = os.path.join(os.path.dirname(sys.argv[1]), C.SPECS_DIRNAME)
+if isinstance(raw, dict) and "specs" in raw and not os.path.isdir(specs_dir):
+    print("suggest: migrate inline specs out of project.yaml into .neural-network/specs/<id>.yaml "
+          "(one file per spec — project.yaml holds configuration only) before starting the next task.")
 PY
 else
     echo "preflight ok: config present"

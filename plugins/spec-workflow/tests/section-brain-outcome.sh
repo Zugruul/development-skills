@@ -156,7 +156,7 @@ project:
     mainBranch: main
 YAML
 oe_brain() { python3 "$BO_SCRIPTS/brain.py" "$OE" "$@"; }
-OE_FEED="$OE/.neural-network/brain-events.jsonl"
+OE_FEED="$OE/.neural-network/brain-events/test.jsonl"
 printf 'Some lesson body.\n' | oe_brain mint dev evt-note --tags x --paths "x/**" --source "PR#1" >/dev/null
 : >"$OE_FEED"   # isolate from the NoteMinted/LinkFormed events minting just emitted
 
@@ -178,7 +178,7 @@ rm -rf "$OE"
 OE="$(mktemp -d)"
 mkdir -p "$OE/.claude" "$OE/.neural-network"
 oe_brain() { python3 "$BO_SCRIPTS/brain.py" "$OE" "$@"; }
-OE_FEED="$OE/.neural-network/brain-events.jsonl"
+OE_FEED="$OE/.neural-network/brain-events/test.jsonl"
 printf 'body\n' | oe_brain mint dev pre-note --tags x --paths "x/**" >/dev/null
 preexisting_line='{"v":1,"ts":"2020-01-01T00:00:00Z","repo":"acme/widgets","role":"dev","type":"LinkPruned","key":"a->b","reason":"target missing"}'
 printf '%s\n' "$preexisting_line" >>"$OE_FEED"
@@ -205,8 +205,8 @@ OE="$(mktemp -d)"
 mkdir -p "$OE/.claude" "$OE/.neural-network"
 oe_brain() { python3 "$BO_SCRIPTS/brain.py" "$OE" "$@"; }
 printf 'body\n' | oe_brain mint dev fail-note --tags x --paths "x/**" >/dev/null
-rm -f "$OE/.neural-network/brain-events.jsonl"      # mint's NoteMinted emit already created it as a file
-mkdir -p "$OE/.neural-network/brain-events.jsonl"   # feed target is a directory -> append is doomed
+rm -f "$OE/.neural-network/brain-events/test.jsonl"      # mint's NoteMinted emit already created it as a file
+mkdir -p "$OE/.neural-network/brain-events/test.jsonl"   # feed target is a directory -> append is doomed
 
 out="$(oe_brain outcome dev fail-note useful 2>&1)"; rc=$?
 check_rc "feed-write failure: outcome command still exits 0" 0 "$rc"

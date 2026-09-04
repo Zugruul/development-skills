@@ -68,7 +68,7 @@ check "recall() injected count is 1" "RECALL_INJECTED:1" "$out"
 
 # side effects a subprocess CLI shim would have relied on are still present:
 # NoteMinted + LinkFormed + RecallPerformed on the unified brain-event feed.
-events="$(cat "$BL1/.neural-network/brain-events.jsonl" 2>/dev/null || true)"
+events="$(cat "$BL1/.neural-network/brain-events/test.jsonl" 2>/dev/null || true)"
 check "mint() still emits NoteMinted to brain-events.jsonl" '"type": "NoteMinted"' "$events"
 check "mint() still emits LinkFormed to brain-events.jsonl" '"type": "LinkFormed"' "$events"
 check "recall() still emits RecallPerformed to brain-events.jsonl" '"type": "RecallPerformed"' "$events"

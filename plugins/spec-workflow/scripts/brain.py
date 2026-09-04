@@ -357,7 +357,66 @@ def log_event(identities, role, obj):
 
 # ------------------------------------------------ unified brain-event feed (E2)
 BRAIN_EVENT_SCHEMA_VERSION = 1
-BRAIN_EVENTS_FILENAME = "brain-events.jsonl"
+BRAIN_EVENTS_FILENAME = "brain-events.jsonl"   # LEGACY single feed: still read, never written
+BRAIN_EVENTS_DIRNAME = "brain-events"          # sharded feed: one <writer>.jsonl per writer
+
+
+def writer_id(root):
+    """Stable, filesystem-safe id for THIS writer's event/feedback shards.
+
+    Conflict-free collaboration hangs on this: every writer appends only to
+    files named after itself, so two people's commits can never collide on a
+    shared append point. Resolution: $SPEC_WORKFLOW_WRITER (tests/CI override)
+    > `git config user.email` localpart > $USER > "writer"; sanitized to
+    [a-z0-9._-] with no leading/trailing separators (a hostile value can never
+    escape the shard directory)."""
+    cand = os.environ.get("SPEC_WORKFLOW_WRITER")
+    if not cand:
+        try:
+            email = subprocess.run(
+                ["git", "-C", root, "config", "user.email"],
+                capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+            cand = email.split("@", 1)[0] if email else ""
+        except Exception:  # noqa: BLE001  -- never load-bearing
+            cand = ""
+    if not cand:
+        cand = os.environ.get("USER") or ""
+    s = re.sub(r"[^a-z0-9._-]+", "-", (cand or "writer").lower()).strip("-.")
+    return s or "writer"
+
+
+def read_events(root):
+    """Every brain event, as parsed dicts: the legacy single brain-events.jsonl
+    (if present) first, then each shard under brain-events/ in sorted filename
+    order. Torn/malformed lines are skipped, never a crash (same posture as
+    every other feed reader)."""
+    paths = []
+    legacy = os.path.join(root, ".neural-network", BRAIN_EVENTS_FILENAME)
+    if os.path.isfile(legacy):
+        paths.append(legacy)
+    shard_dir = os.path.join(root, ".neural-network", BRAIN_EVENTS_DIRNAME)
+    if os.path.isdir(shard_dir):
+        paths.extend(
+            os.path.join(shard_dir, n) for n in sorted(os.listdir(shard_dir)) if n.endswith(".jsonl")
+        )
+    events = []
+    for p in paths:
+        try:
+            with open(p, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        ev = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(ev, dict):
+                        events.append(ev)
+        except OSError:
+            continue
+    return events
 
 
 def _feed_repo(root):
@@ -370,7 +429,7 @@ def _feed_repo(root):
 
 
 def emit_event(root, obj, identities=None):
-    """Append ONE JSON line to <root>/.neural-network/brain-events.jsonl (§8.1, §8.2).
+    """Append ONE JSON line to <root>/.neural-network/brain-events/<writer>.jsonl (§8.1, §8.2).
 
     The line is written in a SINGLE os.write() to an O_APPEND file descriptor;
     on POSIX, concurrent appends of a whole line under PIPE_BUF (~4KB) are
@@ -394,7 +453,10 @@ def emit_event(root, obj, identities=None):
         event = {"v": BRAIN_EVENT_SCHEMA_VERSION, "ts": now_iso(), "repo": _feed_repo(root)}
         event.update(obj)
         line = json.dumps(event, sort_keys=True) + "\n"
-        p = os.path.join(root, ".neural-network", BRAIN_EVENTS_FILENAME)
+        # Sharded append (conflict-free collaboration): this writer's OWN file
+        # under brain-events/ -- the legacy single brain-events.jsonl is never
+        # written anymore (read_events still merges it as history).
+        p = os.path.join(root, ".neural-network", BRAIN_EVENTS_DIRNAME, writer_id(root) + ".jsonl")
         os.makedirs(os.path.dirname(p), exist_ok=True)
         if identities is not None:
             with brain_lock(identities):
@@ -1826,30 +1888,21 @@ def cmd_verify_feed(identities, args):
     if a future event payload adds `weight`, this function needs a matching
     comparison added explicitly, it will not start comparing it on its own."""
     role = args.role
-    p = os.path.join(args.root, ".neural-network", BRAIN_EVENTS_FILENAME)
     folded = {}
-    if os.path.isfile(p):
-        for line in open(p, encoding="utf-8"):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                ev = json.loads(line)
-            except ValueError:
-                continue
-            if ev.get("role") != role or ev.get("type") not in FOLD_EVENT_TYPES:
-                continue
-            key = ev.get("key")
-            if not key:
-                continue
-            etype = ev["type"]
-            if etype == "LinkFormed":
-                folded.setdefault(key, {"fires": 0})
-            elif etype == "LinkFired":
-                folded.setdefault(key, {"fires": 0})
-                folded[key]["fires"] += 1
-            elif etype == "LinkPruned":
-                folded.pop(key, None)
+    for ev in read_events(args.root):
+        if ev.get("role") != role or ev.get("type") not in FOLD_EVENT_TYPES:
+            continue
+        key = ev.get("key")
+        if not key:
+            continue
+        etype = ev["type"]
+        if etype == "LinkFormed":
+            folded.setdefault(key, {"fires": 0})
+        elif etype == "LinkFired":
+            folded.setdefault(key, {"fires": 0})
+            folded[key]["fires"] += 1
+        elif etype == "LinkPruned":
+            folded.pop(key, None)
 
     links = load_links(identities, role)
     divergences = []

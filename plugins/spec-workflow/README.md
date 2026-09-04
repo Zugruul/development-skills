@@ -14,10 +14,16 @@ A consumer repo's config **and** its knowledge bases live together in one root-l
 .neural-network/
     project.yaml         # THE config (schemaVersion 2; first line = $schema modeline for editor hover)
     project.local.yaml   # OPTIONAL machine-local overrides (gitignored; allowlisted keys only — today `compute`)
+    specs/<id>.yaml      # per-spec work-plan files (taskPrefix, epics, invariants — see below)
     identities/          # per-role zettel brains (committed shared memory)
-    feedbacks/           # process-feedback feed + archives (committed)
-    brain-events.jsonl   # brain event feed (committed)
+    feedbacks/           # process feedback: feed/<ts>-<writer>.yaml shards + archive/ (committed)
+    brain-events/        # brain event feed: one <writer>.jsonl per writer (committed)
+    brain-events.jsonl   # LEGACY single feed — still read as history, never written
 ```
+
+**Conflict-free collaboration**: every committed, growing artifact is sharded so no two writers ever append to the same file — `brain-events/<writer>.jsonl` (writer = `$SPEC_WORKFLOW_WRITER` or the git `user.email` localpart, sanitized), one `feedbacks/feed/<ts-compact>-<writer>.yaml` file per emitted feedback record, and per-file archive moves into `feedbacks/archive/<YYYY-MM>/<name>.yaml`. Readers merge the legacy single files (`brain-events.jsonl`, `feedbacks/feed.yaml`, monthly `archive/<YYYY-MM>.yaml`) with every shard, so history needs no rewrite; `feedback.py migrate-shard` splits a legacy feed when you want the old file gone.
+
+**Per-spec files**: `project.yaml` holds CONFIGURATION only; each spec's work-plan (specPath, backlogPath, taskPrefix, epics/taskRanges/blockedBy, invariants) lives in `.neural-network/specs/<id>.yaml` (the basename is the spec id; template `templates/spec.example.yaml`). The loader merges them into `cfg.specs`, so every consumer keeps reading the same shape. An inline `specs:` section still works (deprecated — the validator notes it and the task-start preflight suggests migrating); the `specs/` dir wins when both exist.
 
 Ephemeral local state (board cache/queue, telemetry, gate-pass, CHECKPOINT, worktrees, neural-view/assistant state, …) stays under `.claude/` — see the [local-state manifest](#local-state-manifest). An optional `marker` metadata file inside `.neural-network/` still parses under the §6.2 key=value grammar; its content can never reject a repo.
 
@@ -103,9 +109,9 @@ Each agent role (dev / reviewer / orchestrator, extensible) owns a **private** b
 
 Full protocol: [`skills/build-next/references/brains.md`](./skills/build-next/references/brains.md).
 
-### Brain-event feed (`.neural-network/brain-events.jsonl`)
+### Brain-event feed (`.neural-network/brain-events/<writer>.jsonl`, legacy `brain-events.jsonl` still read)
 
-A single per-repo append-only JSON-lines file — the **episodic** record of memory operations across every role, distinct from each role's private `<role>/brain/.activation.jsonl` (which stays a frozen, byte-identical contract). `brain.py`'s `emit_event(root, obj)` appends one `\n`-terminated line per semantic event in a **single `write()`** to an `O_APPEND` file descriptor; on POSIX, whole-line appends under `PIPE_BUF` (~4KB) are atomic, so concurrent emitters from parallel processes never interleave or lose writes. The feed is **never load-bearing**: if the append fails (e.g. unwritable directory) the triggering operation completes normally and a warning is printed.
+Per-repo append-only JSON-lines files — the **episodic** record of memory operations across every role, distinct from each role's private `<role>/brain/.activation.jsonl` (which stays a frozen, byte-identical contract). Each WRITER appends only to its own `brain-events/<writer>.jsonl` shard (conflict-free collaboration — no shared append point across clones; readers use `brain.py`'s `read_events(root)`, which merges the legacy single file plus every shard). `brain.py`'s `emit_event(root, obj)` appends one `\n`-terminated line per semantic event in a **single `write()`** to an `O_APPEND` file descriptor; on POSIX, whole-line appends under `PIPE_BUF` (~4KB) are atomic, so concurrent emitters from parallel processes never interleave or lose writes. The feed is **never load-bearing**: if the append fails (e.g. unwritable directory) the triggering operation completes normally and a warning is printed.
 
 **Schema v1** — each line is an object with these baseline fields plus a type-specific payload:
 
@@ -180,7 +186,8 @@ on the loop itself), not a bug; it isn't deduped against step 8's emission.
 | ignore | `.claude/skills/whisper-sidecar/` |
 | track | `.neural-network/feedbacks/` |
 | track | `.neural-network/identities/` |
-| track | `.neural-network/brain-events.jsonl` |
+| track | `.neural-network/brain-events/` |
+| track | `.neural-network/specs/` |
 | track | `.neural-network/project.yaml` |
 
 ## Telemetry

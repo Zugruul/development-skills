@@ -19,7 +19,7 @@ nothing about its existence changes dev/reviewer/orchestrator behavior.
    bash "../../scripts/kb-seed.sh" seed
    ```
    This explores (offline, no `gh` calls): each `specs[].specPath`/
-   `backlogPath` in `.neural-network/project.yaml`, `specs[].epics` (board epics from
+   `backlogPath` (per-spec files under `.neural-network/specs/`), `specs[].epics` (board epics from
    config), `paths.designDir` markdown files, applied spec-deltas under
    `paths.specDeltaDir/applied/`, root `README.md`/`AGENTS.md`/`CLAUDE.md`,
    the top-level directory layout, and recent `git log` subjects (stdlib

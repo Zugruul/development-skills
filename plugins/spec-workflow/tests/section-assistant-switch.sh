@@ -54,7 +54,7 @@ print("EMPTY_EXCHANGES", d0["exchanges"])
 print("EMPTY_TASKS", d0["tasks"])
 print("EMPTY_TASKS_SOURCE", d0["tasksSource"])
 
-events_path = os.path.join(root, ".neural-network", "brain-events.jsonl")
+events_path = os.path.join(root, ".neural-network", "brain-events", "test.jsonl")
 os.makedirs(os.path.dirname(events_path), exist_ok=True)
 with open(events_path, "w", encoding="utf-8") as fh:
     fh.write(json.dumps({"v": 1, "ts": "2020-01-01T00:00:00+00:00", "repo": "jarvis",
@@ -143,7 +143,7 @@ code, p2, _ = e.handle("POST", "/assistant/select", body={"name": "jarvis"})
 print("RESELECT_HAS_DIGEST", "digest" in p2)
 
 # ---- seed friday brain-events with a note BEFORE it is ever active ------
-events_path = os.path.join(root_b, ".neural-network", "brain-events.jsonl")
+events_path = os.path.join(root_b, ".neural-network", "brain-events", "test.jsonl")
 os.makedirs(os.path.dirname(events_path), exist_ok=True)
 with open(events_path, "w", encoding="utf-8") as fh:
     fh.write(json.dumps({"v": 1, "ts": "2020-01-01T00:00:00+00:00", "repo": "friday",

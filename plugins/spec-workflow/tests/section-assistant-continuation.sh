@@ -112,7 +112,7 @@ while time.monotonic() < deadline:
     time.sleep(0.2)
 print("MINTED_WHILE_INACTIVE", minted)
 
-events_path = os.path.join(root_a, ".neural-network", "brain-events.jsonl")
+events_path = os.path.join(root_a, ".neural-network", "brain-events", "test.jsonl")
 events_text = open(events_path, encoding="utf-8").read() if os.path.exists(events_path) else ""
 print("BRAIN_EVENT_WHILE_INACTIVE", '"type": "NoteMinted"' in events_text)
 

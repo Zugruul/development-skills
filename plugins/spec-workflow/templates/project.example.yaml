@@ -34,29 +34,6 @@ boards:
     labels:
         bug: type:bug
         feature: type:feature
-specs:
-  - id: core
-    title: Core platform
-    board: main
-    specPath: SPEC.md
-    backlogPath: docs/BACKLOG.md
-    taskPrefix: XX
-    epics:
-      - id: EI
-        title: Infra + loop
-        taskRanges: [[90, 99]]
-      - id: E0
-        title: Foundations
-        taskRanges: [[1, 9]]
-        blockedBy: []
-      - id: E1
-        title: First feature slice
-        taskRanges: [[10, 19]]
-        blockedBy:
-          - epic: E0
-            untilStatus: Deployed
-    invariants:
-      - State hard, non-negotiable rules here; they are pasted into every implementation brief.
 commands:
     gate: pnpm gate
     gateFast: pnpm --filter <pkg> test

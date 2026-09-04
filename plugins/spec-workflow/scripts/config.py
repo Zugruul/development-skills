@@ -215,6 +215,31 @@ def normalize(cfg):
     return cfg, warnings
 
 
+# --- per-spec files: .neural-network/specs/<id>.yaml -------------------------
+# project.yaml holds CONFIGURATION; the work-plan (a spec's specPath,
+# taskPrefix, epics, invariants, ...) lives one-file-per-spec next to it.
+# The loader merges them into cfg["specs"] so consumers keep reading
+# cfg.specs unchanged. Inline `specs:` in project.yaml is DEPRECATED but
+# still honored when no spec files exist; the specs/ dir wins when both are
+# present. A file's `id` defaults to its basename (core.yaml -> core).
+SPECS_DIRNAME = "specs"
+
+
+def _load_specs_dir(cfg_path):
+    d = os.path.join(os.path.dirname(cfg_path), SPECS_DIRNAME)
+    if not os.path.isdir(d):
+        return None
+    specs = []
+    for name in sorted(os.listdir(d)):
+        if not name.endswith((".yaml", ".yml")):
+            continue
+        doc = _parse(os.path.join(d, name))
+        if isinstance(doc, dict):
+            doc.setdefault("id", os.path.splitext(name)[0])
+            specs.append(doc)
+    return specs or None
+
+
 # .neural-network/project.local.yaml — OPTIONAL machine-local overlay, gitignored
 # (see local-state.manifest). Only the keys listed here are read from it,
 # local winning over project.yaml; every other key in the local file is
@@ -259,6 +284,9 @@ def load_config(root=None, path=None, warn=True, for_path=None):
             for w in warnings:
                 sys.stderr.write(f"  note: {w}\n")
     cfg = _apply_local_overlay(cfg, p)
+    ext_specs = _load_specs_dir(p)
+    if ext_specs is not None:
+        cfg["specs"] = ext_specs  # specs/ dir is the source of truth over inline specs
     if for_path and not path:  # explicit `path` bypasses nesting (caller chose the file)
         anchor = anchor_for(root, for_path)
         if anchor:

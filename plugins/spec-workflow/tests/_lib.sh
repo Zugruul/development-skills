@@ -144,3 +144,9 @@ lifecycle_start() {
     fails=$((fails + 1))
     return 1
 }
+
+# Sharded brain-events/feedback feeds (conflict-free collaboration): pin the
+# writer id for every test so shard filenames are deterministic
+# (<...>/brain-events/test.jsonl, feed/<ts>-test.yaml). Individual tests
+# override per-call where multi-writer behavior is under test.
+export SPEC_WORKFLOW_WRITER="${SPEC_WORKFLOW_WRITER:-test}"

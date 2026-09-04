@@ -39,7 +39,8 @@ LS_EXP_IGNORE="$(printf '%s\n' \
 LS_EXP_TRACK="$(printf '%s\n' \
     '.neural-network/feedbacks/' \
     '.neural-network/identities/' \
-    '.neural-network/brain-events.jsonl' \
+    '.neural-network/brain-events/' \
+    '.neural-network/specs/' \
     '.neural-network/project.yaml')"
 
 # --- manifest exists ------------------------------------------------------
@@ -74,8 +75,8 @@ ls_py_track="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import l
 [[ "$ls_py_track" == "$LS_EXP_TRACK" ]] && r=EQUAL || r="DIFFER"
 check "local-state: python track list matches spec" "EQUAL" "$r"
 
-r="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import local_state; print(local_state.policy_of(".neural-network/brain-events.jsonl"))' "$PLUGIN/scripts/lib" 2>/dev/null)"
-check "local-state: python policy(brain-events.jsonl)=track" "track" "$r"
+r="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import local_state; print(local_state.policy_of(".neural-network/brain-events/"))' "$PLUGIN/scripts/lib" 2>/dev/null)"
+check "local-state: python policy(brain-events/)=track" "track" "$r"
 r="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import local_state; print(local_state.policy_of(".claude/nope") is None)' "$PLUGIN/scripts/lib" 2>/dev/null)"
 check "local-state: python policy(unknown) is None" "True" "$r"
 

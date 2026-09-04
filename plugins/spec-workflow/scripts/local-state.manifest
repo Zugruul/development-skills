@@ -36,5 +36,6 @@ ignore	.claude/assistant/
 ignore	.claude/skills/whisper-sidecar/
 track	.neural-network/feedbacks/
 track	.neural-network/identities/
-track	.neural-network/brain-events.jsonl
+track	.neural-network/brain-events/
+track	.neural-network/specs/
 track	.neural-network/project.yaml

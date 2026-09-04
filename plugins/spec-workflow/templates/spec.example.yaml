@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Zugruul/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json#/properties/specs/items
+# One spec's work-plan — lives at .neural-network/specs/<id>.yaml (the file's
+# basename is the spec id). project.yaml holds configuration only.
+title: Core platform
+board: main
+specPath: SPEC.md
+backlogPath: docs/BACKLOG.md
+taskPrefix: XX
+epics:
+  - id: EI
+    title: Infra + loop
+    taskRanges: [[90, 99]]
+  - id: E0
+    title: Foundations
+    taskRanges: [[1, 9]]
+    blockedBy: []
+  - id: E1
+    title: First feature slice
+    taskRanges: [[10, 19]]
+    blockedBy:
+      - epic: E0
+        untilStatus: Deployed
+invariants:
+  - State hard, non-negotiable rules here; they are pasted into every implementation brief.
