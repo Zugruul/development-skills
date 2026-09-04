@@ -46,6 +46,22 @@ import sys
 # The one canonical name for the config/knowledge directory AND discovery marker.
 CONFIG_DIR = ".neural-network"
 
+# Canonical schema version (SEMVER STRING). History: "1.0.0" = everything
+# before the .neural-network cutover — legacy integer schemaVersion values
+# (1 = json era, 2 = pre-cutover yaml era) and a MISSING field all read as
+# "1.0.0". The /migrate-version skill's registry documents how to move a
+# repo from version to version.
+SCHEMA_SEMVER = "2.0.0"
+
+
+def schema_semver(cfg):
+    """A config's schema version as a semver string. Missing field or legacy
+    integer values -> "1.0.0"; a semver-shaped string passes through."""
+    v = (cfg or {}).get("schemaVersion")
+    if isinstance(v, str) and v.count(".") == 2:
+        return v
+    return "1.0.0"
+
 YAML_MISSING = "PREFLIGHT FAIL: PyYAML required — pip3 install pyyaml"
 
 
@@ -472,6 +488,13 @@ def _cli(argv):
     if verb == "anchors":
         for a in find_anchors(root):
             print(a)
+        return 0
+    if verb == "schema-version":
+        try:
+            cfg = load_config(root, warn=False)
+        except ConfigError:
+            cfg = None
+        print(schema_semver(cfg))
         return 0
     if verb == "set":
         if len(argv) < 4:

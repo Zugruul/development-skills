@@ -23,6 +23,17 @@ bash plugins/spec-workflow/tests/run-tests.sh && shellcheck -x plugins/spec-work
 
 Run it green before considering any task done.
 
+## Schema versioning
+
+Every schema'd file this repo owns (a consumer repo's `.neural-network/project.yaml`, its `specs/<id>.yaml` files, and any future config-family file) carries a `schemaVersion` as a **semver string** — current: `"2.0.0"`. A missing field, or the legacy integers (`1` json era, `2` pre-cutover yaml era), all read as **`1.0.0`** (`config.py schema_semver()` / the `schema-version` CLI verb are the one detection path).
+
+Maintaining it — any schema-breaking change MUST, in the same PR:
+
+1. Bump `SCHEMA_SEMVER` in `plugins/spec-workflow/scripts/config.py` (major bump for breaking changes).
+2. Add a `## <old> → <new>` chapter to `plugins/spec-workflow/skills/migrate-version/references/migrations.md` with **idempotent** steps a consumer repo follows to migrate (the `migrate-version` skill applies chapters in order and verifies after each).
+3. Update `validate-config.py`'s accepted versions and `schemas/project-config.schema.json`'s `schemaVersion` description, plus any deprecation note text.
+4. Never break reading of the previous version silently: old versions stay detectable and the registry says how to leave them.
+
 ## Install and usage
 
 See [`README.md`](README.md) for marketplace install/update instructions and the per-plugin skills tables.

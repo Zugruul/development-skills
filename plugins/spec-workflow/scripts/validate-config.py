@@ -61,11 +61,17 @@ def main(path):
         print(f"INVALID: {path}: top level must be a mapping")
         return 1
 
-    # YAML is schemaVersion 2 (current); legacy .json is schemaVersion 1.
+    # Canonical schemaVersion is the SEMVER STRING "2.0.0"; the pre-cutover
+    # integer 2 is still accepted (deprecated — the 1.0.0 era); legacy .json
+    # stays integer 1. Anything else is rejected.
     legacy = path.endswith(".json")
-    want_version = 1 if legacy else 2
-    if cfg.get("schemaVersion") != want_version and not (FRAGMENT and "schemaVersion" not in cfg):
-        errs.append(f"schemaVersion must be {want_version} (got {cfg.get('schemaVersion')!r})")
+    sv = cfg.get("schemaVersion")
+    legacy_int_two = (sv == 2)
+    if legacy:
+        if sv != 1:
+            errs.append(f"schemaVersion must be 1 (got {sv!r})")
+    elif sv not in (C.SCHEMA_SEMVER, 2) and not (FRAGMENT and "schemaVersion" not in cfg):
+        errs.append(f"schemaVersion must be 2.0.0 (the string; legacy integer 2 still accepted) (got {sv!r})")
 
     proj = need(cfg, "project", dict, "$") or {}
     for k in ("name", "mainBranch", "branchPattern"):
@@ -493,6 +499,9 @@ def main(path):
         seq = " -> ".join(e["id"] for e in s["epics"])
         print(f"  spec '{s['id']}' [{s['taskPrefix']}] on board '{s['board']}': {s['specPath']}  epics: {seq}")
     print(f"  gate: {cmds.get('gate')}")
+    if legacy_int_two and not legacy:
+        print('  DEPRECATION: schemaVersion: 2 (integer) is the 1.0.0 era — set schemaVersion: "2.0.0" '
+              "after migrating (run the migrate-version skill; missing/integer versions all read as 1.0.0)")
     if specs_deprecation:
         print(f"  DEPRECATION: {specs_deprecation}")
     cu = (cfg.get("integrations") or {}).get("clickup")

@@ -59,7 +59,7 @@ check "claude: implement-task discoverable via .claude/skills/" "yes" "$r"
 [[ -f "$HP/.agents/skills/implement-task/SKILL.md" ]] && r=yes || r=no
 check "codex: implement-task discoverable via .agents/skills/" "yes" "$r"
 n="$(find "$HP/.opencode/skills/" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
-check "opencode: every skill installed (36)" "36" "$n"
+check "opencode: every skill installed (37)" "37" "$n"
 # a REAL pre-existing dir is never clobbered: the plugin's skill lands under
 # the <plugin>-<skill> fallback name instead (reference installer semantics);
 # refusal happens only when BOTH names are taken by foreign content.

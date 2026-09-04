@@ -2,7 +2,7 @@
 # Synced 2026-07-08: repo transferred event-sorcerer/development-skills ->
 # Zugruul/development-skills; board migrated org-project #1 -> user-project #5
 # (Priority/Estimate fields + full Status flow re-created there to match).
-schemaVersion: 2
+schemaVersion: "2.0.0"
 project:
     name: Zugruul/development-skills
     description: Claude Code plugin marketplace; spec-workflow (the autonomous build-loop plugin) develops itself here — dogfood.

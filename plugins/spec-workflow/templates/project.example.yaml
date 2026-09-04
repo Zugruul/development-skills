@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Zugruul/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json
-schemaVersion: 2
+schemaVersion: "2.0.0"
 project:
     name: my-platform
     description: One-line project description used in agent briefs

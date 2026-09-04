@@ -12,8 +12,15 @@
     ],
     "properties": {
         "schemaVersion": {
-            "const": 2,
-            "description": "Config format version. Always 2 for this file. A legacy schemaVersion 1 .neural-network/project.json (old delegation.devModel/reviewModel/prReviewModel keys) is still read and normalized on load, with a deprecation warning; init-config.sh converts it to this v2 project.yaml shape."
+            "oneOf": [
+                {
+                    "const": "2.0.0"
+                },
+                {
+                    "const": 2
+                }
+            ],
+            "description": "Schema version, as a SEMVER STRING — current: \"2.0.0\" (the .neural-network era). The pre-cutover integer 2 is still accepted (deprecated; reads as the 1.0.0 era, like a missing field or the json-era integer 1 — run the migrate-version skill to move forward). Any schema-breaking change bumps the major version and adds a chapter to the migrate-version skill's registry."
         },
         "project": {
             "type": "object",

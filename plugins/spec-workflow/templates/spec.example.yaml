@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Zugruul/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json#/properties/specs/items
 # One spec's work-plan — lives at .neural-network/specs/<id>.yaml (the file's
 # basename is the spec id). project.yaml holds configuration only.
+schemaVersion: "2.0.0"
 title: Core platform
 board: main
 specPath: SPEC.md
