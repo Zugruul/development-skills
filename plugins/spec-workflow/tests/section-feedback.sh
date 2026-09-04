@@ -43,7 +43,7 @@ check "status: enabled + feed path + pending=0" "feedback: enabled feed=.neural-
 # emit: valid record round-trips into the feed
 out="$(fb emit "$FIX/feedback-valid.yaml")"
 check "emit ok" "OK" "$out"
-check "feed shard created (one file per record)" "loop-feedback" "$(cat "$FT/.neural-network/feedbacks/feed/"*.yaml 2>/dev/null)"
+check "feed shard created (one file per record)" "loop-feedback" "$(cat "$FT/.neural-network/feedbacks/feed/"*/*.yaml 2>/dev/null)"
 check "status: pending reflects 2 unrouted items" "pending=2" "$(fb status)"
 
 # emit: rejects a second record reusing an already-emitted ts (would make routing ambiguous)
@@ -92,7 +92,7 @@ check "route rejects unknown action" "unknown routing action" "$out"
 fb route "2026-07-01T10:00:00Z" 0 brain-note "friction-self-approval" >/dev/null
 fb route "2026-07-01T10:00:00Z" 1 backlog "#41" >/dev/null
 check "status: pending drops to zero after routing" "pending=0" "$(fb status)"
-check "routing written into feed" "brain-note" "$(cat "$FT/.neural-network/feedbacks/feed/"*.yaml)"
+check "routing written into feed" "brain-note" "$(cat "$FT/.neural-network/feedbacks/feed/"*/*.yaml)"
 
 # route: re-routing an already-routed item is allowed but names the prior action
 out="$(fb route "2026-07-01T10:00:00Z" 0 graduate "graduated-lesson")"
@@ -239,7 +239,7 @@ items:
     routing: {action: backlog, ref: "#77"}
 YAML
 qr emit "$QRREC" >/dev/null
-out="$(cat "$QR/.neural-network/feedbacks/feed/"*.yaml)"
+out="$(cat "$QR/.neural-network/feedbacks/feed/"*/*.yaml)"
 check "emit qualifies bare evidence ref with own project name" "fixture-project#61" "$out"
 check "emit qualifies bare short evidence ref" "fixture-project#5" "$out"
 check "emit leaves foreign-qualified evidence untouched" "comm-platform#71" "$out"
@@ -248,11 +248,11 @@ check_absent "emit does not double-qualify an already-qualified evidence ref" "f
 
 # route: normalizes the ref argument the same way; foreign-qualified refs pass through
 qr route "2026-07-05T00:00:00Z" 0 upstream "#90" >/dev/null
-out="$(cat "$QR/.neural-network/feedbacks/feed/"*.yaml)"
+out="$(cat "$QR/.neural-network/feedbacks/feed/"*/*.yaml)"
 check "route normalizes a bare ref argument" "fixture-project#90" "$out"
 
 qr route "2026-07-05T00:00:00Z" 0 upstream "other-repo#12" >/dev/null
-out="$(cat "$QR/.neural-network/feedbacks/feed/"*.yaml)"
+out="$(cat "$QR/.neural-network/feedbacks/feed/"*/*.yaml)"
 check "route passes a foreign-qualified ref argument through verbatim" "other-repo#12" "$out"
 rm -rf "$QR"
 
@@ -348,7 +348,7 @@ ts_() { (cd "$TS" && python3 "$PLUGIN/scripts/feedback.py" "$TS" "$@"); }
 
 ts_ emit "$FIX/feedback-unquoted-ts.yaml" >/dev/null
 check "emit normalizes an unquoted-ISO ts to a quoted feed line" \
-  "ts: '2026-07-02T09:00:00Z'" "$(cat "$TS/.neural-network/feedbacks/feed/"*.yaml)"
+  "ts: '2026-07-02T09:00:00Z'" "$(cat "$TS/.neural-network/feedbacks/feed/"*/*.yaml)"
 out="$(ts_ route "2026-07-02T09:00:00Z" 0 ignore "n/a")"
 check "route addresses a record whose ts was normalized at emit time" "OK: routed" "$out"
 rm -rf "$TS"
@@ -828,7 +828,7 @@ mkdir -p "$EF/.neural-network/brain-events/test.jsonl"
 out="$(cd "$EF" && python3 "$PLUGIN/scripts/feedback.py" "$EF" emit "$FIX/feedback-valid.yaml" 2>&1)"
 check "emit: feed-unwritable -- primary emit still succeeds" "OK: emitted 2 item(s)" "$out"
 check "emit: feed-unwritable -- a warning is printed" "warning" "$out"
-check "feed shard written despite events-feed failure" "loop-feedback" "$(cat "$EF/.neural-network/feedbacks/feed/"*.yaml 2>/dev/null)"
+check "feed shard written despite events-feed failure" "loop-feedback" "$(cat "$EF/.neural-network/feedbacks/feed/"*/*.yaml 2>/dev/null)"
 rm -rf "$EF"
 
 # ============================================================ sharded feed
@@ -863,15 +863,15 @@ items:
 YAML
 out="$(cd "$FS" && SPEC_WORKFLOW_WRITER=alice python3 "$PLUGIN/scripts/feedback.py" "$FS" emit rec-alice.yaml)"
 check "shard emit: succeeds" "OK: emitted 1 item(s)" "$out"
-ALICE_SHARD="$FS/.neural-network/feedbacks/feed/20260201T100000Z-alice.yaml"
+ALICE_SHARD="$FS/.neural-network/feedbacks/feed/alice/20260201T100000Z.yaml"
 [[ -f "$ALICE_SHARD" ]] && r=yes || r=no
-check "shard emit: one file per record, named ts-writer" "yes" "$r"
+check "shard emit: one file per record under the writer's own dir" "yes" "$r"
 [[ -e "$FS/.neural-network/feedbacks/feed.yaml" ]] && r=yes || r=no
 check "shard emit: legacy feed.yaml is NOT created" "no" "$r"
 alice_bytes_before="$(cat "$ALICE_SHARD")"
 out="$(cd "$FS" && SPEC_WORKFLOW_WRITER=bob python3 "$PLUGIN/scripts/feedback.py" "$FS" emit rec-bob.yaml)"
 check "shard emit: second writer succeeds" "OK: emitted 1 item(s)" "$out"
-[[ -f "$FS/.neural-network/feedbacks/feed/20260202T110000Z-bob.yaml" ]] && r=yes || r=no
+[[ -f "$FS/.neural-network/feedbacks/feed/bob/20260202T110000Z.yaml" ]] && r=yes || r=no
 check "shard emit: second writer gets his own file" "yes" "$r"
 check "shard emit: first writer's file untouched by second emit" "$alice_bytes_before" "$(cat "$ALICE_SHARD")"
 # duplicate ts across shards still rejected (routing identity stays unique)
@@ -888,13 +888,13 @@ out="$(cd "$FS" && python3 "$PLUGIN/scripts/feedback.py" "$FS" route "2026-02-02
 check "shard route: routes bob's item" "OK: routed" "$out"
 check "shard route: alice's file byte-identical after routing bob" "$alice_bytes_before" "$(cat "$ALICE_SHARD")"
 # archive: bob (fully routed) moves per-file into archive/<YYYY-MM>/, alice stays
-bob_bytes="$(cat "$FS/.neural-network/feedbacks/feed/20260202T110000Z-bob.yaml")"
+bob_bytes="$(cat "$FS/.neural-network/feedbacks/feed/bob/20260202T110000Z.yaml")"
 out="$(cd "$FS" && python3 "$PLUGIN/scripts/feedback.py" "$FS" archive)"
 check "shard archive: reports the move" "OK: archived 1 document(s)" "$out"
-[[ -f "$FS/.neural-network/feedbacks/archive/2026-02/20260202T110000Z-bob.yaml" ]] && r=yes || r=no
-check "shard archive: routed shard moved to archive/<YYYY-MM>/<basename>" "yes" "$r"
-check "shard archive: archived bytes identical" "$bob_bytes" "$(cat "$FS/.neural-network/feedbacks/archive/2026-02/20260202T110000Z-bob.yaml")"
-[[ -e "$FS/.neural-network/feedbacks/feed/20260202T110000Z-bob.yaml" ]] && r=yes || r=no
+[[ -f "$FS/.neural-network/feedbacks/archive/2026-02/bob/20260202T110000Z.yaml" ]] && r=yes || r=no
+check "shard archive: routed shard moved to archive/<YYYY-MM>/<writer>/<ts>.yaml" "yes" "$r"
+check "shard archive: archived bytes identical" "$bob_bytes" "$(cat "$FS/.neural-network/feedbacks/archive/2026-02/bob/20260202T110000Z.yaml")"
+[[ -e "$FS/.neural-network/feedbacks/feed/bob/20260202T110000Z.yaml" ]] && r=yes || r=no
 check "shard archive: moved shard leaves the feed dir" "no" "$r"
 [[ -f "$ALICE_SHARD" ]] && r=yes || r=no
 check "shard archive: unrouted shard stays" "yes" "$r"
@@ -914,8 +914,8 @@ out="$(cd "$FS" && python3 "$PLUGIN/scripts/feedback.py" "$FS" pending)"
 check "legacy interop: pending lists legacy + shard items" "legacy item" "$out"
 out="$(cd "$FS" && python3 "$PLUGIN/scripts/feedback.py" "$FS" migrate-shard)"
 check "migrate-shard: reports the split" "OK: sharded 1 document(s)" "$out"
-[[ -f "$FS/.neural-network/feedbacks/feed/20260115T090000Z-legacy.yaml" ]] && r=yes || r=no
-check "migrate-shard: legacy doc became its own shard file" "yes" "$r"
+[[ -f "$FS/.neural-network/feedbacks/feed/legacy/20260115T090000Z.yaml" ]] && r=yes || r=no
+check "migrate-shard: legacy doc became its own shard file under feed/legacy/" "yes" "$r"
 [[ -e "$FS/.neural-network/feedbacks/feed.yaml" ]] && r=yes || r=no
 check "migrate-shard: legacy feed.yaml removed after split" "no" "$r"
 out="$(cd "$FS" && python3 "$PLUGIN/scripts/feedback.py" "$FS" pending)"
