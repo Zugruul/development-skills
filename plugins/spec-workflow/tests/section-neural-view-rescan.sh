@@ -128,7 +128,7 @@ base = sys.argv[2]
 args = ["--scan", base]
 boot = nv.discover_repos(args)
 print("BOOT", sorted(n for n, _ in boot))
-# anchor repo-b, drop repo-a's marker -> full refresh must reflect BOTH
+# anchor repo-b, drop the repo-a marker -> full refresh must reflect BOTH
 os.makedirs(os.path.join(base, "repo-b", ".neural-network"), exist_ok=True)
 import shutil; shutil.rmtree(os.path.join(base, "repo-a", ".neural-network"))
 new, added, removed = nv.refresh_repos(boot, args)

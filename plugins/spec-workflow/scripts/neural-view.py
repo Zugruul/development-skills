@@ -335,6 +335,7 @@ FAVICON = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
            b'<circle cx="16" cy="16" r="6" fill="#46e6ff"/></svg>')
 
 REPOS = [("", Path(git_root()))]  # list of (repo_name, root); replaced by serve()
+SCAN_ARGS = []  # the argv `serve` booted with — POST /rescan re-runs discovery with these
 
 # GET /version — dev live-reload signal: `boot` changes on every server
 # process, `template` on every template edit; `dev` is true only under the
@@ -745,7 +746,11 @@ def build_graph(repos):
     # new session's working directory regardless of GitHub state.
     roots = {name: str(root) for name, root in repos}
     entity_edge_colors = {name: entity_edge_color(root) for name, root in repos}
+    # {repo: git branch} — worktree-aware, "" for non-git dirs; the brains
+    # panel renders it as a dim label beside the repo name.
+    branches = {name: repo_branch(root) for name, root in repos}
     return {"nodes": nodes, "edges": edges, "repos": [name for name, _ in repos], "repoRoles": repo_roles,
+            "branches": branches,
             "roleColors": role_colors, "displayNames": display_names, "roots": roots,
             # {repo: [role, ...]} for roles whose brain has a SCHEMA.json (see
             # schema_payload()) — lets the client show a "has filters" icon
@@ -1823,6 +1828,29 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001 — malformed render input is a clean 400
                 return self._send(400, {"error": "invalid render-md body"})
             return self._send(200, {"html": render_body(md)})
+        if path == "/rescan":
+            # Settings-panel "Refresh repos": full re-discovery without a
+            # restart — new anchors join, vanished ones drop. One atomic
+            # REPOS reassignment (same publish discipline as rescan_loop).
+            global REPOS, GRAPH_CACHE
+            try:
+                new_repos, added, removed = refresh_repos(REPOS, SCAN_ARGS)
+            except Exception as e:  # noqa: BLE001 — report, never crash the server
+                return self._send(500, {"error": f"rescan failed: {e}"})
+            if added or removed:
+                REPOS = new_repos
+                GRAPH_CACHE = None  # the cached payload predates the refresh — next /graph rebuilds
+                try:
+                    REPOSFILE.write_text(json.dumps([[name, str(root)] for name, root in REPOS]))
+                except OSError:
+                    pass
+                for name, _ in added:
+                    print(f"rescan: +{name}", file=sys.stderr)
+                for name, _ in removed:
+                    print(f"rescan: -{name}", file=sys.stderr)
+            return self._send(200, {"added": [n for n, _ in added],
+                                    "removed": [n for n, _ in removed],
+                                    "repos": len(REPOS)})
         if path.startswith("/open/"):
             parts = path[len("/open/"):].split("/", 2)
             if len(parts) == 3 and all(parts):
@@ -2864,6 +2892,46 @@ def rescan_loop(args, interval):
             print(f"rescan: +{name}", file=sys.stderr)
 
 
+def repo_branch(root):
+    """Current git branch of the repo checkout (worktree-aware: rev-parse
+    answers for the worktree it runs in). Detached HEAD -> short sha; not a
+    git repo or any error -> "" (the label just doesn't render). Shown dim
+    next to the repo name in the brains panel so worktree users can tell
+    which branch each anchored checkout is on."""
+    try:
+        out = subprocess.run(["git", "-C", str(root), "rev-parse", "--abbrev-ref", "HEAD"],
+                             capture_output=True, text=True, timeout=3).stdout.strip()
+        if out == "HEAD":
+            out = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+                                 capture_output=True, text=True, timeout=3).stdout.strip()
+        return out
+    except Exception:  # noqa: BLE001 — a label, never load-bearing
+        return ""
+
+
+def refresh_repos(current_repos, args):
+    """FULL refresh (the settings panel's "Refresh repos" button): re-run
+    discovery and return (new_repos, added, removed) where removed is every
+    registered repo whose .neural-network marker dir no longer exists.
+    Unlike rescan_once (periodic, deliberately add-only — a background tick
+    yanking a repo out from under a live session would be surprising), this
+    is user-INITIATED, so dropping vanished anchors is exactly the point.
+    Pure on current_repos; idempotent (second call returns ([], []) deltas)."""
+    discovered = discover_repos(args)
+    disc_by_path = {str(Path(root).resolve()): (name, root) for name, root in discovered}
+    kept, removed = [], []
+    for name, root in current_repos:
+        if (Path(root) / ".neural-network").is_dir():
+            kept.append((name, root))
+            disc_by_path.pop(str(Path(root).resolve()), None)
+        else:
+            removed.append((name, root))
+    added = list(disc_by_path.values())
+    if not added and not removed:
+        return current_repos, [], []
+    return kept + added, added, removed
+
+
 def load_repos_file():
     """The repo list a running server persisted at boot (for status/counts
     without re-running discovery, which could drift from what's actually
@@ -2896,7 +2964,9 @@ def main():
     ensure_dirs()
 
     if cmd == "serve":
+        global SCAN_ARGS
         port = arg_port(args)
+        SCAN_ARGS = args
         REPOS = discover_repos(args)
         httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)  # bind before pidfile
         PORTFILE.write_text(str(port))
