@@ -8,7 +8,7 @@ allowed-tools: Bash
 
 Pre-start check — run this now, before anything else: `bash "../../scripts/preflight.sh" --spec`. If it prints `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
-You (the orchestrator) do **not** write the implementation. You brief a subagent, verify its result, and keep the board honest. Read `.neural-network/project.yaml` first — it supplies every `<cfg:...>` value below. `board.sh` = `bash "../../scripts/board.sh"`.
+You (the orchestrator) do **not** write the implementation. You brief a subagent, verify its result, and keep the board honest. Read the config first (`config.py <root> json` — `.neural-network/project.yaml` plus the per-spec files under `.neural-network/specs/`) — it supplies every `<cfg:...>` value below. `board.sh` = `bash "../../scripts/board.sh"`.
 
 ## 0. Prep
 1. `board.sh show N` — read body **and all comments** (human steering lives there). If comments change scope: fold them into the body via `board.sh edit-body`, then acknowledge via `board.sh comment` (see `next-task`).
