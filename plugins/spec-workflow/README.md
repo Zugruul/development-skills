@@ -44,7 +44,7 @@ Ephemeral local state (board cache/queue, telemetry, gate-pass, CHECKPOINT, work
 | `queue` | Read-only: renders the upcoming build-next picks (priority-first, with blocked reasons) — never mutates the board |
 | `find-task` | Ranked search of existing board issues (open + closed) by title/body similarity — the read side of dedup |
 | `create-inbound` | Search-first, dedup-gated capture of ad-hoc ideas/bugs/requests — the write side of dedup |
-| `implement-task` | One task: brief a dev subagent (what/how/why), verify, drive the board |
+| `implement-task` | One task: brief a dev subagent (what/how/why), verify, drive the board — accepts a GitHub issue `#N`, or a ClickUp task URL/id when `integrations.clickup` is configured (see "ClickUp task source" below) |
 | `ui-options` | Iterative UI mode: options page with favorite + aspect selection for the human |
 | `refine-task-ui` | Run/resume a task's UI decision to completion, then capture the finalized design as real screenshots folded into the task's issue body with resolved acceptance criteria |
 | `gate` | The single green-before-advance quality command |
@@ -152,6 +152,25 @@ catches it when step 7 was silently skipped. `feedback`, forced externally
 like this, WILL emit an additional record each iteration on top of step 8's
 own — treat that as a deliberate second reflection pass (a meta-process check
 on the loop itself), not a bug; it isn't deduped against step 8's emission.
+
+## ClickUp task source (`integrations.clickup`)
+
+`implement-task` can work a task that lives in ClickUp instead of on the GitHub board: hand it a task URL (`https://app.clickup.com/t/<id>`), `clickup:<id>`, or `CU-<id>`, with this section in `.neural-network/project.yaml`:
+
+```yaml
+integrations:
+    clickup:
+        enabled: true            # default true when the section exists
+        mcp: clickup             # REQUIRED — the MCP server serving ClickUp tools (access is MCP-only)
+        actions:                 # SAFEGUARDS — tri-state per mutation; absent == ask
+            move: ask            # ask | allow | disallow — change the task's ClickUp status (via statusMap)
+            comment: ask         # post comments (progress, PR link, blockers)
+            assign: disallow     # change assignees
+        statusMap:               # workflow status -> ClickUp status; consulted when a move is performed;
+            "In Progress": "in progress"   # a status missing here is simply never mirrored (per-status opt-in)
+```
+
+The safeguard contract (full protocol: [`skills/implement-task/references/clickup.md`](./skills/implement-task/references/clickup.md)): reads are always allowed (task body, checklists, comments — human steering, same as issue comments); the ONLY mutations the workflow may ever perform are the three `actions` keys, each tri-state — `allow` performs, `ask` (the default) asks the human first through the host's structured-question facility (and degrades to disallow in non-interactive runs — never assumed consent), `disallow` never performs. A withheld action is reported as `CLICKUP SKIPPED (safeguard): ...`, never silently done. Everything else (editing descriptions, creating/deleting tasks, due dates, priority, tags, time tracking) is permanently out of bounds — no config value unlocks it. ClickUp access is **MCP-only** — `mcp` is required while enabled and there is no API-token fallback (`validate-config.py` enforces this, plus unknown-key/enum/statusMap-vs-statusFlow checks). The rest of the skill — design-doc guard, TDD brief, verify, two-pass review, retro — runs unchanged; branch names use the task id (`cu/<id>-<slug>`), and the PR body links the ClickUp task instead of `Closes #N`.
 
 ## Human steering
 

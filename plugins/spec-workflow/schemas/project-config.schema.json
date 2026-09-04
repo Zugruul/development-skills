@@ -361,6 +361,88 @@
                 }
             }
         },
+        "integrations": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "External task sources the workflow can take a task from (ClickUp today). Absent == none (additive-only, like work/compute). A task passed to implement-task by ClickUp URL/id is read from here instead of the GitHub board; the section's `actions` map is the SAFEGUARD contract — every ClickUp mutation is tri-state ask|allow|disallow, defaulting to ask.",
+            "properties": {
+                "clickup": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "ClickUp task-source config, read by implement-task's ClickUp route (skills/implement-task/references/clickup.md). ClickUp access is MCP-ONLY — `mcp` is required while enabled; there is no API-token fallback.",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Whether the ClickUp task source is currently offered. false keeps the section on file (transports, safeguards, statusMap) while implement-task refuses ClickUp refs."
+                        },
+                        "mcp": {
+                            "type": "string",
+                            "description": "Name of the MCP server whose tools serve ALL ClickUp reads and writes (e.g. 'clickup' -> tools like mcp__clickup__* under Claude Code; other hosts resolve their own tool naming). Required while enabled — ClickUp access is MCP-only."
+                        },
+                        "actions": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "description": "The safeguard contract: what the workflow may do to ClickUp, per mutation. Tri-state per action: 'allow' (perform without asking), 'ask' (ask the human first; in a non-interactive run, ask degrades to disallow), 'disallow' (never perform — report 'CLICKUP SKIPPED (safeguard)' instead). An absent action defaults to 'ask'.",
+                            "properties": {
+                                "move": {
+                                    "type": "string",
+                                    "enum": [
+                                        "ask",
+                                        "allow",
+                                        "disallow"
+                                    ],
+                                    "default": "ask",
+                                    "enumDescriptions": [
+                                        "Ask the human before performing (non-interactive runs treat this as disallow).",
+                                        "Perform without asking.",
+                                        "Never perform; report the skipped action."
+                                    ],
+                                    "description": "Changing a task's ClickUp status (via statusMap)."
+                                },
+                                "comment": {
+                                    "type": "string",
+                                    "enum": [
+                                        "ask",
+                                        "allow",
+                                        "disallow"
+                                    ],
+                                    "default": "ask",
+                                    "enumDescriptions": [
+                                        "Ask the human before performing (non-interactive runs treat this as disallow).",
+                                        "Perform without asking.",
+                                        "Never perform; report the skipped action."
+                                    ],
+                                    "description": "Posting comments on the ClickUp task (progress notes, PR links, blockers)."
+                                },
+                                "assign": {
+                                    "type": "string",
+                                    "enum": [
+                                        "ask",
+                                        "allow",
+                                        "disallow"
+                                    ],
+                                    "default": "ask",
+                                    "enumDescriptions": [
+                                        "Ask the human before performing (non-interactive runs treat this as disallow).",
+                                        "Perform without asking.",
+                                        "Never perform; report the skipped action."
+                                    ],
+                                    "description": "Changing the task's assignees."
+                                }
+                            }
+                        },
+                        "statusMap": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            },
+                            "description": "Workflow status -> ClickUp status name (e.g. {\"In Progress\": \"in progress\"}). Only consulted when actions.move resolves to a performed move; keys must name real boards[].statusFlow statuses; a workflow status absent from this map is simply never mirrored (per-status opt-in on top of the actions.move gate)."
+                        }
+                    }
+                }
+            }
+        },
         "commands": {
             "type": "object",
             "required": [

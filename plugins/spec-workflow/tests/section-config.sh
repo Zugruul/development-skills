@@ -188,6 +188,19 @@ out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/codex-capability-bad.p
 check "unrecognized models.codex.capability is INVALID" "INVALID" "$out"
 check "unrecognized capability error names the offending value" "'super-fast'" "$out"
 
+echo "== validate-config: integrations.clickup (external task source, additive) =="
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/clickup-good.project.yaml")"
+check "full clickup section is VALID" "VALID: " "$out"
+check "summary names the clickup integration" "integrations: clickup" "$out"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/clickup-bad.project.yaml" || true)"
+check "broken clickup section is INVALID" "INVALID" "$out"
+check "unknown integration rejected" "integrations.jira: unknown key (allowed: ['clickup'])" "$out"
+check "enabled must be boolean" "integrations.clickup.enabled: must be a boolean" "$out"
+check "missing mcp rejected (ClickUp is MCP-only)" "integrations.clickup: 'mcp' is required" "$out"
+check "actions.move must be tri-state" "integrations.clickup.actions.move: must be one of ['allow', 'ask', 'disallow'] (got 'sometimes')" "$out"
+check "unknown action rejected" "integrations.clickup.actions.delete: unknown key" "$out"
+check "statusMap key must be a statusFlow status" "integrations.clickup.statusMap: 'Nonexistent' is not in any board's statusFlow" "$out"
+
 echo "== validate-config: assistant: section schema (AST-002, SPEC-ASSISTANT.md §6/§6.1/§6.5) =="
 
 AC_SCRIPTS="$PLUGIN/scripts"
