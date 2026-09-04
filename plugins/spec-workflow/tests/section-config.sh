@@ -478,3 +478,42 @@ sed 's/^methodology:/brains:\n    bogusKey: 1\nmethodology:/' "$FIX/valid.projec
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$BN/unknown.project.yaml" || true)"
 check "brains: unknown key rejected" "brains.bogusKey: unknown key" "$out"
 rm -rf "$BN"
+
+# ============================================================ semver schema versioning
+# schemaVersion becomes a SEMVER STRING ("2.0.0" = the .neural-network world).
+# Detection: missing field or legacy int values (1 = json era, 2 = pre-cutover
+# yaml era) all read as "1.0.0" — the /migrate-version skill's registry then
+# says how to get from there to 2.0.0. Legacy int 2 stays VALID (deprecated).
+echo "== config.py: schema-version detection (semver; missing/int == 1.0.0) =="
+SV="$(mktemp -d)"; mkdir -p "$SV/.neural-network"
+cp "$FIX/valid.project.yaml" "$SV/.neural-network/project.yaml"
+check "legacy int 2 detects as 1.0.0" "1.0.0" "$(python3 "$PLUGIN/scripts/config.py" "$SV" schema-version)"
+python3 "$PLUGIN/scripts/config.py" "$SV" set schemaVersion '"2.0.0"' >/dev/null
+check "semver string detects verbatim" "2.0.0" "$(python3 "$PLUGIN/scripts/config.py" "$SV" schema-version)"
+perl -ni -e 'print unless /^schemaVersion:/' "$SV/.neural-network/project.yaml"
+check "missing field detects as 1.0.0" "1.0.0" "$(python3 "$PLUGIN/scripts/config.py" "$SV" schema-version)"
+rm -rf "$SV"
+
+echo "== validate-config: semver schemaVersion =="
+SV="$(mktemp -d)"
+sed 's/^schemaVersion: 2$/schemaVersion: "2.0.0"/' "$FIX/valid.project.yaml" > "$SV/semver.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$SV/semver.project.yaml")"
+check "schemaVersion \"2.0.0\" is VALID" "VALID: " "$out"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/valid.project.yaml")"
+check "legacy int 2 still VALID" "VALID: " "$out"
+check "legacy int 2 prints a migration note" 'DEPRECATION: schemaVersion: 2 (integer) is the 1.0.0 era' "$out"
+sed 's/^schemaVersion: 2$/schemaVersion: "3.7.0"/' "$FIX/valid.project.yaml" > "$SV/future.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$SV/future.project.yaml" || true)"
+check "unknown future version rejected" "schemaVersion must be 2.0.0" "$out"
+rm -rf "$SV"
+
+echo "== migrate-version skill exists with a version-by-version registry =="
+[[ -f "$PLUGIN/skills/migrate-version/SKILL.md" ]] && r=yes || r=no
+check "migrate-version SKILL.md exists" "yes" "$r"
+[[ -f "$PLUGIN/skills/migrate-version/references/migrations.md" ]] && r=yes || r=no
+check "migrations registry exists" "yes" "$r"
+reg="$(cat "$PLUGIN/skills/migrate-version/references/migrations.md" 2>/dev/null)"
+check "registry has the 1.0.0 -> 2.0.0 chapter" "## 1.0.0 → 2.0.0" "$reg"
+check "chapter covers the .neural-network move" ".neural-network" "$reg"
+check "chapter covers spec extraction" "specs/" "$reg"
+check "chapter covers feed sharding" "migrate-shard" "$reg"
