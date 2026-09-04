@@ -102,7 +102,8 @@ After a PR merges (or is set aside), the orchestrator runs a retro:
    **your own wording** (body on stdin), one idea each, wikilinking related slugs. Re-minting
    an existing slug bumps its `strength`.
 
-   **Note style (mandatory)**: write bodies as small, well-structured documents — simple,
+   **Note style (mandatory)**: `<cfg:brains.noteStyle>` overrides this paragraph verbatim when
+   set — read it first. The default: write bodies as small, well-structured documents — simple,
    concise English a human can skim AND an agent can parse. Use markdown structure: `##`
    sections with clear titles (and subtitles where it helps), short bullet lists, code
    formatting for identifiers/paths/commands. Never a single dense paragraph-glob: if a body

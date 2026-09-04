@@ -345,6 +345,25 @@ def main(path):
                 elif not sp.strip():
                     errs.append("commit.systemPrompt: must not be empty")
 
+    # brains: knowledge/retro note-minting knobs (doc-consumed, like `commit`:
+    # brains.md's minting protocol reads noteStyle as prose; no runtime code
+    # parses it). Absent == the default structured style documented in
+    # skills/build-next/references/brains.md.
+    brains_cfg = cfg.get("brains")
+    if brains_cfg is not None:
+        if not isinstance(brains_cfg, dict):
+            errs.append("brains: must be a mapping with optional 'noteStyle'")
+        else:
+            for k in brains_cfg:
+                if k != "noteStyle":
+                    errs.append(f"brains.{k}: unknown key (allowed: ['noteStyle'])")
+            if "noteStyle" in brains_cfg:
+                ns = brains_cfg["noteStyle"]
+                if not isinstance(ns, str):
+                    errs.append(f"brains.noteStyle: must be a string (got {type(ns).__name__})")
+                elif not ns.strip():
+                    errs.append("brains.noteStyle: must not be empty")
+
     # The compute section normally lives in the gitignored machine-local
     # overlay, so validate THAT too when present -- otherwise this block is
     # unreachable in the intended flow and a malformed overlay (roles as a

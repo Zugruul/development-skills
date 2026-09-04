@@ -729,6 +729,17 @@
                     }
                 }
             }
+        },
+        "brains": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Note-minting knobs for the identity brains. Doc-consumed only (like `commit`): the brains.md minting protocol injects these as prose into retro/mint guidance; no runtime code parses them. Absent == the default structured note style documented in skills/build-next/references/brains.md.",
+            "properties": {
+                "noteStyle": {
+                    "type": "string",
+                    "description": "Free-text instruction controlling minted note bodies' LANGUAGE and STRUCTURE — the analog of commit.systemPrompt for brain notes. Absent == the documented default: \"simple, concise English; well-sectioned with ## titles/subtitles; short bullet lists; code formatting for identifiers — a mini reference page per idea, readable by humans and agents alike; never one dense paragraph-glob\". When present, must be non-empty."
+                }
+            }
         }
     },
     "definitions": {
