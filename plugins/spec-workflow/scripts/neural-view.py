@@ -1082,17 +1082,37 @@ def render_body(body):
             out.append(render_code(lang, src))
             continue
         lines = block.splitlines()
-        h = re.match(r"^(#{1,6})\s+(.*)$", block)
-        if h:
-            lvl = min(len(h.group(1)) + 2, 6)
-            out.append(f"<h{lvl}>{inline(h.group(2).strip())}</h{lvl}>")
-        elif all(ln.lstrip().startswith(("- ", "* ")) for ln in lines):
-            items = "".join(f"<li>{inline(ln.lstrip()[2:])}</li>" for ln in lines)
-            out.append(f"<ul>{items}</ul>")
-        elif is_table(lines):
+        if is_table(lines):
             out.append(render_table(lines))
-        else:
-            out.append(f"<p>{inline(block)}</p>")
+            continue
+        # Headings and lists are recognized LINE-WISE inside a block — real
+        # notes write "## Title" directly followed by content (no blank line
+        # between), and that must render as heading + paragraph/list, never
+        # one paragraph glob with a literal "##".
+        _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
+        i = 0
+        while i < len(lines):
+            ln = lines[i]
+            h = _HEADING_RE.match(ln)
+            if h:
+                lvl = min(len(h.group(1)) + 2, 6)
+                out.append(f"<h{lvl}>{inline(h.group(2).strip())}</h{lvl}>")
+                i += 1
+                continue
+            if ln.lstrip().startswith(("- ", "* ")):
+                j = i
+                while j < len(lines) and lines[j].lstrip().startswith(("- ", "* ")):
+                    j += 1
+                items = "".join(f"<li>{inline(l.lstrip()[2:])}</li>" for l in lines[i:j])
+                out.append(f"<ul>{items}</ul>")
+                i = j
+                continue
+            j = i
+            while (j < len(lines) and not _HEADING_RE.match(lines[j])
+                   and not lines[j].lstrip().startswith(("- ", "* "))):
+                j += 1
+            out.append(f"<p>{inline(chr(10).join(lines[i:j]))}</p>")
+            i = j
     return "\n".join(out)
 
 

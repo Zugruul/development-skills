@@ -363,3 +363,23 @@ check "list after prose in the same block renders as a list" "<li>first item</li
 check "second heading block renders too" "<h4>Another section</h4>" "$NVH_OUT"
 check "tail prose after a heading renders as a paragraph" "<p>Tail prose.</p>" "$NVH_OUT"
 check_absent "no literal ## reaches the output" "## " "$NVH_OUT"
+
+echo "== render_body: no emphasis inside code =="
+NVC_OUT="$(python3 - "$PLUGIN/scripts/neural-view.py" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("neural_view", sys.argv[1])
+nv = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(nv)
+body = """Set `LUMA_SERVICE_HEALTHCHECK_SERVER_ENABLED=true` and `a*b*c` stay literal, but _this_ and *that* are emphasis.
+
+```
+UNDER_SCORE_BLOCK and *stars* stay literal too
+```"""
+print(nv.render_body(body))
+PY
+)"
+check "underscores inside inline code stay literal" "<code>LUMA_SERVICE_HEALTHCHECK_SERVER_ENABLED=true</code>" "$NVC_OUT"
+check "asterisks inside inline code stay literal" "<code>a*b*c</code>" "$NVC_OUT"
+check "emphasis outside code still works (underscore)" "<em>this</em>" "$NVC_OUT"
+check "emphasis outside code still works (asterisk)" "<em>that</em>" "$NVC_OUT"
+check "fenced block content stays literal" "UNDER_SCORE_BLOCK and *stars* stay literal too" "$NVC_OUT"
