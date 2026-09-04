@@ -152,6 +152,7 @@ SECTIONS=(
     section-snippet-lint.sh
     section-config.sh
     section-schema-lint.sh
+    section-host-portability.sh
     section-work-mode.sh
     section-next-similar.sh
     section-serial-delivery.sh
