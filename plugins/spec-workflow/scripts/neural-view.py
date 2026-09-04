@@ -1001,12 +1001,22 @@ def render_body(body):
             last = end
         out.append(escape(s[last:]))
         r = "".join(out)
+        # `code` spans convert FIRST, stashed behind placeholders, so the
+        # emphasis regexes below can never touch their content (a
+        # SNAKE_CASE_NAME=true inside backticks used to come out italicized).
+        spans = []
+
+        def _stash_span(m):
+            spans.append(m.group(1))
+            return f"\x00SPAN{len(spans) - 1}\x00"
+
+        r = re.sub(r"`([^`]+)`", _stash_span, r)
         r = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", r)
         # italic after bold, so a stray "**" pair is already consumed and
         # can't be misread as two "*" italic markers.
         r = re.sub(r"\*([^*]+)\*", r"<em>\1</em>", r)
         r = re.sub(r"_([^_]+)_", r"<em>\1</em>", r)
-        r = re.sub(r"`([^`]+)`", r"<code>\1</code>", r)
+        r = re.sub(r"\x00SPAN(\d+)\x00", lambda m: f"<code>{spans[int(m.group(1))]}</code>", r)
         return r
 
     def is_table(lines):
