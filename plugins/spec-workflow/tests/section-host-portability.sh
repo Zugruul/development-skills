@@ -58,16 +58,25 @@ check_rc "all-clients install exits 0" 0 "$rc"
 check "claude: implement-task discoverable via .claude/skills/" "yes" "$r"
 [[ -f "$HP/.agents/skills/implement-task/SKILL.md" ]] && r=yes || r=no
 check "codex: implement-task discoverable via .agents/skills/" "yes" "$r"
-n="$(ls "$HP/.opencode/skills/" | wc -l | tr -d ' ')"
+n="$(find "$HP/.opencode/skills/" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
 check "opencode: every skill installed (36)" "36" "$n"
-# a REAL pre-existing dir is never clobbered
+# a REAL pre-existing dir is never clobbered: the plugin's skill lands under
+# the <plugin>-<skill> fallback name instead (reference installer semantics);
+# refusal happens only when BOTH names are taken by foreign content.
 HP2="$(mktemp -d)"; mkdir -p "$HP2/.opencode/skills/implement-task"
 echo custom > "$HP2/.opencode/skills/implement-task/SKILL.md"
 out="$(LUMA_SKILLS_PROJECT_ROOT="$HP2" bash "$INSTALLER" opencode 2>&1)"; rc=$?
-if [[ $rc -ne 0 ]]; then echo "ok   refuses to overwrite a real existing skill dir"; else echo "FAIL overwrote (or ignored) a real existing skill dir"; fails=$((fails + 1)); fi
-check "refusal names the conflicting path" "implement-task" "$out"
+check_rc "collision install still exits 0 (fallback name used)" 0 "$rc"
 check "the real dir's content is untouched" "custom" "$(cat "$HP2/.opencode/skills/implement-task/SKILL.md")"
-rm -rf "$HP" "$HP2"
+[[ -f "$HP2/.opencode/skills/spec-workflow-implement-task/SKILL.md" ]] && r=yes || r=no
+check "colliding skill installed under the plugin-prefixed fallback name" "yes" "$r"
+HP3="$(mktemp -d)"; mkdir -p "$HP3/.opencode/skills/implement-task" "$HP3/.opencode/skills/spec-workflow-implement-task"
+echo custom > "$HP3/.opencode/skills/implement-task/SKILL.md"
+echo custom2 > "$HP3/.opencode/skills/spec-workflow-implement-task/SKILL.md"
+out="$(LUMA_SKILLS_PROJECT_ROOT="$HP3" bash "$INSTALLER" opencode 2>&1)"; rc=$?
+if [[ $rc -ne 0 ]]; then echo "ok   refuses when both names are taken by foreign content"; else echo "FAIL double collision did not refuse"; fails=$((fails + 1)); fi
+check "refusal names the conflicting path" "spec-workflow-implement-task" "$out"
+rm -rf "$HP" "$HP2" "$HP3"
 
 echo "== host portability: codex manifests cover every plugin =="
 out="$(python3 - "$REPO_ROOT" <<'PY'

@@ -4,6 +4,22 @@ A [Claude Code plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 
 ## Install
 
+### All three hosts (Claude Code, Codex, OpenCode)
+
+Every skill is host-portable (frontmatter `name` matching its directory, a `description`, `$ARGUMENTS` for arguments). Beyond the marketplaces, `install-skills.sh` symlinks the canonical skills into any project's per-client skill directories:
+
+```bash
+./install-skills.sh all        # or: claude | opencode | codex
+```
+
+| Host | Project skill directory | Marketplace alternative |
+|-|-|-|
+| Claude Code | `.claude/skills/` | `/plugin marketplace add` on `.claude-plugin/marketplace.json` |
+| OpenCode | `.opencode/skills/` | — (skills dirs are the mechanism; OpenCode also auto-loads `~/.claude/skills` and `~/.agents/skills`) |
+| Codex | `.agents/skills/` | `.agents/plugins/marketplace.json` |
+
+Symlinks, never copies — canonical edits are live immediately. Use either a marketplace or the skills-dir install per host, not both (duplicate entries). Set `DEV_SKILLS_PROJECT_ROOT` to target another project. Verified live: `opencode debug skill` lists every installed skill from a target project.
+
 ```bash
 claude plugin marketplace add Zugruul/development-skills
 claude plugin install spec-workflow@development-skills
