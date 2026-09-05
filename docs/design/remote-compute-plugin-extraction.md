@@ -59,9 +59,11 @@ move; it becomes the documented cross-plugin contract.
 - `validate-config.py`'s `compute:` section validation + the schema's `compute` object —
   project-config schema is one file, one owner. Document in both places: "written by the
   remote-compute PLUGIN; spec-workflow only validates the shape."
-- The ~6 config/overlay tests inside `section-remote-compute.sh` that exercise
-  `config.py`/`validate-config.py` merging — they test spec-workflow code, so they stay
-  (fold into `section-config.sh` or a slim `section-compute-overlay.sh`).
+- A slim `section-compute-overlay.sh` exercising the overlay machinery with a
+  hand-crafted `compute:` section (spec-workflow's half of the seam). The
+  enable→config.py round-trip INTEGRATION test lives in the remote-compute plugin's
+  own suite — its tests may reach into spec-workflow (same direction as the declared
+  plugin dependency), never the reverse.
 
 Rationale: the alternative (schema fragment + validation owned by the new plugin) buys
 purity at the cost of a cross-plugin schema-composition mechanism that doesn't exist

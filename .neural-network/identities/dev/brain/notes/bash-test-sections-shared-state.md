@@ -1,6 +1,6 @@
 ---
 tags: [testing, bash, harness, flakiness]
-paths: ["plugins/spec-workflow/tests/section-remote-compute.sh"]
+paths: ["plugins/remote-compute/tests/section-remote-compute.sh"]
 strength: 1
 source: "task-524"
 confidence: direct

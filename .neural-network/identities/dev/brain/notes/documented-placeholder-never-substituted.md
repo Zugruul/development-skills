@@ -1,6 +1,6 @@
 ---
 tags: [contracts, templates, testing, integration]
-paths: ["plugins/spec-workflow/scripts/remote-compute.py"]
+paths: ["plugins/remote-compute/scripts/remote-compute.py"]
 strength: 1
 source: "task-524"
 confidence: direct

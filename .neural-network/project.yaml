@@ -44,7 +44,7 @@ boards:
         bug: type:bug
         feature: type:feature
 commands:
-    gate: bash plugins/spec-workflow/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/scripts/lib/*.sh plugins/spec-workflow/tests/*.sh && claude plugin validate plugins/spec-workflow
+    gate: bash plugins/spec-workflow/tests/run-tests.sh && bash plugins/remote-compute/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/scripts/lib/*.sh plugins/spec-workflow/tests/*.sh plugins/remote-compute/tests/*.sh && claude plugin validate plugins/spec-workflow && claude plugin validate plugins/remote-compute
 commit:
     convention: conventional-commits
     systemPrompt: "Simple titles. Enumerated bullet-point lists of the changes. Simple human language."
@@ -64,6 +64,11 @@ docs:
     covers:
     - plugins/spec-workflow/**
     notes: contract for tracked development; changed contracts flow via docs/spec-deltas, never direct edits
+-   id: compute-plugin
+    path: plugins/remote-compute/README.md
+    covers:
+    - plugins/remote-compute/**
+    notes: the plugin's user-facing docs — skills table, capability bundles, the spec-workflow dependency; every behavior/config change updates it
 -   id: peer-plugin
     path: plugins/peer-review/README.md
     covers:

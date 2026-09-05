@@ -5,6 +5,9 @@ description: Shows what remote-compute work is queued, running, or finished on a
 
 # compute-top
 
+Part of the remote-compute plugin (which requires the spec-workflow plugin —
+see that skill's note); this dashboard itself only reads job directories.
+
 A terminal dashboard for work dispatched by [`remote-compute`](../remote-compute/SKILL.md).
 It reads a machine's `~/.remote-compute/jobs/` directory -- the place dispatch writes
 `job.log`, `pid`, and `exitcode` for every job -- and shows what is running now,

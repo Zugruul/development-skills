@@ -14,11 +14,11 @@ Every subprocess and HTTP interaction here is mocked or uses only a real
 loopback socket for port allocation — no GPU, no llama.cpp build, no network
 call ever leaves this process. Run directly:
 
-    python3 plugins/spec-workflow/scripts/remote-capabilities/slm-training/tests/test_export_gguf.py
+    python3 plugins/remote-compute/scripts/remote-capabilities/slm-training/tests/test_export_gguf.py
 
 or via unittest discovery:
 
-    python3 -m unittest discover -s plugins/spec-workflow/scripts/remote-capabilities/slm-training/tests -p "test_*.py" -v
+    python3 -m unittest discover -s plugins/remote-compute/scripts/remote-capabilities/slm-training/tests -p "test_*.py" -v
 """
 import importlib.util
 import json

@@ -68,7 +68,7 @@ a project the resource exists and what it can do, capability-style (mirroring
 `assistant.capabilities.<name>.enabled`), never granting exclusivity. Many projects may
 enable the same machine; the machine-local cooperative lock serializes actual use.
 
-Script surface (callable by other skills): `plugins/spec-workflow/scripts/remote-compute.py`
+Script surface (callable by other skills): `plugins/remote-compute/scripts/remote-compute.py`
 (all verbs above as argv, machine-readable line output, no interactivity — waiting/acking
 is the calling agent's job, driven by SKILL.md).
 

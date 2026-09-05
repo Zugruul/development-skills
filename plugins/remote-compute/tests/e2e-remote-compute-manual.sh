@@ -15,7 +15,7 @@
 #   RC_TARGET=user@host RC_NICK=gpubox \
 #   RC_WORKFLOW='~/comfy-demos/txt2img_api.json' [RC_PORT=8188] \
 #   [RC_PROMPT='a rubber duck wearing a top hat'] \
-#   bash plugins/spec-workflow/tests/e2e-remote-compute-manual.sh
+#   bash plugins/remote-compute/tests/e2e-remote-compute-manual.sh
 # shellcheck disable=SC2088  # quoted tildes are payloads for the REMOTE shell (bash -lc expands them there), never the local one
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

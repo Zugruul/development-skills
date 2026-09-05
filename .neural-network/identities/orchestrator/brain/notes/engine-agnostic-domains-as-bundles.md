@@ -1,6 +1,6 @@
 ---
 tags: [architecture, plugins, coupling, extensibility]
-paths: ["plugins/spec-workflow/scripts/remote-capabilities"]
+paths: ["plugins/remote-compute/scripts/remote-capabilities"]
 strength: 1
 source: "task-524"
 confidence: direct

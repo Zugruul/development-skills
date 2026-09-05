@@ -61,9 +61,9 @@ Ephemeral local state (board cache/queue, telemetry, gate-pass, CHECKPOINT, work
 | `feedback` | Emit structured process feedback about the workflow itself (`methodology.feedback`); triaged at retro time, or offers `retrospective` when run standalone |
 | `retrospective` | On-demand retro — triage pending feedback and mint/prune/graduate brain notes, outside a `build-next` PR-close |
 | `sync-project-configs` | Discover anchored repos (`.neural-network` marker) and bring their `.neural-network/project.yaml` up to this plugin's config surface via versioned sync rules; dry-run by default |
-| `compute-top` | Terminal dashboard (stdlib curses) for a compute machine's `~/.remote-compute/jobs`: running/finished/failed at a glance, log tail + exit code per job, filter and prune history. Runs on the machine or over `ssh -t`; falls back to a one-shot snapshot when stdout is not a TTY |
-| `remote-compute` | Register remote machines (SSH, key-only, BatchMode always) as user-level compute resources (`~/.remote-compute/resources.yaml`, never committed); enable/disable their availability per project, capability-style and non-exclusive (`compute:` map in the gitignored `.neural-network/project.local.yaml` overlay — alias + informational snapshot only, merged by `config.py`); list/status/probe, exec, cooperative lock/unlock, detached dispatch with job state recoverable from files alone; per-platform setup sheets (wsl2/linux/macos). Design: `docs/design/remote-compute-plan.md` |
 | `changelog-generate` | Fully regenerates the repo's `CHANGELOG.md` from git history via `changelog.py generate` — versioned by `plugin.json`'s semver windows, grouped by conventional-commit type, idempotent; kept fresh on every push to `main` by `.github/workflows/changelog.yml` (see `semver.sh` note below) |
+
+The `remote-compute` and `compute-top` skills moved to the standalone `plugins/remote-compute` plugin (which requires this one — see `../remote-compute/README.md` and `docs/design/remote-compute-plugin-extraction.md`); the `compute:` overlay in `project.local.yaml` is still read by this plugin's `config.py` and validated by `validate-config.py` as the contract seam.
 
 ## Scripts (`scripts/`)
 

@@ -5,6 +5,12 @@ description: Registers remote machines (SSH, key-only) as user-level compute res
 
 # remote-compute
 
+This skill requires the spec-workflow plugin: `enable` writes into the target
+repo's `.neural-network/project.local.yaml` overlay, reads go through
+spec-workflow's `config.py` (which merges the `compute:` key), and the
+overlay's gitignoring is spec-workflow's machinery — without it, `enable`
+refuses to run and nothing can read what this skill writes.
+
 Registers machines the human owns as compute resources (user-level registry
 `~/.remote-compute/resources.yaml`, machine-local, never committed) and
 advertises them to projects (a `compute:` section in `.neural-network/project.local.yaml`

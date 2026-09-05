@@ -7,7 +7,7 @@
 # shellcheck disable=SC2088  # quoted tildes are payloads for the REMOTE shell (bash -lc expands them there), never the local one
 # shellcheck disable=SC2153  # FIX is set by run-tests.sh before sourcing; CFIX is derived from it, not a typo
 # shellcheck disable=SC2016  # $HOME in an expected-value string is LITERAL on purpose: the assertion checks that the payload sent to the remote carries the unexpanded "$HOME" for the REMOTE shell to expand
-declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
+declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/remote-compute/tests/run-tests.sh" >&2; exit 2; }
 echo "== remote-compute =="
 
 COMPUTE="$PLUGIN/scripts/remote-compute.py"
@@ -162,7 +162,7 @@ check_rc "exec sudo: exit 5" 5 "$rc"
 
 # --- enable: advertises the resource via the gitignored local overlay ----
 REPO="$CT/repo"; mkdir -p "$REPO/.claude" "$REPO/.neural-network"
-cp "$FIX/valid.project.yaml" "$REPO/.neural-network/project.yaml"
+cp "$SW/tests/fixtures/valid.project.yaml" "$REPO/.neural-network/project.yaml"
 out="$(run_compute enable gpubox --root "$REPO" --role training 2>&1)"; rc=$?
 check_rc "enable: exit 0" 0 "$rc"
 check "enable: AVAILABLE line" "AVAILABLE gpubox" "$out"
@@ -177,17 +177,17 @@ check_absent "enable: no host leaked" "192.0.2.17" "$pyl"
 check_absent "enable: committed project.yaml untouched" "compute:" "$(cat "$REPO/.neural-network/project.yaml")"
 run_compute enable gpubox --root "$REPO" --role training >/dev/null 2>&1
 check "re-enable: single entry" "1" "$(grep -c 'gpubox:' "$REPO/.neural-network/project.local.yaml")"
-check "enable: committed config still VALID" "VALID" "$(python3 "$PLUGIN/scripts/validate-config.py" "$REPO/.neural-network/project.yaml" 2>&1)"
+check "enable: committed config still VALID" "VALID" "$(python3 "$SW/scripts/validate-config.py" "$REPO/.neural-network/project.yaml" 2>&1)"
 # config.py merges the overlay: compute is readable through the ONE loader
-check "overlay: merged read via config.py" "training" "$(python3 "$PLUGIN/scripts/config.py" "$REPO" get compute.resources.gpubox.roles.0)"
-check "overlay: enabled flag merged" "true" "$(python3 "$PLUGIN/scripts/config.py" "$REPO" get compute.resources.gpubox.enabled)"
+check "overlay: merged read via config.py" "training" "$(python3 "$SW/scripts/config.py" "$REPO" get compute.resources.gpubox.roles.0)"
+check "overlay: enabled flag merged" "true" "$(python3 "$SW/scripts/config.py" "$REPO" get compute.resources.gpubox.enabled)"
 # non-allowlisted overlay keys are deliberately ignored (no silent override)
 printf 'project:\n    name: hacked-by-overlay\n' >> "$REPO/.neural-network/project.local.yaml"
-check "overlay: non-allowlisted key ignored" "fixture-project" "$(python3 "$PLUGIN/scripts/config.py" "$REPO" get project.name)"
+check "overlay: non-allowlisted key ignored" "fixture-project" "$(python3 "$SW/scripts/config.py" "$REPO" get project.name)"
 # a missing local file is the normal case, never an error
 REPO2="$CT/repo2"; mkdir -p "$REPO2/.claude" "$REPO2/.neural-network"
-cp "$FIX/valid.project.yaml" "$REPO2/.neural-network/project.yaml"
-check "overlay: absent file is fine" "fixture-project" "$(python3 "$PLUGIN/scripts/config.py" "$REPO2" get project.name)"
+cp "$SW/tests/fixtures/valid.project.yaml" "$REPO2/.neural-network/project.yaml"
+check "overlay: absent file is fine" "fixture-project" "$(python3 "$SW/scripts/config.py" "$REPO2" get project.name)"
 # a SECOND project can enable the same machine — availability is not exclusive
 out="$(run_compute enable gpubox --root "$REPO2" --role inference 2>&1)"; rc=$?
 check_rc "enable second project: exit 0" 0 "$rc"
