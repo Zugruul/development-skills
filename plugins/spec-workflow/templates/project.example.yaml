@@ -75,3 +75,14 @@ methodology:
     autoMerge: false
     feedback: true
     mergeMethod: squash
+# work.done — definition of AGENT work done: the phase where the agent stops and
+# reports "my work is done". Distinct from a task's definition of done (what the
+# TASK requires — the agent works toward that). Absent == the delivery flow
+# decides (work.type + methodology.autoMerge). Phases: code | pr-open |
+# pr-review-requested | pr-validated | deployed-staging | deployed-production |
+# custom (instructions required — they ARE the definition). instructions adds
+# extra guidance on any preset phase. pr-* phases are invalid with work.type: local.
+# work:
+#     done:
+#         phase: pr-review-requested
+#         instructions: Post the PR link in the team's review channel with a one-line summary.

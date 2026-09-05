@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "$id": "spec-workflow/project-config/v2",
-    "title": "spec-workflow project config (.neural-network/project.yaml), schemaVersion 2",
+    "title": "spec-workflow project config (.neural-network/project.yaml), schemaVersion 2.0.0",
     "type": "object",
     "required": [
         "schemaVersion",
@@ -264,7 +264,7 @@
         "work": {
             "type": "object",
             "additionalProperties": false,
-            "description": "PR-less local delivery + board-sync batching policy (SW-079) + checkout placement (#532). Absent == { type: pr, checkout: worktree } (today's default: push a branch, open a GitHub PR, review + merge via gh; each task's work happens in its own git worktree, registered up front via a draft PR).",
+            "description": "PR-less local delivery + board-sync batching policy (SW-079) + checkout placement (#532). Absent == { type: pr, checkout: worktree } and the legacy done-gate (work.type + methodology.autoMerge decide when the agent's work stops) (today's default: push a branch, open a GitHub PR, review + merge via gh; each task's work happens in its own git worktree, registered up front via a draft PR).",
             "properties": {
                 "checkout": {
                     "type": "string",
@@ -313,6 +313,42 @@
                                 "Board mutations batch and flush at iteration/session boundaries.",
                                 "Board mutations only flush via an explicit board.sh flush call."
                             ]
+                        }
+                    }
+                },
+                "done": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "phase"
+                    ],
+                    "description": "Definition of AGENT work done: at which delivery phase the agent considers ITS OWN work finished. Distinct from the task-level definition of done (what the TASK requires — acceptance criteria on the board item; the agent works toward that): work.done is the agent's true stop-gate for \"my work is done\". Absent == legacy behavior — the work.type + methodology.autoMerge flow decides where work stops. The pr-* phases require work.type: pr (local delivery never opens a PR).",
+                    "properties": {
+                        "phase": {
+                            "type": "string",
+                            "enum": [
+                                "code",
+                                "pr-open",
+                                "pr-review-requested",
+                                "pr-validated",
+                                "deployed-staging",
+                                "deployed-production",
+                                "custom"
+                            ],
+                            "description": "The phase at which the agent's own work counts as done. Phases are ordered stops along delivery; pick the one where the agent should stop and report done (later statuses become someone else's — or a later session's — job). 'custom' delegates the definition entirely to work.done.instructions (required there).",
+                            "enumDescriptions": [
+                                "The code is done: gate green, committed on the task's branch — no delivery step is the agent's job.",
+                                "A PR is open into the lower environment (draft flipped ready at gate-green); merge and beyond are not the agent's job.",
+                                "The PR has been sent for review in the team's communication channel (name the channel in work.done.instructions).",
+                                "The PR's change has been validated in an environment (say which environment and how in work.done.instructions).",
+                                "The change is deployed to staging (deployment verified, not just merged).",
+                                "The change is deployed to production (deployment verified, not just merged).",
+                                "work.done.instructions IS the definition — the agent stops only when those instructions are satisfied."
+                            ]
+                        },
+                        "instructions": {
+                            "type": "string",
+                            "description": "Free-text guidance refining the done-gate: for a preset phase, EXTRA instructions on top of it (e.g. which environment validates the change, which channel receives the review request); for phase: custom, this text IS the definition of agent work done and is required. Must be non-empty when present."
                         }
                     }
                 }

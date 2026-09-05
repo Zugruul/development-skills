@@ -5,6 +5,12 @@
 #   work-mode.sh type                 # prints pr | local (default: pr)
 #   work-mode.sh sync-mode            # prints realtime | task-close | session-end | manual (default: realtime)
 #   work-mode.sh checkout             # prints worktree | main (default: worktree, #532 — WHERE work happens)
+#   work-mode.sh done-phase           # definition of AGENT work done — prints work.done.phase (code | pr-open |
+#                                      # pr-review-requested | pr-validated | deployed-staging |
+#                                      # deployed-production | custom), or "default" when unset (legacy gate:
+#                                      # the work.type + methodology.autoMerge flow decides when work stops)
+#   work-mode.sh done-instructions    # prints work.done.instructions (extra guidance; under phase custom it
+#                                      # IS the definition), or nothing when unset
 #   work-mode.sh should-sync <event>  # event in {transition, task-close, session-end, blocked, new-item}
 #                                      # prints "now" or "defer"
 #
@@ -54,10 +60,18 @@ checkout_mode() {
     echo "${c:-worktree}"
 }
 
+done_phase() {
+    local p
+    p="$(jget work.done.phase)"
+    echo "${p:-default}"
+}
+
 case "${1:-}" in
     type) work_type ;;
     sync-mode) sync_mode ;;
     checkout) checkout_mode ;;
+    done-phase) done_phase ;;
+    done-instructions) jget work.done.instructions || true ;;  # empty (exit 0) when unset
     should-sync)
         event="${2:-}"
         case "$event" in
@@ -74,5 +88,5 @@ case "${1:-}" in
             echo "defer"
         fi
         ;;
-    *) echo "usage: work-mode.sh {type|sync-mode|checkout|should-sync <event>}" >&2; exit 2 ;;
+    *) echo "usage: work-mode.sh {type|sync-mode|checkout|done-phase|done-instructions|should-sync <event>}" >&2; exit 2 ;;
 esac

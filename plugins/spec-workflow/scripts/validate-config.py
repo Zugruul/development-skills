@@ -292,19 +292,26 @@ def main(path):
                 errs.append("neuralView.entityEdgeColor must be a string (\"gradient\" or a CSS color)")
 
     # work: PR-less local delivery (type) + board-sync batching policy (sync)
-    # + checkout placement (#532). Absent == {type: pr, checkout: worktree};
-    # sync is only meaningful (and only accepted) under type: local; checkout
-    # is delivery-agnostic (valid under pr AND local -- it governs WHERE work
-    # happens, type governs HOW it lands) -- see
-    # schemas/project-config.schema.json's `work` object.
+    # + checkout placement (#532) + definition of agent work done (done).
+    # Absent == {type: pr, checkout: worktree} and the legacy done-gate (the
+    # work.type/autoMerge flow decides); sync is only meaningful (and only
+    # accepted) under type: local; checkout is delivery-agnostic (valid under
+    # pr AND local -- it governs WHERE work happens, type governs HOW it
+    # lands); done is the agent's OWN stop-gate ("my work is done"), distinct
+    # from the task-level definition of done (what the TASK requires -- the
+    # agent works toward that) -- see schemas/project-config.schema.json's
+    # `work` object.
+    WORK_DONE_PHASES = ("code", "pr-open", "pr-review-requested", "pr-validated",
+                        "deployed-staging", "deployed-production", "custom")
     work = cfg.get("work")
+    work_done_summary = None
     if work is not None:
         if not isinstance(work, dict):
-            errs.append("work: must be a mapping with 'type' and optional 'sync'/'checkout'")
+            errs.append("work: must be a mapping with 'type' and optional 'sync'/'checkout'/'done'")
         else:
             for k in work:
-                if k not in ("type", "sync", "checkout"):
-                    errs.append(f"work.{k}: unknown key (allowed: ['checkout', 'sync', 'type'])")
+                if k not in ("type", "sync", "checkout", "done"):
+                    errs.append(f"work.{k}: unknown key (allowed: ['checkout', 'done', 'sync', 'type'])")
             wtype = work.get("type", "pr")
             if "type" in work and work["type"] not in ("pr", "local"):
                 errs.append(f"work.type must be 'pr' or 'local' (got {work.get('type')!r})")
@@ -323,6 +330,36 @@ def main(path):
                     modes = ("realtime", "task-close", "session-end", "manual")
                     if "mode" in sync and sync["mode"] not in modes:
                         errs.append(f"work.sync.mode must be one of {', '.join(modes)} (got {sync.get('mode')!r})")
+            done = work.get("done")
+            if done is not None:
+                if not isinstance(done, dict):
+                    errs.append("work.done: must be a mapping with 'phase' and optional 'instructions'")
+                else:
+                    for k in done:
+                        if k not in ("phase", "instructions"):
+                            errs.append(f"work.done.{k}: unknown key (allowed: ['instructions', 'phase'])")
+                    phase = done.get("phase")
+                    instructions = done.get("instructions")
+                    if phase is None:
+                        errs.append("work.done.phase is required when work.done is present")
+                    elif phase not in WORK_DONE_PHASES:
+                        errs.append(f"work.done.phase must be one of {', '.join(WORK_DONE_PHASES)} (got {phase!r})")
+                    elif phase.startswith("pr-") and wtype == "local":
+                        errs.append(f"work.done.phase {phase!r} requires work.type: pr (local delivery never opens a PR)")
+                    if "instructions" in done:
+                        if not isinstance(instructions, str):
+                            errs.append(f"work.done.instructions: must be a string (got {type(instructions).__name__})")
+                        elif not instructions.strip():
+                            errs.append("work.done.instructions: must not be empty")
+                    if phase == "custom" and not (isinstance(instructions, str) and instructions.strip()):
+                        errs.append("work.done.phase: custom requires work.done.instructions (they ARE the definition)")
+                    if phase in WORK_DONE_PHASES:
+                        if phase == "custom":
+                            work_done_summary = "phase=custom (instructions are the definition)"
+                        elif isinstance(instructions, str) and instructions.strip():
+                            work_done_summary = f"phase={phase} (+instructions)"
+                        else:
+                            work_done_summary = f"phase={phase}"
 
     # commit: commit-message convention (#418) -- convention (free string,
     # non-empty preset name or custom) + systemPrompt (free text, non-empty
@@ -504,6 +541,8 @@ def main(path):
               "after migrating (run the migrate-version skill; missing/integer versions all read as 1.0.0)")
     if specs_deprecation:
         print(f"  DEPRECATION: {specs_deprecation}")
+    if work_done_summary:
+        print(f"  work done: {work_done_summary}")
     cu = (cfg.get("integrations") or {}).get("clickup")
     if isinstance(cu, dict):
         a = cu.get("actions") or {}
