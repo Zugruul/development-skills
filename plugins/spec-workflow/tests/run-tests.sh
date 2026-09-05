@@ -151,6 +151,7 @@ SECTIONS=(
     section-syntax.sh
     section-snippet-lint.sh
     section-config.sh
+    section-compute-overlay.sh
     section-schema-lint.sh
     section-host-portability.sh
     section-work-mode.sh

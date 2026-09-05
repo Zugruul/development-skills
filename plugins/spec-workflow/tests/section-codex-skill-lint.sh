@@ -21,7 +21,7 @@ REPO="$(cd "$PLUGIN/../.." && pwd)"
 if [[ ! -f "$CODEX_SKILL_VALIDATOR" ]]; then
     echo "SKIP codex skill lint — validator ($CODEX_SKILL_VALIDATOR) unavailable"
 else
-    for skill in "$REPO"/plugins/spec-workflow/skills/*/ "$REPO"/plugins/peer-review/skills/*/; do
+    for skill in "$REPO"/plugins/spec-workflow/skills/*/ "$REPO"/plugins/peer-review/skills/*/ "$REPO"/plugins/remote-compute/skills/*/; do
         [[ -f "$skill/SKILL.md" ]] || continue
         rel="${skill#"$REPO"/}"
         out="$(python3 "$CODEX_SKILL_VALIDATOR" "$skill" 2>&1)"; rc=$?

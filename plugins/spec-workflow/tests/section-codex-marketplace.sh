@@ -65,10 +65,10 @@ PY
     check "manifest is valid JSON" "JSON_VALID" "$report"
     check "top-level name present" "TOP_NAME present" "$report"
     check "interface.displayName present" "DISPLAY_NAME present" "$report"
-    check "lists exactly three plugins" "PLUGIN_COUNT 3" "$report"
-    check "lists spec-workflow, scaffold-project and peer-review" "PLUGIN_NAMES spec-workflow,scaffold-project,peer-review" "$report"
+    check "lists exactly four plugins" "PLUGIN_COUNT 4" "$report"
+    check "lists spec-workflow, scaffold-project, peer-review and remote-compute" "PLUGIN_NAMES spec-workflow,scaffold-project,peer-review,remote-compute" "$report"
 
-    for plug in spec-workflow scaffold-project peer-review; do
+    for plug in spec-workflow scaffold-project peer-review remote-compute; do
         check "$plug: source.source=local" "ENTRY $plug source.source=local" "$report"
         check "$plug: source.path=./plugins/$plug" "ENTRY $plug source.path=./plugins/$plug" "$report"
         check "$plug: policy.installation=AVAILABLE" "ENTRY $plug policy.installation=AVAILABLE" "$report"
@@ -78,7 +78,7 @@ PY
 fi
 
 # The Codex manifest must be a DISTINCT file from Claude's own marketplace,
-# which still carries all three plugins (incl. peer-review) untouched. This
+# which still carries all four plugins (incl. peer-review and remote-compute) untouched. This
 # guards against accidentally pointing the new file at, or editing, the wrong
 # marketplace.
 claude_mp="$(cat "$CLAUDE_MP" 2>/dev/null)"
