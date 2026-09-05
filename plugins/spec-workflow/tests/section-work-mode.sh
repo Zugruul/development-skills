@@ -208,3 +208,88 @@ check "implement-task SKILL.md: allow-empty registration commit makes the empty 
 
 SPS3="$(cat "$PLUGIN/skills/setup-project/SKILL.md" 2>/dev/null)"
 check "setup-project SKILL.md: asks the work.checkout preference at setup" "work.checkout" "$SPS3"
+
+# ============================================================ work.done
+# Definition of AGENT work done: at which delivery phase the agent considers
+# ITS OWN work finished. Distinct from the task-level definition of done (what
+# the TASK requires -- the agent works toward that), work.done is the agent's
+# true stop-gate for "my work is done". phases: code | pr-open |
+# pr-review-requested | pr-validated | deployed-staging | deployed-production
+# | custom. work.done.instructions adds extra guidance for any phase; under
+# phase: custom it IS the definition (and is therefore required there).
+echo "== validate-config: work.done (definition of agent work done) =="
+WDD="$(mktemp -d)"; mkdir -p "$WDD/.claude" "$WDD/.neural-network"
+wd_reset() { cp "$FIX/valid.project.yaml" "$WDD/.neural-network/project.yaml"; }
+wd_set() { python3 "$PLUGIN/scripts/config.py" "$WDD" set "$1" "$2" >/dev/null; }
+wd_val() { python3 "$PLUGIN/scripts/validate-config.py" "$WDD/.neural-network/project.yaml" 2>&1 || true; }
+
+wd_reset
+for p in code pr-open pr-review-requested pr-validated deployed-staging deployed-production; do
+    wd_set work.done.phase "\"$p\""
+    check_absent "work.done.phase $p is valid" "INVALID" "$(wd_val)"
+done
+check "summary prints the agent work-done gate" "work done: phase=deployed-production" "$(wd_val)"
+
+wd_set work.done.phase '"merged"'
+check "unknown phase rejected (names the union)" "work.done.phase must be one of code, pr-open, pr-review-requested, pr-validated, deployed-staging, deployed-production, custom" "$(wd_val)"
+
+wd_reset
+wd_set work.done.phase '"custom"'
+check "phase custom without instructions rejected" "work.done.phase: custom requires work.done.instructions" "$(wd_val)"
+wd_set work.done.instructions '"Done means the change is announced in the releases channel with a rollout note."'
+check_absent "phase custom + instructions valid" "INVALID" "$(wd_val)"
+check "summary marks custom instructions as the definition" "work done: phase=custom (instructions are the definition)" "$(wd_val)"
+
+wd_reset
+wd_set work.done.phase '"pr-validated"'
+wd_set work.done.instructions '"Validate on the gold environment before calling it done."'
+check_absent "instructions alongside a preset phase are valid (extra guidance)" "INVALID" "$(wd_val)"
+check "summary notes extra instructions on a preset phase" "work done: phase=pr-validated (+instructions)" "$(wd_val)"
+wd_set work.done.instructions '""'
+check "empty instructions rejected" "work.done.instructions: must not be empty" "$(wd_val)"
+
+wd_reset
+wd_set work.done.instructions '"guidance without a phase"'
+check "instructions without a phase rejected" "work.done.phase is required when work.done is present" "$(wd_val)"
+
+wd_reset
+wd_set work.done '"pr-open"'
+check "work.done must be a mapping" "work.done: must be a mapping" "$(wd_val)"
+
+wd_reset
+wd_set work.done.phase '"pr-open"'
+wd_set work.done.autoClose 'true'
+check "unknown key under work.done rejected" "work.done.autoClose: unknown key" "$(wd_val)"
+
+# pr-* phases are unsatisfiable under local delivery (no PR is ever opened)
+wd_reset
+wd_set work.type '"local"'
+for p in pr-open pr-review-requested pr-validated; do
+    wd_set work.done.phase "\"$p\""
+    check "work.done.phase $p rejected under work.type: local" "work.done.phase '$p' requires work.type: pr (local delivery never opens a PR)" "$(wd_val)"
+done
+wd_set work.done.phase '"deployed-staging"'
+check_absent "deployed-staging is valid under work.type: local" "INVALID" "$(wd_val)"
+rm -rf "$WDD"
+
+echo "== work-mode.sh: done-phase / done-instructions =="
+WDM="$(mktemp -d)"; mkdir -p "$WDM/.claude" "$WDM/.neural-network"
+cp "$FIX/valid.project.yaml" "$WDM/.neural-network/project.yaml"
+wdm() { (cd "$WDM" && bash "$PLUGIN/scripts/work-mode.sh" "$@"); }
+check "done-phase defaults to 'default' (legacy flow: work.type + autoMerge decide)" "default" "$(wdm done-phase)"
+python3 "$PLUGIN/scripts/config.py" "$WDM" set work.done.phase '"pr-validated"' >/dev/null
+check "done-phase reflects the configured phase" "pr-validated" "$(wdm done-phase)"
+python3 "$PLUGIN/scripts/config.py" "$WDM" set work.done.instructions '"validate on gold first"' >/dev/null
+check "done-instructions prints the configured text" "validate on gold first" "$(wdm done-instructions)"
+rm -rf "$WDM"
+
+echo "== skill-doc wiring: work.done =="
+ITS4="$(cat "$PLUGIN/skills/implement-task/SKILL.md" 2>/dev/null)"
+check "implement-task SKILL.md: work.done is the agent's stop-gate" "work.done" "$ITS4"
+check "implement-task SKILL.md: distinguishes task definition of done from agent work done" "definition of done" "$ITS4"
+BNS4="$(cat "$PLUGIN/skills/build-next/SKILL.md" 2>/dev/null)"
+check "build-next SKILL.md: documents work.done phases" "work.done" "$BNS4"
+SPS4="$(cat "$PLUGIN/skills/setup-project/SKILL.md" 2>/dev/null)"
+check "setup-project SKILL.md: asks the work.done preference at setup" "work.done" "$SPS4"
+TPL4="$(cat "$PLUGIN/templates/project.example.yaml" 2>/dev/null)"
+check "project template shows a work.done example" "work.done" "$TPL4"
