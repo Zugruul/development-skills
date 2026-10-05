@@ -5,7 +5,7 @@ description: Runs the project's quality gate via gate.sh — the pass a hook req
 
 # Quality gate — run gate.sh before review or merge
 
-Run the gate through the wrapper — it executes `commands.gate` from `.claude/project.yaml` AND records the pass:
+Run the gate through the wrapper — it executes `commands.gate` from `.neural-network/project.yaml` AND records the pass:
 
 ```bash
 bash "../../scripts/gate.sh"

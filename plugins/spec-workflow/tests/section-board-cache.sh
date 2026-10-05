@@ -17,8 +17,8 @@ echo "== board.sh item-id cache (#78): gh call-count guarantees =="
 
 _cgh() { # -> sets BC (fixture repo dir) and CGH (fake-gh dir on PATH); fake gh understands
          # issue create / project item-add / project item-list / project item-edit
-    BC="$(mktemp -d)"; mkdir -p "$BC/.claude"
-    cp "$FIX/valid.project.yaml" "$BC/.claude/project.yaml"
+    BC="$(mktemp -d)"; mkdir -p "$BC/.claude" "$BC/.neural-network"
+    cp "$FIX/valid.project.yaml" "$BC/.neural-network/project.yaml"
     CGH="$(mktemp -d)"
     cat >"$CGH/gh" <<'FAKE'
 #!/usr/bin/env bash

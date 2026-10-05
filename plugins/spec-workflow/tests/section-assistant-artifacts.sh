@@ -18,8 +18,8 @@ NV="$AA_SCRIPTS/neural-view.py"
 # at_repo / section-assistant-engine.sh's ae_repo already use.
 aa_repo() {
     local dir="$1" main="$2"
-    mkdir -p "$dir/.claude"
-    printf "%s\n" "# neural-network" >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf "%s\n" "# neural-network" >"$dir/.neural-network/marker"
     printf "%s\n" \
         "schemaVersion: 2" \
         "assistant:" \
@@ -36,7 +36,7 @@ aa_repo() {
         "            enabled: true" \
         "            provisioning:" \
         "                bin: codex" \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 
 # aa_insert_task <root> <id> <state> <artifact_path-or-empty> -- writes a

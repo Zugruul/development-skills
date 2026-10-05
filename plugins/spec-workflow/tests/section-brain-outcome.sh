@@ -9,15 +9,15 @@ echo "== brain outcome (GL-001/SPEC-GRAPHIFY §7: recall-outcome data layer) =="
 
 BO_SCRIPTS="$PLUGIN/scripts"
 BO="$(mktemp -d)"
-mkdir -p "$BO/.claude"
-cat >"$BO/.claude/project.yaml" <<'YAML'
+mkdir -p "$BO/.claude" "$BO/.neural-network"
+cat >"$BO/.neural-network/project.yaml" <<'YAML'
 schemaVersion: 2
 project:
     name: acme/widgets
     mainBranch: main
 YAML
 bo_brain() { python3 "$BO_SCRIPTS/brain.py" "$BO" "$@"; }
-BO_OUT="$BO/.claude/identities/dev/brain/outcomes.jsonl"
+BO_OUT="$BO/.neural-network/identities/dev/brain/outcomes.jsonl"
 
 printf 'Some lesson body.\n' | bo_brain mint dev good-note --tags x --paths "x/**" --source "PR#1" >/dev/null
 
@@ -86,8 +86,8 @@ check "unknown slug: nothing written" "$before" "$after2"
 
 # --------------------------------------------------------- absent file on reads
 BO2="$(mktemp -d)"
-mkdir -p "$BO2/.claude"
-cp "$BO/.claude/project.yaml" "$BO2/.claude/project.yaml"
+mkdir -p "$BO2/.claude" "$BO2/.neural-network"
+cp "$BO/.neural-network/project.yaml" "$BO2/.neural-network/project.yaml"
 bo2_brain() { python3 "$BO_SCRIPTS/brain.py" "$BO2" "$@"; }
 printf 'Another note.\n' | bo2_brain mint dev fresh-note --tags y --paths "y/**" --source "PR#2" >/dev/null
 out="$(bo2_brain recall dev --paths "y/z.txt" --keywords "" 2>&1)"
@@ -148,15 +148,15 @@ PY
 
 # ------------------------------------------------------------- happy path: event shape
 OE="$(mktemp -d)"
-mkdir -p "$OE/.claude"
-cat >"$OE/.claude/project.yaml" <<'YAML'
+mkdir -p "$OE/.claude" "$OE/.neural-network"
+cat >"$OE/.neural-network/project.yaml" <<'YAML'
 schemaVersion: 2
 project:
     name: acme/widgets
     mainBranch: main
 YAML
 oe_brain() { python3 "$BO_SCRIPTS/brain.py" "$OE" "$@"; }
-OE_FEED="$OE/.claude/brain-events.jsonl"
+OE_FEED="$OE/.neural-network/brain-events/test.jsonl"
 printf 'Some lesson body.\n' | oe_brain mint dev evt-note --tags x --paths "x/**" --source "PR#1" >/dev/null
 : >"$OE_FEED"   # isolate from the NoteMinted/LinkFormed events minting just emitted
 
@@ -170,15 +170,15 @@ check "happy path: task carried through (qualified)"  "TASK=acme/widgets#7"    "
 check "happy path: ts field present"                  "HAS_TS=True"            "$out"
 
 # ------------------------------------------------ outcomes.jsonl still lands too
-check "happy path: outcomes.jsonl still got its line" "1" "$(wc -l <"$OE/.claude/identities/dev/brain/outcomes.jsonl" | tr -d ' ')"
+check "happy path: outcomes.jsonl still got its line" "1" "$(wc -l <"$OE/.neural-network/identities/dev/brain/outcomes.jsonl" | tr -d ' ')"
 
 rm -rf "$OE"
 
 # ---------------------------------------- pre-existing event lines parse unchanged
 OE="$(mktemp -d)"
-mkdir -p "$OE/.claude"
+mkdir -p "$OE/.claude" "$OE/.neural-network"
 oe_brain() { python3 "$BO_SCRIPTS/brain.py" "$OE" "$@"; }
-OE_FEED="$OE/.claude/brain-events.jsonl"
+OE_FEED="$OE/.neural-network/brain-events/test.jsonl"
 printf 'body\n' | oe_brain mint dev pre-note --tags x --paths "x/**" >/dev/null
 preexisting_line='{"v":1,"ts":"2020-01-01T00:00:00Z","repo":"acme/widgets","role":"dev","type":"LinkPruned","key":"a->b","reason":"target missing"}'
 printf '%s\n' "$preexisting_line" >>"$OE_FEED"
@@ -202,18 +202,18 @@ rm -rf "$OE"
 
 # --------------------------------------------------- feed-write failure never load-bearing
 OE="$(mktemp -d)"
-mkdir -p "$OE/.claude"
+mkdir -p "$OE/.claude" "$OE/.neural-network"
 oe_brain() { python3 "$BO_SCRIPTS/brain.py" "$OE" "$@"; }
 printf 'body\n' | oe_brain mint dev fail-note --tags x --paths "x/**" >/dev/null
-rm -f "$OE/.claude/brain-events.jsonl"      # mint's NoteMinted emit already created it as a file
-mkdir -p "$OE/.claude/brain-events.jsonl"   # feed target is a directory -> append is doomed
+rm -f "$OE/.neural-network/brain-events/test.jsonl"      # mint's NoteMinted emit already created it as a file
+mkdir -p "$OE/.neural-network/brain-events/test.jsonl"   # feed target is a directory -> append is doomed
 
 out="$(oe_brain outcome dev fail-note useful 2>&1)"; rc=$?
 check_rc "feed-write failure: outcome command still exits 0" 0 "$rc"
 check "feed-write failure: outcome command still reports success" "recorded outcome: dev/fail-note useful" "$out"
 check "feed-write failure: a warning is printed"              "warning"     "$out"
 check_absent "feed-write failure: no traceback"                "Traceback"   "$out"
-check "feed-write failure: outcomes.jsonl line still lands"    "1" "$(wc -l <"$OE/.claude/identities/dev/brain/outcomes.jsonl" | tr -d ' ')"
+check "feed-write failure: outcomes.jsonl line still lands"    "1" "$(wc -l <"$OE/.neural-network/identities/dev/brain/outcomes.jsonl" | tr -d ' ')"
 
 rm -rf "$OE"
 

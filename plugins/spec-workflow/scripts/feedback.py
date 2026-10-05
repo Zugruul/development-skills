@@ -7,16 +7,16 @@ lesson (a per-PR insight minted into a role's brain). The feed is retro
 INPUT: items routed `brain-note` are minted by the existing retro protocol
 (`brain.py mint`), never by this script.
 
-Config — `methodology.feedback` in `.claude/project.yaml`:
+Config — `methodology.feedback` in `.neural-network/project.yaml`:
     feedback: true                    # shorthand for the defaults below
     feedback:                         # expanded form
         enabled: true
-        feed: .claude/feedbacks/feed.yaml  # relative to repo root
+        feed: .neural-network/feedbacks/feed.yaml  # relative to repo root
         roles: [orchestrator]
         autoTriage: false             # routing creates board items -> explicit consent
 Absent key = disabled. Unknown keys are rejected by validate-config.py.
 
-The feed lives under `.claude/feedbacks/` (plural) — a tracked, orchestrator-
+The feed lives under `.neural-network/feedbacks/` (plural) — a tracked, orchestrator-
 mediated archive: committed and pushed alongside code by default (opt out via
 the repo's own .gitignore), and never read or written by dev/reviewer
 subagents, same isolation as the identity brains. See the `feedback` skill
@@ -32,7 +32,7 @@ migration message instead of silently starting a fresh, empty archive that
 would orphan the old history. An explicit `feed` override bypasses the guard
 entirely — the override is trusted at face value.
 
-Feed format — `.claude/feedbacks/feed.yaml` is a sequence of `---`-separated
+Feed format — `.neural-network/feedbacks/feed.yaml` is a sequence of `---`-separated
 YAML documents, one per emitted record:
 
     schemaVersion: 1
@@ -79,7 +79,7 @@ one place a task ref belongs (they are NOT bound by the generalization ban
 above). A bare `#N` there is ambiguous once an archive spans multiple
 projects, so `emit` and `route` normalize every bare `#N` in those two
 fields to `<project.name>#N`, where `project.name` comes from THIS repo's
-own `.claude/project.yaml` (the emitting project) — never from the record
+own `.neural-network/project.yaml` (the emitting project) — never from the record
 itself. A ref already qualified by ANY project (`<slug>#N`, slug = a run of
 word/hyphen characters immediately before the `#`, no intervening
 whitespace) passes through verbatim — qualification never rewrites another
@@ -102,7 +102,7 @@ the same feed can race.
 
 Feed lifecycle: emit -> route -> archive. Once every item in a document has
 been routed, `archive` moves that document out of the active feed and into
-`.claude/feedbacks/archive/<YYYY-MM>.yaml` (month taken from the document's
+`.neural-network/feedbacks/archive/<YYYY-MM>.yaml` (month taken from the document's
 own `ts`), keeping the active feed small while the archived record remains
 on disk as queryable episodic history. Archiving never rewrites the moved
 bytes through yaml.dump -- the document's raw text, exactly as it sat in the
@@ -118,7 +118,7 @@ CLI:
                                                             # in the feed (sw-089)
     feedback.py <root> archive                             # move fully-routed
                                                             # documents to
-                                                            # .claude/feedbacks/
+                                                            # .neural-network/feedbacks/
                                                             # archive/<YYYY-MM>.yaml
     feedback.py <root> archived [--since YYYY-MM]          # list archived
                                                             # items (same
@@ -144,7 +144,7 @@ ACTIONS = {"backlog", "brain-note", "graduate", "upstream", "ignore"}
 
 DEFAULTS = {
     "enabled": False,
-    "feed": ".claude/feedbacks/feed.yaml",
+    "feed": ".neural-network/feedbacks/feed.yaml",
     "roles": ["orchestrator"],
     "autoTriage": False,
 }
@@ -359,6 +359,53 @@ def _load_feed(path):
         return [d for d in yaml.safe_load_all(fh) if d]
 
 
+def _shard_dir(feed_path):
+    """The sharded-feed directory for a configured feed file: feed.yaml -> feed/.
+    Each writer owns a SUBDIRECTORY holding one file per emitted record
+    (feed/<writer>/<ts-compact>.yaml), so concurrent emitters on different
+    clones never touch the same file — or even the same directory — and a
+    committed feed can never merge-conflict. `migrate-shard` files a legacy
+    feed's documents under feed/legacy/. The single feed file itself is
+    LEGACY: still read/routed/archived, never written by emit."""
+    return os.path.splitext(feed_path)[0]
+
+
+def _ts_compact(ts):
+    return re.sub(r"[-:]", "", ts or "")
+
+
+def _shard_files(feed_path):
+    d = _shard_dir(feed_path)
+    if not os.path.isdir(d):
+        return []
+    out = []
+    for writer in sorted(os.listdir(d)):
+        wd = os.path.join(d, writer)
+        if not os.path.isdir(wd):
+            continue
+        out.extend(os.path.join(wd, n) for n in sorted(os.listdir(wd)) if n.endswith(".yaml"))
+    return out
+
+
+def _feed_sources(feed_path):
+    """Ordered [(path, is_legacy)] for every active feed source: the legacy
+    single file first (history), then each shard by sorted filename."""
+    out = []
+    if os.path.exists(feed_path):
+        out.append((feed_path, True))
+    out.extend((p, False) for p in _shard_files(feed_path))
+    return out
+
+
+def _all_docs(feed_path):
+    """[(source_path, doc), ...] across the legacy file + every shard."""
+    out = []
+    for p, _legacy in _feed_sources(feed_path):
+        for doc in _load_feed(p):
+            out.append((p, doc))
+    return out
+
+
 def _dump_all(docs):
     yaml = _yaml()
     return _SEP.join(yaml.safe_dump(d, sort_keys=False, default_flow_style=False, allow_unicode=True) for d in docs)
@@ -401,22 +448,25 @@ def cmd_emit(root, record_path):
     if feed_path is None:
         print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root — refusing to write")
         return 1
-    existing = _load_feed(feed_path)
-    if any(_normalize_ts(r.get("ts")) == rec.get("ts") for r in existing):
+    if any(_normalize_ts(r.get("ts")) == rec.get("ts") for _p, r in _all_docs(feed_path)):
         print(f"INVALID: ts {rec.get('ts')!r} already exists in the feed — routing would become ambiguous; use a distinct ts")
         return 1
 
-    os.makedirs(os.path.dirname(feed_path), exist_ok=True)
+    # Sharded write (conflict-free collaboration): ONE NEW FILE per record,
+    # named by the record's ts + this writer's id — never an append to any
+    # shared file. The legacy feed file is read above but never written here.
+    shard = os.path.join(_shard_dir(feed_path), brain.writer_id(root), f"{_ts_compact(rec.get('ts'))}.yaml")
+    if os.path.exists(shard):
+        print(f"INVALID: shard {shard} already exists — use a distinct ts")
+        return 1
+    os.makedirs(os.path.dirname(shard), exist_ok=True)
     doc_text = yaml.safe_dump(rec, sort_keys=False, default_flow_style=False, allow_unicode=True)
-    exists = os.path.exists(feed_path) and os.path.getsize(feed_path) > 0
-    with open(feed_path, "a") as fh:
-        if exists:
-            fh.write(_SEP)
+    with open(shard, "w") as fh:
         fh.write(doc_text)
     role = (rec.get("source") or {}).get("role") or "orchestrator"
     for i in range(len(rec.get("items", []))):
         brain.emit_event(root, {"role": role, "type": "FeedbackEmitted", "itemTs": rec.get("ts"), "idx": i})
-    print(f"OK: emitted {len(rec.get('items', []))} item(s) -> {feed_path}")
+    print(f"OK: emitted {len(rec.get('items', []))} item(s) -> {shard}")
     return 0
 
 
@@ -431,7 +481,7 @@ def cmd_pending(root):
     if feed_path is None:
         print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
         return 1
-    for rec in _load_feed(feed_path):
+    for _p, rec in _all_docs(feed_path):
         ts = rec.get("ts", "")
         for i, item in _unrouted(rec):
             print(f"{ts}\t{i}\t{item.get('category', '')}\t{item.get('severity', '')}\t{item.get('summary', '')}")
@@ -458,8 +508,8 @@ def cmd_route(root, ts, idx_str, action, ref):
     if feed_path is None:
         print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
         return 1
-    docs = _load_feed(feed_path)
-    matches = [i for i, rec in enumerate(docs) if _normalize_ts(rec.get("ts")) == ts]
+    all_docs = _all_docs(feed_path)
+    matches = [i for i, (_p, rec) in enumerate(all_docs) if _normalize_ts(rec.get("ts")) == ts]
     if len(matches) > 1:
         print(f"ERROR: ambiguous ts {ts!r} — {len(matches)} records in the feed share it; "
               "fix the feed (unique ts per record) before routing")
@@ -468,7 +518,7 @@ def cmd_route(root, ts, idx_str, action, ref):
         print(f"ERROR: no record with ts {ts!r} in {feed_path}")
         return 1
 
-    rec = docs[matches[0]]
+    src_path, rec = all_docs[matches[0]]
     items = rec.get("items", [])
     if not (0 <= idx < len(items)):
         print(f"ERROR: item index {idx} out of range for record {ts}")
@@ -476,8 +526,12 @@ def cmd_route(root, ts, idx_str, action, ref):
     prior = (items[idx].get("routing") or {}).get("action")
     ref = _qualify_text(ref, C.dig(cfg, "project.name") if cfg else None)
     items[idx]["routing"] = {"action": action, "ref": ref}
-    with open(feed_path, "w") as fh:
-        fh.write(_dump_all(docs))
+    # Only the CONTAINING source file is rewritten — a legacy feed keeps its
+    # multi-doc shape, a shard stays single-doc; every other file's bytes are
+    # untouched (the conflict-free contract extends to routing).
+    src_docs = [d for p, d in all_docs if p == src_path]
+    with open(src_path, "w") as fh:
+        fh.write(_dump_all(src_docs))
     role = (rec.get("source") or {}).get("role") or "orchestrator"
     brain.emit_event(root, {"role": role, "type": "FeedbackRouted", "itemTs": _normalize_ts(rec.get("ts")), "idx": idx, "action": action})
     suffix = f" (was: {prior})" if prior else ""
@@ -538,7 +592,7 @@ def cmd_migrate_qualify(root):
     cfg = C.load_config(root, warn=False)
     project_name = C.dig(cfg, "project.name") if cfg else None
     if not project_name:
-        print("ERROR: project.name is not set in .claude/project.yaml — cannot qualify refs")
+        print("ERROR: project.name is not set in .neural-network/project.yaml — cannot qualify refs")
         return 1
     fcfg, feed_overridden = parse_feedback_cfg(cfg)
     guard_err = _legacy_guard_error(root, fcfg, feed_overridden)
@@ -549,18 +603,23 @@ def cmd_migrate_qualify(root):
     if feed_path is None:
         print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
         return 1
-    if not os.path.exists(feed_path):
+    targets = [p for p, _legacy in _feed_sources(feed_path)]
+    if not targets:
         print(f"OK: no changes — {feed_path} does not exist")
         return 0
-    with open(feed_path) as fh:
-        lines = fh.readlines()
-    new_lines, changed = _migrate_qualify_lines(lines, project_name)
-    if not changed:
+    changed_any = []
+    for p in targets:
+        with open(p) as fh:
+            lines = fh.readlines()
+        new_lines, changed = _migrate_qualify_lines(lines, project_name)
+        if changed:
+            with open(p, "w") as fh:
+                fh.writelines(new_lines)
+            changed_any.append(p)
+    if not changed_any:
         print(f"OK: no changes — {feed_path} already qualified")
         return 0
-    with open(feed_path, "w") as fh:
-        fh.writelines(new_lines)
-    print(f"OK: qualified bare refs in {feed_path} (project={project_name})")
+    print(f"OK: qualified bare refs in {', '.join(changed_any)} (project={project_name})")
     return 0
 
 
@@ -596,7 +655,7 @@ def _atomic_write_bytes(path, data):
 
 def cmd_archive(root):
     """Move every feed document whose items are ALL routed (non-empty
-    `routing.action`) into .claude/feedbacks/archive/<YYYY-MM>.yaml, month
+    `routing.action`) into .neural-network/feedbacks/archive/<YYYY-MM>.yaml, month
     taken from the document's own `ts`. A document with zero items, or with
     at least one unrouted item, is left in the feed untouched.
 
@@ -624,62 +683,91 @@ def cmd_archive(root):
     if feed_path is None:
         print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
         return 1
-    if not os.path.exists(feed_path):
+    sources = _feed_sources(feed_path)
+    if not sources:
         print(f"OK: no changes — {feed_path} does not exist")
-        return 0
-    with open(feed_path, "rb") as fh:
-        raw = fh.read()
-    if not raw.strip():
-        print(f"OK: no changes — {feed_path} is empty")
         return 0
 
     yaml = _yaml()
-    survivors = []       # raw bytes of documents staying in the feed, in order
-    to_move = []         # (raw_bytes, month) for documents leaving the feed
-    for offset, raw_doc in _split_feed_raw(raw):
-        if not raw_doc.strip():
-            continue
-        try:
-            rec = yaml.safe_load(raw_doc)
-        except Exception:  # noqa: BLE001
-            print(f"ERROR: corrupt feed document at byte offset {offset} in {feed_path} — aborting, no files modified")
-            return 1
-        if not isinstance(rec, dict):
-            print(f"ERROR: corrupt feed document at byte offset {offset} in {feed_path} — aborting, no files modified")
-            return 1
+    archive_dir = os.path.join(os.path.dirname(feed_path), "archive")
 
+    def _routed_month(rec, where):
+        """(fully_routed, month, ts_norm, role, item_count) or an error string."""
         items = rec.get("items")
-        fully_routed = (
+        fully = (
             isinstance(items, list) and len(items) > 0 and
             all(isinstance(it, dict) and (it.get("routing") or {}).get("action") for it in items)
         )
-        if not fully_routed:
-            survivors.append(raw_doc)
-            continue
-
+        if not fully:
+            return (False, None, None, None, 0)
         ts_norm = _normalize_ts(rec.get("ts"))
         month_match = _MONTH_RE.match(ts_norm) if isinstance(ts_norm, str) else None
         if not month_match:
-            print(
-                f"ERROR: corrupt feed document at byte offset {offset} in {feed_path} — "
-                "fully routed but ts is missing or malformed, aborting, no files modified"
-            )
-            return 1
+            return f"ERROR: corrupt feed document at {where} — fully routed but ts is missing or malformed, aborting, no files modified"
         role = (rec.get("source") or {}).get("role") or "orchestrator"
-        to_move.append((raw_doc, month_match.group(1), ts_norm, role, len(items)))
+        return (True, month_match.group(1), ts_norm, role, len(items))
 
-    if not to_move:
+    # ---- legacy single feed file: docs append into archive/<YYYY-MM>.yaml ----
+    survivors = []
+    legacy_moves = []    # (raw_doc, month, ts_norm, role, item_count)
+    legacy_raw = b""
+    if os.path.exists(feed_path):
+        with open(feed_path, "rb") as fh:
+            legacy_raw = fh.read()
+    if legacy_raw.strip():
+        for offset, raw_doc in _split_feed_raw(legacy_raw):
+            if not raw_doc.strip():
+                continue
+            try:
+                rec = yaml.safe_load(raw_doc)
+            except Exception:  # noqa: BLE001
+                rec = None
+            if not isinstance(rec, dict):
+                print(f"ERROR: corrupt feed document at byte offset {offset} in {feed_path} — aborting, no files modified")
+                return 1
+            verdict = _routed_month(rec, f"byte offset {offset} in {feed_path}")
+            if isinstance(verdict, str):
+                print(verdict)
+                return 1
+            fully, month, ts_norm, role, item_count = verdict
+            if fully:
+                legacy_moves.append((raw_doc, month, ts_norm, role, item_count))
+            else:
+                survivors.append(raw_doc)
+
+    # ---- shard files: each fully-routed one MOVES to archive/<YYYY-MM>/<name>
+    # byte-identically (per-file move, no shared monthly append -> two people
+    # archiving on different clones can both commit without conflicts) --------
+    shard_moves = []     # (src_path, dst_path, ts_norm, role, item_count)
+    for p in _shard_files(feed_path):
+        docs = _load_feed(p)
+        if len(docs) != 1 or not isinstance(docs[0], dict):
+            print(f"ERROR: corrupt feed shard {p} — expected exactly one document, aborting, no files modified")
+            return 1
+        verdict = _routed_month(docs[0], p)
+        if isinstance(verdict, str):
+            print(verdict)
+            return 1
+        fully, month, ts_norm, role, item_count = verdict
+        if fully:
+            writer = os.path.basename(os.path.dirname(p))
+            shard_moves.append((p, os.path.join(archive_dir, month, writer, os.path.basename(p)), ts_norm, role, item_count))
+
+    if not legacy_moves and not shard_moves:
         print(f"OK: no changes — nothing fully routed to archive in {feed_path}")
         return 0
 
-    archive_dir = os.path.join(os.path.dirname(feed_path), "archive")
     by_month = {}
-    for raw_doc, month, _ts_norm, _role, _item_count in to_move:
-        by_month.setdefault(month, []).append(raw_doc)
+    for _raw_doc, month, _ts_norm, _role, _n in legacy_moves:
+        by_month.setdefault(month, [])
+    months = set(by_month)
 
     try:
         os.makedirs(archive_dir, exist_ok=True)
-        for month, raw_docs in by_month.items():
+        legacy_by_month = {}
+        for raw_doc, month, _ts_norm, _role, _n in legacy_moves:
+            legacy_by_month.setdefault(month, []).append(raw_doc)
+        for month, raw_docs in legacy_by_month.items():
             archive_path = os.path.join(archive_dir, f"{month}.yaml")
             existing = b""
             if os.path.exists(archive_path) and os.path.getsize(archive_path) > 0:
@@ -688,19 +776,27 @@ def cmd_archive(root):
             new_block = _SEP.encode().join(raw_docs)
             new_content = (existing + _SEP.encode() + new_block) if existing else new_block
             _atomic_write_bytes(archive_path, new_content)
+            months.add(month)
+        for src, dst, _ts_norm, _role, _n in shard_moves:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            with open(src, "rb") as fh:
+                _atomic_write_bytes(dst, fh.read())
+            months.add(os.path.basename(os.path.dirname(os.path.dirname(dst))))
     except OSError as e:
         print(f"ERROR: failed writing archive under {archive_dir}: {e} — feed left untouched")
         return 1
 
-    new_feed = _SEP.encode().join(survivors)
-    _atomic_write_bytes(feed_path, new_feed)
+    if legacy_raw.strip():
+        _atomic_write_bytes(feed_path, _SEP.encode().join(survivors))
+    for src, _dst, _ts_norm, _role, _n in shard_moves:
+        os.remove(src)
 
-    for _raw_doc, _month, ts_norm, role, item_count in to_move:
+    moved = legacy_moves + [(None, None, ts, role, n) for _s, _d, ts, role, n in shard_moves]
+    for _raw_doc, _month, ts_norm, role, item_count in moved:
         brain.emit_event(root, {"role": role, "type": "FeedbackArchived", "itemTs": ts_norm, "itemCount": item_count})
 
-    total_items = sum(item_count for _raw_doc, _month, _ts_norm, _role, item_count in to_move)
-    months = sorted(by_month)
-    print(f"OK: archived {len(to_move)} document(s), {total_items} item(s) -> {archive_dir} ({', '.join(months)})")
+    total_items = sum(n for *_rest, n in moved)
+    print(f"OK: archived {len(moved)} document(s), {total_items} item(s) -> {archive_dir} ({', '.join(sorted(months))})")
     return 0
 
 
@@ -718,10 +814,24 @@ def cmd_archived(root, since=None):
     archive_dir = os.path.join(os.path.dirname(feed_path), "archive")
     if not os.path.isdir(archive_dir):
         return 0
+    archive_files = []
     for name in sorted(os.listdir(archive_dir)):
-        if not name.endswith(".yaml"):
-            continue
-        for rec in _load_feed(os.path.join(archive_dir, name)):
+        p = os.path.join(archive_dir, name)
+        if name.endswith(".yaml"):
+            archive_files.append(p)          # legacy monthly rollup file
+        elif os.path.isdir(p):
+            # per-file shard archive: archive/<YYYY-MM>/<writer>/<ts>.yaml
+            # (direct .yaml files under the month dir are read too, defensively)
+            for sub in sorted(os.listdir(p)):
+                sp = os.path.join(p, sub)
+                if sub.endswith(".yaml") and os.path.isfile(sp):
+                    archive_files.append(sp)
+                elif os.path.isdir(sp):
+                    archive_files.extend(
+                        os.path.join(sp, n) for n in sorted(os.listdir(sp)) if n.endswith(".yaml")
+                    )
+    for p in archive_files:
+        for rec in _load_feed(p):
             ts = rec.get("ts", "")
             ts_norm = _normalize_ts(ts)
             month_match = _MONTH_RE.match(ts_norm) if isinstance(ts_norm, str) else None
@@ -743,9 +853,67 @@ def cmd_status(root):
     if feed_path is None:
         print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
         return 1
-    pending = sum(1 for rec in _load_feed(feed_path) for _ in _unrouted(rec))
+    pending = sum(1 for _p, rec in _all_docs(feed_path) for _ in _unrouted(rec))
     state = "enabled" if fcfg["enabled"] else "disabled"
     print(f"feedback: {state} feed={fcfg['feed']} pending={pending}")
+    return 0
+
+
+def cmd_migrate_shard(root):
+    """One-shot: split the legacy single feed file into per-document shard
+    files (feed/<ts-compact>-legacy.yaml, each document's raw bytes preserved
+    exactly), then remove the legacy file. After this, every active feed
+    entry lives in its own file and commits can never conflict. Idempotent:
+    no legacy file -> no-op."""
+    cfg = C.load_config(root, warn=False)
+    fcfg, feed_overridden = parse_feedback_cfg(cfg)
+    guard_err = _legacy_guard_error(root, fcfg, feed_overridden)
+    if guard_err:
+        print(guard_err)
+        return 1
+    feed_path = _feed_path(root, fcfg)
+    if feed_path is None:
+        print(f"ERROR: methodology.feedback.feed {fcfg['feed']!r} resolves outside the repo root")
+        return 1
+    if not os.path.exists(feed_path):
+        print(f"OK: no changes — {feed_path} does not exist (already sharded?)")
+        return 0
+    with open(feed_path, "rb") as fh:
+        raw = fh.read()
+    if not raw.strip():
+        os.remove(feed_path)
+        print(f"OK: sharded 0 document(s); removed empty {feed_path}")
+        return 0
+    yaml = _yaml()
+    planned = []
+    for offset, raw_doc in _split_feed_raw(raw):
+        if not raw_doc.strip():
+            continue
+        try:
+            rec = yaml.safe_load(raw_doc)
+        except Exception:  # noqa: BLE001
+            rec = None
+        if not isinstance(rec, dict):
+            print(f"ERROR: corrupt feed document at byte offset {offset} in {feed_path} — aborting, no files modified")
+            return 1
+        ts_norm = _normalize_ts(rec.get("ts"))
+        if not isinstance(ts_norm, str) or not ts_norm:
+            print(f"ERROR: feed document at byte offset {offset} has no usable ts — aborting, no files modified")
+            return 1
+        dst = os.path.join(_shard_dir(feed_path), "legacy", f"{_ts_compact(ts_norm)}.yaml")
+        if os.path.exists(dst) or any(d == dst for _b, d in planned):
+            print(f"ERROR: shard target {dst} already exists — aborting, no files modified")
+            return 1
+        planned.append((raw_doc, dst))
+    try:
+        for raw_doc, dst in planned:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            _atomic_write_bytes(dst, raw_doc)
+    except OSError as e:
+        print(f"ERROR: failed writing shards: {e}")
+        return 1
+    os.remove(feed_path)
+    print(f"OK: sharded {len(planned)} document(s) from {feed_path} into {_shard_dir(feed_path)}/; legacy file removed")
     return 0
 
 
@@ -753,7 +921,7 @@ def _cli(argv):
     if len(argv) < 2:
         sys.stderr.write(
             "usage: feedback.py <root> {emit <record.yaml>|pending|route <ts> <idx> <action> <ref>"
-            "|status|migrate-qualify|archive|archived [--since YYYY-MM]}\n"
+            "|status|migrate-qualify|migrate-shard|archive|archived [--since YYYY-MM]}\n"
         )
         return 2
     root, verb = argv[0], argv[1]
@@ -773,6 +941,8 @@ def _cli(argv):
         return cmd_status(root)
     if verb == "migrate-qualify":
         return cmd_migrate_qualify(root)
+    if verb == "migrate-shard":
+        return cmd_migrate_shard(root)
     if verb == "archive":
         return cmd_archive(root)
     if verb == "archived":

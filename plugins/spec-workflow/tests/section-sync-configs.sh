@@ -107,15 +107,15 @@ _sc_mkrepo() {
     git -C "$dir/work" config user.email "fixture@example.com"
     git -C "$dir/work" remote add origin "$dir/origin.git"
     mkdir -p "$dir/work/.claude"
-    : > "$dir/work/.claude/.neural-network"
-    _sc_base_yaml "$feedback" "$serial" "$commit" > "$dir/work/.claude/project.yaml"
+    mkdir -p "$dir/work/.neural-network"
+    _sc_base_yaml "$feedback" "$serial" "$commit" > "$dir/work/.neural-network/project.yaml"
     if [[ "$schemadup" == "yes" ]]; then
         # insert a literal top-level $schema: line right after the comment header
         # shellcheck disable=SC2016  # single-quoted sed script: literal $schema, not shell expansion
         sed -i.bak '1a\
 $schema: https://raw.githubusercontent.com/event-sorcerer/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json
-' "$dir/work/.claude/project.yaml"
-        rm -f "$dir/work/.claude/project.yaml.bak"
+' "$dir/work/.neural-network/project.yaml"
+        rm -f "$dir/work/.neural-network/project.yaml.bak"
     fi
     git -C "$dir/work" add -A
     git -C "$dir/work" commit -q -m init
@@ -173,7 +173,7 @@ _sc_origin_project_yaml() { # dir -> project.yaml content as pushed to origin's 
     local tmp
     tmp="$(mktemp -d)"
     git clone -q --branch main "$1/origin.git" "$tmp/clone" >/dev/null 2>&1
-    cat "$tmp/clone/.claude/project.yaml" 2>/dev/null
+    cat "$tmp/clone/.neural-network/project.yaml" 2>/dev/null
     rm -rf "$tmp"
 }
 
@@ -195,7 +195,7 @@ check_absent "case a: origin's main no longer has \$schema data key" '$schema:' 
 check "case a: origin's main now has feedback: true" "feedback: true" "$origin_yaml"
 after_head="$(_sc_head "$SCA/r/work")"
 check_rc "case a: local work HEAD advanced (committed directly on main)" 0 "$([[ "$before_head" != "$after_head" ]] && echo 0 || echo 1)"
-check "case a: local project.yaml updated too" "feedback: true" "$(cat "$SCA/r/work/.claude/project.yaml")"
+check "case a: local project.yaml updated too" "feedback: true" "$(cat "$SCA/r/work/.neural-network/project.yaml")"
 rm -rf "$SCA"
 
 echo "== sync-configs.py: non-main dirty branch -> worktree route (case b) =="
@@ -222,7 +222,7 @@ rm -rf "$SCB"
 echo "== sync-configs.py: pre-INVALID config -> skipped (case c) =="
 SCC="$(mktemp -d)"
 _sc_mkrepo "$SCC/r" false yes
-cp "$FIX/broken.project.yaml" "$SCC/r/work/.claude/project.yaml"
+cp "$FIX/broken.project.yaml" "$SCC/r/work/.neural-network/project.yaml"
 git -C "$SCC/r/work" add -A
 git -C "$SCC/r/work" commit -q -m "make config invalid"
 git -C "$SCC/r/work" push -q origin main
@@ -247,14 +247,14 @@ rm -rf "$SCD"
 echo "== sync-configs.py: dry-run is the default (case e) =="
 SCE="$(mktemp -d)"
 _sc_mkrepo "$SCE/r" false yes
-before="$(cat "$SCE/r/work/.claude/project.yaml")"
+before="$(cat "$SCE/r/work/.neural-network/project.yaml")"
 before_head="$(_sc_head "$SCE/r/work")"
 out="$(python3 "$SYNCCFG" --repo "$SCE/r/work" 2>&1)"
 check "case e: reports dry-run" "dry-run" "$out"
 check "case e: still names the rules that would apply" "strip-schema-data-key" "$out"
-check "case e: diff message shows added/removed line counts, not a resulting-file total" "[diff] .claude/project.yaml (+" "$out"
+check "case e: diff message shows added/removed line counts, not a resulting-file total" "[diff] .neural-network/project.yaml (+" "$out"
 check_absent "case e: diff message does not claim the file 'would change' by N total lines" "would change (" "$out"
-after="$(cat "$SCE/r/work/.claude/project.yaml")"
+after="$(cat "$SCE/r/work/.neural-network/project.yaml")"
 check_rc "case e: file untouched" 0 "$([[ "$before" == "$after" ]] && echo 0 || echo 1)"
 after_head="$(_sc_head "$SCE/r/work")"
 check_rc "case e: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
@@ -274,7 +274,7 @@ git -C "$SCF/r/work" commit -q -m "add legacy feedback dir"
 git -C "$SCF/r/work" push -q origin main
 out="$(python3 "$SYNCCFG" --repo "$SCF/r/work" --apply 2>&1)"
 check "case f: sw062 migration rule applied" "sw062-feedbacks-migration" "$out"
-check "case f: legacy dir moved" "" "$([[ -d "$SCF/r/work/.claude/feedbacks" ]] && echo yes)"
+check "case f: legacy dir moved" "" "$([[ -d "$SCF/r/work/.neural-network/feedbacks" ]] && echo yes)"
 check_rc "case f: legacy dir gone" 1 "$([[ -d "$SCF/r/work/.claude/feedback" ]] && echo 0 || echo 1)"
 check_absent "case f: gitignore line dropped" ".claude/feedback/" "$(cat "$SCF/r/work/.gitignore" 2>/dev/null)"
 check "case f: other gitignore lines survive" "some-other-line" "$(cat "$SCF/r/work/.gitignore" 2>/dev/null)"
@@ -290,7 +290,7 @@ git -C "$SCF2/r/work" commit -q -m "add legacy feedback dir, no gitignore"
 git -C "$SCF2/r/work" push -q origin main
 out="$(python3 "$SYNCCFG" --repo "$SCF2/r/work" --apply 2>&1)"
 check "case f2: sw062 migration rule applied" "sw062-feedbacks-migration" "$out"
-check_rc "case f2: legacy dir moved" 0 "$([[ -d "$SCF2/r/work/.claude/feedbacks" ]] && echo 0 || echo 1)"
+check_rc "case f2: legacy dir moved" 0 "$([[ -d "$SCF2/r/work/.neural-network/feedbacks" ]] && echo 0 || echo 1)"
 check_rc "case f2: no .gitignore crash -- repo still committed" 0 "$([[ -n "$(_sc_head "$SCF2/r/work")" ]] && echo 0 || echo 1)"
 rm -rf "$SCF2"
 
@@ -303,8 +303,8 @@ git -C "$SCG/r/work" config user.name "Fixture Human"
 git -C "$SCG/r/work" config user.email "fixture@example.com"
 git -C "$SCG/r/work" remote add origin "$SCG/r/origin.git"
 mkdir -p "$SCG/r/work/.claude"
-: > "$SCG/r/work/.claude/.neural-network"
-_sc_base_yaml_noeol > "$SCG/r/work/.claude/project.yaml"
+mkdir -p "$SCG/r/work/.neural-network"
+_sc_base_yaml_noeol > "$SCG/r/work/.neural-network/project.yaml"
 mkdir -p "$SCG/r/work/.claude/feedback"
 echo "legacy: true" > "$SCG/r/work/.claude/feedback/feed.yaml"
 {
@@ -322,7 +322,7 @@ check "case g: reports rolled back" "rolled-back-invalid" "$out"
 after_head="$(_sc_head "$SCG/r/work")"
 check_rc "case g: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
 check_rc "case g: legacy .claude/feedback restored (not stranded)" 0 "$([[ -d "$SCG/r/work/.claude/feedback" ]] && echo 0 || echo 1)"
-check_rc "case g: .claude/feedbacks NOT left behind" 1 "$([[ -d "$SCG/r/work/.claude/feedbacks" ]] && echo 0 || echo 1)"
+check_rc "case g: .neural-network/feedbacks NOT left behind" 1 "$([[ -d "$SCG/r/work/.neural-network/feedbacks" ]] && echo 0 || echo 1)"
 check "case g: .gitignore feedback line restored" ".claude/feedback/" "$(cat "$SCG/r/work/.gitignore" 2>/dev/null)"
 check_rc "case g: repo is still detectable by a future run (not permanently stranded)" 0 "$(python3 - "$SCG/r/work" "$SYNCCFG" <<'PY'
 import sys
@@ -348,7 +348,7 @@ git -C "$SCH/r/work" push -q origin main
 out="$(python3 "$SYNCCFG" --repo "$SCH/r/work" --apply 2>&1)"
 check "case h: reports no-op" "route: no-op" "$out"
 check_absent "case h: rule not applied" "ensure-peer-reviewer-identity" "$out"
-check_absent "case h: peer-reviewer not written" "peer-reviewer:" "$(cat "$SCH/r/work/.claude/project.yaml")"
+check_absent "case h: peer-reviewer not written" "peer-reviewer:" "$(cat "$SCH/r/work/.neural-network/project.yaml")"
 rm -rf "$SCH"
 
 echo "== sync-configs.py: ensure-peer-reviewer-identity, plugin enabled -> adds role to existing identities block (case i) =="
@@ -360,8 +360,8 @@ git -C "$SCI/r/work" config user.name "Fixture Human"
 git -C "$SCI/r/work" config user.email "fixture@example.com"
 git -C "$SCI/r/work" remote add origin "$SCI/r/origin.git"
 mkdir -p "$SCI/r/work/.claude"
-: > "$SCI/r/work/.claude/.neural-network"
-_sc_base_yaml_with_delegation true > "$SCI/r/work/.claude/project.yaml"
+mkdir -p "$SCI/r/work/.neural-network"
+_sc_base_yaml_with_delegation true > "$SCI/r/work/.neural-network/project.yaml"
 _sc_write_settings "$SCI/r/work" yes
 git -C "$SCI/r/work" add -A
 git -C "$SCI/r/work" commit -q -m init
@@ -386,8 +386,8 @@ git -C "$SCJ/r/work" config user.name "Fixture Human"
 git -C "$SCJ/r/work" config user.email "fixture@example.com"
 git -C "$SCJ/r/work" remote add origin "$SCJ/r/origin.git"
 mkdir -p "$SCJ/r/work/.claude"
-: > "$SCJ/r/work/.claude/.neural-network"
-_sc_base_yaml true > "$SCJ/r/work/.claude/project.yaml"
+mkdir -p "$SCJ/r/work/.neural-network"
+_sc_base_yaml true > "$SCJ/r/work/.neural-network/project.yaml"
 _sc_write_settings "$SCJ/r/work" yes
 git -C "$SCJ/r/work" add -A
 git -C "$SCJ/r/work" commit -q -m init
@@ -408,9 +408,9 @@ git -C "$SCK/r/work" config user.name "Fixture Human"
 git -C "$SCK/r/work" config user.email "fixture@example.com"
 git -C "$SCK/r/work" remote add origin "$SCK/r/origin.git"
 mkdir -p "$SCK/r/work/.claude"
-: > "$SCK/r/work/.claude/.neural-network"
-_sc_base_yaml_with_delegation true > "$SCK/r/work/.claude/project.yaml"
-printf '        peer-reviewer:\n            name: Peer Reviewer (codex) - {name}\n            email: '"'"'{local}+peer_reviewer@{domain}'"'"'\n' >> "$SCK/r/work/.claude/project.yaml"
+mkdir -p "$SCK/r/work/.neural-network"
+_sc_base_yaml_with_delegation true > "$SCK/r/work/.neural-network/project.yaml"
+printf '        peer-reviewer:\n            name: Peer Reviewer (codex) - {name}\n            email: '"'"'{local}+peer_reviewer@{domain}'"'"'\n' >> "$SCK/r/work/.neural-network/project.yaml"
 _sc_write_settings "$SCK/r/work" yes
 bash "$PLUGIN/scripts/gitignore-sync.sh" "$SCK/r/work/.gitignore"
 git -C "$SCK/r/work" add -A
@@ -432,17 +432,17 @@ git -C "$SCL/r/work" config user.name "Fixture Human"
 git -C "$SCL/r/work" config user.email "fixture@example.com"
 git -C "$SCL/r/work" remote add origin "$SCL/r/origin.git"
 mkdir -p "$SCL/r/work/.claude"
-: > "$SCL/r/work/.claude/.neural-network"
-_sc_base_yaml_with_delegation true > "$SCL/r/work/.claude/project.yaml"
+mkdir -p "$SCL/r/work/.neural-network"
+_sc_base_yaml_with_delegation true > "$SCL/r/work/.neural-network/project.yaml"
 _sc_write_settings "$SCL/r/work" yes
 git -C "$SCL/r/work" add -A
 git -C "$SCL/r/work" commit -q -m init
 git -C "$SCL/r/work" push -q origin main
-before="$(cat "$SCL/r/work/.claude/project.yaml")"
+before="$(cat "$SCL/r/work/.neural-network/project.yaml")"
 out="$(python3 "$SYNCCFG" --repo "$SCL/r/work" 2>&1)"
 check "case l: reports dry-run" "dry-run" "$out"
 check "case l: names the rule that would apply" "ensure-peer-reviewer-identity" "$out"
-after="$(cat "$SCL/r/work/.claude/project.yaml")"
+after="$(cat "$SCL/r/work/.neural-network/project.yaml")"
 check_rc "case l: file untouched" 0 "$([[ "$before" == "$after" ]] && echo 0 || echo 1)"
 rm -rf "$SCL"
 
@@ -535,7 +535,7 @@ check "case q: post-validate ran" "validate post: VALID" "$out"
 check "case q: reports push ok" "push: ok" "$out"
 origin_yaml="$(_sc_origin_project_yaml "$SCQ/r")"
 check "case q: origin's main now has serialDelivery: true" "serialDelivery: true" "$origin_yaml"
-check "case q: local project.yaml updated too" "serialDelivery: true" "$(cat "$SCQ/r/work/.claude/project.yaml")"
+check "case q: local project.yaml updated too" "serialDelivery: true" "$(cat "$SCQ/r/work/.neural-network/project.yaml")"
 rm -rf "$SCQ"
 
 echo "== sync-configs.py: ensure-serial-delivery, key already true -> no-op, untouched (case r) =="
@@ -548,7 +548,7 @@ check "case r: reports no-op" "route: no-op" "$out"
 check_absent "case r: rule not named" "ensure-serial-delivery" "$out"
 after_head="$(_sc_head "$SCR/r/work")"
 check_rc "case r: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
-check "case r: serialDelivery: true still present" "serialDelivery: true" "$(cat "$SCR/r/work/.claude/project.yaml")"
+check "case r: serialDelivery: true still present" "serialDelivery: true" "$(cat "$SCR/r/work/.neural-network/project.yaml")"
 rm -rf "$SCR"
 
 echo "== sync-configs.py: ensure-serial-delivery, key explicitly false -> no-op, untouched (case s) =="
@@ -561,19 +561,19 @@ check "case s: reports no-op" "route: no-op" "$out"
 check_absent "case s: rule not named" "ensure-serial-delivery" "$out"
 after_head="$(_sc_head "$SCS/r/work")"
 check_rc "case s: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
-check "case s: serialDelivery: false still present (explicit choice respected)" "serialDelivery: false" "$(cat "$SCS/r/work/.claude/project.yaml")"
+check "case s: serialDelivery: false still present (explicit choice respected)" "serialDelivery: false" "$(cat "$SCS/r/work/.neural-network/project.yaml")"
 rm -rf "$SCS"
 
 echo "== sync-configs.py: ensure-serial-delivery, dry-run does not write (case t) =="
 SCT="$(mktemp -d)"
 _sc_mkrepo "$SCT/r" true no absent
 _sc_sync_gitignore "$SCT/r/work"
-before="$(cat "$SCT/r/work/.claude/project.yaml")"
+before="$(cat "$SCT/r/work/.neural-network/project.yaml")"
 before_head="$(_sc_head "$SCT/r/work")"
 out="$(python3 "$SYNCCFG" --repo "$SCT/r/work" 2>&1)"
 check "case t: reports dry-run" "dry-run" "$out"
 check "case t: names the rule that would apply" "ensure-serial-delivery" "$out"
-after="$(cat "$SCT/r/work/.claude/project.yaml")"
+after="$(cat "$SCT/r/work/.neural-network/project.yaml")"
 check_rc "case t: file untouched" 0 "$([[ "$before" == "$after" ]] && echo 0 || echo 1)"
 after_head="$(_sc_head "$SCT/r/work")"
 check_rc "case t: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
@@ -588,8 +588,8 @@ git -C "$SCU/r/work" config user.name "Fixture Human"
 git -C "$SCU/r/work" config user.email "fixture@example.com"
 git -C "$SCU/r/work" remote add origin "$SCU/r/origin.git"
 mkdir -p "$SCU/r/work/.claude"
-: > "$SCU/r/work/.claude/.neural-network"
-_sc_base_yaml_noeol_serial_absent > "$SCU/r/work/.claude/project.yaml"
+mkdir -p "$SCU/r/work/.neural-network"
+_sc_base_yaml_noeol_serial_absent > "$SCU/r/work/.neural-network/project.yaml"
 git -C "$SCU/r/work" add -A
 git -C "$SCU/r/work" commit -q -m init
 git -C "$SCU/r/work" push -q origin main
@@ -613,7 +613,7 @@ check "case v: reports push ok" "push: ok" "$out"
 origin_yaml="$(_sc_origin_project_yaml "$SCV/r")"
 check "case v: origin's main now has commit.convention default" "convention: conventional-commits" "$origin_yaml"
 check "case v: origin's main now has the default commitSystemPrompt" "Simple titles" "$origin_yaml"
-check "case v: local project.yaml updated too" "convention: conventional-commits" "$(cat "$SCV/r/work/.claude/project.yaml")"
+check "case v: local project.yaml updated too" "convention: conventional-commits" "$(cat "$SCV/r/work/.neural-network/project.yaml")"
 rm -rf "$SCV"
 
 echo "== sync-configs.py: ensure-commit-config, key already present -> no-op, untouched (case w) =="
@@ -625,11 +625,11 @@ git -C "$SCW/r/work" config user.name "Fixture Human"
 git -C "$SCW/r/work" config user.email "fixture@example.com"
 git -C "$SCW/r/work" remote add origin "$SCW/r/origin.git"
 mkdir -p "$SCW/r/work/.claude"
-: > "$SCW/r/work/.claude/.neural-network"
+mkdir -p "$SCW/r/work/.neural-network"
 {
     _sc_base_yaml true
     printf 'commit:\n    convention: gitmoji\n'
-} > "$SCW/r/work/.claude/project.yaml"
+} > "$SCW/r/work/.neural-network/project.yaml"
 git -C "$SCW/r/work" add -A
 git -C "$SCW/r/work" commit -q -m init
 git -C "$SCW/r/work" push -q origin main
@@ -640,19 +640,19 @@ check "case w: reports no-op" "route: no-op" "$out"
 check_absent "case w: rule not named" "ensure-commit-config" "$out"
 after_head="$(_sc_head "$SCW/r/work")"
 check_rc "case w: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"
-check "case w: existing commit.convention choice respected" "convention: gitmoji" "$(cat "$SCW/r/work/.claude/project.yaml")"
+check "case w: existing commit.convention choice respected" "convention: gitmoji" "$(cat "$SCW/r/work/.neural-network/project.yaml")"
 rm -rf "$SCW"
 
 echo "== sync-configs.py: ensure-commit-config, dry-run does not write (case x) =="
 SCX="$(mktemp -d)"
 _sc_mkrepo "$SCX/r" true no true absent
 _sc_sync_gitignore "$SCX/r/work"
-before="$(cat "$SCX/r/work/.claude/project.yaml")"
+before="$(cat "$SCX/r/work/.neural-network/project.yaml")"
 before_head="$(_sc_head "$SCX/r/work")"
 out="$(python3 "$SYNCCFG" --repo "$SCX/r/work" 2>&1)"
 check "case x: reports dry-run" "dry-run" "$out"
 check "case x: names the rule that would apply" "ensure-commit-config" "$out"
-after="$(cat "$SCX/r/work/.claude/project.yaml")"
+after="$(cat "$SCX/r/work/.neural-network/project.yaml")"
 check_rc "case x: file untouched" 0 "$([[ "$before" == "$after" ]] && echo 0 || echo 1)"
 after_head="$(_sc_head "$SCX/r/work")"
 check_rc "case x: nothing committed" 0 "$([[ "$before_head" == "$after_head" ]] && echo 0 || echo 1)"

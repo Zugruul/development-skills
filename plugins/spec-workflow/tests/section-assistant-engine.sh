@@ -18,8 +18,8 @@ NV="$PLUGIN/scripts/neural-view.py"
 # assistant: section (mirrors section-assistant-default.sh's ad_repo).
 ae_repo() {
     local dir="$1" main="$2"
-    mkdir -p "$dir/.claude"
-    printf '%s\n' '# neural-network' >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf '%s\n' '# neural-network' >"$dir/.neural-network/marker"
     printf '%s\n' \
         'schemaVersion: 2' \
         'assistant:' \
@@ -36,7 +36,7 @@ ae_repo() {
         '            enabled: true' \
         '            provisioning:' \
         '                bin: codex' \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 
 # --------------------------------------------------------------- unit: no server
@@ -45,8 +45,8 @@ _ae_unit_state="$(mktemp -d)"
 _ae_unit_repo_a="$(mktemp -d)"
 _ae_unit_repo_b="$(mktemp -d)"
 ae_repo "$_ae_unit_repo_a" jarvis
-mkdir -p "$_ae_unit_repo_b/.claude"
-printf '%s\n' '# neural-network' >"$_ae_unit_repo_b/.claude/.neural-network"   # marker, no assistant: section -- not a candidate
+mkdir -p "$_ae_unit_repo_b/.claude" "$_ae_unit_repo_b/.neural-network"
+printf '%s\n' '# neural-network' >"$_ae_unit_repo_b/.neural-network/marker"   # marker, no assistant: section -- not a candidate
 
 unit_out="$(SCRIPTS_DIR="$AE_SCRIPTS" REPO_A="$_ae_unit_repo_a" REPO_B="$_ae_unit_repo_b" STATE="$_ae_unit_state" python3 - <<'PY'
 import os, sys, threading
@@ -344,13 +344,13 @@ ae_gap_repo() {
     printf '%s\n' \
         "        recipe-finder:" \
         "            enabled: true" \
-        >>"$dir/.claude/project.yaml"
+        >>"$dir/.neural-network/project.yaml"
 }
 
 echo "-- integration: _capability_gap_check (called directly -- see its docstring for why it is NOT auto-wired into _chat) emits skill.gap (turn_id-linked) and drafts a plan note in the background when the index has an established posture, without touching project.yaml --"
 _ae_gap_root="$(mktemp -d)"
 ae_gap_repo "$_ae_gap_root" jarvis
-_ae_gap_project_yaml="$_ae_gap_root/.claude/project.yaml"
+_ae_gap_project_yaml="$_ae_gap_root/.neural-network/project.yaml"
 _ae_gap_before_hash="$(shasum -a 256 "$_ae_gap_project_yaml" | awk '{print $1}')"
 
 gap_engine_out="$(SCRIPTS_DIR="$AE_SCRIPTS" ROOT="$_ae_gap_root" python3 - <<'PY'
@@ -386,7 +386,7 @@ try:
     turn_id = "turn-gap-1"
     e._capability_gap_check(root, turn_id, "please book a flight to mars")
 
-    identities = os.path.join(root, ".claude", "identities")
+    identities = os.path.join(root, ".neural-network", "identities")
     deadline = time.monotonic() + 5.0
     minted_slugs = []
     while time.monotonic() < deadline:
@@ -486,7 +486,7 @@ from assistant import adapters, distill, engine
 import brain
 
 root = os.environ["ROOT"]
-identities = os.path.join(root, ".claude", "identities")
+identities = os.path.join(root, ".neural-network", "identities")
 
 def stub_complete(context, **kwargs):
     return {"text": "a completely ordinary reply", "usage": None, "timings": None}
@@ -608,7 +608,7 @@ ae_capability_repo() {
         "            enabled: true" \
         "        slow-render:" \
         "            enabled: true" \
-        >>"$dir/.claude/project.yaml"
+        >>"$dir/.neural-network/project.yaml"
 }
 
 echo "-- integration: happy-path capability invoke -- directive parsed + stripped from the visible reply, schema-validated argv substitution, result fed back in ONE same-turn follow-up completion, trace events linked by turn/span --"
@@ -735,7 +735,7 @@ try:
     print("REPLY_NO_FENCE", (FENCE + "capability") not in reply)
     print("REPLY_IS_REFUSAL", "cannot" in reply.lower() or "do not have" in reply.lower() or "closest" in reply.lower())
 
-    identities = os.path.join(root, ".claude", "identities")
+    identities = os.path.join(root, ".neural-network", "identities")
     deadline = time.monotonic() + 5.0
     minted_slugs = []
     while time.monotonic() < deadline:

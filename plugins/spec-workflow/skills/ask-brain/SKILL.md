@@ -1,6 +1,6 @@
 ---
 name: ask-brain
-description: Asks a repo's identity brains collectively — every role that has a brain directory under .claude/identities/, not just one — a question, and answers it grounded in what those roles have actually learned, without running a build iteration or touching the board. Use for '/spec-workflow:ask-brain' followed by the question text — e.g. clicked from a neural-view "Talk" deep link when you want the whole repo's accumulated knowledge rather than one specific identity (for that, use /spec-workflow:ask-identity instead).
+description: Asks a repo's identity brains collectively — every role that has a brain directory under .neural-network/identities/, not just one — a question, and answers it grounded in what those roles have actually learned, without running a build iteration or touching the board. Use for '/spec-workflow:ask-brain' followed by the question text — e.g. clicked from a neural-view "Talk" deep link when you want the whole repo's accumulated knowledge rather than one specific identity (for that, use /spec-workflow:ask-identity instead).
 allowed-tools: Bash, Read
 ---
 
@@ -13,7 +13,7 @@ iteration: no board writes, no tests, no implementation work, no commits.
 
 ## Steps
 
-1. List identities with a brain: any `.claude/identities/*/brain/notes/`
+1. List identities with a brain: any `.neural-network/identities/*/brain/notes/`
    directory that exists and isn't empty.
 2. For each one, recall relevant notes using keywords pulled from the
    question:
@@ -22,7 +22,7 @@ iteration: no board writes, no tests, no implementation work, no commits.
    ```
    (`recall` matches tags/paths, not free text — see the `brain` skill.) If a
    role's recall comes back empty, skim its
-   `.claude/identities/<role>/DIRECTORY.md` or `brain/notes/*.md` directly
+   `.neural-network/identities/<role>/DIRECTORY.md` or `brain/notes/*.md` directly
    instead of concluding it has nothing relevant — these brains are small.
 3. Answer using the combined notes across all roles. When a lesson is
    specific to one identity's perspective (e.g. something only the reviewer
@@ -32,7 +32,7 @@ iteration: no board writes, no tests, no implementation work, no commits.
    answering from general knowledge as if it were repo-grounded.
 5. **Cross-identity correlation** (#163): collect the `entities:` frontmatter
    of every note recalled in step 2. If any are present, look each up in
-   `.claude/identities/entity-index.json` (regenerate it first via
+   `.neural-network/identities/entity-index.json` (regenerate it first via
    `bash "../../scripts/brain.sh" entity-index` if the file is
    missing or looks stale — it's cheap and derived, never hand-edited). For
    an entity correlated into a role you haven't already recalled from,

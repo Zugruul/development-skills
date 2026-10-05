@@ -16,7 +16,7 @@ _ex_write_links() { # root role json-body
     python3 -c '
 import json, sys
 root, role, body = sys.argv[1], sys.argv[2], sys.argv[3]
-path = root + "/.claude/identities/" + role + "/brain/links.json"
+path = root + "/.neural-network/identities/" + role + "/brain/links.json"
 open(path, "w", encoding="utf-8").write(body)
 ' "$1" "$2" "$3"
 }
@@ -60,9 +60,9 @@ printf 'A linked neighbor.\n' | exb mint dev ro-neighbor --tags ro --source x >/
 _ex_write_links "$EX_B" dev '{
   "ro-note->ro-neighbor": {"weight": 0.8, "fires": 2, "last": "2024-01-01"}
 }'
-before_hash="$(shasum -a 256 "$EX_B/.claude/identities/dev/brain/links.json" | cut -d' ' -f1)"
+before_hash="$(shasum -a 256 "$EX_B/.neural-network/identities/dev/brain/links.json" | cut -d' ' -f1)"
 exb explain dev ro-note >/dev/null
-after_hash="$(shasum -a 256 "$EX_B/.claude/identities/dev/brain/links.json" | cut -d' ' -f1)"
+after_hash="$(shasum -a 256 "$EX_B/.neural-network/identities/dev/brain/links.json" | cut -d' ' -f1)"
 check "read-only: links.json byte-identical before/after explain" "$before_hash" "$after_hash"
 rm -rf "$EX_B"
 
@@ -167,7 +167,7 @@ exf outcome dev shared-header-note corrected --note "was wrong once" >/dev/null
 python3 - "$EX_F" <<'PY'
 import os, re, sys
 root = sys.argv[1]
-p = os.path.join(root, ".claude/identities/dev/brain/notes/shared-header-note.md")
+p = os.path.join(root, ".neural-network/identities/dev/brain/notes/shared-header-note.md")
 s = open(p).read()
 s = re.sub(r"created: .*", "created: 2020-01-01", s)
 s = re.sub(r"last-touched: .*", "last-touched: 2020-01-01", s)

@@ -9,9 +9,9 @@
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== neural-view /projects (per-repo board state via THIS plugin's board.sh, cached) =="
 NVP_REPO="$(mktemp -d)"
-mkdir -p "$NVP_REPO/.claude"
-cp "$FIX/valid.project.yaml" "$NVP_REPO/.claude/project.yaml"
-NVP_NOBOARD="$(mktemp -d)"   # discovered repo, no .claude/project.yaml at all -> must be omitted
+mkdir -p "$NVP_REPO/.claude" "$NVP_REPO/.neural-network"
+cp "$FIX/valid.project.yaml" "$NVP_REPO/.neural-network/project.yaml"
+NVP_NOBOARD="$(mktemp -d)"   # discovered repo, no .neural-network/project.yaml at all -> must be omitted
 NVP_GH="$(mktemp -d)"
 _nvpscan_empty="$(mktemp -d)"   # empty scan base -- real ~/Development repos must never leak into these tests
 export GH_FAILURES="$FIX/gh-failures"  # sourced by the fake gh script below (issue #91)
@@ -177,7 +177,7 @@ check "projects: rate-limit failure (no reset time) reported as ok:false" '"ok":
 check "projects: rate-limit failure (no reset time) falls back gracefully" 'board unavailable: GitHub API rate limit (resets soon)' "$body"
 python3 "$NV" stop >/dev/null
 
-# scenario 4: a discovered repo with no .claude/project.yaml is omitted entirely
+# scenario 4: a discovered repo with no .neural-network/project.yaml is omitted entirely
 lifecycle_start "neural-view starts (no-board repo)" NEURAL_VIEW_PORT 'python3 "$NV" start --dir "$NVP_NOBOARD"'
 body="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/projects")"
 check "projects: repo without project.yaml is omitted" "{}" "$body"

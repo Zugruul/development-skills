@@ -13,8 +13,8 @@ AT_SCRIPTS="$PLUGIN/scripts"
 
 at_repo() {
     local dir="$1" main="$2"
-    mkdir -p "$dir/.claude"
-    printf "%s\n" "# neural-network" >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf "%s\n" "# neural-network" >"$dir/.neural-network/marker"
     printf "%s\n" \
         "schemaVersion: 2" \
         "assistant:" \
@@ -31,7 +31,7 @@ at_repo() {
         "            enabled: true" \
         "            provisioning:" \
         "                bin: codex" \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 
 # ------------------------------------------------------------------------
@@ -278,7 +278,7 @@ sys.path.insert(0, os.environ["SCRIPTS_DIR"])
 from assistant import distill, observability
 
 root = tempfile.mkdtemp(prefix="at-distill-")
-identities = os.path.join(root, ".claude", "identities")
+identities = os.path.join(root, ".neural-network", "identities")
 os.makedirs(identities, exist_ok=True)
 
 dq = queue.Queue()
@@ -774,9 +774,8 @@ from assistant import engine
 
 root = tempfile.mkdtemp(prefix="at-retcfg-")
 os.makedirs(os.path.join(root, ".claude"), exist_ok=True)
-with open(os.path.join(root, ".claude", ".neural-network"), "w") as f:
-    f.write("# neural-network\n")
-with open(os.path.join(root, ".claude", "project.yaml"), "w") as f:
+os.makedirs(os.path.join(root, ".neural-network"), exist_ok=True)
+with open(os.path.join(root, ".neural-network", "project.yaml"), "w") as f:
     f.write(
         "schemaVersion: 2\n"
         "assistant:\n"

@@ -8,7 +8,7 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
 
 if [[ -z "$CONFIG" || ! -f "$CONFIG" ]]; then
-    echo "PREFLIGHT FAIL: no .claude/project.yaml — STOP: run /spec-workflow:setup-project first (it will suggest /spec-workflow:craft-spec if there is no spec yet)."
+    echo "PREFLIGHT FAIL: no .neural-network/project.yaml — STOP: run /spec-workflow:setup-project first (it will suggest /spec-workflow:craft-spec if there is no spec yet)."
     exit 0
 fi
 
@@ -31,6 +31,17 @@ if missing:
     print("PREFLIGHT FAIL: spec file(s) missing: " + ", ".join(missing) + " — STOP: run /spec-workflow:craft-spec to create them (or fix specPath in the config).")
 else:
     print("preflight ok: config + " + str(len(specs)) + " spec(s) present")
+# Deprecated inline specs: suggest migrating BEFORE starting new task work
+# (advisory — never blocks). project.yaml should hold configuration only;
+# the work-plan belongs in per-spec files.
+try:
+    raw = C._parse(sys.argv[1])
+except Exception:  # noqa: BLE001
+    raw = {}
+specs_dir = os.path.join(os.path.dirname(sys.argv[1]), C.SPECS_DIRNAME)
+if isinstance(raw, dict) and "specs" in raw and not os.path.isdir(specs_dir):
+    print("suggest: migrate inline specs out of project.yaml into .neural-network/specs/<id>.yaml "
+          "(one file per spec — project.yaml holds configuration only) before starting the next task.")
 PY
 else
     echo "preflight ok: config present"
@@ -46,7 +57,7 @@ bash "$HERE/identity.sh" --check
 # blocks: preflight.py's own contract is "always exit 0, print advisory
 # lines" -- the model reads a printed FAIL line and redirects the human,
 # exactly like every other check in this script.
-if [[ -f "$ROOT/.claude/.neural-network" ]]; then
+if [[ -d "$ROOT/.neural-network" ]]; then
     python3 "$HERE/assistant/preflight.py" "$ROOT"
 fi
 

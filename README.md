@@ -4,6 +4,22 @@ A [Claude Code plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 
 ## Install
 
+### All three hosts (Claude Code, Codex, OpenCode)
+
+Every skill is host-portable (frontmatter `name` matching its directory, a `description`, `$ARGUMENTS` for arguments). Beyond the marketplaces, `install-skills.sh` symlinks the canonical skills into any project's per-client skill directories:
+
+```bash
+./install-skills.sh all        # or: claude | opencode | codex
+```
+
+| Host | Project skill directory | Marketplace alternative |
+|-|-|-|
+| Claude Code | `.claude/skills/` | `/plugin marketplace add` on `.claude-plugin/marketplace.json` |
+| OpenCode | `.opencode/skills/` | — (skills dirs are the mechanism; OpenCode also auto-loads `~/.claude/skills` and `~/.agents/skills`) |
+| Codex | `.agents/skills/` | `.agents/plugins/marketplace.json` |
+
+Symlinks, never copies — canonical edits are live immediately. Use either a marketplace or the skills-dir install per host, not both (duplicate entries). Set `DEV_SKILLS_PROJECT_ROOT` to target another project. Verified live: `opencode debug skill` lists every installed skill from a target project.
+
 ```bash
 claude plugin marketplace add Zugruul/development-skills
 claude plugin install spec-workflow@development-skills
@@ -152,7 +168,7 @@ claude plugin marketplace add /path/to/development-skills
 
 ### spec-workflow
 
-Spec-driven autonomous build workflow. A repo declares its boards, specs, epics, guards, gate command, delegation roster, and conventions in a **versioned YAML config** (`.claude/project.yaml`, schemaVersion 2 — schema in `plugins/spec-workflow/schemas/`, wired for editor hover/autocomplete via a `# yaml-language-server` modeline; needs PyYAML); the plugin's skills and scripts read that config through one shared loader, so the same workflow drives any project. A legacy `.claude/project.json` (schemaVersion 1) is still read and auto-converted (deprecated).
+Spec-driven autonomous build workflow. A repo declares its boards, specs, epics, guards, gate command, delegation roster, and conventions in a **versioned YAML config** (`.neural-network/project.yaml`, schemaVersion 2 — schema in `plugins/spec-workflow/schemas/`, wired for editor hover/autocomplete via a `# yaml-language-server` modeline; needs PyYAML); the plugin's skills and scripts read that config through one shared loader, so the same workflow drives any project. A legacy `.neural-network/project.json` (schemaVersion 1) is still read and auto-converted (deprecated).
 
 | Skill | Purpose |
 |---|---|
@@ -179,12 +195,23 @@ Spec-driven autonomous build workflow. A repo declares its boards, specs, epics,
 | `dev-up` | Bring up the project's dev stack for QA |
 | `neural-view` | Live JARVIS-style visualization of the identity brains — notes as neurons, recalls lighting up in real time |
 | `feedback` | Structured per-iteration process feedback about the workflow itself (`methodology.feedback`); triaged into backlog/brain-note/graduate/upstream/ignore at retro time |
-| `sync-project-configs` | Discover every anchored repo and bring its `.claude/project.yaml` up to the plugin's current config surface via versioned sync rules; dry-run by default |
-| `compute-top` | Terminal dashboard, on the machine or over SSH, for what remote-compute work is running/finished there; opens logs, prunes history |
-| `remote-compute` | Register remote machines (SSH, key-only) as user-level compute resources; enable their availability per project (gitignored local overlay, non-exclusive); declared jobs for dispatch-by-intent (e.g. ComfyUI from a pre-authored workflow), exec/lock/dispatch with file-recoverable job state |
+| `sync-project-configs` | Discover every anchored repo and bring its `.neural-network/project.yaml` up to the plugin's current config surface via versioned sync rules; dry-run by default |
 | `changelog-generate` | Fully regenerates `CHANGELOG.md` from git history, versioned by `plugin.json`'s semver windows and grouped by conventional-commit type; idempotent, kept fresh on every push to `main` by a GitHub Action |
 
 Humans steer the loop by commenting on task issues: `next-task`/`implement-task` read every comment before starting, fold accepted changes into the issue's acceptance criteria, and reply on the issue.
+
+### remote-compute
+
+Register remote machines (SSH, key-only) as user-level compute resources and
+dispatch jobs/capability bundles to them. **Requires the spec-workflow
+plugin** (availability is advertised through spec-workflow's project.local.yaml
+overlay and read via its config loader). Full guide:
+[docs/remote-compute.md](./docs/remote-compute.md).
+
+| Skill | Purpose |
+|---|---|
+| `remote-compute` | Register remote machines (SSH, key-only) as user-level compute resources; enable their availability per project (gitignored local overlay, non-exclusive); declared jobs for dispatch-by-intent (e.g. ComfyUI from a pre-authored workflow), exec/lock/dispatch with file-recoverable job state |
+| `compute-top` | Terminal dashboard, on the machine or over SSH, for what remote-compute work is running/finished there; opens logs, prunes history |
 
 ### scaffold-project
 

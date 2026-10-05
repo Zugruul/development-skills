@@ -43,7 +43,7 @@ printf 'Untouched lesson.\n' | sta mint dev fresh-note --tags st --paths "docs/*
 python3 - "$ST_A" <<'PY'
 import os, re, sys
 root = sys.argv[1]
-d = os.path.join(root, ".claude/identities/dev/brain/notes")
+d = os.path.join(root, ".neural-network/identities/dev/brain/notes")
 for slug in ("stale-note", "fresh-note"):
     p = os.path.join(d, slug + ".md")
     s = open(p).read()
@@ -83,7 +83,7 @@ printf '%s\n' "$ST_B_LONG_BODY" | stb mint dev stale-oneliner --tags st --paths 
 python3 - "$ST_B" <<'PY'
 import os, re, sys
 root = sys.argv[1]
-p = os.path.join(root, ".claude/identities/dev/brain/notes/stale-oneliner.md")
+p = os.path.join(root, ".neural-network/identities/dev/brain/notes/stale-oneliner.md")
 s = open(p).read()
 s = re.sub(r"created: .*", "created: 2020-01-01", s)
 s = re.sub(r"last-touched: .*", "last-touched: 2020-01-01", s)
@@ -108,7 +108,7 @@ printf 'Re-mint clears staleness.\n' | stc mint dev remint-note --tags rm --path
 python3 - "$ST_C" <<'PY'
 import os, re, sys
 root = sys.argv[1]
-p = os.path.join(root, ".claude/identities/dev/brain/notes/remint-note.md")
+p = os.path.join(root, ".neural-network/identities/dev/brain/notes/remint-note.md")
 s = open(p).read()
 s = re.sub(r"created: .*", "created: 2020-01-01", s)
 s = re.sub(r"last-touched: .*", "last-touched: 2020-01-01", s)
@@ -139,7 +139,7 @@ done
 python3 - "$ST_D" <<'PY'
 import os, re, sys, glob
 root = sys.argv[1]
-d = os.path.join(root, ".claude/identities/dev/brain/notes")
+d = os.path.join(root, ".neural-network/identities/dev/brain/notes")
 for p in glob.glob(os.path.join(d, "bulk-note-*.md")):
     s = open(p).read()
     s = re.sub(r"created: .*", "created: 2020-01-01", s)
@@ -186,7 +186,7 @@ printf 'No-repo lesson.\n' | ste mint dev norepo-note --tags nr --paths "any/*.s
 python3 - "$ST_E" <<'PY'
 import os, re, sys
 root = sys.argv[1]
-p = os.path.join(root, ".claude/identities/dev/brain/notes/norepo-note.md")
+p = os.path.join(root, ".neural-network/identities/dev/brain/notes/norepo-note.md")
 s = open(p).read()
 s = re.sub(r"created: .*", "created: 2020-01-01", s)
 s = re.sub(r"last-touched: .*", "last-touched: 2020-01-01", s)
@@ -247,7 +247,7 @@ printf 'Worktree stale lesson.\n' | stg mint dev wt-note --tags wt --paths "wtdi
 python3 - "$ST_G_WT" <<'PY'
 import os, re, sys
 root = sys.argv[1]
-p = os.path.join(root, ".claude/identities/dev/brain/notes/wt-note.md")
+p = os.path.join(root, ".neural-network/identities/dev/brain/notes/wt-note.md")
 s = open(p).read()
 s = re.sub(r"created: .*", "created: 2020-01-01", s)
 s = re.sub(r"last-touched: .*", "last-touched: 2020-01-01", s)

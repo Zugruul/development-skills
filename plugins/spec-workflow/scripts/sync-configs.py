@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""sync-configs.py — bring anchored repos' .claude/project.yaml up to this
+"""sync-configs.py — bring anchored repos' .neural-network/project.yaml up to this
 plugin's current config surface, via a versioned, ordered sync-rule list.
 
 Usage:
@@ -7,7 +7,7 @@ Usage:
     sync-configs.py --repo PATH [--apply] [--feedback-value true|false]
 
 Discovery (no --repo): every immediate child of the scan base (--scan, else
-~/Development) carrying a <child>/.claude/.neural-network marker file, EXCEPT
+~/Development) carrying a <child>/.neural-network marker file, EXCEPT
 the repo this script itself lives in (that repo updates itself through its
 own build loop, not this script).
 
@@ -43,7 +43,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 MARKER_NAME = ".neural-network"
-CONFIG_REL = os.path.join(".claude", "project.yaml")
+CONFIG_REL = os.path.join(".neural-network", "project.yaml")
 
 
 # --- sync rules -----------------------------------------------------------
@@ -243,17 +243,17 @@ def rule_ensure_peer_reviewer_identity(text, repo_root):
 
 def sw062_detect(repo_root):
     legacy = repo_root / ".claude" / "feedback"
-    new = repo_root / ".claude" / "feedbacks"
+    new = repo_root / ".neural-network" / "feedbacks"
     return legacy.is_dir() and not new.exists()
 
 
 def sw062_apply(repo_root):
-    """mv .claude/feedback -> .claude/feedbacks; drop its .gitignore line.
+    """mv .claude/feedback -> .neural-network/feedbacks; drop its .gitignore line.
     Returns the list of repo-relative paths that changed/need staging."""
     legacy = repo_root / ".claude" / "feedback"
-    new = repo_root / ".claude" / "feedbacks"
+    new = repo_root / ".neural-network" / "feedbacks"
     shutil.move(str(legacy), str(new))
-    changed = [os.path.join(".claude", "feedbacks")]
+    changed = [os.path.join(".neural-network", "feedbacks")]
     gi = repo_root / ".gitignore"
     if gi.is_file():
         lines = gi.read_text().splitlines(keepends=True)
@@ -291,7 +291,7 @@ def sw062_rollback(repo_root):
     sw062_detect() would see it before sw062_apply() ran (legacy dir back,
     new dir gone) -- i.e. still detectable and re-appliable by a future run."""
     legacy = repo_root / ".claude" / "feedback"
-    new = repo_root / ".claude" / "feedbacks"
+    new = repo_root / ".neural-network" / "feedbacks"
     if new.exists() and not legacy.exists():
         shutil.move(str(new), str(legacy))
 
@@ -328,7 +328,7 @@ def find_config_path(repo_root):
     p = repo_root / CONFIG_REL
     if p.is_file():
         return p
-    alt = repo_root / ".claude" / "project.json"
+    alt = repo_root / ".neural-network" / "project.json"
     return alt if alt.is_file() else None
 
 
@@ -356,7 +356,7 @@ def discover_repos(scan_base, self_root):
         try:
             if not child.is_dir():
                 continue
-            if not (child / ".claude" / MARKER_NAME).is_file():
+            if not (child / MARKER_NAME).is_dir():
                 continue
             rp = child.resolve()
             if is_self_repo(child, self_root):
@@ -439,7 +439,7 @@ def process_repo(repo_root, args):
             removed = sum(1 for line in diff if line.startswith("- "))
             result.add(f"[diff] {config_path.relative_to(repo_root)} (+{added}/-{removed} lines)")
         if sw062_applies:
-            result.add("[diff] .claude/feedback/ would move to .claude/feedbacks/; its .gitignore line would be dropped")
+            result.add("[diff] .claude/feedback/ would move to .neural-network/feedbacks/; its .gitignore line would be dropped")
         if mem013_applies:
             added = sum(1 for line in mem013_diff.splitlines()
                         if line.startswith("+") and not line.startswith("+++"))

@@ -17,7 +17,7 @@ skill is just the entry point when nothing else is going to trigger it.
   (neural network) from feedback".
 - The `feedback` skill's standalone-invocation step offers this and the human accepts.
 - Recovering a stalled repo — `telemetry.py <root> metrics` shows `retro skips`, or
-  many `task-close`/`transition` events with no matching `.claude/identities/`
+  many `task-close`/`transition` events with no matching `.neural-network/identities/`
   activity in git history (a brain that never got its first note).
 
 ## Protocol
@@ -64,7 +64,7 @@ skill is just the entry point when nothing else is going to trigger it.
    bumps the retro counter that ages notes for pruning.
 5. **Directory.** `brain.sh directory` to regenerate `DIRECTORY.md`.
 6. **Archive.** `feedback.py <root> archive` — moves every fully-routed feed document
-   into `.claude/feedbacks/archive/<YYYY-MM>.yaml`, as the LAST feed action of this
+   into `.neural-network/feedbacks/archive/<YYYY-MM>.yaml`, as the LAST feed action of this
    protocol, after routing (step 2) and mint/prune/retro-mark (steps 3-4).
 7. **Commit** the routed feed, archives, and any brain changes together, as the
    orchestrator identity (`identity.sh orchestrator` for the `-c user.name=... -c
@@ -73,7 +73,7 @@ skill is just the entry point when nothing else is going to trigger it.
    `brain.sh retro-mark` bumped, and whether an interview happened or this ran from
    recorded text alone.
 
-## A missing `.claude/identities/` dir is never a reason to stop
+## A missing `.neural-network/identities/` dir is never a reason to stop
 Minting is self-bootstrapping (`brain.sh mint` creates the directory). If this is a
 repo's first-ever retro/retrospective, the directory not existing yet is the normal,
 expected state — mint into it like any other run.

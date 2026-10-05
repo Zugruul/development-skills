@@ -10,7 +10,7 @@ echo "== brain confidence frontmatter (GL-012: direct|inferred, default inferred
 CF_SCRIPTS="$PLUGIN/scripts"
 
 _note_path() { # <root> <role> <slug>
-    printf '%s\n' "$1/.claude/identities/$2/brain/notes/$3.md"
+    printf '%s\n' "$1/.neural-network/identities/$2/brain/notes/$3.md"
 }
 
 # ------------------------------------------------------ (1) explicit direct persists
@@ -47,7 +47,7 @@ out="$(python3 - "$CF2" <<PY
 import sys, os
 sys.path.insert(0, "$CF_SCRIPTS")
 import brain
-notes = brain.load_notes(os.path.join("$CF2", ".claude/identities"), "dev")
+notes = brain.load_notes(os.path.join("$CF2", ".neural-network/identities"), "dev")
 fm = notes["legacy-note"]["fm"]
 print("confidence-absent" if "confidence" not in fm else "confidence-present:" + str(fm["confidence"]))
 PY
@@ -96,7 +96,7 @@ bad_rc=$?
 check_rc "invalid --confidence value exits non-zero" 1 "$( [[ $bad_rc -ne 0 ]] && echo 1 || echo 0 )"
 check "invalid --confidence error lists 'direct'" "direct" "$bad_out"
 check "invalid --confidence error lists 'inferred'" "inferred" "$bad_out"
-BAD_PATH="$CF4/.claude/identities/dev/brain/notes/bad-note.md"
+BAD_PATH="$CF4/.neural-network/identities/dev/brain/notes/bad-note.md"
 if [[ ! -f "$BAD_PATH" ]]; then
     echo "ok   invalid --confidence: note file not created"
 else

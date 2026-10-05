@@ -6,8 +6,8 @@ description: Scaffolds a bare-brain assistant repo — marker file, project.yaml
 # Set up (or edit) a persistent assistant repo
 
 Goal: after this skill, the target repo is an **assistant repo** (SPEC-ASSISTANT.md
-§4/§6.4) — a `.claude/.neural-network` marker, a `.claude/project.yaml` with a valid
-`assistant:` section, empty brain dirs at `.claude/identities/assistant/brain/notes/`, a
+§4/§6.4) — a `.neural-network` marker, a `.neural-network/project.yaml` with a valid
+`assistant:` section, empty brain dirs at `.neural-network/identities/assistant/brain/notes/`, a
 persona `AGENTS.md` at the repo root, and `.claude/assistant/` (session/traces/tasks/
 artifacts) gitignored. The assistant repo carries **no engine code** (§6.7) — this skill
 never copies any; the engine lives in this plugin's neural-view server.
@@ -27,12 +27,12 @@ bash "../../scripts/setup-assistant.sh" [--root <path>] scaffold [--name NAME] [
 
 `--root` defaults to the git toplevel (else cwd). Idempotent and safe to re-run at any
 time — it never overwrites a value that's already there:
-- Creates `.claude/.neural-network` if absent (leaves an existing one untouched).
+- Creates `.neural-network` if absent (leaves an existing one untouched).
 - Inserts every **missing** leaf of the default `assistant:` section into
-  `.claude/project.yaml` (creating the file if absent); any key you already set —
+  `.neural-network/project.yaml` (creating the file if absent); any key you already set —
   including an explicit `false`/`0`/empty-string value — is left alone. Unrelated
   top-level keys and comments elsewhere in the file are never touched.
-- Creates `.claude/identities/assistant/brain/notes/` (empty; `brain.py mint` fills it
+- Creates `.neural-network/identities/assistant/brain/notes/` (empty; `brain.py mint` fills it
   once the assistant starts learning).
 - Writes (or updates in place) a persona `AGENTS.md` at the repo root. It always contains
   a GENERATED, marker-delimited "enabled skills" section (§11.9 — codex has no native

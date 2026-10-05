@@ -1,0 +1,5 @@
+{
+    "name": "remote-compute",
+    "description": "Register remote machines (SSH, key-only) as user-level compute resources, advertise them to projects, and dispatch jobs/capability bundles to them. Requires the spec-workflow plugin (project overlay + config loader).",
+    "version": "0.1.0"
+}

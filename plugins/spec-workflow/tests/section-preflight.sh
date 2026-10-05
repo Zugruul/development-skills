@@ -9,8 +9,8 @@ echo "== preflight =="
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 ( cd "$T" && git init -q . )
 out="$(cd "$T" && bash "$PLUGIN/scripts/preflight.sh" --spec)"
-check "no config -> setup-project" "PREFLIGHT FAIL: no .claude/project.yaml" "$out"
-mkdir -p "$T/.claude" && cp "$FIX/valid.project.json" "$T/.claude/project.json"
+check "no config -> setup-project" "PREFLIGHT FAIL: no .neural-network/project.yaml" "$out"
+mkdir -p "$T/.claude" "$T/.neural-network" && cp "$FIX/valid.project.json" "$T/.neural-network/project.json"
 out="$(cd "$T" && bash "$PLUGIN/scripts/preflight.sh" --spec)"
 check "missing spec file -> craft-spec" "spec file(s) missing: SPEC.md" "$out"
 touch "$T/SPEC.md"
@@ -28,7 +28,7 @@ check "config-only ok" "preflight ok: config present" "$out"
 # dependent on the actual test machine's installed plugins.
 _sc_repo="$(mktemp -d)"
 ( cd "$_sc_repo" && git init -q . )
-mkdir -p "$_sc_repo/.claude" && cp "$FIX/valid.project.json" "$_sc_repo/.claude/project.json"
+mkdir -p "$_sc_repo/.claude" "$_sc_repo/.neural-network" && cp "$FIX/valid.project.json" "$_sc_repo/.neural-network/project.json"
 touch "$_sc_repo/SPEC.md"
 mkdir -p "$_sc_repo/plugins/spec-workflow/scripts"
 printf 'identity content v1\n' >"$_sc_repo/plugins/spec-workflow/scripts/identity_lib.py"
@@ -66,7 +66,7 @@ check "no cache found: preflight still reports ok" "preflight ok" "$out"
 # (d) no local plugin source (a consumer repo, not this plugin's own source) -> silent no-op
 _sc_consumer="$(mktemp -d)"
 ( cd "$_sc_consumer" && git init -q . )
-mkdir -p "$_sc_consumer/.claude" && cp "$FIX/valid.project.json" "$_sc_consumer/.claude/project.json"
+mkdir -p "$_sc_consumer/.claude" "$_sc_consumer/.neural-network" && cp "$FIX/valid.project.json" "$_sc_consumer/.neural-network/project.json"
 touch "$_sc_consumer/SPEC.md"
 out="$(cd "$_sc_consumer" && SPEC_WORKFLOW_CACHE_SEARCH_BASE="$_sc_cachebase" bash "$PLUGIN/scripts/preflight.sh")"
 check_absent "no local plugin source: no warning" "PLUGIN CACHE WARN" "$out"

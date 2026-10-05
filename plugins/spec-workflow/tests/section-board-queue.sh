@@ -26,8 +26,8 @@ declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tes
 echo "== board.sh rate-limit queue (#77) + adopt (#84): fake gh =="
 
 _qsetup() { # -> sets BQ (fixture repo dir) and FGH (fake-gh dir on PATH)
-    BQ="$(mktemp -d)"; mkdir -p "$BQ/.claude"
-    cp "$FIX/valid.project.yaml" "$BQ/.claude/project.yaml"
+    BQ="$(mktemp -d)"; mkdir -p "$BQ/.claude" "$BQ/.neural-network"
+    cp "$FIX/valid.project.yaml" "$BQ/.neural-network/project.yaml"
     FGH="$(mktemp -d)"
     export GH_FAILURES="$FIX/gh-failures"  # sourced by the fake gh script below (issue #91)
     cat >"$FGH/gh" <<'FAKE'
@@ -144,7 +144,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC"
 
 # --- (b) flush replays queued ops in order against a recovered fake gh ---
 _qsetup
-mkdir -p "$BQ/.claude"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network"
 _seed_seen 802
 printf '{"op":"prio","issue":"802","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 printf '{"op":"move","issue":"802","status":"In progress","ts":"2020-01-01T00:00:00Z"}\n' >>"$BQ/.claude/board-queue.jsonl"
@@ -173,7 +173,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC"
 
 # --- (c) flush idempotence: move whose target status already holds is skipped ---
 _qsetup
-mkdir -p "$BQ/.claude"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network"
 _seed_seen 803
 printf '{"op":"move","issue":"803","status":"In progress","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
@@ -193,7 +193,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC"
 
 # --- (d) flush re-queues the remainder when the limit re-trips mid-replay ---
 _qsetup
-mkdir -p "$BQ/.claude"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network"
 _seed_seen 804
 printf '{"op":"prio","issue":"804","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 printf '{"op":"move","issue":"804","status":"In progress","ts":"2020-01-01T00:00:00Z"}\n' >>"$BQ/.claude/board-queue.jsonl"
@@ -233,7 +233,7 @@ rm -rf "$BQ" "$FGH" "$LOG"
 
 # --- (f) auto-flush: every board-READING command flushes a non-empty queue first ---
 _qsetup
-mkdir -p "$BQ/.claude"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network"
 printf '{"op":"prio","issue":"806","priority":"P2","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
 out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_LIST_CALLCOUNT="$LISTCC" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" \
@@ -426,7 +426,7 @@ echo "== board.sh flush concurrency (#92): mutual exclusion, lost-append prevent
 # post-fix: once it holds the lock) so flusher B is guaranteed to start while
 # A is still mid-flush.
 _qsetup
-mkdir -p "$BQ/.claude"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network"
 printf '{"op":"prio","issue":"880","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
@@ -493,7 +493,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC" "$OUTA" "$OUTB" "$SYNC"
 # post-aside-move, which is atomic and safe by construction) while the test
 # appends a brand-new op directly to the live queue file.
 _qsetup
-mkdir -p "$BQ/.claude"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network"
 printf '{"op":"prio","issue":"890","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"; OUT="$(mktemp)"
@@ -518,7 +518,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC" "$OUT" "$SYNC"
 
 # --- (o) stale lock (older than the TTL) is broken with a warning, not wedged forever ---
 _qsetup
-mkdir -p "$BQ/.claude" "$BQ/.claude/board-queue.lock"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network" "$BQ/.claude/board-queue.lock"
 printf '{"op":"prio","issue":"895","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 sleep 1.1
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
@@ -565,7 +565,7 @@ rm -rf "$BQ" "$FGH"
 # a leaked BOARD_QUEUE_TEST_SYNC would otherwise hang every flush forever).
 # Use a tiny cap so the test itself stays fast. ---
 _qsetup
-mkdir -p "$BQ/.claude"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network"
 printf '{"op":"prio","issue":"897","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
@@ -588,7 +588,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC" "$SYNC"
 # catch this (cur ends up Ready, target is QA -- they never match) so flush
 # must dedupe by (op, issue), keeping the most-recently-enqueued entry. ---
 _qsetup
-mkdir -p "$BQ/.claude"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network"
 # #236 (CDX-031 gap #4): moving to QA now requires both review passes
 # recorded in telemetry (two-pass-review-preflight.sh, wired into _do_move()
 # alongside the pre-existing checks) -- seed them here so this scenario
@@ -652,7 +652,7 @@ echo "== board.sh flush durability + lock liveness (#104) =="
 # ONE issue# (FAKE_GH_ISSUE_NUM) visible, so a second distinct issue# would
 # never resolve regardless of durability. ---
 _qsetup
-mkdir -p "$BQ/.claude"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network"
 printf '{"op":"prio","issue":"920","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 printf '{"op":"est","issue":"920","points":"3","ts":"2020-01-01T00:00:01Z"}\n' >>"$BQ/.claude/board-queue.jsonl"
 SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
@@ -709,7 +709,7 @@ rm -rf "$BQ" "$FGH" "$SYNC" "$LOG" "$LISTCC" "$EDITCC" "$OUT" "$LOG2" "$EDITCC2"
 # from the aside before the crash), and a follow-up flush must complete
 # cleanly with no duplicate application. ---
 _qsetup
-mkdir -p "$BQ/.claude"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network"
 printf '{"op":"prio","issue":"922","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"; OUT="$(mktemp)"
@@ -772,7 +772,7 @@ rm -rf "$BQ" "$FGH" "$SYNC" "$LOG" "$LISTCC" "$EDITCC" "$OUT" "$LOG2" "$EDITCC2"
 # issue# (different op kinds, so #92's dedupe doesn't collapse them) -- the
 # fixture fake gh only ever makes ONE issue# visible (see test (v)). ---
 _qsetup
-mkdir -p "$BQ/.claude"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network"
 printf '{"op":"prio","issue":"930","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 printf '{"op":"est","issue":"930","points":"5","ts":"2020-01-01T00:00:01Z"}\n' >>"$BQ/.claude/board-queue.jsonl"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
@@ -793,7 +793,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC"
 # PID is broken IMMEDIATELY, even with a long TTL that would not otherwise
 # have expired -- this must not depend on waiting out BOARD_QUEUE_LOCK_TTL. ---
 _qsetup
-mkdir -p "$BQ/.claude" "$BQ/.claude/board-queue.lock"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network" "$BQ/.claude/board-queue.lock"
 ( : ) & DEADPID=$!
 wait "$DEADPID" 2>/dev/null   # DEADPID is now guaranteed not running
 printf '%s\n' "$DEADPID" >"$BQ/.claude/board-queue.lock/pid"
@@ -819,7 +819,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC"
 # LIVE process, even though a pidfile is now present -- preserves the
 # existing SKIP behavior for a real concurrent holder (tests m/n above). ---
 _qsetup
-mkdir -p "$BQ/.claude" "$BQ/.claude/board-queue.lock"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network" "$BQ/.claude/board-queue.lock"
 printf '%s\n' "$$" >"$BQ/.claude/board-queue.lock/pid"   # this test script's own pid: guaranteed alive
 printf '{"op":"prio","issue":"941","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"
@@ -849,7 +849,7 @@ rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC"
 # -- proving the new content lives only in a sibling temp file until the
 # single atomic rename lands, never as a partially-written aside file. ---
 _qsetup
-mkdir -p "$BQ/.claude"
+mkdir -p "$BQ/.claude" "$BQ/.neural-network"
 printf '{"op":"prio","issue":"950","priority":"P1","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
 LOG="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"; OUT="$(mktemp)"

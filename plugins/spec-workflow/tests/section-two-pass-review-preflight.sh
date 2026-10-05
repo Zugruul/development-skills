@@ -22,7 +22,7 @@ TPS="$PLUGIN/scripts/two-pass-review-preflight.sh"
 # value cheaply.
 _tp_rec() {
     local dir="$1" json="$2"
-    mkdir -p "$dir/.claude"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
     printf '%s\n' "$json" >> "$dir/.claude/telemetry.jsonl"
 }
 
@@ -56,7 +56,7 @@ rm -rf "$T6C"
 # --- (d) neither recorded: missing telemetry.jsonl entirely -> FAIL, both
 # named missing, no crash.
 T6D="$(mktemp -d)"
-mkdir -p "$T6D/.claude"
+mkdir -p "$T6D/.claude" "$T6D/.neural-network"
 out="$(bash "$TPS" --root "$T6D" --task 236 2>&1)"; rc=$?
 check_rc "two-pass: (d1) missing telemetry file -- exit 2" 2 "$rc"
 check "two-pass: (d1) missing telemetry file -- names spec-compliance" "spec-compliance" "$out"
@@ -104,8 +104,8 @@ FAKE
     chmod +x "$dir/gh"
 }
 
-T6F="$(mktemp -d)"; mkdir -p "$T6F/.claude"
-cp "$FIX/valid.project.yaml" "$T6F/.claude/project.yaml"
+T6F="$(mktemp -d)"; mkdir -p "$T6F/.claude" "$T6F/.neural-network"
+cp "$FIX/valid.project.yaml" "$T6F/.neural-network/project.yaml"
 T6FGH="$(mktemp -d)"
 MARKER_F="$T6FGH/mutated"
 _tp_gh_fixture "$T6FGH" "$MARKER_F"
@@ -126,8 +126,8 @@ fi
 rm -rf "$T6F" "$T6FGH"
 
 # --- (g) wiring: both passes recorded -> move to QA succeeds, reaching gh.
-T6G="$(mktemp -d)"; mkdir -p "$T6G/.claude"
-cp "$FIX/valid.project.yaml" "$T6G/.claude/project.yaml"
+T6G="$(mktemp -d)"; mkdir -p "$T6G/.claude" "$T6G/.neural-network"
+cp "$FIX/valid.project.yaml" "$T6G/.neural-network/project.yaml"
 _tp_rec "$T6G" '{"kind":"review-round","task":"236","round":1,"verdict":"approved","pass":"spec-compliance","ts":"2026-01-01T00:00:00Z"}'
 _tp_rec "$T6G" '{"kind":"review-round","task":"236","round":2,"verdict":"approved","pass":"code-quality","ts":"2026-01-01T01:00:00Z"}'
 T6GGH="$(mktemp -d)"
@@ -150,9 +150,9 @@ rm -rf "$T6G" "$T6GGH"
 # review-round telemetry at all here).
 T6H="$(mktemp -d)"
 ( cd "$T6H" && git init -q -b main . && git commit -q --allow-empty -m init )
-mkdir -p "$T6H/.claude"
+mkdir -p "$T6H/.claude" "$T6H/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$T6H/.claude/project.json"
+    "$FIX/valid.project.json" "$T6H/.neural-network/project.json"
 ( cd "$T6H" && git add -A && git commit -q -m "fixture config" && git checkout -q -b feature )
 mkdir -p "$T6H/tests" "$T6H/src"
 echo t > "$T6H/tests/foo.sh"
@@ -179,8 +179,8 @@ check_rc "two-pass regression: (h) move to 'In review' exit 0" 0 "$rc"
 rm -rf "$T6H" "$T6HGH"
 
 # --- (i) regression: moving to Backlog/Ready/Deployed is also unaffected.
-T6I="$(mktemp -d)"; mkdir -p "$T6I/.claude"
-cp "$FIX/valid.project.yaml" "$T6I/.claude/project.yaml"
+T6I="$(mktemp -d)"; mkdir -p "$T6I/.claude" "$T6I/.neural-network"
+cp "$FIX/valid.project.yaml" "$T6I/.neural-network/project.yaml"
 T6IGH="$(mktemp -d)"
 MARKER_I="$T6IGH/mutated"
 _tp_gh_fixture "$T6IGH" "$MARKER_I"

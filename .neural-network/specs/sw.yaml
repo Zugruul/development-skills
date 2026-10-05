@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Zugruul/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json#/properties/specs/items
+id: sw
+title: spec-workflow v1 development (SPEC.md)
+board: main
+specPath: SPEC.md
+backlogPath: docs/BACKLOG.md
+taskPrefix: SW
+epics:
+- id: E0
+  title: Workflow UX
+  taskRanges:
+  - - 1
+    - 9
+- id: E1
+  title: Hardening
+  taskRanges:
+  - - 10
+    - 19
+- id: E2
+  title: Self-improvement completion
+  taskRanges:
+  - - 20
+    - 29
+invariants:
+- Scripts are bash 3.2-compatible, use `set -uo pipefail`, and pass shellcheck -x.
+- Python is stdlib-only; PyYAML is the sole permitted dependency.
+- Scripts decide, the model obeys — decisions live in tested scripts, never in prose
+  instructions.
+- board.sh is the only board access; never call `gh project` directly from skills
+  or briefs.
+- Brains are orchestrator-mediated only; no role ever reads another role's brain directory.
+- Red-first TDD — a failing-test commit precedes implementation; the gate is green
+  before In review.
+- Documentation covered by docs[] is updated in the same PR as the behavior it describes.
+- Model ids use full nomenclature only (e.g. claude-sonnet-5[1m]), never shorthand.
+- Agent names are role-prefix-first with a meaningful scope suffix (dev-sw001), never
+  bare counters.
+- No generic Claude co-author trailers on in-workflow commits; role identities are
+  the attribution.

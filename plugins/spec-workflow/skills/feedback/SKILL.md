@@ -6,7 +6,7 @@ allowed-tools: Bash
 
 # Feedback — emit a structured process-feedback record
 
-The feed lives at `.claude/feedbacks/` (adjacent to `project.yaml`) — a tracked archive, committed and pushed alongside code by default (opt out only via the repo's own `.gitignore`). Like the identity brains, it is orchestrator-mediated only: no dev/reviewer subagent ever reads or writes it directly — this skill (run by the orchestrator) is the sole path in.
+The feed lives at `.neural-network/feedbacks/` (adjacent to `project.yaml`) — a tracked archive, committed and pushed alongside code by default (opt out only via the repo's own `.gitignore`). Like the identity brains, it is orchestrator-mediated only: no dev/reviewer subagent ever reads or writes it directly — this skill (run by the orchestrator) is the sole path in.
 
 `methodology.feedback` (`true` shorthand or `{enabled, feed, roles, autoTriage}`) gates this skill. Check first:
 
@@ -29,7 +29,7 @@ If it reports `feedback: disabled`, say so and stop — do nothing else.
 
 ## Qualified references
 
-A multi-project archive makes a bare `#71` ambiguous — is it this repo's issue 71, or another project's? `emit` and `route` both normalize bare `#N` in `items[].evidence[]` and `items[].routing.ref` to `<project.name>#N`, reading `project.name` from THIS repo's own `.claude/project.yaml`. A ref another project already qualified (`comm-platform#71`, `event-sorc#22`, ...) passes through untouched — qualification never rewrites someone else's ref, and is a no-op if run twice.
+A multi-project archive makes a bare `#71` ambiguous — is it this repo's issue 71, or another project's? `emit` and `route` both normalize bare `#N` in `items[].evidence[]` and `items[].routing.ref` to `<project.name>#N`, reading `project.name` from THIS repo's own `.neural-network/project.yaml`. A ref another project already qualified (`comm-platform#71`, `event-sorc#22`, ...) passes through untouched — qualification never rewrites someone else's ref, and is a no-op if run twice.
 
 An existing feed predating this contract can be brought into line with a one-shot, surgical migration that touches only bare refs in `evidence[]`/`routing.ref` and leaves every other byte (comments, quoting, `summary`/`generalized`/`detail` text) alone:
 
@@ -45,7 +45,7 @@ Triage — dedupe, routing, board-item creation — is the ORCHESTRATOR's job, d
 
 ## Standalone invocation — offer a retrospective now
 
-When a human explicitly runs `/feedback` outside a `build-next` iteration (no PR just closed, no retro about to happen), that record's `brain-note`-worthy items will sit unrouted until some future retro — which, if this repo's loop never reaches one (e.g. no `.claude/identities/` orchestrator identity, or the loop simply isn't run that way), means they **never** get minted; this is exactly how two live repos silently accumulated dozens of task-closes with zero brain notes. So after step 4's report, **offer** (don't just assume a later retro will catch it):
+When a human explicitly runs `/feedback` outside a `build-next` iteration (no PR just closed, no retro about to happen), that record's `brain-note`-worthy items will sit unrouted until some future retro — which, if this repo's loop never reaches one (e.g. no `.neural-network/identities/` orchestrator identity, or the loop simply isn't run that way), means they **never** get minted; this is exactly how two live repos silently accumulated dozens of task-closes with zero brain notes. So after step 4's report, **offer** (don't just assume a later retro will catch it):
 
 "Also run a retrospective now (dedupe, route, and mint any brain-note items from pending feedback) — since there's no PR/retro boundary here to catch it later?"
 

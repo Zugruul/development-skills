@@ -6,24 +6,102 @@
 # those are already in scope.
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== config.py (shared loader) =="
-CT="$(mktemp -d)"; mkdir -p "$CT/.claude"
-cp "$FIX/valid.project.yaml" "$CT/.claude/project.yaml"
+CT="$(mktemp -d)"; mkdir -p "$CT/.claude" "$CT/.neural-network"
+cp "$FIX/valid.project.yaml" "$CT/.neural-network/project.yaml"
 check "yaml dot-path get" "fixture-project" "$(python3 "$PLUGIN/scripts/config.py" "$CT" get project.name)"
 check "yaml nested get" "true" "$(python3 "$PLUGIN/scripts/config.py" "$CT" get commands.gate)"
 check "path verb resolves yaml" "project.yaml" "$(python3 "$PLUGIN/scripts/config.py" "$CT" path)"
 check "json verb emits normalized" '"schemaVersion"' "$(python3 "$PLUGIN/scripts/config.py" "$CT" json)"
 check "v2 dev array models get" "claude-haiku-4-5" "$(python3 "$PLUGIN/scripts/config.py" "$CT" get delegation.identities.dev.1.models.1)"
-cp "$FIX/valid.project.json" "$CT/.claude/project.json"
+cp "$FIX/valid.project.json" "$CT/.neural-network/project.json"
 check "yaml preferred over json" "project.yaml" "$(python3 "$PLUGIN/scripts/config.py" "$CT" path)"
 rm -rf "$CT"
-CJ="$(mktemp -d)"; mkdir -p "$CJ/.claude"
-cp "$FIX/valid.project.json" "$CJ/.claude/project.json"
+CJ="$(mktemp -d)"; mkdir -p "$CJ/.claude" "$CJ/.neural-network"
+cp "$FIX/valid.project.json" "$CJ/.neural-network/project.json"
 check "legacy json deprecation warning" "DEPRECATION" "$(python3 "$PLUGIN/scripts/config.py" "$CJ" json 2>&1 >/dev/null)"
 check "legacy path resolves json" "project.json" "$(python3 "$PLUGIN/scripts/config.py" "$CJ" path 2>/dev/null)"
 check "legacy devModel -> dev.models[0]" "sonnet" "$(python3 "$PLUGIN/scripts/config.py" "$CJ" get delegation.identities.dev.models.0 2>/dev/null)"
 check "legacy reviewModel -> reviewer.models[0]" "sonnet" "$(python3 "$PLUGIN/scripts/config.py" "$CJ" get delegation.identities.reviewer.models.0 2>/dev/null)"
 check "PROJECT_CONFIG override" "fixture-project" "$(PROJECT_CONFIG="$FIX/valid.project.yaml" python3 "$PLUGIN/scripts/config.py" "$CJ" get project.name)"
 rm -rf "$CJ"
+
+echo "== config.py: .neural-network/ root layout (hard cutover) =="
+NN="$(mktemp -d)"; mkdir -p "$NN/.neural-network"
+cp "$FIX/valid.project.yaml" "$NN/.neural-network/project.yaml"
+check "path resolves .neural-network/project.yaml" ".neural-network/project.yaml" "$(python3 "$PLUGIN/scripts/config.py" "$NN" path)"
+check "get works from new layout" "fixture-project" "$(python3 "$PLUGIN/scripts/config.py" "$NN" get project.name)"
+cp "$FIX/valid.project.json" "$NN/.neural-network/project.json"
+check "yaml preferred over json in new layout" ".neural-network/project.yaml" "$(python3 "$PLUGIN/scripts/config.py" "$NN" path)"
+rm -rf "$NN"
+NNJ="$(mktemp -d)"; mkdir -p "$NNJ/.neural-network"
+cp "$FIX/valid.project.json" "$NNJ/.neural-network/project.json"
+check "legacy json format still read from .neural-network/" "project.json" "$(python3 "$PLUGIN/scripts/config.py" "$NNJ" path 2>/dev/null)"
+rm -rf "$NNJ"
+OLD="$(mktemp -d)"; mkdir -p "$OLD/.claude"  # legacy layout on purpose
+cp "$FIX/valid.project.yaml" "$OLD/.claude/project.yaml"
+check "old .claude/project.yaml location NOT resolved (hard cutover)" "" "$(python3 "$PLUGIN/scripts/config.py" "$OLD" path)"
+rm -rf "$OLD"
+
+echo "== discovery: .neural-network/ DIRECTORY is the marker (hard cutover) =="
+DM="$(mktemp -d)"; mkdir -p "$DM/.neural-network"
+out="$(PLUGIN_SCRIPTS="$PLUGIN/scripts" python3 -c '
+import os, sys
+sys.path.insert(0, os.environ["PLUGIN_SCRIPTS"])
+from assistant import discovery
+print(discovery.classify_repo(sys.argv[1]).kind)
+' "$DM")"
+check "marker dir + no config classifies past no-marker" "no-config" "$out"
+rm -rf "$DM"
+FM="$(mktemp -d)"; mkdir -p "$FM/.claude"  # legacy layout on purpose
+echo "# marker" > "$FM/.claude/.neural-network"
+out="$(PLUGIN_SCRIPTS="$PLUGIN/scripts" python3 -c '
+import os, sys
+sys.path.insert(0, os.environ["PLUGIN_SCRIPTS"])
+from assistant import discovery
+print(discovery.classify_repo(sys.argv[1]).kind)
+' "$FM")"
+check "legacy .claude/.neural-network file alone is NOT a marker" "no-marker" "$out"
+rm -rf "$FM"
+
+echo "== config.py: nested .neural-network (monorepo, native folders only) =="
+MR="$(mktemp -d)"
+mkdir -p "$MR/.neural-network" "$MR/services/api/.neural-network" "$MR/services/ext/.neural-network" "$MR/services/ext/.git"
+cp "$FIX/valid.project.yaml" "$MR/.neural-network/project.yaml"
+cat > "$MR/services/api/.neural-network/project.yaml" <<'YAML'
+commands:
+    gate: "api-gate"
+paths:
+    designDir: services/api/docs/design
+YAML
+cp "$MR/services/api/.neural-network/project.yaml" "$MR/services/ext/.neural-network/project.yaml"
+check "root resolution unchanged with no --for" "true" "$(python3 "$PLUGIN/scripts/config.py" "$MR" get commands.gate)"
+check "--for a nested path: nested key wins" "api-gate" "$(python3 "$PLUGIN/scripts/config.py" "$MR" get commands.gate --for services/api/src/x.py)"
+check "--for a nested path: inherited key still from root" "fixture-project" "$(python3 "$PLUGIN/scripts/config.py" "$MR" get project.name --for services/api/src/x.py)"
+check "--for a nested path: nested deep-merge only touches its keys" "docs/handoffs" "$(python3 "$PLUGIN/scripts/config.py" "$MR" get paths.handoffDir --for services/api/src/x.py)"
+check "--for a path outside any nested anchor: root config" "true" "$(python3 "$PLUGIN/scripts/config.py" "$MR" get commands.gate --for docs/README.md)"
+check "--for inside a non-native repo (own .git): nested anchor IGNORED" "true" "$(python3 "$PLUGIN/scripts/config.py" "$MR" get commands.gate --for services/ext/src/x.py)"
+check "anchors verb lists native nested anchors" "services/api" "$(python3 "$PLUGIN/scripts/config.py" "$MR" anchors)"
+out="$(python3 "$PLUGIN/scripts/config.py" "$MR" anchors)"
+check_absent "anchors verb skips non-native (own .git) anchors" "services/ext" "$out"
+rm -rf "$MR"
+
+echo "== validate-config: --fragment (nested partial config) =="
+FR="$(mktemp -d)"
+cat > "$FR/fragment.yaml" <<'YAML'
+commands:
+    gate: "api-gate"
+YAML
+out="$(python3 "$PLUGIN/scripts/validate-config.py" --fragment "$FR/fragment.yaml")"
+check "fragment: partial config valid with --fragment" "VALID" "$out"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FR/fragment.yaml" || true)"
+check "fragment without --fragment still INVALID (missing required keys)" "INVALID" "$out"
+cat > "$FR/bad-fragment.yaml" <<'YAML'
+work:
+    type: "carrier-pigeon"
+YAML
+out="$(python3 "$PLUGIN/scripts/validate-config.py" --fragment "$FR/bad-fragment.yaml" || true)"
+check "fragment: shape checks still enforced" "work.type must be 'pr' or 'local'" "$out"
+rm -rf "$FR"
 
 echo "== validate-config =="
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/valid.project.yaml")"
@@ -102,13 +180,26 @@ check "valid recencyDecayGraceRetros/recencyDecayFactor pass" "VALID: " "$out"
 rm -rf "$RDC"
 
 echo "== validate-config: models.codex.capability (additive, CDX-020, #185) =="
-check "this repo's own .claude/project.yaml (flat models arrays) still validates unmodified -- additivity proof" "VALID: " \
-    "$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/../../.claude/project.yaml")"
+check "this repo's own .neural-network/project.yaml (flat models arrays) still validates unmodified -- additivity proof" "VALID: " \
+    "$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/../../.neural-network/project.yaml")"
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/codex-capability-good.project.yaml")"
 check "models object form {claude, codex.capability: balanced} is VALID" "VALID: " "$out"
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/codex-capability-bad.project.yaml" || true)"
 check "unrecognized models.codex.capability is INVALID" "INVALID" "$out"
 check "unrecognized capability error names the offending value" "'super-fast'" "$out"
+
+echo "== validate-config: integrations.clickup (external task source, additive) =="
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/clickup-good.project.yaml")"
+check "full clickup section is VALID" "VALID: " "$out"
+check "summary names the clickup integration" "integrations: clickup" "$out"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/clickup-bad.project.yaml" || true)"
+check "broken clickup section is INVALID" "INVALID" "$out"
+check "unknown integration rejected" "integrations.jira: unknown key (allowed: ['clickup'])" "$out"
+check "enabled must be boolean" "integrations.clickup.enabled: must be a boolean" "$out"
+check "missing mcp rejected (ClickUp is MCP-only)" "integrations.clickup: 'mcp' is required" "$out"
+check "actions.move must be tri-state" "integrations.clickup.actions.move: must be one of ['allow', 'ask', 'disallow'] (got 'sometimes')" "$out"
+check "unknown action rejected" "integrations.clickup.actions.delete: unknown key" "$out"
+check "statusMap key must be a statusFlow status" "integrations.clickup.statusMap: 'Nonexistent' is not in any board's statusFlow" "$out"
 
 echo "== validate-config: assistant: section schema (AST-002, SPEC-ASSISTANT.md §6/§6.1/§6.5) =="
 
@@ -312,6 +403,117 @@ out="$(python3 "$PLUGIN/scripts/validate-config.py" "$CMT/not-a-map.project.yaml
 check "commit: non-mapping rejected" "commit: must be a mapping" "$out"
 rm -rf "$CMT"
 
-check "this repo's own .claude/project.yaml (commit block set per #418) still validates" "VALID: " \
-    "$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/../../.claude/project.yaml")"
+check "this repo's own .neural-network/project.yaml (commit block set per #418) still validates" "VALID: " \
+    "$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/../../.neural-network/project.yaml")"
 
+
+# ============================================================ specs out of project.yaml
+# project.yaml holds CONFIGURATION; the work-plan (specs: specPath, taskPrefix,
+# epics, invariants...) lives in per-spec files .neural-network/specs/<id>.yaml.
+# The loader merges them into cfg["specs"] so every consumer keeps reading
+# cfg.specs unchanged. Inline specs: still works (deprecated) when no specs/
+# dir entry exists; the specs/ dir wins when both are present.
+echo "== config.py: per-spec files (.neural-network/specs/<id>.yaml) =="
+SP="$(mktemp -d)"; mkdir -p "$SP/.neural-network/specs"
+python3 - "$FIX/valid.project.yaml" "$SP" <<'PY'
+import sys, yaml
+cfg = yaml.safe_load(open(sys.argv[1]))
+specs = cfg.pop("specs")
+root = sys.argv[2]
+with open(f"{root}/.neural-network/project.yaml", "w") as f:
+    yaml.safe_dump(cfg, f, sort_keys=False)
+with open(f"{root}/.neural-network/specs/core.yaml", "w") as f:
+    yaml.safe_dump(specs[0], f, sort_keys=False)
+PY
+check "spec file merges into cfg.specs" "FX" "$(python3 "$PLUGIN/scripts/config.py" "$SP" get specs.0.taskPrefix)"
+check "spec file: epics readable through cfg.specs" "E0" "$(python3 "$PLUGIN/scripts/config.py" "$SP" get specs.0.epics.1.id)"
+check "spec id defaults to the filename" "core" "$(python3 "$PLUGIN/scripts/config.py" "$SP" get specs.0.id)"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$SP/.neural-network/project.yaml")"
+check "validator: project.yaml without inline specs is VALID (specs/ dir supplies them)" "VALID: " "$out"
+check "validator: summary still lists the spec from its file" "spec 'core' [FX]" "$out"
+# second spec file -> ordered by filename
+cat >"$SP/.neural-network/specs/aux.yaml" <<'YAML'
+board: main
+specPath: SPEC-AUX.md
+taskPrefix: AX
+epics:
+  - id: A0
+    taskRanges: [[1, 5]]
+YAML
+check "multiple spec files: sorted by filename" "AX,FX" "$(python3 "$PLUGIN/scripts/config.py" "$SP" json | python3 -c 'import json,sys; print(",".join(s["taskPrefix"] for s in json.load(sys.stdin)["specs"]))')"
+rm -rf "$SP"
+
+echo "== validate-config / preflight: inline specs deprecated =="
+IS="$(mktemp -d)"; mkdir -p "$IS/.claude" "$IS/.neural-network"
+cp "$FIX/valid.project.yaml" "$IS/.neural-network/project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$IS/.neural-network/project.yaml")"
+check "inline specs still VALID (deprecated, not an error)" "VALID: " "$out"
+check "validator notes the deprecation + new home" "DEPRECATION: inline 'specs:' in project.yaml — migrate to .neural-network/specs/<id>.yaml" "$out"
+( cd "$IS" && git init -q . )
+touch "$IS/SPEC.md" "$IS/docs" 2>/dev/null; mkdir -p "$IS/docs"; touch "$IS/docs/BACKLOG.md"
+out="$(cd "$IS" && bash "$PLUGIN/scripts/preflight.sh" --spec)"
+check "preflight suggests migrating inline specs before starting a task" "suggest: migrate inline specs" "$out"
+# specs/ dir wins over inline
+mkdir -p "$IS/.neural-network/specs"
+cat >"$IS/.neural-network/specs/solo.yaml" <<'YAML'
+board: main
+specPath: SPEC.md
+taskPrefix: SO
+epics:
+  - id: S0
+    taskRanges: [[1, 9]]
+YAML
+check "specs/ dir wins over inline specs" "SO" "$(python3 "$PLUGIN/scripts/config.py" "$IS" get specs.0.taskPrefix)"
+rm -rf "$IS"
+
+echo "== validate-config: brains.noteStyle (mint-style control, doc-consumed like commit.systemPrompt) =="
+BN="$(mktemp -d)"
+sed 's/^methodology:/brains:\n    noteStyle: "Simple English. Sectioned with ## headings. Short bullets."\nmethodology:/' "$FIX/valid.project.yaml" > "$BN/good.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$BN/good.project.yaml")"
+check "brains.noteStyle: valid string accepted" "VALID: " "$out"
+sed 's/^methodology:/brains:\n    noteStyle: ""\nmethodology:/' "$FIX/valid.project.yaml" > "$BN/empty.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$BN/empty.project.yaml" || true)"
+check "brains.noteStyle: empty string rejected" "brains.noteStyle: must not be empty" "$out"
+sed 's/^methodology:/brains:\n    bogusKey: 1\nmethodology:/' "$FIX/valid.project.yaml" > "$BN/unknown.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$BN/unknown.project.yaml" || true)"
+check "brains: unknown key rejected" "brains.bogusKey: unknown key" "$out"
+rm -rf "$BN"
+
+# ============================================================ semver schema versioning
+# schemaVersion becomes a SEMVER STRING ("2.0.0" = the .neural-network world).
+# Detection: missing field or legacy int values (1 = json era, 2 = pre-cutover
+# yaml era) all read as "1.0.0" — the /migrate-version skill's registry then
+# says how to get from there to 2.0.0. Legacy int 2 stays VALID (deprecated).
+echo "== config.py: schema-version detection (semver; missing/int == 1.0.0) =="
+SV="$(mktemp -d)"; mkdir -p "$SV/.neural-network"
+cp "$FIX/valid.project.yaml" "$SV/.neural-network/project.yaml"
+check "legacy int 2 detects as 1.0.0" "1.0.0" "$(python3 "$PLUGIN/scripts/config.py" "$SV" schema-version)"
+python3 "$PLUGIN/scripts/config.py" "$SV" set schemaVersion '"2.0.0"' >/dev/null
+check "semver string detects verbatim" "2.0.0" "$(python3 "$PLUGIN/scripts/config.py" "$SV" schema-version)"
+perl -ni -e 'print unless /^schemaVersion:/' "$SV/.neural-network/project.yaml"
+check "missing field detects as 1.0.0" "1.0.0" "$(python3 "$PLUGIN/scripts/config.py" "$SV" schema-version)"
+rm -rf "$SV"
+
+echo "== validate-config: semver schemaVersion =="
+SV="$(mktemp -d)"
+sed 's/^schemaVersion: 2$/schemaVersion: "2.0.0"/' "$FIX/valid.project.yaml" > "$SV/semver.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$SV/semver.project.yaml")"
+check "schemaVersion \"2.0.0\" is VALID" "VALID: " "$out"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$FIX/valid.project.yaml")"
+check "legacy int 2 still VALID" "VALID: " "$out"
+check "legacy int 2 prints a migration note" 'DEPRECATION: schemaVersion: 2 (integer) is the 1.0.0 era' "$out"
+sed 's/^schemaVersion: 2$/schemaVersion: "3.7.0"/' "$FIX/valid.project.yaml" > "$SV/future.project.yaml"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$SV/future.project.yaml" || true)"
+check "unknown future version rejected" "schemaVersion must be 2.0.0" "$out"
+rm -rf "$SV"
+
+echo "== migrate-version skill exists with a version-by-version registry =="
+[[ -f "$PLUGIN/skills/migrate-version/SKILL.md" ]] && r=yes || r=no
+check "migrate-version SKILL.md exists" "yes" "$r"
+[[ -f "$PLUGIN/skills/migrate-version/references/migrations.md" ]] && r=yes || r=no
+check "migrations registry exists" "yes" "$r"
+reg="$(cat "$PLUGIN/skills/migrate-version/references/migrations.md" 2>/dev/null)"
+check "registry has the 1.0.0 -> 2.0.0 chapter" "## 1.0.0 → 2.0.0" "$reg"
+check "chapter covers the .neural-network move" ".neural-network" "$reg"
+check "chapter covers spec extraction" "specs/" "$reg"
+check "chapter covers feed sharding" "migrate-shard" "$reg"

@@ -1218,7 +1218,7 @@ class AssistantEngine:
         exchange itself is already durably in session.jsonl regardless."""
         item = {
             "root": root,
-            "identities": os.path.join(root, ".claude", "identities"),
+            "identities": os.path.join(root, ".neural-network", "identities"),
             "exchange": {"user": user_text, "assistant": assistant_text, "chips": chips},
         }
         q = self.queues["distiller"]
@@ -1242,7 +1242,7 @@ class AssistantEngine:
         loses only the memory note, never the file itself."""
         item = {
             "root": root,
-            "identities": os.path.join(root, ".claude", "identities"),
+            "identities": os.path.join(root, ".neural-network", "identities"),
             "artifact_note": {
                 "file": file_name,
                 "turn_id": turn_id,
@@ -1273,7 +1273,7 @@ class AssistantEngine:
         its reply."""
         item = {
             "root": root,
-            "identities": os.path.join(root, ".claude", "identities"),
+            "identities": os.path.join(root, ".neural-network", "identities"),
             "gap_note": gap_note,
         }
         q = self.queues["distiller"]
@@ -1785,7 +1785,7 @@ class AssistantEngine:
                 prev_out_files = set()
                 if isinstance(persona_cfg, dict) and persona_cfg.get("fileOutput") is not False:
                     out_dir = os.path.join(
-                        str(root), ".claude", "identities", "assistant",
+                        str(root), ".neural-network", "identities", "assistant",
                         "brain", "media", "chat")
                     try:
                         os.makedirs(out_dir, exist_ok=True)

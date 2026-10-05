@@ -77,7 +77,7 @@ printf 'Tallied note body.\n' | otd mint dev tallied --tags demo --paths "demo/*
 otd outcome dev tallied useful >/dev/null
 otd outcome dev tallied dead_end >/dev/null
 otd directory >/dev/null
-dir_out="$(cat "$OT_DIR/.claude/identities/DIRECTORY.md")"
+dir_out="$(cat "$OT_DIR/.neural-network/identities/DIRECTORY.md")"
 check "directory: unaffected by outcomes -- note line has no tally glyphs" "- **tallied** — [demo]" "$dir_out"
 check_absent "directory: unaffected by outcomes -- no useful glyph" "✓" "$dir_out"
 check_absent "directory: unaffected by outcomes -- no dead_end glyph" "✗" "$dir_out"
@@ -96,13 +96,13 @@ otp outcome dev flaky-lesson dead_end >/dev/null
 # the only candidate, so it only proved the trivially-safe no-candidate case. This is a
 # strict cmp per house rule (byte/hash comparison, never a substring grep of multiline
 # output).
-NOTES_BEFORE="$(command find "$OT_PRUNE/.claude/identities/dev/brain/notes" -type f | sort | xargs -I{} shasum {} 2>/dev/null)"
-LINKS_BEFORE="$(cat "$OT_PRUNE/.claude/identities/dev/brain/links.json" 2>/dev/null || true)"
+NOTES_BEFORE="$(command find "$OT_PRUNE/.neural-network/identities/dev/brain/notes" -type f | sort | xargs -I{} shasum {} 2>/dev/null)"
+LINKS_BEFORE="$(cat "$OT_PRUNE/.neural-network/identities/dev/brain/links.json" 2>/dev/null || true)"
 out="$(otp prune dev)"
 check "prune: dead-end note appears as a candidate" "flaky-lesson" "$out"
 check "prune: reason names the outcome rule" "dead_end" "$out"
-NOTES_AFTER="$(command find "$OT_PRUNE/.claude/identities/dev/brain/notes" -type f | sort | xargs -I{} shasum {} 2>/dev/null)"
-LINKS_AFTER="$(cat "$OT_PRUNE/.claude/identities/dev/brain/links.json" 2>/dev/null || true)"
+NOTES_AFTER="$(command find "$OT_PRUNE/.neural-network/identities/dev/brain/notes" -type f | sort | xargs -I{} shasum {} 2>/dev/null)"
+LINKS_AFTER="$(cat "$OT_PRUNE/.neural-network/identities/dev/brain/links.json" 2>/dev/null || true)"
 if [[ "$NOTES_BEFORE" == "$NOTES_AFTER" && "$LINKS_BEFORE" == "$LINKS_AFTER" ]]; then
     echo "ok   prune without --apply: writes nothing (notes + links.json unchanged), even with a live outcome-rule candidate"
 else
@@ -129,8 +129,8 @@ printf 'A note that keeps failing.\n\nRelated: [[kept-target]]\n' \
 printf 'A kept target note.\n' | otl mint dev kept-target --tags demo --paths "demo/**" --source x >/dev/null
 otl outcome dev only-outcome dead_end >/dev/null
 otl outcome dev only-outcome dead_end >/dev/null
-LINKS_FILE="$OT_APPLY_LINKS/.claude/identities/dev/brain/links.json"
-NOTE_FILE="$OT_APPLY_LINKS/.claude/identities/dev/brain/notes/only-outcome.md"
+LINKS_FILE="$OT_APPLY_LINKS/.neural-network/identities/dev/brain/links.json"
+NOTE_FILE="$OT_APPLY_LINKS/.neural-network/identities/dev/brain/notes/only-outcome.md"
 LINKS_BEFORE_HASH="$(shasum "$LINKS_FILE" 2>/dev/null)"
 NOTE_BEFORE_HASH="$(shasum "$NOTE_FILE" 2>/dev/null)"
 out_apply="$(otl prune dev --apply)"
@@ -163,7 +163,7 @@ ota2() { python3 "$OT_SCRIPTS/brain.py" "$OT_APPLY_ABSENT" "$@"; }
 printf 'A linkless note that keeps failing.\n' | ota2 mint dev linkless-flaky --tags demo --paths "demo/**" --source x >/dev/null
 ota2 outcome dev linkless-flaky dead_end >/dev/null
 ota2 outcome dev linkless-flaky dead_end >/dev/null
-LINKS_ABSENT_FILE="$OT_APPLY_ABSENT/.claude/identities/dev/brain/links.json"
+LINKS_ABSENT_FILE="$OT_APPLY_ABSENT/.neural-network/identities/dev/brain/links.json"
 rm -f "$LINKS_ABSENT_FILE"
 if [[ -f "$LINKS_ABSENT_FILE" ]]; then
     echo "FAIL apply/outcome-only (absent variant): links.json must not exist before --apply (test setup invariant broken)"
@@ -188,14 +188,14 @@ rm -rf "$OT_APPLY_ABSENT"
 OT_WINDOW="$(mktemp -d)"
 otw() { python3 "$OT_SCRIPTS/brain.py" "$OT_WINDOW" "$@"; }
 printf 'An old note that failed long ago.\n' | otw mint dev old-flaky --tags demo --paths "demo/**" --source x >/dev/null
-mkdir -p "$OT_WINDOW/.claude/identities"
-cat >"$OT_WINDOW/.claude/identities/retros.log" <<'EOF'
+mkdir -p "$OT_WINDOW/.neural-network/identities"
+cat >"$OT_WINDOW/.neural-network/identities/retros.log" <<'EOF'
 2026-01-01
 2026-02-01
 2026-03-01
 2026-04-01
 EOF
-OW_JSONL="$OT_WINDOW/.claude/identities/dev/brain/outcomes.jsonl"
+OW_JSONL="$OT_WINDOW/.neural-network/identities/dev/brain/outcomes.jsonl"
 mkdir -p "$(dirname "$OW_JSONL")"
 cat >"$OW_JSONL" <<'EOF'
 {"schemaVersion": 1, "ts": "2026-01-05T00:00:00+00:00", "slug": "old-flaky", "outcome": "dead_end", "task": null, "note": null}
@@ -208,8 +208,8 @@ rm -rf "$OT_WINDOW"
 # --------------------------------------------------------------- (6) K is configurable
 OT_CFG="$(mktemp -d)"
 otc() { python3 "$OT_SCRIPTS/brain.py" "$OT_CFG" "$@"; }
-mkdir -p "$OT_CFG/.claude"
-cat >"$OT_CFG/.claude/project.yaml" <<'EOF'
+mkdir -p "$OT_CFG/.claude" "$OT_CFG/.neural-network"
+cat >"$OT_CFG/.neural-network/project.yaml" <<'EOF'
 project:
   name: cfg-test
 methodology:
@@ -227,7 +227,7 @@ rm -rf "$OT_CFG"
 OT_MAL="$(mktemp -d)"
 otm() { python3 "$OT_SCRIPTS/brain.py" "$OT_MAL" "$@"; }
 printf 'Malformed-tolerant note.\n' | otm mint dev mal-tally --tags demo --paths "demo/**" --source x >/dev/null
-MAL_JSONL="$OT_MAL/.claude/identities/dev/brain/outcomes.jsonl"
+MAL_JSONL="$OT_MAL/.neural-network/identities/dev/brain/outcomes.jsonl"
 mkdir -p "$(dirname "$MAL_JSONL")"
 printf 'not json\n' >"$MAL_JSONL"
 

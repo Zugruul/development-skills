@@ -172,11 +172,11 @@ check_absent "r2: unwritable --out leaks no traceback" "Traceback (most recent c
 echo "-- regression: stub fixture server never leaks into the real ~/Development scan default (BUG #373) --"
 AG_HERMETIC="$(mktemp -d)"
 AG_FAKEHOME="$AG_HERMETIC/fakehome"
-mkdir -p "$AG_FAKEHOME/Development/realbot/.claude"
-cat >"$AG_FAKEHOME/Development/realbot/.claude/.neural-network" <<'MARKEOF'
+mkdir -p "$AG_FAKEHOME/Development/realbot/.claude" "$AG_FAKEHOME/Development/realbot/.neural-network"
+cat >"$AG_FAKEHOME/Development/realbot/.neural-network" <<'MARKEOF'
 # neural-network
 MARKEOF
-cat >"$AG_FAKEHOME/Development/realbot/.claude/project.yaml" <<'YAMLEOF'
+cat >"$AG_FAKEHOME/Development/realbot/.neural-network/project.yaml" <<'YAMLEOF'
 schemaVersion: 2
 assistant:
     version: 1

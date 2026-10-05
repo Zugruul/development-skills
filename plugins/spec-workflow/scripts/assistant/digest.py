@@ -10,7 +10,7 @@ from its trace events", but `traces.sqlite` (§10.2) does not exist yet --
 it is E4. This module builds the SAME response shape §7.8 promises from
 what DOES exist today per assistant repo:
 
-  - minted notes: `<root>/.claude/brain-events.jsonl` (brain.py's
+  - minted notes: `<root>/.neural-network/brain-events.jsonl` (brain.py's
     `emit_event`, already a per-repo, append-only, JSON-per-line feed --
     Sec8.1/8.2's `NoteMinted` events specifically), filtered to `role`
     (default "assistant", matching turns.py's `make_default_recall`
@@ -75,14 +75,33 @@ def _after(ts_raw, since_dt):
     return parsed is not None and parsed > since_dt
 
 
+def _brain_event_lines(root):
+    """Raw lines from the legacy single brain-events.jsonl (if present) plus
+    every shard under brain-events/ (sorted filenames). Kept in sync by hand
+    with brain.py's read_events (same merge order) -- duplicated rather than
+    imported so this module keeps its minimal-import posture."""
+    paths = []
+    legacy = os.path.join(str(root), ".neural-network", BRAIN_EVENTS_FILE_NAME)
+    if os.path.isfile(legacy):
+        paths.append(legacy)
+    shard_dir = os.path.join(str(root), ".neural-network", "brain-events")
+    if os.path.isdir(shard_dir):
+        paths.extend(
+            os.path.join(shard_dir, n) for n in sorted(os.listdir(shard_dir)) if n.endswith(".jsonl")
+        )
+    lines = []
+    for p in paths:
+        try:
+            with open(p, "r", encoding="utf-8") as fh:
+                lines.extend(fh.readlines())
+        except (FileNotFoundError, OSError):
+            continue
+    return lines
+
+
 def _notes_minted_since(root, since_dt, role):
-    path = os.path.join(str(root), ".claude", BRAIN_EVENTS_FILE_NAME)
     notes = []
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            lines = fh.readlines()
-    except (FileNotFoundError, OSError):
-        return notes
+    lines = _brain_event_lines(root)
     for raw in lines:
         stripped = raw.strip()
         if not stripped:

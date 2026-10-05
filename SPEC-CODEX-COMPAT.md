@@ -22,7 +22,7 @@ architecture consultation with Codex itself, both folded in as source material a
   local linter and expresses interactive/delegation behavior in capability language rather than
   hardcoded Claude tool names, with host-specific detail isolated into small adapter docs (§7).
 - **G4** — Model/delegation configuration accepts an optional Codex mapping without requiring any
-  existing consumer repo's `.claude/project.yaml` to change (§8).
+  existing consumer repo's `.neural-network/project.yaml` to change (§8).
 - **G5** — Every safety invariant of the build workflow (truthful board state, human-comment
   steering, TDD, gate-before-review/merge, independent dev/reviewer roles, brain isolation,
   mandatory retro/feedback, checkpoint behavior, lane isolation/WIP limits, bounded auto-merge)
@@ -229,7 +229,7 @@ human/agent judgment, not a lint pass.
 - Critical safety enforcement (gate-before-review, checkpoint, truthful board state) is
   implemented in deterministic scripts/preflight checks, with hooks as defense in depth only —
   never the sole enforcement mechanism.
-- Existing `.claude/project.yaml` consumers on schemaVersion 2 remain valid with zero required
+- Existing `.neural-network/project.yaml` consumers on schemaVersion 2 remain valid with zero required
   changes; any new field is additive and optional.
 - Claude Code's existing installation, manifests, hooks, and slash-command invocation remain
   unchanged and functioning throughout.

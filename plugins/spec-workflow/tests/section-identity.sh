@@ -15,14 +15,14 @@ check "flags line quoted" '-c user.name="Reviewer Agent - Test User"' "$(run_id 
 check "default peer-reviewer email plus-addressed" "test.user+peer_reviewer@example.com" "$(run_id peer-reviewer)"
 check "default peer-reviewer name templated" "Peer Reviewer (codex) - Test User" "$(run_id peer-reviewer)"
 check "check mode resolvable" "identities ok: 4 role(s)" "$(run_id --check)"
-mkdir -p "$T3/.claude"
-echo '{"delegation":{"identities":{"dev":null,"reviewer":{"name":"{name} - reviewer"}}}}' >"$T3/.claude/project.json"
+mkdir -p "$T3/.claude" "$T3/.neural-network"
+echo '{"delegation":{"identities":{"dev":null,"reviewer":{"name":"{name} - reviewer"}}}}' >"$T3/.neural-network/project.json"
 check "null role reports OFF" "OFF (identities.dev is null" "$(run_id dev)"
 check "name override keeps default email" "test.user+reviewer_agent@example.com" "$(run_id reviewer)"
 check "name override applied" "Test User - reviewer" "$(run_id reviewer)"
-echo '{"delegation":{"identities":false}}' >"$T3/.claude/project.json"
+echo '{"delegation":{"identities":false}}' >"$T3/.neural-network/project.json"
 check "identities=false disables all" "OFF for all roles" "$(run_id --check)"
-rm "$T3/.claude/project.json"
+rm "$T3/.neural-network/project.json"
 ( cd "$T3" && git config --unset user.name )
 check "missing git name warns" "IDENTITY WARN" "$(run_id --check)"
 check "unresolved role reported" "UNRESOLVED" "$(run_id reviewer || true)"
@@ -31,7 +31,7 @@ rm -rf "$T3"
 echo "== identity: covers routing + models (v2 yaml) =="
 IT="$(mktemp -d)"
 ( cd "$IT" && git init -q . && git config user.name "Test User" && git config user.email "test.user@example.com" )
-mkdir -p "$IT/.claude"; cp "$FIX/valid.project.yaml" "$IT/.claude/project.yaml"
+mkdir -p "$IT/.claude" "$IT/.neural-network"; cp "$FIX/valid.project.yaml" "$IT/.neural-network/project.yaml"
 rid() { (cd "$IT" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null bash "$PLUGIN/scripts/identity.sh" "$@"); }
 check "covers routes core path to core dev" "Core Dev - Test User" "$(rid dev packages/core/index.ts)"
 check "core dev models line" "models: claude-sonnet-5" "$(rid dev packages/core/index.ts)"
@@ -56,7 +56,7 @@ rm -rf "$IT2"
 echo "== identity: on-behalf recipe =="
 OB="$(mktemp -d)"
 ( cd "$OB" && git init -q . && git config user.name "Test User" && git config user.email "test.user@example.com" )
-mkdir -p "$OB/.claude"; cp "$FIX/valid.project.yaml" "$OB/.claude/project.yaml"
+mkdir -p "$OB/.claude" "$OB/.neural-network"; cp "$FIX/valid.project.yaml" "$OB/.neural-network/project.yaml"
 rob() { (cd "$OB" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null bash "$PLUGIN/scripts/identity.sh" on-behalf "$@"); }
 out="$(rob dev --co reviewer)"
 check "on-behalf committer defaults to orchestrator" '-c user.name="Orchestrator Agent - Test User" -c user.email="test.user+orchestrator_agent@example.com"' "$out"
@@ -75,11 +75,11 @@ out="$(rob nope 2>&1 || true)"
 check "on-behalf unknown role errors" "unknown role 'nope'" "$out"
 out="$(rob dev --committer ghost 2>&1 || true)"
 check "on-behalf unknown committer errors" "unknown role 'ghost'" "$out"
-rm "$OB/.claude/project.yaml"
-echo '{"delegation":{"identities":{"dev":null}}}' > "$OB/.claude/project.json"
+rm "$OB/.neural-network/project.yaml"
+echo '{"delegation":{"identities":{"dev":null}}}' > "$OB/.neural-network/project.json"
 out="$(rob dev 2>&1 || true)"
 check "on-behalf OFF role errors" "role 'dev' is OFF" "$out"
-echo '{"delegation":{"identities":false}}' > "$OB/.claude/project.json"
+echo '{"delegation":{"identities":false}}' > "$OB/.neural-network/project.json"
 out="$(rob orchestrator 2>&1 || true)"
 check "on-behalf all-OFF errors" "delegation.identities is false" "$out"
 rm -rf "$OB"
@@ -121,7 +121,7 @@ exec_recipe() { # repo-dir  <on-behalf args...>  -- runs the printed recipe as
 
 OBX="$(mktemp -d)"
 ( cd "$OBX" && git init -q . && git config user.name "Test User" && git config user.email "test.user@example.com" )
-mkdir -p "$OBX/.claude"; cp "$FIX/valid.project.yaml" "$OBX/.claude/project.yaml"
+mkdir -p "$OBX/.claude" "$OBX/.neural-network"; cp "$FIX/valid.project.yaml" "$OBX/.neural-network/project.yaml"
 robx() { (cd "$OBX" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null bash "$PLUGIN/scripts/identity.sh" on-behalf "$@"); }
 
 exec_recipe "$OBX" dev --co reviewer
@@ -141,13 +141,13 @@ check "executed recipe: author still dev" "author=Dev Agent - Test User <test.us
 # execution of the recipe, not just appear correctly in printed text.
 # project.json takes effect only once project.yaml is out of the way (yaml
 # wins resolution order in config.py).
-rm -f "$OBX/.claude/project.yaml"
-echo '{"delegation":{"identities":{"dev":{"name":"Weird \"Dev\" Name","email":"weird.dev@example.com"}}}}' >"$OBX/.claude/project.json"
+rm -f "$OBX/.neural-network/project.yaml"
+echo '{"delegation":{"identities":{"dev":{"name":"Weird \"Dev\" Name","email":"weird.dev@example.com"}}}}' >"$OBX/.neural-network/project.json"
 exec_recipe "$OBX" dev --co reviewer
 check_rc "executed on-behalf with a hostile quoted name: recipe runs cleanly" 0 "$EXEC_RC"
 last="$(cd "$OBX" && git log -1 --format='author=%an <%ae>')"
 check 'executed recipe: hostile quoted name lands intact as author' 'author=Weird "Dev" Name <weird.dev@example.com>' "$last"
-rm -f "$OBX/.claude/project.json"
+rm -f "$OBX/.neural-network/project.json"
 rm -rf "$OBX"
 
 echo "== identity_lib.normalize_models (CDX-020, #185) -- standalone, not yet wired into resolve_role =="
@@ -175,8 +175,8 @@ check "normalize_models: None / legacy list / dict-with-capability / bad-capabil
 echo "== identity: --host codex model selection (CDX-021, #186) =="
 CDX="$(mktemp -d)"
 ( cd "$CDX" && git init -q . && git config user.name "Test User" && git config user.email "test.user@example.com" )
-mkdir -p "$CDX/.claude"
-cat > "$CDX/.claude/project.json" <<'EOF'
+mkdir -p "$CDX/.claude" "$CDX/.neural-network"
+cat > "$CDX/.neural-network/project.json" <<'EOF'
 {"delegation":{"identities":{"dev":{"models":{"claude":["claude-sonnet-5","claude-sonnet-5[1m]"],"codex":{"capability":"balanced"}}}}}}
 EOF
 rcx() { (cd "$CDX" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null bash "$PLUGIN/scripts/identity.sh" "$@"); }
@@ -189,16 +189,16 @@ out="$(rcx dev)"
 check "omitted --host is byte-identical to pre-CDX-021: models line present" "models: claude-sonnet-5, claude-sonnet-5[1m]" "$out"
 check_absent "omitted --host never shows codex-capability" "codex-capability:" "$out"
 
-rm -f "$CDX/.claude/project.json"
-cat > "$CDX/.claude/project.json" <<'EOF'
+rm -f "$CDX/.neural-network/project.json"
+cat > "$CDX/.neural-network/project.json" <<'EOF'
 {"delegation":{"identities":{"dev":{"models":["claude-sonnet-5"]}}}}
 EOF
 out="$(rcx --host codex dev)"
 check "host codex with legacy array models: unset host default" "codex-capability: (unset — host default)" "$out"
 check_absent "host codex with legacy array models: zero Claude id leak" "claude-sonnet-5" "$out"
 
-rm -f "$CDX/.claude/project.json"
-cat > "$CDX/.claude/project.json" <<'EOF'
+rm -f "$CDX/.neural-network/project.json"
+cat > "$CDX/.neural-network/project.json" <<'EOF'
 {"delegation":{"identities":{"dev":{"models":{"claude":["claude-sonnet-5"],"codex":{"capability":"super-fast"}}}}}}
 EOF
 out="$(rcx --host codex dev 2>&1 || true)"
@@ -209,7 +209,7 @@ rm -rf "$CDX"
 echo "== identity: --host codex regression -- covers/on-behalf/naming unaffected =="
 IT3="$(mktemp -d)"
 ( cd "$IT3" && git init -q . && git config user.name "Test User" && git config user.email "test.user@example.com" )
-mkdir -p "$IT3/.claude"; cp "$FIX/valid.project.yaml" "$IT3/.claude/project.yaml"
+mkdir -p "$IT3/.claude" "$IT3/.neural-network"; cp "$FIX/valid.project.yaml" "$IT3/.neural-network/project.yaml"
 rid3() { (cd "$IT3" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null bash "$PLUGIN/scripts/identity.sh" "$@"); }
 check "host codex: covers routing unchanged (core path)" "Core Dev - Test User" "$(rid3 --host codex dev packages/core/index.ts)"
 check "host codex: covers routing unchanged (email)" "test.user+dev_core@example.com" "$(rid3 --host codex dev packages/core/index.ts)"

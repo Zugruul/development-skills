@@ -10,8 +10,8 @@ declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tes
 echo "== neural-view rescan_once() (pure unit, no server) =="
 NV="$PLUGIN/scripts/neural-view.py"
 _rusb="$(mktemp -d)"          # scan base
-_ru_a="$_rusb/repo-a"; mkdir -p "$_ru_a/.claude"
-: >"$_ru_a/.claude/.neural-network"   # anchored at "boot"
+_ru_a="$_rusb/repo-a"; mkdir -p "$_ru_a/.claude" "$_ru_a/.neural-network"
+# anchored at "boot" (the .neural-network marker dir was created above)
 
 RUOUT="$(python3 - "$NV" "$_rusb" "$_ru_a" <<'PY'
 import importlib.util, sys
@@ -33,14 +33,14 @@ print("TICK1_SAME_OBJECT", new1 is boot)
 # anchor a second repo AFTER "boot"
 repob = Path(scanbase) / "repo-b"
 (repob / ".claude").mkdir(parents=True)
-(repob / ".claude" / ".neural-network").write_text("")
+(repob / ".neural-network").mkdir(parents=True, exist_ok=True)
 new2, added2 = nv.rescan_once(new1, args)
 print("TICK2_ADDED", [n for n, _ in added2])
 print("TICK2_NAMES", [n for n, _ in new2])
 print("TICK2_EXISTING_PRESERVED_FIRST", new2[0] == boot[0])
 
 # remove the repo-a marker -- it must stay registered (removal is boot-only)
-(Path(repoa) / ".claude" / ".neural-network").unlink()
+__import__("shutil").rmtree(Path(repoa) / ".neural-network")
 new3, added3 = nv.rescan_once(new2, args)
 print("TICK3_ADDED", added3)
 print("TICK3_NAMES", sorted(n for n, _ in new3))
@@ -67,8 +67,8 @@ echo "== neural-view rescan (live server, --rescan flag) =="
 _rlscan="$(mktemp -d)"
 _rlstate="$(mktemp -d)"
 _rlrepoA="$_rlscan/live-alpha"
-mkdir -p "$_rlrepoA/.claude"
-: >"$_rlrepoA/.claude/.neural-network"
+mkdir -p "$_rlrepoA/.claude" "$_rlrepoA/.neural-network"
+# marker dir created above
 
 export NEURAL_VIEW_STATE="$_rlstate" NEURAL_VIEW_SCAN="$_rlscan"
 lifecycle_start "neural-view starts with a short --rescan tick" NEURAL_VIEW_PORT 'python3 "$NV" start --rescan 1'
@@ -76,8 +76,8 @@ out="$(python3 "$NV" status)"; check "boot: repos=1 (only live-alpha anchored so
 
 # anchor a second repo AFTER boot -- must appear within a couple of rescan ticks
 _rlrepoB="$_rlscan/live-beta"
-mkdir -p "$_rlrepoB/.claude"
-: >"$_rlrepoB/.claude/.neural-network"
+mkdir -p "$_rlrepoB/.claude" "$_rlrepoB/.neural-network"
+: >"$_rlrepoB/.neural-network"
 for _ in $(seq 1 40); do
     out="$(python3 "$NV" status)"
     grep -qF "repos=2" <<<"$out" && break
@@ -89,7 +89,7 @@ out="$(curl -sf "http://127.0.0.1:$NEURAL_VIEW_PORT/graph")"
 check "graph repos list includes the post-boot repo" '"live-beta"' "$out"
 
 # remove live-alpha's marker while the server is up -- must NOT be dropped mid-flight
-rm -f "$_rlrepoA/.claude/.neural-network"
+rm -f "$_rlrepoA/.neural-network"
 sleep 2
 out="$(python3 "$NV" status)"
 check "removing a marker after boot never shrinks the registered repo count" "repos=2" "$out"
@@ -101,14 +101,14 @@ echo "== neural-view rescan disabled (--rescan 0 / NEURAL_VIEW_RESCAN=0) =="
 _rdscan="$(mktemp -d)"
 _rdstate="$(mktemp -d)"
 _rdrepoA="$_rdscan/dis-alpha"
-mkdir -p "$_rdrepoA/.claude"
-: >"$_rdrepoA/.claude/.neural-network"
+mkdir -p "$_rdrepoA/.claude" "$_rdrepoA/.neural-network"
+: >"$_rdrepoA/.neural-network"
 
 export NEURAL_VIEW_STATE="$_rdstate" NEURAL_VIEW_SCAN="$_rdscan"
 lifecycle_start "neural-view starts with --rescan 0" NEURAL_VIEW_PORT 'python3 "$NV" start --rescan 0'
 _rdrepoB="$_rdscan/dis-beta"
-mkdir -p "$_rdrepoB/.claude"
-: >"$_rdrepoB/.claude/.neural-network"
+mkdir -p "$_rdrepoB/.claude" "$_rdrepoB/.neural-network"
+: >"$_rdrepoB/.neural-network"
 sleep 2
 out="$(python3 "$NV" status)"
 check "rescan 0 disables the background thread -- post-boot repo never appears" "repos=1" "$out"
@@ -116,3 +116,46 @@ check_absent "rescan 0: disabled repo is absent from repos.json" "dis-beta" "$(c
 python3 "$NV" stop >/dev/null
 unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT NEURAL_VIEW_SCAN
 rm -rf "$_rdscan" "$_rdstate"
+
+echo "== neural-view refresh_repos() + repo_branch() (pure units, no server) =="
+_rfb="$(mktemp -d)"
+mkdir -p "$_rfb/repo-a/.neural-network" "$_rfb/repo-b"
+out="$(python3 - "$NV" "$_rfb" <<'PYEOF'
+import importlib.util, sys, os
+spec = importlib.util.spec_from_file_location("nv", sys.argv[1])
+nv = importlib.util.module_from_spec(spec); spec.loader.exec_module(nv)
+base = sys.argv[2]
+args = ["--scan", base]
+boot = nv.discover_repos(args)
+print("BOOT", sorted(n for n, _ in boot))
+# anchor repo-b, drop the repo-a marker -> full refresh must reflect BOTH
+os.makedirs(os.path.join(base, "repo-b", ".neural-network"), exist_ok=True)
+import shutil; shutil.rmtree(os.path.join(base, "repo-a", ".neural-network"))
+new, added, removed = nv.refresh_repos(boot, args)
+print("ADDED", sorted(n for n, _ in added))
+print("REMOVED", sorted(n for n, _ in removed))
+print("NEW", sorted(n for n, _ in new))
+# idempotent second pass
+new2, added2, removed2 = nv.refresh_repos(new, args)
+print("SECOND", sorted(n for n, _ in added2), sorted(n for n, _ in removed2), new2 is new or new2 == new)
+PYEOF
+)"
+check "refresh: boot saw only repo-a" "BOOT ['repo-a']" "$out"
+check "refresh: new anchor joins" "ADDED ['repo-b']" "$out"
+check "refresh: vanished marker drops the repo" "REMOVED ['repo-a']" "$out"
+check "refresh: final set is exactly the live anchors" "NEW ['repo-b']" "$out"
+check "refresh: second pass is a no-op" "SECOND [] [] True" "$out"
+rm -rf "$_rfb"
+_rbg="$(mktemp -d)"
+( cd "$_rbg" && git init -q -b feat/some-branch . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m x )
+out="$(python3 - "$NV" "$_rbg" <<'PYEOF'
+import importlib.util, sys, tempfile
+spec = importlib.util.spec_from_file_location("nv", sys.argv[1])
+nv = importlib.util.module_from_spec(spec); spec.loader.exec_module(nv)
+print("BRANCH", nv.repo_branch(sys.argv[2]))
+print("NOGIT", repr(nv.repo_branch(tempfile.mkdtemp())))
+PYEOF
+)"
+check "repo_branch: reports the checkout's branch" "BRANCH feat/some-branch" "$out"
+check "repo_branch: non-git dir is empty, never an error" "NOGIT ''" "$out"
+rm -rf "$_rbg"

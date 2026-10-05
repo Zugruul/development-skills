@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # guard-brain-access.sh — PreToolUse(Read,Bash) hook: block direct, raw
-# content reads of `.claude/identities/<role>/brain/**` (notes, links.json,
+# content reads of `.neural-network/identities/<role>/brain/**` (notes, links.json,
 # activation log, consults.json). brains.md's whole memory-isolation design
 # rests on subagent briefs simply never mentioning a brain path — this makes
 # "brain access only through brain.sh" a technical fact for the one host
@@ -27,16 +27,16 @@ set -uo pipefail
 RESULT="$(python3 -c '
 import json, re, shlex, sys
 
-BRAIN_RE = re.compile(r"(?:^|/)\.claude/identities/[^/]+/brain/")
+BRAIN_RE = re.compile(r"(?:^|/)\.neural-network/identities/[^/]+/brain/")
 # Unanchored variant, used ONLY for the SCRIPT_INTERPRETERS branch below: a
 # python3/node one-liner is a single shlex token containing the whole source
 # string, so a brain path embedded mid-token inside a quoted literal (e.g.
-# open('.claude/identities/dev/brain/x.md')) is never preceded by a literal
+# open('.neural-network/identities/dev/brain/x.md')) is never preceded by a literal
 # "/" the way it would be as its own standalone argv token. BRAIN_RE itself
 # stays anchored for Read/DUMP_CMDS, where the path IS its own token and the
 # anchor is load-bearing against unrelated paths merely containing the
 # substring elsewhere.
-BRAIN_RE_UNANCHORED = re.compile(r"\.claude/identities/[^/]+/brain/")
+BRAIN_RE_UNANCHORED = re.compile(r"\.neural-network/identities/[^/]+/brain/")
 INTERPRETERS = {"bash", "sh", "zsh", "dash", "ksh"}
 DUMP_CMDS = {"cat", "head", "tail", "less", "more", "sed", "awk", "grep"}
 SCRIPT_INTERPRETERS = {"python3", "python", "node"}

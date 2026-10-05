@@ -62,7 +62,7 @@ out_a="$(hr2a recall idx --paths "src/**" --keywords "")"
 out_b_with_index="$(BRAIN_EMBED_CMD="$HRSTUB_CMD" hr2b recall idx --paths "src/**" --keywords "")"
 check "golden-identical: sidecar-present-but-no-query output matches sidecar-absent output" "$out_b_with_index" "$out_a"
 check_absent "golden-identical: sidecar-absent recall never surfaces the embedding-only note" "sem-note" "$out_a"
-db_before="$([[ -f "$HR2A/.claude/identities/idx/brain/index.sqlite3" ]] && echo yes || echo no)"
+db_before="$([[ -f "$HR2A/.neural-network/identities/idx/brain/index.sqlite3" ]] && echo yes || echo no)"
 check "golden-identical: recall never creates a db file when sidecar absent" "no" "$db_before"
 rm -rf "$HR2A" "$HR2B"
 
@@ -107,7 +107,7 @@ printf 'cats dogs marker text.\n\nRelated: [[sem-grad-target]]\n' \
     | hr5 mint idx sem-grad-src --tags other --paths "other/**" >/dev/null
 python3 - "$HR5" <<'PY'
 import os, re, sys
-p = os.path.join(sys.argv[1], ".claude/identities/idx/brain/notes/sem-grad-src.md")
+p = os.path.join(sys.argv[1], ".neural-network/identities/idx/brain/notes/sem-grad-src.md")
 s = open(p).read()
 open(p, "w").write(re.sub(r"graduated: .*", "graduated: true", s))
 PY

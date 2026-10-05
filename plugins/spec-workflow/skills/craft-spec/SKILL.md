@@ -5,12 +5,12 @@ description: Helps you write a spec through an assisted, interactive process —
 
 # Craft a spec with the user
 
-Deliverables: a spec document (e.g. `SPEC.md`), a backlog document (e.g. `docs/BACKLOG.md`) with epics + numbered, story-pointed, acceptance-criteria'd tasks, and (if `.claude/project.yaml` exists) a registered `specs[]` entry. The spec is the contract every future task is built and judged against — invest accordingly.
+Deliverables: a spec document (e.g. `SPEC.md`), a backlog document (e.g. `docs/BACKLOG.md`) with epics + numbered, story-pointed, acceptance-criteria'd tasks, and (if `.neural-network/project.yaml` exists) a registered spec file (`.neural-network/specs/<id>.yaml`). The spec is the contract every future task is built and judged against — invest accordingly.
 
 Read `../../skills/craft-spec/references/spec-guide.md` **before Phase 2** — it has the document structure, the interview question bank, and the review checklist. On Claude Code, see `references/host-claude.md` for the exact structured-input tool calls this skill's two interview loops use.
 
 ## Phase 0 — orient
-- Check what exists: `.claude/project.yaml` (registered specs?), any `SPEC*.md` / `docs/` design docs, and the codebase itself. Adding a spec to an existing project? Read the existing spec's conventions and reuse them.
+- Check what exists: `.neural-network/project.yaml` (registered specs?), any `SPEC*.md` / `docs/` design docs, and the codebase itself. Adding a spec to an existing project? Read the existing spec's conventions and reuse them.
 - If the user gave a written brief, mine it first — never ask what it already answers.
 
 ## Phase 1 — discover (plan mode + interview)
@@ -29,5 +29,5 @@ Derive from the spec: epics in build order (foundations → features → polish)
 2. Present to the user: a compact summary (goals, non-goals, epic sequence, riskiest decisions, open questions), through the host's plan-approval facility if the discovery phase used one, else directly. Ask through the host's structured-input facility to resolve each open question and to get explicit sign-off on scope and epic order. Iterate until approved.
 
 ## Phase 5 — wire up
-- `.claude/project.yaml` exists → add the `specs[]` entry (unique `taskPrefix`, epics with `taskRanges` + `blockedBy`, `invariants` copied from the spec), then validate: `bash "../../scripts/board.sh" config`. Suggest `seed-board` next.
+- `.neural-network/project.yaml` exists → add the `specs[]` entry (unique `taskPrefix`, epics with `taskRanges` + `blockedBy`, `invariants` copied from the spec), then validate: `bash "../../scripts/board.sh" config`. Suggest `seed-board` next.
 - No config yet → suggest `setup-project` (the spec paths from this session slot into its Phase 2).

@@ -1,6 +1,6 @@
 ---
 name: sync-project-configs
-description: Discovers every anchored repo (marked with .claude/.neural-network) under a scan base and brings its .claude/project.yaml up to this plugin's current config surface, via versioned sync rules. Dry-run by default, so nothing changes until you say so. Use when the plugin's config surface has evolved (new methodology keys, path migrations) and consumer repos' project.yaml may have drifted, or the user asks to "sync configs" across repos.
+description: Discovers every anchored repo (marked with .neural-network) under a scan base and brings its .neural-network/project.yaml up to this plugin's current config surface, via versioned sync rules. Dry-run by default, so nothing changes until you say so. Use when the plugin's config surface has evolved (new methodology keys, path migrations) and consumer repos' project.yaml may have drifted, or the user asks to "sync configs" across repos.
 allowed-tools: Bash
 ---
 
@@ -18,7 +18,7 @@ python3 "../../scripts/sync-configs.py" [--scan BASE] [--repo PATH] [--apply] [-
   and diffs and changes nothing -- locally or remotely. Only pass `--apply` once you (or
   the user) have reviewed the dry-run output.
 - `--scan BASE` overrides the scan base (default `~/Development`); every immediate child
-  with a `.claude/.neural-network` marker is a candidate, except the plugin's own repo
+  with a `.neural-network` marker is a candidate, except the plugin's own repo
   (it updates itself through the build loop, not this script).
 - `--repo PATH` targets exactly one repo, bypassing discovery.
 - `--feedback-value false` writes `feedback: false` instead of the default `true` for the
@@ -41,7 +41,7 @@ final `AGGREGATE` line.
   is the supported form).
 - `ensure-feedback-key` -- adds `methodology.feedback` if missing (`--feedback-value` controls
   the written value, default `true`).
-- `sw062-feedbacks-migration` -- moves `.claude/feedback/` to `.claude/feedbacks/` and drops the
+- `sw062-feedbacks-migration` -- moves `.claude/feedback/` to `.neural-network/feedbacks/` and drops the
   old `.gitignore` line.
 - `ensure-peer-reviewer-identity` -- adds `delegation.identities.peer-reviewer` (the same
   default name/email templates as `agent-identities`' built-in default) ONLY when the target

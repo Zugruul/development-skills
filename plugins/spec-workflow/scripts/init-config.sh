@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# init-config.sh — create or update .claude/project.yaml board ids from a live GitHub Project.
+# init-config.sh — create or update .neural-network/project.yaml board ids from a live GitHub Project.
 # Part of the spec-workflow plugin (used by the setup-project skill).
 #
 # Usage: init-config.sh <owner> <owner/repo> <project-number>
 #
 # Fetches the project id and its fields via gh, matches Status/Priority/Estimate by
-# name, and writes boards[0] of .claude/project.yaml (schemaVersion 2):
+# name, and writes boards[0] of .neural-network/project.yaml (schemaVersion 2):
 #   - no config yet -> writes a fresh config from the plugin YAML template with real board ids
 #   - project.yaml exists -> updates boards[0]'s ids/options in place, preserving the rest
 #   - legacy project.json exists -> converts it to project.yaml (content preserved), and asks
@@ -24,7 +24,7 @@ source "$HERE/lib/repo-root.sh"
 # rest of the loop never reads.
 ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 1; }
 EXISTING="$(PYTHONPATH="$HERE" python3 "$HERE/config.py" "$ROOT" path || true)"
-OUT="${PROJECT_CONFIG:-$ROOT/.claude/project.yaml}"
+OUT="${PROJECT_CONFIG:-$ROOT/.neural-network/project.yaml}"
 TEMPLATE="$HERE/../templates/project.example.yaml"
 
 _tmpdir="$(mktemp -d)"; trap 'rm -rf "$_tmpdir"' EXIT

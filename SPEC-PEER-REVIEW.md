@@ -1,6 +1,6 @@
 # Peer review + remote LLM dispatch — spec
 
-Status: APPROVED — registered in `.claude/project.yaml` as spec `peer` (taskPrefix `PRV`).
+Status: APPROVED — registered in `.neural-network/project.yaml` as spec `peer` (taskPrefix `PRV`).
 Source design: [docs/design/compute-registry-plan-v3.md](docs/design/compute-registry-plan-v3.md),
 drafted by a Fable 5 agent, reviewed inline, with OQ-1/OQ-2/OQ-3/OQ-4 decided below.
 **Decision (per v3 §5, item 1): Spec A and Spec B are folded into this single spec** — B

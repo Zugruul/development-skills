@@ -50,9 +50,9 @@ makes the brain the durable memory ("resume yesterday's travel plan instantly").
 
 ## §4 Glossary & domain
 
-- **Assistant repo**: a repository whose `.claude/project.yaml` has an `assistant:`
+- **Assistant repo**: a repository whose `.neural-network/project.yaml` has an `assistant:`
   section with `enabled: true`, anchored by a `.neural-network` marker. Contains the brain
-  (`.claude/identities/assistant/brain/`), installed skills (`.claude/skills/`), persona
+  (`.neural-network/identities/assistant/brain/`), installed skills (`.claude/skills/`), persona
   docs, and gitignored local state (`.claude/assistant/`: session, traces.sqlite,
   tasks.sqlite, artifacts/).
 - **Engine**: the assistant runtime inside the neural-view server process
@@ -124,7 +124,7 @@ Key choices (each with the WHY):
 
 ## §6 Configuration & identity
 
-`assistant:` section in the assistant repo's `.claude/project.yaml` (authoritative):
+`assistant:` section in the assistant repo's `.neural-network/project.yaml` (authoritative):
 
 ```yaml
 assistant:

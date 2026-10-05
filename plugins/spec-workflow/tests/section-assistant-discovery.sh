@@ -21,12 +21,12 @@ from assistant import discovery
 '"$script" "$@"
 }
 
-# ds_marker <dir> [content] -- .claude/.neural-network, default legacy comment-only.
+# ds_marker <dir> [content] -- .neural-network, default legacy comment-only.
 ds_marker() {
     local dir="$1"
     local content="${2:-# neural-network}"
-    mkdir -p "$dir/.claude"
-    printf '%s\n' "$content" >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf '%s\n' "$content" >"$dir/.neural-network/marker"
 }
 
 # ds_config <dir> <name> <enabled-line-or-empty> [extra-flag]
@@ -35,20 +35,20 @@ ds_marker() {
 #   extra-flag=no-section -> project.yaml has no assistant: key at all
 ds_config() {
     local dir="$1" name="$2" enabled_line="$3" extra="${4:-}"
-    mkdir -p "$dir/.claude"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"  # config lives inside the marker dir (new layout)
     if [[ "$extra" == "malformed" ]]; then
         printf '%s\n' \
             'schemaVersion: 2' \
             'assistant: [this is not' \
             '  valid yaml mapping' \
-            >"$dir/.claude/project.yaml"
+            >"$dir/.neural-network/project.yaml"
         return
     fi
     if [[ "$extra" == "no-section" ]]; then
         printf '%s\n' \
             'schemaVersion: 2' \
             'someOtherKey: true' \
-            >"$dir/.claude/project.yaml"
+            >"$dir/.neural-network/project.yaml"
         return
     fi
     {
@@ -64,7 +64,7 @@ ds_config() {
                 '        codex:' \
                 '            enabled: true'
         fi
-    } >"$dir/.claude/project.yaml"
+    } >"$dir/.neural-network/project.yaml"
 }
 
 # ds_candidate <dir> <name> -- full fixture: marker + valid, enabled config.
@@ -151,18 +151,20 @@ rm -rf "$ds_a"
 # ------------------------------------------------------------ no marker -> no-marker
 ds_a="$(mktemp -d)"
 ds_config "$ds_a" jarvis "true"
+mv "$ds_a/.neural-network/project.yaml" "$ds_a/.claude/project.yaml"
+rmdir "$ds_a/.neural-network"
 out="$(ds_classify "$ds_a")"
-check "project.yaml present, no marker -> no-marker" "no-marker" "$out"
+check "legacy .claude/project.yaml, no marker dir -> no-marker" "no-marker" "$out"
 rm -rf "$ds_a"
 
 # ------------------------------------------------------------ marker present but unreadable -> marker-unreadable, never a crash
 ds_a="$(mktemp -d)"
 ds_marker "$ds_a"
 ds_config "$ds_a" jarvis "true"
-chmod 000 "$ds_a/.claude/.neural-network"
+chmod 000 "$ds_a/.neural-network/marker"
 out="$(ds_classify "$ds_a")"
 rc=$?
-chmod 644 "$ds_a/.claude/.neural-network"
+chmod 644 "$ds_a/.neural-network/marker"
 check_rc "unreadable marker: classify_repo does not raise (clean rc)" 0 "$rc"
 check "unreadable marker -> marker-unreadable (config authority never consulted)" "marker-unreadable" "$out"
 rm -rf "$ds_a"

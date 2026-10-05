@@ -15,8 +15,8 @@ AT_SCRIPTS="$PLUGIN/scripts"
 # section-assistant-distill.sh's ad_repo).
 at_repo() {
     local dir="$1" main="$2"
-    mkdir -p "$dir/.claude"
-    printf "%s\n" "# neural-network" >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf "%s\n" "# neural-network" >"$dir/.neural-network/marker"
     printf "%s\n" \
         "schemaVersion: 2" \
         "assistant:" \
@@ -33,7 +33,7 @@ at_repo() {
         "            enabled: true" \
         "            provisioning:" \
         "                bin: codex" \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 
 # at_marker_only <dir> -- an anchored repo (.neural-network marker present,
@@ -44,8 +44,8 @@ at_repo() {
 # assistant" -- the exact shape 8 real repos on the reporting machine had.
 at_marker_only() {
     local dir="$1"
-    mkdir -p "$dir/.claude"
-    printf "%s\n" "# neural-network" >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf "%s\n" "# neural-network" >"$dir/.neural-network/marker"
 }
 
 # at_repo_disabled <dir> <main> -- same shape as at_repo, but
@@ -58,8 +58,8 @@ at_marker_only() {
 # "does a db already exist".
 at_repo_disabled() {
     local dir="$1" main="$2"
-    mkdir -p "$dir/.claude"
-    printf "%s\n" "# neural-network" >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf "%s\n" "# neural-network" >"$dir/.neural-network/marker"
     printf "%s\n" \
         "schemaVersion: 2" \
         "assistant:" \
@@ -76,7 +76,7 @@ at_repo_disabled() {
         "            enabled: true" \
         "            provisioning:" \
         "                bin: codex" \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 
 # ------------------------------------------------------------------------

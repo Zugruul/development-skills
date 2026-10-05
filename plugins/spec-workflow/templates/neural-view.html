@@ -393,6 +393,14 @@ canvas.grabbing{cursor:grabbing}
   font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan);
   background:none;border:0;text-align:left;cursor:pointer;font-family:var(--mono);padding:0}
 .repo-brains-h:hover{color:var(--fg)}
+.repo-branch{margin-left:.45rem;font-size:.52rem;letter-spacing:.04em;text-transform:none;
+  color:var(--slate);opacity:.5;font-weight:400}
+.repo-brains-h:hover .repo-branch{opacity:.75}
+.settings-action{display:block;margin:.5rem 0 .1rem;padding:.3rem .6rem;font-family:var(--mono);
+  font-size:.66rem;color:var(--cyan);background:rgba(70,230,255,.06);border:1px solid var(--cyan-dim);
+  border-radius:6px;cursor:pointer;letter-spacing:.08em}
+.settings-action:hover{background:rgba(70,230,255,.12)}
+.settings-action:disabled{opacity:.5;cursor:default}
 .repo-brains-h::before{content:"▾";margin-right:.4rem;color:var(--cyan-dim)}
 .repo-brains-h[aria-expanded="false"]::before{content:"▸"}
 .repo-talk-btn{flex:none;background:none;border:0;color:var(--muted);cursor:pointer;
@@ -1519,6 +1527,8 @@ body.chat-docked #search-filters-panel{height:calc((100vh - 130px)*.62)}
       <div class="hud" id="settings-panel">
         <label><input type="checkbox" id="live-board-toggle"> Fetch live GitHub board state</label>
         <div class="hint">Polls each repo's board via <code>board.sh</code> (per-repo cache + rate-limit backoff). Off by default.</div>
+        <button class="settings-action" id="rescan-btn" type="button">↻ Refresh repos</button>
+        <div class="hint" id="rescan-hint">Re-scans the discovery base for <code>.neural-network</code> anchors: newly-anchored repos join, deleted ones are dropped — no restart needed.</div>
         <label><input type="checkbox" id="perf-toggle"> Show performance timers</label>
         <div class="hint">Adds per-frame CPU timings to the status chip: <code>sim</code> (physics step), <code>vis</code> (visual attribute writes), <code>draw</code> (render submission). Low fps with all three small means the cost is GPU fill. <code>?perf</code> in the URL forces this on.</div>
       </div>
@@ -2850,6 +2860,7 @@ function applyGraph(g){
   window.__roleColors = g.roleColors || {};
   window.__repoDisplay = g.displayNames || {};
   window.__repoRoots = g.roots || {};
+  window.__repoBranches = g.branches || {};
   window.__schemaRoles = g.schemaRoles || {};
   const rawNodes = g.nodes || [];
   const rawCounts = {};
@@ -3708,6 +3719,14 @@ function renderGauges(){
     head.className="repo-brains-h"; head.setAttribute("aria-expanded", collapsed?"false":"true");
     head.setAttribute("aria-label", `Toggle ${repo} brains`);
     head.textContent = dispName(repo);
+    const _br = (window.__repoBranches||{})[repo];
+    if(_br){
+      // worktree awareness: the checkout's branch, deliberately quiet —
+      // tiny, low-contrast, never competing with the repo name.
+      const brEl = document.createElement("span");
+      brEl.className = "repo-branch"; brEl.textContent = _br; brEl.title = `branch: ${_br}`;
+      head.appendChild(brEl);
+    }
     head.onclick = ()=>{ uiState.repoCollapse[repo] = !uiState.repoCollapse[repo]; saveUiState(); renderGauges(); };
     hrow.appendChild(head);
     const repoTalk=document.createElement("button");
@@ -6223,6 +6242,20 @@ const perfToggle = document.getElementById("perf-toggle");
 perfToggle.checked = perfOn();
 perfToggle.disabled = PERF_FORCED;   // URL ?perf overrides the setting for this session
 perfToggle.onchange = ()=>{ uiState.perfTimers = perfToggle.checked; saveUiState(); };
+const rescanBtn = document.getElementById("rescan-btn");
+const rescanHint = document.getElementById("rescan-hint");
+rescanBtn.onclick = async ()=>{
+  rescanBtn.disabled = true;
+  try {
+    const r = await (await fetch("/rescan", {method: "POST"})).json();
+    const plus = (r.added||[]).length, minus = (r.removed||[]).length;
+    rescanHint.textContent = (plus||minus)
+      ? `refreshed: +${plus} / −${minus} · ${r.repos} repo(s)` + ((r.added||[]).concat(r.removed||[]).length ? ` (${(r.added||[]).map(n=>"+"+n).concat((r.removed||[]).map(n=>"−"+n)).join(", ")})` : "")
+      : `no changes · ${r.repos} repo(s)`;
+    if(plus||minus) await loadGraph();
+  } catch { rescanHint.textContent = "refresh failed — is the server still running?"; }
+  rescanBtn.disabled = false;
+};
 const liveBoardToggle = document.getElementById("live-board-toggle");
 liveBoardToggle.checked = !!uiState.liveBoard;
 settingsBtn.onclick = (ev)=>{ ev.stopPropagation(); settingsPanel.classList.toggle("open"); };
@@ -9038,7 +9071,7 @@ function appendChatRow(log, role, text, chips, suppressScroll){
 // The selected assistant's media context: repo = the discovered repo NAME
 // (directory basename of the candidate's root -- the same name /file/'s
 // repo segment resolves), role = "assistant" (the persona's brain lives at
-// .claude/identities/assistant/brain, see setup.py's BRAIN_NOTES_REL).
+// .neural-network/identities/assistant/brain, see setup.py's BRAIN_NOTES_REL).
 // Set from /assistant/status wherever the selection is known; relative
 // media/chat/... links in replies resolve through it.
 window.__assistantMediaCtx = window.__assistantMediaCtx || null;

@@ -23,10 +23,10 @@ echo "== gate fingerprint: CHANGELOG.md commits do not invalidate a recorded pas
 
 GCR_T="$(mktemp -d)"
 ( cd "$GCR_T" && git init -q . && git commit -q --allow-empty -m init )
-mkdir -p "$GCR_T/.claude"
+mkdir -p "$GCR_T/.claude" "$GCR_T/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$GCR_T/.claude/project.json"
-( cd "$GCR_T" && git add .claude/project.json && git commit -q -m "add config" )
+    "$FIX/valid.project.json" "$GCR_T/.neural-network/project.json"
+( cd "$GCR_T" && git add .neural-network/project.json && git commit -q -m "add config" )
 echo "old changelog" > "$GCR_T/CHANGELOG.md"
 ( cd "$GCR_T" && git add CHANGELOG.md && git commit -q -m "seed changelog" )
 
@@ -104,10 +104,10 @@ rm -rf "$GCR_T"
 # whole point of the tracked-CHANGELOG.md exclusions above. -----------------
 GCR_UT="$(mktemp -d)"
 ( cd "$GCR_UT" && git init -q . && git commit -q --allow-empty -m init )
-mkdir -p "$GCR_UT/.claude"
+mkdir -p "$GCR_UT/.claude" "$GCR_UT/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$GCR_UT/.claude/project.json"
-( cd "$GCR_UT" && git add .claude/project.json && git commit -q -m "add config" )
+    "$FIX/valid.project.json" "$GCR_UT/.neural-network/project.json"
+( cd "$GCR_UT" && git add .neural-network/project.json && git commit -q -m "add config" )
 out="$(cd "$GCR_UT" && bash "$PLUGIN/scripts/gate.sh" 2>&1)"
 check "untracked-CHANGELOG: gate pass recorded" "GATE PASS recorded" "$out"
 echo "brand new changelog, never committed" > "$GCR_UT/CHANGELOG.md"
@@ -170,10 +170,10 @@ fi
 
 # gate.sh itself must refuse to record a pass when tree-state.sh fails --
 # no marker written, no false "GATE PASS recorded" claim, nonzero exit.
-mkdir -p "$GCR_M/.claude"
+mkdir -p "$GCR_M/.claude" "$GCR_M/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$GCR_M/.claude/project.json"
-( cd "$GCR_M" && git add .claude/project.json && git -c user.email=t@t -c user.name=t commit -q -m "add config" )
+    "$FIX/valid.project.json" "$GCR_M/.neural-network/project.json"
+( cd "$GCR_M" && git add .neural-network/project.json && git -c user.email=t@t -c user.name=t commit -q -m "add config" )
 out="$(cd "$GCR_M" && PATH="$GCR_SHIMDIR:$PATH" bash "$PLUGIN/scripts/gate.sh" 2>&1)"; rc=$?
 check_absent "ls-tree failure: gate.sh never falsely claims a pass was recorded" "GATE PASS recorded" "$out"
 if [[ "$rc" -ne 0 ]]; then
@@ -195,10 +195,10 @@ rm -rf "$GCR_M" "$GCR_SHIMDIR"
 # nothing to exclude, not a special case that requires the file to exist. --
 GCR_NOLOG="$(mktemp -d)"
 ( cd "$GCR_NOLOG" && git init -q . && git commit -q --allow-empty -m init )
-mkdir -p "$GCR_NOLOG/.claude"
+mkdir -p "$GCR_NOLOG/.claude" "$GCR_NOLOG/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$GCR_NOLOG/.claude/project.json"
-( cd "$GCR_NOLOG" && git add .claude/project.json && git commit -q -m "add config" )
+    "$FIX/valid.project.json" "$GCR_NOLOG/.neural-network/project.json"
+( cd "$GCR_NOLOG" && git add .neural-network/project.json && git commit -q -m "add config" )
 out="$(cd "$GCR_NOLOG" && bash "$PLUGIN/scripts/gate.sh" 2>&1)"
 check "no-CHANGELOG.md repo: gate pass recorded" "GATE PASS recorded" "$out"
 out="$(cd "$GCR_NOLOG" && bash "$PLUGIN/scripts/gate-preflight.sh" 2>&1)"; rc=$?

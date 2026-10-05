@@ -343,7 +343,7 @@ check "compile_index: the real reason names the install action, from the ACTUAL 
 echo "-- e2e: neural-view boot auto-starts this sidecar (installed + not running) --"
 WS_NV="$PLUGIN/scripts/neural-view.py"
 WS_NV_PORT=""   # assigned (exported) by each lifecycle_start call below; pre-declared for SC2153
-WS_NV_ROOT="$WS_TMPD/nv-root"; mkdir -p "$WS_NV_ROOT/.claude"
+WS_NV_ROOT="$WS_TMPD/nv-root"; mkdir -p "$WS_NV_ROOT/.claude" "$WS_NV_ROOT/.neural-network"
 WS_NV_SCAN="$WS_TMPD/nv-scan-empty"; mkdir -p "$WS_NV_SCAN"
 
 ws_nv_log_wait() { # <server.log> <substring> -- poll up to ~5s for a daemon-thread log line

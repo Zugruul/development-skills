@@ -25,10 +25,10 @@ else
 fi
 
 echo "== gate enforcement (SW-020: lessons feed captures red-gate tail) =="
-T3L="$(mktemp -d)"; mkdir -p "$T3L/.claude"
+T3L="$(mktemp -d)"; mkdir -p "$T3L/.claude" "$T3L/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$T3L/.claude/project.json"
-( cd "$T3L" && git init -q . && git add .claude/project.json && git commit -q -m init )
+    "$FIX/valid.project.json" "$T3L/.neural-network/project.json"
+( cd "$T3L" && git init -q . && git add .neural-network/project.json && git commit -q -m init )
 out="$(cd "$T3L" && bash "$PLUGIN/scripts/gate.sh" 2>&1)"
 check "lessons: green gate pass recorded" "GATE PASS recorded" "$out"
 if [[ ! -f "$T3L/.claude/lessons.jsonl" ]]; then
@@ -38,7 +38,7 @@ else
     fails=$((fails + 1))
 fi
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="echo line-one; echo line-two; false"; json.dump(c,open(sys.argv[1],"w"))' \
-    "$T3L/.claude/project.json"
+    "$T3L/.neural-network/project.json"
 out="$(cd "$T3L" && bash "$PLUGIN/scripts/gate.sh" 2>&1)"
 check "lessons: red gate still reports GATE RED" "GATE RED" "$out"
 if [[ ! -f "$T3L/.claude/gate-pass" ]]; then echo "ok   lessons: pass file removed on red"; else echo "FAIL lessons: pass file should be removed"; fails=$((fails+1)); fi
@@ -54,7 +54,7 @@ else
 fi
 n_before="$(wc -l < "$T3L/.claude/lessons.jsonl" | tr -d ' ')"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[1],"w"))' \
-    "$T3L/.claude/project.json"
+    "$T3L/.neural-network/project.json"
 out="$(cd "$T3L" && bash "$PLUGIN/scripts/gate.sh" 2>&1)"
 check "lessons: subsequent green gate pass recorded" "GATE PASS recorded" "$out"
 n_after="$(wc -l < "$T3L/.claude/lessons.jsonl" | tr -d ' ')"
@@ -67,10 +67,10 @@ fi
 rm -rf "$T3L"
 
 echo "== gate enforcement (lessons.jsonl excluded from fingerprint) =="
-T3P="$(mktemp -d)"; mkdir -p "$T3P/.claude"
+T3P="$(mktemp -d)"; mkdir -p "$T3P/.claude" "$T3P/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$T3P/.claude/project.json"
-( cd "$T3P" && git init -q . && git add .claude/project.json && git commit -q -m init )
+    "$FIX/valid.project.json" "$T3P/.neural-network/project.json"
+( cd "$T3P" && git init -q . && git add .neural-network/project.json && git commit -q -m init )
 before="$(cd "$T3P" && bash "$PLUGIN/scripts/tree-state.sh")"
 echo '{"ts":"2026-01-01T00:00:00Z","exit":1,"tail":"boom"}' > "$T3P/.claude/lessons.jsonl"
 after="$(cd "$T3P" && bash "$PLUGIN/scripts/tree-state.sh")"

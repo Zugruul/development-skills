@@ -64,15 +64,15 @@ rm -rf "$OR_TWIN"
 OR_CON="$(mktemp -d)"
 orc() { python3 "$OR_SCRIPTS/brain.py" "$OR_CON" "$@"; }
 printf 'Contested lesson body.\n' | orc mint dev conflicted --tags con --paths "con/**" --source x >/dev/null
-mkdir -p "$OR_CON/.claude/identities"
-cat >"$OR_CON/.claude/identities/retros.log" <<'EOF'
+mkdir -p "$OR_CON/.neural-network/identities"
+cat >"$OR_CON/.neural-network/identities/retros.log" <<'EOF'
 2026-02-01
 2026-03-01
 2026-04-01
 2026-05-01
 EOF
 # default window N=3 -> cutoff = retros[-3] = 2026-03-01 (last-3-of-4)
-OUT_JSONL="$OR_CON/.claude/identities/dev/brain/outcomes.jsonl"
+OUT_JSONL="$OR_CON/.neural-network/identities/dev/brain/outcomes.jsonl"
 mkdir -p "$(dirname "$OUT_JSONL")"
 cat >"$OUT_JSONL" <<'EOF'
 {"schemaVersion": 1, "ts": "2026-04-01T00:00:00+00:00", "slug": "conflicted", "outcome": "useful", "task": null, "note": null}
@@ -102,7 +102,7 @@ rm -rf "$OR_CON"
 OR_MAL="$(mktemp -d)"
 orm() { python3 "$OR_SCRIPTS/brain.py" "$OR_MAL" "$@"; }
 printf 'Malformed-file lesson body.\n' | orm mint dev mal-note --tags mal --paths "mal/**" --source x >/dev/null
-MAL_JSONL="$OR_MAL/.claude/identities/dev/brain/outcomes.jsonl"
+MAL_JSONL="$OR_MAL/.neural-network/identities/dev/brain/outcomes.jsonl"
 mkdir -p "$(dirname "$MAL_JSONL")"
 cat >"$MAL_JSONL" <<'EOF'
 this is not json at all
@@ -139,7 +139,7 @@ OR_TYP="$(mktemp -d)"
 ory() { python3 "$OR_SCRIPTS/brain.py" "$OR_TYP" "$@"; }
 printf 'Wrong-type lesson body.\n' | ory mint dev typ-note --tags typ --paths "typ/**" --source x >/dev/null
 ory retro-mark >/dev/null; ory retro-mark >/dev/null; ory retro-mark >/dev/null
-TYP_JSONL="$OR_TYP/.claude/identities/dev/brain/outcomes.jsonl"
+TYP_JSONL="$OR_TYP/.neural-network/identities/dev/brain/outcomes.jsonl"
 mkdir -p "$(dirname "$TYP_JSONL")"
 cat >"$TYP_JSONL" <<'EOF'
 {"schemaVersion": 1, "ts": 5, "slug": "typ-note", "outcome": "useful", "task": null, "note": null}

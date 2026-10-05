@@ -14,8 +14,8 @@ echo "== neural-view /graph: entity edges derived on the fly from frontmatter (n
 _ent1="$(mktemp -d)"
 _ent1state="$(mktemp -d)"
 _ent1repo="$(basename "$_ent1")"
-_ent1dev="$_ent1/.claude/identities/dev/brain/notes"
-_ent1rev="$_ent1/.claude/identities/reviewer/brain/notes"
+_ent1dev="$_ent1/.neural-network/identities/dev/brain/notes"
+_ent1rev="$_ent1/.neural-network/identities/reviewer/brain/notes"
 mkdir -p "$_ent1dev" "$_ent1rev"
 cat >"$_ent1dev/card-x.md" <<'EOF'
 ---
@@ -68,15 +68,15 @@ echo "== neural-view /graph: entity edges honor a committed entity-index.json's 
 _ent2="$(mktemp -d)"
 _ent2state="$(mktemp -d)"
 _ent2repo="$(basename "$_ent2")"
-_ent2dev="$_ent2/.claude/identities/dev/brain/notes"
-_ent2rev="$_ent2/.claude/identities/reviewer/brain/notes"
-_ent2orc="$_ent2/.claude/identities/orchestrator/brain/notes"
+_ent2dev="$_ent2/.neural-network/identities/dev/brain/notes"
+_ent2rev="$_ent2/.neural-network/identities/reviewer/brain/notes"
+_ent2orc="$_ent2/.neural-network/identities/orchestrator/brain/notes"
 mkdir -p "$_ent2dev" "$_ent2rev" "$_ent2orc"
 for f in "$_ent2dev/anchor-note.md" "$_ent2rev/member-a.md" "$_ent2orc/member-b.md"; do
     printf -- '---\nstrength: 1\nentities: [card:hub-test]\n---\nbody.\n' >"$f"
 done
-mkdir -p "$_ent2/.claude/identities"
-cat >"$_ent2/.claude/identities/entity-index.json" <<EOF
+mkdir -p "$_ent2/.neural-network/identities"
+cat >"$_ent2/.neural-network/identities/entity-index.json" <<EOF
 {
   "generated-by": "brain.py entity-index",
   "entities": {
@@ -114,9 +114,9 @@ echo "== neural-view /graph: a committed entity-index.json that is STALE relativ
 _ent4="$(mktemp -d)"
 _ent4state="$(mktemp -d)"
 _ent4repo="$(basename "$_ent4")"
-_ent4dev="$_ent4/.claude/identities/dev/brain/notes"
-_ent4rev="$_ent4/.claude/identities/reviewer/brain/notes"
-mkdir -p "$_ent4dev" "$_ent4rev" "$_ent4/.claude/identities"
+_ent4dev="$_ent4/.neural-network/identities/dev/brain/notes"
+_ent4rev="$_ent4/.neural-network/identities/reviewer/brain/notes"
+mkdir -p "$_ent4dev" "$_ent4rev" "$_ent4/.neural-network/identities"
 cat >"$_ent4dev/known-card.md" <<'EOF'
 ---
 strength: 1
@@ -133,7 +133,7 @@ Known at index-generation time.
 EOF
 # The committed index reflects ONLY the two notes above -- it predates the
 # "new-after-index" notes minted next, exactly like a stale committed file.
-cat >"$_ent4/.claude/identities/entity-index.json" <<EOF
+cat >"$_ent4/.neural-network/identities/entity-index.json" <<EOF
 {
   "generated-by": "brain.py entity-index",
   "entities": {
@@ -180,8 +180,8 @@ echo "== neural-view /graph: duplicate entity keys within one note's frontmatter
 _ent5="$(mktemp -d)"
 _ent5state="$(mktemp -d)"
 _ent5repo="$(basename "$_ent5")"
-_ent5dev="$_ent5/.claude/identities/dev/brain/notes"
-_ent5rev="$_ent5/.claude/identities/reviewer/brain/notes"
+_ent5dev="$_ent5/.neural-network/identities/dev/brain/notes"
+_ent5rev="$_ent5/.neural-network/identities/reviewer/brain/notes"
 mkdir -p "$_ent5dev" "$_ent5rev"
 cat >"$_ent5dev/dup-card.md" <<'EOF'
 ---
@@ -215,8 +215,8 @@ echo "== neural-view /graph: neuralView.entityEdgeColor override is passed throu
 _ent3="$(mktemp -d)"
 _ent3state="$(mktemp -d)"
 _ent3repo="$(basename "$_ent3")"
-mkdir -p "$_ent3/.claude"
-cat >"$_ent3/.claude/project.yaml" <<'YAML'
+mkdir -p "$_ent3/.claude" "$_ent3/.neural-network"
+cat >"$_ent3/.neural-network/project.yaml" <<'YAML'
 schemaVersion: 2
 project:
     name: ent3/fixture
@@ -229,7 +229,7 @@ commands:
 neuralView:
     entityEdgeColor: "#ff00aa"
 YAML
-mkdir -p "$_ent3/.claude/identities/dev/brain/notes"
+mkdir -p "$_ent3/.neural-network/identities/dev/brain/notes"
 _ent3scan="$(mktemp -d)"
 export NEURAL_VIEW_STATE="$_ent3state" NEURAL_VIEW_SCAN="$_ent3scan"
 lifecycle_start "neural-view starts (entityEdgeColor override)" NEURAL_VIEW_PORT 'python3 "$NV" start --dir "$_ent3"'

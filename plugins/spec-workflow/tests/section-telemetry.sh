@@ -6,7 +6,7 @@
 # those are already in scope.
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== telemetry.py record (validation + append) =="
-TT="$(mktemp -d)"; mkdir -p "$TT/.claude"
+TT="$(mktemp -d)"; mkdir -p "$TT/.claude" "$TT/.neural-network"
 rec() { python3 "$PLUGIN/scripts/telemetry.py" "$TT" record "$1" 2>&1; }
 check "record: unknown kind rejected" "INVALID" "$(rec '{"kind":"bogus","task":"1","ts":"2026-01-01T00:00:00Z"}')"
 check "record: malformed json rejected" "INVALID" "$(rec 'not-json')"
@@ -30,7 +30,7 @@ else echo "FAIL record: expected 6 lines in telemetry.jsonl, got $n"; fails=$((f
 rm -rf "$TT"
 
 echo "== telemetry.py metrics (missing / garbage log) =="
-TE="$(mktemp -d)"; mkdir -p "$TE/.claude"
+TE="$(mktemp -d)"; mkdir -p "$TE/.claude" "$TE/.neural-network"
 check "metrics: missing log" "no telemetry yet" "$(python3 "$PLUGIN/scripts/telemetry.py" "$TE" metrics)"
 printf 'not json\n{"kind":"bogus","task":"1","ts":"x"}\n' > "$TE/.claude/telemetry.jsonl"
 out="$(python3 "$PLUGIN/scripts/telemetry.py" "$TE" metrics 2>&1)"
@@ -39,7 +39,7 @@ check "metrics: garbage-only log reports skip count on stderr" "skipped 2 malfor
 rm -rf "$TE"
 
 echo "== telemetry.py metrics (fixture log: cycle time, gate, rework, estimate) =="
-TF="$(mktemp -d)"; mkdir -p "$TF/.claude"
+TF="$(mktemp -d)"; mkdir -p "$TF/.claude" "$TF/.neural-network"
 cp "$FIX/telemetry.jsonl" "$TF/.claude/telemetry.jsonl"
 out="$(python3 "$PLUGIN/scripts/telemetry.py" "$TF" metrics 2>&1)"
 check "metrics: tasks/events/skipped summary" "tasks=3 events=15 skipped=2" "$out"
@@ -52,16 +52,16 @@ check "metrics: estimate vs actual task 11" "task=11  estimate=5  actual=10.0h" 
 rm -rf "$TF"
 
 echo "== board.sh metrics (delegates to telemetry.py) =="
-BMT="$(mktemp -d)"; mkdir -p "$BMT/.claude"
-cp "$FIX/valid.project.yaml" "$BMT/.claude/project.yaml"
+BMT="$(mktemp -d)"; mkdir -p "$BMT/.claude" "$BMT/.neural-network"
+cp "$FIX/valid.project.yaml" "$BMT/.neural-network/project.yaml"
 cp "$FIX/telemetry.jsonl" "$BMT/.claude/telemetry.jsonl"
 out="$(cd "$BMT" && bash "$PLUGIN/scripts/board.sh" metrics 2>&1)"
 check "board.sh metrics delegates to telemetry.py" "gate first-try rate: 50.0% (1/2 tasks)" "$out"
 rm -rf "$BMT"
 
 echo "== board.sh move telemetry (transition events; move never fails on telemetry write failure) =="
-BM="$(mktemp -d)"; mkdir -p "$BM/.claude"
-cp "$FIX/valid.project.yaml" "$BM/.claude/project.yaml"
+BM="$(mktemp -d)"; mkdir -p "$BM/.claude" "$BM/.neural-network"
+cp "$FIX/valid.project.yaml" "$BM/.neural-network/project.yaml"
 BMGH="$(mktemp -d)"
 cat >"$BMGH/gh" <<'FAKE'
 #!/usr/bin/env bash
@@ -84,8 +84,8 @@ check "move telemetry: transition event appended" '"kind": "transition"' "$(cat 
 check "move telemetry: to field set" '"to": "In progress"' "$(cat "$BM/.claude/telemetry.jsonl" 2>/dev/null)"
 check "move telemetry: task field set" '"task": "1"' "$(cat "$BM/.claude/telemetry.jsonl" 2>/dev/null)"
 
-BM2="$(mktemp -d)"; mkdir -p "$BM2/.claude"
-cp "$FIX/valid.project.yaml" "$BM2/.claude/project.yaml"
+BM2="$(mktemp -d)"; mkdir -p "$BM2/.claude" "$BM2/.neural-network"
+cp "$FIX/valid.project.yaml" "$BM2/.neural-network/project.yaml"
 # marker must exist BEFORE .claude goes read-only below (the check only reads it)
 printf '{"1": true}' >"$BM2/.claude/board-comments-seen.json"
 chmod 555 "$BM2/.claude"

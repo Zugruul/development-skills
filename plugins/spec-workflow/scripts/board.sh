@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# board.sh — generic GitHub Project board interface, driven by .claude/project.yaml (schemaVersion 2; legacy .json still read).
+# board.sh — generic GitHub Project board interface, driven by .neural-network/project.yaml (schemaVersion 2; legacy .json still read).
 # Part of the spec-workflow plugin. All board reads/writes go through this script so the
 # model never has to know field/option ids.
 #
@@ -41,7 +41,7 @@ source "$HERE/lib/repo-root.sh"
 # .claude/, invisible from a linked worktree's own path.
 ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 1; }
 CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
-[[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .claude/project.yaml (or legacy .json) found. Run the setup-project skill first." >&2; exit 1; }
+[[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .neural-network/project.yaml (or legacy .json) found. Run the setup-project skill first." >&2; exit 1; }
 
 # Resolve the active board's ids into shell vars (OWNER REPO PN PID STATUS_FIELD PRIO_FIELD EST_FIELD BUG_LABEL FIRST_STATUS)
 eval "$(python3 - "$CONFIG" "${BOARD:-}" <<'PY'

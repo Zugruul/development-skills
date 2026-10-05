@@ -7,8 +7,11 @@
 # Asserts the repo-local Codex marketplace manifest at
 # .agents/plugins/marketplace.json matches the plugin-creator reference shape
 # and lists EXACTLY the two Codex-covered plugins (spec-workflow,
-# scaffold-project) -- never peer-review, which is a separate Codex-compat
-# sweep. Scoped to the manifest file's own structure/content: the live
+# scaffold-project) AND peer-review -- originally excluded pending its own
+# Codex-compat sweep, peer-review is provider-pluggable now (codex + claude
+# backends, mandatory ask-which-provider step per its SKILL.md), so the
+# cross-vendor premise holds under a Codex host and it ships in this
+# marketplace like the other two (tri-host work, section-host-portability.sh). Scoped to the manifest file's own structure/content: the live
 # `codex plugin marketplace add`/`list` roundtrip mutates ~/.codex/config.toml
 # (persistent global state on the developer's machine), so it is a MANUAL
 # verification step recorded in the PR, not something this hermetic suite runs.
@@ -62,11 +65,10 @@ PY
     check "manifest is valid JSON" "JSON_VALID" "$report"
     check "top-level name present" "TOP_NAME present" "$report"
     check "interface.displayName present" "DISPLAY_NAME present" "$report"
-    check "lists exactly two plugins" "PLUGIN_COUNT 2" "$report"
-    check "lists spec-workflow and scaffold-project" "PLUGIN_NAMES spec-workflow,scaffold-project" "$report"
-    check_absent "does NOT list peer-review" "peer-review" "$report"
+    check "lists exactly four plugins" "PLUGIN_COUNT 4" "$report"
+    check "lists spec-workflow, scaffold-project, peer-review and remote-compute" "PLUGIN_NAMES spec-workflow,scaffold-project,peer-review,remote-compute" "$report"
 
-    for plug in spec-workflow scaffold-project; do
+    for plug in spec-workflow scaffold-project peer-review remote-compute; do
         check "$plug: source.source=local" "ENTRY $plug source.source=local" "$report"
         check "$plug: source.path=./plugins/$plug" "ENTRY $plug source.path=./plugins/$plug" "$report"
         check "$plug: policy.installation=AVAILABLE" "ENTRY $plug policy.installation=AVAILABLE" "$report"
@@ -76,7 +78,7 @@ PY
 fi
 
 # The Codex manifest must be a DISTINCT file from Claude's own marketplace,
-# which still carries all three plugins (incl. peer-review) untouched. This
+# which still carries all four plugins (incl. peer-review and remote-compute) untouched. This
 # guards against accidentally pointing the new file at, or editing, the wrong
 # marketplace.
 claude_mp="$(cat "$CLAUDE_MP" 2>/dev/null)"

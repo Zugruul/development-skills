@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Zugruul/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json
-schemaVersion: 2
+schemaVersion: "2.0.0"
 project:
     name: my-platform
     description: One-line project description used in agent briefs
@@ -34,29 +34,6 @@ boards:
     labels:
         bug: type:bug
         feature: type:feature
-specs:
-  - id: core
-    title: Core platform
-    board: main
-    specPath: SPEC.md
-    backlogPath: docs/BACKLOG.md
-    taskPrefix: XX
-    epics:
-      - id: EI
-        title: Infra + loop
-        taskRanges: [[90, 99]]
-      - id: E0
-        title: Foundations
-        taskRanges: [[1, 9]]
-        blockedBy: []
-      - id: E1
-        title: First feature slice
-        taskRanges: [[10, 19]]
-        blockedBy:
-          - epic: E0
-            untilStatus: Deployed
-    invariants:
-      - State hard, non-negotiable rules here; they are pasted into every implementation brief.
 commands:
     gate: pnpm gate
     gateFast: pnpm --filter <pkg> test
@@ -98,3 +75,14 @@ methodology:
     autoMerge: false
     feedback: true
     mergeMethod: squash
+# work.done — definition of AGENT work done: the phase where the agent stops and
+# reports "my work is done". Distinct from a task's definition of done (what the
+# TASK requires — the agent works toward that). Absent == the delivery flow
+# decides (work.type + methodology.autoMerge). Phases: code | pr-open |
+# pr-review-requested | pr-validated | deployed-staging | deployed-production |
+# custom (instructions required — they ARE the definition). instructions adds
+# extra guidance on any preset phase. pr-* phases are invalid with work.type: local.
+# work:
+#     done:
+#         phase: pr-review-requested
+#         instructions: Post the PR link in the team's review channel with a one-line summary.

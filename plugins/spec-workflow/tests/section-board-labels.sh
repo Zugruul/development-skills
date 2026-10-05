@@ -16,8 +16,8 @@ echo "== board.sh ensure-labels (fake gh: label-list read failure must surface) 
 # user with a downstream "could not create label" that hid the real cause.
 # The list read must be checked: a failed read fails the step, loudly.
 
-LBG="$(mktemp -d)"; mkdir -p "$LBG/.claude"
-cp "$FIX/valid.project.yaml" "$LBG/.claude/project.yaml"
+LBG="$(mktemp -d)"; mkdir -p "$LBG/.claude" "$LBG/.neural-network"
+cp "$FIX/valid.project.yaml" "$LBG/.neural-network/project.yaml"
 LGH="$(mktemp -d)"
 cat >"$LGH/gh" <<'FAKE'
 #!/usr/bin/env bash

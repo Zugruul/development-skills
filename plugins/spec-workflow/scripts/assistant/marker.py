@@ -48,11 +48,21 @@ def parse_marker(text):
 
 
 def read_marker(path):
-    """Read and parse the marker file at `path`.
+    """Read and parse marker metadata at `path`.
 
-    Raises FileNotFoundError if `path` does not exist -- presence checks
-    are the caller's job, matching existing marker consumers.
+    `path` is the root-level `.neural-network` marker DIRECTORY: its optional
+    `marker` metadata file inside is parsed when present; a marker dir with no
+    metadata file parses as `{}` (content can never reject a repo, §6.2). A
+    direct file path still parses as before. Raises FileNotFoundError if
+    `path` does not exist -- presence checks are the caller's job, matching
+    existing marker consumers.
     """
+    import os
+    if os.path.isdir(path):
+        meta = os.path.join(path, "marker")
+        if not os.path.exists(meta):
+            return {}
+        path = meta
     with open(path, "r", encoding="utf-8") as f:
         text = f.read()
     return parse_marker(text)

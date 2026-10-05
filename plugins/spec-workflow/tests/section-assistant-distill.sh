@@ -16,8 +16,8 @@ AD_SCRIPTS="$PLUGIN/scripts"
 # stub (below) rather than a real provider CLI.
 ad_repo() {
     local dir="$1" main="$2"
-    mkdir -p "$dir/.claude"
-    printf "%s\n" "# neural-network" >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf "%s\n" "# neural-network" >"$dir/.neural-network/marker"
     printf "%s\n" \
         "schemaVersion: 2" \
         "assistant:" \
@@ -34,7 +34,7 @@ ad_repo() {
         "            enabled: true" \
         "            provisioning:" \
         "                bin: codex" \
-        >"$dir/.claude/project.yaml"
+        >"$dir/.neural-network/project.yaml"
 }
 
 # ------------------------------------------------------------------------
@@ -46,7 +46,7 @@ from assistant import distill
 import brain
 
 root = tempfile.mkdtemp(prefix="ad-unit-")
-identities = os.path.join(root, ".claude", "identities")
+identities = os.path.join(root, ".neural-network", "identities")
 os.makedirs(identities, exist_ok=True)
 
 exchanges = [
@@ -101,7 +101,7 @@ from assistant import distill
 import brain
 
 root = tempfile.mkdtemp(prefix="ad-batchn-")
-identities = os.path.join(root, ".claude", "identities")
+identities = os.path.join(root, ".neural-network", "identities")
 os.makedirs(identities, exist_ok=True)
 
 q = queue.Queue()
@@ -141,8 +141,8 @@ import brain
 
 root_a = tempfile.mkdtemp(prefix="ad-iso-a-")
 root_b = tempfile.mkdtemp(prefix="ad-iso-b-")
-ident_a = os.path.join(root_a, ".claude", "identities")
-ident_b = os.path.join(root_b, ".claude", "identities")
+ident_a = os.path.join(root_a, ".neural-network", "identities")
+ident_b = os.path.join(root_b, ".neural-network", "identities")
 os.makedirs(ident_a, exist_ok=True)
 os.makedirs(ident_b, exist_ok=True)
 
@@ -179,7 +179,7 @@ from assistant import distill
 import brain
 
 root = tempfile.mkdtemp(prefix="ad-poison-")
-identities = os.path.join(root, ".claude", "identities")
+identities = os.path.join(root, ".neural-network", "identities")
 os.makedirs(identities, exist_ok=True)
 
 q = queue.Queue()
@@ -243,7 +243,7 @@ from assistant import adapters, distill, engine
 import brain
 
 root = os.environ["ROOT"]
-identities = os.path.join(root, ".claude", "identities")
+identities = os.path.join(root, ".neural-network", "identities")
 
 def stub_complete(context, **kwargs):
     return {"text": "reply about rocket telemetry systems", "usage": None, "timings": None}
@@ -271,7 +271,7 @@ try:
             time.sleep(0.2)
         print("MINTED_VIA_REAL_ENGINE", minted)
 
-        events_path = os.path.join(root, ".claude", "brain-events.jsonl")
+        events_path = os.path.join(root, ".neural-network", "brain-events", "test.jsonl")
         events_text = open(events_path, encoding="utf-8").read() if os.path.exists(events_path) else ""
         print("BRAIN_EVENT_NOTE_MINTED", '"type": "NoteMinted"' in events_text)
 finally:
@@ -323,7 +323,7 @@ e_loaded.start()
 # worker will be busy chewing through it via process_batch real brain.mint
 # I/O (same identities dir the chat turns below also write session state
 # under) while the request thread below runs turns concurrently.
-identities = os.path.join(root, ".claude", "identities")
+identities = os.path.join(root, ".neural-network", "identities")
 backlog_q = e_loaded.queues["distiller"]
 for i in range(500):
     try:
@@ -368,10 +368,10 @@ from assistant import distill
 import brain
 
 root = tempfile.mkdtemp(prefix="ad-gap-")
-identities = os.path.join(root, ".claude", "identities")
+identities = os.path.join(root, ".neural-network", "identities")
 os.makedirs(identities, exist_ok=True)
 
-project_yaml = os.path.join(root, ".claude", "project.yaml")
+project_yaml = os.path.join(root, ".neural-network", "project.yaml")
 with open(project_yaml, "w", encoding="utf-8") as fh:
     fh.write("schemaVersion: 2\nassistant:\n    enabled: true\n")
 before_bytes = open(project_yaml, "rb").read()
@@ -395,7 +395,7 @@ print("BODY_MENTIONS_HUMAN_APPROVAL", "human must approve" in body)
 print("BODY_HAS_EXCERPT", "duck" in body)
 print("BODY_HAS_NEAREST", "weather" in body and "reminders" in body)
 
-events_path = os.path.join(root, ".claude", "brain-events.jsonl")
+events_path = os.path.join(root, ".neural-network", "brain-events", "test.jsonl")
 events = [json.loads(line) for line in open(events_path, encoding="utf-8")]
 minted = [e for e in events if e.get("type") == "NoteMinted" and e.get("slug") == result["slug"]]
 print("BRAIN_EVENT_EMITTED", len(minted) == 1)
@@ -436,7 +436,7 @@ from assistant import distill
 import brain
 
 root = tempfile.mkdtemp(prefix="ad-gap-empty-")
-identities = os.path.join(root, ".claude", "identities")
+identities = os.path.join(root, ".neural-network", "identities")
 os.makedirs(identities, exist_ok=True)
 
 gap_note = {"request_excerpt": "do something I have no ability for", "nearest": [], "total_enabled": 0,
@@ -458,7 +458,7 @@ from assistant import distill
 import brain
 
 root = tempfile.mkdtemp(prefix="ad-gap-enabled-")
-identities = os.path.join(root, ".claude", "identities")
+identities = os.path.join(root, ".neural-network", "identities")
 os.makedirs(identities, exist_ok=True)
 
 # this is the SHAPE capability_gap_reply actually produces in production
@@ -492,7 +492,7 @@ from assistant import distill
 import brain
 
 root = tempfile.mkdtemp(prefix="ad-gap-dedupe-")
-identities = os.path.join(root, ".claude", "identities")
+identities = os.path.join(root, ".neural-network", "identities")
 os.makedirs(identities, exist_ok=True)
 
 # same request, differing only in whitespace/case -- must normalize to the
@@ -525,7 +525,7 @@ from assistant import distill
 import brain
 
 root = tempfile.mkdtemp(prefix="ad-gap-prefix-")
-identities = os.path.join(root, ".claude", "identities")
+identities = os.path.join(root, ".neural-network", "identities")
 os.makedirs(identities, exist_ok=True)
 
 shared_prefix = "please render a beautiful high quality cinematic video of "
@@ -557,7 +557,7 @@ from assistant import distill
 import brain
 
 root = tempfile.mkdtemp(prefix="ad-gap-worker-")
-identities = os.path.join(root, ".claude", "identities")
+identities = os.path.join(root, ".neural-network", "identities")
 os.makedirs(identities, exist_ok=True)
 
 q = queue.Queue()

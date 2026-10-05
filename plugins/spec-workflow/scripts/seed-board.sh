@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # seed-board.sh — idempotently seed a GitHub Project board from a task file.
-# Part of the spec-workflow plugin; config comes from .claude/project.yaml.
+# Part of the spec-workflow plugin; config comes from .neural-network/project.yaml.
 #
 # Usage: seed-board.sh <tasks-file>
 #
@@ -29,7 +29,7 @@ source "$HERE/lib/repo-root.sh"
 # #463: PRIMARY repo root -- board seeding reads/writes the shared project.yaml.
 ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 1; }
 CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
-[[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .claude/project.yaml (or legacy .json) — run the setup-project skill first" >&2; exit 1; }
+[[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "ERROR: no .neural-network/project.yaml (or legacy .json) — run the setup-project skill first" >&2; exit 1; }
 
 eval "$(python3 - "$CONFIG" "${BOARD:-}" <<'PY'
 import json, sys

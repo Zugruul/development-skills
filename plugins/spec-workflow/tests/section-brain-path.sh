@@ -16,7 +16,7 @@ _pa_write_links() { # root role json-body
     python3 -c '
 import json, sys
 root, role, body = sys.argv[1], sys.argv[2], sys.argv[3]
-path = root + "/.claude/identities/" + role + "/brain/links.json"
+path = root + "/.neural-network/identities/" + role + "/brain/links.json"
 open(path, "w", encoding="utf-8").write(body)
 ' "$1" "$2" "$3"
 }
@@ -100,9 +100,9 @@ printf 'RO note two.\n' | pad mint dev ro-two --tags p --source x >/dev/null
 _pa_write_links "$PA_D" dev '{
   "ro-one->ro-two": {"weight": 0.7, "fires": 3, "last": "2024-01-01"}
 }'
-before_hash="$(shasum -a 256 "$PA_D/.claude/identities/dev/brain/links.json" | cut -d' ' -f1)"
+before_hash="$(shasum -a 256 "$PA_D/.neural-network/identities/dev/brain/links.json" | cut -d' ' -f1)"
 pad path dev ro-one ro-two >/dev/null
-after_hash="$(shasum -a 256 "$PA_D/.claude/identities/dev/brain/links.json" | cut -d' ' -f1)"
+after_hash="$(shasum -a 256 "$PA_D/.neural-network/identities/dev/brain/links.json" | cut -d' ' -f1)"
 check "read-only: links.json byte-identical before/after path" "$before_hash" "$after_hash"
 rm -rf "$PA_D"
 

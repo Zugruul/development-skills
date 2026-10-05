@@ -335,3 +335,51 @@ check "plugin_version() reads the real semver out of plugin.json" "REAL_VERSION_
 check "a missing plugin.json returns None, never an exception" "MISSING_FILE_RETURNS_NONE True" "$NVPV_OUT"
 check "unparseable JSON returns None, never an exception" "UNPARSEABLE_RETURNS_NONE True" "$NVPV_OUT"
 check "a non-string version field returns None rather than surfacing the wrong-typed value" "NON_STRING_VERSION_RETURNS_NONE True" "$NVPV_OUT"
+
+# ---------------------------------------------------------------- headings
+# Real notes write "## Title" directly followed by content (no blank line in
+# between) — headings must render INSIDE a block, not only as a whole block.
+echo "== render_body: headings inside blocks =="
+NVH_OUT="$(python3 - "$PLUGIN/scripts/neural-view.py" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("neural_view", sys.argv[1])
+nv = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(nv)
+body = """Intro line.
+
+## The fix
+Run the command below.
+- first item
+- second item
+
+## Another section
+Tail prose."""
+print(nv.render_body(body))
+PY
+)"
+check "heading with content in the same block renders as a heading" "<h4>The fix</h4>" "$NVH_OUT"
+check "content after the heading still renders as a paragraph" "<p>Run the command below.</p>" "$NVH_OUT"
+check "list after prose in the same block renders as a list" "<li>first item</li>" "$NVH_OUT"
+check "second heading block renders too" "<h4>Another section</h4>" "$NVH_OUT"
+check "tail prose after a heading renders as a paragraph" "<p>Tail prose.</p>" "$NVH_OUT"
+check_absent "no literal ## reaches the output" "## " "$NVH_OUT"
+
+echo "== render_body: no emphasis inside code =="
+NVC_OUT="$(python3 - "$PLUGIN/scripts/neural-view.py" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("neural_view", sys.argv[1])
+nv = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(nv)
+body = """Set `LUMA_SERVICE_HEALTHCHECK_SERVER_ENABLED=true` and `a*b*c` stay literal, but _this_ and *that* are emphasis.
+
+```
+UNDER_SCORE_BLOCK and *stars* stay literal too
+```"""
+print(nv.render_body(body))
+PY
+)"
+check "underscores inside inline code stay literal" "<code>LUMA_SERVICE_HEALTHCHECK_SERVER_ENABLED=true</code>" "$NVC_OUT"
+check "asterisks inside inline code stay literal" "<code>a*b*c</code>" "$NVC_OUT"
+check "emphasis outside code still works (underscore)" "<em>this</em>" "$NVC_OUT"
+check "emphasis outside code still works (asterisk)" "<em>that</em>" "$NVC_OUT"
+check "fenced block content stays literal" "UNDER_SCORE_BLOCK and *stars* stay literal too" "$NVC_OUT"

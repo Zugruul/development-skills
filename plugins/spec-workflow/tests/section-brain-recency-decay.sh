@@ -63,7 +63,7 @@ printf 'Aging lesson body FRESH.\n' | rda mint dev zzz-fresh-note --tags age --p
 python3 - "$RD_AGE" <<'PY'
 import os, re, sys
 root = sys.argv[1]
-d = os.path.join(root, ".claude/identities/dev/brain/notes")
+d = os.path.join(root, ".neural-network/identities/dev/brain/notes")
 patches = {"aaa-old-note": "2020-01-01", "zzz-fresh-note": "2020-08-01"}
 for slug, date in patches.items():
     p = os.path.join(d, slug + ".md")
@@ -72,8 +72,8 @@ for slug, date in patches.items():
     s = re.sub(r"last-touched: .*", "last-touched: %s" % date, s)
     open(p, "w").write(s)
 PY
-mkdir -p "$RD_AGE/.claude/identities"
-cat >"$RD_AGE/.claude/identities/retros.log" <<'EOF'
+mkdir -p "$RD_AGE/.neural-network/identities"
+cat >"$RD_AGE/.neural-network/identities/retros.log" <<'EOF'
 2020-02-01
 2020-03-01
 2020-04-01
@@ -91,7 +91,7 @@ else
     echo "FAIL aging: untouched-for-K+3-retros note ranks strictly below its just-touched twin"
     fails=$((fails + 1))
 fi
-ACT_LOG="$RD_AGE/.claude/identities/dev/brain/.activation.jsonl"
+ACT_LOG="$RD_AGE/.neural-network/identities/dev/brain/.activation.jsonl"
 old_act="$(_last_seed_activation "$ACT_LOG" aaa-old-note)"
 fresh_act="$(_last_seed_activation "$ACT_LOG" zzz-fresh-note)"
 # base activation (strength 1, no outcomes) is 1.0 * (1 + 1/10) = 1.1;
@@ -107,20 +107,20 @@ printf 'At-K lesson body.\n' | rdk mint dev at-k-note --tags atk --paths "atk/**
 python3 - "$RD_ATK" <<'PY'
 import os, re, sys
 root = sys.argv[1]
-p = os.path.join(root, ".claude/identities/dev/brain/notes/at-k-note.md")
+p = os.path.join(root, ".neural-network/identities/dev/brain/notes/at-k-note.md")
 s = open(p).read()
 s = re.sub(r"created: .*", "created: 2020-01-01", s)
 s = re.sub(r"last-touched: .*", "last-touched: 2020-01-01", s)
 open(p, "w").write(s)
 PY
-mkdir -p "$RD_ATK/.claude/identities"
-cat >"$RD_ATK/.claude/identities/retros.log" <<'EOF'
+mkdir -p "$RD_ATK/.neural-network/identities"
+cat >"$RD_ATK/.neural-network/identities/retros.log" <<'EOF'
 2020-02-01
 2020-03-01
 2020-04-01
 EOF
 rdk recall dev --paths "atk/x.sh" --keywords "" >/dev/null
-at_k_act="$(_last_seed_activation "$RD_ATK/.claude/identities/dev/brain/.activation.jsonl" at-k-note)"
+at_k_act="$(_last_seed_activation "$RD_ATK/.neural-network/identities/dev/brain/.activation.jsonl" at-k-note)"
 check "aging: at exactly K=3 elapsed retros, activation is still undecayed (1.1)" "1.1" "$at_k_act"
 rm -rf "$RD_ATK"
 
@@ -136,7 +136,7 @@ printf 'Reset lesson body B.\n' | rdr mint dev aaa-stale-note --tags rst --paths
 python3 - "$RD_RST" <<'PY'
 import os, re, sys
 root = sys.argv[1]
-d = os.path.join(root, ".claude/identities/dev/brain/notes")
+d = os.path.join(root, ".neural-network/identities/dev/brain/notes")
 for slug in ("zzz-reset-note", "aaa-stale-note"):
     p = os.path.join(d, slug + ".md")
     s = open(p).read()
@@ -144,8 +144,8 @@ for slug in ("zzz-reset-note", "aaa-stale-note"):
     s = re.sub(r"last-touched: .*", "last-touched: 2020-01-01", s)
     open(p, "w").write(s)
 PY
-mkdir -p "$RD_RST/.claude/identities"
-cat >"$RD_RST/.claude/identities/retros.log" <<'EOF'
+mkdir -p "$RD_RST/.neural-network/identities"
+cat >"$RD_RST/.neural-network/identities/retros.log" <<'EOF'
 2020-02-01
 2020-03-01
 2020-04-01
@@ -153,7 +153,7 @@ cat >"$RD_RST/.claude/identities/retros.log" <<'EOF'
 2020-06-01
 2020-07-01
 EOF
-OUT_JSONL="$RD_RST/.claude/identities/dev/brain/outcomes.jsonl"
+OUT_JSONL="$RD_RST/.neural-network/identities/dev/brain/outcomes.jsonl"
 mkdir -p "$(dirname "$OUT_JSONL")"
 cat >"$OUT_JSONL" <<'EOF'
 {"schemaVersion": 1, "ts": "2020-08-01T00:00:00+00:00", "slug": "zzz-reset-note", "outcome": "useful", "task": null, "note": null}
@@ -163,8 +163,8 @@ EOF
 # ranking boost (which the useful outcome would otherwise also trigger,
 # since it necessarily falls inside the outcome window whenever it's dated
 # after every retro -- verify-fixture-isolates-intended-path).
-mkdir -p "$RD_RST/.claude"
-cat >"$RD_RST/.claude/project.yaml" <<'YAML'
+mkdir -p "$RD_RST/.claude" "$RD_RST/.neural-network"
+cat >"$RD_RST/.neural-network/project.yaml" <<'YAML'
 schemaVersion: 2
 methodology:
     outcomeMultiplierStep: 0
@@ -200,7 +200,7 @@ printf 'Missing-log lesson body.\n' | rdm mint dev miss-note --tags miss --paths
 python3 - "$RD_MISS" <<'PY'
 import os, re, sys
 root = sys.argv[1]
-p = os.path.join(root, ".claude/identities/dev/brain/notes/miss-note.md")
+p = os.path.join(root, ".neural-network/identities/dev/brain/notes/miss-note.md")
 s = open(p).read()
 s = re.sub(r"created: .*", "created: 2020-01-01", s)
 s = re.sub(r"last-touched: .*", "last-touched: 2020-01-01", s)
@@ -214,7 +214,7 @@ else
     fails=$((fails + 1))
 fi
 rdm recall dev --paths "miss/x.sh" --keywords "" >/dev/null 2>&1
-miss_act="$(_last_seed_activation "$RD_MISS/.claude/identities/dev/brain/.activation.jsonl" miss-note)"
+miss_act="$(_last_seed_activation "$RD_MISS/.neural-network/identities/dev/brain/.activation.jsonl" miss-note)"
 check "missing retros.log: zero decay even though the note is ancient (activation 1.1)" "1.1" "$miss_act"
 rm -rf "$RD_MISS"
 
@@ -225,14 +225,14 @@ printf 'Empty-log lesson body.\n' | rde mint dev empty-note --tags emp --paths "
 python3 - "$RD_EMPTY" <<'PY'
 import os, re, sys
 root = sys.argv[1]
-p = os.path.join(root, ".claude/identities/dev/brain/notes/empty-note.md")
+p = os.path.join(root, ".neural-network/identities/dev/brain/notes/empty-note.md")
 s = open(p).read()
 s = re.sub(r"created: .*", "created: 2020-01-01", s)
 s = re.sub(r"last-touched: .*", "last-touched: 2020-01-01", s)
 open(p, "w").write(s)
 PY
-mkdir -p "$RD_EMPTY/.claude/identities"
-: >"$RD_EMPTY/.claude/identities/retros.log"
+mkdir -p "$RD_EMPTY/.neural-network/identities"
+: >"$RD_EMPTY/.neural-network/identities/retros.log"
 err="$(rde recall dev --paths "emp/x.sh" --keywords "" 2>&1 >/dev/null)"
 if [[ -z "$err" ]]; then
     echo "ok   empty retros.log: no warnings printed"
@@ -241,6 +241,6 @@ else
     fails=$((fails + 1))
 fi
 rde recall dev --paths "emp/x.sh" --keywords "" >/dev/null 2>&1
-empty_act="$(_last_seed_activation "$RD_EMPTY/.claude/identities/dev/brain/.activation.jsonl" empty-note)"
+empty_act="$(_last_seed_activation "$RD_EMPTY/.neural-network/identities/dev/brain/.activation.jsonl" empty-note)"
 check "empty retros.log: zero decay even though the note is ancient (activation 1.1)" "1.1" "$empty_act"
 rm -rf "$RD_EMPTY"

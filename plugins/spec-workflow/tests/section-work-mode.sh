@@ -9,8 +9,8 @@
 
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== config.py: work.type / work.sync.mode accessors (defaults) =="
-WT="$(mktemp -d)"; mkdir -p "$WT/.claude"
-cp "$FIX/valid.project.yaml" "$WT/.claude/project.yaml"
+WT="$(mktemp -d)"; mkdir -p "$WT/.claude" "$WT/.neural-network"
+cp "$FIX/valid.project.yaml" "$WT/.neural-network/project.yaml"
 wjget() { python3 "$PLUGIN/scripts/config.py" "$WT" get "$1"; }
 check "work.type defaults to pr when work absent" "pr" "$(wjget work.type)"
 check "work.sync.mode defaults to realtime when work absent" "realtime" "$(wjget work.sync.mode)"
@@ -26,67 +26,67 @@ check "config.py get work.type with no config file at all is empty (script-side 
 rm -rf "$WN"
 
 echo "== validate-config: work.type / work.sync =="
-VW="$(mktemp -d)"; mkdir -p "$VW/.claude"
-cp "$FIX/valid.project.yaml" "$VW/.claude/project.yaml"
+VW="$(mktemp -d)"; mkdir -p "$VW/.claude" "$VW/.neural-network"
+cp "$FIX/valid.project.yaml" "$VW/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$VW" set work.type '"local"' >/dev/null
 python3 "$PLUGIN/scripts/config.py" "$VW" set work.sync.mode '"task-close"' >/dev/null
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$VW/.claude/project.yaml")"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$VW/.neural-network/project.yaml")"
 check "valid work.type local + work.sync.mode task-close passes" "VALID: " "$out"
 
 # sync rejected under type: pr (the default)
-VP="$(mktemp -d)"; mkdir -p "$VP/.claude"
-cp "$FIX/valid.project.yaml" "$VP/.claude/project.yaml"
+VP="$(mktemp -d)"; mkdir -p "$VP/.claude" "$VP/.neural-network"
+cp "$FIX/valid.project.yaml" "$VP/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$VP" set work.sync.mode '"manual"' >/dev/null
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$VP/.claude/project.yaml" || true)"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$VP/.neural-network/project.yaml" || true)"
 check "work.sync under (default) type: pr is rejected" "work.sync is only valid with work.type: local" "$out"
 rm -rf "$VP"
 
 # sync rejected under explicit type: pr
-VP2="$(mktemp -d)"; mkdir -p "$VP2/.claude"
-cp "$FIX/valid.project.yaml" "$VP2/.claude/project.yaml"
+VP2="$(mktemp -d)"; mkdir -p "$VP2/.claude" "$VP2/.neural-network"
+cp "$FIX/valid.project.yaml" "$VP2/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$VP2" set work.type '"pr"' >/dev/null
 python3 "$PLUGIN/scripts/config.py" "$VP2" set work.sync.mode '"realtime"' >/dev/null
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$VP2/.claude/project.yaml" || true)"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$VP2/.neural-network/project.yaml" || true)"
 check "work.sync under explicit type: pr is rejected" "work.sync is only valid with work.type: local" "$out"
 rm -rf "$VP2"
 
 # invalid work.type enum
-VE="$(mktemp -d)"; mkdir -p "$VE/.claude"
-cp "$FIX/valid.project.yaml" "$VE/.claude/project.yaml"
+VE="$(mktemp -d)"; mkdir -p "$VE/.claude" "$VE/.neural-network"
+cp "$FIX/valid.project.yaml" "$VE/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$VE" set work.type '"branch"' >/dev/null
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$VE/.claude/project.yaml" || true)"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$VE/.neural-network/project.yaml" || true)"
 check "work.type invalid enum rejected" "work.type must be 'pr' or 'local'" "$out"
 rm -rf "$VE"
 
 # invalid work.sync.mode enum
-VM="$(mktemp -d)"; mkdir -p "$VM/.claude"
-cp "$FIX/valid.project.yaml" "$VM/.claude/project.yaml"
+VM="$(mktemp -d)"; mkdir -p "$VM/.claude" "$VM/.neural-network"
+cp "$FIX/valid.project.yaml" "$VM/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$VM" set work.type '"local"' >/dev/null
 python3 "$PLUGIN/scripts/config.py" "$VM" set work.sync.mode '"nightly"' >/dev/null
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$VM/.claude/project.yaml" || true)"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$VM/.neural-network/project.yaml" || true)"
 check "work.sync.mode invalid enum rejected" "work.sync.mode must be one of realtime, task-close, session-end, manual" "$out"
 rm -rf "$VM"
 
 # unknown key under work
-VU="$(mktemp -d)"; mkdir -p "$VU/.claude"
-cp "$FIX/valid.project.yaml" "$VU/.claude/project.yaml"
+VU="$(mktemp -d)"; mkdir -p "$VU/.claude" "$VU/.neural-network"
+cp "$FIX/valid.project.yaml" "$VU/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$VU" set work.type '"local"' >/dev/null
 python3 "$PLUGIN/scripts/config.py" "$VU" set work.autoApprove 'true' >/dev/null
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$VU/.claude/project.yaml" || true)"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$VU/.neural-network/project.yaml" || true)"
 check "unknown key under work rejected" "work.autoApprove: unknown key" "$out"
 rm -rf "$VU"
 
 # unknown key under work.sync
-VUS="$(mktemp -d)"; mkdir -p "$VUS/.claude"
-cp "$FIX/valid.project.yaml" "$VUS/.claude/project.yaml"
+VUS="$(mktemp -d)"; mkdir -p "$VUS/.claude" "$VUS/.neural-network"
+cp "$FIX/valid.project.yaml" "$VUS/.neural-network/project.yaml"
 python3 "$PLUGIN/scripts/config.py" "$VUS" set work.type '"local"' >/dev/null
 python3 "$PLUGIN/scripts/config.py" "$VUS" set work.sync.interval '30' >/dev/null
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$VUS/.claude/project.yaml" || true)"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$VUS/.neural-network/project.yaml" || true)"
 check "unknown key under work.sync rejected" "work.sync.interval: unknown key" "$out"
 rm -rf "$VUS"
 
 # this repo's own config (work: {type: local, sync: {mode: task-close}}) validates
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/../../.claude/project.yaml" 2>&1 || true)"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$PLUGIN/../../.neural-network/project.yaml" 2>&1 || true)"
 check "this repo's own project.yaml (work: local/task-close) validates" "VALID: " "$out"
 
 # Schema hover-completeness (description/enumDescriptions/defaults) for the
@@ -95,8 +95,8 @@ check "this repo's own project.yaml (work: local/task-close) validates" "VALID: 
 # copy of that check here would just be a duplicate canonical checker (#80).
 
 echo "== work-mode.sh: type / sync-mode =="
-WM="$(mktemp -d)"; mkdir -p "$WM/.claude"
-cp "$FIX/valid.project.yaml" "$WM/.claude/project.yaml"
+WM="$(mktemp -d)"; mkdir -p "$WM/.claude" "$WM/.neural-network"
+cp "$FIX/valid.project.yaml" "$WM/.neural-network/project.yaml"
 wm() { (cd "$WM" && bash "$PLUGIN/scripts/work-mode.sh" "$@"); }
 check "work-mode.sh type defaults to pr" "pr" "$(wm type)"
 check "work-mode.sh sync-mode defaults to realtime" "realtime" "$(wm sync-mode)"
@@ -160,8 +160,8 @@ check "auto-review.md: local mode board announce carries the merge SHA" "board a
 check "auto-review.md: work-mode.sh names the deferral helper" "work-mode.sh" "$ARBODY2"
 
 echo "== #532 work.checkout: config accessor + validator =="
-WC="$(mktemp -d)"; mkdir -p "$WC/.claude"
-cp "$FIX/valid.project.yaml" "$WC/.claude/project.yaml"
+WC="$(mktemp -d)"; mkdir -p "$WC/.claude" "$WC/.neural-network"
+cp "$FIX/valid.project.yaml" "$WC/.neural-network/project.yaml"
 wcget() { python3 "$PLUGIN/scripts/config.py" "$WC" get "$1"; }
 check "work.checkout defaults to worktree when work absent" "worktree" "$(wcget work.checkout)"
 python3 "$PLUGIN/scripts/config.py" "$WC" set work.checkout '"main"' >/dev/null
@@ -170,20 +170,20 @@ check "work.checkout reads back main" "main" "$(wcget work.checkout)"
 # checkout is delivery-agnostic (worktree-vs-main is WHERE work happens,
 # pr-vs-local is HOW it lands) -- unlike work.sync it must validate under the
 # DEFAULT work.type (pr) and under local alike.
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$WC/.claude/project.yaml")"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$WC/.neural-network/project.yaml")"
 check "work.checkout main under (default) type pr validates" "VALID: " "$out"
 python3 "$PLUGIN/scripts/config.py" "$WC" set work.type '"local"' >/dev/null
 python3 "$PLUGIN/scripts/config.py" "$WC" set work.checkout '"worktree"' >/dev/null
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$WC/.claude/project.yaml")"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$WC/.neural-network/project.yaml")"
 check "work.checkout worktree under type local validates" "VALID: " "$out"
 python3 "$PLUGIN/scripts/config.py" "$WC" set work.checkout '"branchless"' >/dev/null
-out="$(python3 "$PLUGIN/scripts/validate-config.py" "$WC/.claude/project.yaml" || true)"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$WC/.neural-network/project.yaml" || true)"
 check "work.checkout invalid enum rejected" "work.checkout must be 'worktree' or 'main'" "$out"
 rm -rf "$WC"
 
 echo "== #532 work-mode.sh: checkout verb =="
-WK="$(mktemp -d)"; mkdir -p "$WK/.claude"
-cp "$FIX/valid.project.yaml" "$WK/.claude/project.yaml"
+WK="$(mktemp -d)"; mkdir -p "$WK/.claude" "$WK/.neural-network"
+cp "$FIX/valid.project.yaml" "$WK/.neural-network/project.yaml"
 wk() { (cd "$WK" && bash "$PLUGIN/scripts/work-mode.sh" "$@"); }
 check "work-mode.sh checkout defaults to worktree" "worktree" "$(wk checkout)"
 python3 "$PLUGIN/scripts/config.py" "$WK" set work.checkout '"main"' >/dev/null
@@ -208,3 +208,88 @@ check "implement-task SKILL.md: allow-empty registration commit makes the empty 
 
 SPS3="$(cat "$PLUGIN/skills/setup-project/SKILL.md" 2>/dev/null)"
 check "setup-project SKILL.md: asks the work.checkout preference at setup" "work.checkout" "$SPS3"
+
+# ============================================================ work.done
+# Definition of AGENT work done: at which delivery phase the agent considers
+# ITS OWN work finished. Distinct from the task-level definition of done (what
+# the TASK requires -- the agent works toward that), work.done is the agent's
+# true stop-gate for "my work is done". phases: code | pr-open |
+# pr-review-requested | pr-validated | deployed-staging | deployed-production
+# | custom. work.done.instructions adds extra guidance for any phase; under
+# phase: custom it IS the definition (and is therefore required there).
+echo "== validate-config: work.done (definition of agent work done) =="
+WDD="$(mktemp -d)"; mkdir -p "$WDD/.claude" "$WDD/.neural-network"
+wd_reset() { cp "$FIX/valid.project.yaml" "$WDD/.neural-network/project.yaml"; }
+wd_set() { python3 "$PLUGIN/scripts/config.py" "$WDD" set "$1" "$2" >/dev/null; }
+wd_val() { python3 "$PLUGIN/scripts/validate-config.py" "$WDD/.neural-network/project.yaml" 2>&1 || true; }
+
+wd_reset
+for p in code pr-open pr-review-requested pr-validated deployed-staging deployed-production; do
+    wd_set work.done.phase "\"$p\""
+    check_absent "work.done.phase $p is valid" "INVALID" "$(wd_val)"
+done
+check "summary prints the agent work-done gate" "work done: phase=deployed-production" "$(wd_val)"
+
+wd_set work.done.phase '"merged"'
+check "unknown phase rejected (names the union)" "work.done.phase must be one of code, pr-open, pr-review-requested, pr-validated, deployed-staging, deployed-production, custom" "$(wd_val)"
+
+wd_reset
+wd_set work.done.phase '"custom"'
+check "phase custom without instructions rejected" "work.done.phase: custom requires work.done.instructions" "$(wd_val)"
+wd_set work.done.instructions '"Done means the change is announced in the releases channel with a rollout note."'
+check_absent "phase custom + instructions valid" "INVALID" "$(wd_val)"
+check "summary marks custom instructions as the definition" "work done: phase=custom (instructions are the definition)" "$(wd_val)"
+
+wd_reset
+wd_set work.done.phase '"pr-validated"'
+wd_set work.done.instructions '"Validate on the gold environment before calling it done."'
+check_absent "instructions alongside a preset phase are valid (extra guidance)" "INVALID" "$(wd_val)"
+check "summary notes extra instructions on a preset phase" "work done: phase=pr-validated (+instructions)" "$(wd_val)"
+wd_set work.done.instructions '""'
+check "empty instructions rejected" "work.done.instructions: must not be empty" "$(wd_val)"
+
+wd_reset
+wd_set work.done.instructions '"guidance without a phase"'
+check "instructions without a phase rejected" "work.done.phase is required when work.done is present" "$(wd_val)"
+
+wd_reset
+wd_set work.done '"pr-open"'
+check "work.done must be a mapping" "work.done: must be a mapping" "$(wd_val)"
+
+wd_reset
+wd_set work.done.phase '"pr-open"'
+wd_set work.done.autoClose 'true'
+check "unknown key under work.done rejected" "work.done.autoClose: unknown key" "$(wd_val)"
+
+# pr-* phases are unsatisfiable under local delivery (no PR is ever opened)
+wd_reset
+wd_set work.type '"local"'
+for p in pr-open pr-review-requested pr-validated; do
+    wd_set work.done.phase "\"$p\""
+    check "work.done.phase $p rejected under work.type: local" "work.done.phase '$p' requires work.type: pr (local delivery never opens a PR)" "$(wd_val)"
+done
+wd_set work.done.phase '"deployed-staging"'
+check_absent "deployed-staging is valid under work.type: local" "INVALID" "$(wd_val)"
+rm -rf "$WDD"
+
+echo "== work-mode.sh: done-phase / done-instructions =="
+WDM="$(mktemp -d)"; mkdir -p "$WDM/.claude" "$WDM/.neural-network"
+cp "$FIX/valid.project.yaml" "$WDM/.neural-network/project.yaml"
+wdm() { (cd "$WDM" && bash "$PLUGIN/scripts/work-mode.sh" "$@"); }
+check "done-phase defaults to 'default' (legacy flow: work.type + autoMerge decide)" "default" "$(wdm done-phase)"
+python3 "$PLUGIN/scripts/config.py" "$WDM" set work.done.phase '"pr-validated"' >/dev/null
+check "done-phase reflects the configured phase" "pr-validated" "$(wdm done-phase)"
+python3 "$PLUGIN/scripts/config.py" "$WDM" set work.done.instructions '"validate on gold first"' >/dev/null
+check "done-instructions prints the configured text" "validate on gold first" "$(wdm done-instructions)"
+rm -rf "$WDM"
+
+echo "== skill-doc wiring: work.done =="
+ITS4="$(cat "$PLUGIN/skills/implement-task/SKILL.md" 2>/dev/null)"
+check "implement-task SKILL.md: work.done is the agent's stop-gate" "work.done" "$ITS4"
+check "implement-task SKILL.md: distinguishes task definition of done from agent work done" "definition of done" "$ITS4"
+BNS4="$(cat "$PLUGIN/skills/build-next/SKILL.md" 2>/dev/null)"
+check "build-next SKILL.md: documents work.done phases" "work.done" "$BNS4"
+SPS4="$(cat "$PLUGIN/skills/setup-project/SKILL.md" 2>/dev/null)"
+check "setup-project SKILL.md: asks the work.done preference at setup" "work.done" "$SPS4"
+TPL4="$(cat "$PLUGIN/templates/project.example.yaml" 2>/dev/null)"
+check "project template shows a work.done example" "work.done" "$TPL4"

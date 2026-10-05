@@ -1,6 +1,6 @@
 # GitHub Project setup — exact commands
 
-Create a Projects (v2) board and collect every id `.claude/project.yaml` needs. Replace `OWNER` (user/org) and `OWNER/REPO` throughout.
+Create a Projects (v2) board and collect every id `.neural-network/project.yaml` needs. Replace `OWNER` (user/org) and `OWNER/REPO` throughout.
 
 ## 1. Create the project
 Only on the EXPLICIT create path (setup-project Phase 3 — the user chose "Create a new Project" or asked for one). Default is wiring an existing Project: discover with `gh project list --owner OWNER --format json` and skip to §2.
@@ -39,7 +39,7 @@ gh project field-create <number> --owner OWNER --name "Estimate" --data-type NUM
 ```
 
 ## 3. Discover ids
-With a minimal `.claude/project.yaml` in place (template values are fine for everything except `owner`, `repo`, `projectNumber` — set those real ones first):
+With a minimal `.neural-network/project.yaml` in place (template values are fine for everything except `owner`, `repo`, `projectNumber` — set those real ones first):
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/board.sh" fields
 ```
@@ -49,7 +49,7 @@ gh project view <number> --owner OWNER --format json -q .id     # -> "PVT_..." =
 gh project field-list <number> --owner OWNER --format json      # raw fields + options JSON
 ```
 
-Map into `.claude/project.yaml`:
+Map into `.neural-network/project.yaml`:
 | json path | source |
 |---|---|
 | `boards[].projectId` | `gh project view ... -q .id` (starts `PVT_`) |

@@ -50,12 +50,12 @@ Named follow-up specs — deferred, not dropped:
 
 ## §4 Glossary
 
-- **Brain** — `.claude/identities/<role>/brain/`: `notes/*.md` zettels + `links.json`
+- **Brain** — `.neural-network/identities/<role>/brain/`: `notes/*.md` zettels + `links.json`
   + `.activation.jsonl`.
 - **Episodic / semantic / procedural memory** — raw timestamped history (feeds,
   events) / distilled notes+links / skills & rules. The self-improvement loop is
   episodic → (retro) → semantic → (graduation) → procedural.
-- **Brain-event feed** — per-repo `.claude/brain-events.jsonl`, append-only typed
+- **Brain-event feed** — per-repo `.neural-network/brain-events.jsonl`, append-only typed
   events (§8.2), the episodic record of memory operations.
 - **PPR** — Personalized PageRank seeded from matched notes, run over the link graph;
   the principled generalization of the current 2-hop × 0.5-decay spread.
@@ -90,7 +90,7 @@ Named follow-up specs — deferred, not dropped:
 
 - **§6.1 archive subcommand** — WHEN `feedback.py <root> archive` is invoked THE
   SYSTEM SHALL move every feed document whose items ALL have a `routing.action` to
-  `.claude/feedbacks/archive/<YYYY-MM>.yaml` (month = the document's `ts`), preserving
+  `.neural-network/feedbacks/archive/<YYYY-MM>.yaml` (month = the document's `ts`), preserving
   document content byte-for-byte, and SHALL leave documents with ≥1 unrouted item in
   the feed untouched.
   - **§6.1.1** — WHEN `archive` runs THE SYSTEM SHALL write atomically (temp file +
@@ -106,7 +106,7 @@ Named follow-up specs — deferred, not dropped:
   routing THE SYSTEM SHALL run `archive` as its final feed step and commit feed +
   archives together (retrospective + build-next docs updated accordingly).
 - **§6.5 commit policy** — Feedback feed and archives are tracked by default. THE
-  SYSTEM SHALL NOT gitignore `.claude/feedbacks/`; this repo's `.gitignore` line
+  SYSTEM SHALL NOT gitignore `.neural-network/feedbacks/`; this repo's `.gitignore` line
   ignoring it is removed and the feed/archives committed (migration task).
 - **§6.6 emit/route untouched** — `emit` and `route` behavior/formats are unchanged
   (additive-only).
@@ -120,9 +120,9 @@ Named follow-up specs — deferred, not dropped:
   `.claude/ITERATIVE_UI_OFF`, `.claude/ui-hub/`, `.claude/gate-pass`,
   `.claude/telemetry.jsonl`, `.claude/lessons.jsonl`, `.claude/board-queue.jsonl`,
   `.claude/board-cache.json`, `.claude/neural-view/`, `.claude/merge-requirements.json`,
-  `.claude/.flush*`, `.claude/worktrees/`; track `.claude/feedbacks/`,
-  `.claude/identities/`, `.claude/brain-events.jsonl`, `.claude/.neural-network`,
-  `.claude/project.yaml`.
+  `.claude/.flush*`, `.claude/worktrees/`; track `.neural-network/feedbacks/`,
+  `.neural-network/identities/`, `.neural-network/brain-events.jsonl`, `.neural-network`,
+  `.neural-network/project.yaml`.
 - **§7.2 managed block** — WHEN setup-project (or the new `gitignore-sync` script)
   runs THE SYSTEM SHALL write the `ignore`-policy paths into `.gitignore` between
   `# >>> spec-workflow managed` / `# <<< spec-workflow managed` markers, replacing
@@ -141,7 +141,7 @@ Named follow-up specs — deferred, not dropped:
 - **§8.1 emitter** — WHEN any brain.py command (mint, recall, consult, graduate,
   prune --apply, and §10's evolve/supersede) or feedback.py `emit` completes a state
   change THE SYSTEM SHALL append exactly one JSON line per semantic event to
-  `<root>/.claude/brain-events.jsonl` via a single `write()` of a `\n`-terminated
+  `<root>/.neural-network/brain-events.jsonl` via a single `write()` of a `\n`-terminated
   line opened in append mode.
   - **§8.1.1** — IF the feed append fails THEN THE SYSTEM SHALL complete the file
     operation normally and print a warning (feed is never load-bearing).
@@ -175,7 +175,7 @@ Named follow-up specs — deferred, not dropped:
     notice line at most.
 - **§9.2 index** — WHEN `brain.py <root> index <role>` runs (and incrementally after
   mint/evolve) THE SYSTEM SHALL upsert embeddings for changed notes into
-  `.claude/identities/<role>/brain/index.sqlite3` keyed by (slug, content-hash);
+  `.neural-network/identities/<role>/brain/index.sqlite3` keyed by (slug, content-hash);
   the index is a derived layer, rebuildable at any time, and gitignored (add to
   §7.1 manifest as `ignore`).
 - **§9.3 hybrid recall** — WHERE the sidecar is available `recall` SHALL seed with

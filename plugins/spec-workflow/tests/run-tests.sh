@@ -151,7 +151,9 @@ SECTIONS=(
     section-syntax.sh
     section-snippet-lint.sh
     section-config.sh
+    section-compute-overlay.sh
     section-schema-lint.sh
+    section-host-portability.sh
     section-work-mode.sh
     section-next-similar.sh
     section-serial-delivery.sh
@@ -272,7 +274,6 @@ section-semver.sh
     section-assistant-artifacts.sh
     section-assistant-artifact-panel.sh
     section-design-registry.sh
-    section-remote-compute.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then

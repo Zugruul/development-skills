@@ -2,16 +2,16 @@
 
 Each identity (dev / reviewer / orchestrator, extensible) owns a **private** brain of
 atomic zettel notes under `<identities-dir>/<role>/brain/` (default identities dir
-`.claude/identities`). Brains give each role durable memory that evolves separately —
+`.neural-network/identities`). Brains give each role durable memory that evolves separately —
 a hard product requirement. **Only the orchestrator process ever reads or writes a
 brain.** Subagents never see a brain path; recalled lessons reach them as pasted text.
 
 `brain.sh` = `bash "${CLAUDE_PLUGIN_ROOT}/scripts/brain.sh"` (resolves the repo root from
-git; writes into `<root>/.claude/identities/`).
+git; writes into `<root>/.neural-network/identities/`).
 
 ## Layout (per role)
 ```
-.claude/identities/
+.neural-network/identities/
   DIRECTORY.md                     # regenerated map: titles + tags only, never bodies
   retros.log                       # one line per retro (bumped by retro-mark)
   <role>/
@@ -101,6 +101,14 @@ After a PR merges (or is set aside), the orchestrator runs a retro:
 2. `brain.sh mint <role> <slug> --tags ... --paths ... --source "PR#N ..."` — mint notes in
    **your own wording** (body on stdin), one idea each, wikilinking related slugs. Re-minting
    an existing slug bumps its `strength`.
+
+   **Note style (mandatory)**: `<cfg:brains.noteStyle>` overrides this paragraph verbatim when
+   set — read it first. The default: write bodies as small, well-structured documents — simple,
+   concise English a human can skim AND an agent can parse. Use markdown structure: `##`
+   sections with clear titles (and subtitles where it helps), short bullet lists, code
+   formatting for identifiers/paths/commands. Never a single dense paragraph-glob: if a body
+   reads as one wall of prose packed with facts, break it into sections. Match the tone of
+   good project docs — the note should read like a mini reference page for its one idea.
 3. `brain.sh status <role>` — per-note `✓/✗/⚠` (useful/dead_end/corrected) outcome tallies;
    a note with repeated `✗` and no `✓` also surfaces in `prune`'s candidate list (SPEC-GRAPHIFY
    §7 R7.6). `brain.sh prune <role>` — review flagged links (never-fired + aged, or target

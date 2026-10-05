@@ -79,17 +79,17 @@ check_absent "serial off: no WAIT line for an In review item" "WAIT: serial deli
 
 echo "== guard-board-move.sh (serialDelivery move guard, #272) =="
 
-_serial_repo() { # sets T (fixture repo dir) with .claude/project.yaml (serialDelivery=<1>) + optional board-cache.json (arg2, "-" = none)
+_serial_repo() { # sets T (fixture repo dir) with .neural-network/project.yaml (serialDelivery=<1>) + optional board-cache.json (arg2, "-" = none)
     T="$(mktemp -d)"
     ( cd "$T" && git init -q . && git commit -q --allow-empty -m init )
-    mkdir -p "$T/.claude"
-    cp "$FIX/valid.project.yaml" "$T/.claude/project.yaml"
+    mkdir -p "$T/.claude" "$T/.neural-network"
+    cp "$FIX/valid.project.yaml" "$T/.neural-network/project.yaml"
     if [[ "${1:-1}" == "1" ]]; then
         # review round 1 MUST FIX #4: merge into the EXISTING `methodology:`
         # block, not a second top-level key -- YAML last-wins would silently
         # replace the whole block (tdd/isolationSuite/maxInProgress lost),
         # not just add serialDelivery.
-        python3 - "$T/.claude/project.yaml" <<'PY'
+        python3 - "$T/.neural-network/project.yaml" <<'PY'
 import sys
 p = sys.argv[1]
 text = open(p).read()

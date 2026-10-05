@@ -6,8 +6,8 @@
 # those are already in scope.
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== board.sh issues verb + find-task pipeline (SW-002) =="
-FTD="$(mktemp -d)"; mkdir -p "$FTD/.claude"
-cp "$FIX/valid.project.yaml" "$FTD/.claude/project.yaml"
+FTD="$(mktemp -d)"; mkdir -p "$FTD/.claude" "$FTD/.neural-network"
+cp "$FIX/valid.project.yaml" "$FTD/.neural-network/project.yaml"
 FTGH="$(mktemp -d)"
 cat >"$FTGH/gh" <<'FAKE'
 #!/usr/bin/env bash

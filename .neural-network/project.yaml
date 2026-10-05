@@ -1,0 +1,124 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Zugruul/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json
+# Synced 2026-07-08: repo transferred event-sorcerer/development-skills ->
+# Zugruul/development-skills; board migrated org-project #1 -> user-project #5
+# (Priority/Estimate fields + full Status flow re-created there to match).
+schemaVersion: "2.0.0"
+project:
+    name: Zugruul/development-skills
+    description: Claude Code plugin marketplace; spec-workflow (the autonomous build-loop plugin) develops itself here — dogfood.
+    mainBranch: main
+    branchPattern: sw/<id>-<slug>
+boards:
+-   id: main
+    provider: github-project
+    owner: Zugruul
+    repo: Zugruul/development-skills
+    projectNumber: 5
+    projectId: PVT_kwHOAL1A3M4Bc3ai
+    fields:
+        status:
+            fieldId: PVTSSF_lAHOAL1A3M4Bc3aizhXdGkQ
+            options:
+                Backlog: f75ad846
+                In progress: 47fc9ee4
+                In review: 8c531254
+                QA: bb088b91
+                Ready: 1d114d70
+                Deployed: '98236657'
+        priority:
+            fieldId: PVTSSF_lAHOAL1A3M4Bc3aizhXdJCI
+            options:
+                P0: 5b64f2a0
+                P1: 0bbfb00e
+                P2: 0d537efa
+        estimate:
+            fieldId: PVTF_lAHOAL1A3M4Bc3aizhXdJCM
+    statusFlow:
+    - Backlog
+    - In progress
+    - In review
+    - QA
+    - Ready
+    - Deployed
+    labels:
+        bug: type:bug
+        feature: type:feature
+commands:
+    gate: bash plugins/spec-workflow/tests/run-tests.sh && bash plugins/remote-compute/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/scripts/lib/*.sh plugins/spec-workflow/tests/*.sh plugins/remote-compute/tests/*.sh && claude plugin validate plugins/spec-workflow && claude plugin validate plugins/remote-compute
+commit:
+    convention: conventional-commits
+    systemPrompt: "Simple titles. Enumerated bullet-point lists of the changes. Simple human language."
+docs:
+-   id: root
+    path: README.md
+    covers:
+    - '**'
+    notes: marketplace install/usage + skills table; update when skills or commands change
+-   id: plugin
+    path: plugins/spec-workflow/README.md
+    covers:
+    - plugins/spec-workflow/**
+    notes: the plugin's user-facing docs — skills table, scripts list, config surface; every behavior/config change updates it
+-   id: spec
+    path: SPEC.md
+    covers:
+    - plugins/spec-workflow/**
+    notes: contract for tracked development; changed contracts flow via docs/spec-deltas, never direct edits
+-   id: compute-plugin
+    path: plugins/remote-compute/README.md
+    covers:
+    - plugins/remote-compute/**
+    notes: the plugin's user-facing docs — skills table, capability bundles, the spec-workflow dependency; every behavior/config change updates it
+-   id: peer-plugin
+    path: plugins/peer-review/README.md
+    covers:
+    - plugins/peer-review/**
+    notes: the plugin's user-facing docs — skills table, scripts list; every behavior/config change updates it
+-   id: peer-spec
+    path: SPEC-PEER-REVIEW.md
+    covers:
+    - plugins/peer-review/**
+    notes: contract for peer-review + remote dispatch; changed contracts flow via docs/spec-deltas, never direct edits
+delegation:
+    identities:
+        dev:
+        -   name: Dev Agent - {name}
+            email: '{local}+dev_agent@{domain}'
+            color: '#ffd24d'
+            models:
+            - claude-sonnet-5
+        reviewer:
+            name: Reviewer Agent - {name}
+            email: '{local}+reviewer_agent@{domain}'
+            color: '#ff5b7f'
+            models:
+            - claude-opus-5[1m]
+            - claude-fable-5[1m]
+            - claude-sonnet-5
+            - claude-sonnet-5[1m]
+        orchestrator:
+            name: Orchestrator Agent - {name}
+            email: '{local}+orchestrator_agent@{domain}'
+            color: '#38fad4'
+        peer-reviewer:
+            name: Peer Reviewer (codex) - {name}
+            email: '{local}+peer_reviewer@{domain}'
+paths:
+    handoffDir: docs/handoffs
+    checkpointFile: .claude/CHECKPOINT
+    designDir: docs/design
+    specDeltaDir: docs/spec-deltas
+methodology:
+    tdd: true
+    serialDelivery: true
+    maxInProgress: 4
+    autoMerge: true
+    mergeMethod: squash
+    feedback:
+        enabled: true
+        roles: [orchestrator, dev, reviewer]
+        autoTriage: true
+work:
+    type: local
+    sync:
+        mode: task-close

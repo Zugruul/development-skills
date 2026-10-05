@@ -3,7 +3,7 @@
 
 Human directive (#80): the project-config JSON schema must be fully
 documented so editor hover (via the `yaml-language-server: $schema=` line
-atop `.claude/project.yaml`) shows every key's explanation, possible values,
+atop `.neural-network/project.yaml`) shows every key's explanation, possible values,
 and defaults. Prose review misses keys; this walks the schema JSON itself
 (never greps it -- a grep can't tell a documented property from a bare key
 mentioned in a comment) and FAILS on any property or enum that isn't

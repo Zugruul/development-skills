@@ -10,7 +10,7 @@
 # Readers (never re-hardcode these paths): scripts/lib/local-state.sh (bash 3.2)
 # and scripts/lib/local_state.py (python stdlib).
 ignore	.claude/CHECKPOINT
-ignore	.claude/project.local.yaml
+ignore	.neural-network/project.local.yaml
 ignore	.claude/ITERATIVE_UI_OFF
 ignore	.claude/ui-hub/
 ignore	.claude/gate-pass
@@ -24,8 +24,8 @@ ignore	.claude/merge-requirements.json
 ignore	.claude/merge-dance.lock/
 ignore	.claude/.flush*
 ignore	.claude/worktrees/
-ignore	.claude/identities/*/brain/index.sqlite3
-ignore	.claude/identities/*/brain/.staleness-cache.json
+ignore	.neural-network/identities/*/brain/index.sqlite3
+ignore	.neural-network/identities/*/brain/.staleness-cache.json
 ignore	.claude/assistant/
 # Base capabilities (issue #447, SPEC-ASSISTANT.md §11.1): setup.py's
 # ensure_base_capabilities materializes each BASE_CAPABILITIES entry into
@@ -34,8 +34,8 @@ ignore	.claude/assistant/
 # line per entry (mirrors BASE_CAPABILITIES' own static-registry
 # posture); add a matching line here whenever a new base capability ships.
 ignore	.claude/skills/whisper-sidecar/
-track	.claude/feedbacks/
-track	.claude/identities/
-track	.claude/brain-events.jsonl
-track	.claude/.neural-network
-track	.claude/project.yaml
+track	.neural-network/feedbacks/
+track	.neural-network/identities/
+track	.neural-network/brain-events/
+track	.neural-network/specs/
+track	.neural-network/project.yaml

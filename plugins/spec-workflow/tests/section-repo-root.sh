@@ -23,7 +23,7 @@ RR_PY_DIR="$PLUGIN/scripts/lib"
 _rr_realdir() { ( cd -P "$1" 2>/dev/null && pwd -P ); }
 
 # --- fixture: a real repo with ONE linked worktree --------------------------
-# The project config (.claude/project.json, needed by gate.sh/board.sh
+# The project config (.neural-network/project.json, needed by gate.sh/board.sh
 # below) is committed to main BEFORE any worktree is created: a linked
 # worktree only sees what its own branch's history has, never a main
 # checkout's uncommitted/untracked working-tree files -- so config for the
@@ -32,11 +32,11 @@ _rr_realdir() { ( cd -P "$1" 2>/dev/null && pwd -P ); }
 RR_MAIN="$(_rr_realdir "$(mktemp -d)")"
 git -C "$RR_MAIN" init -q
 git -C "$RR_MAIN" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
-mkdir -p "$RR_MAIN/.claude"
+mkdir -p "$RR_MAIN/.claude" "$RR_MAIN/.neural-network"
 echo primary-marker > "$RR_MAIN/.claude/marker-from-main"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$RR_MAIN/.claude/project.json"
-git -C "$RR_MAIN" add .claude/project.json
+    "$FIX/valid.project.json" "$RR_MAIN/.neural-network/project.json"
+git -C "$RR_MAIN" add .neural-network/project.json
 git -C "$RR_MAIN" -c user.email=t@t -c user.name=t commit -q -m "add project config"
 
 RR_WT_PARENT="$(_rr_realdir "$(mktemp -d)")"
@@ -139,7 +139,7 @@ rm -rf "$RR_SYMBASE"
 # with a worktree cwd, must find and correctly validate a pass gate.sh
 # recorded FROM that same worktree -- reproducing the reported live bug
 # ("no recorded gate pass" even though the gate is green and recorded).
-# (.claude/project.json was already committed to $RR_MAIN above, before the
+# (.neural-network/project.json was already committed to $RR_MAIN above, before the
 # worktrees were created, so both $RR_WT and $RR_WT2 see it via git history.)
 # =============================================================================
 

@@ -29,7 +29,7 @@ def _on_alarm(signum, frame):
 signal.signal(signal.SIGALRM, _on_alarm)
 signal.alarm(5)
 
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 os.makedirs(identities, exist_ok=True)
 
 has_lock = hasattr(brain, "brain_lock")
@@ -69,9 +69,9 @@ def _on_alarm(signum, frame):
 signal.signal(signal.SIGALRM, _on_alarm)
 signal.alarm(5)
 
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 os.makedirs(identities, exist_ok=True)
-alias = os.path.join(root, ".claude/identities-alias")
+alias = os.path.join(root, ".neural-network/identities-alias")
 os.symlink(os.path.realpath(identities), alias)
 
 with brain.brain_lock(identities):
@@ -103,7 +103,7 @@ sys.path.insert(0, scripts)
 import brain
 import fcntl
 
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 os.makedirs(identities, exist_ok=True)
 
 real_flock = fcntl.flock
@@ -165,7 +165,7 @@ root, scripts = sys.argv[1], sys.argv[2]
 sys.path.insert(0, scripts)
 import brain
 
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 for i in range(4):
     brain.mint(identities, "dev", "seed-%d" % i, root,
                "Seed note %d.\n\nSee: [[seed-target-%d]]\n" % (i, i),
@@ -197,7 +197,7 @@ driver_out="$(BA_SCRIPTS="$BA_SCRIPTS" python3 - "$BA2_ROOT" "$MINT_WORKER" "$RE
 import sys, os, subprocess, json
 
 root, mint_worker, recall_worker = sys.argv[1], sys.argv[2], sys.argv[3]
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 n_mint = 8
 n_recall = 8
 
@@ -276,7 +276,7 @@ root, scripts = sys.argv[1], sys.argv[2]
 sys.path.insert(0, scripts)
 import brain
 
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 brain.mint(identities, "dev", "prune-src", root,
            "Links to a target that never gets minted.\n\nSee: [[missing-target]]\n",
            tags="prunebait", paths="prunebait/**", source="ast-004-fixture")
@@ -326,7 +326,7 @@ driver_out="$(BA_SCRIPTS="$BA_SCRIPTS" python3 - "$BA3_ROOT" "$PRUNE_WORKER" "$M
 import sys, os, subprocess, json
 
 root, prune_worker, mint_worker, marker = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 
 p1 = subprocess.Popen([sys.executable, prune_worker, root, marker], stdout=subprocess.DEVNULL)
 p2 = subprocess.Popen([sys.executable, mint_worker, identities, root, marker])
@@ -389,7 +389,7 @@ root, scripts = sys.argv[1], sys.argv[2]
 sys.path.insert(0, scripts)
 import brain
 
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 brain.mint(identities, "dev", "grad-note", root, "First mint.\n",
            tags="gradbait", paths="gradbait/**", source="ast-004-fixture")
 PY
@@ -430,7 +430,7 @@ driver_out="$(BA_SCRIPTS="$BA_SCRIPTS" python3 - "$BA4_ROOT" "$GRADUATE_WORKER" 
 import sys, os, subprocess
 
 root, graduate_worker, mint_worker, marker = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-identities = os.path.join(root, ".claude/identities")
+identities = os.path.join(root, ".neural-network/identities")
 
 p1 = subprocess.Popen([sys.executable, graduate_worker, root, marker], stdout=subprocess.DEVNULL)
 p2 = subprocess.Popen([sys.executable, mint_worker, identities, root, marker])

@@ -41,8 +41,8 @@ cr_skill() {
 # section-assistant-distill.sh's ad_repo).
 cr_repo() {
     local dir="$1" main="$2"; shift 2
-    mkdir -p "$dir/.claude"
-    printf "%s\n" "# neural-network" >"$dir/.claude/.neural-network"
+    mkdir -p "$dir/.claude" "$dir/.neural-network"
+    printf "%s\n" "# neural-network" >"$dir/.neural-network"
     {
         printf '%s\n' \
             "schemaVersion: 2" \
@@ -57,7 +57,7 @@ cr_repo() {
             "        model: gpt-5.6-sol" \
             "    capabilities:"
         printf '%s\n' "$@"
-    } >"$dir/.claude/project.yaml"
+    } >"$dir/.neural-network/project.yaml"
 }
 
 # ------------------------------------------------------------------------
@@ -387,9 +387,8 @@ with open(os.path.join(skills_root, "echo-skill", "capability.yaml"), "w") as fh
               "permissions: []\ninvoke:\n    exec: [\"x\"]\n")
 
 os.makedirs(os.path.join(root, ".claude"), exist_ok=True)
-with open(os.path.join(root, ".claude", ".neural-network"), "w") as fh:
-    fh.write("# neural-network\n")
-with open(os.path.join(root, ".claude", "project.yaml"), "w") as fh:
+os.makedirs(os.path.join(root, ".neural-network"), exist_ok=True)
+with open(os.path.join(root, ".neural-network", "project.yaml"), "w") as fh:
     fh.write(
         "schemaVersion: 2\n"
         "assistant:\n"
@@ -451,11 +450,10 @@ with open(os.path.join(skills_root, "echo-skill", "capability.yaml"), "w") as fh
               "permissions: []\ninvoke:\n    exec: [\"x\"]\n")
 
 os.makedirs(os.path.join(root, ".claude"), exist_ok=True)
-with open(os.path.join(root, ".claude", ".neural-network"), "w") as fh:
-    fh.write("# neural-network\n")
+os.makedirs(os.path.join(root, ".neural-network"), exist_ok=True)
 
 def write_cfg(enabled):
-    with open(os.path.join(root, ".claude", "project.yaml"), "w") as fh:
+    with open(os.path.join(root, ".neural-network", "project.yaml"), "w") as fh:
         fh.write(
             "schemaVersion: 2\n"
             "assistant:\n"

@@ -19,7 +19,7 @@ PLUGINS_DIR="$(dirname "$PLUGIN")"
 if [[ ! -f "$CODEX_VALIDATOR" ]] || ! python3 -c 'import yaml' >/dev/null 2>&1; then
     echo "SKIP codex plugin.json validation — validator ($CODEX_VALIDATOR) or python 'yaml' package unavailable"
 else
-    for plug in spec-workflow scaffold-project; do
+    for plug in spec-workflow scaffold-project remote-compute; do
         out="$(python3 "$CODEX_VALIDATOR" "$PLUGINS_DIR/$plug" 2>&1)"; rc=$?
         check_rc "$plug: validator exits 0" 0 "$rc"
         check "$plug: validator reports pass" "Plugin validation passed" "$out"

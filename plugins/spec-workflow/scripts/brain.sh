@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # brain.sh — thin wrapper over brain.py (per-identity zettel memory).
 # Part of the spec-workflow plugin. Resolves ROOT from git (PROJECT_CONFIG-independent)
-# so the engine writes into the consumer repo's .claude/identities/ regardless of cwd.
+# so the engine writes into the consumer repo's .neural-network/identities/ regardless of cwd.
 #
 #   brain.sh recall <role> --paths "a/b.sh,c/**" --keywords "yaml,merge" [--budget 600]
 #   brain.sh recall <role> --query "types:Action -subtypes:Attack classes:Warrior" [--limit N]
@@ -9,7 +9,7 @@
 #   brain.sh mint <role> <slug> --tags a,b --paths "x/**" --source "..." [--learned-from R --source-note S] [--entities "card:x,card:y"]  # body on stdin
 #   brain.sh directory
 #   brain.sh status <role>                                      # per-note outcome tallies
-#   brain.sh entity-index                                     # regenerate .claude/identities/entity-index.json
+#   brain.sh entity-index                                     # regenerate .neural-network/identities/entity-index.json
 #   brain.sh consult <consumer-role> <owner-role> <slug>
 #   brain.sh prune <role> [--apply]
 #   brain.sh retro-mark
@@ -19,14 +19,14 @@
 #   brain.sh explain <role> <slug>                              # graph interrogation card
 #   brain.sh path <role> <slug-a> <slug-b>                      # shortest link path (BFS, undirected)
 #
-# Env: BRAIN_DIR (identities dir override, relative to root; default .claude/identities).
+# Env: BRAIN_DIR (identities dir override, relative to root; default .neural-network/identities).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
 source "$HERE/lib/repo-root.sh"
 # #463: PRIMARY repo root -- identity brains live once per repo in the main
-# checkout's .claude/identities/, invisible from a linked worktree's own path.
+# checkout's .neural-network/identities/, invisible from a linked worktree's own path.
 ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 1; }
 DIR_ARGS=()
 [[ -n "${BRAIN_DIR:-}" ]] && DIR_ARGS=(--dir "$BRAIN_DIR")

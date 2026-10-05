@@ -27,7 +27,7 @@ allowed-tools: Bash, AskUserQuestion
   ```
 - **Just show status** — description: "No change; report the current configuration."
 
-Apply the choice with `merge-mode.sh on|off` (or nothing). This edits `methodology.autoMerge` in `.claude/project.yaml` — a **versioned, project-wide** change (every clone obeys it); remind the user to commit it.
+Apply the choice with `merge-mode.sh on|off` (or nothing). This edits `methodology.autoMerge` in `.neural-network/project.yaml` — a **versioned, project-wide** change (every clone obeys it); remind the user to commit it.
 
 After turning **on**:
 - Check the status line for `reviewerTokenEnv`: if unset, warn that approvals will be review comments only — branch protection that *requires* an approving review needs a second account's token (`delegation.reviewerTokenEnv`). Offer the `pr-review-model` skill if they also want to pick the reviewer model.

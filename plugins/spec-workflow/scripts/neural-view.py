@@ -38,15 +38,15 @@ this is the only remotely destructive path in an otherwise read-only tool.
 Repo discovery (both apply; results are deduped and sorted by repo name):
   - --dir / $NEURAL_VIEW_DIR: that root is ALWAYS included, marker or not.
   - Scan base (--scan, else $NEURAL_VIEW_SCAN, else ~/Development): every
-    immediate child directory that has a <child>/.claude/.neural-network
+    immediate child directory that has a <child>/.neural-network
     marker FILE is included. Directories without the marker are ignored,
     even if they have brains — inclusion is explicit and cheap.
   - If neither yields anything (no flags/env at all, empty scan base), falls
     back to the git root of the cwd — the old single-repo default — and, as a
-    side effect, creates that repo's own <root>/.claude/.neural-network
+    side effect, creates that repo's own <root>/.neural-network
     marker if it's missing, so a bare `start` from inside a fresh repo opts
     it into every future multi-repo scan too, not just this one-off session.
-  A discovered repo with no `.claude/identities/` brains yet still appears as
+  A discovered repo with no `.neural-network/identities/` brains yet still appears as
   an empty, labeled region on the canvas (nodes/edges: none) rather than being
   dropped — it shows the constellation is there, just not yet populated.
 
@@ -61,7 +61,7 @@ removal is boot-only); repos.json is rewritten with the union and one
 rescan thread never rebuilds graphs or reads brain contents; clients pick up
 a newly-registered repo on their normal polls.
 
-Brains live at <root>/.claude/identities/<role>/brain/ — notes/<slug>.md
+Brains live at <root>/.neural-network/identities/<role>/brain/ — notes/<slug>.md
 (YAML-ish frontmatter + body + [[slug]] wikilinks), links.json, and
 .activation.jsonl. Everything is read READ-ONLY; absent dirs/files just yield
 an empty graph. Graph node ids are "<repo>/<role>/<slug>" (unique across repos);
@@ -83,10 +83,10 @@ right checkout regardless of GitHub repo/clone state.
 GET /projects: {repo: {ok, statusCounts:{status:N}, inProgress:[title], inReview:[title]}}
 or {repo: {ok:false, error}} — per-repo board state, read via THIS plugin's
 board.sh (never `gh project` directly) with cwd=<repo root>, so it resolves
-that repo's own .claude/project.yaml. Cached for $NEURAL_VIEW_PROJECTS_TTL
+that repo's own .neural-network/project.yaml. Cached for $NEURAL_VIEW_PROJECTS_TTL
 seconds (default 60), subprocess bounded by $NEURAL_VIEW_BOARD_TIMEOUT seconds
 (default 12) so a hung `gh` never blocks other routes for long. A repo with
-no .claude/project.yaml or .json is omitted entirely (not an error).
+no .neural-network/project.yaml or .json is omitted entirely (not an error).
 
 GET /sessions: [{repo, description, state, startedAt}] — best-effort local
 Claude Code session discovery from ~/.claude/jobs/<id>/state.json (harness job
@@ -318,19 +318,16 @@ MARKER_CONTENT = "# neural-view discovery marker — repos with this file are in
 
 
 def ensure_marker(root):
-    """Create <root>/.claude/.neural-network if missing, so a repo you start
-    neural-view against (the single-repo cwd fallback — no --dir/--scan match)
-    joins the aggregate on every future scan too, not just this one-off
-    session. Best-effort: a read-only .claude/ or missing .claude/ dir must
-    never fail `start` — same philosophy as board.sh/telemetry.py's cache
-    writes."""
+    """Create the <root>/.neural-network marker DIRECTORY if missing, so a repo
+    you start neural-view against (the single-repo cwd fallback — no
+    --dir/--scan match) joins the aggregate on every future scan too, not just
+    this one-off session. Best-effort: a read-only root must never fail
+    `start` — same philosophy as board.sh/telemetry.py's cache writes."""
     try:
-        claude_dir = Path(root) / ".claude"
-        marker = claude_dir / MARKER_NAME
-        if marker.is_file():
+        marker = Path(root) / MARKER_NAME
+        if marker.is_dir():
             return
-        claude_dir.mkdir(parents=True, exist_ok=True)
-        marker.write_text(MARKER_CONTENT)
+        marker.mkdir(parents=True, exist_ok=True)
     except OSError:
         pass
 FAVICON = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
@@ -338,6 +335,7 @@ FAVICON = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
            b'<circle cx="16" cy="16" r="6" fill="#46e6ff"/></svg>')
 
 REPOS = [("", Path(git_root()))]  # list of (repo_name, root); replaced by serve()
+SCAN_ARGS = []  # the argv `serve` booted with — POST /rescan re-runs discovery with these
 
 # GET /version — dev live-reload signal: `boot` changes on every server
 # process, `template` on every template edit; `dev` is true only under the
@@ -375,11 +373,11 @@ SESSION_RECENT_SECS = float(os.environ.get("NEURAL_VIEW_SESSION_RECENT_SECS", "9
 # Brain reading (all read-only)
 # ---------------------------------------------------------------------------
 def identities_dir(root):
-    return Path(root) / ".claude" / "identities"
+    return Path(root) / ".neural-network" / "identities"
 
 
 def iter_brains(root):
-    """Yield (role, brain_dir) for every <root>/.claude/identities/<role>/brain."""
+    """Yield (role, brain_dir) for every <root>/.neural-network/identities/<role>/brain."""
     d = identities_dir(root)
     if not d.is_dir():
         return
@@ -532,7 +530,7 @@ def entity_edge_color(root):
 
 
 def load_entity_index(root):
-    """Parsed `.claude/identities/entity-index.json` for `root`, or None if
+    """Parsed `.neural-network/identities/entity-index.json` for `root`, or None if
     absent/unreadable -- callers fall back to derive_entity_map() so the view
     never requires a regen. {key: {"anchor": role/slug|None, "notes": [[role,
     slug], ...]}}."""
@@ -748,7 +746,11 @@ def build_graph(repos):
     # new session's working directory regardless of GitHub state.
     roots = {name: str(root) for name, root in repos}
     entity_edge_colors = {name: entity_edge_color(root) for name, root in repos}
+    # {repo: git branch} — worktree-aware, "" for non-git dirs; the brains
+    # panel renders it as a dim label beside the repo name.
+    branches = {name: repo_branch(root) for name, root in repos}
     return {"nodes": nodes, "edges": edges, "repos": [name for name, _ in repos], "repoRoles": repo_roles,
+            "branches": branches,
             "roleColors": role_colors, "displayNames": display_names, "roots": roots,
             # {repo: [role, ...]} for roles whose brain has a SCHEMA.json (see
             # schema_payload()) — lets the client show a "has filters" icon
@@ -999,12 +1001,22 @@ def render_body(body):
             last = end
         out.append(escape(s[last:]))
         r = "".join(out)
+        # `code` spans convert FIRST, stashed behind placeholders, so the
+        # emphasis regexes below can never touch their content (a
+        # SNAKE_CASE_NAME=true inside backticks used to come out italicized).
+        spans = []
+
+        def _stash_span(m):
+            spans.append(m.group(1))
+            return f"\x00SPAN{len(spans) - 1}\x00"
+
+        r = re.sub(r"`([^`]+)`", _stash_span, r)
         r = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", r)
         # italic after bold, so a stray "**" pair is already consumed and
         # can't be misread as two "*" italic markers.
         r = re.sub(r"\*([^*]+)\*", r"<em>\1</em>", r)
         r = re.sub(r"_([^_]+)_", r"<em>\1</em>", r)
-        r = re.sub(r"`([^`]+)`", r"<code>\1</code>", r)
+        r = re.sub(r"\x00SPAN(\d+)\x00", lambda m: f"<code>{spans[int(m.group(1))]}</code>", r)
         return r
 
     def is_table(lines):
@@ -1080,17 +1092,37 @@ def render_body(body):
             out.append(render_code(lang, src))
             continue
         lines = block.splitlines()
-        h = re.match(r"^(#{1,6})\s+(.*)$", block)
-        if h:
-            lvl = min(len(h.group(1)) + 2, 6)
-            out.append(f"<h{lvl}>{inline(h.group(2).strip())}</h{lvl}>")
-        elif all(ln.lstrip().startswith(("- ", "* ")) for ln in lines):
-            items = "".join(f"<li>{inline(ln.lstrip()[2:])}</li>" for ln in lines)
-            out.append(f"<ul>{items}</ul>")
-        elif is_table(lines):
+        if is_table(lines):
             out.append(render_table(lines))
-        else:
-            out.append(f"<p>{inline(block)}</p>")
+            continue
+        # Headings and lists are recognized LINE-WISE inside a block — real
+        # notes write "## Title" directly followed by content (no blank line
+        # between), and that must render as heading + paragraph/list, never
+        # one paragraph glob with a literal "##".
+        _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
+        i = 0
+        while i < len(lines):
+            ln = lines[i]
+            h = _HEADING_RE.match(ln)
+            if h:
+                lvl = min(len(h.group(1)) + 2, 6)
+                out.append(f"<h{lvl}>{inline(h.group(2).strip())}</h{lvl}>")
+                i += 1
+                continue
+            if ln.lstrip().startswith(("- ", "* ")):
+                j = i
+                while j < len(lines) and lines[j].lstrip().startswith(("- ", "* ")):
+                    j += 1
+                items = "".join(f"<li>{inline(l.lstrip()[2:])}</li>" for l in lines[i:j])
+                out.append(f"<ul>{items}</ul>")
+                i = j
+                continue
+            j = i
+            while (j < len(lines) and not _HEADING_RE.match(lines[j])
+                   and not lines[j].lstrip().startswith(("- ", "* "))):
+                j += 1
+            out.append(f"<p>{inline(chr(10).join(lines[i:j]))}</p>")
+            i = j
     return "\n".join(out)
 
 
@@ -1259,7 +1291,7 @@ def open_note_externally(path):
 # ---------------------------------------------------------------------------
 def _repo_config_path(root):
     for name in ("project.yaml", "project.json"):
-        p = Path(root) / ".claude" / name
+        p = Path(root) / ".neural-network" / name
         if p.is_file():
             return p
     return None
@@ -1310,7 +1342,7 @@ def _classify_board_failure(raw):
 
 def _run_board_list(root):
     """Invoke THIS plugin's board.sh (never `gh project` directly) with
-    cwd=root, so it resolves and reads THAT repo's own .claude/project.yaml —
+    cwd=root, so it resolves and reads THAT repo's own .neural-network/project.yaml —
     the only board-access path, per the plugin's invariant."""
     try:
         proc = subprocess.run([str(BOARD_SH), "list"], cwd=str(root), capture_output=True,
@@ -1350,7 +1382,7 @@ def _stale_copy(name, now, note):
 def project_state(name, root):
     """A repo's board state, cached for PROJECTS_TTL seconds. Returns None
     (caller omits the repo entirely, per the /projects contract) if the repo
-    has no .claude/project.yaml or .json at all — a repo that never opted
+    has no .neural-network/project.yaml or .json at all — a repo that never opted
     into the board should not even show a "board unavailable" badge.
 
     GraphQL-budget discipline (the board reads share the user's 5000/hr
@@ -1826,6 +1858,29 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001 — malformed render input is a clean 400
                 return self._send(400, {"error": "invalid render-md body"})
             return self._send(200, {"html": render_body(md)})
+        if path == "/rescan":
+            # Settings-panel "Refresh repos": full re-discovery without a
+            # restart — new anchors join, vanished ones drop. One atomic
+            # REPOS reassignment (same publish discipline as rescan_loop).
+            global REPOS, GRAPH_CACHE
+            try:
+                new_repos, added, removed = refresh_repos(REPOS, SCAN_ARGS)
+            except Exception as e:  # noqa: BLE001 — report, never crash the server
+                return self._send(500, {"error": f"rescan failed: {e}"})
+            if added or removed:
+                REPOS = new_repos
+                GRAPH_CACHE = None  # the cached payload predates the refresh — next /graph rebuilds
+                try:
+                    REPOSFILE.write_text(json.dumps([[name, str(root)] for name, root in REPOS]))
+                except OSError:
+                    pass
+                for name, _ in added:
+                    print(f"rescan: +{name}", file=sys.stderr)
+                for name, _ in removed:
+                    print(f"rescan: -{name}", file=sys.stderr)
+            return self._send(200, {"added": [n for n, _ in added],
+                                    "removed": [n for n, _ in removed],
+                                    "repos": len(REPOS)})
         if path.startswith("/open/"):
             parts = path[len("/open/"):].split("/", 2)
             if len(parts) == 3 and all(parts):
@@ -2779,7 +2834,7 @@ def discover_repos(args):
     - the explicit --dir/$NEURAL_VIEW_DIR root, if given — ALWAYS included,
       marker or not;
     - every immediate child of the scan base (--scan/$NEURAL_VIEW_SCAN, else
-      ~/Development) that carries a <child>/.claude/.neural-network marker
+      ~/Development) that carries a <child>/.neural-network marker
       FILE. Children without the marker are ignored even if they have brains.
     Falls back to the git root of cwd if nothing was found at all (no flags,
     no env, empty/absent scan base) — the old single-repo default. Repo name
@@ -2802,7 +2857,7 @@ def discover_repos(args):
         children = []
     for child in children:
         try:
-            if child.is_dir() and (child / ".claude" / MARKER_NAME).is_file():
+            if child.is_dir() and (child / MARKER_NAME).is_dir():
                 found.setdefault(str(child.resolve()), child)
         except OSError:   # e.g. permission denied traversing into `child`
             continue
@@ -2867,6 +2922,46 @@ def rescan_loop(args, interval):
             print(f"rescan: +{name}", file=sys.stderr)
 
 
+def repo_branch(root):
+    """Current git branch of the repo checkout (worktree-aware: rev-parse
+    answers for the worktree it runs in). Detached HEAD -> short sha; not a
+    git repo or any error -> "" (the label just doesn't render). Shown dim
+    next to the repo name in the brains panel so worktree users can tell
+    which branch each anchored checkout is on."""
+    try:
+        out = subprocess.run(["git", "-C", str(root), "rev-parse", "--abbrev-ref", "HEAD"],
+                             capture_output=True, text=True, timeout=3).stdout.strip()
+        if out == "HEAD":
+            out = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+                                 capture_output=True, text=True, timeout=3).stdout.strip()
+        return out
+    except Exception:  # noqa: BLE001 — a label, never load-bearing
+        return ""
+
+
+def refresh_repos(current_repos, args):
+    """FULL refresh (the settings panel's "Refresh repos" button): re-run
+    discovery and return (new_repos, added, removed) where removed is every
+    registered repo whose .neural-network marker dir no longer exists.
+    Unlike rescan_once (periodic, deliberately add-only — a background tick
+    yanking a repo out from under a live session would be surprising), this
+    is user-INITIATED, so dropping vanished anchors is exactly the point.
+    Pure on current_repos; idempotent (second call returns ([], []) deltas)."""
+    discovered = discover_repos(args)
+    disc_by_path = {str(Path(root).resolve()): (name, root) for name, root in discovered}
+    kept, removed = [], []
+    for name, root in current_repos:
+        if (Path(root) / ".neural-network").is_dir():
+            kept.append((name, root))
+            disc_by_path.pop(str(Path(root).resolve()), None)
+        else:
+            removed.append((name, root))
+    added = list(disc_by_path.values())
+    if not added and not removed:
+        return current_repos, [], []
+    return kept + added, added, removed
+
+
 def load_repos_file():
     """The repo list a running server persisted at boot (for status/counts
     without re-running discovery, which could drift from what's actually
@@ -2899,7 +2994,9 @@ def main():
     ensure_dirs()
 
     if cmd == "serve":
+        global SCAN_ARGS
         port = arg_port(args)
+        SCAN_ARGS = args
         REPOS = discover_repos(args)
         httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)  # bind before pidfile
         PORTFILE.write_text(str(port))

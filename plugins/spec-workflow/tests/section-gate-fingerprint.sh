@@ -8,9 +8,9 @@ declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tes
 echo "== gate enforcement (untracked-file content in fingerprint, SW-010) =="
 T3U="$(mktemp -d)"
 ( cd "$T3U" && git init -q . && git commit -q --allow-empty -m init )
-mkdir -p "$T3U/.claude"
+mkdir -p "$T3U/.claude" "$T3U/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$T3U/.claude/project.json"
+    "$FIX/valid.project.json" "$T3U/.neural-network/project.json"
 echo '*.local' > "$T3U/.gitignore"
 out="$(cd "$T3U" && bash "$PLUGIN/scripts/gate.sh" 2>&1)"
 check "untracked: gate pass recorded" "GATE PASS recorded" "$out"
@@ -44,10 +44,10 @@ rm -rf "$T3U"
 
 echo "== gate enforcement (gate-pass marker excluded even when .claude/ has a TRACKED file, SW-010 follow-up) =="
 T3M="$(mktemp -d)"
-mkdir -p "$T3M/.claude"
+mkdir -p "$T3M/.claude" "$T3M/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$T3M/.claude/project.json"
-( cd "$T3M" && git init -q . && git add .claude/project.json && git commit -q -m init )
+    "$FIX/valid.project.json" "$T3M/.neural-network/project.json"
+( cd "$T3M" && git init -q . && git add .neural-network/project.json && git commit -q -m init )
 # No .gitignore entry for .claude/gate-pass, and .claude/ has a tracked file so
 # it can't collapse to a single "?? .claude/" porcelain line — this is the
 # shape that exposes gate-pass to `git status --porcelain` once it exists.
@@ -72,10 +72,10 @@ check "marker: move allowed immediately after pass despite tracked .claude dir" 
 rm -rf "$T3M"
 
 echo "== gate enforcement (telemetry.jsonl excluded from fingerprint, SW-023 follow-up) =="
-T3N="$(mktemp -d)"; mkdir -p "$T3N/.claude"
+T3N="$(mktemp -d)"; mkdir -p "$T3N/.claude" "$T3N/.neural-network"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["commands"]["gate"]="true"; json.dump(c,open(sys.argv[2],"w"))' \
-    "$FIX/valid.project.json" "$T3N/.claude/project.json"
-( cd "$T3N" && git init -q . && git add .claude/project.json && git commit -q -m init )
+    "$FIX/valid.project.json" "$T3N/.neural-network/project.json"
+( cd "$T3N" && git init -q . && git add .neural-network/project.json && git commit -q -m init )
 before="$(cd "$T3N" && bash "$PLUGIN/scripts/tree-state.sh")"
 echo '{"kind":"gate","task":"x","ok":true,"ts":"2026-01-01T00:00:00Z"}' > "$T3N/.claude/telemetry.jsonl"
 after="$(cd "$T3N" && bash "$PLUGIN/scripts/tree-state.sh")"

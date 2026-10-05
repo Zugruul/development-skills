@@ -1833,3 +1833,9 @@ check "the graph viewport flex-fills the fullscreened .nmmd block, same flex:1/m
 # state) already make the detached mermaid window's graph flex to full
 # height the moment the WHOLE WINDOW (not the .nmmd block) is what goes
 # fullscreen, exactly like the image/3D detached viewers.
+
+echo "== template: settings Refresh-repos button + dim repo branch label =="
+check "template: rescan button exists in the settings panel" 'id="rescan-btn"' "$(cat "$NVHTML")"
+check "template: rescan button posts to /rescan" '"/rescan"' "$(cat "$NVHTML")"
+check "template: repo header renders a repo-branch span" 'repo-branch' "$(cat "$NVHTML")"
+check "template: branches map wired from the graph payload" '__repoBranches' "$(cat "$NVHTML")"

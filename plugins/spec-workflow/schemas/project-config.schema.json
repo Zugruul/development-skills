@@ -1,23 +1,52 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "$id": "spec-workflow/project-config/v2",
-    "title": "spec-workflow project config (.claude/project.yaml), schemaVersion 2",
+    "title": "spec-workflow project config (.neural-network/project.yaml), schemaVersion 2.0.0",
     "type": "object",
-    "required": ["schemaVersion", "project", "boards", "specs", "commands"],
+    "required": [
+        "schemaVersion",
+        "project",
+        "boards",
+        "specs",
+        "commands"
+    ],
     "properties": {
         "schemaVersion": {
-            "const": 2,
-            "description": "Config format version. Always 2 for this file. A legacy schemaVersion 1 .claude/project.json (old delegation.devModel/reviewModel/prReviewModel keys) is still read and normalized on load, with a deprecation warning; init-config.sh converts it to this v2 project.yaml shape."
+            "oneOf": [
+                {
+                    "const": "2.0.0"
+                },
+                {
+                    "const": 2
+                }
+            ],
+            "description": "Schema version, as a SEMVER STRING — current: \"2.0.0\" (the .neural-network era). The pre-cutover integer 2 is still accepted (deprecated; reads as the 1.0.0 era, like a missing field or the json-era integer 1 — run the migrate-version skill to move forward). Any schema-breaking change bumps the major version and adds a chapter to the migrate-version skill's registry."
         },
         "project": {
             "type": "object",
-            "required": ["name", "mainBranch", "branchPattern"],
+            "required": [
+                "name",
+                "mainBranch",
+                "branchPattern"
+            ],
             "description": "Identity of the repo this config governs: its name, main branch, and branch-naming convention.",
             "properties": {
-                "name": { "type": "string", "description": "Project identity, in <org-or-user>/<repository> form matching the repo's real GitHub coordinates (e.g. Zugruul/development-skills) — not a bare short name. Used to qualify feedback-feed refs across a multi-project archive (<project.name>#N) and shown in status/summary output. For a shorter human-facing label, set displayName instead." },
-                "displayName": { "type": "string", "description": "Optional human-facing label for this repo, shown in place of the checkout's folder name in the neural-view HUD (repo regions, tooltips, boards panel, brain sidebar). Use when the folder name differs from how the project is actually known (e.g. an npm scope or product name). Purely cosmetic — `name` and the repo's discovery key are unaffected." },
-                "description": { "type": "string", "description": "Free-text one-line summary of the project, shown in setup/status output. Optional." },
-                "mainBranch": { "type": "string", "description": "The branch tasks merge into (e.g. main, master). Used by gate.sh, board.sh, and the merge/sync protocols as the diff/merge base." },
+                "name": {
+                    "type": "string",
+                    "description": "Project identity, in <org-or-user>/<repository> form matching the repo's real GitHub coordinates (e.g. Zugruul/development-skills) — not a bare short name. Used to qualify feedback-feed refs across a multi-project archive (<project.name>#N) and shown in status/summary output. For a shorter human-facing label, set displayName instead."
+                },
+                "displayName": {
+                    "type": "string",
+                    "description": "Optional human-facing label for this repo, shown in place of the checkout's folder name in the neural-view HUD (repo regions, tooltips, boards panel, brain sidebar). Use when the folder name differs from how the project is actually known (e.g. an npm scope or product name). Purely cosmetic — `name` and the repo's discovery key are unaffected."
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Free-text one-line summary of the project, shown in setup/status output. Optional."
+                },
+                "mainBranch": {
+                    "type": "string",
+                    "description": "The branch tasks merge into (e.g. main, master). Used by gate.sh, board.sh, and the merge/sync protocols as the diff/merge base."
+                },
                 "branchPattern": {
                     "type": "string",
                     "description": "Branch name template. Placeholders: <prefix> (spec taskPrefix, lowercased), <id> (task number, zero-padded as issued), <slug> (kebab-case title)."
@@ -30,44 +59,101 @@
             "description": "GitHub Projects this config drives (usually one; a monorepo may declare several). specs[].board and delegation route to a board by its `id`. The first entry is the default board.",
             "items": {
                 "type": "object",
-                "required": ["id", "provider", "owner", "repo", "projectNumber", "projectId", "fields", "statusFlow"],
+                "required": [
+                    "id",
+                    "provider",
+                    "owner",
+                    "repo",
+                    "projectNumber",
+                    "projectId",
+                    "fields",
+                    "statusFlow"
+                ],
                 "properties": {
-                    "id": { "type": "string", "description": "Local identifier; specs reference boards by this id. First board is the default." },
-                    "provider": { "const": "github-project", "description": "Board backend. Only 'github-project' (a GitHub Projects v2 board, driven via `gh project`/`gh api` through board.sh) is supported today." },
-                    "owner": { "type": "string", "description": "GitHub user/org owning the Project." },
-                    "repo": { "type": "string", "description": "owner/name of the repo where issues live." },
-                    "projectNumber": { "type": "integer", "description": "The Project's number as shown in its GitHub URL (…/projects/<N>)." },
-                    "projectId": { "type": "string", "description": "GraphQL node id (PVT_...). Discover with: board.sh fields" },
+                    "id": {
+                        "type": "string",
+                        "description": "Local identifier; specs reference boards by this id. First board is the default."
+                    },
+                    "provider": {
+                        "const": "github-project",
+                        "description": "Board backend. Only 'github-project' (a GitHub Projects v2 board, driven via `gh project`/`gh api` through board.sh) is supported today."
+                    },
+                    "owner": {
+                        "type": "string",
+                        "description": "GitHub user/org owning the Project."
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "owner/name of the repo where issues live."
+                    },
+                    "projectNumber": {
+                        "type": "integer",
+                        "description": "The Project's number as shown in its GitHub URL (…/projects/<N>)."
+                    },
+                    "projectId": {
+                        "type": "string",
+                        "description": "GraphQL node id (PVT_...). Discover with: board.sh fields"
+                    },
                     "fields": {
                         "type": "object",
-                        "required": ["status", "priority"],
+                        "required": [
+                            "status",
+                            "priority"
+                        ],
                         "description": "GraphQL field/option ids for this board's single-select fields, so board.sh can mutate items without re-discovering ids on every call. Discover with `board.sh fields`.",
                         "properties": {
-                            "status": { "$ref": "#/definitions/singleSelectField" },
+                            "status": {
+                                "$ref": "#/definitions/singleSelectField"
+                            },
                             "priority": {
-                                "allOf": [{ "$ref": "#/definitions/singleSelectField" }],
+                                "allOf": [
+                                    {
+                                        "$ref": "#/definitions/singleSelectField"
+                                    }
+                                ],
                                 "description": "Option key order in `options` = priority order, highest first."
                             },
                             "estimate": {
                                 "type": "object",
-                                "required": ["fieldId"],
+                                "required": [
+                                    "fieldId"
+                                ],
                                 "description": "Optional numeric estimate field (e.g. story points/hours), used by telemetry.py's estimate-vs-actual report.",
-                                "properties": { "fieldId": { "type": "string", "description": "GraphQL node id of the estimate number field." } }
+                                "properties": {
+                                    "fieldId": {
+                                        "type": "string",
+                                        "description": "GraphQL node id of the estimate number field."
+                                    }
+                                }
                             }
                         }
                     },
                     "statusFlow": {
                         "type": "array",
-                        "items": { "type": "string" },
+                        "items": {
+                            "type": "string"
+                        },
                         "description": "Ordered pipeline, e.g. [Backlog, In progress, In review, QA, Ready, Deployed]. Names must match status field option keys."
                     },
                     "labels": {
                         "type": "object",
                         "description": "Repo labels applied by `board.sh add`/`bug`. `board.sh ensure-labels` idempotently creates any of these missing on the repo (also run by setup-project / seed-board.sh).",
                         "properties": {
-                            "bug": { "type": "string", "default": "type:bug", "description": "Label applied by `board.sh bug` (alias of `add --type bug`). Default: type:bug." },
-                            "feature": { "type": "string", "default": "type:feature", "description": "Label applied by `board.sh add --type feature`. Default: type:feature." },
-                            "inbound": { "type": "string", "default": "inbound", "description": "Label applied by `board.sh add --type inbound` (ad-hoc captures via create-inbound). Default: inbound." }
+                            "bug": {
+                                "type": "string",
+                                "default": "type:bug",
+                                "description": "Label applied by `board.sh bug` (alias of `add --type bug`). Default: type:bug."
+                            },
+                            "feature": {
+                                "type": "string",
+                                "default": "type:feature",
+                                "description": "Label applied by `board.sh add --type feature`. Default: type:feature."
+                            },
+                            "inbound": {
+                                "type": "string",
+                                "default": "inbound",
+                                "description": "Label applied by `board.sh add --type inbound` (ad-hoc captures via create-inbound). Default: inbound."
+                            }
                         }
                     }
                 }
@@ -76,16 +162,37 @@
         "specs": {
             "type": "array",
             "minItems": 1,
-            "description": "The spec document(s) this project's board tasks are drawn from. Usually one; a monorepo may run several specs against the same or different boards.",
+            "description": "DEPRECATED INLINE — the work-plan now lives in per-spec files .neural-network/specs/<id>.yaml (one file per spec, same item shape as this array's entries; a file's `id` defaults to its basename). project.yaml holds configuration only. An inline `specs:` here still validates (with a deprecation note) when no specs/ dir exists; the specs/ dir wins when both are present. The spec document(s) this project's board tasks are drawn from. Usually one; a monorepo may run several specs against the same or different boards.",
             "items": {
                 "type": "object",
-                "required": ["id", "board", "specPath", "taskPrefix", "epics"],
+                "required": [
+                    "id",
+                    "board",
+                    "specPath",
+                    "taskPrefix",
+                    "epics"
+                ],
                 "properties": {
-                    "id": { "type": "string", "description": "Local identifier for this spec." },
-                    "title": { "type": "string", "description": "Human-readable spec title, shown in status/summary output." },
-                    "board": { "type": "string", "description": "boards[].id this spec's tasks live on." },
-                    "specPath": { "type": "string", "description": "Repo-relative path to the spec document." },
-                    "backlogPath": { "type": "string", "description": "Repo-relative path to the backlog doc with per-task acceptance criteria." },
+                    "id": {
+                        "type": "string",
+                        "description": "Local identifier for this spec."
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Human-readable spec title, shown in status/summary output."
+                    },
+                    "board": {
+                        "type": "string",
+                        "description": "boards[].id this spec's tasks live on."
+                    },
+                    "specPath": {
+                        "type": "string",
+                        "description": "Repo-relative path to the spec document."
+                    },
+                    "backlogPath": {
+                        "type": "string",
+                        "description": "Repo-relative path to the backlog doc with per-task acceptance criteria."
+                    },
                     "taskPrefix": {
                         "type": "string",
                         "description": "Task id prefix; issue titles look like '<taskPrefix>-<number>: <title>'. Must be unique across specs."
@@ -95,15 +202,26 @@
                         "description": "Ordered by build sequence. Position in this array is the sequencing rank.",
                         "items": {
                             "type": "object",
-                            "required": ["id", "taskRanges"],
+                            "required": [
+                                "id",
+                                "taskRanges"
+                            ],
                             "properties": {
-                                "id": { "type": "string", "description": "Epic identifier, referenced by other epics' blockedBy[].epic." },
-                                "title": { "type": "string", "description": "Human-readable epic title." },
+                                "id": {
+                                    "type": "string",
+                                    "description": "Epic identifier, referenced by other epics' blockedBy[].epic."
+                                },
+                                "title": {
+                                    "type": "string",
+                                    "description": "Human-readable epic title."
+                                },
                                 "taskRanges": {
                                     "type": "array",
                                     "items": {
                                         "type": "array",
-                                        "items": { "type": "integer" },
+                                        "items": {
+                                            "type": "integer"
+                                        },
                                         "minItems": 2,
                                         "maxItems": 2
                                     },
@@ -114,10 +232,19 @@
                                     "description": "Epic-level dependency guards: this epic's tasks are not picked by next.py until every named epic reaches its untilStatus.",
                                     "items": {
                                         "type": "object",
-                                        "required": ["epic", "untilStatus"],
+                                        "required": [
+                                            "epic",
+                                            "untilStatus"
+                                        ],
                                         "properties": {
-                                            "epic": { "type": "string", "description": "Epic id (same spec) that must complete first." },
-                                            "untilStatus": { "type": "string", "description": "Every task of that epic must have reached this status (or later in statusFlow)." }
+                                            "epic": {
+                                                "type": "string",
+                                                "description": "Epic id (same spec) that must complete first."
+                                            },
+                                            "untilStatus": {
+                                                "type": "string",
+                                                "description": "Every task of that epic must have reached this status (or later in statusFlow)."
+                                            }
                                         }
                                     }
                                 }
@@ -126,7 +253,9 @@
                     },
                     "invariants": {
                         "type": "array",
-                        "items": { "type": "string" },
+                        "items": {
+                            "type": "string"
+                        },
                         "description": "Hard rules agents must never violate (fed into implementation briefs verbatim)."
                     }
                 }
@@ -135,11 +264,14 @@
         "work": {
             "type": "object",
             "additionalProperties": false,
-            "description": "PR-less local delivery + board-sync batching policy (SW-079) + checkout placement (#532). Absent == { type: pr, checkout: worktree } (today's default: push a branch, open a GitHub PR, review + merge via gh; each task's work happens in its own git worktree, registered up front via a draft PR).",
+            "description": "PR-less local delivery + board-sync batching policy (SW-079) + checkout placement (#532). Absent == { type: pr, checkout: worktree } and the legacy done-gate (work.type + methodology.autoMerge decide when the agent's work stops) (today's default: push a branch, open a GitHub PR, review + merge via gh; each task's work happens in its own git worktree, registered up front via a draft PR).",
             "properties": {
                 "checkout": {
                     "type": "string",
-                    "enum": ["worktree", "main"],
+                    "enum": [
+                        "worktree",
+                        "main"
+                    ],
                     "default": "worktree",
                     "description": "WHERE a task's work happens (#532) — delivery-agnostic (valid under type: pr and local alike; work.type governs HOW work lands, this governs WHERE it is written). worktree (default, preferred): each task gets its own git worktree + branch, registered BEFORE implementation (empty registration commit, push, draft PR). main: no branch — work lands directly on project.mainBranch; with methodology.maxInProgress > 1 the orchestrator serializes workers' edits and requires complete small commits as the work goes. The build-next/implement-task skills ask which to use once per session (worktree recommended); the in-session answer wins over this recorded preference.",
                     "enumDescriptions": [
@@ -149,7 +281,10 @@
                 },
                 "type": {
                     "type": "string",
-                    "enum": ["pr", "local"],
+                    "enum": [
+                        "pr",
+                        "local"
+                    ],
                     "default": "pr",
                     "description": "How a task's work is delivered. pr (default): push the branch, open a GitHub PR, review it, `gh pr merge`. local: the branch stays local — review is `git diff <main>..<branch>`, approval is recorded as an ISSUE comment, and the orchestrator squash-merges locally (role attribution in the commit) and pushes main (skipped, with a stated reason, if the repo has no remote).",
                     "enumDescriptions": [
@@ -164,7 +299,12 @@
                     "properties": {
                         "mode": {
                             "type": "string",
-                            "enum": ["realtime", "task-close", "session-end", "manual"],
+                            "enum": [
+                                "realtime",
+                                "task-close",
+                                "session-end",
+                                "manual"
+                            ],
                             "default": "realtime",
                             "description": "Board-sync cadence for local delivery. In every mode, a `blocked` or `new-item` event ALWAYS syncs immediately (the safety valve) — never held back for batching. See scripts/work-mode.sh should-sync.",
                             "enumDescriptions": [
@@ -173,6 +313,42 @@
                                 "Board mutations batch and flush at iteration/session boundaries.",
                                 "Board mutations only flush via an explicit board.sh flush call."
                             ]
+                        }
+                    }
+                },
+                "done": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "phase"
+                    ],
+                    "description": "Definition of AGENT work done: at which delivery phase the agent considers ITS OWN work finished. Distinct from the task-level definition of done (what the TASK requires — acceptance criteria on the board item; the agent works toward that): work.done is the agent's true stop-gate for \"my work is done\". Absent == legacy behavior — the work.type + methodology.autoMerge flow decides where work stops. The pr-* phases require work.type: pr (local delivery never opens a PR).",
+                    "properties": {
+                        "phase": {
+                            "type": "string",
+                            "enum": [
+                                "code",
+                                "pr-open",
+                                "pr-review-requested",
+                                "pr-validated",
+                                "deployed-staging",
+                                "deployed-production",
+                                "custom"
+                            ],
+                            "description": "The phase at which the agent's own work counts as done. Phases are ordered stops along delivery; pick the one where the agent should stop and report done (later statuses become someone else's — or a later session's — job). 'custom' delegates the definition entirely to work.done.instructions (required there).",
+                            "enumDescriptions": [
+                                "The code is done: gate green, committed on the task's branch — no delivery step is the agent's job.",
+                                "A PR is open into the lower environment (draft flipped ready at gate-green); merge and beyond are not the agent's job.",
+                                "The PR has been sent for review in the team's communication channel (name the channel in work.done.instructions).",
+                                "The PR's change has been validated in an environment (say which environment and how in work.done.instructions).",
+                                "The change is deployed to staging (deployment verified, not just merged).",
+                                "The change is deployed to production (deployment verified, not just merged).",
+                                "work.done.instructions IS the definition — the agent stops only when those instructions are satisfied."
+                            ]
+                        },
+                        "instructions": {
+                            "type": "string",
+                            "description": "Free-text guidance refining the done-gate: for a preset phase, EXTRA instructions on top of it (e.g. which environment validates the change, which channel receives the review request); for phase: custom, this text IS the definition of agent work done and is required. Must be non-empty when present."
                         }
                     }
                 }
@@ -199,29 +375,140 @@
             "description": "Documentation sets the reviewer enforces: when a diff touches files under a set's `covers` globs and changes behavior/contracts/usage, that set's docs must be updated in the same PR (or the PR must state why not). Standalone repo: one entry covering everything. Monorepo: one entry per package/app plus an optional root entry.",
             "items": {
                 "type": "object",
-                "required": ["path"],
+                "required": [
+                    "path"
+                ],
                 "properties": {
-                    "id": { "type": "string", "description": "Local identifier, e.g. 'root', 'core', 'web'." },
-                    "path": { "type": "string", "description": "Repo-relative docs location — a directory (docs/) or a file (README.md)." },
+                    "id": {
+                        "type": "string",
+                        "description": "Local identifier, e.g. 'root', 'core', 'web'."
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Repo-relative docs location — a directory (docs/) or a file (README.md)."
+                    },
                     "covers": {
                         "type": "array",
-                        "items": { "type": "string" },
-                        "default": ["**"],
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [
+                            "**"
+                        ],
                         "description": "Code-path globs this doc set documents. A diff touching a covered path puts this set in review scope."
                     },
-                    "notes": { "type": "string", "description": "What belongs in this doc set (helps the reviewer judge 'needed a doc update' vs not)." }
+                    "notes": {
+                        "type": "string",
+                        "description": "What belongs in this doc set (helps the reviewer judge 'needed a doc update' vs not)."
+                    }
+                }
+            }
+        },
+        "integrations": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "External task sources the workflow can take a task from (ClickUp today). Absent == none (additive-only, like work/compute). A task passed to implement-task by ClickUp URL/id is read from here instead of the GitHub board; the section's `actions` map is the SAFEGUARD contract — every ClickUp mutation is tri-state ask|allow|disallow, defaulting to ask.",
+            "properties": {
+                "clickup": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "ClickUp task-source config, read by implement-task's ClickUp route (skills/implement-task/references/clickup.md). ClickUp access is MCP-ONLY — `mcp` is required while enabled; there is no API-token fallback.",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Whether the ClickUp task source is currently offered. false keeps the section on file (transports, safeguards, statusMap) while implement-task refuses ClickUp refs."
+                        },
+                        "mcp": {
+                            "type": "string",
+                            "description": "Name of the MCP server whose tools serve ALL ClickUp reads and writes (e.g. 'clickup' -> tools like mcp__clickup__* under Claude Code; other hosts resolve their own tool naming). Required while enabled — ClickUp access is MCP-only."
+                        },
+                        "actions": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "description": "The safeguard contract: what the workflow may do to ClickUp, per mutation. Tri-state per action: 'allow' (perform without asking), 'ask' (ask the human first; in a non-interactive run, ask degrades to disallow), 'disallow' (never perform — report 'CLICKUP SKIPPED (safeguard)' instead). An absent action defaults to 'ask'.",
+                            "properties": {
+                                "move": {
+                                    "type": "string",
+                                    "enum": [
+                                        "ask",
+                                        "allow",
+                                        "disallow"
+                                    ],
+                                    "default": "ask",
+                                    "enumDescriptions": [
+                                        "Ask the human before performing (non-interactive runs treat this as disallow).",
+                                        "Perform without asking.",
+                                        "Never perform; report the skipped action."
+                                    ],
+                                    "description": "Changing a task's ClickUp status (via statusMap)."
+                                },
+                                "comment": {
+                                    "type": "string",
+                                    "enum": [
+                                        "ask",
+                                        "allow",
+                                        "disallow"
+                                    ],
+                                    "default": "ask",
+                                    "enumDescriptions": [
+                                        "Ask the human before performing (non-interactive runs treat this as disallow).",
+                                        "Perform without asking.",
+                                        "Never perform; report the skipped action."
+                                    ],
+                                    "description": "Posting comments on the ClickUp task (progress notes, PR links, blockers)."
+                                },
+                                "assign": {
+                                    "type": "string",
+                                    "enum": [
+                                        "ask",
+                                        "allow",
+                                        "disallow"
+                                    ],
+                                    "default": "ask",
+                                    "enumDescriptions": [
+                                        "Ask the human before performing (non-interactive runs treat this as disallow).",
+                                        "Perform without asking.",
+                                        "Never perform; report the skipped action."
+                                    ],
+                                    "description": "Changing the task's assignees."
+                                }
+                            }
+                        },
+                        "statusMap": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            },
+                            "description": "Workflow status -> ClickUp status name (e.g. {\"In Progress\": \"in progress\"}). Only consulted when actions.move resolves to a performed move; keys must name real boards[].statusFlow statuses; a workflow status absent from this map is simply never mirrored (per-status opt-in on top of the actions.move gate)."
+                        }
+                    }
                 }
             }
         },
         "commands": {
             "type": "object",
-            "required": ["gate"],
+            "required": [
+                "gate"
+            ],
             "description": "Project-specific shell commands the workflow's scripts shell out to (gate.sh, dev-up skill, etc).",
             "properties": {
-                "gate": { "type": "string", "description": "Single command that must be green before a task advances to review." },
-                "gateFast": { "type": "string", "description": "Optional fast inner-loop test command template." },
-                "devUp": { "type": "string", "description": "Command that brings up the full local dev stack." },
-                "test": { "type": "string", "description": "Optional standalone test command, when it differs from commands.gate (e.g. gate also lints/typechecks). Not read by any script today; documents intent for humans and future tooling." }
+                "gate": {
+                    "type": "string",
+                    "description": "Single command that must be green before a task advances to review."
+                },
+                "gateFast": {
+                    "type": "string",
+                    "description": "Optional fast inner-loop test command template."
+                },
+                "devUp": {
+                    "type": "string",
+                    "description": "Command that brings up the full local dev stack."
+                },
+                "test": {
+                    "type": "string",
+                    "description": "Optional standalone test command, when it differs from commands.gate (e.g. gate also lints/typechecks). Not read by any script today; documents intent for humans and future tooling."
+                }
             }
         },
         "delegation": {
@@ -235,16 +522,26 @@
                 "identities": {
                     "description": "Per-role agent identities (git author + allowed models), ON by default. A role maps to ONE identity or an ARRAY of identities (monorepo routing via `covers`). name/email are templates resolved per-clone by scripts/identity.sh: {name} -> git config user.name, {local}/{domain} -> git config user.email parts — so each person's clone attributes agent commits to their own plus-addressed email. Placeholder-free values are literal (shared bot accounts). Built-in defaults: dev/reviewer/orchestrator names 'Dev Agent - {name}' / 'Reviewer Agent - {name}' / 'Orchestrator Agent - {name}', email {local}+<role>_agent@{domain}; model defaults dev ['claude-sonnet-5'], reviewer ['claude-sonnet-5','claude-sonnet-5[1m]'], orchestrator none. Set a role to null to make it commit as the human; set identities to false to disable all roles.",
                     "oneOf": [
-                        { "const": false },
+                        {
+                            "const": false
+                        },
                         {
                             "type": "object",
                             "description": "Per-role identity overrides. Any key beyond dev/reviewer/orchestrator (additionalProperties) is a custom role name, resolved the same way (identity.sh <role>).",
                             "properties": {
-                                "dev": { "$ref": "#/definitions/roleIdentity" },
-                                "reviewer": { "$ref": "#/definitions/roleIdentity" },
-                                "orchestrator": { "$ref": "#/definitions/roleIdentity" }
+                                "dev": {
+                                    "$ref": "#/definitions/roleIdentity"
+                                },
+                                "reviewer": {
+                                    "$ref": "#/definitions/roleIdentity"
+                                },
+                                "orchestrator": {
+                                    "$ref": "#/definitions/roleIdentity"
+                                }
                             },
-                            "additionalProperties": { "$ref": "#/definitions/roleIdentity" }
+                            "additionalProperties": {
+                                "$ref": "#/definitions/roleIdentity"
+                            }
                         }
                     ]
                 }
@@ -254,19 +551,45 @@
             "type": "object",
             "description": "Repo-relative locations the workflow's skills/scripts read or write, all optional with sane defaults.",
             "properties": {
-                "handoffDir": { "type": "string", "default": "docs/handoffs", "description": "Where the handoff skill writes <YYYY-MM-DD-HHMM>.md session handoffs. Default: docs/handoffs." },
-                "checkpointFile": { "type": "string", "default": ".claude/CHECKPOINT", "description": "Flag file the build loop checks at the start of every iteration; if present, the loop writes a handoff and stops instead of starting new work. Default: .claude/CHECKPOINT." },
-                "designDir": { "type": "string", "default": "docs/design", "description": "Per-epic design docs (<spec-id>-<epic-id>.md) that dev briefs ground on." },
-                "specDeltaDir": { "type": "string", "default": "docs/spec-deltas", "description": "Per-task spec-delta files, folded into the canonical spec when the task's PR merges; applied/ holds history." },
-                "devDoc": { "type": "string", "description": "Repo-relative doc with project-specific dev-stack details (ports, profiles, isolation)." }
+                "handoffDir": {
+                    "type": "string",
+                    "default": "docs/handoffs",
+                    "description": "Where the handoff skill writes <YYYY-MM-DD-HHMM>.md session handoffs. Default: docs/handoffs."
+                },
+                "checkpointFile": {
+                    "type": "string",
+                    "default": ".claude/CHECKPOINT",
+                    "description": "Flag file the build loop checks at the start of every iteration; if present, the loop writes a handoff and stops instead of starting new work. Default: .claude/CHECKPOINT."
+                },
+                "designDir": {
+                    "type": "string",
+                    "default": "docs/design",
+                    "description": "Per-epic design docs (<spec-id>-<epic-id>.md) that dev briefs ground on."
+                },
+                "specDeltaDir": {
+                    "type": "string",
+                    "default": "docs/spec-deltas",
+                    "description": "Per-task spec-delta files, folded into the canonical spec when the task's PR merges; applied/ holds history."
+                },
+                "devDoc": {
+                    "type": "string",
+                    "description": "Repo-relative doc with project-specific dev-stack details (ports, profiles, isolation)."
+                }
             }
         },
         "methodology": {
             "type": "object",
             "description": "Process knobs governing how the build loop works: TDD strictness, concurrency, graduation, UI delegation, and merge/feedback policy.",
             "properties": {
-                "tdd": { "type": "boolean", "default": true, "description": "When true (default), every task is implemented red-first: a failing test commit precedes the implementation commit. Enforced by process/review, not a script gate." },
-                "isolationSuite": { "type": "string", "description": "Test path glob for the merge-gating isolation suite, if any (e.g. tests/isolation/**)." },
+                "tdd": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "When true (default), every task is implemented red-first: a failing test commit precedes the implementation commit. Enforced by process/review, not a script gate."
+                },
+                "isolationSuite": {
+                    "type": "string",
+                    "description": "Test path glob for the merge-gating isolation suite, if any (e.g. tests/isolation/**)."
+                },
                 "maxInProgress": {
                     "type": "integer",
                     "default": 1,
@@ -277,19 +600,19 @@
                     "type": "integer",
                     "default": 3,
                     "minimum": 1,
-                    "description": "Note strength (SPEC \u00a78.3) at/above which brain.py graduate-check surfaces a note as a graduation candidate (proposed destination: ROLE.md rule / specs[].invariants entry / test-or-lint). graduate-check is read-only — it proposes; graduation itself stays a human-visible retro action (brain.py graduate)."
+                    "description": "Note strength (SPEC §8.3) at/above which brain.py graduate-check surfaces a note as a graduation candidate (proposed destination: ROLE.md rule / specs[].invariants entry / test-or-lint). graduate-check is read-only — it proposes; graduation itself stays a human-visible retro action (brain.py graduate)."
                 },
                 "outcomeWindow": {
                     "type": "integer",
                     "default": 3,
                     "minimum": 1,
-                    "description": "Number of most-recent retros (SPEC-GRAPHIFY \u00a77 R7.4/R7.5), counted on the retros.log clock rather than wall time, whose recorded outcomes (brain.py outcome) feed recall's seed-activation multiplier and the \u26a0 contested marker. Fewer than N retros ever marked means no window boundary exists yet, so the whole outcome history counts as within-window."
+                    "description": "Number of most-recent retros (SPEC-GRAPHIFY §7 R7.4/R7.5), counted on the retros.log clock rather than wall time, whose recorded outcomes (brain.py outcome) feed recall's seed-activation multiplier and the ⚠ contested marker. Fewer than N retros ever marked means no window boundary exists yet, so the whole outcome history counts as within-window."
                 },
                 "outcomeMultiplierStep": {
                     "type": "number",
                     "default": 0.1,
                     "minimum": 0,
-                    "description": "Per-net-outcome-point adjustment (SPEC-GRAPHIFY \u00a77 R7.4) applied to a note's seed activation in brain.py recall: multiplier = 1.0 + step \u00d7 (usefulCount \u2212 deadEndCount \u2212 correctedCount) within the outcomeWindow, floored at 0.1. A note with zero recorded outcomes, or a net-zero tally, gets EXACTLY 1.0 \u2014 byte-identical ranking to a brain with no outcomes.jsonl (G6)."
+                    "description": "Per-net-outcome-point adjustment (SPEC-GRAPHIFY §7 R7.4) applied to a note's seed activation in brain.py recall: multiplier = 1.0 + step × (usefulCount − deadEndCount − correctedCount) within the outcomeWindow, floored at 0.1. A note with zero recorded outcomes, or a net-zero tally, gets EXACTLY 1.0 — byte-identical ranking to a brain with no outcomes.jsonl (G6)."
                 },
                 "outcomeDeadEndPruneThreshold": {
                     "type": "integer",
@@ -302,7 +625,7 @@
                     "default": 0.3,
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "SPEC-GRAPHIFY \u00a713 shrink guard (lesson from graphify #2053/#2056/#2012): the fraction of a brain's notes/links a single brain.py invocation may remove before it must refuse without --force. Every destructive verb routes through the shared _shrink_guard helper (currently wired into `prune --apply`, its link removal path). The guard only engages when the removal ALSO exceeds an absolute floor (5 items, a code constant) \u2014 so e.g. pruning 2 of 3 links in a tiny brain never needs --force. Over threshold without --force: refuses non-zero, prints counts + a sample of the keys that would be removed, writes nothing. Over threshold with --force: proceeds and prints a loud removal summary; LinkPruned events are still emitted either way removal happens."
+                    "description": "SPEC-GRAPHIFY §13 shrink guard (lesson from graphify #2053/#2056/#2012): the fraction of a brain's notes/links a single brain.py invocation may remove before it must refuse without --force. Every destructive verb routes through the shared _shrink_guard helper (currently wired into `prune --apply`, its link removal path). The guard only engages when the removal ALSO exceeds an absolute floor (5 items, a code constant) — so e.g. pruning 2 of 3 links in a tiny brain never needs --force. Over threshold without --force: refuses non-zero, prints counts + a sample of the keys that would be removed, writes nothing. Over threshold with --force: proceeds and prints a loud removal summary; LinkPruned events are still emitted either way removal happens."
                 },
                 "recencyDecayGraceRetros": {
                     "type": "integer",
@@ -334,7 +657,11 @@
                 },
                 "mergeMethod": {
                     "type": "string",
-                    "enum": ["squash", "merge", "rebase"],
+                    "enum": [
+                        "squash",
+                        "merge",
+                        "rebase"
+                    ],
                     "default": "squash",
                     "description": "gh pr merge strategy used by auto-merge — a per-repo decision made at setup. squash (default): linear history; per-role attribution carried as Co-authored-by trailers in the squash body + the PR's own commits. merge: preserves individual role-attributed commits on main. rebase: replays them.",
                     "enumDescriptions": [
@@ -346,22 +673,47 @@
                 "feedback": {
                     "description": "Structured per-iteration process feedback about the WORKFLOW (not the project being built), routed at retro time into backlog/brain-note/graduate/upstream/ignore. `true` is shorthand for the defaults shown below. Absent = disabled. Protocol: feedback skill; mechanics: scripts/feedback.py.",
                     "oneOf": [
-                        { "type": "boolean" },
+                        {
+                            "type": "boolean"
+                        },
                         {
                             "type": "object",
                             "additionalProperties": false,
                             "properties": {
-                                "enabled": { "type": "boolean", "default": true, "description": "Whether feedback collection is on. Redundant with the `true` shorthand — set false here (inside the expanded form) to disable while keeping feed/roles/autoTriage overrides on file for later." },
-                                "feed": { "type": "string", "default": ".claude/feedbacks/feed.yaml", "description": "Repo-relative path to the yaml feed file (sequence of --- separated loop-feedback records). Default: .claude/feedbacks/feed.yaml — a tracked, orchestrator-mediated archive (committed alongside code, never read/written by dev/reviewer subagents). The legacy, gitignored .claude/feedback/feed.yaml (singular) path is detected and blocks with a migration message when this default is in effect; an explicit override here is trusted as-is." },
-                                "roles": { "type": "array", "items": { "type": "string" }, "default": ["orchestrator"], "description": "Which identities are expected to emit feedback." },
-                                "autoTriage": { "type": "boolean", "default": false, "description": "When true, triage routes items (e.g. backlog) without a human check-in — mirrors autoMerge's explicit-consent pattern." }
+                                "enabled": {
+                                    "type": "boolean",
+                                    "default": true,
+                                    "description": "Whether feedback collection is on. Redundant with the `true` shorthand — set false here (inside the expanded form) to disable while keeping feed/roles/autoTriage overrides on file for later."
+                                },
+                                "feed": {
+                                    "type": "string",
+                                    "default": ".neural-network/feedbacks/feed.yaml",
+                                    "description": "Repo-relative path of the LEGACY single feed file (default .neural-network/feedbacks/feed.yaml) — still read/routed/archived, never written by emit anymore. New records are SHARDED: one file per emitted record under the sibling feed/<writer>/ dir (<ts-compact>.yaml, writer from $SPEC_WORKFLOW_WRITER or git user.email), so concurrent emitters on different clones can commit without ever merge-conflicting; fully-routed shards archive per-file into archive/<YYYY-MM>/<writer>/<ts>. `feedback.py migrate-shard` splits an existing legacy feed into shards. The pre-cutover, gitignored .claude/feedback/feed.yaml (singular) path is detected and blocks with a migration message when this default is in effect; an explicit override here is trusted as-is."
+                                },
+                                "roles": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    },
+                                    "default": [
+                                        "orchestrator"
+                                    ],
+                                    "description": "Which identities are expected to emit feedback."
+                                },
+                                "autoTriage": {
+                                    "type": "boolean",
+                                    "default": false,
+                                    "description": "When true, triage routes items (e.g. backlog) without a human check-in — mirrors autoMerge's explicit-consent pattern."
+                                }
                             }
                         }
                     ]
                 },
                 "entityKinds": {
                     "type": "object",
-                    "additionalProperties": { "type": "string" },
+                    "additionalProperties": {
+                        "type": "string"
+                    },
                     "description": "Cross-identity correlation layer (#163): kind -> home-role map (e.g. {card: card-vault}) used by `brain.py entity-index` and neural-view's live entity-edge derivation to resolve an entity's ANCHOR note -- the note in its kind's home role, when that role has exactly one note declaring the entity. Absent or a kind missing from this map just means entities of that kind always get anchor: null (still correlated, just without a canonical hub); this never affects per-role recall/query."
                 }
             }
@@ -380,7 +732,7 @@
         "compute": {
             "type": "object",
             "additionalProperties": false,
-            "description": "Remote compute resources AVAILABLE to this project, written by the remote-compute skill (docs/design/remote-compute-plan.md). Normally lives in the gitignored machine-local overlay .claude/project.local.yaml (config.py merges its compute key over the committed config; missing overlay = no compute), because which machines a clone can reach is a property of the machine, not the repo. Capability-style and non-exclusive — the same machine may be enabled in many projects (mirrors assistant.capabilities.<name>); the machine-local cooperative lock serializes actual use, never this declaration. Entries carry only the ssh alias plus an informational capability snapshot — never host, user, or secrets (resolution goes through ~/.ssh/config and the machine-local registry ~/.remote-compute/resources.yaml, which is never committed). Snapshots are documentation: consumers re-probe before real dispatch. Absent == no machines advertised (additive-only).",
+            "description": "Remote compute resources AVAILABLE to this project, written by the remote-compute skill (docs/design/remote-compute-plan.md). Normally lives in the gitignored machine-local overlay .neural-network/project.local.yaml (config.py merges its compute key over the committed config; missing overlay = no compute), because which machines a clone can reach is a property of the machine, not the repo. Capability-style and non-exclusive — the same machine may be enabled in many projects (mirrors assistant.capabilities.<name>); the machine-local cooperative lock serializes actual use, never this declaration. Entries carry only the ssh alias plus an informational capability snapshot — never host, user, or secrets (resolution goes through ~/.ssh/config and the machine-local registry ~/.remote-compute/resources.yaml, which is never committed). Snapshots are documentation: consumers re-probe before real dispatch. Absent == no machines advertised (additive-only).",
             "properties": {
                 "resources": {
                     "type": "object",
@@ -389,14 +741,27 @@
                         "type": "object",
                         "description": "One advertised compute resource: whether it is enabled here, its free-form roles, when its live probe ran, and the capability snapshot taken at that probe.",
                         "properties": {
-                            "enabled": { "type": "boolean", "default": true, "description": "Whether this project currently treats the resource as available. disable flips this to false without dropping the entry (capability-style)." },
-                            "probedAt": { "type": "string", "description": "UTC ISO-8601 timestamp of the live probe that produced the snapshot (enable never writes from a stale snapshot)." },
+                            "enabled": {
+                                "type": "boolean",
+                                "default": true,
+                                "description": "Whether this project currently treats the resource as available. disable flips this to false without dropping the entry (capability-style)."
+                            },
+                            "probedAt": {
+                                "type": "string",
+                                "description": "UTC ISO-8601 timestamp of the live probe that produced the snapshot (enable never writes from a stale snapshot)."
+                            },
                             "roles": {
                                 "type": "array",
-                                "items": { "type": "string", "description": "A free-form role name, e.g. training or inference." },
+                                "items": {
+                                    "type": "string",
+                                    "description": "A free-form role name, e.g. training or inference."
+                                },
                                 "description": "Free-form roles tasks may reference instead of the alias (e.g. resource-by-role: training)."
                             },
-                            "capabilities": { "type": "object", "description": "Informational snapshot from the live probe (gpu, ramGB, disks, verified envs). Never authoritative — consumers re-probe before real dispatch." }
+                            "capabilities": {
+                                "type": "object",
+                                "description": "Informational snapshot from the live probe (gpu, ramGB, disks, verified envs). Never authoritative — consumers re-probe before real dispatch."
+                            }
                         }
                     }
                 }
@@ -406,29 +771,48 @@
             "type": "object",
             "description": "AST-002 (SPEC-ASSISTANT.md §6): the persistent, LLM-agnostic assistant this repo hosts. Absent == no assistant (additive-only; every other key in this schema validates identically with or without this section). Per §6.1 this section is the SOLE authority for assistant identity/enabled state — the `.neural-network` discovery marker carries no assistant flags. Structure is validated by scripts/assistant/config.py's validate_assistant(); it never resolves binaries/auth (that's AST-006 preflight) and never allowlists `llm.model` (passed verbatim to the adapter).",
             "properties": {
-                "version": { "type": "integer", "default": 1, "description": "Schema version of this assistant: section. Always 1 today." },
-                "enabled": { "type": "boolean", "default": true, "description": "Whether this assistant is currently offered by discovery/selection. A structurally-valid section with enabled: false still validates — disabling never bypasses the other checks below." },
+                "version": {
+                    "type": "integer",
+                    "default": 1,
+                    "description": "Schema version of this assistant: section. Always 1 today."
+                },
+                "enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether this assistant is currently offered by discovery/selection. A structurally-valid section with enabled: false still validates — disabling never bypasses the other checks below."
+                },
                 "names": {
                     "type": "array",
                     "minItems": 1,
-                    "items": { "type": "string" },
+                    "items": {
+                        "type": "string"
+                    },
                     "description": "Non-empty display names for the assistant. The FIRST entry is the main name (used in prompts/UI headers); any remaining entries are aliases it also answers to. Every entry must be a non-empty string."
                 },
-                "systemPrompt": { "type": "string", "description": "The assistant's persona, verbatim. names + the identity-brain roster are appended mechanically at turn time — this key holds only the human-authored persona text." },
+                "systemPrompt": {
+                    "type": "string",
+                    "description": "The assistant's persona, verbatim. names + the identity-brain roster are appended mechanically at turn time — this key holds only the human-authored persona text."
+                },
                 "llm": {
                     "type": "object",
                     "description": "Which model backend serves this assistant's turns.",
                     "properties": {
                         "provider": {
                             "type": "string",
-                            "enum": ["openai", "claude"],
+                            "enum": [
+                                "openai",
+                                "claude"
+                            ],
                             "enumDescriptions": [
                                 "Routes through the codex adapter — requires capabilities.codex.enabled: true (§6.5).",
                                 "Routes through the claude-code adapter — requires capabilities.claude-code.enabled: true (§6.5)."
                             ],
                             "description": "Which adapter serves this assistant's turns. Cross-checked against `capabilities` below (§6.5): each provider requires its matching capability enabled, or validate-config.py rejects the section."
                         },
-                        "model": { "type": "string", "description": "Model id, passed VERBATIM to the adapter (§6.5) — never allowlisted here, since adapters version their own model catalogs independently of this schema." }
+                        "model": {
+                            "type": "string",
+                            "description": "Model id, passed VERBATIM to the adapter (§6.5) — never allowlisted here, since adapters version their own model catalogs independently of this schema."
+                        }
                     }
                 },
                 "capabilities": {
@@ -438,8 +822,14 @@
                         "type": "object",
                         "description": "One capability's config.",
                         "properties": {
-                            "enabled": { "type": "boolean", "description": "Whether this capability is available for the assistant to use." },
-                            "provisioning": { "type": "object", "description": "Capability-specific provisioning hints (e.g. { bin: codex }). Structure is opaque to schema validation — binary/auth resolution is AST-006 preflight, not this schema." }
+                            "enabled": {
+                                "type": "boolean",
+                                "description": "Whether this capability is available for the assistant to use."
+                            },
+                            "provisioning": {
+                                "type": "object",
+                                "description": "Capability-specific provisioning hints (e.g. { bin: codex }). Structure is opaque to schema validation — binary/auth resolution is AST-006 preflight, not this schema."
+                            }
                         }
                     }
                 },
@@ -450,14 +840,29 @@
                         "metrics": {
                             "type": "object",
                             "description": "Metrics-exposition backends, keyed by backend name (e.g. prometheus).",
-                            "additionalProperties": { "$ref": "#/definitions/assistantObservabilityBackend" }
+                            "additionalProperties": {
+                                "$ref": "#/definitions/assistantObservabilityBackend"
+                            }
                         },
                         "traces": {
                             "type": "object",
                             "description": "Trace-retention backends, keyed by backend name (e.g. sqlite).",
-                            "additionalProperties": { "$ref": "#/definitions/assistantObservabilityBackend" }
+                            "additionalProperties": {
+                                "$ref": "#/definitions/assistantObservabilityBackend"
+                            }
                         }
                     }
+                }
+            }
+        },
+        "brains": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Note-minting knobs for the identity brains. Doc-consumed only (like `commit`): the brains.md minting protocol injects these as prose into retro/mint guidance; no runtime code parses them. Absent == the default structured note style documented in skills/build-next/references/brains.md.",
+            "properties": {
+                "noteStyle": {
+                    "type": "string",
+                    "description": "Free-text instruction controlling minted note bodies' LANGUAGE and STRUCTURE — the analog of commit.systemPrompt for brain notes. Absent == the documented default: \"simple, concise English; well-sectioned with ## titles/subtitles; short bullet lists; code formatting for identifiers — a mini reference page per idea, readable by humans and agents alike; never one dense paragraph-glob\". When present, must be non-empty."
                 }
             }
         }
@@ -467,22 +872,48 @@
             "type": "object",
             "description": "One assistant observability backend (a metrics or traces exporter, e.g. prometheus or sqlite). retainDays/maxMB are retention knobs (§10.3): age AND size limits, checked independently — 0 means unlimited for that dimension; defaults 30 days / 500MB.",
             "properties": {
-                "enabled": { "type": "boolean", "description": "Whether this backend is active." },
-                "retainDays": { "type": "integer", "minimum": 0, "default": 30, "description": "Retain data for at most this many days. 0 = unlimited (no age-based eviction)." },
-                "maxMB": { "type": "integer", "minimum": 0, "default": 500, "description": "Retain at most this many megabytes of data. 0 = unlimited (no size-based eviction)." },
-                "host": { "type": "string", "description": "Bind host for an exposition endpoint (e.g. prometheus). Localhost-only per the assistant's networking invariant." },
-                "port": { "type": "integer", "description": "Bind port for an exposition endpoint (e.g. prometheus)." }
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Whether this backend is active."
+                },
+                "retainDays": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 30,
+                    "description": "Retain data for at most this many days. 0 = unlimited (no age-based eviction)."
+                },
+                "maxMB": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 500,
+                    "description": "Retain at most this many megabytes of data. 0 = unlimited (no size-based eviction)."
+                },
+                "host": {
+                    "type": "string",
+                    "description": "Bind host for an exposition endpoint (e.g. prometheus). Localhost-only per the assistant's networking invariant."
+                },
+                "port": {
+                    "type": "integer",
+                    "description": "Bind port for an exposition endpoint (e.g. prometheus)."
+                }
             }
         },
         "roleIdentity": {
             "description": "How ONE role (dev/reviewer/orchestrator/custom) commits: null (opt out — commits as the human), a single identity, or an array of identities routed by `covers` globs for monorepo per-package agents.",
             "oneOf": [
-                { "type": "null", "description": "Opt this role out — it commits as the human." },
-                { "$ref": "#/definitions/identity" },
+                {
+                    "type": "null",
+                    "description": "Opt this role out — it commits as the human."
+                },
+                {
+                    "$ref": "#/definitions/identity"
+                },
                 {
                     "type": "array",
                     "minItems": 1,
-                    "items": { "$ref": "#/definitions/identity" },
+                    "items": {
+                        "$ref": "#/definitions/identity"
+                    },
                     "description": "Several identities for one role (e.g. per-package dev agents). Selection: `covers` globs are matched against the task's changed/expected paths (deterministic, resolved by identity.sh), then the orchestrator judges among ties/no-match. Fallback = the first entry without `covers`, else the first entry."
                 }
             ]
@@ -491,14 +922,22 @@
             "type": "object",
             "description": "One git-author identity for a role: name/email templates plus its allowed models and (optionally) which paths route to it.",
             "properties": {
-                "name": { "type": "string", "description": "Template or literal; {name} = git config user.name. Omit to keep the role's default." },
-                "email": { "type": "string", "description": "Template or literal; {local}/{domain} = git config user.email parts. Omit to keep the role's default." },
+                "name": {
+                    "type": "string",
+                    "description": "Template or literal; {name} = git config user.name. Omit to keep the role's default."
+                },
+                "email": {
+                    "type": "string",
+                    "description": "Template or literal; {local}/{domain} = git config user.email parts. Omit to keep the role's default."
+                },
                 "models": {
                     "description": "The ONLY models this identity may run on. Either the legacy flat array form (FULL nomenclature ids only, e.g. 'claude-sonnet-5[1m]', 'claude-sonnet-5', 'claude-haiku-4-5', never shorthand like 'sonnet') — the orchestrator picks the most SUITABLE allowed model per task (cheaper/smaller for simple changes, larger-context [1m] for big diffs), never 'always the most powerful'; the reviewer identity's models serve BOTH the two-pass implement-task review AND the auto-merge PR gate — or an object form `{claude: [...], codex: {capability: ...}}` that additionally declares a Codex capability tier (`fast`|`balanced`|`deep-review`|`large-context`), read only by the Codex adapter and never required — omitting `codex` (or using the flat array form) never changes Claude behavior. Omit `models` entirely to use the role's default set.",
                     "oneOf": [
                         {
                             "type": "array",
-                            "items": { "type": "string" }
+                            "items": {
+                                "type": "string"
+                            }
                         },
                         {
                             "type": "object",
@@ -506,7 +945,9 @@
                             "properties": {
                                 "claude": {
                                     "type": "array",
-                                    "items": { "type": "string" },
+                                    "items": {
+                                        "type": "string"
+                                    },
                                     "description": "Same FULL-nomenclature Claude model-id list as the flat array form (e.g. 'claude-sonnet-5[1m]', 'claude-sonnet-5'), just nested under this key so `codex` can sit alongside it."
                                 },
                                 "codex": {
@@ -516,7 +957,12 @@
                                     "properties": {
                                         "capability": {
                                             "type": "string",
-                                            "enum": ["fast", "balanced", "deep-review", "large-context"],
+                                            "enum": [
+                                                "fast",
+                                                "balanced",
+                                                "deep-review",
+                                                "large-context"
+                                            ],
                                             "enumDescriptions": [
                                                 "Cheapest/fastest tier — small, low-risk changes.",
                                                 "Default general-purpose tier.",
@@ -533,7 +979,9 @@
                 },
                 "covers": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                        "type": "string"
+                    },
                     "description": "Optional path globs (fnmatch, ** crosses directories). When a task's changed/expected paths match, this identity is selected (monorepo per-package routing). An entry with no `covers` is the fallback."
                 },
                 "color": {
@@ -545,13 +993,21 @@
         },
         "singleSelectField": {
             "type": "object",
-            "required": ["fieldId", "options"],
+            "required": [
+                "fieldId",
+                "options"
+            ],
             "description": "A GitHub Projects v2 single-select field: its GraphQL field id plus its option name -> option id map. Used for boards[].fields.status/priority.",
             "properties": {
-                "fieldId": { "type": "string", "description": "GraphQL node id of the single-select field (PVTSSF_...). Discover with: board.sh fields" },
+                "fieldId": {
+                    "type": "string",
+                    "description": "GraphQL node id of the single-select field (PVTSSF_...). Discover with: board.sh fields"
+                },
                 "options": {
                     "type": "object",
-                    "additionalProperties": { "type": "string" },
+                    "additionalProperties": {
+                        "type": "string"
+                    },
                     "description": "Option name -> option id. Key order is meaningful (statusFlow order / priority order)."
                 }
             }

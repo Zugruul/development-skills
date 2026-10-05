@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate a spec-workflow project config with actionable error messages.
 
-Usage: validate-config.py <path-to-.claude/project.yaml (or legacy .json)>
+Usage: validate-config.py <path-to-.neural-network/project.yaml (or legacy .json)>
 Exit 0 = valid (prints a summary); exit 1 = invalid (prints every problem found).
 YAML (schemaVersion 2) is the current format; legacy JSON (schemaVersion 1, with
 the old delegation.devModel/reviewModel/prReviewModel keys) still validates as v1
@@ -18,12 +18,18 @@ from assistant import config as AC  # noqa: E402  (assistant: section schema, AS
 
 errs = []
 
+# --fragment: validating a nested anchor's PARTIAL project.yaml (monorepo
+# nesting — the root config supplies everything the fragment omits), so
+# missing required keys are fine; shape checks on present keys still run.
+FRAGMENT = False
+
 CODEX_CAPABILITIES = {"fast", "balanced", "deep-review", "large-context"}
 
 
 def need(obj, key, typ, where):
     if key not in obj:
-        errs.append(f"{where}: missing required key '{key}'")
+        if not FRAGMENT:
+            errs.append(f"{where}: missing required key '{key}'")
         return None
     if typ and not isinstance(obj[key], typ):
         errs.append(f"{where}.{key}: expected {typ.__name__}, got {type(obj[key]).__name__}")
@@ -55,11 +61,17 @@ def main(path):
         print(f"INVALID: {path}: top level must be a mapping")
         return 1
 
-    # YAML is schemaVersion 2 (current); legacy .json is schemaVersion 1.
+    # Canonical schemaVersion is the SEMVER STRING "2.0.0"; the pre-cutover
+    # integer 2 is still accepted (deprecated — the 1.0.0 era); legacy .json
+    # stays integer 1. Anything else is rejected.
     legacy = path.endswith(".json")
-    want_version = 1 if legacy else 2
-    if cfg.get("schemaVersion") != want_version:
-        errs.append(f"schemaVersion must be {want_version} (got {cfg.get('schemaVersion')!r})")
+    sv = cfg.get("schemaVersion")
+    legacy_int_two = (sv == 2)
+    if legacy:
+        if sv != 1:
+            errs.append(f"schemaVersion must be 1 (got {sv!r})")
+    elif sv not in (C.SCHEMA_SEMVER, 2) and not (FRAGMENT and "schemaVersion" not in cfg):
+        errs.append(f"schemaVersion must be 2.0.0 (the string; legacy integer 2 still accepted) (got {sv!r})")
 
     proj = need(cfg, "project", dict, "$") or {}
     for k in ("name", "mainBranch", "branchPattern"):
@@ -94,7 +106,22 @@ def main(path):
             if v in json.dumps(b):
                 errs.append(f"{w}: still contains template placeholder '{v}' — run 'board.sh fields' and fill real ids")
 
-    specs = need(cfg, "specs", list, "$") or []
+    # specs: preferred home is the per-spec files .neural-network/specs/<id>.yaml
+    # (project.yaml = configuration only); inline `specs:` still validates but
+    # is deprecated. The dir wins when both exist — mirror config.py exactly.
+    specs_deprecation = None
+    dir_specs = None if FRAGMENT else C._load_specs_dir(path)
+    if dir_specs is not None:
+        specs = dir_specs
+        if "specs" in cfg:
+            specs_deprecation = ("inline 'specs:' in project.yaml is IGNORED — the "
+                                 f"{C.SPECS_DIRNAME}/ dir wins; delete the inline section")
+    else:
+        specs = need(cfg, "specs", list, "$") or []
+        if "specs" in cfg:
+            specs_deprecation = ("inline 'specs:' in project.yaml — migrate to "
+                                 ".neural-network/specs/<id>.yaml (one file per spec; "
+                                 "project.yaml holds configuration only)")
     prefixes = set()
     for i, s in enumerate(specs):
         w = f"specs[{i}]"
@@ -265,19 +292,26 @@ def main(path):
                 errs.append("neuralView.entityEdgeColor must be a string (\"gradient\" or a CSS color)")
 
     # work: PR-less local delivery (type) + board-sync batching policy (sync)
-    # + checkout placement (#532). Absent == {type: pr, checkout: worktree};
-    # sync is only meaningful (and only accepted) under type: local; checkout
-    # is delivery-agnostic (valid under pr AND local -- it governs WHERE work
-    # happens, type governs HOW it lands) -- see
-    # schemas/project-config.schema.json's `work` object.
+    # + checkout placement (#532) + definition of agent work done (done).
+    # Absent == {type: pr, checkout: worktree} and the legacy done-gate (the
+    # work.type/autoMerge flow decides); sync is only meaningful (and only
+    # accepted) under type: local; checkout is delivery-agnostic (valid under
+    # pr AND local -- it governs WHERE work happens, type governs HOW it
+    # lands); done is the agent's OWN stop-gate ("my work is done"), distinct
+    # from the task-level definition of done (what the TASK requires -- the
+    # agent works toward that) -- see schemas/project-config.schema.json's
+    # `work` object.
+    WORK_DONE_PHASES = ("code", "pr-open", "pr-review-requested", "pr-validated",
+                        "deployed-staging", "deployed-production", "custom")
     work = cfg.get("work")
+    work_done_summary = None
     if work is not None:
         if not isinstance(work, dict):
-            errs.append("work: must be a mapping with 'type' and optional 'sync'/'checkout'")
+            errs.append("work: must be a mapping with 'type' and optional 'sync'/'checkout'/'done'")
         else:
             for k in work:
-                if k not in ("type", "sync", "checkout"):
-                    errs.append(f"work.{k}: unknown key (allowed: ['checkout', 'sync', 'type'])")
+                if k not in ("type", "sync", "checkout", "done"):
+                    errs.append(f"work.{k}: unknown key (allowed: ['checkout', 'done', 'sync', 'type'])")
             wtype = work.get("type", "pr")
             if "type" in work and work["type"] not in ("pr", "local"):
                 errs.append(f"work.type must be 'pr' or 'local' (got {work.get('type')!r})")
@@ -296,6 +330,36 @@ def main(path):
                     modes = ("realtime", "task-close", "session-end", "manual")
                     if "mode" in sync and sync["mode"] not in modes:
                         errs.append(f"work.sync.mode must be one of {', '.join(modes)} (got {sync.get('mode')!r})")
+            done = work.get("done")
+            if done is not None:
+                if not isinstance(done, dict):
+                    errs.append("work.done: must be a mapping with 'phase' and optional 'instructions'")
+                else:
+                    for k in done:
+                        if k not in ("phase", "instructions"):
+                            errs.append(f"work.done.{k}: unknown key (allowed: ['instructions', 'phase'])")
+                    phase = done.get("phase")
+                    instructions = done.get("instructions")
+                    if phase is None:
+                        errs.append("work.done.phase is required when work.done is present")
+                    elif phase not in WORK_DONE_PHASES:
+                        errs.append(f"work.done.phase must be one of {', '.join(WORK_DONE_PHASES)} (got {phase!r})")
+                    elif phase.startswith("pr-") and wtype == "local":
+                        errs.append(f"work.done.phase {phase!r} requires work.type: pr (local delivery never opens a PR)")
+                    if "instructions" in done:
+                        if not isinstance(instructions, str):
+                            errs.append(f"work.done.instructions: must be a string (got {type(instructions).__name__})")
+                        elif not instructions.strip():
+                            errs.append("work.done.instructions: must not be empty")
+                    if phase == "custom" and not (isinstance(instructions, str) and instructions.strip()):
+                        errs.append("work.done.phase: custom requires work.done.instructions (they ARE the definition)")
+                    if phase in WORK_DONE_PHASES:
+                        if phase == "custom":
+                            work_done_summary = "phase=custom (instructions are the definition)"
+                        elif isinstance(instructions, str) and instructions.strip():
+                            work_done_summary = f"phase={phase} (+instructions)"
+                        else:
+                            work_done_summary = f"phase={phase}"
 
     # commit: commit-message convention (#418) -- convention (free string,
     # non-empty preset name or custom) + systemPrompt (free text, non-empty
@@ -323,6 +387,81 @@ def main(path):
                     errs.append(f"commit.systemPrompt: must be a string (got {type(sp).__name__})")
                 elif not sp.strip():
                     errs.append("commit.systemPrompt: must not be empty")
+
+    # brains: knowledge/retro note-minting knobs (doc-consumed, like `commit`:
+    # brains.md's minting protocol reads noteStyle as prose; no runtime code
+    # parses it). Absent == the default structured style documented in
+    # skills/build-next/references/brains.md.
+    brains_cfg = cfg.get("brains")
+    if brains_cfg is not None:
+        if not isinstance(brains_cfg, dict):
+            errs.append("brains: must be a mapping with optional 'noteStyle'")
+        else:
+            for k in brains_cfg:
+                if k != "noteStyle":
+                    errs.append(f"brains.{k}: unknown key (allowed: ['noteStyle'])")
+            if "noteStyle" in brains_cfg:
+                ns = brains_cfg["noteStyle"]
+                if not isinstance(ns, str):
+                    errs.append(f"brains.noteStyle: must be a string (got {type(ns).__name__})")
+                elif not ns.strip():
+                    errs.append("brains.noteStyle: must not be empty")
+
+    # integrations: external task sources (ClickUp today). Absent == none --
+    # additive-only, like work/compute above. ClickUp is MCP-ONLY: reads and
+    # (opt-in) mutations go through the configured MCP server, never a raw
+    # API token. Safeguards live in integrations.clickup.actions: every
+    # ClickUp MUTATION (move/comment/assign) is tri-state ask|allow|disallow,
+    # defaulting to ask (human in the loop; non-interactive runs treat ask as
+    # disallow); statusMap keys must name real
+    # statusFlow statuses so an allowed move can never target a status the
+    # workflow doesn't know.
+    integrations = cfg.get("integrations")
+    if integrations is not None:
+        if not isinstance(integrations, dict):
+            errs.append("integrations: must be a mapping (allowed: ['clickup'])")
+        else:
+            for k in integrations:
+                if k != "clickup":
+                    errs.append(f"integrations.{k}: unknown key (allowed: ['clickup'])")
+            cu = integrations.get("clickup")
+            if cu is not None and not isinstance(cu, dict):
+                errs.append("integrations.clickup: must be a mapping "
+                            "(enabled/mcp/actions/statusMap)")
+            elif cu is not None:
+                allowed = ("actions", "enabled", "mcp", "statusMap")
+                for k in cu:
+                    if k not in allowed:
+                        errs.append(f"integrations.clickup.{k}: unknown key (allowed: {sorted(allowed)})")
+                if "enabled" in cu and not isinstance(cu["enabled"], bool):
+                    errs.append("integrations.clickup.enabled: must be a boolean")
+                if "mcp" in cu and (not isinstance(cu["mcp"], str) or not cu["mcp"].strip()):
+                    errs.append("integrations.clickup.mcp: must be a non-empty string")
+                if cu.get("enabled") is not False and not cu.get("mcp"):
+                    errs.append("integrations.clickup: 'mcp' is required — ClickUp access is "
+                                "MCP-only (name the MCP server serving ClickUp tools)")
+                actions = cu.get("actions")
+                if actions is not None and not isinstance(actions, dict):
+                    errs.append("integrations.clickup.actions: must be a mapping of action -> ask|allow|disallow")
+                elif actions is not None:
+                    known = ("assign", "comment", "move")
+                    tristate = ("allow", "ask", "disallow")
+                    for k, v in actions.items():
+                        if k not in known:
+                            errs.append(f"integrations.clickup.actions.{k}: unknown key (allowed: {sorted(known)})")
+                        elif v not in tristate:
+                            errs.append(f"integrations.clickup.actions.{k}: must be one of {list(tristate)} (got {v!r})")
+                sm = cu.get("statusMap")
+                if sm is not None and not (isinstance(sm, dict)
+                                           and all(isinstance(k, str) and isinstance(v, str) for k, v in sm.items())):
+                    errs.append("integrations.clickup.statusMap: must be a map of "
+                                "workflow status (string) -> ClickUp status (string)")
+                elif sm is not None:
+                    flows = {st for b in boards for st in (b.get("statusFlow") or []) if isinstance(b, dict)}
+                    for k in sm:
+                        if flows and k not in flows:
+                            errs.append(f"integrations.clickup.statusMap: '{k}' is not in any board's statusFlow")
+
 
     # The compute section normally lives in the gitignored machine-local
     # overlay, so validate THAT too when present -- otherwise this block is
@@ -383,10 +522,13 @@ def main(path):
             print(f"  - {e}")
         return 1
 
+    if FRAGMENT:
+        print(f"VALID (fragment): {path}")
+        return 0
     print(f"VALID: {path}")
     if legacy:
         print("  NOTE: legacy schemaVersion 1 JSON — still accepted, but migrate to "
-              ".claude/project.yaml (schemaVersion 2); the setup-project skill converts it.")
+              ".neural-network/project.yaml (schemaVersion 2); the setup-project skill converts it.")
     print(f"  project: {proj.get('name')}  main={proj.get('mainBranch')}  branches={proj.get('branchPattern')}")
     for b in boards:
         print(f"  board '{b['id']}': {b['repo']} project #{b['projectNumber']}  flow: {' -> '.join(b['statusFlow'])}")
@@ -394,9 +536,26 @@ def main(path):
         seq = " -> ".join(e["id"] for e in s["epics"])
         print(f"  spec '{s['id']}' [{s['taskPrefix']}] on board '{s['board']}': {s['specPath']}  epics: {seq}")
     print(f"  gate: {cmds.get('gate')}")
+    if legacy_int_two and not legacy:
+        print('  DEPRECATION: schemaVersion: 2 (integer) is the 1.0.0 era — set schemaVersion: "2.0.0" '
+              "after migrating (run the migrate-version skill; missing/integer versions all read as 1.0.0)")
+    if specs_deprecation:
+        print(f"  DEPRECATION: {specs_deprecation}")
+    if work_done_summary:
+        print(f"  work done: {work_done_summary}")
+    cu = (cfg.get("integrations") or {}).get("clickup")
+    if isinstance(cu, dict):
+        a = cu.get("actions") or {}
+        acts = ", ".join(f"{k}={a.get(k, 'ask')}" for k in ("move", "comment", "assign"))
+        state = "enabled" if cu.get("enabled", True) else "disabled"
+        print(f"  integrations: clickup [{state}] mcp={cu.get('mcp')}  allowed actions: {acts}")
     return 0
 
 
 if __name__ == "__main__":
-    default = ".claude/project.yaml" if os.path.exists(".claude/project.yaml") else ".claude/project.json"
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else default))
+    args = sys.argv[1:]
+    if "--fragment" in args:
+        FRAGMENT = True
+        args.remove("--fragment")
+    default = ".neural-network/project.yaml" if os.path.exists(".neural-network/project.yaml") else ".neural-network/project.json"
+    sys.exit(main(args[0] if args else default))

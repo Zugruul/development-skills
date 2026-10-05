@@ -4,7 +4,7 @@ evals/results/
 docs/handoffs/
 # >>> spec-workflow managed
 .claude/CHECKPOINT
-.claude/project.local.yaml
+.neural-network/project.local.yaml
 .claude/ITERATIVE_UI_OFF
 .claude/ui-hub/
 .claude/gate-pass
@@ -18,8 +18,8 @@ docs/handoffs/
 .claude/merge-dance.lock/
 .claude/.flush*
 .claude/worktrees/
-.claude/identities/*/brain/index.sqlite3
-.claude/identities/*/brain/.staleness-cache.json
+.neural-network/identities/*/brain/index.sqlite3
+.neural-network/identities/*/brain/.staleness-cache.json
 .claude/assistant/
 .claude/skills/whisper-sidecar/
 # <<< spec-workflow managed

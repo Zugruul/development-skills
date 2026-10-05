@@ -1,6 +1,6 @@
 ---
 name: knowledge-base-seed
-description: Explores the current project (specs, backlogs, design docs, applied spec-deltas, READMEs/AGENTS.md/CLAUDE.md, script/source layout, git history, board epics from config) and seeds or updates a knowledge-graph identity brain (.claude/identities/knowledge/brain/) via kb-seed.sh, reusing brain.py's note/link machinery end to end. Use for '/knowledge-base-seed' — bootstrapping or refreshing a repo's knowledge brain so recall/explain/staleness and neural-view work on it for free, orchestrator-mediated like every brain.
+description: Explores the current project (specs, backlogs, design docs, applied spec-deltas, READMEs/AGENTS.md/CLAUDE.md, script/source layout, git history, board epics from config) and seeds or updates a knowledge-graph identity brain (.neural-network/identities/knowledge/brain/) via kb-seed.sh, reusing brain.py's note/link machinery end to end. Use for '/knowledge-base-seed' — bootstrapping or refreshing a repo's knowledge brain so recall/explain/staleness and neural-view work on it for free, orchestrator-mediated like every brain.
 allowed-tools: Bash
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: Bash
 
 `kb-seed.sh` = `bash "../../scripts/kb-seed.sh"`. Like every identity brain,
 `knowledge` is orchestrator-mediated only — this skill runs `kb-seed.sh`,
-never reads `.claude/identities/knowledge/brain/**` content directly.
+never reads `.neural-network/identities/knowledge/brain/**` content directly.
 `knowledge` is a brain-only role: no commit identity, no delegation entry,
 nothing about its existence changes dev/reviewer/orchestrator behavior.
 
@@ -19,7 +19,7 @@ nothing about its existence changes dev/reviewer/orchestrator behavior.
    bash "../../scripts/kb-seed.sh" seed
    ```
    This explores (offline, no `gh` calls): each `specs[].specPath`/
-   `backlogPath` in `.claude/project.yaml`, `specs[].epics` (board epics from
+   `backlogPath` (per-spec files under `.neural-network/specs/`), `specs[].epics` (board epics from
    config), `paths.designDir` markdown files, applied spec-deltas under
    `paths.specDeltaDir/applied/`, root `README.md`/`AGENTS.md`/`CLAUDE.md`,
    the top-level directory layout, and recent `git log` subjects (stdlib
