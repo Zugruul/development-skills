@@ -55,6 +55,10 @@ check_rc "jobs: dashboard --once exit 0" 0 "$rc"
 check "jobs: table has the running job" "run1" "$out"
 check "jobs: counts" "1 running" "$out"
 
+ln -sfn "$RCMD" "$RT/compute-top"
+out="$(REMOTE_COMPUTE_ROOT="$RROOT" bash "$RT/compute-top" --once 2>&1)"; rc=$?
+check_rc "compute-top name: runs the dashboard once" 0 "$rc"
+check "compute-top name: job table" "run1" "$out"
 out="$(run_rcmd caps 2>&1)"; check "caps: name + description" "demo" "$out"; check "caps: description" "a demo bundle" "$out"
 check "caps: folded block description resolved" "first folded line second folded line" "$out"
 check_absent "caps: no raw block indicator" ">-" "$out"

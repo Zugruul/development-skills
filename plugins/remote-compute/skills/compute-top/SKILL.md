@@ -24,7 +24,8 @@ that RECEIVED the work. There are two ways to use it:
 **On the compute machine itself** (sitting at the WSL/Linux/macOS box):
 
 ```bash
-remote-compute top        # the on-machine command register installs
+compute-top               # register installs this name on the box ...
+remote-compute top        # ... as an alias of this
 python3 ~/.remote-compute/tools/compute-top.py   # same thing, explicit
 ```
 
@@ -32,7 +33,7 @@ python3 ~/.remote-compute/tools/compute-top.py   # same thing, explicit
 from a laptop over the SSH connection registration already set up:
 
 ```bash
-ssh -t <alias> remote-compute top
+ssh -t <alias> compute-top
 ```
 
 The `-t` is required: it allocates a terminal so the dashboard can draw and so

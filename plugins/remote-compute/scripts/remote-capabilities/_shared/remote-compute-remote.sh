@@ -18,6 +18,7 @@ usage() {
 remote-compute $VERSION — this machine is a remote-compute resource ($ROOT)
 
   top [--interval N]   live job dashboard (arrows browse, enter opens a log, q quits)
+                       also reachable as the bare command `compute-top`
   jobs                 one-shot job table (pipe-friendly)
   running              ids of jobs still running
   log <id> [-f]        last 100 lines of a job's log (-f follows)
@@ -189,6 +190,8 @@ cmd_paths() {
 }
 
 main() {
+    # invoked through the `compute-top` link: behave as `remote-compute top ...`
+    case "$(basename "${0:-remote-compute}")" in compute-top) set -- top "$@" ;; esac
     local verb="${1:-help}"; [ $# -gt 0 ] && shift
     case "$verb" in
         top)        cmd_top "$@" ;;

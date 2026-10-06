@@ -1764,7 +1764,8 @@ def _install_tools(nick, res):
     rc, _, err = ssh_run(nick, "cp %s/remote-compute-remote.sh %s/remote-compute && chmod 0755 %s/remote-compute"
                          " && mkdir -p \"$HOME\"/.local/bin"
                          " && ln -sfn %s/remote-compute \"$HOME\"/.local/bin/remote-compute"
-                         % (tools, bindir, bindir, bindir))
+                         " && ln -sfn %s/remote-compute \"$HOME\"/.local/bin/compute-top"
+                         % (tools, bindir, bindir, bindir, bindir))
     if rc != 0:
         print("WARN: installing the remote-compute command failed: %s" % (err or rc))
         return False, False
@@ -1843,6 +1844,7 @@ def cmd_connect(nicks):
                           ("ssh %s remote-compute jobs" % nick, "one-shot job table"),
                           ("ssh %s remote-compute gpu" % nick, "GPU summary")):
             print("  %-44s # %s" % (cmd, what))
+        print("  %-44s # same dashboard, shorter" % ("ssh -t %s compute-top" % nick))
         if not (res.get("tools") or {}).get("installedAt"):
             print("  (on-machine command not installed yet: install-tools %s)" % nick)
         if state == "down":
