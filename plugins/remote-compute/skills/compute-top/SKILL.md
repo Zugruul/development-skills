@@ -24,14 +24,15 @@ that RECEIVED the work. There are two ways to use it:
 **On the compute machine itself** (sitting at the WSL/Linux/macOS box):
 
 ```bash
-python3 ~/.remote-compute/tools/compute-top.py
+remote-compute top        # the on-machine command register installs
+python3 ~/.remote-compute/tools/compute-top.py   # same thing, explicit
 ```
 
 **From the machine you dispatch FROM** -- the usual case, watching a GPU box
 from a laptop over the SSH connection registration already set up:
 
 ```bash
-ssh -t <alias> 'python3 ~/.remote-compute/tools/compute-top.py'
+ssh -t <alias> remote-compute top
 ```
 
 The `-t` is required: it allocates a terminal so the dashboard can draw and so
@@ -45,12 +46,12 @@ two GPU boxes the human runs it twice, once per alias.
 
 ## Getting it onto a machine
 
-`install-capability` ships bundle payloads, not this helper, so copy it once:
+`register` ships it (with the on-machine `remote-compute` command) to
+`~/.remote-compute/tools/` on every box it converges. After a plugin update,
+or on a box registered before this existed, re-ship it from the orchestrator:
 
 ```bash
-rsync -az -e "ssh -o BatchMode=yes" \
-  "../../scripts/remote-capabilities/_shared/compute-top.py" \
-  <alias>:.remote-compute/jobs/_tools/
+python3 "../../scripts/remote-compute.py" install-tools <alias>
 ```
 
 If `~/.remote-compute/jobs/` does not exist yet, nothing has been dispatched to that
@@ -106,7 +107,7 @@ top, `G` to the end.
   artifacts, cancel), use `remote-compute`'s `job-status`, `job-logs`, and
   `job-pull` -- those also update the orchestrator's own job state, which
   deleting a directory behind their back does not.
-- When the human asks "what is running on <machine>", prefer the `--once` form
-  through `remote-compute exec` and relay the table; only suggest the
+- When the human asks "what is running on <machine>", prefer `remote-compute exec <alias> -- remote-compute jobs`
+  (the one-shot form) and relay the table; only suggest the
   interactive form when they want to browse or prune, and tell them it needs
   their own terminal (a non-TTY host will silently fall back to a snapshot).

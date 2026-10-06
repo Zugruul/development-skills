@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
 # stub nc -- records argv, exits with FAKE_NC_RC (default 0 = port open).
+# FAKE_NC_CLOSED is a space-separated list of hosts that report closed
+# regardless (lets scan tests move a machine: old address dark, new one open).
 printf 'nc %s\n' "$*" >> "${FAKE_TRANSPORT_LOG:?FAKE_TRANSPORT_LOG unset}"
+host=""
+for a in "$@"; do case "$a" in -*) ;; 22) ;; *) host="$a" ;; esac; done
+for h in ${FAKE_NC_CLOSED:-}; do [[ "$h" == "$host" ]] && exit 1; done
 exit "${FAKE_NC_RC:-0}"

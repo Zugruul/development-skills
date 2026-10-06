@@ -25,7 +25,17 @@ with this plugin.
 | Skill | What it does |
 | --- | --- |
 | `remote-compute` | Register/probe/enable machines, install capability bundles, dispatch jobs, cooperative locking. Engine: `scripts/remote-compute.py` (stdlib + PyYAML; registry at `$COMPUTE_HOME`, default `~/.remote-compute` — machine-local, never committed). |
-| `compute-top` | Terminal dashboard (stdlib curses), locally or over SSH, for what a compute machine is doing. Script: `scripts/remote-capabilities/_shared/compute-top.py`. |
+| `compute-top` | Terminal dashboard (stdlib curses), locally or over SSH, for what a compute machine is doing. Script: `scripts/remote-capabilities/_shared/compute-top.py`; on the box: `remote-compute top`. |
+| `scan` | Re-finds registered machines whose DHCP address changed: sweeps the subnet for ssh, requires the pinned host key AND the `~/.remote-compute/.identity` stamp to agree, flags duplicate identities for the human to resolve (`--pick`), converges known_hosts + ssh alias + registry. Verbs: `scan`, `identity`. |
+| `ssh` | Lists registered machines with ready-to-paste ssh one-liners (shell, dashboard, job table, GPU) and up/down. Verb: `connect`. |
+
+## The on-machine command
+
+`register` installs `scripts/remote-capabilities/_shared/remote-compute-remote.sh`
+on every box as `~/.remote-compute/bin/remote-compute` (linked from `~/.local/bin`),
+so `remote-compute top|jobs|running|log|status|cancel|caps|gpu|disk|paths|identity`
+works the same at the keyboard and over ssh. It also stamps
+`~/.remote-compute/.identity` with the nick. `install-tools <nick>` re-ships and re-stamps.
 
 ## Capability bundles
 

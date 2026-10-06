@@ -35,6 +35,9 @@ python3 "../../scripts/remote-compute.py" enable gpubox --root "$(git rev-parse 
 python3 "../../scripts/remote-compute.py" remove-job gpubox old-job
 python3 "../../scripts/remote-compute.py" remove-capability gpubox comfyui
 python3 "../../scripts/remote-compute.py" list
+python3 "../../scripts/remote-compute.py" connect ; # ssh one-liners per machine (the `ssh` skill)
+python3 "../../scripts/remote-compute.py" scan ; # re-find machines whose IP moved (the `scan` skill)
+python3 "../../scripts/remote-compute.py" install-tools gpubox ; # re-ship the on-machine `remote-compute` command
 python3 "../../scripts/remote-compute.py" exec gpubox -- nvidia-smi
 python3 "../../scripts/remote-compute.py" dispatch gpubox --workdir "~/train" --cmd "python train.py" --env fab-training
 python3 "../../scripts/remote-compute.py" job-status j20260802 ; # also: job-logs, job-pull
@@ -52,7 +55,9 @@ layout). Drive its stop-and-resume statuses like this:
 
 - `UNREACHABLE` (exit 1): the machine is off/asleep or sshd is not listening.
   Print the matching platform sheet (`setup-sheet wsl2|linux|macos`) and relay
-  it to the human; retry when they say it is up.
+  it to the human; retry when they say it is up. If they say it IS up, its
+  DHCP address has probably changed: run `scan` (the `scan` skill) before
+  anything else -- it re-finds the box by its pinned host key.
 - `NEEDS_HOSTKEY_ACK` (exit 4): show the human the printed fingerprint, ask
   them to confirm it matches the machine, then re-run with `--accept-hostkey`.
   Never accept a host key the human has not acked.
@@ -62,6 +67,8 @@ layout). Drive its stop-and-resume statuses like this:
 - Exit 0 prints `REGISTERED` plus a summary table — relay the table, and if it
   notes the power policy is unconfirmed, ask the human to confirm the machine
   never sleeps on AC (then it can be recorded in the registry's policy block).
+  The table's `tools:` line says whether the on-machine `remote-compute`
+  command landed; relay any PATH note under it verbatim.
 
 Registration is user-level only — it never touches any repo.
 
@@ -184,21 +191,37 @@ artifacts back.
 None of these delete job history or artifacts. Use `compute-top` on the machine
 for that, or delete a job directory there deliberately.
 
-## Watching work on the machine itself
+## The on-machine command
 
-`scripts/remote-capabilities/_shared/compute-top.py` is a terminal dashboard
-the human runs ON the compute machine (stdlib only, no install):
+`register` ships `scripts/remote-capabilities/_shared/` to
+`~/.remote-compute/tools/` on the box, installs
+`~/.remote-compute/bin/remote-compute` (linked from `~/.local/bin`, with a
+marker-fenced PATH line in the login shell files), and stamps
+`~/.remote-compute/.identity` with the nick and only that -- the second
+factor `scan` uses to recognise the machine at a new address. So the human
+at the keyboard and this skill over ssh drive every machine the same way.
+`install-tools <nick>` re-ships and re-stamps after a plugin update;
+`identity <nick>` asks the machine who it thinks it is.
 
 ```bash
-python3 ~/.remote-compute/tools/compute-top.py        # live, refreshing
-python3 ~/.remote-compute/tools/compute-top.py --once # one snapshot, pipe-friendly
+remote-compute top             # live job dashboard (compute-top.py)
+remote-compute jobs            # one-shot job table
+remote-compute running         # ids still running
+remote-compute log <id> [-f]   # tail a job log
+remote-compute status <id>     # state, exit code, pid, timestamps, paths
+remote-compute cancel <id>     # stop a running job (asks first; --yes skips)
+remote-compute caps | gpu | disk | paths | identity
 ```
 
-Arrow keys navigate, enter opens a job's log tail with its exit code, `f`
-filters (all/running/finished/failed), `d` removes one job from history (never
-one that is still running), `D` purges finished jobs. Ship it alongside a
-capability payload with the same rsync `install-capability` uses, or tell the
-human the one-liner above once it is present.
+Over ssh: `ssh -t gpubox remote-compute top` (the `-t` gives the dashboard a
+terminal), `ssh gpubox remote-compute jobs` for a snapshot. The `ssh` skill
+prints these per machine. Prefer `job-status`/`job-logs` here when you also
+need the orchestrator's job state updated; the on-machine command only reads
+and writes the machine's own `~/.remote-compute/`.
+
+In the dashboard, arrow keys navigate, enter opens a job's log tail with its
+exit code, `f` filters (all/running/finished/failed), `d` removes one job from
+history (never one that is still running), `D` purges finished jobs.
 
 ## Rules
 

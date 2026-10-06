@@ -24,12 +24,20 @@ output or a verbatim error — never a guess.
 CLI verbs (machine-readable output; interactivity is the calling agent's job):
     register <nick> [user@host] [--accept-hostkey]   converge to end-state
     probe <nick> | status [<nick>] | list
+    scan [<nick>...] [--subnet CIDR]... [--dry-run] [--pick NICK=HOST]
+             re-find machines whose address moved (DHCP): sweep port 22, match
+             the PINNED host key AND the ~/.remote-compute/.identity stamp, then
+             converge known_hosts + ssh alias + registry to the new host
+    identity <nick>          print the identity stamp the machine carries
     enable <nick> --root <repo> [--role R]...     advertise to a project
     disable <nick> --root <repo>                  keep entry, enabled: false
     add-env <nick> NAME --activate CMD [--verify SNIPPET] | envs <nick>
     install-capability <nick> <bundle-dir> | capabilities <nick>
     remove-capability <nick> NAME [--purge-remote]
     exec <nick> -- <cmd...>
+    install-tools <nick>     (re)ship compute-top + the on-machine `remote-compute` command,
+             and stamp ~/.remote-compute/.identity with the nick
+    connect [<nick>...]      print the ssh one-liners for each machine (+ up/down)
     lock <nick> [--holder H] [--reason R] | unlock <nick> [--force]
     dispatch <nick> --workdir W --cmd C [--env E] [--inputs DIR]
              [--job-id ID] [--holder H]
@@ -39,14 +47,17 @@ CLI verbs (machine-readable output; interactivity is the calling agent's job):
     parse gpu|free|df|profiler   (stdin -> JSON; unit-test surface)
 
 Exit codes: 0 ok · 1 unreachable · 2 usage · 3 NEEDS_KEY_AUTH ·
-4 NEEDS_HOSTKEY_ACK · 5 sudo rejected · 6 locked.
+4 NEEDS_HOSTKEY_ACK · 5 sudo rejected · 6 locked · 7 identity conflict.
 """
+import concurrent.futures
 import datetime
 import getpass
+import ipaddress
 import json
 import os
 import re
 import shlex
+import socket
 import subprocess
 import sys
 import tempfile
@@ -62,8 +73,13 @@ except ImportError:  # same hard-environment stance as config.py
 # the local registry root so the two sides read the same on both machines.
 REMOTE_ROOT = "~/.remote-compute"
 REMOTE_JOBS_ROOT = REMOTE_ROOT + "/jobs"
+REMOTE_TOOLS_ROOT = REMOTE_ROOT + "/tools"   # compute-top.py + the on-machine command source
+IDENTITY_FILE = REMOTE_ROOT + "/.identity"   # holds the nick and only that; scan's second factor
+REMOTE_BIN_ROOT = REMOTE_ROOT + "/bin"       # ~/.remote-compute/bin/remote-compute, linked from ~/.local/bin
+SHARED_TOOLS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "remote-capabilities", "_shared")
 
-EXIT_UNREACHABLE, EXIT_USAGE, EXIT_KEYAUTH, EXIT_HOSTKEY, EXIT_SUDO, EXIT_LOCKED = 1, 2, 3, 4, 5, 6
+EXIT_UNREACHABLE, EXIT_USAGE, EXIT_KEYAUTH, EXIT_HOSTKEY, EXIT_SUDO, EXIT_LOCKED, EXIT_IDENTITY = 1, 2, 3, 4, 5, 6, 7
 
 
 def _env(name, default):
@@ -481,22 +497,7 @@ def cmd_register(args):
     # key blob, which silently skipped the acknowledgement gate and left the
     # new host unpinned. known_hosts' first field may list comma-separated
     # hosts and may be bracketed with a port.
-    host_known = False
-    if os.path.exists(kh):
-        with open(kh) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                for entry in line.split()[0].split(","):
-                    entry = entry.strip()
-                    if entry.startswith("[") and "]" in entry:
-                        entry = entry[1:entry.index("]")]
-                    if entry == host:
-                        host_known = True
-                        break
-                if host_known:
-                    break
+    host_known = bool(_known_host_keys(host))
     if not host_known:
         scan = subprocess.run([_bin("COMPUTE_KEYSCAN_BIN", "ssh-keyscan"), "-T", "5", host],
                               capture_output=True, text=True).stdout.strip()
@@ -532,6 +533,7 @@ def cmd_register(args):
     # probe never writes, and probe/enable/add-env all call probe_resource.
     probe_resource(nick, res)
     ssh_run(nick, "mkdir -p %s %s" % (remote_path(REMOTE_JOBS_ROOT), remote_path(CAPS_REMOTE_ROOT)))
+    tools_ok, tools_on_path = _install_tools(nick, res)
     # no allowSudo key: sudo rejection is unconditional (hard rule 2), and a
     # policy field implying it is togglable would be a lie
     res.setdefault("policy", {"maxConcurrentJobs": 1, "powerPolicyConfirmed": False})
@@ -549,6 +551,10 @@ def cmd_register(args):
         print("  disk:   %-12s freeGB: %-6s%s" % (d.get("mount"), d.get("freeGB"),
                                                   "  (slow: DrvFs/9p)" if d.get("slow") else ""))
     print("  shell:  %s" % (res.get("platform") or {}).get("quirks", {}).get("defaultShell"))
+    print("  tools:  %s" % ("`remote-compute` command installed (ssh -t %s remote-compute top)" % nick
+                            if tools_ok else "NOT installed — run: install-tools %s" % nick))
+    if tools_ok and not tools_on_path:
+        print(_path_note(res))
     if not res["policy"].get("powerPolicyConfirmed"):
         print("  NOTE: power policy unconfirmed — machine must not sleep on AC (see setup-sheet)")
     return 0
@@ -1379,6 +1385,471 @@ def cmd_exec(nick, payload):
     return rc
 
 
+# --- scan: re-find registered machines whose address moved (DHCP) -----------
+# Identity is the PINNED host key, never the address: a candidate is "the same
+# machine" only when ssh-keyscan returns a key already pinned in known_hosts
+# for the machine's old address. So scan never widens trust — it pins an
+# already-acked key under a new address, and a stranger that took the old
+# address is reported as KEY_MISMATCH, not accepted.
+
+def _known_host_keys(host):
+    """(type, blob) pairs pinned for exactly `host` in known_hosts. EXACT match
+    per comma-separated entry (never a substring of the line: "192.0.2.1" is
+    inside "192.0.2.17"), brackets+port tolerated. Hashed |1| entries are
+    opaque and skipped; register pins plain keyscan lines, so the machines this
+    tool registered are always findable."""
+    kh = known_hosts_path()
+    keys = set()
+    if not os.path.exists(kh):
+        return keys
+    with open(kh) as f:
+        for line in f:
+            parts = line.strip().split()
+            if parts and parts[0].startswith("@"):   # @cert-authority / @revoked markers
+                parts = parts[1:]
+            if len(parts) < 3 or parts[0].startswith("#") or parts[0].startswith("|"):
+                continue
+            for entry in parts[0].split(","):
+                entry = entry.strip()
+                if entry.startswith("[") and "]" in entry:
+                    entry = entry[1:entry.index("]")]
+                if entry == host:
+                    keys.add((parts[1], parts[2]))
+                    break
+    return keys
+
+
+def _identity_payload():
+    return "cat %s 2>/dev/null" % remote_path(IDENTITY_FILE)
+
+
+def _read_identity(nick):
+    """Identity stamp via the registered alias: None if login failed, "" if no
+    file yet, else the nick the machine believes it is."""
+    rc, out, _ = ssh_run(nick, _identity_payload(), timeout=20)
+    return out.strip() if rc == 0 else None
+
+
+def _write_identity(nick):
+    """Stamp ~/.remote-compute/.identity with the nick — and only that."""
+    old = _read_identity(nick)
+    if old and old != nick:
+        print("NOTE %s: identity file said '%s' — rewriting it as '%s'" % (nick, old, nick))
+    rc, _, err = ssh_run(nick, "mkdir -p %s && printf '%%s\\n' %s > %s"
+                         % (remote_path(REMOTE_ROOT), shlex.quote(nick), remote_path(IDENTITY_FILE)))
+    if rc != 0:
+        print("WARN %s: could not write the identity file: %s" % (nick, err or rc))
+    return rc == 0
+
+
+def _read_identity_at(host, user, keys, timeout=15):
+    """Read the identity stamp at an address not yet pinned under that
+    address — but which presented a key already pinned for the old one. Those
+    exact keys go into a throwaway known_hosts for this single connection, so
+    trust never widens. None = login failed, "" = no file, else the nick."""
+    fd, tmp = tempfile.mkstemp(prefix=".kh-scan.")
+    try:
+        with os.fdopen(fd, "w") as f:
+            for ktype, blob in sorted(keys):
+                f.write("%s %s %s\n" % (host, ktype, blob))
+        argv = [_bin("COMPUTE_SSH_BIN", "ssh"), "-F", ssh_config_path(), "-o", "BatchMode=yes",
+                "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=%s" % tmp,
+                "-o", "ConnectTimeout=8", "%s@%s" % (user, host),
+                "bash -lc %s" % shlex.quote(_identity_payload())]
+        try:
+            p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return None
+        return p.stdout.strip() if p.returncode == 0 else None
+    finally:
+        os.unlink(tmp)
+
+
+def _keyscan_keys(host, timeout=4):
+    """Live (type, blob) pairs sshd at `host` presents; empty when nothing answers."""
+    try:
+        p = subprocess.run([_bin("COMPUTE_KEYSCAN_BIN", "ssh-keyscan"), "-T", str(timeout), host],
+                           capture_output=True, text=True, timeout=timeout + 6)
+    except subprocess.TimeoutExpired:
+        return set()
+    keys = set()
+    for line in p.stdout.splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 3 and not parts[0].startswith("#"):
+            keys.add((parts[1], parts[2]))
+    return keys
+
+
+def _port22_open(host, timeout=1.0):
+    """TCP connect to port 22 — never ICMP (Windows blocks it). The hermetic
+    suite routes this through the nc stub (COMPUTE_NC_BIN); for real sweeps an
+    in-process socket is used, since a /24 through 254 nc processes is slow."""
+    if os.environ.get("COMPUTE_NC_BIN"):
+        return subprocess.run([_bin("COMPUTE_NC_BIN", "nc"), "-z", "-w%d" % max(1, int(timeout)), host, "22"],
+                              capture_output=True).returncode == 0
+    try:
+        with socket.create_connection((host, 22), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _local_ipv4():
+    """This machine's primary IPv4 (UDP connect sends no packet); None if offline."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("198.51.100.1", 9))
+        return s.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
+def _slash24(host):
+    try:
+        return str(ipaddress.ip_network("%s/24" % ipaddress.IPv4Address(host), strict=False))
+    except (ipaddress.AddressValueError, ValueError):
+        return None
+
+
+SCAN_MAX_HOSTS = 1024
+
+
+def _sweep(subnets):
+    """Every address in `subnets` with port 22 open, in address order."""
+    hosts = []
+    for cidr in subnets:
+        net = ipaddress.ip_network(cidr, strict=False)
+        if net.num_addresses > SCAN_MAX_HOSTS:
+            print("ERROR: %s is larger than /22 — pass a narrower --subnet" % cidr)
+            sys.exit(EXIT_USAGE)
+        hosts.extend(str(h) for h in net.hosts())
+    if not hosts:
+        return []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(64, len(hosts))) as ex:
+        flags = list(ex.map(_port22_open, hosts))
+    return [h for h, ok in zip(hosts, flags) if ok]
+
+
+def cmd_scan(args):
+    nicks, subnets, picks, dry_run = [], [], {}, "--dry-run" in args
+    i = 0
+    while i < len(args):
+        if args[i] == "--subnet" and i + 1 < len(args):
+            subnets.append(args[i + 1]); i += 2
+        elif args[i] == "--pick" and i + 1 < len(args):
+            if "=" not in args[i + 1]:
+                print("ERROR: --pick takes NICK=HOST (got '%s')" % args[i + 1])
+                return EXIT_USAGE
+            n, h = args[i + 1].split("=", 1)
+            picks[n] = h; i += 2
+        elif args[i].startswith("--"):
+            i += 1
+        else:
+            nicks.append(args[i]); i += 1
+    for cidr in subnets:
+        try:
+            net = ipaddress.ip_network(cidr, strict=False)
+        except ValueError:
+            print("ERROR: --subnet must be CIDR like 192.0.2.0/24 (got '%s')" % cidr)
+            return EXIT_USAGE
+        if net.num_addresses > SCAN_MAX_HOSTS:
+            print("ERROR: %s is larger than /22 — pass a narrower --subnet" % cidr)
+            return EXIT_USAGE
+
+    reg = load_registry()
+    if not reg["resources"]:
+        print("no compute resources registered (use: register nickname user@host)")
+        return 0
+    for n in nicks + list(picks):
+        if n not in reg["resources"]:
+            print("ERROR: '%s' is not a registered compute resource" % n)
+            return EXIT_USAGE
+    targets = nicks or list(reg["resources"])
+
+    failures = identity_failures = 0
+    claims = {}   # identity -> [(nick, host)] over everything read this run
+
+    def claim(ident, nick, host):
+        if ident:
+            claims.setdefault(ident, []).append((nick, host))
+
+    # pass 1: who is fine where they are (key AND identity agree), who needs finding
+    stale = []   # (nick, old_host, pinned keys)
+    for nick in targets:
+        res = reg["resources"][nick]
+        host = (res.get("ssh") or {}).get("host")
+        if not host:
+            host, _ = alias_target(nick)
+        if not host:
+            print("NO_HOST %s: registry has no address — run: register %s user@host" % (nick, nick))
+            failures += 1
+            continue
+        pinned = _known_host_keys(host)
+        if not pinned:
+            print("NO_PINNED_KEY %s %s: no plain known_hosts entry to identify it by —"
+                  " re-run register (it pins the key after your ack)" % (nick, host))
+            failures += 1
+            continue
+        if _port22_open(host, timeout=3):
+            live = _keyscan_keys(host)
+            if live & pinned:
+                ident = _read_identity(nick)
+                claim(ident, nick, host)
+                if ident is None:
+                    print("NEEDS_KEY_AUTH %s %s: host key matches but BatchMode login failed" % (nick, host))
+                    failures += 1
+                elif ident and ident != nick:
+                    print("IDENTITY_MISMATCH %s %s: host key matches but its identity file says '%s'"
+                          " — same machine registered twice? (re-stamp with: install-tools <the right nick>)"
+                          % (nick, host, ident))
+                    identity_failures += 1
+                else:
+                    print("OK %s %s%s" % (nick, host, "" if ident else
+                                          "  (no identity file yet — run: install-tools %s)" % nick))
+                continue
+            print("KEY_MISMATCH %s %s: a different machine answers there now" % (nick, host))
+        else:
+            print("UNREACHABLE %s %s:22" % (nick, host))
+        stale.append((nick, host, pinned))
+
+    if stale:
+        # pass 2: one sweep covers every stale machine
+        if not subnets:
+            for _, host, _ in stale:
+                cidr = _slash24(host)
+                if cidr and cidr not in subnets:
+                    subnets.append(cidr)
+            mine = _local_ipv4()
+            cidr = _slash24(mine) if mine else None
+            if cidr and cidr not in subnets:
+                subnets.append(cidr)
+            if not subnets:
+                print("ERROR: cannot infer a subnet (no IPv4 addresses, offline?) — pass --subnet CIDR")
+                return EXIT_USAGE
+        print("scanning %s for ssh ..." % ", ".join(subnets))
+        open_hosts = _sweep(subnets)
+        skip = {h for _, h, _ in stale}
+        candidates = [h for h in open_hosts if h not in skip]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(16, max(1, len(candidates)))) as ex:
+            live_keys = dict(zip(candidates, ex.map(_keyscan_keys, candidates)))
+
+    for nick, old, pinned in stale:
+        res = reg["resources"][nick]
+        user = (res.get("ssh") or {}).get("user") or alias_target(nick)[1]
+        keyed = [h for h in candidates if live_keys.get(h, set()) & pinned]
+        if not keyed:
+            print("NOT_FOUND %s %s: %d address(es) answer ssh in %s, none presents its pinned host key"
+                  % (nick, old, len(open_hosts), ", ".join(subnets)))
+            failures += 1
+            continue
+        # second factor: the identity stamp, read with exactly the matched keys pinned
+        idents = {h: _read_identity_at(h, user, live_keys[h] & pinned) for h in keyed}
+        for h in keyed:
+            claim(idents[h], nick, h)
+        matched = [h for h in keyed if idents[h] == nick]
+        legacy = [h for h in keyed if idents[h] == ""]
+        for h in keyed:
+            if idents[h] and idents[h] != nick:
+                print("IDENTITY_MISMATCH %s %s: presents its host key but the identity file says '%s'"
+                      " — not adopted" % (nick, h, idents[h]))
+                identity_failures += 1
+        if not matched and legacy:
+            print("NOTE %s: %s has its host key but no identity file yet (stamped before this"
+                  " existed) — accepting on the key; the move stamps it" % (nick, ", ".join(legacy)))
+            matched = legacy
+        if not matched:
+            unreadable = [h for h in keyed if idents[h] is None]
+            if unreadable:
+                print("NOT_FOUND %s %s: %s present its host key but BatchMode login failed there"
+                      % (nick, old, ", ".join(unreadable)))
+            else:
+                print("NOT_FOUND %s %s: no candidate carries both its host key and its identity" % (nick, old))
+            failures += 1
+            continue
+        if len(matched) > 1:
+            if nick in picks:
+                if picks[nick] not in matched:
+                    print("ERROR: --pick %s=%s: that address does not present %s's key+identity (candidates: %s)"
+                          % (nick, picks[nick], nick, ", ".join(matched)))
+                    return EXIT_USAGE
+                new, others = picks[nick], [h for h in matched if h != picks[nick]]
+                print("NOTE %s: %s also present its host key and claim '%s' — give each its own name:"
+                      " register <newnick> %s@<host>" % (nick, ", ".join(others), nick, user))
+            else:
+                print("DUPLICATE_IDENTITY %s: %s all present its host key and claim '%s'."
+                      " Ask the human which address is really %s, then:"
+                      " scan %s --pick %s=<host>; and register the other(s) under their own"
+                      " name (register <newnick> %s@<host>) so each carries its own identity"
+                      % (nick, ", ".join(matched), nick, nick, nick, nick, user))
+                identity_failures += 1
+                continue
+        else:
+            new = matched[0]
+        if dry_run:
+            print("WOULD_MOVE %s %s -> %s (host key matches pinned %s; identity %s)"
+                  % (nick, old, new, "/".join(sorted(t for t, _ in live_keys[new] & pinned)),
+                     "'%s'" % idents[new] if idents[new] else "unstamped"))
+            continue
+        # converge: pin the already-acked key under the new address, alias, registry
+        kh = known_hosts_path()
+        already = _known_host_keys(new)
+        with open(kh, "a") as f:
+            for ktype, blob in sorted(pinned & live_keys[new]):
+                if (ktype, blob) not in already:
+                    f.write("%s %s %s\n" % (new, ktype, blob))
+        ensure_alias(nick, new, user)
+        res.setdefault("ssh", {}).update({"configAlias": nick, "host": new, "previousHost": old,
+                                          "hostMovedAt": now_iso()})
+        rc, _, err = ssh_run(nick, "true", timeout=20)
+        res["ssh"]["batchModeVerified"] = rc == 0
+        if rc == 0:
+            res.setdefault("state", {})["lastSeen"] = now_iso()
+            if not idents[new]:
+                _write_identity(nick)
+                res.setdefault("tools", {})["identity"] = nick
+        reg["resources"][nick] = res
+        save_registry(reg, touched=nick)
+        print("MOVED %s %s -> %s (host key + identity matched; known_hosts, ssh alias, registry updated)"
+              % (nick, old, new))
+        if rc != 0:
+            print("NEEDS_KEY_AUTH %s: BatchMode login failed at the new address (%s)" % (nick, err or rc))
+            failures += 1
+
+    # the same identity seen on two different addresses is always a conflict
+    for ident, seen in claims.items():
+        hosts = sorted({h for _, h in seen})
+        if len(hosts) > 1 and not any(ident == n and n in picks for n, _ in seen):
+            print("DUPLICATE_IDENTITY %s: claimed at %s (%s)" % (
+                ident, ", ".join(hosts), ", ".join("%s@%s" % (n, h) for n, h in seen)))
+            identity_failures += 1
+    if identity_failures:
+        return EXIT_IDENTITY
+    return EXIT_UNREACHABLE if failures else 0
+
+
+def cmd_identity(nick):
+    get_resource(nick)
+    ident = _read_identity(nick)
+    if ident is None:
+        print("NEEDS_KEY_AUTH %s: BatchMode login failed" % nick)
+        return EXIT_KEYAUTH
+    print("IDENTITY %s: %s" % (nick, ident or "(no identity file — run: install-tools %s)" % nick))
+    if ident and ident != nick:
+        print("IDENTITY_MISMATCH %s: the machine says it is '%s'" % (nick, ident))
+        return EXIT_IDENTITY
+    return 0
+
+
+# --- on-machine tools: one `remote-compute` command on every registered box --
+# Converged by register and re-shippable with install-tools. The command is
+# bash (remote-compute-remote.sh), installed to ~/.remote-compute/bin and
+# linked from ~/.local/bin so the human typing at the box and the orchestrator
+# over ssh drive the machine the same way (`remote-compute top`, `jobs`, ...).
+
+def _install_tools(nick, res):
+    """Ship _shared/ to ~/.remote-compute/tools and install the command.
+    Returns (ok, on_path) and records a `tools` block on the resource."""
+    tools, bindir = remote_path(REMOTE_TOOLS_ROOT), remote_path(REMOTE_BIN_ROOT)
+    ssh_run(nick, "mkdir -p %s %s" % (tools, bindir))
+    rc = subprocess.run(rsync_argv(SHARED_TOOLS_DIR.rstrip("/") + "/",
+                                   "%s:%s/" % (nick, REMOTE_TOOLS_ROOT.replace("~/", ""))),
+                        capture_output=True).returncode
+    if rc != 0:
+        print("WARN: rsync of on-machine tools failed (exit %s) — run: install-tools %s" % (rc, nick))
+        return False, False
+    # cp+chmod rather than a symlink into tools/: rsync replaces tools/ files
+    # wholesale, and a dangling command during the copy is worse than a stale one
+    rc, _, err = ssh_run(nick, "cp %s/remote-compute-remote.sh %s/remote-compute && chmod 0755 %s/remote-compute"
+                         " && mkdir -p \"$HOME\"/.local/bin"
+                         " && ln -sfn %s/remote-compute \"$HOME\"/.local/bin/remote-compute"
+                         % (tools, bindir, bindir, bindir))
+    if rc != 0:
+        print("WARN: installing the remote-compute command failed: %s" % (err or rc))
+        return False, False
+    # PATH convergence: ssh runs a command through the login shell's -c, which
+    # for zsh reads only ~/.zshenv and for bash -l reads ~/.bash_profile or
+    # ~/.profile — so one idempotent, marker-fenced line goes into each file
+    # that applies. The marker makes re-runs a no-op and removal a one-liner.
+    ssh_run(nick, PATH_CONVERGE_SH)
+    on_path = ssh_run(nick, "command -v remote-compute >/dev/null")[0] == 0
+    stamped = _write_identity(nick)
+    res["tools"] = {"installedAt": now_iso(), "onPath": on_path,
+                    "command": REMOTE_BIN_ROOT + "/remote-compute",
+                    "identity": nick if stamped else None}
+    return True, on_path
+
+
+PATH_MARKER = "# >>> remote-compute (managed: PATH for the on-machine command) >>>"
+PATH_CONVERGE_SH = (
+    'for rc in "$HOME"/.zshenv "$HOME"/.profile "$HOME"/.bashrc "$HOME"/.bash_profile; do '
+    '  case "$rc" in *bash_profile) [ -f "$rc" ] || continue ;; esac; '
+    '  grep -qF %s "$rc" 2>/dev/null && continue; '
+    '  printf %s >> "$rc"; '
+    'done' % (shlex.quote(PATH_MARKER),
+              shlex.quote("\n%s\ncase \":$PATH:\" in *\":$HOME/.local/bin:\"*) ;; *) export PATH=\"$HOME/.local/bin:$PATH\" ;; esac\n# <<< remote-compute <<<\n" % PATH_MARKER)))
+
+
+def _path_note(res):
+    shell = ((res.get("platform") or {}).get("quirks") or {}).get("defaultShell") or ""
+    rc = "~/.zshrc" if "zsh" in shell else "~/.bashrc"
+    return ("  NOTE: ~/.local/bin is not on the login PATH yet — the human adds to %s:\n"
+            "        export PATH=\"$HOME/.local/bin:$PATH\"\n"
+            "        (until then: ~/.remote-compute/bin/remote-compute <verb>)" % rc)
+
+
+def cmd_install_tools(nick):
+    reg = load_registry()
+    res = get_resource(nick)
+    ok, on_path = _install_tools(nick, res)
+    if not ok:
+        return EXIT_UNREACHABLE
+    reg["resources"][nick] = res
+    save_registry(reg, touched=nick)
+    print("TOOLS %s: compute-top.py shipped, `remote-compute` command installed (on PATH: %s),"
+          " identity stamped '%s'" % (nick, "yes" if on_path else "no", nick))
+    if not on_path:
+        print(_path_note(res))
+    print("  try: ssh -t %s remote-compute top" % nick)
+    return 0
+
+
+# --- connect: the ssh one-liners for each machine ---------------------------
+
+def cmd_connect(nicks):
+    reg = load_registry()
+    if not reg["resources"]:
+        print("no compute resources registered (use: register nickname user@host)")
+        return 0
+    for n in nicks:
+        if n not in reg["resources"]:
+            print("ERROR: '%s' is not a registered compute resource" % n)
+            return EXIT_USAGE
+    for nick in (nicks or list(reg["resources"])):
+        res = reg["resources"][nick]
+        ssh = res.get("ssh") or {}
+        host, user = ssh.get("host"), ssh.get("user")
+        if not host:
+            host, user = alias_target(nick)
+        gpu = ((res.get("capabilities") or {}).get("gpu") or {}).get("name") or "no gpu"
+        state = "up" if host and _port22_open(host, timeout=2) else "down"
+        lock = (res.get("state") or {}).get("lock")
+        print("%s  %s@%s  %s  %s  %s%s" % (nick, user or "?", host or "?",
+                                           (res.get("platform") or {}).get("os", "?"), gpu, state,
+                                           ("  LOCKED by %s" % lock["holder"]) if lock else ""))
+        for cmd, what in (("ssh %s" % nick, "shell"),
+                          ("ssh -t %s remote-compute top" % nick, "live job dashboard"),
+                          ("ssh %s remote-compute jobs" % nick, "one-shot job table"),
+                          ("ssh %s remote-compute gpu" % nick, "GPU summary")):
+            print("  %-44s # %s" % (cmd, what))
+        if not (res.get("tools") or {}).get("installedAt"):
+            print("  (on-machine command not installed yet: install-tools %s)" % nick)
+        if state == "down":
+            print("  (not answering on port 22 — if its address may have changed: scan %s)" % nick)
+    return 0
+
+
 def cmd_remove(nick):
     reg = load_registry()
     if nick in reg["resources"]:
@@ -1463,6 +1934,14 @@ def main(argv):
                           "platform": res.get("platform", {}),
                           "envs": {k: v.get("verified") for k, v in (res.get("envs") or {}).items()}}))
         return 0
+    if verb == "install-tools" and rest:
+        return cmd_install_tools(rest[0])
+    if verb == "connect":
+        return cmd_connect(rest)
+    if verb == "identity" and rest:
+        return cmd_identity(rest[0])
+    if verb == "scan":
+        return cmd_scan(rest)
     if verb in ("list", "status") and not rest:
         return cmd_list()
     if verb == "status" and rest:

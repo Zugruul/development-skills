@@ -73,6 +73,7 @@ case "$CMD" in
     *uname*) echo Linux ;;
     *proc/version*) echo "Linux version 6.6.36 microsoft-standard-WSL2" ;;
     *torch*) echo "2.7.1 True" ;;
+    *.identity*) case "$*" in *192.0.2.[2-6]*) echo "${FAKE_IDENTITY_B:-gpubox}" ;; *) echo "${FAKE_IDENTITY:-gpubox}" ;; esac ;;
     *busy1*) echo __RUNNING__ ;;
     *exitcode*) echo 0 ;;
     *) exit 0 ;;
@@ -131,6 +132,12 @@ _unhardened_ssh="$(grep '^ssh ' "$TLOG" | grep -cv 'BatchMode=yes' || true)"
 check "transport: every ssh invocation is BatchMode" "0" "$_unhardened_ssh"
 check "transport: BatchMode always" "-o BatchMode=yes" "$(cat "$TLOG")"
 check "transport: remote job layout converged" ".remote-compute/jobs" "$(cat "$TLOG")"
+check "register: ships _shared tools to the box" "remote-capabilities/_shared/ gpubox:.remote-compute/tools/" "$(cat "$TLOG")"
+check "register: installs the on-machine command" ".local/bin/remote-compute" "$(cat "$TLOG")"
+check "register: summary names the command" "remote-compute top" "$out"
+check "registry: tools block recorded" "installedAt" "$(cat "$CH/resources.yaml")"
+check "register: stamps the identity file with the nick only" 'gpubox > "$HOME"/.remote-compute/.identity' "$(cat "$TLOG")"
+check "registry: identity recorded" "identity: gpubox" "$(cat "$CH/resources.yaml")"
 
 # --- register: idempotent convergence (consistent setup every run) -------
 out="$(run_compute register gpubox 2>&1)"; rc=$?
@@ -747,6 +754,121 @@ run_compute install-capability gpubox "$ENVB" >/dev/null 2>&1
 : > "$TLOG"
 run_compute run gpubox envcap:work --job-id bundleenvjob >/dev/null 2>&1
 check "bundle manifest env activates before the command" "source ~/bundleenv/bin/activate && python3" "$(cat "$TLOG")"
+
+# --- install-tools: re-ship on demand -------------------------------------
+: > "$TLOG"
+out="$(run_compute install-tools gpubox 2>&1)"; rc=$?
+check_rc "install-tools: exit 0" 0 "$rc"
+check "install-tools: TOOLS line" "TOOLS gpubox" "$out"
+check "install-tools: identity stamped" "identity stamped 'gpubox'" "$out"
+check "install-tools: rsync of _shared" "_shared/ gpubox:.remote-compute/tools/" "$(cat "$TLOG")"
+check "install-tools: command copied into bin" ".remote-compute/bin/remote-compute" "$(cat "$TLOG")"
+check "install-tools: PATH converged with a marker" ">>> remote-compute (managed" "$(cat "$TLOG")"
+check "install-tools: PATH line is idempotent (grep before append)" "grep -qF" "$(cat "$TLOG")"
+check "install-tools: zsh non-interactive file covered" ".zshenv" "$(cat "$TLOG")"
+_unhardened_ssh="$(grep '^ssh ' "$TLOG" | grep -cv 'BatchMode=yes' || true)"
+check "install-tools: every ssh is BatchMode" "0" "$_unhardened_ssh"
+
+# --- connect: ssh one-liners per machine (the `ssh` skill) ---------------
+: > "$TLOG"
+out="$(run_compute connect 2>&1)"; rc=$?
+check_rc "connect: exit 0" 0 "$rc"
+check "connect: header has user@host" "gpubox  testuser@192.0.2.17" "$out"
+check "connect: reachable box is up" " up" "$out"
+check "connect: shell one-liner" "ssh gpubox " "$out"
+check "connect: dashboard one-liner" "ssh -t gpubox remote-compute top" "$out"
+check "connect: job table one-liner" "ssh gpubox remote-compute jobs" "$out"
+check_absent "connect: never ICMP" "ping " "$(cat "$TLOG")"
+out="$(FAKE_NC_RC=1 run_compute connect 2>&1)"
+check "connect: dark box is down" " down" "$out"
+check "connect: dark box points at scan" "scan gpubox" "$out"
+out="$(run_compute connect nosuch 2>&1)"; rc=$?
+check_rc "connect: unknown nick is a usage error" 2 "$rc"
+
+# --- identity verb ---------------------------------------------------------
+out="$(run_compute identity gpubox 2>&1)"; rc=$?
+check "identity: reads the stamp" "IDENTITY gpubox: gpubox" "$out"; check_rc "identity: exit 0" 0 "$rc"
+out="$(FAKE_IDENTITY=otherbox run_compute identity gpubox 2>&1)"; rc=$?
+check "identity: mismatch reported" "IDENTITY_MISMATCH gpubox: the machine says it is 'otherbox'" "$out"
+check_rc "identity: mismatch exit 7" 7 "$rc"
+
+# --- scan: re-find a machine whose DHCP address moved ---------------------
+# identity = pinned host key AND the ~/.remote-compute/.identity stamp
+: > "$TLOG"
+out="$(run_compute scan --dry-run 2>&1)"; rc=$?
+check "scan: machine still at its address is OK" "OK gpubox 192.0.2.17" "$out"
+check_rc "scan ok: exit 0" 0 "$rc"
+check_absent "scan ok: never ICMP" "ping " "$(cat "$TLOG")"
+check_absent "scan ok: no sweep when nothing is stale" "scanning" "$out"
+out="$(FAKE_IDENTITY=otherbox run_compute scan 2>&1)"; rc=$?
+check "scan: key matches but stamp disagrees -> IDENTITY_MISMATCH" "IDENTITY_MISMATCH gpubox 192.0.2.17" "$out"
+check "scan: mismatch names the stamp" "says 'otherbox'" "$out"
+check_rc "scan identity mismatch: exit 7" 7 "$rc"
+check "scan mismatch: registry untouched" "1" "$(grep -cE '^\s+host: 192\.0\.2\.17$' "$CH/resources.yaml")"
+# dry-run move: .17 dark; .1 and .2 both present the key, only .1 carries the stamp
+out="$(FAKE_NC_CLOSED=192.0.2.17 FAKE_IDENTITY_B=otherbox run_compute scan --dry-run --subnet 192.0.2.0/30 2>&1)"; rc=$?
+check "scan dry-run: old address reported dark" "UNREACHABLE gpubox 192.0.2.17:22" "$out"
+check "scan dry-run: reports the move without applying" "WOULD_MOVE gpubox 192.0.2.17 -> 192.0.2.1" "$out"
+check "scan dry-run: key-only host with another stamp is refused" "IDENTITY_MISMATCH gpubox 192.0.2.2: presents its host key but the identity file says 'otherbox'" "$out"
+check "scan dry-run: registry untouched" "1" "$(grep -cE '^\s+host: 192\.0\.2\.17$' "$CH/resources.yaml")"
+check "scan dry-run: ssh config untouched" "HostName 192.0.2.17" "$(cat "$SSHDIR/config")"
+check_rc "scan dry-run with a mismatch elsewhere: exit 7" 7 "$rc"
+: > "$TLOG"
+out="$(FAKE_NC_CLOSED=192.0.2.17 FAKE_IDENTITY_B=otherbox run_compute scan --subnet 192.0.2.0/30 2>&1)"; rc=$?
+check "scan: MOVED" "MOVED gpubox 192.0.2.17 -> 192.0.2.1" "$out"
+check_rc "scan moved (with a mismatch elsewhere): exit 7" 7 "$rc"
+check "scan moved: registry host converged" "1" "$(grep -cE '^\s+host: 192\.0\.2\.1$' "$CH/resources.yaml")"
+check "scan moved: old host gone from registry" "0" "$(grep -cE '^\s+host: 192\.0\.2\.17$' "$CH/resources.yaml")"
+check "scan moved: previous host kept" "previousHost: 192.0.2.17" "$(cat "$CH/resources.yaml")"
+check "scan moved: ssh alias rewritten" "HostName 192.0.2.1" "$(cat "$SSHDIR/config")"
+check_absent "scan moved: no stale HostName" "HostName 192.0.2.17" "$(cat "$SSHDIR/config")"
+check "scan moved: single alias block" "1" "$(grep -c '^Host gpubox$' "$SSHDIR/config")"
+check "scan moved: pinned key re-pinned under the new address" "192.0.2.1 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForComputeTests" "$(cat "$SSHDIR/known_hosts")"
+check "scan moved: BatchMode login re-verified" "batchModeVerified: true" "$(cat "$CH/resources.yaml")"
+check "scan moved: identity read with the matched key pinned in a throwaway file" "UserKnownHostsFile=" "$(grep 'testuser@192.0.2.1 ' "$TLOG")"
+check "scan moved: identity read is strict" "StrictHostKeyChecking=yes" "$(grep 'testuser@192.0.2.1 ' "$TLOG")"
+_unhardened_ssh="$(grep '^ssh ' "$TLOG" | grep -cv 'BatchMode=yes' || true)"
+check "scan moved: every ssh is BatchMode" "0" "$_unhardened_ssh"
+check_absent "scan moved: never ICMP" "ping " "$(cat "$TLOG")"
+out="$(run_compute scan 2>&1)"; rc=$?
+check "scan after move: OK at new address" "OK gpubox 192.0.2.1" "$out"; check_rc "scan after move: exit 0" 0 "$rc"
+# duplicate identity: .1 dark; .2-.6 all present the key AND all claim gpubox
+out="$(FAKE_NC_CLOSED=192.0.2.1 run_compute scan --subnet 192.0.2.0/29 2>&1)"; rc=$?
+check "scan: DUPLICATE_IDENTITY highlighted" "DUPLICATE_IDENTITY gpubox: 192.0.2.2, 192.0.2.3" "$out"
+check "scan duplicate: tells how to resolve" "scan gpubox --pick gpubox=<host>" "$out"
+check "scan duplicate: suggests re-registering the others" "register <newnick> testuser@<host>" "$out"
+check_rc "scan duplicate: exit 7" 7 "$rc"
+check "scan duplicate: nothing moved" "1" "$(grep -cE '^\s+host: 192\.0\.2\.1$' "$CH/resources.yaml")"
+out="$(FAKE_NC_CLOSED=192.0.2.1 run_compute scan --subnet 192.0.2.0/29 --pick gpubox=192.0.2.9 2>&1)"; rc=$?
+check_rc "scan pick: address outside the candidates is a usage error" 2 "$rc"
+out="$(FAKE_NC_CLOSED=192.0.2.1 run_compute scan --subnet 192.0.2.0/29 --pick gpubox=192.0.2.2 2>&1)"; rc=$?
+check "scan pick: moves to the human's choice" "MOVED gpubox 192.0.2.1 -> 192.0.2.2" "$out"
+check "scan pick: still flags the other claimants" "also present its host key and claim 'gpubox'" "$out"
+check_rc "scan pick: exit 0" 0 "$rc"
+check "scan pick: registry host" "1" "$(grep -cE '^\s+host: 192\.0\.2\.2$' "$CH/resources.yaml")"
+# nothing answers anywhere -> NOT_FOUND, registry unchanged
+out="$(FAKE_NC_CLOSED="192.0.2.1 192.0.2.2" run_compute scan --subnet 192.0.2.0/30 2>&1)"; rc=$?
+check "scan: NOT_FOUND when no ssh host has the key" "NOT_FOUND gpubox 192.0.2.2" "$out"
+check_rc "scan not-found: exit 1" 1 "$rc"
+check "scan not-found: registry unchanged" "1" "$(grep -cE '^\s+host: 192\.0\.2\.2$' "$CH/resources.yaml")"
+# a stranger took the address: its key is NOT the pinned one -> never adopted, never pinned
+out="$(FAKE_KEYSCAN_OUT="192.0.2.9 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIStrangerKey00000000000000000000000000000000" \
+    run_compute scan --subnet 192.0.2.0/30 2>&1)"; rc=$?
+check "scan: KEY_MISMATCH at the old address" "KEY_MISMATCH gpubox 192.0.2.2" "$out"
+check "scan: stranger everywhere -> NOT_FOUND" "NOT_FOUND gpubox" "$out"
+check_rc "scan mismatch: exit 1" 1 "$rc"
+check_absent "scan mismatch: stranger key never pinned" "StrangerKey" "$(cat "$SSHDIR/known_hosts")"
+check "scan mismatch: registry unchanged" "1" "$(grep -cE '^\s+host: 192\.0\.2\.2$' "$CH/resources.yaml")"
+# guard rails
+out="$(run_compute scan --subnet 10.0.0.0/8 2>&1)"; rc=$?
+check "scan: refuses sweeps wider than /22" "larger than /22" "$out"
+check_rc "scan wide: usage exit" 2 "$rc"
+out="$(run_compute scan --subnet nonsense 2>&1)"; rc=$?
+check_rc "scan: bad CIDR is a usage error" 2 "$rc"
+out="$(run_compute scan nosuch 2>&1)"; rc=$?
+check_rc "scan: unknown nick is a usage error" 2 "$rc"
+out="$(run_compute scan --pick gpubox 2>&1)"; rc=$?
+check_rc "scan: --pick without =HOST is a usage error" 2 "$rc"
 
 # --- remove --------------------------------------------------------------
 out="$(run_compute remove gpubox 2>&1)"
