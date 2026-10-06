@@ -91,6 +91,21 @@
   > * test(remote-compute): RED - extraction into plugins/remote-compute: overlay-seam tests stay, wiring assertions (codex loops, marketplaces x4, gate/docs coverage), study doc
   > 
   > * feat(remote-compute): GREEN - extract remote-compute into its own plugin (requires spec-workflow): scripts/skills/tests/fixtures moved with history, own test runner + lint parity (py_compile gap closed), marketplaces x4, gate/docs/AGENTS wiring, contract-seam overlay tests
+- **remote-compute:** scan, ssh skills, on-machine command, identity stamp (`6ca5ab2`)
+  > - scan verb + skill: re-find registered machines whose DHCP address moved.
+  >   Sweeps port 22 (never ICMP), adopts a candidate only when it presents the
+  >   host key already pinned for the old address AND its
+  >   ~/.remote-compute/.identity stamp names the nick; converges known_hosts,
+  >   the ssh alias, and the registry. DUPLICATE_IDENTITY / IDENTITY_MISMATCH
+  >   are flagged (exit 7) for the human to resolve via --pick, never guessed.
+  > - On-machine `remote-compute` command (bash) shipped by register and
+  >   install-tools: top/jobs/running/log/status/cancel/caps/gpu/disk/paths/
+  >   identity, installed to ~/.remote-compute/bin, linked from ~/.local/bin
+  >   with a marker-fenced PATH line in the login shell files.
+  > - connect verb + ssh skill: per-machine ssh one-liners with up/down.
+  > - identity verb; register/install-tools stamp the identity file.
+  > - Hermetic tests for all of it (nc stub gains per-host closed list; new
+  >   section exercises the on-machine command against a fake job layout).
 
 ## v0.64.2 — 2026-08-04
 
