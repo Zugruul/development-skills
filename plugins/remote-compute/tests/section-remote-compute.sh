@@ -287,8 +287,46 @@ out="$(run_compute capabilities install gpubox slm-training 2>&1)"; rc=$?
 check_rc "capabilities install by name: exit 0" 0 "$rc"
 check "capabilities install by name: names installed bundle" "slm-training" "$out"
 check "capabilities install by name: ships payload" "remote-compute/caps/slm-training" "$(cat "$TLOG")"
-check "capabilities list with machine: shows installed bundle" "slm-training" \
-    "$(run_compute capabilities list gpubox 2>&1)"
+python3 - "$CH/resources.yaml" <<'PY'
+import sys
+import yaml
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    registry = yaml.safe_load(f)
+registry["resources"]["macbook"] = {
+    "capabilities_installed": {
+        "mac-tools": {
+            "version": 1,
+            "description": "Mac-only tools",
+            "jobs": ["mac-tools:render"],
+        },
+    },
+}
+with open(path, "w", encoding="utf-8") as f:
+    yaml.safe_dump(registry, f, sort_keys=False)
+PY
+installed_all="$(run_compute capabilities installed 2>&1)"; rc=$?
+check_rc "capabilities installed: all machines exit 0" 0 "$rc"
+check "capabilities installed: all machines show gpubox" "gpubox" "$installed_all"
+check "capabilities installed: all machines show slm-training" "slm-training" "$installed_all"
+check "capabilities installed: all machines show macbook" "macbook" "$installed_all"
+check "capabilities installed: all machines show mac-tools" "mac-tools" "$installed_all"
+installed_one="$(run_compute capabilities installed gpubox 2>&1)"; rc=$?
+check_rc "capabilities installed with machine: exit 0" 0 "$rc"
+check "capabilities installed with machine: shows selected bundle" "slm-training" "$installed_one"
+check_absent "capabilities installed with machine: excludes other machines" "macbook" "$installed_one"
+python3 - "$CH/resources.yaml" <<'PY'
+import sys
+import yaml
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    registry = yaml.safe_load(f)
+registry["resources"].pop("macbook", None)
+with open(path, "w", encoding="utf-8") as f:
+    yaml.safe_dump(registry, f, sort_keys=False)
+PY
 
 BUNDLE="$CT/demo-cap"; mkdir -p "$BUNDLE"
 cat > "$BUNDLE/capability.yaml" <<'EOF'
