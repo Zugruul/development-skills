@@ -1,5 +1,16 @@
 {
     "name": "remote-compute",
     "description": "Register remote machines (SSH, key-only) as user-level compute resources, advertise them to projects, and dispatch jobs/capability bundles to them. Requires the spec-workflow plugin (project overlay + config loader).",
-    "version": "0.1.0"
+    "version": "0.1.0",
+    "author": {"name": "event-sorcerer", "url": "https://github.com/event-sorcerer"},
+    "skills": "./skills/",
+    "interface": {
+        "displayName": "Remote Compute",
+        "shortDescription": "Register SSH machines and dispatch remote compute jobs.",
+        "longDescription": "Register key-based SSH machines, advertise them to projects, and dispatch declared jobs and capability bundles. Requires the spec-workflow plugin to manage project-local availability and configuration.",
+        "developerName": "event-sorcerer",
+        "category": "Developer Tools",
+        "capabilities": ["Interactive", "Read files", "Write files", "Run shell scripts"],
+        "defaultPrompt": ["Register a remote compute machine.", "Show the remote compute machines available to this project.", "Dispatch a declared job to a remote machine."]
+    }
 }

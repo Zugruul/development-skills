@@ -4,7 +4,7 @@
 # _lib.sh (check/check_rc/check_absent) and set HERE/PLUGIN/FIX/fails/flaky
 # before sourcing this file. This file assumes those are already in scope.
 #
-# Asserts that EVERY SKILL.md in BOTH shipped plugins passes Codex's skill
+# Asserts that EVERY SKILL.md in every shipped plugin passes Codex's skill
 # linter (quick_validate.py). The most common failure it guards is angle
 # brackets (< or >) in the `description:` frontmatter, which Codex rejects
 # outright (CDX-005) -- but the check is the whole validator, so any future
@@ -18,10 +18,10 @@ echo "== codex-skill-lint =="
 CODEX_SKILL_VALIDATOR="$HOME/.codex/skills/.system/skill-creator/scripts/quick_validate.py"
 REPO="$(cd "$PLUGIN/../.." && pwd)"
 
-if [[ ! -f "$CODEX_SKILL_VALIDATOR" ]]; then
-    echo "SKIP codex skill lint — validator ($CODEX_SKILL_VALIDATOR) unavailable"
+if [[ ! -f "$CODEX_SKILL_VALIDATOR" ]] || ! python3 -c 'import yaml' >/dev/null 2>&1; then
+    echo "SKIP codex skill lint — validator ($CODEX_SKILL_VALIDATOR) or python 'yaml' package unavailable"
 else
-    for skill in "$REPO"/plugins/spec-workflow/skills/*/ "$REPO"/plugins/peer-review/skills/*/ "$REPO"/plugins/remote-compute/skills/*/; do
+    for skill in "$REPO"/plugins/*/skills/*/; do
         [[ -f "$skill/SKILL.md" ]] || continue
         rel="${skill#"$REPO"/}"
         out="$(python3 "$CODEX_SKILL_VALIDATOR" "$skill" 2>&1)"; rc=$?

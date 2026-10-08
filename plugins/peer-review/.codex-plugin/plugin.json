@@ -6,7 +6,7 @@
         "name": "event-sorcerer",
         "url": "https://github.com/event-sorcerer"
     },
-    "skills": "skills",
+    "skills": "./skills/",
     "keywords": [
         "code-review",
         "peer-review",
@@ -16,6 +16,10 @@
     "interface": {
         "displayName": "Peer Review",
         "shortDescription": "Cross-vendor peer review of the current diff.",
-        "longDescription": "Peer Review runs an independent, cross-vendor review of the current diff through OpenAI's codex CLI. It is deliberately never the same model reviewing its own work: a second vendor's model shares fewer blind spots with the author. Findings come back as structured, severity-ranked items ready to act on."
+        "longDescription": "Peer Review asks which supported provider should review the current diff, discovers available models when possible, and returns severity-ranked findings. Reviews run through the provider's installed CLI and are sent to that provider's cloud.",
+        "developerName": "event-sorcerer",
+        "category": "Developer Tools",
+        "capabilities": ["Interactive", "Read files", "Run shell scripts"],
+        "defaultPrompt": ["Review the current diff with an independent provider.", "Get a second opinion on this code change.", "Review a pull request."]
     }
 }

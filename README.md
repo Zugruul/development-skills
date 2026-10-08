@@ -1,6 +1,6 @@
 # development-skills
 
-A [Claude Code plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) of development-workflow plugins.
+A development-workflow marketplace for [Claude Code](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) and Codex, with OpenCode skill-directory support.
 
 ## Install
 
@@ -114,9 +114,19 @@ claude plugin marketplace update development-skills
 
 or open `/plugin` in Claude Code and use **Update now** on the `development-skills` marketplace.
 
-## Codex support (in progress)
+## Codex desktop install
 
-Dual-host support for [OpenAI Codex](https://developers.openai.com/codex) is landing incrementally — `spec-workflow` and `scaffold-project` already ship a `.codex-plugin/plugin.json` and are installable from a repo-local `.agents/plugins/marketplace.json`, and an end-to-end smoke test proves a real Codex session can discover and run an installed skill. A Codex-side agent working in this repo should start at [`AGENTS.md`](AGENTS.md) for orientation (Claude Code reads [`CLAUDE.md`](CLAUDE.md), a one-line pointer to the same file). Full install/invocation docs for Codex, a per-host compatibility matrix, and CI coverage are tracked in [`docs/BACKLOG-CODEX-COMPAT.md`](docs/BACKLOG-CODEX-COMPAT.md) (epics E1–E4) and will land here once that work ships — `.claude/` remains the canonical, always-supported host in the meantime.
+All four plugins are available through the repository's Codex marketplace at `.agents/plugins/marketplace.json`. From a terminal with Codex CLI installed, add the marketplace:
+
+```bash
+codex plugin marketplace add Zugruul/development-skills
+```
+
+Restart the ChatGPT desktop app, open the Plugins Directory, select **Development Skills**, and install the plugin or plugins you need. Start a new chat after installation so Codex loads their skills. For a local checkout, run `codex plugin marketplace add .` from the repository root instead.
+
+To update an installed marketplace, run `codex plugin marketplace upgrade development-skills`, then restart the desktop app. Marketplace installs keep the packaged skills together with their scripts, references, and templates. `install-skills.sh codex` is an alternative for linking the raw skill folders into a project's `.agents/skills/`; use one installation method per skill to avoid duplicates.
+
+Codex reads the repo's canonical agent instructions from [`AGENTS.md`](AGENTS.md); Claude Code reads [`CLAUDE.md`](CLAUDE.md), which points to the same file. Codex support is still being checked against the compatibility work in [`SPEC-CODEX-COMPAT.md`](SPEC-CODEX-COMPAT.md) and [`docs/BACKLOG-CODEX-COMPAT.md`](docs/BACKLOG-CODEX-COMPAT.md).
 
 ## Assistant observability (in progress)
 

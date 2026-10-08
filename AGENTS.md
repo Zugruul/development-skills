@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repo is [Zugruul/development-skills](https://github.com/Zugruul/development-skills), a Claude Code plugin marketplace: `spec-workflow`, `scaffold-project`, and `peer-review` ship from `plugins/`, installable via `claude plugin marketplace add`. `spec-workflow` — the autonomous build-loop plugin — develops *this very repo*, dogfood-style.
+This repo is [Zugruul/development-skills](https://github.com/Zugruul/development-skills), a Claude Code and Codex plugin marketplace: `spec-workflow`, `scaffold-project`, `peer-review`, and `remote-compute` ship from `plugins/`. `spec-workflow` — the autonomous build-loop plugin — develops *this very repo*, dogfood-style.
 
 ## You may be the loop itself
 

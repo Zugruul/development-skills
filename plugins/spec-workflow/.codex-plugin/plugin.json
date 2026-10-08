@@ -6,7 +6,7 @@
         "name": "event-sorcerer",
         "url": "https://github.com/event-sorcerer"
     },
-    "skills": "skills",
+    "skills": "./skills/",
     "keywords": [
         "spec-driven",
         "tdd",
