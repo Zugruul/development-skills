@@ -15,6 +15,13 @@ CFIX="$FIX/compute"
 CSTUB="$FIX/stub-compute-transport"
 chmod +x "$CSTUB"/* 2>/dev/null
 
+help_out="$(python3 "$COMPUTE" --help 2>&1)"; rc=$?
+check_rc "controller --help: exits 0" 0 "$rc"
+check "controller --help: lists capability catalog" "capabilities list" "$help_out"
+check "controller --help: lists installed inventory" "capabilities installed [<nick>]" "$help_out"
+check "controller --help: lists capability install" "capabilities install <nick>" "$help_out"
+check "controller --help: lists job management" "add-job <nick>" "$help_out"
+
 # --- probe parsers (pure, stdin -> JSON) --------------------------------
 out="$(python3 "$COMPUTE" parse gpu < "$CFIX/nvidia-smi.txt")"
 check "gpu parser: name" "NVIDIA GeForce RTX 5090" "$out"
