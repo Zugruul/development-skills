@@ -278,6 +278,18 @@ check_rc "hand-edited sudo activate: exit 5" 5 "$rc"
 # --- capability bundles: the core stays domain-agnostic -------------------
 # A bundle is DATA (manifest + payload) that the generic engine installs; the
 # engine must learn nothing about any specific domain to support a new one.
+catalog="$(run_compute capabilities list 2>&1)"; rc=$?
+check_rc "capabilities list: exit 0" 0 "$rc"
+check "capabilities list: includes comfyui" "comfyui" "$catalog"
+check "capabilities list: includes slm-training" "slm-training" "$catalog"
+check_absent "capabilities list: omits shared support scripts" "_shared" "$catalog"
+out="$(run_compute capabilities install gpubox slm-training 2>&1)"; rc=$?
+check_rc "capabilities install by name: exit 0" 0 "$rc"
+check "capabilities install by name: names installed bundle" "slm-training" "$out"
+check "capabilities install by name: ships payload" "remote-compute/caps/slm-training" "$(cat "$TLOG")"
+check "capabilities list with machine: shows installed bundle" "slm-training" \
+    "$(run_compute capabilities list gpubox 2>&1)"
+
 BUNDLE="$CT/demo-cap"; mkdir -p "$BUNDLE"
 cat > "$BUNDLE/capability.yaml" <<'EOF'
 version: 1
@@ -293,16 +305,18 @@ jobs:
             who: "[A-Za-z ]+"
 EOF
 printf '#!/usr/bin/env python3\nprint("hi")\n' > "$BUNDLE/runner.py"
-out="$(run_compute install-capability gpubox "$BUNDLE" 2>&1)"; rc=$?
-check_rc "install-capability: exit 0" 0 "$rc"
-check "install-capability: reports the capability" "demo" "$out"
-check "install-capability: rsyncs the payload" "remote-compute/caps/demo" "$(cat "$TLOG")"
+out="$(run_compute capabilities install gpubox "$BUNDLE" 2>&1)"; rc=$?
+check_rc "capabilities install by path: exit 0" 0 "$rc"
+check "capabilities install by path: reports the capability" "demo" "$out"
+check "capabilities install by path: rsyncs the payload" "remote-compute/caps/demo" "$(cat "$TLOG")"
 # rsync spawns its own ssh: without -e it bypasses BatchMode, the pinned
 # known_hosts and COMPUTE_SSH_CONFIG entirely (can block on a password prompt)
 _unhardened_rsync="$(grep '^rsync ' "$TLOG" | grep -cv 'BatchMode=yes' || true)"
 check "transport: every rsync carries a hardened -e ssh" "0" "$_unhardened_rsync"
 check "install-capability: declares bundle jobs" "demo:greet" "$(run_compute jobs gpubox 2>&1)"
 check "install-capability: records it on the resource" "demo" "$(run_compute capabilities gpubox 2>&1)"
+out="$(run_compute install-capability gpubox "$BUNDLE" 2>&1)"; rc=$?
+check_rc "legacy install-capability alias: exit 0" 0 "$rc"
 out="$(run_compute run gpubox demo:greet --param 'who=World' --job-id capjob 2>&1)"; rc=$?
 check_rc "bundle job runs: exit 0" 0 "$rc"
 check "bundle job: capdir resolved in remote cmd" "remote-compute/caps/demo/runner.py" "$(cat "$TLOG")"
