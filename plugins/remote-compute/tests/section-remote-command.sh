@@ -25,6 +25,15 @@ RPID=$!; disown 2>/dev/null; echo "$RPID" > "$RROOT/jobs/run1/pid"; : > "$RROOT/
 run_rcmd() { REMOTE_COMPUTE_ROOT="$RROOT" bash "$RCMD" "$@"; }
 
 out="$(bash -n "$RCMD" 2>&1)"; check_rc "remote command: bash -n" 0 "$?"
+mkdir -p "$RT/bin"
+cat > "$RT/bin/compute-top" <<'EOF'
+#!/usr/bin/env bash
+echo COMPUTE_TOP_SHOULD_NOT_RUN
+EOF
+chmod +x "$RT/bin/compute-top"
+out="$(PATH="$RT/bin:$PATH" run_rcmd 2>&1)"
+check "bare command: prints help" "version | help" "$out"
+check_absent "bare command: help does not invoke compute-top" "COMPUTE_TOP_SHOULD_NOT_RUN" "$out"
 out="$(run_rcmd help 2>&1)"; check "help: lists top" "top" "$out"; check "help: lists cancel" "cancel" "$out"
 out="$(run_rcmd version 2>&1)"; check "version prints" "on-machine command" "$out"
 out="$(run_rcmd bogus 2>&1)"; rc=$?; check_rc "unknown verb: exit 2" 2 "$rc"; check "unknown verb: says so" "unknown verb" "$out"
