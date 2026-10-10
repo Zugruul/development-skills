@@ -8,6 +8,7 @@ from pathlib import Path
 import signal
 import subprocess
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -180,6 +181,40 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             c.discover_bundles(repo)
 
+    def test_malformed_launch_reply_retains_recovery_receipt(self):
+        def rpc(nick, action, request):
+            if action == "launch":
+                return 1, {"error": "bad response", "ambiguous": True}
+            return 0, {"reserved": True}
+        with patch.object(c, "remote_state", side_effect=rpc):
+            self.assertNotEqual(self.invoke(c.cmd_dispatch, ["gpu", "--workdir", "~", "--cmd", "true", "--job-id", "uncertain"]), 0)
+        self.assertEqual(c.load_job("uncertain")["phase"], "unknown")
+        self.assertNotIn("finishedAt", c.load_job("uncertain"))
+
+    def test_github_install_records_resolved_commit_for_every_bundle(self):
+        def git(argv, **kwargs):
+            if "clone" in argv:
+                for name in ("one", "two"):
+                    directory = Path(argv[-1], name)
+                    directory.mkdir(parents=True)
+                    (directory / "capability.yaml").write_text(yaml.safe_dump({"name": name, "jobs": {"run": {"cmd": "true"}}}))
+            return subprocess.CompletedProcess(argv, 0, "a" * 40 if "rev-parse" in argv else "", "")
+        with patch.object(c.subprocess, "run", side_effect=git), patch.object(c, "cmd_install_capability", return_value=0) as install:
+            self.assertEqual(self.invoke(c.cmd_github_install, ["gpu", "https://github.com/o/r", "--all", "--ref", "v1"]), 0)
+        self.assertEqual(install.call_count, 2)
+        for call in install.call_args_list:
+            self.assertEqual(call.kwargs["provenance"]["commit"], "a" * 40)
+
+    def test_automatic_named_job_retries_have_distinct_ids(self):
+        reg = c.load_registry()
+        reg["resources"]["gpu"]["jobs"]["named"] = {"cmd": "true", "workdir": "~", "jobIdSchema": {"template": "artifact"}}
+        c.save_registry(reg)
+        with patch.object(c, "_launch_job", side_effect=lambda *args: args[-1]["--job-id"]):
+            first = c.cmd_run(["gpu", "named"])
+            second = c.cmd_run(["gpu", "named"])
+        self.assertNotEqual(first, second)
+        self.assertTrue(first.startswith("artifact-"))
+
 
 class TargetTests(unittest.TestCase):
     def setUp(self):
@@ -249,6 +284,48 @@ class TargetTests(unittest.TestCase):
                                "capabilities", "install", "gpu", "missing"],
                               env=self.env, capture_output=True, text=True)
         self.assertNotEqual(proc.returncode, 0)
+
+    def test_real_launch_captures_activation_failure_and_is_idempotent(self):
+        request = {"id": "activate-fails", "token": "token", "limit": 1}
+        self.assertEqual(self.rpc("reserve", request)[0], 0)
+        request.update(workdir=str(self.root), cmd="touch SHOULD_NOT_EXIST", activate="false")
+        first = self.rpc("launch", request)
+        self.assertEqual(first[0], 0, first)
+        self.assertEqual(self.rpc("launch", request)[0], 0)
+        deadline = time.monotonic() + 5
+        while not (self.root / "jobs/activate-fails/exitcode").exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertEqual(self.rpc("status", {"id": request["id"]})[1]["state"], "failed")
+        self.assertFalse((self.root / "SHOULD_NOT_EXIST").exists())
+
+    def test_cancelled_supervisor_does_not_hide_live_descendant(self):
+        job = self.root / "jobs" / "descendant"
+        job.mkdir(parents=True)
+        code = 'import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); print("ready",flush=True); time.sleep(30)'
+        parent = subprocess.Popen(["python3", "-c", 'import subprocess,time,sys; subprocess.Popen([sys.executable,"-c",sys.argv[1]]); time.sleep(30)', code],
+                                  stdout=subprocess.PIPE, text=True, start_new_session=True)
+        try:
+            self.assertEqual(parent.stdout.readline().strip(), "ready")
+            (job / "pid").write_text(str(parent.pid))
+            self.assertNotEqual(self.rpc("cancel", {"id": "descendant"})[0], 0)
+            self.assertEqual(self.rpc("status", {"id": "descendant"})[1]["state"], "cancelling")
+        finally:
+            os.killpg(parent.pid, signal.SIGKILL)
+            parent.wait(timeout=5)
+            parent.stdout.close()
+
+    def test_pid_reuse_is_never_signalled(self):
+        job = self.root / "jobs" / "reused"
+        job.mkdir(parents=True)
+        proc = subprocess.Popen(["sleep", "30"], start_new_session=True)
+        try:
+            (job / "pid").write_text(str(proc.pid))
+            (job / "record.json").write_text(json.dumps({"processIdentity": "not-this-process", "phase": "running"}))
+            self.assertNotEqual(self.rpc("cancel", {"id": "reused"})[0], 0)
+            self.assertIsNone(proc.poll())
+        finally:
+            proc.kill()
+            proc.wait(timeout=5)
 
 
 if __name__ == "__main__":
