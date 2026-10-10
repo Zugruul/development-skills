@@ -80,11 +80,13 @@ class ControllerTests(unittest.TestCase):
         self.assertFalse(c.get_resource("gpu").get("state", {}).get("lock"))
 
     def test_failed_input_transfer_never_launches(self):
-        with patch.object(c, "ssh_run", return_value=(0, "", "")) as ssh, \
+        with patch.object(c, "remote_state", return_value=(0, {"reserved": True})) as rpc, \
                 patch.object(c.subprocess, "run", return_value=subprocess.CompletedProcess([], 23)):
             rc = self.invoke(c.cmd_dispatch, ["gpu", "--workdir", "~", "--cmd", "true", "--inputs", "/missing"])
         self.assertNotEqual(rc, 0)
-        self.assertFalse(any("tmux new-session" in str(x) for x in ssh.call_args_list))
+        self.assertNotIn("launch", [call.args[1] for call in rpc.call_args_list])
+        self.assertIn("abort", [call.args[1] for call in rpc.call_args_list])
+        self.assertFalse(c.get_resource("gpu")["state"]["lock"])
 
     def test_duplicate_local_id_preserves_history(self):
         c._atomic_json(str(Path(c.jobs_dir()) / "same.json"), {
@@ -125,6 +127,58 @@ class ControllerTests(unittest.TestCase):
             rc = c.cmd_capability_cli(["install", "gpu", "comfyui", "--env", "render"])
         self.assertEqual(rc, 0)
         self.assertEqual(install.call_args.args[0][-2:], ["--env", "render"])
+
+    def test_cli_installer_preserves_local_commands_and_controller_help(self):
+        prefix = self.root / "prefix with spaces"
+        self.assertEqual(self.invoke(c.cmd_install_cli, ["--prefix", str(prefix)]), 0)
+        command = prefix / "bin" / "remote-compute"
+        for arguments, expected in [(["version"], "0.2.0"), (["controller", "--help"], "capabilities"),
+                                    (["capabilities", "list"], "slm-training"), (["doctor", "--help"], "doctor")]:
+            result = subprocess.run([str(command)] + arguments, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertIn(expected, result.stdout)
+
+    def test_doctor_is_read_only_and_reports_unreachable(self):
+        before = Path(c.registry_path()).read_bytes()
+        with patch.object(c, "ssh_run", return_value=(255, "", "offline")):
+            self.assertNotEqual(self.invoke(c.cmd_doctor, ["gpu"]), 0)
+        self.assertEqual(before, Path(c.registry_path()).read_bytes())
+
+    def test_ssh_endpoint_uses_effective_configuration(self):
+        result = subprocess.CompletedProcess([], 0, "hostname example.invalid\nuser test\nport 2222\nproxyjump bastion\n", "")
+        with patch.object(c.subprocess, "run", return_value=result):
+            endpoint = c.ssh_endpoint("gpu")
+        self.assertEqual(endpoint["port"], 2222)
+        self.assertEqual(endpoint["proxyjump"], "bastion")
+
+    def test_sync_replaces_bundle_jobs_but_preserves_custom_jobs(self):
+        reg = c.load_registry()
+        res = reg["resources"]["gpu"]
+        res["jobs"] = {"demo:old": {"capability": "demo"}, "custom": {"cmd": "true"}}
+        res["capabilities_installed"] = {"demo": {"version": 1}}
+        c.save_registry(reg, touched="gpu")
+        reply = {"capabilities": {"demo": {"manifest": {"name": "demo", "jobs": {"new": {"cmd": "true"}}}, "digest": "new"}}}
+        with patch.object(c, "remote_state", return_value=(0, reply)):
+            self.assertEqual(self.invoke(c.cmd_capability_sync, "gpu"), 0)
+        self.assertEqual(set(c.get_resource("gpu")["jobs"]), {"custom", "demo:new"})
+
+    def test_github_source_accepts_repository_urls_only(self):
+        self.assertEqual(c.github_source("https://github.com/owner/repo.git"), "https://github.com/owner/repo.git")
+        self.assertEqual(c.github_source("git@github.com:owner/repo.git"), "git@github.com:owner/repo.git")
+        for url in ("https://github.com.evil.test/o/r", "file:///tmp/repo", "https://github.com/o/../r"):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                c.github_source(url)
+
+    def test_repository_discovery_can_select_one_or_all(self):
+        repo = self.root / "bundles"
+        for cap in ("one", "two"):
+            directory = repo / "nested" / cap
+            directory.mkdir(parents=True)
+            (directory / "capability.yaml").write_text(yaml.safe_dump({"name": cap, "jobs": {"run": {"cmd": "true"}}}))
+        self.assertEqual(len(c.discover_bundles(repo, all_bundles=True)), 2)
+        self.assertEqual(c.validate_bundle(str(c.discover_bundles(repo, name="two")[0]))["name"], "two")
+        with self.assertRaises(ValueError):
+            c.discover_bundles(repo)
 
 
 class TargetTests(unittest.TestCase):
