@@ -1,5 +1,6 @@
 """Real local regressions for the controller and target protocol; no network."""
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -215,6 +216,21 @@ class ControllerTests(unittest.TestCase):
         self.assertNotEqual(first, second)
         self.assertTrue(first.startswith("artifact-"))
 
+    def test_revoked_host_keys_are_not_discovery_trust(self):
+        known = self.root / "known_hosts"
+        known.write_text("@revoked example.invalid ssh-ed25519 REVOKED\nexample.invalid ssh-ed25519 TRUSTED\n")
+        with patch.object(c, "known_hosts_path", return_value=str(known)):
+            self.assertEqual(c._known_host_keys("example.invalid"), {("ssh-ed25519", "TRUSTED")})
+
+    def test_cli_rejects_misspelled_mutation_options_without_network(self):
+        for arguments in (["register", "gpu", "test@example.invalid", "--accept-hostkeys"],
+                          ["lock", "gpu", "--reasn", "test"],
+                          ["unlock", "gpu", "--fore"], ["enable", "gpu", "--rot", "/tmp"],
+                          ["remove-capability", "gpu", "demo", "--purge-remot"]):
+            with self.subTest(arguments=arguments), patch.object(c, "ssh_run") as ssh:
+                self.assertEqual(self.invoke(c.main, arguments), 2)
+                ssh.assert_not_called()
+
 
 class TargetTests(unittest.TestCase):
     def setUp(self):
@@ -326,6 +342,33 @@ class TargetTests(unittest.TestCase):
         finally:
             proc.kill()
             proc.wait(timeout=5)
+
+    def test_catalog_upgrade_is_atomic_and_doctor_detects_corruption(self):
+        def install(stage, value, digest):
+            directory = self.root / ".staging" / stage
+            directory.mkdir(parents=True)
+            (directory / "runner.py").write_text(value)
+            return self.rpc("cap-commit", {"name": "demo", "stage": stage,
+                "manifest": {"name": "demo", "jobs": {"run": {"cmd": "true"}}}, "digest": digest,
+                "files": {"runner.py": hashlib.sha256(value.encode()).hexdigest()},
+                "source": {"url": "https://github.com/o/r.git", "commit": "a" * 40}})
+        self.assertEqual(install("first", "old", "one")[0], 0)
+        self.assertEqual(self.rpc("catalog", {})[1]["capabilities"]["demo"]["source"]["commit"], "a" * 40)
+        self.rpc("reserve", {"id": "busy", "token": "t", "limit": 1})
+        self.assertEqual(install("second", "new", "two")[0], 6)
+        self.assertEqual((self.root / "caps/demo/runner.py").read_text(), "old")
+        self.rpc("abort", {"id": "busy", "token": "t"})
+        self.assertEqual(install("third", "new", "two")[0], 0)
+        (self.root / "caps/demo/runner.py").write_text("tampered")
+        self.assertTrue(self.rpc("doctor", {})[1].get("payloadIssues"))
+
+    def test_removed_job_directory_does_not_allow_id_reuse(self):
+        import shutil
+        request = {"id": "history", "token": "one", "limit": 1}
+        self.assertEqual(self.rpc("reserve", request)[0], 0)
+        self.rpc("abort", request)
+        shutil.rmtree(self.root / "jobs/history")
+        self.assertNotEqual(self.rpc("reserve", dict(request, token="two"))[0], 0)
 
 
 if __name__ == "__main__":
