@@ -257,6 +257,11 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual((target / ".remote-compute/jobs/real/exitcode").read_text().strip(), "7")
         self.assertEqual((target / ".remote-compute/jobs/real/job.log").read_text(), "hello")
 
+    def test_add_job_rejects_invalid_parameter_patterns(self):
+        for parameter in ("value:[", "jobdir:.*"):
+            self.assertEqual(self.invoke(c.cmd_add_job, ["gpu", "bad", "--workdir", "~", "--cmd", "echo {value}", "--param", parameter]), 2)
+        self.assertNotIn("bad", c.get_resource("gpu")["jobs"])
+
 
 class TargetTests(unittest.TestCase):
     def setUp(self):
@@ -330,7 +335,7 @@ class TargetTests(unittest.TestCase):
     def test_real_launch_captures_activation_failure_and_is_idempotent(self):
         request = {"id": "activate-fails", "token": "token", "limit": 1}
         self.assertEqual(self.rpc("reserve", request)[0], 0)
-        request.update(workdir=str(self.root), cmd="touch SHOULD_NOT_EXIST", activate="false")
+        request.update(workdir=str(self.root), cmd="touch SHOULD_NOT_EXIST; touch ALSO_MUST_NOT_EXIST", activate="false")
         first = self.rpc("launch", request)
         self.assertEqual(first[0], 0, first)
         self.assertEqual(self.rpc("launch", request)[0], 0)
@@ -339,6 +344,7 @@ class TargetTests(unittest.TestCase):
             time.sleep(0.05)
         self.assertEqual(self.rpc("status", {"id": request["id"]})[1]["state"], "failed")
         self.assertFalse((self.root / "SHOULD_NOT_EXIST").exists())
+        self.assertFalse((self.root / "ALSO_MUST_NOT_EXIST").exists())
 
     def test_cancelled_supervisor_does_not_hide_live_descendant(self):
         job = self.root / "jobs" / "descendant"
