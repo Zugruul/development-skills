@@ -1,5 +1,6 @@
 """Real local regressions for the controller and target protocol; no network."""
 import contextlib
+import fcntl
 import hashlib
 import importlib.util
 import io
@@ -403,6 +404,18 @@ class TargetTests(unittest.TestCase):
         self.rpc("abort", request)
         shutil.rmtree(self.root / "jobs/history")
         self.assertNotEqual(self.rpc("reserve", dict(request, token="two"))[0], 0)
+
+    def test_catalog_read_waits_for_atomic_payload_commit(self):
+        with open(self.root / ".state.lock", "a+") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            proc = subprocess.Popen(["python3", str(SHARED / "compute-state.py"), "catalog", "{}"],
+                                    env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                time.sleep(0.2)
+                self.assertIsNone(proc.poll(), "catalog read crossed an in-progress bundle commit")
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+                proc.communicate(timeout=5)
 
     def test_unverified_legacy_pid_is_not_signalled(self):
         job = self.root / "jobs/legacy"
