@@ -139,6 +139,13 @@ class ControllerTests(unittest.TestCase):
             result = subprocess.run([str(command)] + arguments, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
             self.assertIn(expected, result.stdout)
+        target = self.root / "local-target"
+        job = target / "jobs/waiting"
+        job.mkdir(parents=True)
+        (job / "record.json").write_text(json.dumps({"phase": "reserved", "expires": time.time() + 60}))
+        result = subprocess.run([str(command), "local", "status", "waiting"], env=dict(os.environ, REMOTE_COMPUTE_ROOT=str(target)), text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("state:     reserved", result.stdout)
 
     def test_doctor_is_read_only_and_reports_unreachable(self):
         before = Path(c.registry_path()).read_bytes()
