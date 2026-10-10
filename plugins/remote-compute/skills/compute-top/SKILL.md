@@ -63,8 +63,11 @@ so rather than failing obscurely.
 
 Each row is one job: state, id, age, duration, exit code, log size. Duration is
 wall time from start to exit for a finished job, and elapsed-so-far for a
-running one. `running` means no
-`exitcode` file has appeared yet; `failed` means a non-zero exit code. Payload
+running one. Updated tools distinguish `running` (live tracked process),
+`reserved` (not launched), `cancelling` (processes remain), `lost` (dead/reused PID
+without an exit code), and `unknown` (insufficient evidence). `failed` means a
+non-zero exit code. Install/update the state helper together with the dashboard
+using `install-tools NICK`; never infer success from a missing process. Payload
 directories (`_caps`, `_tools`) are not jobs and are never listed.
 
 ```
@@ -98,7 +101,7 @@ top, `G` to the end.
 
 ## Rules
 
-- **Never delete a running job.** The script refuses `d` on one; do not work
+- **Delete only confirmed terminal jobs.** The script refuses `d` otherwise; do not work
   around that by removing the directory another way, because dispatch is still
   writing to it.
 - Deletion removes a job directory and its log permanently, and there is no

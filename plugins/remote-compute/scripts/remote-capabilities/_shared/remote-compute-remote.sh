@@ -7,9 +7,9 @@
 # human at the keyboard and the orchestrator over ssh see one picture.
 # Plain bash + python3 (for the dashboard). Never sudo. bash 3.2 compatible.
 set -u
-VERSION="0.1.0"
+VERSION="0.2.0"
 ROOT="${REMOTE_COMPUTE_ROOT:-$HOME/.remote-compute}"
-JOBS="$ROOT/jobs"; CAPS="$ROOT/caps"; TOOLS="$ROOT/tools"; BIN="$ROOT/bin"
+JOBS="$ROOT/jobs"; CAPS="$ROOT/caps"; TOOLS="${REMOTE_COMPUTE_TOOLS:-$ROOT/tools}"; BIN="$ROOT/bin"
 
 die() { echo "remote-compute: $*" >&2; exit 2; }
 
@@ -18,24 +18,45 @@ usage() {
 remote-compute $VERSION — this machine is a remote-compute resource ($ROOT)
 
   top [--interval N]   live job dashboard (arrows browse, enter opens a log, q quits)
-                       also reachable as the bare command `compute-top`
+                       also reachable as the bare command compute-top
   jobs                 one-shot job table (pipe-friendly)
   running              ids of jobs still running
   log <id> [-f]        last 100 lines of a job's log (-f follows)
   status <id>          state, exit code, pid, timestamps, paths of one job
   cancel <id> [--yes]  stop a running job (TERM to its process group; asks first)
-  caps                 installed capability bundles
+  caps | capabilities  installed capability bundles on this machine
   gpu                  GPU summary (nvidia-smi, WSL path aware; Apple GPU on macOS)
   disk                 free space and size of the job/capability roots
   paths                where everything lives
   identity             which registered resource this machine is (its .identity stamp)
   version | help
+
+Controller commands (installed with install-cli or install-tools):
+  register <nick> user@host | probe <nick> | list | connect [nick] | scan [nick]
+  enable <nick> --root DIR | disable <nick> --root DIR
+  capabilities list
+  capabilities installed [<nick>]
+  capabilities install <nick> <name-or-bundle-dir> [--env NAME]
+  capabilities install <nick> <github-url> [name | --all] [--ref REF]
+  capabilities sync <nick> | capabilities validate <bundle-dir>
+  remove-capability <nick> <name> [--purge-remote | --retire-remote]
+  add-env <nick> NAME --activate CMD | envs <nick>
+  add-job <nick> NAME --cmd CMD --workdir DIR | remove-job <nick> NAME
+  jobs <nick> | run <nick> JOB [--param key=value]
+  exec <nick> -- COMMAND | dispatch <nick> --workdir DIR --cmd COMMAND
+  job-status <id> | job-logs <id> | job-pull <id> | job-cancel <id>
+  lock <nick> | unlock <nick> | policy <nick> --max-concurrent-jobs N
+  doctor [nick] [--json] | install-cli [--prefix DIR] | install-tools <nick>
+  identity <nick> | remove <nick> | setup-sheet wsl2|linux|macos
+
+Use controller --help for full options; local <command> forces machine-local mode.
 USAGE
 }
 
 job_dir() { # id -> dir, or die
-    [ $# -ge 1 ] && [ -n "$1" ] || die "job id required"
+    if [ $# -lt 1 ] || [ -z "$1" ]; then die "job id required"; fi
     case "$1" in */*|.*|_*) die "not a job id: $1" ;; esac
+    if [[ ! "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [ ${#1} -gt 64 ]; then die "not a job id: $1"; fi
     [ -d "$JOBS/$1" ] || die "no such job: $1 (see: remote-compute jobs)"
     echo "$JOBS/$1"
 }
@@ -48,10 +69,14 @@ pid_alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
 
 job_state() { # dir -> running|done|failed|unknown
     local d="$1"
+    if [ -f "$TOOLS/compute-state.py" ]; then
+        python3 "$TOOLS/compute-state.py" state-text "{\"id\":\"$(basename "$d")\"}"
+        return
+    fi
     if [ -f "$d/exitcode" ]; then
-        [ "$(cat "$d/exitcode" 2>/dev/null)" = "0" ] && echo done || echo failed
+        if [ "$(cat "$d/exitcode" 2>/dev/null)" = "0" ]; then echo 'done'; else echo failed; fi
     elif [ -f "$d/pid" ]; then
-        echo running
+        if pid_alive "$(cat "$d/pid")"; then echo running; else echo lost; fi
     else
         echo unknown
     fi
@@ -105,25 +130,19 @@ cmd_cancel() {
     local id yes=0 pid
     id="$(basename "$d")"
     [ "${1:-}" = "--yes" ] && yes=1
-    [ "$(job_state "$d")" = running ] || die "$id is not running (state: $(job_state "$d"))"
+    case "$(job_state "$d")" in running|cancelling) ;; *) die "$id is not running (state: $(job_state "$d"))" ;; esac
     pid="$(cat "$d/pid")"
     if [ "$yes" -ne 1 ]; then
         printf 'stop job %s (pid %s)? [y/N] ' "$id" "$pid"
         read -r ans
         case "$ans" in y|Y|yes) ;; *) echo "left running"; return 1 ;; esac
     fi
-    if command -v tmux >/dev/null 2>&1 && tmux has-session -t "cj-$id" 2>/dev/null; then
-        tmux kill-session -t "cj-$id"
-    elif pid_alive "$pid"; then
-        kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
+    if [ -f "$TOOLS/compute-state.py" ]; then
+        python3 "$TOOLS/compute-state.py" cancel "{\"id\":\"$id\"}" || return $?
+        echo "cancelled $id"
+        return 0
     fi
-    local i=0
-    while [ $i -lt 30 ] && [ ! -f "$d/exitcode" ] && pid_alive "$pid"; do sleep 0.1; i=$((i + 1)); done
-    if [ ! -f "$d/exitcode" ]; then
-        echo 143 > "$d/exitcode"
-        echo "[remote-compute] cancelled by $(whoami) at $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$d/job.log"
-    fi
-    echo "cancelled $id (exit $(cat "$d/exitcode"))"
+    die "state helper missing; run install-tools before cancelling, or verify the legacy process manually"
 }
 
 yaml_scalar() { # file key -> top-level scalar value; folded/literal blocks (>-, |) joined on one line
@@ -138,6 +157,10 @@ yaml_scalar() { # file key -> top-level scalar value; folded/literal blocks (>-,
 }
 
 cmd_caps() {
+    if [ -f "$TOOLS/compute-state.py" ]; then
+        python3 "$TOOLS/compute-state.py" caps-text '{}'
+        return
+    fi
     [ -d "$CAPS" ] || { echo "no capability bundles installed ($CAPS does not exist)"; return 0; }
     local d m name desc n=0
     for d in "$CAPS"/*/; do
@@ -193,6 +216,32 @@ main() {
     # invoked through the `compute-top` link: behave as `remote-compute top ...`
     case "$(basename "${0:-remote-compute}")" in compute-top) set -- top "$@" ;; esac
     local verb="${1:-help}"; [ $# -gt 0 ] && shift
+    local controller="${REMOTE_COMPUTE_CONTROLLER:-$ROOT/controller/remote-compute.py}"
+    if [ "$verb" = local ]; then
+        verb="${1:-help}"; [ $# -gt 0 ] && shift
+    else
+    case "$verb" in
+        controller) [ -f "$controller" ] || die "controller missing; run install-cli or install-tools"; exec python3 "$controller" "$@" ;;
+        capabilities)
+            if [ $# -gt 0 ]; then
+                [ -f "$controller" ] || die "capability management needs the controller; run install-cli or install-tools"
+                exec python3 "$controller" capabilities "$@"
+            fi ;;
+        register|probe|scan|enable|disable|add-env|envs|add-job|remove-job|run|list|exec|dispatch|lock|unlock|install-tools|install-cli|install-capability|remove-capability|remove|connect|setup-sheet|job-status|job-logs|job-pull|job-cancel|doctor|policy)
+            [ -f "$controller" ] || die "controller missing; run install-cli or install-tools"
+            exec python3 "$controller" "$verb" "$@" ;;
+        jobs) if [ $# -gt 0 ]; then [ -f "$controller" ] || die "controller missing"; exec python3 "$controller" jobs "$@"; fi ;;
+        identity) if [ $# -gt 0 ]; then [ -f "$controller" ] || die "controller missing"; exec python3 "$controller" identity "$@"; fi ;;
+        status) if [ $# -gt 0 ] && [ ! -d "$JOBS/$1" ] && [ -f "$controller" ]; then exec python3 "$controller" status "$@"; fi ;;
+    esac
+    fi
+    case "$verb" in
+        jobs|running|caps|capabilities|gpu|disk|paths|identity|whoami|version|--version|help|-h|--help)
+            [ $# -eq 0 ] || die "unexpected arguments to $verb" ;;
+        status) [ $# -eq 1 ] || die "usage: status <id>" ;;
+        log|logs) if [ $# -lt 1 ] || [ $# -gt 2 ]; then die "usage: log <id> [-f]"; fi; [ $# -lt 2 ] || [ "$2" = -f ] || die "unknown log option" ;;
+        cancel) if [ $# -lt 1 ] || [ $# -gt 2 ]; then die "usage: cancel <id> [--yes]"; fi; [ $# -lt 2 ] || [ "$2" = --yes ] || die "unknown cancel option" ;;
+    esac
     case "$verb" in
         top)        cmd_top "$@" ;;
         jobs)       cmd_top --once ;;

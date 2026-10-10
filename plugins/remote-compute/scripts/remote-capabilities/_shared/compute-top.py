@@ -31,12 +31,19 @@ stdlib only (curses) — nothing to install on the remote machine.
 """
 import argparse
 import curses
+import importlib.util
 import os
 import shutil
 import sys
 import time
 
 FILTERS = ("all", "running", "finished", "failed")
+STATE = None
+_state_path = os.path.join(os.path.dirname(__file__), "compute-state.py")
+if os.path.isfile(_state_path):
+    _spec = importlib.util.spec_from_file_location("compute_state", _state_path)
+    STATE = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(STATE)
 
 
 def human_age(seconds):
@@ -98,6 +105,12 @@ def read_jobs(root):
                 job["pid"] = f.read().strip().splitlines()[0]
         except (OSError, IndexError):
             pass
+        if STATE is not None:
+            try:
+                observed = STATE.snapshot(d)
+                job.update(state=observed["state"], exitcode=observed["exitcode"])
+            except (OSError, ValueError):
+                job["state"] = "unknown"
         jobs.append(job)
     jobs.sort(key=lambda j: j.get("started") or 0, reverse=True)
     return jobs
@@ -131,9 +144,9 @@ def matches(job, flt):
     if flt == "all":
         return True
     if flt == "running":
-        return job["state"] == "running"
+        return job["state"] in ("running", "reserved", "cancelling", "unknown")
     if flt == "finished":
-        return job["state"] in ("done", "failed")
+        return job["state"] in ("done", "failed", "cancelled")
     return job["state"] == "failed"
 
 
@@ -251,8 +264,9 @@ class Ui:
         if not jobs:
             return
         job = jobs[self.sel]
-        if job["state"] == "running":
-            self.message = "refusing to delete %s: it is still running" % job["id"]
+        observed = STATE.snapshot(job["dir"])["state"] if STATE else job["state"]
+        if observed not in ("done", "failed", "cancelled"):
+            self.message = "refusing to delete %s: state is %s" % (job["id"], observed)
             return
         if self.confirm(scr, "delete %s and its log?" % job["id"]):
             shutil.rmtree(job["dir"], ignore_errors=True)

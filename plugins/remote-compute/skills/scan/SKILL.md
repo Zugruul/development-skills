@@ -21,18 +21,19 @@ every registered machine, relay each status line, and summarise what moved.
 
 ## What it does
 
-1. For each registered machine, TCP-connects to port 22 at its recorded
+1. For each directly reachable machine, TCP-connects to its effective SSH port at its recorded
    address (never ICMP: Windows boxes block ping) and asks sshd for its host
    key. Key present and matching the pinned one: `OK <nick> <host>`, nothing
    written.
 2. Otherwise the machine is stale (`UNREACHABLE`, or `KEY_MISMATCH` when a
    stranger now answers at the old address). One sweep covers all stale
-   machines: the /24 of each old address plus this machine's own /24, unless
-   `--subnet` was given. Every address answering on port 22 is key-scanned.
+   machines per port: the /24 of each old address plus this machine's own /24,
+   unless `--subnet` was given. Proxied hosts are checked through strict SSH,
+   not swept on the local LAN; repair their tunnel/DNS/SSH route instead.
 3. A candidate is the same machine only when BOTH factors agree: it presents
    a key already pinned in known_hosts for the old address, AND its
-   `~/.remote-compute/.identity` stamp (written by `register`/`install-tools`,
-   holding the nick and only that) says `<nick>`. The stamp is read with
+   stable `~/.remote-compute/.machine-id` UUID agrees with the registry.
+   Legacy registrations still use their `.identity` nickname stamp. Identity is read with
    exactly the matched key pinned in a throwaway known_hosts, so trust never
    widens. On a match it pins that key under the new address, rewrites the
    `Host <nick>` block (keeping any Port/IdentityFile lines the human added),
@@ -56,16 +57,16 @@ the right key but another nick's stamp is refused too.
   if they are on a different LAN now, re-run with `--subnet`.
 - `NO_PINNED_KEY` (exit 1) -- nothing to identify the machine by. Re-run
   `register <nick> user@host` (it pins the key after the human's ack).
-- `IDENTITY_MISMATCH` (exit 7) -- the host key matches but the stamp names a
-  different nick. Usually one physical machine registered under two names.
-  Ask the human which name is right, then `install-tools <that nick>`
-  re-stamps it and `remove <the other>` retires the duplicate entry.
+- `IDENTITY_MISMATCH` (exit 7) -- the host key matches but the UUID (or legacy
+  stamp) differs. Investigate with the human; never overwrite identity to make
+  the check pass. Two clients may use different aliases for one stable UUID.
 - `DUPLICATE_IDENTITY` (exit 7) -- two or more addresses present the key AND
   claim the same nick (a cloned disk or VM, or an old image). **Ask the human
   which address is really `<nick>`** -- never guess -- then apply their
   answer with `scan <nick> --pick <nick>=<host>`. Offer to give the other
-  machine its own name with `register <newnick> user@<other host>`, which
-  stamps it; until then every scan will keep flagging the pair.
+  clone a genuinely new machine identity only after its owner confirms the
+  clone and its independently verified SSH key; renaming an alias does not
+  reset an existing UUID. Until resolved, scans keep flagging the pair.
 - `OK ... (no identity file yet)` -- a box registered before stamping existed;
   `install-tools <nick>` stamps it.
 - `NEEDS_KEY_AUTH` after `MOVED` -- the address converged but key login

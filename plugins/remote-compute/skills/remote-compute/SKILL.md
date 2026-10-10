@@ -34,6 +34,10 @@ python3 "../../scripts/remote-compute.py" register gpubox testuser@192.0.2.17
 python3 "../../scripts/remote-compute.py" enable gpubox --root "$(git rev-parse --show-toplevel)" --role training
 python3 "../../scripts/remote-compute.py" remove-job gpubox old-job
 python3 "../../scripts/remote-compute.py" remove-capability gpubox comfyui
+python3 "../../scripts/remote-compute.py" capabilities list
+python3 "../../scripts/remote-compute.py" capabilities install gpubox slm-training
+python3 "../../scripts/remote-compute.py" capabilities installed
+python3 "../../scripts/remote-compute.py" capabilities installed gpubox
 python3 "../../scripts/remote-compute.py" list
 python3 "../../scripts/remote-compute.py" connect ; # ssh one-liners per machine (the `ssh` skill)
 python3 "../../scripts/remote-compute.py" scan ; # re-find machines whose IP moved (the `scan` skill)
@@ -84,7 +88,8 @@ the committed config. Tell the human the resource is now available to this proje
 (non-exclusive — other projects may enable it too) and that tasks can
 reference it by alias or role. `disable` keeps the entry with
 `enabled: false`, like a disabled capability. Snapshots are informational —
-anything doing real work re-probes first.
+request `probe` explicitly when fresh hardware facts are needed; dispatch does
+not silently perform a full hardware re-probe.
 
 ## Hard rules (the script enforces these; do not work around them)
 
@@ -92,8 +97,9 @@ anything doing real work re-probes first.
    or transmit passwords.
 2. Never run sudo, locally or remotely — sudo payloads are rejected (exit 5);
    privileged steps are printed as instructions for the human.
-3. Probes are read-only; dispatch writes only inside the declared workdir and
-   `~/.remote-compute/jobs/`.
+3. Built-in hardware probes are read-only. Job and environment recipes are
+   trusted code, not sandboxed: they can write anywhere the SSH account permits.
+   Parameter quoting and the sudo-text check are not privilege boundaries.
 4. Every capability claim comes from real probe output; failures are recorded
    verbatim in the registry, never guessed.
 5. No dispatch to a resource locked by someone else (exit 6); `unlock --force`
@@ -120,19 +126,51 @@ shell-quoted; sudo templates rejected). When the human asks for an OUTCOME
 ## capability bundles (how domains plug in)
 
 The engine is domain-agnostic: it knows machines, envs, jobs, and transport,
-and nothing about any particular tool. A DOMAIN arrives as a **bundle** under
-`scripts/remote-capabilities/<name>/` — a `capability.yaml` manifest
-(`{name, description, payload[], jobs{}}`) plus the payload scripts its jobs
-invoke. `install-capability <nick> <bundle-dir>` rsyncs the payload to
-`~/.remote-compute/caps/<name>/` and declares the manifest's jobs as
-`<name>:<job>`; `capabilities <nick>` lists what a machine has.
+and nothing about any particular tool. A DOMAIN arrives as a **bundle** — a
+`capability.yaml` manifest (`{name, description, payload[], jobs{}}`) plus the
+payload scripts its jobs invoke. `capabilities list` shows the bundles shipped
+with this plugin. Install one by name, or pass a local bundle directory for a
+custom capability:
+
+```bash
+python3 "../../scripts/remote-compute.py" capabilities install gpubox comfyui
+python3 "../../scripts/remote-compute.py" capabilities install gpubox /path/to/my-capability
+```
+
+Installation rsyncs the payload to `~/.remote-compute/caps/<name>/` on the
+target and records the manifest's jobs as `<name>:<job>` in the caller's local
+registry and publishes a target-side catalog. Another registered client runs
+`capabilities sync NICK` to import that catalog without reinstalling payloads;
+it still declares needed environments locally with `add-env`. Legacy bundles
+need one reinstall to publish metadata. `capabilities installed` shows cached
+registered machine with its installed bundles; `capabilities installed <nick>`
+filters to one machine. The old `install-capability <nick> <bundle-dir>` and
+`capabilities <nick>` forms remain supported.
 
 Adding a new domain means adding a bundle — never editing `remote-compute.py`.
 Templates may use `{capdir}` (installed payload dir) and `{jobdir}`; every
-other placeholder is a validated job param. Use both placeholders BARE — they
-already expand to a safely quoted path (`"$HOME"/'...'`), so wrapping one in
-your own quotes (`--out "{jobdir}/sub"`) produces broken nesting. Bundle command templates are
-sudo-checked at install time.
+other placeholder is a validated job param. Values render once from the original
+template with shell quoting; bare, single-quoted, and double-quoted argument
+slots are supported. Keep slots in argument positions, not shell syntax or
+embedded programming languages. Bundle commands are sudo-checked at install time.
+
+GitHub repositories can supply bundles directly:
+
+```bash
+remote-compute capabilities install gpubox https://github.com/OWNER/REPO NAME --ref TAG
+remote-compute capabilities install gpubox git@github.com:OWNER/REPO.git --all
+remote-compute capabilities validate /path/to/bundle
+remote-compute capabilities sync gpubox
+remote-compute doctor gpubox --json
+```
+
+The repository must contain `capability.yaml` bundles, not arbitrary workflow
+files. Install only trusted sources. Git uses existing credentials/key-only SSH,
+never URL-embedded credentials; submodules and hooks are not run. Discovery
+validates all bundles before writes. Each bundle installation is atomic, but an
+`--all` batch can partially succeed. URL/ref/resolved commit provenance is saved.
+Installed means payload present, not dependencies/services ready; doctor checks
+configured environments, versions, catalog drift, connectivity and stale jobs.
 
 The shipped `comfyui` bundle documents its own rules in its manifest; the one
 that matters generally: a bundle must invoke PRE-AUTHORED artifacts and change
@@ -146,7 +184,8 @@ not part of the hermetic gate).
 For jobs that PRODUCE artifacts (images, video, models), let the capability
 name the run: omit `--job-id` and the bundle's `jobIdSchema` builds one. The
 shipped comfyui bundle uses `img-{model}-{seed}`, so a render lands as
-`img-waiillustrioussdxl-v150-129381729381723211`.
+`img-waiillustrioussdxl-v150-129381729381723211-<unique-suffix>` (long prefixes
+are truncated to keep IDs at most 64 characters).
 
 The shape matters because artifacts outlive the session that made them:
 
@@ -163,19 +202,29 @@ jobIdSchema:
 ```
 
 Any `{param}` of that job may appear in the template; values are slugified, so
-the id is always filename- and shell-safe. An explicit `--job-id` always wins.
+the id is always filename- and shell-safe. Each automatic run adds a unique
+suffix. An explicit `--job-id` always wins, but existing IDs are refused,
+never overwritten, including retries.
 Recommend the schema-derived id when the human is generating artifacts, and
 reserve hand-written ids for one-off experiments.
 
 ## dispatch and jobs
 
-`dispatch` takes the cooperative lock, syncs `--inputs` (rsync), launches the
-command detached on the remote (tmux, else setsid nohup) writing `job.log`,
-`pid`, and `exitcode` under `~/.remote-compute/jobs/JOBID/`, and records
-`~/.remote-compute/jobs/JOBID.json` locally. State is recoverable from those
-files alone — `job-status` works after any restart and releases the lock once
-the job has an exitcode. `job-logs` tails the remote log; `job-pull` rsyncs
-artifacts back.
+`dispatch` validates the environment, atomically reserves a target slot and
+persists a local receipt before staging inputs and launching a detached Python
+supervisor. Failed transfers never launch. `job.log`, `pid`, `record.json`, and
+`exitcode` live under `~/.remote-compute/jobs/JOBID/`; the client receipt is
+`~/.remote-compute/jobs/JOBID.json`. A lost launch response remains `unknown`:
+inspect `job-status` before retrying with a new ID. Reservations expire after an
+hour if never launched. `job-cancel` checks process fingerprints and does not
+claim success while tracked processes survive. Lost processes are not successful
+jobs. `job-logs` and `job-pull` retain their existing interfaces.
+Legacy jobs without a stored fingerprint remain readable, but cancellation
+requires manual process verification instead of signaling a potentially reused PID.
+
+Coordination is per target SSH account. All dispatching clients must be updated;
+old controllers and arbitrary commands outside this protocol are not serialized.
+Use `policy NICK --max-concurrent-jobs N`, not registry edits, for target limits.
 
 ## Retiring things
 
@@ -185,7 +234,9 @@ artifacts back.
 - `remove-capability <nick> NAME` uninstalls a bundle: it leaves the roster and
   every job it declared goes with it. The remote payload is LEFT IN PLACE,
   because "stop offering this here" does not imply deleting files on someone's
-  machine. `--purge-remote` opts into removing that one capability's directory.
+  machine. `--purge-remote` opts into removing that one capability's directory;
+  `--retire-remote` removes it from the shared catalog without deleting payloads.
+  Active work blocks both operations. Default removal is local and sync can restore it.
 - `remove <nick>` unregisters the machine itself and never touches the remote.
 
 None of these delete job history or artifacts. Use `compute-top` on the machine
@@ -197,10 +248,10 @@ for that, or delete a job directory there deliberately.
 `~/.remote-compute/tools/` on the box, installs
 `~/.remote-compute/bin/remote-compute` (linked from `~/.local/bin`, with a
 marker-fenced PATH line in the login shell files), and stamps
-`~/.remote-compute/.identity` with the nick and only that -- the second
-factor `scan` uses to recognise the machine at a new address. So the human
+`~/.remote-compute/.identity` with the first nickname, preserving old stamps,
+and adds a stable `.machine-id` UUID independent of client nicknames. So the human
 at the keyboard and this skill over ssh drive every machine the same way.
-`install-tools <nick>` re-ships and re-stamps after a plugin update;
+`install-tools <nick>` updates target tools and the controller after a plugin update;
 `identity <nick>` asks the machine who it thinks it is.
 
 ```bash
@@ -219,6 +270,12 @@ prints these per machine. Prefer `job-status`/`job-logs` here when you also
 need the orchestrator's job state updated; the on-machine command only reads
 and writes the machine's own `~/.remote-compute/`.
 
+`python3 scripts/remote-compute.py install-cli [--prefix DIR]` installs a
+combined command on WSL/Linux/macOS. Bare invocation shows help only. Local
+commands remain supported; controller verbs (including capability subcommands)
+are routed to the installed controller. `local` and `controller` prefixes
+resolve ambiguity. Do not set up native PowerShell for this workflow.
+
 In the dashboard, arrow keys navigate, enter opens a job's log tail with its
 exit code, `f` filters (all/running/finished/failed), `d` removes one job from
 history (never one that is still running), `D` purges finished jobs.
@@ -229,9 +286,9 @@ history (never one that is still running), `D` purges finished jobs.
   errors, and the setup sheets; they are written for the human.
 - Prefer the verbs over hand-editing `~/.remote-compute/resources.yaml`: the
   script writes envs (`add-env`), jobs (`add-job`), capabilities
-  (`install-capability`) and availability (`enable`). `policy.*` is the one
-  block with no verb yet, so power-policy confirmation and
-  `maxConcurrentJobs` are hand-edited today.
+  (`install-capability`) and availability (`enable`). Use `policy` to set the
+  shared concurrency limit; power-policy confirmation remains an informational
+  registry field.
 - A hand-edited `activate` line is still re-checked for sudo when a job
   dispatches, so editing the file cannot smuggle privileged commands past
   hard rule 2.

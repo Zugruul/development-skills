@@ -106,19 +106,41 @@ allocation:
   project entry, serializes work.
 - **Capability bundles are installable data.** A bundle has a
   `capability.yaml` manifest and its payload scripts. Run
-  `remote-compute install-capability <nickname> <path-to-bundle-folder>` to
-  install a bundle from any local folder or separate repository onto a machine;
-  it does not need to be added to this repository. The manifest declares the
-  jobs and validated parameters the bundle provides. `capabilities` and `jobs`
-  inspect what is installed.
+  `remote-compute capabilities list` to see shipped bundles, then
+  `remote-compute capabilities install <nickname> <bundle-name>` to install
+  one. A custom bundle can be installed by passing its local directory instead;
+  it can live outside this repository. GitHub repositories are supported via
+  `capabilities install <nickname> <github-url> <capability-name>` or `--all`,
+  optionally with `--ref <branch-tag-or-commit>`; provenance records the resolved
+  commit. Install only trusted bundles. Other clients register the same target
+  and run `capabilities sync <nickname>` to import its published job catalog,
+  without copying or reinstalling payloads. Environments remain client-configured.
+  `remote-compute capabilities installed` shows cached installations
+  across all registered machines; add a nickname to filter it. `jobs` inspects
+  the jobs registered for one machine. Controller command help is available via
+  `python3 plugins/remote-compute/scripts/remote-compute.py --help`; on a target,
+  `remote-compute help` lists both modes. Bare `caps`/`capabilities` inventories
+  the local target; `capabilities list|install|installed|sync|validate` manages
+  registered targets. `local` and `controller` prefixes resolve name collisions.
+  `install-cli [--prefix DIR]` installs the combined command on WSL/Linux/macOS;
+  `install-tools <nickname>` updates target tools. Native PowerShell is not a target.
 - **Jobs are constrained recipes.** Named jobs validate parameters before
   safely quoting them into pre-authored commands. Dispatches run detached with
-  recoverable status, logs, and outputs. Use `exec` or raw `dispatch` only when
+  recoverable status, logs, and outputs. IDs are immutable; automatic IDs have
+  unique suffixes. Target-side admission serializes cooperating clients sharing
+  an SSH account; `policy <nickname> --max-concurrent-jobs N` sets that limit.
+  `job-cancel` checks process identity and reports pending cancellation honestly.
+  Recipes are not an OS sandbox, and the sudo-text check is not a privilege boundary.
+  Use `exec` or raw `dispatch` only when
   the human has explicitly specified the command; for an outcome request, use a
   matching declared job.
 - **Operations are covered too.** `scan` finds a registered machine after its
   DHCP address changes; `ssh` prints connection commands; `compute-top` shows
-  queued, running, and completed work; setup sheets explain host preparation.
+  reserved, running, and completed work; setup sheets explain host preparation.
+  `doctor [nickname] [--json]` checks connectivity, tool versions, catalog drift,
+  environments, and stale jobs without changing configuration. Dispatch does not
+  silently rerun hardware probes. New targets have stable UUIDs independent of
+  client nicknames; legacy registries, stamps, jobs, and command aliases remain readable.
 
 | Skill | Purpose |
 | --- | --- |

@@ -2,4 +2,8 @@
 # stub ssh -- records argv, then delegates to the per-test handler script.
 # The handler receives the full ssh argv; the remote payload is the last arg.
 printf 'ssh %s\n' "$*" >> "${FAKE_TRANSPORT_LOG:?FAKE_TRANSPORT_LOG unset}"
+case "${!#}" in
+    *_REMOTE_COMPUTE_PROTOCOL_V1_*) exec python3 "$(dirname "$0")/protocol.py" "$@" ;;
+esac
+[ "${FAKE_SSH_RC:-0}" -eq 0 ] || exit "$FAKE_SSH_RC"
 exec bash "${FAKE_SSH_HANDLER:?FAKE_SSH_HANDLER unset}" "$@"

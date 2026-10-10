@@ -36,7 +36,7 @@ check "bare command: prints help" "version | help" "$out"
 check_absent "bare command: help does not invoke compute-top" "COMPUTE_TOP_SHOULD_NOT_RUN" "$out"
 out="$(run_rcmd help 2>&1)"; check "help: lists top" "top" "$out"; check "help: lists cancel" "cancel" "$out"
 check "help: names the capability inventory alias" "caps | capabilities" "$out"
-check "help: distinguishes controller bundle management" "Controller-side bundle management" "$out"
+check "help: distinguishes controller bundle management" "Controller commands" "$out"
 check "help: lists capability install command" "capabilities install <nick>" "$out"
 out="$(run_rcmd version 2>&1)"; check "version prints" "on-machine command" "$out"
 out="$(run_rcmd bogus 2>&1)"; rc=$?; check_rc "unknown verb: exit 2" 2 "$rc"; check "unknown verb: says so" "unknown verb" "$out"
@@ -76,6 +76,15 @@ check "caps: folded block description resolved" "first folded line second folded
 check_absent "caps: no raw block indicator" ">-" "$out"
 
 out="$(run_rcmd cancel done1 --yes 2>&1)"; rc=$?; check_rc "cancel: finished job refused" 2 "$rc"
+# Updated tools require a stored process fingerprint before signaling. The
+# older layout above still exercises read compatibility without the helper.
+cp "$PLUGIN/scripts/remote-capabilities/_shared/compute-state.py" "$RROOT/tools/"
+python3 - "$RROOT/tools/compute-state.py" "$RROOT/jobs/run1" "$RPID" <<'PY'
+import importlib.util, json, pathlib, sys
+spec = importlib.util.spec_from_file_location("state", sys.argv[1])
+state = importlib.util.module_from_spec(spec); spec.loader.exec_module(state)
+pathlib.Path(sys.argv[2], "record.json").write_text(json.dumps({"phase": "running", "processIdentity": state.process_identity(int(sys.argv[3]))}))
+PY
 out="$(run_rcmd cancel run1 --yes 2>&1)"; rc=$?
 check_rc "cancel: exit 0" 0 "$rc"
 check "cancel: reports" "cancelled run1" "$out"

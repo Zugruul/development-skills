@@ -1,7 +1,7 @@
 {
     "name": "remote-compute",
     "description": "Register remote machines (SSH, key-only) as user-level compute resources, advertise them to projects, and dispatch jobs/capability bundles (ComfyUI, SLM training) to them. Requires the spec-workflow plugin: resource availability is advertised through spec-workflow's .neural-network/project.local.yaml overlay and read back via its config loader.",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "author": {
         "name": "event-sorcerer",
         "url": "https://github.com/event-sorcerer"

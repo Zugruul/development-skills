@@ -23,8 +23,8 @@ Five ideas. Once these click, everything else follows.
 nickname when you register it. Everything afterwards refers to that nickname.
 
 **The registry** is a file on *your* computer listing the machines you know
-about, what hardware each has, and what work each can do. It is the only thing
-the tool reads to decide where work goes.
+about, what hardware each has, and what work each can do. Its cached declarations
+select recipes; the target independently enforces admission and bundle versions.
 
 **A capability** is support for a particular tool — an image generator, a model
 trainer. It arrives as a small folder holding a description file and any
@@ -40,6 +40,21 @@ its own log, and its own exit code, so you can check on it long after the fact.
 ---
 
 ## Part 1 — Preparing a machine
+
+Install the CLI on each controller, including WSL on Windows and your MacBook:
+
+```bash
+python3 plugins/remote-compute/scripts/remote-compute.py install-cli
+```
+
+This copies the CLI under `~/.local/share/remote-compute` and installs
+`~/.local/bin/remote-compute`; `--prefix DIR` changes both roots. Put the printed
+bin directory on PATH if necessary. Requirements: Python 3.8+, PyYAML, Bash,
+OpenSSH, rsync, and Git for GitHub sources. Native PowerShell is not supported.
+`remote-compute` alone prints help, with no job table. The combined command
+keeps local `top`, `jobs`, `status ID`, and `caps`; controller operations include
+`jobs NICK` and capability management. Explicit `local`/`controller` prefixes
+resolve collisions. `install-tools NICK` updates helpers on an existing target.
 
 This is the only part you do by hand, and only once per machine.
 
@@ -145,15 +160,60 @@ Support for a specific tool comes as a folder — a *bundle* — containing a
 description file and any scripts that must exist on the machine. Install it:
 
 ```bash
-remote-compute install-capability <nickname> <path-to-bundle-folder>
+remote-compute capabilities list
+remote-compute capabilities install <nickname> <bundle-name>
 ```
 
-This copies the scripts over and registers the jobs the bundle describes. See
-what a machine has:
+`capabilities list` shows the bundles shipped with the plugin. To install a
+custom bundle, pass its local directory instead of a bundle name:
 
 ```bash
-remote-compute capabilities <nickname>
+remote-compute capabilities install <nickname> <path-to-bundle-folder>
 ```
+
+Installing validates names, manifests, regexes, paths and checksums, stages
+payloads, then atomically replaces one bundle and its published catalog. Obsolete
+bundle jobs are removed on upgrade; custom jobs are preserved. Active work blocks
+payload replacement. Installation alone does not install dependencies or start
+services: use `doctor NICK` and the bundle's own checks to establish readiness.
+
+Another client registers the same machine (its nickname may differ) and runs
+`remote-compute capabilities sync NICK` to import the target catalog without
+reinstalling payloads. Each client still configures its environment activation
+declarations with `add-env`. Legacy payloads need one reinstall to publish metadata.
+See cached installations across all machines, or filter by one target:
+
+```bash
+remote-compute capabilities installed
+remote-compute capabilities installed <nickname>
+remote-compute jobs <nickname>
+```
+
+### Installing from GitHub
+
+```bash
+remote-compute capabilities install storm590x https://github.com/OWNER/REPO CAPABILITY
+remote-compute capabilities install storm590x https://github.com/OWNER/REPO --all --ref v1.2.0
+remote-compute capabilities install storm590x git@github.com:OWNER/PRIVATE-REPO.git CAPABILITY
+```
+
+The repository must contain bundle directories with `capability.yaml` and their
+declared payload files. A workflow JSON/YAML file alone is not a bundle. Capability
+names come from manifests, not directory names. Omit the name only when exactly
+one bundle exists, or use `--all`; duplicate names are refused. `--ref` accepts a
+branch, tag, or commit (default: remote HEAD). Every installation records its
+repository URL, requested ref, and resolved commit SHA on the target and client.
+Use a commit SHA for reproducibility. Private repositories use existing Git
+credentials or SSH keys; credentials must not appear in the URL.
+
+All manifests/payload paths are checked before any installation. Each bundle is
+atomic, not the entire `--all` batch: a failure stops the batch and reports that
+earlier successes remain. No submodules or repository hooks are run. Install only
+trusted repositories: commands and payloads execute with the SSH user's access.
+Manifest validation, parameter quoting, and the sudo-text guard are not a sandbox.
+
+The older `install-capability <nickname> <path-to-bundle-folder>` and
+`capabilities <nickname>` forms remain supported for compatibility.
 
 The important property: **installing support for a new tool never requires
 changing the software.** A bundle is data. This is why one machine can serve
@@ -354,8 +414,12 @@ done      creature-portrait-041        age 2h11m    took 25s     exit 0    log 2
 failed    creature-portrait-040        age 2h14m    took 1s      exit 2    log 345B
 ```
 
-`running` means no exit code has appeared yet. Duration is time from start to
-finish for a completed run, and time elapsed so far for one still going.
+`running` means the tracked process is alive. `reserved` means admitted but not
+launched; `cancelling` means tracked processes have not all stopped; `lost` means
+the recorded process died or changed identity without an exit code; `unknown`
+means there is insufficient evidence. Lost is not success. Duration is time
+from start to exit, or elapsed time for active work. Update target tools to get
+these states in the dashboard; legacy receipts remain inspectable.
 
 ### Using it
 
@@ -371,7 +435,7 @@ finish for a completed run, and time elapsed so far for one still going.
 | `r` | refresh now |
 | ctrl-c | quit |
 
-It refuses to delete a run that is still going. Deleting is permanent and
+It permits deletion only for confirmed terminal runs. Deleting is permanent and
 removes that run's log and results from the machine.
 
 ### Watching more than one machine
@@ -386,12 +450,10 @@ ssh -t <second-machine> 'python3 ~/.remote-compute/tools/compute-top.py'
 
 ### If the dashboard is not there
 
-It is a single file and can simply be copied over:
+Update the dashboard and its state helper together:
 
 ```bash
-rsync -az -e "ssh -o BatchMode=yes" \
-  <path-to>/compute-top.py \
-  <nickname>:.remote-compute/tools/
+remote-compute install-tools <nickname>
 ```
 
 If it reports no job folder, nothing has been sent to that machine yet — the
@@ -415,8 +477,12 @@ and why. Jobs also take the lock automatically for their duration.
 **A concurrency limit.** By default a machine runs one job at a time. Anything
 sent while it is busy is refused with a message naming what is running. This is
 deliberately strict: two heavy jobs on one graphics card is usually worse than
-waiting. Raise the limit in the registry if your machine can genuinely handle
-more.
+waiting. Set a shared limit explicitly with
+`remote-compute policy NICK --max-concurrent-jobs 2` if the machine can handle more.
+Admission and manual locks are atomic on the target, across clients sharing the
+same SSH account. Separate accounts have separate state. All dispatching clients
+must be updated; legacy controllers and commands run outside the CLI cannot be
+serialized by this cooperative protocol.
 
 If the machine cannot be reached to check, the request is refused rather than
 allowed. A machine too busy to answer is exactly when you least want to pile on.
@@ -439,6 +505,40 @@ never touches it.
 
 None of these delete run history or results. Use the dashboard on the machine
 for that.
+
+`--retire-remote` marks a capability inactive in the shared catalog while keeping
+its payload. `--purge-remote` deletes that payload only. Without either flag,
+removal is local to this client and a later `capabilities sync` can restore it.
+
+## Diagnostics and recovery
+
+```bash
+remote-compute doctor storm590x --json
+remote-compute job-status RUN_ID
+remote-compute job-cancel RUN_ID
+```
+
+Doctor checks connectivity, stable UUID, tool version, catalog drift, configured
+environments and stale jobs without modifying configuration. It executes your
+trusted environment activation/verification recipes; it is not a dependency
+installer or a guarantee that every workflow will run. Dispatch does not perform
+a full hardware re-probe; request `probe NICK` explicitly when fresh facts matter.
+
+Run IDs are immutable. Automatic IDs retain the bundle's naming prefix and add
+a unique suffix; explicit duplicate IDs are refused. Input-transfer or activation
+failures do not proceed to the workload. A lost SSH reply leaves an `unknown`
+receipt; inspect that ID before retrying with a new ID. Unlaunched reservations
+expire after one hour. Cancellation uses recorded process fingerprints and
+reports pending cancellation if tracked processes remain alive; it never invents
+an exit code for them. This is process-group coordination, not OS containment.
+Legacy jobs without a saved process fingerprint remain inspectable, but updated
+cancellation refuses to signal an unverified PID; verify and stop those manually.
+
+The target keeps a stable `.machine-id` UUID independent of each client's
+nickname, preserving the old `.identity` stamp for compatibility. SSH's effective
+Port and ProxyJump/ProxyCommand are honored; scans are port-aware. Proxied hosts
+are checked through SSH and are not scanned on your local LAN. Legacy stamps
+remain readable; a UUID mismatch requires investigation, not automatic restamping.
 
 ---
 

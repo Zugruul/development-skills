@@ -230,7 +230,7 @@ check "dispatch: state file exists" "j1" "$(ls "$CH/jobs")"
 # present); pin the detached-launch shape, not merely that ssh ran
 : > "$TLOG"
 run_compute dispatch gpubox --workdir "~/train" --cmd "python train.py" --holder bob --job-id jshape >/dev/null 2>&1
-check "dispatch: launches detached (tmux else setsid)" "tmux new-session -d" "$(cat "$TLOG")"
+check "dispatch: launches through target supervisor" "protocol launch" "$(cat "$TLOG")"
 check "dispatch: writes exitcode for file-only recovery" "exitcode" "$(cat "$TLOG")"
 check "dispatch: exports COMPUTE_JOB_DIR for artifacts" "COMPUTE_JOB_DIR" "$(cat "$TLOG")"
 out="$(run_compute dispatch gpubox --workdir "~/train" --cmd "sudo python train.py" --holder bob --job-id j2 2>&1)"; rc=$?
@@ -293,7 +293,7 @@ check_absent "capabilities list: omits shared support scripts" "_shared" "$catal
 out="$(run_compute capabilities install gpubox slm-training 2>&1)"; rc=$?
 check_rc "capabilities install by name: exit 0" 0 "$rc"
 check "capabilities install by name: names installed bundle" "slm-training" "$out"
-check "capabilities install by name: ships payload" "remote-compute/caps/slm-training" "$(cat "$TLOG")"
+check "capabilities install by name: stages payload" "remote-compute/.staging/" "$(cat "$TLOG")"
 python3 - "$CH/resources.yaml" <<'PY'
 import sys
 import yaml
@@ -353,7 +353,7 @@ printf '#!/usr/bin/env python3\nprint("hi")\n' > "$BUNDLE/runner.py"
 out="$(run_compute capabilities install gpubox "$BUNDLE" 2>&1)"; rc=$?
 check_rc "capabilities install by path: exit 0" 0 "$rc"
 check "capabilities install by path: reports the capability" "demo" "$out"
-check "capabilities install by path: rsyncs the payload" "remote-compute/caps/demo" "$(cat "$TLOG")"
+check "capabilities install by path: commits the staged payload" "protocol cap-commit" "$(cat "$TLOG")"
 # rsync spawns its own ssh: without -e it bypasses BatchMode, the pinned
 # known_hosts and COMPUTE_SSH_CONFIG entirely (can block on a password prompt)
 _unhardened_rsync="$(grep '^rsync ' "$TLOG" | grep -cv 'BatchMode=yes' || true)"
@@ -388,7 +388,7 @@ check_absent "engine has no comfy code" "comfy" "$(grep -iv '^#' "$PLUGIN/script
 SLMB="$PLUGIN/scripts/remote-capabilities/slm-training"
 out="$(run_compute install-capability gpubox "$SLMB" 2>&1)"; rc=$?
 check_rc "slm-training: install exit 0" 0 "$rc"
-check "slm-training: payload rsynced" "remote-compute/caps/slm-training" "$(cat "$TLOG")"
+check "slm-training: payload staged" "remote-compute/.staging/" "$(cat "$TLOG")"
 jobs_out="$(run_compute jobs gpubox 2>&1)"
 check "slm-training: declares sft" "slm-training:sft" "$jobs_out"
 check "slm-training: declares export-gguf" "slm-training:export-gguf" "$jobs_out"
@@ -635,6 +635,7 @@ check "hostile workdir stays inert after tilde rewrite" "no" "$([ -f /tmp/RC_SHO
 TOP="$PLUGIN/scripts/remote-capabilities/_shared/compute-top.py"
 JT="$CT/jobsdir"; mkdir -p "$JT/j-run" "$JT/j-ok" "$JT/j-bad" "$JT/_caps"
 printf 'still going\n' > "$JT/j-run/job.log"
+printf '%s\n' "$$" > "$JT/j-run/pid"
 printf 'all good\n' > "$JT/j-ok/job.log"; printf '0\n' > "$JT/j-ok/exitcode"
 printf 'boom\n' > "$JT/j-bad/job.log"; printf '7\n' > "$JT/j-bad/exitcode"
 out="$(python3 "$TOP" --dir "$JT" --once 2>&1)"; rc=$?
@@ -650,7 +651,7 @@ check_absent "compute-top: missing dir has no traceback" "Traceback" "$out"
 # a half-written job (dispatch in flight) must not crash the reader
 mkdir -p "$JT/j-partial"
 out="$(python3 "$TOP" --dir "$JT" --once 2>&1)"
-check "compute-top: tolerates a half-created job dir" "running   j-partial" "$out"
+check "compute-top: half-created job is unknown, not asserted running" "unknown   j-partial" "$out"
 printf 'not-a-number\n' > "$JT/j-partial/exitcode"
 out="$(python3 "$TOP" --dir "$JT" --once 2>&1)"; rc=$?
 check_rc "compute-top: unreadable exitcode does not crash" 0 "$rc"
@@ -717,7 +718,7 @@ run_compute install-capability gpubox "$IDB" >/dev/null 2>&1
 : > "$TLOG"
 run_compute run gpubox idcap:render --param seed=12345 --param 'model=waiIllustriousSDXL_v150.safetensors' >/dev/null 2>&1
 _ids="$(ls "$CH/jobs" 2>/dev/null)"
-check "job id is derived from the declared schema" "img-waiillustrioussdxl-v150-12345.json" "$_ids"
+check "job id keeps its schema prefix with a unique run suffix" "img-waiillustrioussdxl-v150-12345-" "$_ids"
 # an explicit --job-id still wins over the schema
 run_compute run gpubox idcap:render --param seed=999 --param 'model=x.safetensors' --job-id explicit-wins >/dev/null 2>&1
 check "explicit --job-id overrides the schema" "explicit-wins.json" "$(ls "$CH/jobs")"
@@ -726,7 +727,7 @@ check "explicit --job-id overrides the schema" "explicit-wins.json" "$(ls "$CH/j
 # ALLOWS but that would still be ugly in a filename (spaces, slashes)
 run_compute run gpubox idcap:render --param seed=77 --param 'model=a b/c d.safetensors' >/dev/null 2>&1
 check_absent "schema-derived ids carry no path separators" "a b/c" "$(ls "$CH/jobs")"
-check "schema slugifies a hostile model name" "img-a-b-c-d-77.json" "$(ls "$CH/jobs")"
+check "schema slugifies a hostile model name" "img-a-b-c-d-77-" "$(ls "$CH/jobs")"
 # a template whose placeholders the job does not declare must NOT collapse to
 # a constant: two runs would share one id and the second would clobber the
 # first's state file
@@ -784,8 +785,8 @@ run_compute install-capability gpubox "$BUNDLE" >/dev/null 2>&1
 : > "$TLOG"
 out="$(run_compute remove-capability gpubox demo --purge-remote 2>&1)"; rc=$?
 check_rc "remove-capability --purge-remote: exit 0" 0 "$rc"
-check "purge-remote deletes only the capability dir" "rm -rf" "$(cat "$TLOG")"
-check "purge-remote targets that capability path" "caps/demo" "$(cat "$TLOG")"
+check "purge-remote requests guarded removal" 'protocol cap-remove {"name": "demo", "purge": true}' "$(cat "$TLOG")"
+check_absent "purge-remote does not interpolate a shell delete" "rm -rf" "$(cat "$TLOG")"
 out="$(run_compute remove-capability gpubox nope 2>&1)"; rc=$?
 check "remove-capability: unknown names what IS installed" "installed:" "$out"
 check_rc "remove-capability: unknown exit 2" 2 "$rc"
@@ -840,7 +841,7 @@ check "connect: dashboard one-liner" "ssh -t gpubox remote-compute top" "$out"
 check "connect: compute-top one-liner" "ssh -t gpubox compute-top" "$out"
 check "connect: job table one-liner" "ssh gpubox remote-compute jobs" "$out"
 check_absent "connect: never ICMP" "ping " "$(cat "$TLOG")"
-out="$(FAKE_NC_RC=1 run_compute connect 2>&1)"
+out="$(FAKE_SSH_RC=255 run_compute connect 2>&1)"
 check "connect: dark box is down" " down" "$out"
 check "connect: dark box points at scan" "scan gpubox" "$out"
 out="$(run_compute connect nosuch 2>&1)"; rc=$?

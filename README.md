@@ -92,13 +92,36 @@ from wherever you are working — typically driving a GPU box from a laptop.
   the machine, so status and logs are recoverable afterwards.
 - **Tools plug in as data.** Supporting a new tool (image generation, model
   training) means adding a small bundle folder, never changing the software.
-- **Safe by construction.** Values are validated then quoted, workflows are
-  never rewritten, and it never runs privileged commands — those are printed
-  for you instead.
+- **Validated recipes.** Values are validated and quoted once; workflows are
+  pre-authored. Bundles execute trusted code with the SSH account's permissions,
+  not inside a sandbox. Privileged setup steps are printed for the human.
 
 A machine is registered once, told which environments and tools it has, and then
 given named job recipes you run with different parameters. A terminal dashboard
 on the machine shows what is queued, running, and finished.
+
+The controller CLI help is `python3 plugins/remote-compute/scripts/remote-compute.py --help`.
+It lists machine, job, and capability commands, including `capabilities list`,
+`capabilities install <nickname> <bundle-name-or-directory>`, and
+`capabilities installed [<nickname>]`. On a registered compute machine,
+`remote-compute help` lists local and controller commands. Bare `caps` (also
+`capabilities`) shows bundles on this machine. Install the combined CLI on
+WSL/Linux/macOS with `python3 plugins/remote-compute/scripts/remote-compute.py install-cli`.
+Existing local commands and legacy controller aliases remain supported.
+
+Capabilities can come directly from GitHub, without changing this marketplace:
+
+```bash
+remote-compute capabilities install storm590x https://github.com/OWNER/REPO CAPABILITY --ref main
+remote-compute capabilities install storm590x https://github.com/OWNER/REPO --all
+remote-compute capabilities sync storm590x  # on another registered client, e.g. a MacBook
+remote-compute doctor storm590x
+```
+
+The repository must contain `capability.yaml` bundles, not just arbitrary
+workflow files. Install only trusted code; installs record the resolved commit.
+Target-side admission coordinates clients sharing one SSH account, while stable
+UUIDs keep machine identity independent of each client's nickname.
 
 **→ Full guide: [docs/remote-compute.md](./docs/remote-compute.md)** — setup,
 registering a machine, declaring jobs, running and watching work, sharing a
