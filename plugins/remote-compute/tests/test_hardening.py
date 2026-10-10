@@ -231,6 +231,25 @@ class ControllerTests(unittest.TestCase):
                 self.assertEqual(self.invoke(c.main, arguments), 2)
                 ssh.assert_not_called()
 
+    def test_controller_dispatch_recovers_real_target_exit_code(self):
+        target = self.root / "target"
+        target.mkdir()
+        environment = dict(os.environ, REMOTE_COMPUTE_ROOT=str(target / ".remote-compute"), HOME=str(target))
+        def ssh(nick, payload, **kwargs):
+            result = subprocess.run(["bash", "-c", payload], env=environment, capture_output=True, text=True, timeout=15)
+            return result.returncode, result.stdout, result.stderr
+        with patch.object(c, "ssh_run", side_effect=ssh):
+            self.assertEqual(self.invoke(c.cmd_dispatch, ["gpu", "--workdir", str(target), "--cmd", "printf 'hello'; exit 7", "--job-id", "real"]), 0)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                if (target / ".remote-compute/jobs/real/exitcode").exists():
+                    break
+                time.sleep(0.05)
+            self.invoke(c.cmd_job_status, "real")
+        self.assertIn("finishedAt", c.load_job("real"))
+        self.assertEqual((target / ".remote-compute/jobs/real/exitcode").read_text().strip(), "7")
+        self.assertEqual((target / ".remote-compute/jobs/real/job.log").read_text(), "hello")
+
 
 class TargetTests(unittest.TestCase):
     def setUp(self):
@@ -323,6 +342,8 @@ class TargetTests(unittest.TestCase):
         try:
             self.assertEqual(parent.stdout.readline().strip(), "ready")
             (job / "pid").write_text(str(parent.pid))
+            broker = module("state", SHARED / "compute-state.py")
+            (job / "record.json").write_text(json.dumps({"processIdentity": broker.process_identity(parent.pid), "phase": "running"}))
             self.assertNotEqual(self.rpc("cancel", {"id": "descendant"})[0], 0)
             self.assertEqual(self.rpc("status", {"id": "descendant"})[1]["state"], "cancelling")
         finally:
@@ -369,6 +390,19 @@ class TargetTests(unittest.TestCase):
         self.rpc("abort", request)
         shutil.rmtree(self.root / "jobs/history")
         self.assertNotEqual(self.rpc("reserve", dict(request, token="two"))[0], 0)
+
+    def test_unverified_legacy_pid_is_not_signalled(self):
+        job = self.root / "jobs/legacy"
+        job.mkdir(parents=True)
+        proc = subprocess.Popen(["sleep", "30"], start_new_session=True)
+        try:
+            (job / "pid").write_text(str(proc.pid))
+            self.assertNotEqual(self.rpc("cancel", {"id": "legacy"})[0], 0)
+            self.assertIsNone(proc.poll())
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait(timeout=5)
 
 
 if __name__ == "__main__":
