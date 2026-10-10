@@ -9,6 +9,7 @@
 
 ### Other
 - Fix Codex marketplace plugin support (`f4ae023`)
+- Document marketplace skills in AGENTS (`194b18b`)
 
 ## v0.65.0 — 2026-10-05
 
