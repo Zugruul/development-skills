@@ -9,6 +9,10 @@
   > 1. Separate marketplace, cache, host reload, controller and target update steps.
   > 2. Exercise backup, recovery and custom capability preservation in disposable fixtures.
   > 3. Verify staged shared-tool payload content and normalized line endings.
+- **529:** reconcile peer review egress authority (#529) (`e9c70bd`)
+  > 1. Describe trusted local CLI provider transport and disclose both vendors.
+  > 2. Distinguish SSH registration from deferred HTTP endpoint authority.
+  > 3. Verify pending and folded contracts, provider routing, and authority reversal refusals.
 
 ### Chores
 - **release:** spec-workflow v0.66.0 (`9f2b213`)
