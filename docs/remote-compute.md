@@ -55,6 +55,11 @@ OpenSSH, rsync, and Git for GitHub sources. Native PowerShell is not supported.
 keeps local `top`, `jobs`, `status ID`, and `caps`; controller operations include
 `jobs NICK` and capability management. Explicit `local`/`controller` prefixes
 resolve collisions. `install-tools NICK` updates helpers on an existing target.
+For source/cache/host checks and controller/target upgrade recipes, see the
+[installed-update guide](remote-compute-updates.md). Follow its complete backup
+and custom-source review before reinstalling a legacy capability: replacement
+can remove mutable assets absent from the reviewed payload and `preservePaths`.
+The guide distinguishes supporting source revisions from older controllers.
 
 This is the only part you do by hand, and only once per machine.
 
@@ -180,7 +185,10 @@ services: use `doctor NICK` and the bundle's own checks to establish readiness.
 Another client registers the same machine (its nickname may differ) and runs
 `remote-compute capabilities sync NICK` to import the target catalog without
 reinstalling payloads. Each client still configures its environment activation
-declarations with `add-env`. Legacy payloads need one reinstall to publish metadata.
+declarations with `add-env`. Legacy payloads need a reviewed reinstall to publish
+metadata. First follow the [custom-catalog procedure](remote-compute-updates.md#legacy-custom-catalogs):
+back up the complete state and original custom source, then account for mutable
+files that replacement would discard. Do not substitute a built-in same-name bundle.
 See cached installations across all machines, or filter by one target:
 
 ```bash

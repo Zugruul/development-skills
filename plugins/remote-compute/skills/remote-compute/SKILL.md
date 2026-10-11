@@ -142,7 +142,10 @@ target and records the manifest's jobs as `<name>:<job>` in the caller's local
 registry and publishes a target-side catalog. Another registered client runs
 `capabilities sync NICK` to import that catalog without reinstalling payloads;
 it still declares needed environments locally with `add-env`. Legacy bundles
-need one reinstall to publish metadata. `capabilities installed` shows cached
+need a reviewed reinstall to publish metadata; first follow the installed-update
+guide linked below for complete backup, original-source comparison and mutable
+asset preservation. Never substitute a built-in same-name bundle for custom
+source. `capabilities installed` shows cached
 registered machine with its installed bundles; `capabilities installed <nick>`
 filters to one machine. The old `install-capability <nick> <bundle-dir>` and
 `capabilities <nick>` forms remain supported.
@@ -243,6 +246,18 @@ None of these delete job history or artifacts. Use `compute-top` on the machine
 for that, or delete a job directory there deliberately.
 
 ## The on-machine command
+
+For existing installations, use the [installed-update guide](../../../../docs/remote-compute-updates.md)
+(repository documentation; if absent in a packaged plugin, see the
+[published guide](https://github.com/Zugruul/development-skills/blob/main/docs/remote-compute-updates.md)).
+Verify the active host/profile/cache separately from standalone and target
+tools. Never resolve a legacy-catalog warning by overwriting a custom same-name
+bundle with the built-in one. Preserve complete backups and compare reviewed
+original source and mutable assets before reinstalling; `install-tools` does
+not install/update bundles. Missing models or datasets remain missing.
+Current reviewed source supports `preservePaths` for declared top-level runtime
+roots; verify the installing controller's revision before relying on it. Older
+controllers may ignore that field. Unlisted and unpreserved files can be lost.
 
 `register` ships `scripts/remote-capabilities/_shared/` to
 `~/.remote-compute/tools/` on the box, installs

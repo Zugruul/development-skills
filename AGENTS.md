@@ -152,6 +152,9 @@ allocation:
 See the [remote-compute user guide](docs/remote-compute.md) for machine setup,
 registration, environments, bundle/job authoring, dispatch, locking, and recovery.
 The plugin itself is documented in [plugins/remote-compute/README.md](plugins/remote-compute/README.md).
+For an existing installation, follow the [installed-update guide](docs/remote-compute-updates.md):
+verify source/cache/host separately from controller, target tools and catalog
+readiness, and back up reviewed custom bundles before any replacement.
 
 ### peer-review
 

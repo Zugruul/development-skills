@@ -1,5 +1,11 @@
 # remote-compute
 
+Updating an existing installation? Follow the [installed-update guide](../../docs/remote-compute-updates.md)
+for host/cache verification, standalone and target tools, and complete backup
+and recovery of legacy custom catalogs. Tool updates do not update bundles.
+If reading an installed package without the repository's root docs, use the
+[published guide](https://github.com/Zugruul/development-skills/blob/main/docs/remote-compute-updates.md).
+
 Register remote machines you own (SSH, key-only, `BatchMode=yes` always) as
 user-level compute resources, advertise their availability to projects, and
 dispatch jobs and capability bundles to them. Extracted from the spec-workflow
@@ -81,8 +87,10 @@ and pending jobs remain visible. `doctor [NICK] [--json]` diagnoses SSH, UUID,
 versions, environments, catalog drift, and stale jobs without changing configuration.
 
 Legacy registries, job receipts, payloads, local commands, and controller aliases
-remain readable. Reinstall legacy bundles once to publish their catalog; then
-other clients can sync it. Old controllers do not participate in the target
+remain readable. Publishing a legacy catalog requires a reviewed reinstall;
+first follow the installed-update guide's complete backup and custom-source
+comparison, because unlisted and unpreserved mutable files can be lost. Other clients can then
+sync the catalog. Old controllers do not participate in the target
 protocol: update every dispatching client for cross-client coordination.
 
 ## Tests

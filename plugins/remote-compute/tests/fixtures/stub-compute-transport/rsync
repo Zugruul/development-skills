@@ -1,4 +1,26 @@
 #!/usr/bin/env bash
-# stub rsync -- records argv only; no bytes are moved in the hermetic gate.
+# stub rsync -- records argv and optional shared payload evidence; no transport.
 printf 'rsync %s\n' "$*" >> "${FAKE_TRANSPORT_LOG:?FAKE_TRANSPORT_LOG unset}"
+if [[ -n "${FAKE_RSYNC_SHARED_CAPTURE:-}" && "${!#}" == *:.remote-compute/tools/ ]]; then
+    # Installer staging disappears on return, so capture the actual bytes now.
+    python3 - "$FAKE_RSYNC_SHARED_CAPTURE" "$@" <<'PY' || exit "$?"
+import hashlib
+import json
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[-2])
+files = {}
+for path in sorted(source.rglob("*")):
+    if path.is_file():
+        data = path.read_bytes()
+        files[path.relative_to(source).as_posix()] = {
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "symlink": path.is_symlink(),
+            "shellCRLF": path.suffix == ".sh" and b"\r\n" in data,
+        }
+with open(sys.argv[1], "a", encoding="utf-8") as capture:
+    capture.write(json.dumps({"source": str(source), "destination": sys.argv[-1], "files": files}) + "\n")
+PY
+fi
 exit 0

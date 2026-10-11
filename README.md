@@ -129,13 +129,17 @@ machine between projects, and adding support for a new tool.
 
 ## Update
 
-Pull the latest skills from this repo at any time:
+Refresh the marketplace listing, then update the installed plugin you need:
 
 ```bash
 claude plugin marketplace update development-skills
+claude plugin update remote-compute@development-skills
 ```
 
-or open `/plugin` in Claude Code and use **Update now** on the `development-skills` marketplace.
+For another plugin, substitute its name. In Claude Code's `/plugin` Installed
+view, **Update now** updates that plugin. Verify the installed copy, then reload
+plugins or start a new session. See the [installed-update guide](docs/remote-compute-updates.md)
+for source/profile checks, standalone and target updates, and custom-state recovery.
 
 ## Codex desktop install
 
@@ -147,7 +151,15 @@ codex plugin marketplace add Zugruul/development-skills
 
 Restart the ChatGPT desktop app, open the Plugins Directory, select **Development Skills**, and install the plugin or plugins you need. Start a new chat after installation so Codex loads their skills. For a local checkout, run `codex plugin marketplace add .` from the repository root instead.
 
-To update an installed marketplace, run `codex plugin marketplace upgrade development-skills`, then restart the desktop app. Marketplace installs keep the packaged skills together with their scripts, references, and templates. `install-skills.sh codex` is an alternative for linking the raw skill folders into a project's `.agents/skills/`; use one installation method per skill to avoid duplicates.
+Before updating, confirm `codex plugin marketplace list` includes
+`development-skills` in the same runtime/profile as the desktop's active skill
+path. Then run `codex plugin marketplace upgrade development-skills`, verify
+the installed files changed, and restart the desktop/start a new chat. An empty
+CLI listing does not prove the desktop has no plugin; resolve discrepancies
+before adding or reinstalling anything. Marketplace installs keep the packaged
+skills together with their scripts, references, and templates.
+`install-skills.sh codex` is an alternative for linking raw skill folders into
+a project's `.agents/skills/`; use one installation method per skill to avoid duplicates.
 
 Codex reads the repo's canonical agent instructions from [`AGENTS.md`](AGENTS.md); Claude Code reads [`CLAUDE.md`](CLAUDE.md), which points to the same file. Codex support is still being checked against the compatibility work in [`SPEC-CODEX-COMPAT.md`](SPEC-CODEX-COMPAT.md) and [`docs/BACKLOG-CODEX-COMPAT.md`](docs/BACKLOG-CODEX-COMPAT.md).
 

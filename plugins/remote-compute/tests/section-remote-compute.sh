@@ -58,14 +58,44 @@ check "profiler parser: still reports the real chip" "AMD Radeon Pro 5500M" "$ou
 CT="$(mktemp -d)"
 CH="$CT/compute-home"; SSHDIR="$CT/sshdir"; mkdir -p "$SSHDIR"
 TLOG="$CT/transport.log"; : > "$TLOG"
+SHARED_CAPTURE="$CT/shared-payload.jsonl"
 HANDLER="$CT/handler.sh"
 run_compute() {
     COMPUTE_HOME="$CH" COMPUTE_SSH_CONFIG="$SSHDIR/config" \
     COMPUTE_SSH_BIN="$CSTUB/ssh" COMPUTE_NC_BIN="$CSTUB/nc" \
     COMPUTE_KEYSCAN_BIN="$CSTUB/ssh-keyscan" COMPUTE_RSYNC_BIN="$CSTUB/rsync" \
     COMPUTE_PING_BIN="$CSTUB/ping" \
-    FAKE_TRANSPORT_LOG="$TLOG" FAKE_SSH_HANDLER="$HANDLER" FIXDIR="$CFIX" \
+    FAKE_TRANSPORT_LOG="$TLOG" FAKE_RSYNC_SHARED_CAPTURE="$SHARED_CAPTURE" \
+    FAKE_SSH_HANDLER="$HANDLER" FIXDIR="$CFIX" \
     python3 "$COMPUTE" "$@"
+}
+check_shared_payload() {
+    local shared_check_out shared_check_rc
+    shared_check_out="$(python3 - "$SHARED_CAPTURE" "$PLUGIN/scripts/remote-capabilities/_shared" 2>&1 <<'PY'
+import hashlib
+import json
+from pathlib import Path
+import sys
+
+records = [json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines()]
+assert len(records) == 1, records
+record = records[0]
+assert record["destination"] == "gpubox:.remote-compute/tools/", record
+root = Path(sys.argv[2])
+expected = {}
+for path in root.rglob("*"):
+    if path.is_file() and "__pycache__" not in path.relative_to(root).parts and path.suffix != ".pyc":
+        data = path.read_bytes()
+        if path.suffix == ".sh":
+            data = data.replace(b"\r\n", b"\n")
+        expected[path.relative_to(root).as_posix()] = {
+            "sha256": hashlib.sha256(data).hexdigest(), "symlink": False, "shellCRLF": False}
+assert expected, "shared tools source must not be empty"
+assert record["files"] == expected, (record["files"], expected)
+PY
+    )"; shared_check_rc=$?
+    check_rc "$1: shared destination, complete payload and LF bytes" 0 "$shared_check_rc"
+    if [[ "$shared_check_rc" -ne 0 ]]; then printf '%s\n' "$shared_check_out"; fi
 }
 cat > "$HANDLER" <<'EOF'
 #!/usr/bin/env bash
@@ -115,6 +145,7 @@ check "register hostkey: NEEDS_HOSTKEY_ACK" "NEEDS_HOSTKEY_ACK" "$out"
 check_rc "register hostkey: exit 4" 4 "$rc"
 
 # --- register: happy path (with hostkey ack) -----------------------------
+: > "$SHARED_CAPTURE"
 out="$(run_compute register gpubox testuser@192.0.2.17 --accept-hostkey 2>&1)"; rc=$?
 check_rc "register: exit 0" 0 "$rc"
 check "register: REGISTERED line" "REGISTERED gpubox" "$out"
@@ -139,7 +170,7 @@ _unhardened_ssh="$(grep '^ssh ' "$TLOG" | grep -cv 'BatchMode=yes' || true)"
 check "transport: every ssh invocation is BatchMode" "0" "$_unhardened_ssh"
 check "transport: BatchMode always" "-o BatchMode=yes" "$(cat "$TLOG")"
 check "transport: remote job layout converged" ".remote-compute/jobs" "$(cat "$TLOG")"
-check "register: ships _shared tools to the box" "remote-capabilities/_shared/ gpubox:.remote-compute/tools/" "$(cat "$TLOG")"
+check_shared_payload register
 check "register: installs the on-machine command" ".local/bin/remote-compute" "$(cat "$TLOG")"
 check "register: summary names the command" "remote-compute top" "$out"
 check "registry: tools block recorded" "installedAt" "$(cat "$CH/resources.yaml")"
@@ -817,11 +848,12 @@ check "bundle manifest env activates before the command" "source ~/bundleenv/bin
 
 # --- install-tools: re-ship on demand -------------------------------------
 : > "$TLOG"
+: > "$SHARED_CAPTURE"
 out="$(run_compute install-tools gpubox 2>&1)"; rc=$?
 check_rc "install-tools: exit 0" 0 "$rc"
 check "install-tools: TOOLS line" "TOOLS gpubox" "$out"
 check "install-tools: identity stamped" "identity stamped 'gpubox'" "$out"
-check "install-tools: rsync of _shared" "_shared/ gpubox:.remote-compute/tools/" "$(cat "$TLOG")"
+check_shared_payload install-tools
 check "install-tools: command copied into bin" ".remote-compute/bin/remote-compute" "$(cat "$TLOG")"
 check "install-tools: compute-top alias linked" ".local/bin/compute-top" "$(cat "$TLOG")"
 check "install-tools: PATH converged with a marker" ">>> remote-compute (managed" "$(cat "$TLOG")"

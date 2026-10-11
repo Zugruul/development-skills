@@ -7,6 +7,8 @@ import io
 import json
 import os
 from pathlib import Path
+import re
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -28,6 +30,294 @@ def module(name, path):
 
 
 c = module("controller", SCRIPTS / "remote-compute.py")
+REPO = SCRIPTS.parents[2]
+UPDATE_GUIDE = REPO / "docs/remote-compute-updates.md"
+
+
+class InstalledUpdateTests(unittest.TestCase):
+    """Exercise real installers with local transport and disposable user state."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.home = self.root / "home with spaces"
+        self.home.mkdir()
+        self.target = self.home / ".remote-compute"
+        environment = dict(os.environ, HOME=str(self.home), COMPUTE_HOME=str(self.root / "client"),
+                           REMOTE_COMPUTE_ROOT=str(self.target),
+                           PATH=str(self.home / ".local/bin") + ":" + os.defpath)
+        for key in ("REMOTE_COMPUTE_CONTROLLER", "REMOTE_COMPUTE_TOOLS", "BASH_ENV", "ENV"):
+            environment.pop(key, None)
+        self.environment = environment
+        env_patch = patch.dict(os.environ, environment, clear=True)
+        env_patch.start()
+        self.addCleanup(env_patch.stop)
+        c.save_registry({"schemaVersion": 1, "resources": {"fixture": {
+            "envs": {"custom": {"activate": "true"}},
+            "jobs": {"personal": {"cmd": "true", "workdir": "~"}},
+            "policy": {"maxConcurrentJobs": 1}}}})
+        self.seed(self.target, {
+            ".identity": b"original-alias\n", ".machine-id": b"fixture-stable-id\n",
+            "caps/comfyui/capability.yaml": b"name: comfyui\njobs:\n  original:\n    cmd: true\n",
+            "caps/comfyui/custom.py": b"print('custom, never builtin')\n",
+            "caps/comfyui/models/private.bin": b"\x00custom model\xff",
+            "caps/comfyui/workflows/custom.json": b'{"nodes": []}\n',
+            "caps/other/.installed.json": json.dumps({"manifest": {
+                "name": "other", "jobs": {"check": {"cmd": "true"}}}, "files": {}}).encode(),
+            "runtime/dataset.bin": b"\x00dataset\xff", "jobs/old/exitcode": b"0\n",
+            "jobs/old/job.log": b"legacy log\n", "jobs/old/outputs/result.bin": b"artifact\x00"})
+
+    def seed(self, root, files):
+        for relative, content in files.items():
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+
+    def snapshot(self, root):
+        return {str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+
+    def guide(self):
+        self.assertTrue(UPDATE_GUIDE.is_file(), "missing installed-update operational guide")
+        return UPDATE_GUIDE.read_text(encoding="utf-8")
+
+    def recipe(self, name, success=True, **variables):
+        match = re.search(r"<!-- recipe: " + re.escape(name) + r" -->\s*```bash\n(.*?)\n```",
+                          self.guide(), re.DOTALL)
+        self.assertIsNotNone(match, "missing executable guide recipe: " + name)
+        result = subprocess.run(["bash", "-eu", "-c", match.group(1)],
+                                env=dict(self.environment, **{k: str(v) for k, v in variables.items()}),
+                                cwd=self.root, capture_output=True, text=True, timeout=30)
+        if success:
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        else:
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        return result
+
+    def invoke(self, function, *args):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(function(*args), 0)
+
+    def local_shell(self, nick, payload, **kwargs):
+        self.assertEqual(nick, "fixture")
+        result = subprocess.run(["bash", "-c", payload], env=self.environment,
+                                capture_output=True, text=True, timeout=30)
+        return result.returncode, result.stdout, result.stderr
+
+    def local_rsync(self, *args):
+        # Replace only the transport address; staging and publish run unchanged.
+        self.assertTrue(args[-1].startswith("fixture:"), args)
+        return ["rsync", "-a", *args[:-1], str(self.home / args[-1].split(":", 1)[1]) + "/"]
+
+    def transport(self):
+        stack = contextlib.ExitStack()
+        stack.enter_context(patch.object(c, "ssh_run", side_effect=self.local_shell))
+        stack.enter_context(patch.object(c, "rsync_argv", side_effect=self.local_rsync))
+        return stack
+
+    def test_guide_is_reachable_from_every_operational_entry(self):
+        for relative in ("README.md", "AGENTS.md", "docs/remote-compute.md",
+                         "plugins/remote-compute/README.md",
+                         "plugins/remote-compute/skills/remote-compute/SKILL.md"):
+            path = REPO / relative
+            links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", path.read_text(encoding="utf-8"))
+            with self.subTest(entry=relative):
+                self.assertTrue(any((path.parent / link).resolve() == UPDATE_GUIDE
+                                    for link in links if "://" not in link), "missing update-guide link")
+
+    def test_guide_distinguishes_layers_and_custom_recovery(self):
+        guide = self.guide()
+        for heading in ("Source and active host", "Standalone controller", "Target tools",
+                        "Legacy custom catalogs", "Recovery", "Verification evidence"):
+            self.assertIn("## " + heading, guide)
+        for command in ("codex plugin marketplace list", "codex plugin marketplace upgrade development-skills",
+                        "claude plugin update remote-compute@development-skills", "install-cli",
+                        "install-tools", "capabilities sync", "doctor"):
+            self.assertIn(command, guide)
+        for source in ("https://developers.openai.com/plugins/build/plugins",
+                       "https://code.claude.com/docs/en/discover-plugins"):
+            self.assertIn(source, guide)
+        for concept in ("payload", "runtime", "backup", "rollback", "COMPUTE_HOME", "0.1.0",
+                        "PowerShell", "profile", "active skill path", "marketplace is absent",
+                        "preservePaths", "b0d84d3", "local repository", "older controllers"):
+            self.assertIn(concept, guide)
+
+    def test_packaged_entry_points_have_a_published_guide_fallback(self):
+        package = self.root / "plugin-cache/remote-compute/version"
+        shutil.copytree(SCRIPTS.parent, package, ignore=shutil.ignore_patterns("__pycache__"))
+        published = "https://github.com/Zugruul/development-skills/blob/main/docs/remote-compute-updates.md"
+        self.assertFalse((package / "../../docs/remote-compute-updates.md").resolve().exists())
+        for relative in ("README.md", "skills/remote-compute/SKILL.md"):
+            with self.subTest(entry=relative):
+                links = re.findall(r"\]\(([^)]+)\)", (package / relative).read_text(encoding="utf-8"))
+                self.assertIn(published, links)
+
+    def test_documented_controller_upgrade_repeats_without_touching_state(self):
+        prefix = self.root / "prefix with spaces"
+        before_target = self.snapshot(self.target)
+        before_client = self.snapshot(Path(c.compute_home()))
+        variables = dict(REVIEWED_SOURCE=SCRIPTS.parent, UPDATE_PREFIX=prefix)
+        self.recipe("install-controller", **variables)
+        installed = prefix / "share/remote-compute"
+        (installed / "obsolete-fixture").write_text("must be replaced")
+        (installed / "remote-compute.py").write_text("raise SystemExit('stale controller')\n")
+        for _ in range(2):
+            self.recipe("install-controller", **variables)
+            self.assertEqual((installed / "remote-compute.py").read_bytes(),
+                             (SCRIPTS / "remote-compute.py").read_bytes())
+            self.assertFalse((installed / "obsolete-fixture").exists())
+            for arguments in (["version"], ["controller", "version"], ["local", "status", "old"],
+                              ["caps"], ["capabilities"], ["capabilities", "fixture"], ["jobs", "fixture"]):
+                result = subprocess.run([str(prefix / "bin/remote-compute"), *arguments],
+                                        env=self.environment, capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.snapshot(self.target), before_target)
+        self.assertEqual(self.snapshot(Path(c.compute_home())), before_client)
+
+    def test_target_tool_updates_preserve_custom_payloads_history_and_identity(self):
+        protected = self.snapshot(self.target)
+        registry = c.load_registry()["resources"]["fixture"]
+        shared_source = self.root / "shared CRLF source"
+        shutil.copytree(SHARED, shared_source, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        for script in shared_source.rglob("*.sh"):
+            script.write_bytes(script.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+        source_before = self.snapshot(shared_source)
+        self.assertTrue(any(b"\r\n" in data for name, data in source_before.items() if name.endswith(".sh")))
+        with self.transport(), patch.object(c, "SHARED_TOOLS_DIR", str(shared_source)):
+            for _ in range(2):
+                self.invoke(c.cmd_install_tools, "fixture")
+                self.assertEqual(self.snapshot(self.target / "tools"), {
+                    name: data.replace(b"\r\n", b"\n") if name.endswith(".sh") else data
+                    for name, data in source_before.items()})
+                self.assertEqual(self.snapshot(shared_source), source_before)
+                for relative, content in protected.items():
+                    self.assertEqual((self.target / relative).read_bytes(), content, relative)
+                current = c.get_resource("fixture")
+                for key in ("envs", "jobs", "policy"):
+                    self.assertEqual(current[key], registry[key])
+                self.assertEqual(current["machineId"], "fixture-stable-id")
+                for relative in (".profile", ".bashrc", ".zshenv"):
+                    self.assertEqual((self.home / relative).read_text().count(c.PATH_MARKER), 1)
+                self.assertEqual((self.target / "controller/remote-compute.py").read_bytes(),
+                                 (SCRIPTS / "remote-compute.py").read_bytes())
+                result = subprocess.run([str(self.home / ".local/bin/remote-compute"), "version"],
+                                        capture_output=True, text=True, env=self.environment)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(c.VERSION, result.stdout)
+        self.assertFalse((self.target / "caps/comfyui/.installed.json").exists())
+
+    def test_backup_and_restore_reject_unsafe_paths_before_writing(self):
+        backup = self.root / "good-backup"
+        self.recipe("backup-state", UPDATE_STATE_ROOT=self.target, UPDATE_BACKUP_DIR=backup)
+        through_link = self.root / "link-to-state"
+        through_link.symlink_to(self.target, target_is_directory=True)
+        broken = self.root / "broken"
+        broken.symlink_to(self.root / "absent")
+        existing = self.root / "existing"
+        existing.mkdir()
+        for recipe in ("backup-state", "restore-staging"):
+            for destination in (Path(recipe + "-relative"), self.target / (recipe + "-nested"),
+                                through_link / (recipe + "-linked"), broken, existing):
+                with self.subTest(recipe=recipe, destination=str(destination)):
+                    before = self.snapshot(self.target)
+                    variables = dict(UPDATE_STATE_ROOT=self.target)
+                    if recipe == "backup-state":
+                        variables["UPDATE_BACKUP_DIR"] = destination
+                    else:
+                        variables.update(UPDATE_BACKUP_DIR=backup, UPDATE_RESTORE_DIR=destination)
+                    self.recipe(recipe, success=False, **variables)
+                    self.assertEqual(self.snapshot(self.target), before)
+                    if destination not in (broken, existing):
+                        self.assertFalse((self.root / destination).exists())
+        with self.subTest(relative_source=True):
+            self.recipe("backup-state", success=False, UPDATE_STATE_ROOT=self.target.relative_to(self.root),
+                        UPDATE_BACKUP_DIR=self.root / "relative-source-backup")
+            self.assertFalse((self.root / "relative-source-backup").exists())
+        with self.subTest(relative_archive=True):
+            self.recipe("restore-staging", success=False, UPDATE_STATE_ROOT=self.target,
+                        UPDATE_BACKUP_DIR=backup.relative_to(self.root), UPDATE_RESTORE_DIR=self.root / "bad-restore")
+            self.assertFalse((self.root / "bad-restore").exists())
+
+    def test_reviewed_local_repository_preserves_declared_runtime_on_reinstall(self):
+        repository = self.root / "reviewed repository"
+        bundle = repository / "bundles/comfyui"
+        bundle.mkdir(parents=True)
+        manifest = {"name": "comfyui", "payload": ["custom.py", "workflows"],
+                    "preservePaths": ["models", "runtime"],
+                    "jobs": {"original": {"cmd": "python3 {capdir}/custom.py", "env": "custom"}}}
+        (bundle / "capability.yaml").write_text(yaml.safe_dump(manifest))
+        shutil.copytree(self.target / "caps/comfyui/workflows", bundle / "workflows")
+        model = self.target / "caps/comfyui/models/private.bin"
+        model_bytes, model_inode = model.read_bytes(), model.stat().st_ino
+        launcher = self.target / "caps/comfyui/runtime/venv/bin/custom-tool"
+        self.seed(self.target, {str(launcher.relative_to(self.target)):
+                  ("#!" + str(launcher.parent / "python") + "\n# fixture\n").encode()})
+        launcher.chmod(0o755)
+        launcher_bytes, launcher_inode = launcher.read_bytes(), launcher.stat().st_ino
+        with self.transport():
+            for revision in ("first", "second"):
+                (bundle / "custom.py").write_text("print(%r)\n" % revision)
+                self.invoke(c.cmd_capability_cli, ["install", "fixture", str(repository), "comfyui"])
+                self.assertEqual(model.read_bytes(), model_bytes)
+                self.assertEqual(model.stat().st_ino, model_inode)
+                self.assertEqual(launcher.read_bytes(), launcher_bytes)
+                self.assertEqual(launcher.stat().st_ino, launcher_inode)
+                self.assertEqual(launcher.stat().st_mode & 0o777, 0o755)
+                self.assertEqual((self.target / "caps/comfyui/custom.py").read_bytes(),
+                                 (bundle / "custom.py").read_bytes())
+                published = json.loads((self.target / "caps/comfyui/.installed.json").read_text())
+                self.assertEqual(published["manifest"], manifest)
+                self.assertEqual(published["source"]["kind"], "local-directory")
+                self.assertEqual(published["source"]["bundle"], "bundles/comfyui")
+                self.assertFalse(any(path.startswith(("models/", "runtime/")) for path in published["files"]))
+            self.invoke(c.cmd_capability_sync, "fixture")
+            self.assertEqual(c.get_resource("fixture")["envs"]["custom"], {"activate": "true"})
+            self.assertEqual(set(c.get_resource("fixture")["jobs"]),
+                             {"personal", "comfyui:original", "other:check"})
+            self.assertEqual(c.get_resource("fixture")["jobs"]["comfyui:original"]["cmd"],
+                             manifest["jobs"]["original"]["cmd"])
+            self.assertEqual((self.target / "jobs/old/job.log").read_bytes(), b"legacy log\n")
+
+    def test_custom_publish_backup_and_staged_recovery_preserve_complete_state(self):
+        original = self.root / "reviewed custom source"
+        shutil.copytree(self.target / "caps/comfyui", original)
+        # A reviewed payload includes workflows; mutable models stay outside caps.
+        manifest = {"name": "comfyui", "payload": ["custom.py", "workflows"],
+                    "jobs": {"original": {"cmd": "python3 {capdir}/custom.py", "env": "custom"}}}
+        (original / "capability.yaml").write_text(yaml.safe_dump(manifest))
+        registry_before = Path(c.registry_path()).read_bytes()
+        client_before = self.snapshot(Path(c.compute_home()))
+        target_before = self.snapshot(self.target)
+        backup = self.root / "backup"
+        for label, state in (("target", self.target), ("client", Path(c.compute_home())), ("source", original)):
+            self.recipe("backup-state", UPDATE_STATE_ROOT=state, UPDATE_BACKUP_DIR=backup / label)
+        shutil.copytree(self.target / "caps/comfyui/models", self.target / "runtime/comfyui/models")
+        with self.transport():
+            # Exercise the legacy install alias, actual staging and publication.
+            self.invoke(c.main, ["install-capability", "fixture", str(original)])
+            self.assertFalse((self.target / "caps/comfyui/models").exists())
+            self.assertEqual((self.target / "runtime/comfyui/models/private.bin").read_bytes(),
+                             target_before["caps/comfyui/models/private.bin"])
+            self.assertEqual((self.target / "caps/comfyui/custom.py").read_bytes(),
+                             target_before["caps/comfyui/custom.py"])
+            published = json.loads((self.target / "caps/comfyui/.installed.json").read_text())
+            self.assertEqual(published["manifest"], manifest)
+            self.assertIn("workflows/custom.json", published["files"])
+            self.invoke(c.cmd_capability_sync, "fixture")
+            self.assertEqual(c.get_resource("fixture")["envs"]["custom"], {"activate": "true"})
+            self.assertEqual(set(c.get_resource("fixture")["jobs"]),
+                             {"personal", "comfyui:original", "other:check"})
+        for label, expected in (("target", target_before), ("source", self.snapshot(original)),
+                                ("client", client_before)):
+            restore = self.root / ("restore-" + label)
+            state = {"target": self.target, "client": Path(c.compute_home()), "source": original}[label]
+            self.recipe("restore-staging", UPDATE_BACKUP_DIR=backup / label, UPDATE_RESTORE_DIR=restore,
+                        UPDATE_STATE_ROOT=state)
+            self.assertEqual(self.snapshot(restore), expected)
+        self.assertEqual((self.root / "restore-client/resources.yaml").read_bytes(), registry_before)
+        # Recovered target + client snapshots can be inspected without publishing.
+        with patch.dict(os.environ, COMPUTE_HOME=str(self.root / "restore-client")):
+            self.assertEqual(c.get_resource("fixture")["jobs"], {"personal": {"cmd": "true", "workdir": "~"}})
 
 
 class ControllerTests(unittest.TestCase):
