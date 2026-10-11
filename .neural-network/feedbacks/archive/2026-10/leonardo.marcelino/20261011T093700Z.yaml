@@ -1,0 +1,25 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-11T09:37:00Z'
+iteration:
+  task: '194'
+  outcome: merged
+  reviewRounds: 3
+source:
+  role: orchestrator
+  model: host-default
+items:
+- category: recommendation
+  area: testing
+  severity: medium
+  summary: Keep invalid fixtures independent of the state their workflow replaces.
+  detail: Independent review found that the archived spec state passed its helper
+    but invalidated a sibling negative test derived from the current canonical document.
+    The final regression runs the entire document class in both lifecycle phases.
+  evidence:
+  - Zugruul/development-skills#194
+  generalized: When a workflow replaces canonical state, explicitly construct obsolete
+    fixtures and replay the whole affected test class before and after the transition.
+  routing:
+    action: brain-note
+    ref: dev/negative-fixtures-survive-lifecycle-transitions
