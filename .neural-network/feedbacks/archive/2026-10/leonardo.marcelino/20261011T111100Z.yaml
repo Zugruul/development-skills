@@ -1,0 +1,31 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-11T11:11:00Z'
+iteration:
+  task: '347'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: codex-host-default
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Independent installed-command probes exposed bugs beyond the initial green
+    suite.
+  detail: Two-pass review found virtual-environment identity loss and literal path
+    substitution. Separate red commits reproduced both before fixes, and reviewers
+    exercised real SSH plus every binding position after the full local gate.
+  evidence:
+  - Zugruul/development-skills#347
+  - 5066c64
+  - 2de674d
+  - c260633
+  - 5eeff8f
+  generalized: Independent review of generated command bindings should exercise every
+    downstream transformation through actual installed commands, including virtual
+    environment identity and placeholder substitution.
+  routing:
+    action: brain-note
+    ref: reviewer/literal-bindings-cross-template-boundaries

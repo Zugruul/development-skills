@@ -42,3 +42,8 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "distinguish-missed-vs-uncatchable-findings", "task": "194", "ts": "2026-10-11T09:38:10+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "equality-guards-invite-ordering-probes", "task": "194", "ts": "2026-10-11T09:38:10+00:00"}
 {"note": "Exact-red replay was supplied by the parent; no additional reviewer replay was needed.", "outcome": "dead_end", "schemaVersion": 1, "slug": "verify-tdd-empirically-when-log-is-thin", "task": "194", "ts": "2026-10-11T09:38:10+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "red-commit-worktree-verify", "task": "347", "ts": "2026-10-11T11:09:52+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reports-are-not-the-code", "task": "347", "ts": "2026-10-11T11:09:53+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "347", "ts": "2026-10-11T11:09:53+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "confirm-named-scope-exclusions-respected", "task": "347", "ts": "2026-10-11T11:09:53+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "copied-precedent-needs-fresh-verification", "task": "347", "ts": "2026-10-11T11:09:53+00:00"}
