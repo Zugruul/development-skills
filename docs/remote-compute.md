@@ -348,6 +348,67 @@ variation number last. That way a batch sorts together, and any single output
 can be traced back to exactly what made it. The rule lives in the bundle, so
 every run of that kind is named consistently without you thinking about it.
 
+### Selecting a machine by project role
+
+For a project with several enabled machines, let the controller select a target
+for a declared job:
+
+```bash
+remote-compute run --role training slm-training:gpu-check --root /path/to/project
+```
+
+Use the job name listed by `jobs NICKNAME` for your installed catalog. The role
+form preserves the existing `--param NAME=VALUE`, `--inputs DIR`, `--job-id ID`
+and `--holder H` options. For a command explicitly supplied by the human, raw
+dispatch also supports role selection:
+
+```bash
+remote-compute dispatch --role training --workdir '~/train' --cmd 'python train.py' \
+  --env training --root /path/to/project
+```
+
+Raw dispatch retains `--env`, `--inputs`, `--job-id` and `--holder`. Put `--role
+ROLE` first. Duplicate or mixed selectors, blank/missing role or root values and
+unknown options are rejected; option-looking text inside values remains data.
+
+`--root` defaults to your current directory and requires
+`.neural-network/project.yaml`. Only `compute` is consumed. If its optional
+`project.local.yaml` sibling contains `compute`, that value replaces the **whole**
+base compute value, matching spec-workflow's loader. An empty override removes
+all candidates; missing compute never means every registered machine. Invalid
+relevant YAML shapes fail with an actionable error. No project file is rewritten.
+The standalone installed CLI needs no spec-workflow Python module for these reads.
+
+Candidates must be explicitly `enabled: true`, have the exact case-sensitive role,
+and be registered on this client. Aliases are considered in lexical order,
+independent of YAML order. Each candidate must declare the requested job and accept
+its parameters. Commands, paths, defaults and environments come from that target's
+recipe. A named environment needs a nonempty activation command; a recorded
+verification error excludes it, while a missing legacy verification stamp alone
+does not. Raw `--env` follows the same rule. The controller reports exclusion
+reasons and never probes hardware, installs environments or synchronizes catalogs
+automatically. Informational snapshots do not establish job readiness.
+
+The controller may move on after a local busy/lock check or a bounded read-only
+connection failure before reservation, or after the target explicitly refuses a
+reservation because it is busy or locked. Target admission still controls shared
+capacity. Once reservation might have succeeded, **any failure stops selection**.
+That includes malformed or lost reservation replies, input staging failure and
+every launch failure, even exit 6. An ambiguous reservation or lost launch reply
+keeps an unknown receipt. Inspect the reported `job-status ID` and the target's
+`remote-compute status ID` before manually retrying; another machine may otherwise
+duplicate accepted work. There is no queue, daemon or automatic rerun.
+
+An explicit refusal because the requested job ID already exists or was previously
+used stops without creating a local receipt or trying another target. It does not
+grant this invocation access to that job through status, logs or cancellation.
+
+No eligible candidates exits 2. Exhaustion with all candidates busy exits 6;
+exhaustion including an unreachable candidate exits 1. Successful output reports
+the chosen target and immutable job ID; existing status, logs and pull commands
+continue to work. Explicit `run NICKNAME JOB` and `dispatch NICKNAME ...` stay
+independent of project configuration and require no project enablement.
+
 ### Checking on a run
 
 ```bash

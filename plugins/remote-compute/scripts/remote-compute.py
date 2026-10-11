@@ -34,6 +34,8 @@ CLI verbs (machine-readable output; interactivity is the calling agent's job):
     add-env <nick> NAME --activate CMD [--verify SNIPPET] | envs <nick>
     add-job <nick> <name> --workdir DIR --cmd CMD [--env NAME] [--param ...]
     remove-job <nick> <name> | jobs <nick> | run <nick> <job> [--param K=V]
+    run --role ROLE JOB [--root DIR] [--param K=V] [--inputs DIR]
+             [--job-id ID] [--holder H]
     capabilities list | capabilities installed [<nick>]
     capabilities install <nick> <name-or-bundle-dir>
     capabilities install <nick> <github-url> [<capability-name>|--all] [--ref REF]
@@ -53,10 +55,19 @@ CLI verbs (machine-readable output; interactivity is the calling agent's job):
     lock <nick> [--holder H] [--reason R] | unlock <nick> [--force]
     dispatch <nick> --workdir W --cmd C [--env E] [--inputs DIR]
              [--job-id ID] [--holder H]
+    dispatch --role ROLE --workdir W --cmd C [--root DIR] [--env E]
+             [--inputs DIR] [--job-id ID] [--holder H]
     job-status <id> | job-logs <id> | job-pull <id> [--dest D] | job-cancel <id>
     remove <nick>
     setup-sheet wsl2|linux|macos
     parse gpu|free|df|profiler   (stdin -> JSON; unit-test surface)
+
+Role selection reads project compute (local compute replaces base), tries enabled,
+registered aliases in lexical order, and matches roles exactly. --root defaults
+to cwd. Nickname commands do not read project config. Skips explain incompatibility,
+busy capacity or pre-reservation connectivity failure. After a possibly accepted
+reservation, stop and inspect the reported target/job before manual retry.
+No eligible candidate: 2; all busy: 6; exhausted including unreachable: 1.
 
 Exit codes: 0 ok · 1 unreachable · 2 usage · 3 NEEDS_KEY_AUTH ·
 4 NEEDS_HOSTKEY_ACK · 5 sudo rejected · 6 locked · 7 identity conflict.
@@ -354,9 +365,18 @@ def remote_state(nick, action, request):
             raise ValueError("not an object")
     except ValueError:
         return rc or 1, {"error": err or "target did not return a valid coordination response", "ambiguous": True}
+    if rc and action in ("reserve", "launch"):
+        if set(reply) != {"error"} or not isinstance(reply.get("error"), str) or not reply["error"].strip():
+            return rc, {"error": err or "target returned an ambiguous %s failure: %r" % (action, reply),
+                        "ambiguous": True}
     acknowledgements = {"reserve": "reserved", "launch": "launched", "cap-commit": "installed", "catalog": "capabilities", "status": "state"}
     if not rc and action in acknowledgements and acknowledgements[action] not in reply:
         return 1, {"error": "target response omitted %s" % acknowledgements[action], "ambiguous": True}
+    if not rc and action in ("reserve", "launch"):
+        if (reply.get(acknowledgements[action]) is not True or reply.get("error")
+                or reply.get("ambiguous") or ("id" in reply and reply["id"] != request["id"])):
+            return 1, {"error": "target returned an inconsistent %s acknowledgement" % action,
+                       "ambiguous": True}
     return rc, reply
 
 
@@ -906,15 +926,20 @@ def jobs_dir():
     return os.path.join(compute_home(), "jobs")
 
 
-def _parse_opts(argv, spec, repeat=()):
+def _parse_opts(argv, spec, repeat=(), unique=()):
     """Tiny flag parser: spec maps --flag -> default; flags in `repeat`
     accumulate into a list. Returns (opts, positionals-after-argv0)."""
     opts = dict(spec)
     for r in repeat:
         opts[r] = []
     i = 1
+    seen = set()
     while i < len(argv):
         if argv[i] in opts and i + 1 < len(argv):
+            if argv[i] in unique and argv[i] in seen:
+                print("ERROR: duplicate option: %s" % argv[i])
+                sys.exit(EXIT_USAGE)
+            seen.add(argv[i])
             if argv[i] in repeat:
                 opts[argv[i]].append(argv[i + 1])
             else:
@@ -927,6 +952,8 @@ def _parse_opts(argv, spec, repeat=()):
 
 
 def cmd_dispatch(argv):
+    if argv[0] == "--role":
+        return _dispatch_role(argv, named=False)
     nick = argv[0]
     opts = _parse_opts(argv, {"--workdir": None, "--cmd": None, "--env": None,
                               "--inputs": None, "--job-id": None,
@@ -942,6 +969,157 @@ def cmd_dispatch(argv):
         print("ERROR: '%s' is not registered" % nick)
         sys.exit(EXIT_USAGE)
     return _launch_job(reg, res, nick, workdir, cmd, opts)
+
+
+def _project_compute(root):
+    """Read only availability; mirror config.py's whole compute replacement."""
+    local = Path(_project_cfg_path(root))
+    compute = {}
+    for path in (local.with_name("project.yaml"), local):
+        if path == local and not path.exists():
+            continue
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, yaml.YAMLError) as exc:
+            raise ValueError("cannot read %s: %s" % (path, exc)) from exc
+        if not isinstance(data, dict):
+            raise ValueError("%s must contain a YAML mapping" % path)
+        if "compute" in data:
+            compute = data["compute"]
+            if not isinstance(compute, dict):
+                raise ValueError("%s: compute must be a mapping" % path)
+            resources = compute.get("resources", {})
+            if not isinstance(resources, dict):
+                raise ValueError("%s: compute.resources must be an alias-keyed mapping" % path)
+            for nick, entry in resources.items():
+                if not isinstance(nick, str) or not nick.strip() or not isinstance(entry, dict):
+                    raise ValueError("%s: compute.resources requires string aliases and mapping entries" % path)
+                if "enabled" in entry and not isinstance(entry["enabled"], bool):
+                    raise ValueError("%s: %s.enabled must be a boolean" % (path, nick))
+                roles = entry.get("roles", [])
+                if not isinstance(roles, list) or any(not isinstance(r, str) or not r.strip() for r in roles):
+                    raise ValueError("%s: %s.roles must be a list of nonempty strings" % (path, nick))
+    return compute.get("resources", {})
+
+
+def _role_environment(res, name):
+    if not name:
+        return
+    env = (res.get("envs") or {}).get(name)
+    if not isinstance(env, dict) or not isinstance(env.get("activate"), str) or not env["activate"].strip():
+        raise ValueError("environment %r needs a nonempty activation command" % name)
+    verified = env.get("verified")
+    if isinstance(verified, dict) and "error" in verified:
+        raise ValueError("environment %r has a recorded verification error: %s" % (name, verified["error"]))
+    reject_sudo(env["activate"])
+
+
+def _validate_job_id(job_id):
+    if not JOB_ID_RE.fullmatch(job_id):
+        raise ValueError("--job-id must match [A-Za-z0-9][A-Za-z0-9._-]{0,63} (got %r)" % job_id)
+    if os.path.exists(os.path.join(jobs_dir(), "%s.json" % job_id)):
+        raise ValueError("job ID already exists locally: %s (use a new ID for a retry)" % job_id)
+
+
+def _dispatch_role(argv, named):
+    """Selection is serial; only explicit pre-acceptance outcomes allow retry."""
+    try:
+        if len(argv) < 2 or not argv[1].strip() or argv[1].startswith("--"):
+            raise ValueError("--role requires a nonempty role value")
+        role = argv[1]
+        job_name = argv[2] if named and len(argv) > 2 else None
+        if named and (not job_name or not job_name.strip() or job_name.startswith("--")):
+            raise ValueError("run --role ROLE requires a job name")
+        spec = {"--job-id": None, "--holder": getpass.getuser(), "--inputs": None,
+                "--root": os.getcwd()}
+        if not named:
+            spec.update({"--workdir": None, "--cmd": None, "--env": None})
+        opts = _parse_opts([job_name or "dispatch"] + argv[3 if named else 2:], spec,
+                           repeat=("--param",) if named else (), unique=("--root",))
+        for key, value in opts.items():
+            if isinstance(value, str) and not value.strip():
+                raise ValueError("%s requires a nonempty value" % key)
+        if not opts["--root"].strip() or opts["--root"].startswith("--"):
+            raise ValueError("--root requires a nonempty directory")
+        if opts["--job-id"] is not None:
+            _validate_job_id(opts["--job-id"])
+        if named:
+            if any("=" not in p or not p.partition("=")[0] for p in opts["--param"]):
+                raise ValueError("--param requires NAME=VALUE")
+        else:
+            for key in ("--workdir", "--cmd"):
+                if not opts[key] or not opts[key].strip():
+                    raise ValueError("dispatch needs --workdir and --cmd")
+                reject_sudo(opts[key])
+            opts["--job-id"] = opts["--job-id"] or new_job_id()
+        available = _project_compute(opts["--root"])
+        reg = load_registry()
+        candidates = []
+        for nick in sorted(available):
+            entry = available[nick]
+            reason = None
+            if entry.get("enabled") is not True:
+                reason = "disabled (enabled must be true)"
+            elif role not in entry.get("roles", []):
+                reason = "role %r not declared" % role
+            elif nick not in reg["resources"]:
+                reason = "not registered on this client"
+            if reason:
+                print("SKIP %s: %s" % (nick, reason))
+                continue
+            res = reg["resources"][nick]
+            try:
+                if named:
+                    workdir, cmd, launch_opts = _prepare_run(res, nick, job_name, opts)
+                else:
+                    workdir, cmd, launch_opts = opts["--workdir"], opts["--cmd"], dict(opts)
+                _role_environment(res, launch_opts["--env"])
+                _validate_job_id(launch_opts["--job-id"])
+                reject_sudo(workdir)
+            except (ValueError, KeyError, TypeError, AttributeError, re.error) as exc:
+                print("SKIP %s: %s" % (nick, exc))
+                continue
+            except SystemExit as exc:
+                if exc.code != EXIT_SUDO:
+                    raise
+                print("SKIP %s: recipe or environment contains sudo" % nick)
+                continue
+            candidates.append((nick, workdir, cmd, launch_opts))
+        if not candidates:
+            print("ERROR: no eligible candidates for role %r" % role)
+            return EXIT_USAGE
+        unreachable = False
+        for nick, workdir, cmd, launch_opts in candidates:
+            reg = load_registry()
+            res = reg["resources"][nick]
+            rc, out, err = ssh_run(nick, "true", timeout=10)
+            if rc:
+                unreachable = True
+                print("SKIP %s: unreachable before reservation: %s" % (nick, err or out or "SSH exit %s" % rc))
+                continue
+            outcome = {}
+            try:
+                rc = _launch_job(reg, res, nick, workdir, cmd, launch_opts, outcome=outcome)
+            except OSError as exc:
+                print("ERROR: %s" % exc)
+                rc = EXIT_UNREACHABLE
+            if outcome.get("retry") == "busy":
+                print("SKIP %s: busy (%s)" % (nick, outcome["phase"]))
+                continue
+            if rc and outcome.get("phase") == "reservation-refused":
+                print("STOP on %s job %s (reservation refused); no receipt was created "
+                      "and selection will not continue" % (nick, outcome.get("job_id")))
+            elif rc:
+                print("STOP on %s job %s (%s); inspect job-status %s and the target's "
+                      "remote-compute status %s before manual retry" % (
+                          nick, outcome.get("job_id"), outcome.get("phase"),
+                          outcome.get("job_id"), outcome.get("job_id")))
+            return rc
+        print("ERROR: role %r exhausted (%s)" % (role, "includes unreachable targets" if unreachable else "all busy"))
+        return EXIT_UNREACHABLE if unreachable else EXIT_LOCKED
+    except (ValueError, OSError) as exc:
+        print("ERROR: %s" % exc)
+        return EXIT_USAGE
 
 
 def _running_jobs(nick):
@@ -1014,7 +1192,10 @@ def _atomic_json(path, data):
 JOB_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 
 
-def _launch_job(reg, res, nick, workdir, cmd, opts):
+def _launch_job(reg, res, nick, workdir, cmd, opts, outcome=None):
+    if outcome is None:
+        outcome = {}
+    outcome.update(phase="local-validation", retry=None)
     holder = opts["--holder"]
     env = (res.get("envs") or {}).get(opts["--env"]) if opts["--env"] else None
     if opts["--env"] and (not env or not env.get("activate")):
@@ -1023,6 +1204,7 @@ def _launch_job(reg, res, nick, workdir, cmd, opts):
     if env:
         reject_sudo(env["activate"])
     job_id = opts["--job-id"] or new_job_id()
+    outcome["job_id"] = job_id
     if not JOB_ID_RE.fullmatch(job_id):
         print("ERROR: --job-id must match [A-Za-z0-9][A-Za-z0-9._-]{0,63} (got %r)" % job_id)
         return EXIT_USAGE
@@ -1039,14 +1221,16 @@ def _launch_job(reg, res, nick, workdir, cmd, opts):
                   % (nick, limit, ", ".join(running)))
             print("Wait for it, raise policy.maxConcurrentJobs in the registry, "
                   "or use a different resource.")
-            sys.exit(EXIT_LOCKED)
+            outcome.update(phase="local-capacity", retry="busy")
+            return EXIT_LOCKED
         reg = load_registry()
         res = reg["resources"][nick]
     lock = (res.get("state") or {}).get("lock")
     if lock and lock.get("holder") != holder:
         print("LOCKED: %s is held by %s (reason: %s, since %s) — refusing dispatch" % (
             nick, lock.get("holder"), lock.get("reason"), lock.get("since")))
-        sys.exit(EXIT_LOCKED)
+        outcome.update(phase="local-lock", retry="busy")
+        return EXIT_LOCKED
     # --job-id is interpolated into the remote payload AND used as a local
     # filename: an unvalidated value is remote command injection plus path
     # traversal, and it lands after the sudo check on --cmd.
@@ -1067,16 +1251,41 @@ def _launch_job(reg, res, nick, workdir, cmd, opts):
     token = uuid.uuid4().hex
     request = {"id": job_id, "token": token, "owner": controller_id(), "holder": holder,
                "limit": limit or 1, "capability": opts.get("--capability"), "digest": opts.get("--digest")}
-    rc, reply = remote_state(nick, "reserve", request)
-    if rc:
-        print("ERROR: %s" % reply.get("error", "reservation failed"))
-        return rc
     state = {"id": job_id, "resource": nick, "workdir": workdir, "cmd": cmd,
              "env": opts["--env"], "holder": holder, "remoteDir": remote_dir,
              "submittedAt": now_iso(), "token": token, "phase": "reserved", "protocol": 1}
     # A receipt exists before either transfer or launch, including a response
     # lost after the remote process actually starts.
     local_path = os.path.join(jobs_dir(), "%s.json" % job_id)
+    outcome["phase"] = "reservation"
+    rc, reply = remote_state(nick, "reserve", request)
+    if rc:
+        # Only known protocol refusals in an exact error envelope prove that
+        # nothing was accepted. ID conflicts are terminal, never recovery receipts.
+        error = reply.get("error")
+        error_envelope = set(reply) == {"error"} and isinstance(error, str)
+        busy_refusal = (rc == EXIT_LOCKED and error_envelope
+                   and (re.fullmatch(r"BUSY: maxConcurrentJobs=[1-9][0-9]*; active: .+", error)
+                        or re.fullmatch(r"LOCKED: held by .*: .*", error, flags=re.DOTALL)))
+        id_refusal = (rc == EXIT_USAGE and error_envelope and error in (
+            "job ID already exists: %s (use a new ID for a retry)" % job_id,
+            "job ID was previously used: %s (history was removed; choose a new ID)" % job_id))
+        if busy_refusal:
+            outcome["retry"] = "busy"
+        elif id_refusal:
+            outcome["phase"] = "reservation-refused"
+        else:
+            state["phase"] = "unknown"
+            os.makedirs(jobs_dir(), exist_ok=True, mode=0o700)
+            try:
+                with open(local_path, "x") as receipt:
+                    json.dump(state, receipt, indent=2)
+            except FileExistsError:
+                pass  # Never replace another invocation's immutable receipt.
+            print("ERROR: reservation uncertain on %s job %s; inspect job-status %s "
+                  "and target remote-compute status %s before retry" % (nick, job_id, job_id, job_id))
+        print("ERROR: %s" % (error or "reservation failed without an unambiguous refusal"))
+        return rc
     try:
         os.makedirs(jobs_dir(), exist_ok=True, mode=0o700)
         with open(local_path, "x") as receipt:
@@ -1100,6 +1309,7 @@ def _launch_job(reg, res, nick, workdir, cmd, opts):
     save_registry(reg, touched=nick)
 
     if opts["--inputs"]:
+        outcome["phase"] = "staging"
         try:
             transferred = subprocess.run(rsync_argv(opts["--inputs"].rstrip("/") + "/",
                 "%s:%s/inputs/" % (nick, remote_dir.replace("~/", "", 1))), check=False).returncode
@@ -1117,6 +1327,7 @@ def _launch_job(reg, res, nick, workdir, cmd, opts):
             return 1
     request.update(cmd=cmd, workdir=workdir, activate=env.get("activate") if env else None,
                    inputs=bool(opts["--inputs"]))
+    outcome["phase"] = "launch"
     rc, reply = remote_state(nick, "launch", request)
     if rc:
         # A transport failure is ambiguous, not evidence that no process ran.
@@ -1131,6 +1342,7 @@ def _launch_job(reg, res, nick, workdir, cmd, opts):
         print("ERROR: launch %s on %s: %s; inspect job-status %s" % (state["phase"], nick, reply.get("error"), job_id))
         return rc
     state["phase"] = "running"
+    outcome["phase"] = "running"
     _atomic_json(local_path, state)
     print("DISPATCHED %s on %s (workdir %s)" % (job_id, nick, workdir))
     print("follow: job-status %s | job-logs %s | job-pull %s" % (job_id, job_id, job_id))
@@ -1836,20 +2048,31 @@ def render_job_id(schema, given):
 
 
 def cmd_run(argv):
+    if argv[0] == "--role":
+        return _dispatch_role(argv, named=True)
     nick, job_name = argv[0], argv[1] if len(argv) > 1 else None
     reg = load_registry()
     res = reg["resources"].get(nick)
     if res is None:
         print("ERROR: '%s' is not registered" % nick)
         sys.exit(EXIT_USAGE)
-    jobs = res.get("jobs") or {}
-    if not job_name or job_name.startswith("--") or job_name not in jobs:
-        print("ERROR: unknown job '%s' on %s — declared jobs: %s" % (
-            job_name, nick, ", ".join(jobs) or "none"))
-        sys.exit(EXIT_USAGE)
-    job = jobs[job_name]
     opts = _parse_opts(argv[1:], {"--job-id": None, "--holder": getpass.getuser(),
                                   "--inputs": None}, repeat=("--param",))
+    try:
+        workdir, rendered, launch_opts = _prepare_run(res, nick, job_name, opts)
+    except ValueError as exc:
+        print("ERROR: %s" % exc)
+        return EXIT_USAGE
+    return _launch_job(reg, res, nick, workdir, rendered, launch_opts)
+
+
+def _prepare_run(res, nick, job_name, opts):
+    """Render one target's declared recipe without contacting or reserving it."""
+    jobs = res.get("jobs") or {}
+    if not job_name or job_name.startswith("--") or job_name not in jobs:
+        raise ValueError("unknown job '%s' on %s — declared jobs: %s" % (
+            job_name, nick, ", ".join(jobs) or "none"))
+    job = jobs[job_name]
     given = {}
     for p in opts["--param"]:
         name, _, value = p.partition("=")
@@ -1857,23 +2080,20 @@ def cmd_run(argv):
     declared = job.get("params") or {}
     for name in given:
         if name not in declared:
-            print("ERROR: job '%s' declares no param '%s' (declared: %s)" % (
+            raise ValueError("job '%s' declares no param '%s' (declared: %s)" % (
                 job_name, name, ", ".join(declared) or "none"))
-            sys.exit(EXIT_USAGE)
     for name, spec in declared.items():
         if name not in given:
             if "default" in spec:
                 given[name] = spec["default"]
             else:
-                print("ERROR: job '%s' requires param '%s' (pattern: %s)" % (
+                raise ValueError("job '%s' requires param '%s' (pattern: %s)" % (
                     job_name, name, spec.get("pattern")))
-                sys.exit(EXIT_USAGE)
         value = str(given[name])
         given[name] = value
         if not re.fullmatch(spec.get("pattern") or DEFAULT_PARAM_PATTERN, value):
-            print("ERROR: param '%s' value %r does not match its declared pattern %r" % (
+            raise ValueError("param '%s' value %r does not match its declared pattern %r" % (
                 name, value, spec.get("pattern")))
-            sys.exit(EXIT_USAGE)
     job_id = opts["--job-id"]
     if not job_id and job.get("jobIdSchema"):
         # the capability declares how its artifact runs should be named, so a
@@ -1891,7 +2111,7 @@ def cmd_run(argv):
     launch_opts = {"--holder": opts["--holder"], "--job-id": job_id,
                    "--inputs": opts["--inputs"], "--env": job.get("env"), "--rendered": True,
                    "--capability": job.get("capability"), "--digest": job.get("digest")}
-    return _launch_job(reg, res, nick, job["workdir"], rendered, launch_opts)
+    return job["workdir"], rendered, launch_opts
 
 
 def load_job(job_id):

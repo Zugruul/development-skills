@@ -43,13 +43,20 @@ Controller commands (installed with install-cli or install-tools):
   add-env <nick> NAME --activate CMD | envs <nick>
   add-job <nick> NAME --cmd CMD --workdir DIR | remove-job <nick> NAME
   jobs <nick> | run <nick> JOB [--param key=value]
+  run --role ROLE JOB [--root DIR] [--param key=value]
   exec <nick> -- COMMAND | dispatch <nick> --workdir DIR --cmd COMMAND
+  dispatch --role ROLE --workdir DIR --cmd COMMAND [--root DIR]
   job-status <id> | job-logs <id> | job-pull <id> | job-cancel <id>
   lock <nick> | unlock <nick> | policy <nick> --max-concurrent-jobs N
   doctor [nick] [--json] | install-cli [--prefix DIR] | install-tools <nick>
   identity <nick> | remove <nick> | setup-sheet wsl2|linux|macos
 
 Use controller --help for full options; local <command> forces machine-local mode.
+Role selection uses project compute; --root defaults to cwd. Enabled registered
+aliases are tried lexically with exact role matching. Nickname commands need no
+project. No eligible candidate: 2; all busy: 6; exhaustion with unreachable: 1.
+After an uncertain reservation or any staging/launch failure, inspect the reported
+target/job before retrying; no automatic rerun occurs.
 USAGE
 }
 

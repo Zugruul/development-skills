@@ -267,13 +267,20 @@ Humans steer the loop by commenting on task issues: `next-task`/`implement-task`
 
 Register remote machines (SSH, key-only) as user-level compute resources and
 dispatch jobs/capability bundles to them. **Requires the spec-workflow
-plugin** (availability is advertised through spec-workflow's project.local.yaml
-overlay and read via its config loader). Full guide:
+plugin** for project setup and the gitignored project.local.yaml overlay.
+`run --role ROLE JOB [--root DIR]` and
+`dispatch --role ROLE --workdir W --cmd C [--root DIR]` select enabled,
+registered aliases in lexical order with an exact role match. The standalone
+controller reads only compute, with local compute replacing the whole base value.
+Nickname commands remain unrestricted by project availability and read no project.
+Fallback is limited to pre-reservation busy/connectivity failures or explicit
+target admission refusals; uncertain reservation or launch stops for inspection.
+Full guide:
 [docs/remote-compute.md](./docs/remote-compute.md).
 
 | Skill | Purpose |
 |---|---|
-| `remote-compute` | Register remote machines (SSH, key-only) as user-level compute resources; enable their availability per project (gitignored local overlay, non-exclusive); declared jobs for dispatch-by-intent (e.g. ComfyUI from a pre-authored workflow), exec/lock/dispatch with file-recoverable job state |
+| `remote-compute` | Register/probe machines, manage project availability, install bundles, and run or inspect work by explicit nickname or project role. |
 | `compute-top` | Terminal dashboard, on the machine or over SSH, for what remote-compute work is running/finished there; opens logs, prunes history |
 
 ### peer-review

@@ -120,6 +120,18 @@ allocation:
   which validates and merges that overlay. Availability is non-exclusive:
   multiple projects can enable a machine. A cooperative machine lock, not the
   project entry, serializes work.
+- **Role dispatch is opt-in.** `run --role ROLE JOB [--root DIR]` and
+  `dispatch --role ROLE --workdir W --cmd C [--root DIR]` consume only project
+  compute, with local compute replacing the whole base value. Root defaults to
+  cwd. Enabled, registered aliases with an exact role match are tried lexically;
+  candidate job/parameter/environment incompatibility is explained and skipped.
+  Failed environment verification excludes a candidate; legacy missing stamps
+  remain supported. Nickname commands read no project and need no enablement.
+  Fallback is only before reservation for busy/locked/unreachable targets or on
+  explicit unambiguous target admission refusal. Any possibly accepted reservation,
+  staging failure or launch failure stops with target/job recovery instructions.
+  No eligible candidates exits 2, all busy exits 6, exhaustion including unreachable
+  exits 1. No new scheduler, hardware probe or automatic catalog sync is involved.
 - **Capability bundles are installable data.** A bundle has a
   `capability.yaml` manifest and its payload scripts. Run
   `remote-compute capabilities list` to see shipped bundles, then
@@ -160,7 +172,7 @@ allocation:
 
 | Skill | Purpose |
 | --- | --- |
-| [remote-compute](plugins/remote-compute/skills/remote-compute/SKILL.md) | Register/probe machines, manage project availability, install bundles, and run or inspect work. |
+| [remote-compute](plugins/remote-compute/skills/remote-compute/SKILL.md) | Register/probe machines, manage project availability, install bundles, and run or inspect work by explicit nickname or project role. |
 | [compute-top](plugins/remote-compute/skills/compute-top/SKILL.md) | Show remote job state, logs, exit codes, and history in a terminal dashboard. |
 | [scan](plugins/remote-compute/skills/scan/SKILL.md) | Re-find a registered machine whose address changed while preserving host identity. |
 | [ssh](plugins/remote-compute/skills/ssh/SKILL.md) | List registered machines and ready-to-paste SSH and dashboard commands. |

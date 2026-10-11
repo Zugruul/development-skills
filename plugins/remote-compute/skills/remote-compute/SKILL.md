@@ -6,10 +6,10 @@ description: Registers remote machines (SSH, key-only) as user-level compute res
 # remote-compute
 
 This skill requires the spec-workflow plugin: `enable` writes into the target
-repo's `.neural-network/project.local.yaml` overlay, reads go through
-spec-workflow's `config.py` (which merges the `compute:` key), and the
-overlay's gitignoring is spec-workflow's machinery — without it, `enable`
-refuses to run and nothing can read what this skill writes.
+repo's `.neural-network/project.local.yaml` overlay, and project setup and the
+overlay's gitignoring are spec-workflow's machinery. Role dispatch reads only
+compute directly, matching `config.py`'s whole-key replacement semantics; the
+installed controller has no dependency on an installed spec-workflow Python module.
 
 Registers machines the human owns as compute resources (user-level registry
 `~/.remote-compute/resources.yaml`, machine-local, never committed) and
@@ -83,8 +83,8 @@ Run inside a repo with `.neural-network/project.yaml` (pass `--root` explicitly)
 idempotently — a map keyed by alias with `{enabled, roles, probedAt,
 capabilities}` — in `.neural-network/project.local.yaml` (gitignored machine-local
 overlay, created if missing; the committed `project.yaml` is never touched).
-Reads go through `config.py`, which merges the overlay's `compute` key over
-the committed config. Tell the human the resource is now available to this project
+Project reads through `config.py` and the role selector both replace the whole
+committed `compute` value with the local value when present. Tell the human the resource is now available to this project
 (non-exclusive — other projects may enable it too) and that tasks can
 reference it by alias or role. `disable` keeps the entry with
 `enabled: false`, like a disabled capability. Snapshots are informational —
@@ -117,11 +117,40 @@ shell-quoted; sudo templates rejected). When the human asks for an OUTCOME
 
 1. Check which resources this project has enabled (`config.py ROOT get
    compute.resources`), then read each candidate's roster with `jobs NICKNAME`.
-2. Pick the declared job that matches the intent and `run NICKNAME JOBNAME
-   --param name=value`; follow with `job-status` / `job-logs` / `job-pull`.
+2. Pick the declared job that matches the intent and use `run --role ROLE JOBNAME
+   --root REPO --param name=value` for project selection, or `run NICKNAME JOBNAME
+   --param name=value` for an explicit target. Follow with `job-status` / `job-logs` / `job-pull`.
 3. If NO declared job matches, refuse honestly and name the nearest declared
    jobs (never improvise a raw command for an intent-level ask — `exec` and
    `dispatch --cmd` are for the human explicitly dictating a command).
+
+## role selection
+
+Use selector-first `run --role ROLE JOB [--root DIR]` or, for an explicitly
+specified human command, `dispatch --role ROLE --workdir W --cmd C [--root DIR]`.
+All existing run/dispatch options remain available. Root defaults to cwd and must
+contain `.neural-network/project.yaml`; optional project.local.yaml replaces the
+whole compute value, including an empty override. Missing compute means no
+candidates. Invalid relevant YAML shapes, duplicate/mixed selectors, missing or
+blank role/root values and unknown options are usage errors. Option values are
+data, so a parameter containing `--role` is never treated as a selector.
+
+The engine sorts aliases lexically, requires `enabled: true`, exact case-sensitive
+roles and client registration, then checks each candidate's declared job, params
+and named environment activation. A recorded verification error excludes the
+candidate; a missing legacy stamp alone does not. Raw `--env` uses the same rule.
+No hardware probe, inferred readiness, environment installation or automatic sync
+occurs. Explicit nickname commands do not read project config or require enablement.
+
+Relay the engine's exclusions and selected target/job ID. Fallback is only for
+local capacity/lock or bounded read-only connectivity failure before reservation,
+or an explicit unambiguous target busy/lock reservation refusal. After a possibly
+accepted reservation, any failure stops, including staging and launch exit 6.
+An ambiguous reservation or lost launch reply retains an unknown receipt: inspect
+`job-status ID` and the reported target's `remote-compute status ID` before any
+manual retry. Never turn an exit code alone into a second dispatch. No eligible
+candidates exits 2; all busy exits 6; exhaustion including unreachable exits 1.
+Target admission remains authoritative; there is no queue or automatic rerun.
 
 ## capability bundles (how domains plug in)
 

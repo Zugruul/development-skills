@@ -14,13 +14,13 @@ guide: `docs/remote-compute.md` (repo root).
 
 This plugin **requires the spec-workflow plugin**: `enable` advertises a
 machine by writing the `compute:` section of a repo's gitignored
-`.neural-network/project.local.yaml`, and reads go through spec-workflow's
-`config.py`, which merges that overlay (`LOCAL_OVERLAY_KEYS`) and validates
-its shape (`validate-config.py`, project-config schema). The gitignoring of
+`.neural-network/project.local.yaml`. Spec-workflow's `config.py` merges that
+overlay (`LOCAL_OVERLAY_KEYS`); `validate-config.py` and the project-config schema
+validate its shape. The gitignoring of
 `project.local.yaml` is also spec-workflow's (`local-state.manifest` +
-`gitignore-sync.sh`). Installing remote-compute without spec-workflow leaves
-`enable` refusing to run (no `.neural-network` repo) and nothing able to read
-what it writes — install both.
+`gitignore-sync.sh`). Install both for project setup. The installed controller
+needs no spec-workflow Python module to consume compute availability; role
+selection still requires `.neural-network/project.yaml` at the chosen root.
 
 Not to be confused with SPEC-PEER-REVIEW.md's "remote-compute layer": that is
 the peer-review plugin's own llama.cpp dispatch naming, with no code shared
@@ -40,7 +40,7 @@ the [published matrix](https://github.com/Zugruul/development-skills/blob/main/d
 
 | Skill | What it does |
 | --- | --- |
-| `remote-compute` | Register/probe/enable machines, install capability bundles, dispatch jobs, cooperative locking. Engine: `scripts/remote-compute.py` (stdlib + PyYAML; registry at `$COMPUTE_HOME`, default `~/.remote-compute` — machine-local, never committed). |
+| `remote-compute` | Register/probe/enable machines, install capability bundles, dispatch jobs by nickname or project role, cooperative locking. Engine: `scripts/remote-compute.py` (stdlib + PyYAML; registry at `$COMPUTE_HOME`, default `~/.remote-compute` — machine-local, never committed). |
 | `compute-top` | Terminal dashboard (stdlib curses), locally or over SSH, for what a compute machine is doing. Script: `scripts/remote-capabilities/_shared/compute-top.py`; on the box: `compute-top` (alias of `remote-compute top`). |
 | `scan` | Re-finds registered machines whose DHCP address changed: sweeps the subnet for ssh, requires the pinned host key AND the `~/.remote-compute/.identity` stamp to agree, flags duplicate identities for the human to resolve (`--pick`), converges known_hosts + ssh alias + registry. Verbs: `scan`, `identity`. |
 | `ssh` | Lists registered machines with ready-to-paste ssh one-liners (shell, dashboard, job table, GPU) and up/down. Verb: `connect`. |
@@ -57,6 +57,30 @@ updates both the local helpers and controller, without renaming that identity.
 controller (WSL/Linux/macOS, Python 3.8+, PyYAML, SSH, rsync; Git for GitHub installs).
 Bare invocation prints help only. Use `local <verb>` or `controller <verb>` when
 local job IDs and registered machine names would otherwise be ambiguous.
+
+## Project role dispatch
+
+Use `run --role ROLE JOB [--root DIR]` or
+`dispatch --role ROLE --workdir W --cmd C [--root DIR]` with the existing options.
+Root defaults to cwd. The optional project.local.yaml compute value replaces the
+whole project.yaml compute value, including empty overrides. Only explicitly
+enabled, client-registered aliases with an exact case-sensitive role match are
+eligible, in lexical order. Nickname commands read no project and need no enablement.
+
+The controller reports skipped candidates with incompatible jobs, parameters or
+named environments. Activation must be nonempty; recorded verification errors
+exclude a candidate while missing legacy stamps remain supported. No hardware
+probe, automatic catalog sync or environment installation is performed.
+
+Existing target admission remains authoritative. Fallback is limited to local
+busy/lock or bounded read-only connectivity failure before reservation, or an
+explicit unambiguous target busy/lock reservation refusal. Uncertain reservation,
+staging failure and every launch failure stop with target/job recovery advice;
+unknown receipts must be inspected before manual retry. No candidates exits 2,
+all busy exits 6, exhaustion including unreachable exits 1. This is serial
+selection with no queue or automatic rerun. See the
+[role dispatch guide](../../docs/remote-compute.md#selecting-a-machine-by-project-role)
+or its [published copy](https://github.com/Zugruul/development-skills/blob/main/docs/remote-compute.md#selecting-a-machine-by-project-role).
 
 ## Capability bundles
 
