@@ -37,6 +37,10 @@
   > 1. Record dev and reviewer outcomes across the two review rounds.
   > 2. Capture clause-scoped contract mutation testing and archive routed feedback.
   > 3. Regenerate the brain directory without pruning or graduation.
+- **retro:** record compatibility audit lifecycle lessons (`5a2f596`)
+  > 1. Record all thirteen recalled-note outcomes from the independent audit reviews.
+  > 2. Strengthen clause-bound checks and capture lifecycle-stable negative fixtures.
+  > 3. Archive routed feedback and record the completed task retrospective.
 
 ## v0.65.2 — 2026-10-11
 
