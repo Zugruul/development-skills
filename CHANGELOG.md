@@ -10,6 +10,11 @@
   > 2. Reuse target admission and stop on uncertain acceptance without duplicating work or adopting refused job IDs.
   > 3. Add committed regressions, installed-command coverage, and synchronized usage documentation.
 
+### Chores
+- **retro:** record role-dispatch review lessons (#525) (`5139ab9`)
+  > 1. Record recall outcomes and two independently verified review lessons.
+  > 2. Archive task feedback and preserve deferred maintenance limitations.
+
 ## v0.67.0 — 2026-10-11
 
 ### Features
