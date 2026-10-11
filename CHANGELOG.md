@@ -22,6 +22,10 @@
   > 2. Link separately filed gaps and update public documentation plus the narrow CDX-050 contract delta.
   > 3. Add red-first structural, legacy-scan, and pending-to-archived lifecycle regressions.
   > 4. Verify the full local gate and independent specification and quality approval in round 3.
+- **spec:** fold CDX-050 compatibility audit delta (`0568eef`)
+  > 1. Replace the obsolete remote audit trigger with the four shipped skills.
+  > 2. Separate semantic review, local evidence, validator results and unverified live checks.
+  > 3. Archive the reviewed delta without changing unrelated compatibility requirements.
 
 ### Chores
 - **release:** spec-workflow v0.66.0 (`9f2b213`)
