@@ -17,6 +17,14 @@
   > 2. Preserve the separately queued job plane and command audit contracts.
   > 3. Archive the reviewed AST-080 delta without changing its text.
 
+### Chores
+- **retro:** record restricted SSH delivery lessons (`206619b`)
+  > 1. Record ten recalled-lesson outcomes and three direct lessons from local verification.
+  > 
+  > 2. Archive the two-pass review feedback and mark retrospective 127.
+  > 
+  > 3. Preserve pre-existing brain-feed discrepancies without rewriting history.
+
 ## v0.66.0 — 2026-10-11
 
 ### Documentation
