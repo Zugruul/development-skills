@@ -13,6 +13,20 @@
   > 
   > Refs #507, #510, #534
 
+### Documentation
+- **spec:** fold reviewed retention clarification (#510) (`2f461d3`)
+  > 1. Apply the reviewed physical-size and busy-reader contract to section 10.3.
+  > 
+  > 2. Archive the shipped delta without changing retention defaults or schema.
+
+### Chores
+- **retro:** record local reconciliation and retention delivery (`d2cedbe`)
+  > 1. Record independent review lessons and outcomes for the merged fixes.
+  > 
+  > 2. Preserve WSL worktree and SQLite WAL retention lessons with routed feedback.
+  > 
+  > 3. Leave unavailable Project estimates unrecorded rather than fabricate telemetry.
+
 ## v0.65.1 — 2026-10-10
 
 ### Features
