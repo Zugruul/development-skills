@@ -14,6 +14,9 @@
 ### Documentation
 - **spec:** fold AST-082 audit contract into assistant spec (`aeb0e6d`)
 
+### Chores
+- **retro:** record remote audit compatibility lessons (#349) (`2082d1e`)
+
 ## v0.69.0 — 2026-10-11
 
 ### Features
