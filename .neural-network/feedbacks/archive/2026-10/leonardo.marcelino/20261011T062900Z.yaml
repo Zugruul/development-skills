@@ -1,0 +1,27 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-11T06:29:00Z'
+iteration:
+  task: '507'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: codex-host-default
+items:
+- category: friction
+  area: testing
+  severity: medium
+  summary: Cross-platform worktree metadata can prevent the test runtime from resolving
+    Git paths.
+  detail: Windows-created worktrees carried absolute Windows gitdir paths unusable
+    by WSL Git. WSL-created task and red-replay worktrees restored isolated local
+    validation without global Git environment overrides.
+  evidence:
+  - Zugruul/development-skills#507
+  - Zugruul/development-skills#510
+  generalized: Create and operate Git worktrees using the same runtime to avoid cross-platform
+    gitdir metadata failures during local tests.
+  routing:
+    action: brain-note
+    ref: orchestrator/align-worktree-and-test-git-runtime

@@ -18,3 +18,7 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "459", "ts": "2026-07-29T03:50:40+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "479", "ts": "2026-07-29T05:46:12+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "comments-deserve-code-scrutiny", "task": "479", "ts": "2026-07-29T05:46:13+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "red-commit-worktree-verify", "task": "507", "ts": "2026-10-11T06:30:00+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reports-are-not-the-code", "task": "507", "ts": "2026-10-11T06:30:00+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "507", "ts": "2026-10-11T06:30:00+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "local-gate-green-doesnt-imply-ci-green-for-infra", "task": "507", "ts": "2026-10-11T06:30:00+00:00"}

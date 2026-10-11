@@ -1,0 +1,6 @@
+{
+  "reviewer:local-gate-green-doesnt-imply-ci-green-for-infra": 1,
+  "reviewer:red-commit-worktree-verify": 1,
+  "reviewer:reports-are-not-the-code": 1,
+  "reviewer:reproduce-before-verdict": 1
+}
