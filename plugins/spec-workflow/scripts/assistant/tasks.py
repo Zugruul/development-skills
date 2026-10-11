@@ -1187,7 +1187,9 @@ def _reconcile_live_root(conn, root, resolvers, traces_queue):
     comment for why this selects a narrower row set (never a bare
     `queued` row) and reuses `_reconcile_row`'s exact per-outcome logic
     unchanged -- same never-resubmit guarantee, same trace events, just a
-    different, safe-for-mid-loop candidate set."""
+    different, safe-for-mid-loop candidate set. Kinds without a registered
+    resolver are left untouched: lack of a polling adapter does not mean
+    live work was lost. Startup reconciliation still orphans those rows."""
     placeholders = ", ".join("?" for _ in _LIVE_RECONCILE_TARGET_STATES)
     rows = conn.execute(
         "SELECT " + ", ".join(_SELECT_COLUMNS) + " FROM tasks WHERE state IN (" + placeholders + ") "
@@ -1197,6 +1199,8 @@ def _reconcile_live_root(conn, root, resolvers, traces_queue):
     for raw_row in rows:
         row = dict(zip(_SELECT_COLUMNS, raw_row))
         try:
+            if resolvers.get(row["kind"]) is None:
+                continue
             _reconcile_row(conn, root, row, resolvers, traces_queue)
         except Exception as exc:  # never let one row's reconciliation kill the pass
             sys.stderr.write("tasks worker: live reconciliation failed for task %s: %s\n" % (row.get("id"), exc))

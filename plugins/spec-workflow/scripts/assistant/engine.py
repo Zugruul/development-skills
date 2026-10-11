@@ -553,10 +553,10 @@ class AssistantEngine:
                     # `run_harness_job`/`resolve_harness_job` under
                     # `harness.KIND` -- the FIRST real executor/resolver
                     # pair (both seams were deliberately empty through
-                    # AST-066/067; this is what fills them). Every other
-                    # kind still has no executor/resolver registered, so an
-                    # unrelated enqueued kind still fails/orphans
-                    # specifically and immediately, exactly as before.
+                    # AST-066/067; this is what fills them). Enqueued kinds
+                    # without an executor fail immediately. Startup
+                    # reconciliation orphans kinds without a resolver;
+                    # periodic reconciliation leaves those live rows alone.
                     # #508 (Sec9.4 sequence 3): also registers
                     # `capability_index.run_capability_invoke_task` under
                     # `capability_index.KIND` -- the executor a longRunning

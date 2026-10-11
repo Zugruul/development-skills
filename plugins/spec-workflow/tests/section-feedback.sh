@@ -281,7 +281,10 @@ items:
     summary: "Board sync lagged, see some-repo#12 for background."
     generalized: "Board sync lagged, see some-repo#12 for background."
 YAML
-out="$(cd "$GB" && python3 "$PLUGIN/scripts/feedback.py" "$GB" emit "$GBREC" || true)"
+out="$(if cd "$GB"; then
+    python3 "$PLUGIN/scripts/feedback.py" "$GB" emit "$GBREC" || true
+fi)"; rc=$?
+check_rc "generalization ban probe swallows the expected failure" 0 "$rc"
 check "generalization ban rejects a qualified ref (slug#N), not just bare #N" "INVALID" "$out"
 check "generalization ban names the qualified ref" "some-repo#12" "$out"
 rm -rf "$GB"
@@ -875,7 +878,10 @@ check "shard emit: second writer succeeds" "OK: emitted 1 item(s)" "$out"
 check "shard emit: second writer gets his own file" "yes" "$r"
 check "shard emit: first writer's file untouched by second emit" "$alice_bytes_before" "$(cat "$ALICE_SHARD")"
 # duplicate ts across shards still rejected (routing identity stays unique)
-out="$(cd "$FS" && SPEC_WORKFLOW_WRITER=carol python3 "$PLUGIN/scripts/feedback.py" "$FS" emit rec-alice.yaml || true)"
+out="$(if cd "$FS"; then
+    SPEC_WORKFLOW_WRITER=carol python3 "$PLUGIN/scripts/feedback.py" "$FS" emit rec-alice.yaml || true
+fi)"; rc=$?
+check_rc "duplicate shard probe swallows the expected failure" 0 "$rc"
 check "shard emit: duplicate ts across shards rejected" "already exists" "$out"
 # pending/status see every shard
 out="$(cd "$FS" && python3 "$PLUGIN/scripts/feedback.py" "$FS" pending)"

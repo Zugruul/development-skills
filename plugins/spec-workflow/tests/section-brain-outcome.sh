@@ -177,7 +177,6 @@ rm -rf "$OE"
 # ---------------------------------------- pre-existing event lines parse unchanged
 OE="$(mktemp -d)"
 mkdir -p "$OE/.claude" "$OE/.neural-network"
-oe_brain() { python3 "$BO_SCRIPTS/brain.py" "$OE" "$@"; }
 OE_FEED="$OE/.neural-network/brain-events/test.jsonl"
 printf 'body\n' | oe_brain mint dev pre-note --tags x --paths "x/**" >/dev/null
 preexisting_line='{"v":1,"ts":"2020-01-01T00:00:00Z","repo":"acme/widgets","role":"dev","type":"LinkPruned","key":"a->b","reason":"target missing"}'
@@ -203,7 +202,6 @@ rm -rf "$OE"
 # --------------------------------------------------- feed-write failure never load-bearing
 OE="$(mktemp -d)"
 mkdir -p "$OE/.claude" "$OE/.neural-network"
-oe_brain() { python3 "$BO_SCRIPTS/brain.py" "$OE" "$@"; }
 printf 'body\n' | oe_brain mint dev fail-note --tags x --paths "x/**" >/dev/null
 rm -f "$OE/.neural-network/brain-events/test.jsonl"      # mint's NoteMinted emit already created it as a file
 mkdir -p "$OE/.neural-network/brain-events/test.jsonl"   # feed target is a directory -> append is doomed

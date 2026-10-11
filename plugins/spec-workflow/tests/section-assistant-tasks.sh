@@ -1773,6 +1773,159 @@ check "live reconciliation: artifact_path is rebuilt from the task id (same BLOC
     "ARTIFACT_PATH still-going-restart.log" "$out"
 rm -rf "$at_harness_live_root"
 
+echo "-- #507: periodic reconciliation preserves resolver-less live rows; startup still orphans them --"
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
+import queue, tempfile
+from assistant import tasks
+
+with tempfile.TemporaryDirectory(prefix="at-live-507-") as root:
+    conn = tasks._open_conn(root)
+    unresolved = []
+    for kind in ("absent", "explicit-none"):
+        for state in (tasks.STATE_STARTED, tasks.STATE_PROGRESS):
+            task_id = kind + "-" + state
+            unresolved.append(task_id)
+            tasks._insert(conn, task_id, kind, {"keep": task_id}, "turn-" + task_id)
+            tasks._transition(conn, task_id, state, external_job_id="external-" + task_id,
+                              artifact_path=task_id + ".log", error="existing diagnostic",
+                              result='{"partial": true}')
+    outcomes = {
+        "done": {"state": "completed", "artifact_path": "done.log", "result": {"ok": True}},
+        "failed": {"state": "failed", "error": "remote failure"},
+        "running": {"state": "in_progress"},
+        "missing": {"state": "not_found"},
+        "malformed": None,
+        "raises": RuntimeError("remote unavailable"),
+    }
+    for task_id in outcomes:
+        tasks._insert(conn, task_id, "registered", {"id": task_id}, "turn-" + task_id)
+        tasks._transition(conn, task_id, tasks.STATE_PROGRESS, external_job_id=task_id)
+    calls = []
+    def resolver(external_job_id, payload):
+        calls.append((external_job_id, payload))
+        outcome = outcomes[external_job_id]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+    resolvers = {"explicit-none": None, "registered": resolver}
+    before = {r["id"]: r for r in tasks.list_tasks(root)}
+    traces = queue.Queue()
+    for _ in range(2):
+        tasks._reconcile_live_root(conn, root, resolvers, traces)
+    after = {r["id"]: r for r in tasks.list_tasks(root)}
+    events = [item["event"] for item in list(traces.queue)]
+    for task_id in unresolved:
+        print("UNCHANGED", task_id, before[task_id] == after[task_id])
+    print("NO_UNRESOLVED_EVENTS", not any(e["payload"]["task_id"] in unresolved for e in events))
+    print("SIBLING_STATES", {key: after[key]["state"] for key in outcomes})
+    print("SIBLING_RESULTS", after["done"]["artifact_path"] == "done.log"
+          and after["done"]["result"] == {"ok": True} and after["failed"]["error"] == "remote failure")
+    print("RESOLVER_INPUTS", sorted(calls) == sorted(
+        [(key, {"id": key}) for key in outcomes] + [("running", {"id": "running"})]))
+    running_events = [e for e in events if e["payload"]["task_id"] == "running"]
+    print("RUNNING_UNCHANGED", before["running"] == after["running"])
+    print("RUNNING_TRACE_COMPATIBLE", len(running_events) == 2 and all(
+        e["kind"] == "task.reconcile_checked" and e["turn_id"] == "turn-running"
+        and e["payload"] == {"task_id": "running", "kind": "registered", "state": "progress",
+                             "reconciled": True, "still_running": True} for e in running_events))
+    startup_traces = queue.Queue()
+    tasks._reconcile_root(conn, root, resolvers, startup_traces)
+    restarted = {r["id"]: r for r in tasks.list_tasks(root)}
+    startup_events = [item["event"] for item in list(startup_traces.queue)]
+    print("STARTUP_ORPHANS", all(restarted[key]["state"] == "orphaned"
+          and "no reconciliation resolver registered" in restarted[key]["error"] for key in unresolved))
+    print("STARTUP_ORPHAN_EVENTS", sorted(e["payload"]["task_id"] for e in startup_events
+          if e["kind"] == "task.orphaned" and e["payload"]["reconciled"] is True) == sorted(unresolved))
+    conn.close()
+PY
+)"
+for kind in absent explicit-none; do
+    for state in started progress; do
+        check "#507 live $kind/$state: entire row unchanged, including timestamps/error/artifact/external ID" \
+            "UNCHANGED $kind-$state True" "$out"
+    done
+done
+check "#507 live: skipped rows emit no misleading orphan or checked event" "NO_UNRESOLVED_EVENTS True" "$out"
+check "#507 live: all registered sibling outcomes still processed" \
+    "SIBLING_STATES {'done': 'completed', 'failed': 'failed', 'running': 'progress', 'missing': 'orphaned', 'malformed': 'orphaned', 'raises': 'orphaned'}" "$out"
+check "#507 live: registered completion and failure fields preserved" "SIBLING_RESULTS True" "$out"
+check "#507 live: resolvers receive external IDs and payloads on each eligible pass" "RESOLVER_INPUTS True" "$out"
+check "#507 live: registered in-progress row unchanged" "RUNNING_UNCHANGED True" "$out"
+check "#507 live: every registered in-progress poll retains its compatible trace" "RUNNING_TRACE_COMPATIBLE True" "$out"
+check "#507 startup: absent and explicit-None resolvers still orphan both states" "STARTUP_ORPHANS True" "$out"
+check "#507 startup: every orphan transition still traced" "STARTUP_ORPHAN_EVENTS True" "$out"
+
+echo "-- #507 integration: real worker preserves rows introduced after its startup scan --"
+at_live_507_root="$(mktemp -d)"
+at_repo "$at_live_507_root" jarvis
+out="$(PYTHONPATH="$AT_SCRIPTS" python3 - "$at_live_507_root" <<'PY'
+import queue, sys, threading, time
+from assistant import tasks
+
+root = sys.argv[1]
+conn = tasks._open_conn(root)
+tasks._insert(conn, "sentinel", "registered", {}, "turn-sentinel")
+tasks._transition(conn, "sentinel", tasks.STATE_STARTED, external_job_id="sentinel")
+startup_polled, rows_ready, stop = threading.Event(), threading.Event(), threading.Event()
+def resolver(external_job_id, payload):
+    if external_job_id == "sentinel":
+        startup_polled.set()
+        if not rows_ready.wait(5):
+            raise RuntimeError("test did not release startup resolver")
+        return {"state": "in_progress"}
+    return {"state": "completed", "result": {"ok": True}}
+traces = queue.Queue()
+worker = threading.Thread(target=tasks.run_worker, args=(queue.Queue(), stop), kwargs={
+    "repos_getter": lambda: [("jarvis", root)], "resolvers": {"registered": resolver, "explicit-none": None},
+    "traces_queue": traces, "poll_timeout": 0.01, "live_reconcile_interval": 0.02})
+worker.start()
+events, unresolved, before = [], [], {}
+try:
+    assert startup_polled.wait(5), "worker never reached startup resolver"
+    # The startup SELECT is already materialized. These rows can only be
+    # visited by the real periodic loop, after the handshake releases it.
+    for kind in ("absent", "explicit-none"):
+        for state in (tasks.STATE_STARTED, tasks.STATE_PROGRESS):
+            task_id = kind + "-" + state
+            unresolved.append(task_id)
+            tasks._insert(conn, task_id, kind, {"keep": task_id}, "turn-" + task_id)
+            tasks._transition(conn, task_id, state, external_job_id="external-" + task_id,
+                              artifact_path=task_id + ".log", error="keep diagnostic")
+    tasks._insert(conn, "done", "registered", {}, "turn-done")
+    tasks._transition(conn, "done", tasks.STATE_PROGRESS, external_job_id="done")
+    before = {r["id"]: r for r in tasks.list_tasks(root)}
+    conn.close()
+    rows_ready.set()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            events.append(traces.get(timeout=max(0.001, deadline - time.monotonic()))["event"])
+        except queue.Empty:
+            break
+        if (sum(e["kind"] == "task.reconcile_checked" for e in events) >= 3
+                and any(e["kind"] == "task.completed" for e in events)):
+            break
+finally:
+    rows_ready.set()
+    stop.set()
+    worker.join(timeout=3)
+    conn.close()
+events.extend(item["event"] for item in list(traces.queue))
+after = {r["id"]: r for r in tasks.list_tasks(root)}
+print("MULTIPLE_PERIODIC_PASSES", sum(e["kind"] == "task.reconcile_checked" for e in events) >= 3)
+print("LIVE_ROWS_UNCHANGED", bool(unresolved) and all(before[key] == after[key] for key in unresolved))
+print("NO_LIVE_ROW_EVENTS", not any(e["payload"]["task_id"] in unresolved for e in events))
+print("SIBLING_COMPLETED", after.get("done", {}).get("state") == "completed")
+print("WORKER_JOINED", not worker.is_alive())
+PY
+)"
+check "#507 worker: observed startup plus at least two actual periodic polls" "MULTIPLE_PERIODIC_PASSES True" "$out"
+check "#507 worker: both unresolved states and resolver forms survive unchanged" "LIVE_ROWS_UNCHANGED True" "$out"
+check "#507 worker: no misleading events for unresolved live rows" "NO_LIVE_ROW_EVENTS True" "$out"
+check "#507 worker: registered sibling completes without resubmission" "SIBLING_COMPLETED True" "$out"
+check "#507 worker: shuts down cleanly" "WORKER_JOINED True" "$out"
+rm -rf "$at_live_507_root"
+
 echo "-- unit: run_worker -- live_reconcile_interval OMITTED default / repos_getter absent -> no periodic re-check ever runs (opt-in, existing callers unaffected) --"
 out="$(PYTHONPATH="$AT_SCRIPTS" python3 - <<'PY'
 import queue, tempfile, threading, time

@@ -222,7 +222,6 @@ rm -rf "$BW"
 # ------------------------------------------------------------- recall: RecallPerformed + LinkFired
 # a seeds by path and links to b; recall traverses a->b once => 1 RecallPerformed + 1 LinkFired.
 BW="$(mktemp -d)"
-bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
 printf 'a body\n\nrel: [[b]]\n' | bw mint dev a --tags x --paths "p/**" >/dev/null
 printf 'b body\n'               | bw mint dev b --tags y --paths "q/**" >/dev/null
 : >"$BW/.neural-network/brain-events/test.jsonl"   # isolate recall events from the mint events above
@@ -241,7 +240,6 @@ rm -rf "$BW"
 
 # ------------------------------------------------------------- consult: ConsultPerformed
 BW="$(mktemp -d)"
-bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
 printf 'reviewer rule body\n' | bw mint reviewer verify-tests --tags review --paths "**" >/dev/null
 : >"$BW/.neural-network/brain-events/test.jsonl"
 bw consult dev reviewer verify-tests >/dev/null
@@ -252,7 +250,6 @@ rm -rf "$BW"
 
 # ------------------------------------------------------------- graduate: NoteGraduated
 BW="$(mktemp -d)"
-bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
 printf 'gradbody\n' | bw mint dev gradme --tags g --paths "g/**" >/dev/null
 : >"$BW/.neural-network/brain-events/test.jsonl"
 bw graduate dev gradme >/dev/null
@@ -268,7 +265,6 @@ rm -rf "$BW"
 
 # ------------------------------------------------------------- prune --apply: LinkPruned per removed link
 BW="$(mktemp -d)"
-bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
 # two links whose targets never exist => both are prune candidates (target missing).
 printf 'src body\n\nrel: [[ghost-one]] and [[ghost-two]]\n' \
     | bw mint dev src --tags s --paths "s/**" >/dev/null
@@ -336,7 +332,6 @@ rm -rf "$BW_OFF" "$BW_ON"
 # stays writable. The command's real work (note + links.json) must complete, exit 0,
 # and only a warning is printed.
 BW="$(mktemp -d)"
-bw() { python3 "$BW_BRAIN" "$BW" "$@"; }
 mkdir -p "$BW/.neural-network/brain-events/test.jsonl"   # feed target unwritable
 out="$(printf 'body\n\nrel: [[x]]\n' | bw mint dev survivor --tags t --paths "p/**" 2>&1)"; rc=$?
 check_rc "feed-unwritable: mint still exits 0"     0 "$rc"

@@ -28,6 +28,24 @@ Event: {seq monotonic per assistant (writer-assigned), ts ISO-8601 UTC, session_
 - **seq assigned by the writer** (per-root monotonic counter seeded from MAX(seq) at open) — emitters stay lock-free; ordering is arrival order at the queue, which is §10.1's requirement (monotonic, not wall-clock-perfect).
 - **No ORM, no deps** — stdlib sqlite3; schema DDL inline; Prometheus exposition hand-rendered text format.
 - **Gitignore via the local-state manifest** (MEM-010 mechanism) in the same PR that first creates the file.
+- **Physical retention size with WAL (#510/#534):** size pruning measures the
+  main file only after `VACUUM` and a successful `wal_checkpoint(TRUNCATE)` on
+  the existing writer connection. VACUUM alone can leave a stale large main
+  file or put current growth entirely in WAL. After VACUUM, logical
+  `page_count * page_size` describes compact current data, but does not prove
+  physical reclamation of main-file/WAL bytes pinned by readers. A successful
+  truncate checkpoint makes the main-file measurement current and reclaims
+  the WAL; the budget includes schema/index overhead, not transient WAL or SHM.
+  The checkpoint uses a temporary zero busy timeout (restored afterward).
+  If busy, this size pass returns before deleting another chunk, without
+  waiting or retrying; age pruning already committed still applies. Physical
+  usage may temporarily exceed the budget until a later writer pass after
+  the reader releases its snapshot. No compact-size claim is made on busy or
+  measurement failure. Deletes retain the materialized oldest seq boundary,
+  and `PRUNE_MAX_SIZE_ITERATIONS` still bounds each pass. Reaching that bound
+  can leave the last deletion awaiting compaction on a later pass. Defaults,
+  zero-as-unlimited semantics, schema, and the single writer are unchanged;
+  retention never touches tasks, artifacts, or transcripts.
 
 ## Out of scope for this epic
 Task events (E6 emits task.*; the schema accepts them now), tts./stt. (E5), digest task-source swap (E6), any provider/LLM calls.

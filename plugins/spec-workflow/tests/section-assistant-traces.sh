@@ -559,6 +559,124 @@ check "retention size: pruning removes rows to come under the cap" "SOME_ROWS_RE
 check "retention size: file size lands near/under the maxMB budget" "SIZE_UNDER_BUDGET True" "$size_out"
 check "retention size: deletion is oldest-first (only the lowest turn_ids are gone)" "OLDEST_FIRST True" "$size_out"
 
+# Real WAL regressions (#510/#534): keep the writer open and disable automatic
+# checkpoints so VACUUM cannot accidentally make a stale main-file size current.
+echo "-- unit: retention measures compact WAL data without over-deleting history --"
+wal_retention_out="$(SCRIPTS_DIR="$AT_SCRIPTS" python3 - <<'PY'
+import os, sqlite3, sys, tempfile, time
+from contextlib import closing
+from unittest.mock import patch
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+from assistant import observability as obs
+
+N = 4000
+expected = list(range(3501, N + 1))
+
+def insert(conn, first=1):
+    conn.execute("BEGIN IMMEDIATE")
+    conn.executemany(obs._INSERT_SQL, (
+        (seq, "2099-01-01T00:00:00+00:00", None, str(seq), None, None,
+         "turn.start", None, None, None, '{"pad":"' + "x" * 1000 + '"}')
+        for seq in range(first, N + 1)
+    ))
+    conn.execute("COMMIT")
+
+def seqs(conn):
+    return [row[0] for row in conn.execute("SELECT seq FROM events ORDER BY seq")]
+
+def logical_bytes(conn):
+    return (conn.execute("PRAGMA page_count").fetchone()[0]
+            * conn.execute("PRAGMA page_size").fetchone()[0])
+
+def checkpoint(conn):
+    assert conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone() == (0, 0, 0)
+
+with tempfile.TemporaryDirectory(prefix="at-retwal-") as base:
+    # Calibrate from independently built, compact suffixes using this SQLite
+    # build's actual page size/index overhead, not mocked filesystem sizes.
+    sizes = []
+    for first in (3501, 3001):
+        root = os.path.join(base, "reference-" + str(first))
+        with closing(obs._open_conn(root)[0]) as conn:
+            insert(conn, first)
+            conn.execute("VACUUM")
+            checkpoint(conn)
+            sizes.append(os.path.getsize(obs._db_path(root)))
+    budget = (sizes[0] + sizes[1]) // 2
+    assert sizes[0] <= budget < sizes[1]
+    max_mb = budget / (1024 * 1024)
+
+    for case in ("STALE_MAIN", "WAL_GROWTH", "HELD_READER", "ITERATION_BOUND"):
+        root = os.path.join(base, case)
+        path = obs._db_path(root)
+        try:
+            with closing(obs._open_conn(root)[0]) as conn:
+                conn.execute("PRAGMA wal_autocheckpoint=0")
+                checkpoint(conn)
+                insert(conn)
+                if case != "WAL_GROWTH":
+                    checkpoint(conn)
+                    assert os.path.getsize(path) > budget
+                if case == "STALE_MAIN":
+                    conn.execute("DELETE FROM events WHERE seq <= 3500")
+                    conn.execute("VACUUM")
+                    assert logical_bytes(conn) <= budget < os.path.getsize(path)
+                elif case == "WAL_GROWTH":
+                    assert os.path.getsize(path) < budget < logical_bytes(conn)
+                    assert os.path.getsize(path + "-wal") > budget
+                elif case == "HELD_READER":
+                    # Age pruning still runs while a reader pins the old snapshot.
+                    conn.execute("INSERT INTO events (seq, ts) VALUES (0, '2000-01-01')")
+                    checkpoint(conn)
+                    with closing(sqlite3.connect(path, isolation_level=None)) as reader:
+                        reader.execute("BEGIN")
+                        assert len(seqs(reader)) == N + 1
+                        statements = []
+                        conn.set_trace_callback(statements.append)
+                        started = time.monotonic()
+                        obs._prune_conn(conn, root, retain_days=30, max_mb=max_mb)
+                        assert time.monotonic() - started < 2.0, "checkpoint waited for reader"
+                        assert seqs(conn) == list(range(1, N + 1)), "busy checkpoint deleted size chunks"
+                        assert len(seqs(reader)) == N + 1, "reader snapshot changed"
+                        assert sum(s == "VACUUM" for s in statements) <= 1
+                        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+                        assert os.path.getsize(path) > budget, "pinned file was reported compact"
+                        conn.set_trace_callback(None)
+                        # A later busy pass also preserves the entire unexpired suffix.
+                        obs._prune_conn(conn, root, retain_days=0, max_mb=max_mb)
+                        assert seqs(conn) == list(range(1, N + 1))
+                        reader.execute("ROLLBACK")
+                elif case == "ITERATION_BOUND":
+                    statements = []
+                    conn.set_trace_callback(statements.append)
+                    with patch.object(obs, "PRUNE_MAX_SIZE_ITERATIONS", 2):
+                        obs._prune_conn(conn, root, retain_days=0, max_mb=max_mb)
+                    assert seqs(conn) == list(range(1001, N + 1))
+                    assert sum(s == "VACUUM" for s in statements) == 2
+                    conn.set_trace_callback(None)
+
+                obs._prune_conn(conn, root, retain_days=0, max_mb=max_mb)
+                assert seqs(conn) == expected, "expected exact nonempty newest suffix"
+                assert os.path.getsize(path) <= budget, "main file not physically compact"
+                assert os.path.getsize(path + "-wal") == 0, "WAL not reclaimed"
+                assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+                assert conn.execute("PRAGMA wal_autocheckpoint").fetchone()[0] == 0
+                # Same connection remains usable, including the writer's next seq.
+                conn.execute("INSERT INTO events (seq, kind) VALUES (?, ?)", (N + 1, "turn.end"))
+            with closing(obs._open_conn(root)[0]) as reopened:
+                assert seqs(reopened) == expected + [N + 1], "retained data lost on reopen"
+                assert reopened.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+            print(case, "PASS")
+        except Exception as exc:
+            print(case, "FAIL", repr(exc))
+PY
+)"
+check_rc "retention WAL regression script exits cleanly" 0 "$?"
+check "retention WAL: stale large main file preserves the exact fitting suffix" "STALE_MAIN PASS" "$wal_retention_out"
+check "retention WAL: current WAL growth is pruned and physically compacted" "WAL_GROWTH PASS" "$wal_retention_out"
+check "retention WAL: held reader defers size deletion promptly; retry and reopen preserve suffix" "HELD_READER PASS" "$wal_retention_out"
+check "retention WAL: iteration limit bounds work and a later pass converges" "ITERATION_BOUND PASS" "$wal_retention_out"
+
 # #420: the size-chunk delete used to be one self-referencing statement
 # (`DELETE FROM events WHERE seq IN (SELECT seq FROM events ORDER BY seq
 # ASC LIMIT ?)`) whose oldest-first guarantee depended on the query

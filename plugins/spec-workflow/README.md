@@ -73,6 +73,24 @@ The `remote-compute` and `compute-top` skills moved to the standalone `plugins/r
 
 `changelog.py` (#404 — the root [`CHANGELOG.md`](../../CHANGELOG.md) generator built on top of that same semver history: `generate [--repo <path>] [--output <path>] [--ref <ref>]` does a FULL, deterministic, idempotent regeneration every run — no incremental append mode — by walking `git log --first-parent` and attributing every commit to the `plugins/spec-workflow/.claude-plugin/plugin.json` `version` its own tree reports, grouping the result into `## v<version> — <date>` sections (newest first) and, within each, fixed `### <Group>` subsections by conventional-commit type; workflow-process commits (`retro:`, `retro+feedback:`, `feedback:`, `brain:`, `config:`, and its own `chore(changelog):` commits) are excluded — the last exclusion is what makes `.github/workflows/changelog.yml` (push to `main`, regenerate, commit-if-changed as `github-actions[bot]`) terminate instead of looping on its own commits. Exact output format documented in the script's module docstring — `#405`'s per-version web UI depends on it byte-for-byte. The `changelog-generate` skill is a thin wrapper over this.) · `remote-compute.py` (the `remote-compute` skill's whole verb surface: `register`/`probe`/`status`/`list`/`enable`/`disable`/`exec`/`lock`/`unlock`/`dispatch`/`add-env`/`envs`/`install-capability`/`capabilities`/`remove-capability`/`add-job`/`jobs`/`run`/`remove-job`/`job-status`/`job-logs`/`job-pull`/`remove`/`setup-sheet`/`parse` — declared jobs are capability-style dispatch-by-intent (cmd template + per-param regex, shell-quoted substitution, sudo rejected); `remote-capabilities/comfyui/` is a capability BUNDLE (manifest + payload), not engine code — the remote half of ComfyUI jobs (pre-authored API-format workflow POSTed to the remote loopback, prompt substitution only, artifacts fetched via /view; e2e walkthrough in `tests/e2e-remote-compute-manual.sh`, manual/non-gate) — user-level registry at `~/.remote-compute/resources.yaml` (machine-local, never committed), idempotent `compute:` writer for a repo's gitignored `.neural-network/project.local.yaml` overlay (availability is capability-style + non-exclusive; alias + informational snapshot only, never host/user/secrets; committed `project.yaml` never touched), every ssh invocation pinned to `BatchMode=yes` + `StrictHostKeyChecking=yes`, sudo payloads rejected, dispatch job state recoverable from files alone; hermetic via the `COMPUTE_*_BIN` env seams and `tests/fixtures/stub-compute-transport/`; design in `docs/design/remote-compute-plan.md`)
 
+### Assistant retention and task recovery
+
+Trace retention (`assistant.observability.traces`) prunes oldest events first.
+`maxMB` budgets the compact physical database, including schema and indexes,
+after committed WAL changes are checkpointed and the WAL is reclaimed. A stale
+main-file size never justifies deleting more history. If a reader prevents that
+checkpoint, size pruning defers to a later pass without waiting or retrying in
+the current pass; age pruning still applies. Disk usage can temporarily exceed
+the budget while that reader holds its snapshot. Transient WAL/SHM storage is
+not counted as additional retained trace data. Defaults remain `retainDays: 30`
+and `maxMB: 500`, with `0` meaning unlimited for each knob (#510).
+
+Periodic task reconciliation polls live external jobs only when their kind has
+a registered resolver. Without one, it leaves the task unchanged and emits no
+reconciliation event. Startup recovery still marks unreconcilable in-flight
+tasks as `orphaned`; registered resolvers retain their existing outcomes (#507).
+These fixes introduce no CLI or configuration changes.
+
 ## Enforcement hooks
 
 `guard-board-move.sh` and `guard-brain-access.sh` ship in this plugin's `hooks/hooks.json`, so every consumer repo gets the gate-before-review guard and the brain-isolation guard automatically on install (`guard-brain-access.sh` runs on both the `Bash` matcher, alongside `guard-board-move.sh`, and a dedicated `Read` matcher). `guard-pr-create.sh` (#76) does NOT — it's a more opinionated, blocking gate on `gh pr create` itself, so it's opt-in: add it as an additional `PreToolUse` hook in the consumer repo's own `.claude/settings.json` (or `.claude/settings.local.json`):

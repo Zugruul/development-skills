@@ -362,13 +362,14 @@ def _prune_conn(conn, root, retain_days, max_mb):
     only.
 
     Size pass (max_mb > 0): measures ACTUAL on-disk bytes (`os.path.getsize`
-    after a `VACUUM`), not `PRAGMA page_count` -- a bare DELETE leaves freed
-    pages on sqlite's internal freelist without shrinking the file, so
-    page_count alone would never reflect a size reduction. A full `VACUUM`
-    per prune pass is acceptable at these sizes (retention runs at most every
-    `DEFAULT_PRUNE_INTERVAL_SECONDS`/`DEFAULT_PRUNE_EVERY_DRAINS`, on
-    traces.sqlite files that are, by construction, capped at `max_mb`
-    megabytes) and keeps the measurement exact rather than approximate. When
+    after `VACUUM` AND a successful WAL truncate checkpoint). VACUUM compacts
+    logical pages but can leave the main file stale while its changes live
+    in WAL (#510/#534). Checkpointing makes that compact size physical and
+    reclaims the WAL. `page_count * page_size` after VACUUM would reflect the
+    current logical size, but would not prove physical shrink while a reader
+    pins WAL history. A busy checkpoint therefore ends this size pass before
+    any further deletion; a later pass retries. It never waits on a reader
+    or retries within this pass, and restores the writer's busy timeout. When
     over budget, the oldest `PRUNE_SIZE_CHUNK` rows (by `seq`, index-backed
     via `ix_events_seq`) are deleted -- as a plain ordered SELECT followed
     by a `seq <= boundary` DELETE, deliberately NOT a single self-
@@ -399,10 +400,16 @@ def _prune_conn(conn, root, retain_days, max_mb):
     max_bytes = max_mb * 1024 * 1024
     for _ in range(PRUNE_MAX_SIZE_ITERATIONS):
         conn.execute("VACUUM")
+        # VACUUM in WAL mode need not shrink the main file until checkpointed.
+        busy_timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
         try:
-            size = os.path.getsize(path)
-        except OSError:
-            size = 0
+            conn.execute("PRAGMA busy_timeout=0")
+            busy, _log, _checkpointed = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        finally:
+            conn.execute("PRAGMA busy_timeout=%d" % busy_timeout)
+        if busy:
+            return  # a reader pins history; deleting more cannot release it
+        size = os.path.getsize(path)
         if size <= max_bytes:
             return
         # #420: this used to be one self-referencing statement -- a DELETE

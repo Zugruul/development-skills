@@ -36,6 +36,22 @@ out="$(cd "$_PR_ELSEWHERE" && env -u SPEC_WORKFLOW_PLUGIN_ROOT -u CLAUDE_PLUGIN_
 ' _ "$RESOLVER_SH" 2>&1)"
 check "bash: source-checkout resolution" "$PLUGIN" "$out"
 
+out="$(cd "$_PR_ELSEWHERE" && env -u SPEC_WORKFLOW_PLUGIN_ROOT -u CLAUDE_PLUGIN_ROOT bash -c '
+    source "$1"
+    spec_workflow_plugin_root /unrelated/caller-argument
+' _ "$RESOLVER_SH" 2>&1)"; rc=$?
+check_rc "bash: caller arguments do not replace the resolver source path" 0 "$rc"
+check "bash: caller arguments leave source-relative resolution unchanged" "$PLUGIN" "$out"
+
+ln -s "$RESOLVER_SH" "$_PR_ELSEWHERE/resolver-target.sh"
+ln -s resolver-target.sh "$_PR_ELSEWHERE/resolver-link.sh"
+out="$(cd "$_PR_ELSEWHERE" && env -u SPEC_WORKFLOW_PLUGIN_ROOT -u CLAUDE_PLUGIN_ROOT bash -c '
+    source ./resolver-link.sh
+    spec_workflow_plugin_root
+' 2>&1)"; rc=$?
+check_rc "bash: relative and absolute symlink hops resolve successfully" 0 "$rc"
+check "bash: sourced symlink resolves to canonical plugin root" "$PLUGIN" "$out"
+
 out="$(cd "$_PR_ELSEWHERE" && env -u SPEC_WORKFLOW_PLUGIN_ROOT -u CLAUDE_PLUGIN_ROOT python3 -c '
 import sys
 sys.path.insert(0, sys.argv[1])

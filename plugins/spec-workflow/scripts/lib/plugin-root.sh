@@ -86,7 +86,7 @@ spec_workflow_plugin_root() {
         return 1
     fi
 
-    resolver_dir="$(_spec_workflow_pr_resolver_dir)" || return 1
+    resolver_dir="$(_spec_workflow_pr_resolver_dir "${BASH_SOURCE[0]}")" || return 1
     dir="$resolver_dir"
     while :; do
         if _spec_workflow_pr_is_valid_root "$dir"; then

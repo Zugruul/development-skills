@@ -74,6 +74,11 @@ roster), §12 (actions, artifacts, async tasks), §17 invariants 2–3, 5.
   reconciliation (AST-067) runs once at worker start: any `started`/`progress` task with
   an `external_job_id` is re-polled against the remote system (never resubmitted);
   no-`external_job_id` in-flight tasks at restart are unreconcilable ⇒ `orphaned`.
+  Periodic reconciliation only polls live external jobs with a registered resolver;
+  kinds with no resolver (absent or `None`) retain their entire row and emit no
+  reconciliation event. Startup still orphans these unreconcilable rows. Registered
+  resolvers retain their existing outcomes and `task.reconcile_checked` traces for
+  every `in_progress` poll.
 - `/assistant/artifact/<id>` (AST-068) — GET only, range-capable (`Range:` header honored,
   reads via chunked file streaming, never loads the whole file into RAM), 404 outside the
   artifact dir (path-traversal closed the same way `/file`'s existing brain-dir scoping

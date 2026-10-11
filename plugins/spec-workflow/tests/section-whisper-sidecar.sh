@@ -38,10 +38,24 @@ ws_track_pid() { WS_LIVE_PIDS+=("$1"); }
 ws_cleanup() {
     local pid
     for pid in "${WS_LIVE_PIDS[@]-}"; do
-        [[ -n "$pid" ]] && kill -9 "$pid" >/dev/null 2>&1 || true
+        if [[ -n "$pid" ]]; then
+            kill -9 "$pid" >/dev/null 2>&1 || true
+        fi
     done
 }
 trap ws_cleanup EXIT
+
+# Stub kill in a subshell: a failed kill must not stop later cleanup attempts.
+out="$(
+    WS_LIVE_PIDS=('' 101 102)
+    kill() { printf 'attempt:%s\n' "$2" >&3; return 1; }
+    ws_cleanup 3>&1
+    printf 'cleanup-rc:%s\n' "$?"
+)"
+check "cleanup: failed kills are swallowed" "cleanup-rc:0" "$out"
+check "cleanup: first nonempty pid attempted" "attempt:101" "$out"
+check "cleanup: later pid attempted after failure" "attempt:102" "$out"
+check_rc "cleanup: empty pid skipped" 2 "$(printf '%s\n' "$out" | grep -c '^attempt:')"
 
 # ws_env <state_dir> <port> -- prints an `export`-ready env block wiring
 # every hermetic override whisper_sidecar.py understands: a throwaway

@@ -58,8 +58,61 @@ check_rc "all-clients install exits 0" 0 "$rc"
 check "claude: implement-task discoverable via .claude/skills/" "yes" "$r"
 [[ -f "$HP/.agents/skills/implement-task/SKILL.md" ]] && r=yes || r=no
 check "codex: implement-task discoverable via .agents/skills/" "yes" "$r"
-n="$(find "$HP/.opencode/skills/" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
-check "opencode: every skill installed (37)" "37" "$n"
+# Compare destination names AND resolved SKILL.md files with the source inventory.
+# Equal counts alone miss wrong targets, copies, and missing-plus-extra entries.
+hp_inventory() {
+    python3 - "$REPO_ROOT" "$1" <<'PY'
+from pathlib import Path
+import sys
+
+root, installed = map(Path, sys.argv[1:])
+expected = {}
+for source in sorted(root.glob("plugins/*/skills/*/SKILL.md")):
+    name = source.parent.name
+    if name in expected:
+        name = source.parents[2].name + "-" + name
+    assert name not in expected, f"ambiguous source inventory: {name}"
+    expected[name] = source.resolve(strict=True)
+assert expected, "empty source inventory"
+actual = {entry.name: entry for entry in installed.iterdir()}
+assert actual.keys() == expected.keys(), (
+    f"missing={sorted(expected.keys() - actual.keys())}, "
+    f"extra={sorted(actual.keys() - expected.keys())}"
+)
+for name, canonical in expected.items():
+    entry = actual[name]
+    assert entry.is_symlink(), f"not a symlink: {entry}"
+    assert (entry / "SKILL.md").resolve(strict=True) == canonical, f"wrong target: {entry}"
+print(f"CANONICAL {len(expected)}")
+PY
+}
+for hp_client in .opencode .claude .agents; do
+    hp_target="$HP/$hp_client/skills"
+    out="$(hp_inventory "$hp_target" 2>&1)"; rc=$?
+    check_rc "$hp_client: exact canonical inventory ($out)" 0 "$rc"
+    # Exercise the oracle itself, retaining the entry count for wrong-target probes.
+    hp_original="$(readlink "$hp_target/implement-task")"
+    rm "$hp_target/implement-task"
+    out="$(hp_inventory "$hp_target" 2>&1)"; rc=$?
+    check_rc "$hp_client: oracle rejects a missing skill" 1 "$rc"
+    ln -s "$hp_target/board" "$hp_target/implement-task"
+    out="$(hp_inventory "$hp_target" 2>&1)"; rc=$?
+    check_rc "$hp_client: oracle rejects a wrong canonical target" 1 "$rc"
+    rm "$hp_target/implement-task"
+    mkdir "$hp_target/implement-task"
+    cp "$hp_original/SKILL.md" "$hp_target/implement-task/SKILL.md"
+    out="$(hp_inventory "$hp_target" 2>&1)"; rc=$?
+    check_rc "$hp_client: oracle rejects a copied skill" 1 "$rc"
+    rm "$hp_target/implement-task/SKILL.md"
+    rmdir "$hp_target/implement-task"
+    ln -s "$hp_original" "$hp_target/implement-task"
+    ln -s "$hp_original" "$hp_target/unexpected-skill"
+    out="$(hp_inventory "$hp_target" 2>&1)"; rc=$?
+    check_rc "$hp_client: oracle rejects an extra skill" 1 "$rc"
+    rm "$hp_target/unexpected-skill"
+    out="$(hp_inventory "$hp_target" 2>&1)"; rc=$?
+    check_rc "$hp_client: restored inventory passes" 0 "$rc"
+done
 # a REAL pre-existing dir is never clobbered: the plugin's skill lands under
 # the <plugin>-<skill> fallback name instead (reference installer semantics);
 # refusal happens only when BOTH names are taken by foreign content.
