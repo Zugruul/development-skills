@@ -16,6 +16,7 @@
   > 1. Record the WSL-only restricted control plane and installed host authority.
   > 2. Preserve the separately queued job plane and command audit contracts.
   > 3. Archive the reviewed AST-080 delta without changing its text.
+- **handoff:** preserve AST-082 review-limit state (#349) (`d160efa`)
 
 ### Chores
 - **retro:** record restricted SSH delivery lessons (`206619b`)
