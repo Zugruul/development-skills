@@ -1,0 +1,27 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-11T18:29:43Z'
+iteration:
+  task: '349'
+  outcome: merged
+  reviewRounds: 4
+source:
+  role: orchestrator
+  model: Codex host default (model ID unavailable)
+items:
+- category: recommendation
+  area: testing
+  severity: medium
+  summary: Check semantic equivalence separately from parser performance
+  detail: Whole-module differential comparisons exposed exact-key and escaped-prefix
+    privacy regressions in a fast candidate before its final review. Committed regressions
+    covered actual queue/database persistence as well as helper output; independent
+    reviewers then verified both compatibility and bounded work.
+  evidence:
+  - Zugruul/development-skills#349
+  generalized: For parser performance fixes, compare the complete old and new implementations
+    across token boundaries and both sensitive and safe inputs, then verify persistence
+    and concurrent responsiveness separately.
+  routing:
+    action: brain-note
+    ref: dev/preserve-classifier-input-when-optimizing
