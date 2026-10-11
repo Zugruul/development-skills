@@ -1,0 +1,27 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-11T14:00:28Z'
+iteration:
+  task: '349'
+  outcome: blocked
+  reviewRounds: 3
+source:
+  role: orchestrator
+  model: Codex host default (model ID unavailable)
+items:
+- category: recommendation
+  area: review
+  severity: medium
+  summary: Include computational work in adversarial parser review
+  detail: Independent local review found a supported-size input that held the Python
+    GIL for about eleven seconds despite passing functional and full local gates.
+    The task is held at the review-round limit pending human direction; no feature
+    merge was made.
+  evidence:
+  - Zugruul/development-skills#349
+  - https://github.com/Zugruul/development-skills/issues/349#issuecomment-6109785121
+  generalized: Review bounded-input parsers with worst-case unsuccessful matches and
+    a concurrent progress probe; a size bound alone does not prove responsiveness.
+  routing:
+    action: brain-note
+    ref: reviewer/measure-parser-work-not-only-input-size
