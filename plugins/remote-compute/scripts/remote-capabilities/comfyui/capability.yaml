@@ -18,7 +18,16 @@ jobIdSchema:
         dashes), so the id is always filename- and shell-safe.
 payload:
 -   comfy-run.py
+-   comfy-import.py
 jobs:
+    import-workflow:
+        description: >-
+            Import a trusted core-txt2img-v1 UI save into a NEW API artifact.
+            Validates loopback object_info; never queues or renders the workflow.
+        cmd: python3 {capdir}/comfy-import.py --workflow {workflow} --output {jobdir}/workflow_api.json --profile core-txt2img-v1 --port {port}
+        params:
+            workflow: "[^`$;|&<>]+"
+            port: "[0-9]+"
     render:
         description: >-
             Render a pre-authored API-format workflow. Pass workflow= the path

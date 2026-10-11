@@ -211,6 +211,40 @@ pipelines) from model output. A real end-to-end walkthrough lives in
 `tests/e2e-remote-compute-manual.sh` (manual, network-touching — deliberately
 not part of the hermetic gate).
 
+## ComfyUI UI-save import
+
+For an explicit request to import a trusted pre-authored UI save, use the
+declared `comfyui:import-workflow` job:
+
+```bash
+python3 "../../scripts/remote-compute.py" run gpubox comfyui:import-workflow --job-id comfy-import-example --param workflow=/path/on/target/UI.json --param port=8188
+```
+
+This authoring utility writes a NEW `workflow_api.json` and reports `ARTIFACT`;
+it never queues a prompt or creates nodes/edges. Rendering that file is a separate
+human-approved action. Do not auto-convert during rendering. The helper requires
+the explicit `core-txt2img-v1` serializer profile: numeric workflow v0.4, seven
+reviewed core classes, fixed seed control, exact schema/slot agreement and literal
+widgets. Refuse custom/virtual nodes, subgraphs, mute/bypass, reroutes, converted
+widgets, dynamic prompts, filename substitution tokens and ambiguous graphs.
+SaveImage/PreviewImage legacy empty and current IMAGE outputs are supported only
+when UI and schema agree. Never claim every workflow or frontend release works.
+Use `Workflow -> Export (API)` for unsupported cases.
+
+Standalone: `python3 comfy-import.py --workflow UI.json --output API.json --profile core-txt2img-v1 --object-info INFO.json`
+uses a trusted offline snapshot, which does not certify the current server;
+omit `--object-info` to use bounded loopback GET `/object_info` on port 8188.
+See [the exact profile, limits and provenance](../../../../docs/remote-compute.md#explicit-comfyui-ui-save-import).
+Source/existing output paths are preserved. API rendering, list-nodes and
+value-only runtime overrides remain unchanged. This grants no assistant access.
+Validate behavioral options at their reviewed node/input sites, including types
+and values; refuse transformed prompt escapes and reserved IDs `nodes`/`links`.
+Ordinary backslashes, even trailing backslash runs and other supported string
+IDs remain usable. A temporary-file cleanup warning after publication is a
+successful import (exit `0` plus `ARTIFACT`), not a reason to retry or remove the
+artifact. Failures before publication retain their original error; existing
+outputs remain protected.
+
 ## naming artifact jobs
 
 For jobs that PRODUCE artifacts (images, video, models), let the capability

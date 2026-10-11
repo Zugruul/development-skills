@@ -667,6 +667,116 @@ visibly unknown.
 
 ---
 
+## Explicit ComfyUI UI-save import
+
+The `comfyui:import-workflow` job is a non-executing authoring utility for
+trusted, pre-authored UI saves. It creates a **new** API JSON artifact for later
+use. Import never queues a prompt, constructs a new graph, provisions a server,
+downloads a model or changes runtime overrides. Rendering remains a separate
+human-approved action using the existing `comfyui:render` job.
+
+After installing the reviewed `comfyui` bundle on an existing server machine:
+
+```bash
+remote-compute run gpubox comfyui:import-workflow --job-id comfy-import-example --param workflow=/path/on/target/UI.json --param port=8188
+```
+
+Read the job log for `ARTIFACT .../workflow_api.json`, then use `job-pull` as for
+other artifacts. Updating an existing installation follows the
+[installed-update guide](remote-compute-updates.md); install and catalog sync
+do not certify server readiness. Existing render/list job names and parameters
+are unchanged.
+
+The standalone stdlib helper is also usable without registration. From the
+repository root, select the profile explicitly:
+
+```bash
+python3 plugins/remote-compute/scripts/remote-capabilities/comfyui/comfy-import.py --workflow UI.json --output API.json --profile core-txt2img-v1 --port 8188
+python3 plugins/remote-compute/scripts/remote-capabilities/comfyui/comfy-import.py --workflow UI.json --output API.json --profile core-txt2img-v1 --object-info object-info.json
+```
+
+`--port` defaults to 8188. Its only request is GET `/object_info` at
+`127.0.0.1`, with no proxy or redirects, a five-second connection timeout and
+a five-second deadline for receiving headers/body. `--object-info` instead
+reads an explicit trusted snapshot with no network I/O; that snapshot does
+not certify the current server. Inputs/responses and serialized output are
+limited to 4 MiB, JSON nesting to 64, graphs to 1024 nodes and 8192 links.
+Duplicate JSON keys, nonfinite numbers and invalid UTF-8 are refused.
+
+`core-txt2img-v1` supports only numeric workflow version `0.4`, mode `0` nodes,
+and these reviewed widget layouts (left to right in `widgets_values`):
+
+| Core class | Saved widgets | Output types |
+| --- | --- | --- |
+| CheckpointLoaderSimple | ckpt_name | MODEL, CLIP, VAE |
+| CLIPTextEncode | text | CONDITIONING |
+| EmptyLatentImage | width, height, batch_size | LATENT |
+| KSampler | seed, control_after_generate, steps, cfg, sampler_name, scheduler, denoise | LATENT |
+| VAEDecode | none | IMAGE |
+| SaveImage | filename_prefix | none or IMAGE |
+| PreviewImage | none | none or IMAGE |
+
+SaveImage/PreviewImage accept the historical empty and current IMAGE output
+variants **only when saved slots and object_info agree exactly**. The sampler
+control must be the string `fixed` and is omitted from API output. Boolean,
+randomize, increment and decrement controls are refused. Widget positions never
+come from object_info dictionary order. Required input names/types, output
+signatures, enum choices and advertised numeric bounds must match; additional
+required/optional inputs or unsupported widget options fail closed. Ordinary
+hidden `prompt`/`extra_pnginfo` inputs are not authored into API JSON.
+
+Behavioral options are checked at their reviewed input sites, not accepted by
+name alone. When present, `multiline` and `dynamicPrompts` must be boolean `true`
+on CLIPTextEncode.text only; `control_after_generate` must be boolean `true`
+on KSampler.seed only. Other placements/values are refused. `step` is supported
+only for EmptyLatentImage width/height and KSampler cfg/denoise; `round` only
+for KSampler.cfg. Both require positive finite numbers. Numeric bounds must
+match the input's numeric type; widget defaults must have valid types/values,
+and tooltips must be strings. Unreviewed `advanced`/`display` options are refused.
+`input_is_list`, if present, must be boolean `false`; `output_node` must match
+the class (boolean `true` for SaveImage/PreviewImage, `false` for the others).
+
+Existing IDs, titles, links and literal values are preserved (API node keys and
+link source IDs are strings). Node IDs may be nonnegative safe integers or
+1-128 character ASCII alphanumeric/underscore/hyphen strings, without string
+coercion collisions; link IDs are nonnegative safe integers. Node IDs `nodes`
+and `links` are reserved by the existing API runner and refused before output;
+other supported string IDs remain usable. Every input/output
+link reference must agree with its six-field top-level link. Cycles, dangling
+links, duplicate IDs/assignments, converted widgets, mute/bypass, reroutes,
+virtual/custom nodes and subgraphs are refused. No node is silently pruned.
+
+Prompt braces, wildcard markers (`__`) and comment syntax (`//`, `/*`, `*/`)
+are conservatively refused; this utility does not expand dynamic prompts.
+Escaped pipes (`\|`) and odd-length runs of trailing backslashes are also
+refused based on inspected frontend source; ordinary backslashes and even
+trailing runs are preserved. These are source-derived restrictions, not a
+claim of upstream runtime verification.
+SaveImage `%...%` filename tokens (including `%date:...%` and `%Node.widget%`)
+are refused because frontend serialization can replace them. Unknown execution
+or serialization metadata is unsupported. Normal node layout, groups, collapsed/
+pinned flags, core package metadata and viewport `extra.ds`/`frontendVersion`
+are accepted; graph `config` must be empty.
+
+Source and existing output files/symlinks are never replaced. Validation and
+serialization complete before an exclusive atomic publication; failed writes
+before publication leave no final artifact. Successful publication is the commit
+point: if removing the temporary file then fails, exit remains `0`, `ARTIFACT`
+is printed, and a distinct cleanup warning names the temporary path. The final
+artifact is preserved. A cleanup warning before publication never hides the
+original write/link error or turns failure into success; existing outputs remain
+protected. Publication requires a filesystem supporting same-directory
+hard links. Exit codes: `0` success, `2` invalid/unsupported data or usage,
+`1` service/I/O failure. Errors include field/node context where applicable and
+the fallback **Workflow -> Export (API)**. The resulting API JSON works with
+the unchanged `--list-nodes`, rendering and value-only override paths.
+
+This is a bounded serializer profile, **not universal compatibility** with all
+existing workflows or frontend versions. Trusted extensions can alter semantics
+without leaving detectable metadata; use native API export in those installations.
+See the [design and primary sources](design/remote-compute-comfy-import.md) and
+[synthetic fixture provenance](../plugins/remote-compute/tests/fixtures/comfy-import/README.md).
+
 ## When something goes wrong
 
 **"Cannot reach the machine."** It is off, asleep, or not accepting connections.

@@ -130,13 +130,39 @@ protocol: update every dispatching client for cross-client coordination.
 ## Tests
 
 `bash plugins/remote-compute/tests/run-tests.sh` — hermetic (scripted fake ssh
-transport, no network ever). The suite reaches into `plugins/spec-workflow`
+transport and disposable loopback HTTP fixtures, no external network). The suite reaches into `plugins/spec-workflow`
 for `config.py`/`validate-config.py`/fixtures — the same direction as the
 plugin's declared dependency. `tests/e2e-remote-compute-manual.sh` is the
 deliberately-unregistered manual end-to-end against a real machine.
 spec-workflow keeps its own `section-compute-overlay.sh` proving the overlay
 machinery with a hand-crafted `compute:` section (the contract seam's other
 half).
+
+## ComfyUI import
+
+`comfyui:import-workflow` explicitly imports a trusted pre-authored UI save into
+a new `{jobdir}/workflow_api.json` artifact, without executing it:
+
+```bash
+remote-compute run gpubox comfyui:import-workflow --job-id comfy-import-example --param workflow=/path/UI.json --param port=8188
+```
+
+The standalone `scripts/remote-capabilities/comfyui/comfy-import.py` requires
+`--workflow UI.json --output API.json --profile core-txt2img-v1`; add either
+`--port 8188` (loopback GET only) or `--object-info INFO.json` (offline snapshot).
+The profile accepts only workflow v0.4 and seven reviewed core classes, fixed
+seed control, validated existing links and literal widgets. Custom/virtual
+nodes, dynamic prompts, filename substitutions and graph/schema mismatch are
+refused. SaveImage/PreviewImage empty or IMAGE outputs must match the schema.
+It is not compatible with every workflow/frontend version. Existing API render,
+list-nodes and value-only overrides remain unchanged; import never submits work.
+See the [exact support boundary and export fallback](../../docs/remote-compute.md#explicit-comfyui-ui-save-import).
+Behavioral options are validated at each node/input site, including option types
+and values. Transformed prompt escape forms and the API runner's reserved IDs
+`nodes`/`links` are refused; other supported string IDs are preserved. Publication
+is the commit point: later temporary-file cleanup failure emits a warning while
+retaining exit `0` and `ARTIFACT`. Earlier failures preserve the original error
+and never replace an existing output.
 
 ## Local repositories and runtime preservation
 

@@ -278,6 +278,18 @@ target admission refusals; uncertain reservation or launch stops for inspection.
 Full guide:
 [docs/remote-compute.md](./docs/remote-compute.md).
 
+The ComfyUI bundle also offers explicit, non-executing UI-save import:
+`remote-compute run gpubox comfyui:import-workflow --job-id comfy-import-example --param workflow=/path/UI.json --param port=8188`.
+It writes a new API artifact for later rendering. Only the documented
+`core-txt2img-v1` workflow-v0.4 seven-core-class profile is supported, with fixed
+seed control and exact graph/schema agreement; custom nodes, dynamic prompts,
+filename substitutions and ambiguous graphs are refused. It does not support
+all saved workflows or frontend versions. See the
+[exact boundary, offline invocation and native-export fallback](docs/remote-compute.md#explicit-comfyui-ui-save-import).
+Behavioral schema options are validated per input; transformed prompt escape
+forms and reserved node IDs `nodes`/`links` are refused. Once published, an
+artifact remains a success even if temporary-file cleanup emits a warning.
+
 | Skill | Purpose |
 |---|---|
 | `remote-compute` | Register/probe machines, manage project availability, install bundles, and run or inspect work by explicit nickname or project role. |

@@ -177,6 +177,23 @@ allocation:
 | [scan](plugins/remote-compute/skills/scan/SKILL.md) | Re-find a registered machine whose address changed while preserving host identity. |
 | [ssh](plugins/remote-compute/skills/ssh/SKILL.md) | List registered machines and ready-to-paste SSH and dashboard commands. |
 
+ComfyUI authoring-time import is the separate, non-executing
+`comfyui:import-workflow` job, invoked with
+`remote-compute run gpubox comfyui:import-workflow --job-id comfy-import-example --param workflow=/path/UI.json --param port=8188`.
+It creates a new API JSON file only for the documented `core-txt2img-v1`
+workflow-v0.4 seven-core-class profile. Fixed seed control, exact graph/schema
+agreement and literal values are required; custom/virtual nodes, dynamic prompts,
+filename substitution tokens and ambiguous graphs are refused with
+`Workflow -> Export (API)` guidance. This is not universal frontend compatibility
+and changes no assistant control plane, API rendering or value-only overrides.
+The [exact support boundary and offline CLI](docs/remote-compute.md#explicit-comfyui-ui-save-import)
+are the operational reference for the bundled helper.
+Validation also checks behavioral schema options per input, refuses transformed
+prompt escape forms and reserves node IDs `nodes`/`links` for API-runner
+compatibility. Exclusive publication commits success: a later temporary-file
+cleanup failure reports `ARTIFACT` plus a warning, without removing the artifact.
+Failures before publication retain their original error and preserve existing outputs.
+
 See the [remote-compute user guide](docs/remote-compute.md) for machine setup,
 registration, environments, bundle/job authoring, dispatch, locking, and recovery.
 The plugin itself is documented in [plugins/remote-compute/README.md](plugins/remote-compute/README.md).
