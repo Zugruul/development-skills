@@ -12,6 +12,10 @@
 
 ### Chores
 - **release:** spec-workflow v0.66.0 (`9f2b213`)
+- **retro:** record installed-update verification lessons (`0ff6b69`)
+  > 1. Record dev and independent reviewer lesson outcomes.
+  > 2. Preserve the staged-payload testing lesson and routed feedback.
+  > 3. Regenerate the brain directory without pruning or graduating notes.
 
 ## v0.65.2 — 2026-10-11
 
