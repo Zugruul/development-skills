@@ -1,6 +1,6 @@
 {
   "comments-deserve-code-scrutiny->record-why-safe-not-just-that": {
-    "fires": 9,
+    "fires": 10,
     "last": "2026-10-11",
     "weight": 0.5
   },
@@ -15,22 +15,32 @@
     "weight": 0.5
   },
   "confirm-named-scope-exclusions-respected->note-dont-gate-on-unrelated-findings": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "copied-precedent-needs-fresh-verification->comments-deserve-code-scrutiny": {
-    "fires": 8,
+    "fires": 9,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "copied-precedent-needs-fresh-verification->stub-shaped-blind-spots": {
-    "fires": 8,
+    "fires": 9,
     "last": "2026-10-11",
     "weight": 0.5
   },
+  "cover-producer-value-domains-in-classifiers->copied-precedent-needs-fresh-verification": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "cover-producer-value-domains-in-classifiers->reports-are-not-the-code": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "distinguish-missed-vs-uncatchable-findings->verify-portability-claims-in-target-environment": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
@@ -40,7 +50,7 @@
     "weight": 0.5
   },
   "grep-for-known-bug-class-before-deep-analysis->verify-portability-claims-in-target-environment": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
@@ -75,12 +85,12 @@
     "weight": 0.5
   },
   "mutation-test-verify-suite-discriminates->reproduce-claimed-bug-fix-before-and-after": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "mutation-test-verify-suite-discriminates->verify-proximity-checks-dont-bleed-into-next-record": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
@@ -90,47 +100,47 @@
     "weight": 0.5
   },
   "probe-spec-silent-input-categories->trace-boundary-operators-by-hand": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "red-commit-worktree-verify->recompute-hashes-never-eyeball": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "red-commit-worktree-verify->reports-are-not-the-code": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "reproduce-before-verdict->grep-for-the-third-site": {
-    "fires": 9,
+    "fires": 10,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "reproduce-before-verdict->test-at-the-observed-layer": {
-    "fires": 9,
+    "fires": 10,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "reproduce-claimed-bug-fix-before-and-after->verify-backcompat-claims-algebraically": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "reproduce-claimed-bug-fix-before-and-after->verify-tdd-empirically-when-log-is-thin": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "reproduce-then-verify-fix->rerun-the-red-empirically": {
-    "fires": 11,
+    "fires": 12,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "rerun-the-red-empirically->reproduce-then-verify-fix": {
-    "fires": 11,
+    "fires": 12,
     "last": "2026-10-11",
     "weight": 0.5
   },
@@ -145,12 +155,12 @@
     "weight": 0.5
   },
   "stub-shaped-blind-spots->reproduce-before-verdict": {
-    "fires": 8,
+    "fires": 9,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "stub-shaped-blind-spots->tested-through-which-caller": {
-    "fires": 8,
+    "fires": 9,
     "last": "2026-10-11",
     "weight": 0.5
   },
@@ -160,22 +170,22 @@
     "weight": 0.5
   },
   "tested-through-which-caller->reproduce-before-verdict": {
-    "fires": 8,
+    "fires": 9,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "tested-through-which-caller->stub-shaped-blind-spots": {
-    "fires": 8,
+    "fires": 9,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "trace-boundary-operators-by-hand->equality-guards-invite-ordering-probes": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "trace-dict-merge-for-key-collisions->verify-backcompat-claims-algebraically": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
@@ -185,47 +195,47 @@
     "weight": 0.5
   },
   "verify-backcompat-claims-algebraically->verify-tdd-empirically-when-log-is-thin": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "verify-doc-links-and-quotes-against-live-source->confirm-named-scope-exclusions-respected": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "verify-guard-regex-on-real-artifact->match-repo-security-baseline": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "verify-guard-regex-on-real-artifact->recompute-hashes-never-eyeball": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "verify-guard-regex-on-real-artifact->red-commit-worktree-verify": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "verify-ordering-assertions-at-two-levels->trace-boundary-operators-by-hand": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "verify-portability-claims-in-target-environment->local-gate-green-doesnt-imply-ci-green-for-infra": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "verify-proximity-checks-dont-bleed-into-next-record->reproduce-claimed-bug-fix-before-and-after": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },
   "verify-proximity-checks-dont-bleed-into-next-record->trace-dict-merge-for-key-collisions": {
-    "fires": 12,
+    "fires": 13,
     "last": "2026-10-11",
     "weight": 0.5
   },

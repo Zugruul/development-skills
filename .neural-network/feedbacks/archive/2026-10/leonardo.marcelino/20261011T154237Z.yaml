@@ -1,0 +1,55 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-11T15:42:37Z'
+iteration:
+  task: '525'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: Codex host default (model ID unavailable)
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Exercise real producer values and forbidden recovery state
+  generalized: Independent review should exercise real protocol outputs beyond the
+    shipped fixtures and verify both required and forbidden recovery state.
+  evidence:
+  - Zugruul/development-skills#525
+  detail: Two independent passes found foreign-job receipt adoption and multiline
+    lock refusals; committed RED regressions, fixes, and both approvals preceded the
+    local merge.
+  routing:
+    action: brain-note
+    ref: reviewer/cover-producer-value-domains-in-classifiers
+- category: friction
+  area: testing
+  severity: medium
+  summary: Unbound sibling port allocations can collide
+  generalized: Command-substitution port allocation must explicitly exclude already
+    selected unbound sibling ports because child-shell state does not reserve them
+    in the parent.
+  evidence:
+  - Zugruul/development-skills#97
+  - https://github.com/Zugruul/development-skills/issues/97#issuecomment-6110439216
+  detail: One local gate encountered a fixture collision. An unchanged full retry
+    and fresh merge gate passed; existing issue received evidence.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#97
+- category: friction
+  area: permissions
+  severity: low
+  summary: Retrospective maintenance checks remain partial
+  generalized: ''
+  evidence:
+  - Zugruul/development-skills#525
+  detail: Pruning inspection was denied by auto-review and was not retried. No notes
+    were removed. Read-only verify-feed reported event/link drift in both roles; no
+    reconciliation attempted. Outcomes, two notes, directory and one retro marker
+    were recorded.
+  routing:
+    action: ignore
+    ref: 'Local maintenance deferred: pruning permission denied and event/link drift
+      requires separate investigation; no saved knowledge removed.'

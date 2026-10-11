@@ -73,3 +73,6 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "apply-blocks-guard-empty-candidates", "task": "349", "ts": "2026-10-11T14:02:27+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "audit-before-build-per-ac-clause", "task": "349", "ts": "2026-10-11T14:02:32+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "audit-new-path-parity-before-writing", "task": "349", "ts": "2026-10-11T14:02:36+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "capture-dont-transcribe", "task": "525", "ts": "2026-10-11T15:26:59+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "deterministic-repro-fast", "task": "525", "ts": "2026-10-11T15:27:02+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "stderr-suppression-hides-evidence", "task": "525", "ts": "2026-10-11T15:27:05+00:00"}
