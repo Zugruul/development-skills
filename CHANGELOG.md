@@ -13,6 +13,7 @@
 
 ### Documentation
 - **spec:** fold AST-082 audit contract into assistant spec (`aeb0e6d`)
+- **handoff:** record completed remote audit delivery (#349) (`1b0b098`)
 
 ### Chores
 - **retro:** record remote audit compatibility lessons (#349) (`2082d1e`)
