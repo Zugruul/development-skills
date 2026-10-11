@@ -13,6 +13,10 @@
   > 1. Describe trusted local CLI provider transport and disclose both vendors.
   > 2. Distinguish SSH registration from deferred HTTP endpoint authority.
   > 3. Verify pending and folded contracts, provider routing, and authority reversal refusals.
+- **spec:** fold 529 peer egress authority delta (`26e6b71`)
+  > 1. Apply the reviewed replacement sections and archive the delta.
+  > 2. Preserve all section 6 provider contracts unchanged.
+  > 3. Verify the folded canonical contract with the full peer suite and config validation.
 
 ### Chores
 - **release:** spec-workflow v0.66.0 (`9f2b213`)
@@ -20,6 +24,10 @@
   > 1. Record dev and independent reviewer lesson outcomes.
   > 2. Preserve the staged-payload testing lesson and routed feedback.
   > 3. Regenerate the brain directory without pruning or graduating notes.
+- **retro:** record authority-contract review lessons (`c1cc61f`)
+  > 1. Record dev and reviewer outcomes across the two review rounds.
+  > 2. Capture clause-scoped contract mutation testing and archive routed feedback.
+  > 3. Regenerate the brain directory without pruning or graduation.
 
 ## v0.65.2 — 2026-10-11
 
