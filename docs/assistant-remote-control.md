@@ -1,4 +1,4 @@
-# Restricted Assistant Remote Control (AST-080)
+# Restricted Assistant Remote Control (AST-080/082)
 
 `remote-compute-control` lets an enabled assistant inspect installed capabilities,
 read job status and bounded logs, and cancel an existing job on an explicitly
@@ -158,8 +158,9 @@ The installed capability takes three schema-validated parameters:
 The adapter requires every referenced placeholder, so inventory callers **must
 supply `job_id: ""`**; this is not an omitted optional parameter. Other IDs match
 `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`. The capability path is the normal engine index
-and adapters; the manifest is version 1 and `longRunning: true`, using the existing
-task queue so a network wait does not block conversation.
+and adapters; the manifest is version 1 and `longRunning: true`. Managed remote work
+always queues, even if that flag changes to false, so audit and network waits never
+run on the chat thread.
 
 For a direct human diagnostic after provisioning, from any cwd:
 
@@ -192,16 +193,97 @@ file transfer, tunnel or arbitrary filesystem argument exists.
 Success is `{"version":1,"ok":true,"operation":...,"data":...}`. Failure exits
 nonzero and writes a bounded reason to stderr; the client also returns an `ok:false`
 JSON diagnostic. Remote data never supplies an engine artifact path or a command.
-The existing generic queued executor records a returned subprocess result even
-when its returncode is nonzero: **task state `completed` is not proof of SSH success**.
-Inspect `result.returncode` and the JSON `ok` field. Full remote-command audit
-persistence/redaction is AST-082, not implemented here. ComfyUI, tunnels, artifact
-sync and remote-job reconciliation are AST-081; no executor for those is added.
+Direct human diagnostic CLI/library calls retain this legacy result format and do
+not produce assistant trace events. In the managed path, a nonzero exit or invalid
+response fails the task with a sanitized error. Useful results contain projected
+status/exit code, catalog names/descriptions, or redacted bounded logs; they do not
+contain raw argv, stdout or stderr. A completed cancellation request still requires
+reading its result: `cancelled` confirms cancellation, `cancelling` means pending,
+and `unknown` is not confirmation. ComfyUI, tunnels and artifact sync remain AST-081;
+no transport or artifact executor for those is added.
+
+The low-level `invoke_capability`/adapter APIs, and a direct legacy
+`run_capability_invoke_task` library call with a plain progress callback, remain
+unaudited compatibility surfaces. They are not managed assistant entry points.
+Both `tasks.enqueue` and the worker's create boundary normalize remote names to
+`remote-command` before persistence; the worker supplies its own audit context.
+Thus managed work cannot enter that legacy fallback. `remote_audit.run_task`
+without the worker's context refuses with a sanitized, actionable error before
+invocation. Nonremote executor signatures and defaults are unchanged.
 
 Cancellation inherits compute-state's saved process-identity checks. A reused PID
 or job with no fingerprint is not signalled. A timeout can leave the outcome
 unknown, including a cancellation already applied: inspect status and seek human
 direction before any new cancellation. Do not retry via a broader key or shell.
+
+## Command Audit and Recovery
+
+Each managed request receives an engine-generated command ID. `remote.command.intent`
+and `remote.command.outcome` use indexed turn/span/parent identifiers and a task ID
+in the payload. Outcomes distinguish success, refusal, failure, confirmed cancellation,
+pending cancellation and unknown cancellation. Local enablement, schema, provisioning
+and task-admission refusals are linked too; refusal before worker admission can have
+an outcome without intent. All trace writes use the existing single writer.
+`emit_ack` freezes a bounded JSON event before enqueueing and acknowledges only after
+COMMIT, never after `queue.task_done`. Invalid acknowledged records cannot degrade
+to a successful marker event. Its default deadline is two seconds.
+
+A full queue, dead writer, storage error or acknowledgement timeout prevents the
+operation. A timed-out intent can commit later; that does not authorize a late effect.
+If terminal persistence fails after an effect, the task reports uncertainty and
+retains its durable IDs. It must not replay. Unavailable audit storage also prevents
+the engine from promising that the refusal itself reached traces.sqlite. A crash
+after intent/effect but before terminal persistence can leave an incomplete trace.
+These are explicit failure windows, not proof that nothing happened remotely.
+
+Before remote task or adjacent skill events enter a queue, the engine projects only
+operation, host nickname and job ID from the exact control parameter schema; invalid
+or extra values become fixed refusal codes. It never stores the manifest, assistant
+config, credential paths, workflows or raw diagnostics in that task. Unknown result
+fields are excluded per operation; output never supplies a root, database/context or
+artifact path. Logs and catalog descriptions retain useful text after redacting known
+credential values and credential assignments, authorization tokens, URL passwords and
+private-key blocks. JSON object keys and values are decoded and sanitized, including
+serialized JSON strings and escaped URI separators. Sensitive fields are classified
+using their original decoded names, before sanitizing the names themselves. Embedded
+JSON objects, arrays and quoted strings in mixed logs receive the same treatment,
+preserving useful surrounding text. Structured sanitization is bounded to 16 nesting
+levels and each mixed-text scan to 256 decode attempts; deeper content or an unchecked
+scan remainder becomes a redaction marker. Quoted assignments consume escaped quotes
+completely, including single-quoted values. Redaction precedes truncation and
+persistence. This policy does not globally redact user messages or unrelated
+conversation. Arbitrary unlabelled
+private prose is not universally classifiable; workloads should keep secrets out of
+free-form output as well as their parameters.
+
+Audit events use existing `retainDays`/`maxMB` retention, including deferral when a
+reader pins the WAL. They are prunable history. Task IDs, external job IDs, ownership
+and minimal reconciliation descriptors live in tasks.sqlite, which trace retention
+never opens or prunes. Restart re-polls interrupted requests' known job IDs under a
+fresh audited status command; it never repeats cancellation or the original action.
+Missing IDs or unreconcilable jobs become orphaned. Failed uncertain tasks retain
+their IDs for inspection but are not silently retried. Legacy task rows remain
+readable; this change does not erase private data written by older releases.
+
+AST-081 must call `remote_audit.run(report_progress.audit_context, operation, effect,
+host=..., job_id=...)`. The task worker creates the context; never derive it from
+model parameters, manifest commands or remote responses. Callers must retain existing
+named-capability/host/schema gates, bind their approved transport, persist newly
+allocated external IDs through `report_progress` before the callback returns, and
+construct artifact destinations from the engine-owned task ID. The transfer test
+invokes a local callback and verifies an already-committed intent; it does not
+implement or certify real transfer. AST-081 must bind and test the actual executor.
+
+The reusable transfer callback must return a nonnegative integer `bytes` count and
+an explicit `state`. Only `done` or `completed` returns a successful receipt and
+audits `success`; zero bytes is valid for an explicitly completed empty transfer.
+`failed` audits `failure`; `cancelled` audits `cancelled`; `unknown` or `lost` audits
+`unknown`. `queued`, `started`, `progress`, `running`, `reserved`, `pending` and
+`cancelling` audit `pending`. All these non-success states raise a sanitized error
+after outcome persistence, rather than letting a task report completion. Missing,
+unrecognized or ill-typed states/counts are malformed receipts and audit `failure`.
+No outcome triggers automatic replay. The caller must retain durable job IDs and
+reconcile incomplete or unknown transfers; a byte count alone is not completion.
 
 ## Security Limits and Verification
 
@@ -219,7 +301,8 @@ data even though their containing files are trusted.
 Run the integrated local tests from the repository:
 
 ```bash
-bash plugins/spec-workflow/tests/run-tests.sh --section remote-control
+bash plugins/spec-workflow/tests/run-tests.sh --section remote-control,remote-audit
+bash plugins/spec-workflow/tests/run-tests.sh --section remote-audit
 ```
 
 Tests cover refusal matrices, installed data through actual adapters from unrelated

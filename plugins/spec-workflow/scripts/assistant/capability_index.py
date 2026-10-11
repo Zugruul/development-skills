@@ -663,6 +663,8 @@ def compile_index(skills_root, assistant_cfg, provisioning_checker=None, embed_f
                 )
             )
         provisioned_ok, unavailable_reason = provisioning_checker(name, effective_capability, skill_dir)
+        if name.strip().lower() == "remote-compute-control" and not provisioned_ok:
+            unavailable_reason = "remote local prerequisites unavailable; review installed policy"
         entries.append(CapabilityIndexEntry(
             name=name,
             one_liner=one_liner,
@@ -1103,6 +1105,11 @@ def run_capability_invoke_task(payload, report_progress):
     _process_create` already catches any executor exception and records it
     as the task's `failed` state/error (never crashes the worker thread),
     so this function does not need its own try/except."""
+    # Managed workers normalize remote tasks before persistence and inject the
+    # context. Direct legacy library callers remain a separate unaudited API.
+    from assistant import remote_audit
+    if remote_audit.is_remote(payload.get("name")) and hasattr(report_progress, "audit_context"):
+        return remote_audit.run_task(remote_audit.task_payload(payload), report_progress)
     capability = Capability(**payload["capability"])
     result = invoke_capability(
         payload["name"], capability, payload.get("params") or {},

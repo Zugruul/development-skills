@@ -7,12 +7,14 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import queue
 import signal
 import shutil
 import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 import venv
@@ -22,7 +24,7 @@ import yaml
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
-from assistant import adapters, capability_index as index
+from assistant import adapters, capability_index as index, observability, tasks
 from assistant import remote_control as client, remote_control_server as server
 
 REPO = SCRIPTS.parents[2]
@@ -410,7 +412,7 @@ class RealSSH(Fixtures):
                                 break
                         except OSError:
                             time.sleep(.05)
-                    _, skill, manifest = self.install()
+                    assistant, skill, manifest = self.install()
                     cap = index.load_capability(skill)
                     cfg = {"capabilities": {skill.name: {"enabled": True}}}
                     for op in ("inventory", "status", "logs"):
@@ -423,6 +425,52 @@ class RealSSH(Fixtures):
                         "skill_dir": str(skill), "assistant_cfg": cfg, "timeout": 20}, lambda *a, **kw: None)
                     self.assertEqual(queued["result"]["returncode"], 0)
                     self.assertNotIn("artifact_path", queued)
+                    # The direct library call above stays compatible. Managed
+                    # work must instead cross the real task and trace writers.
+                    from assistant import remote_audit
+                    config = {"version": 1, "enabled": True, "names": ["fixture"],
+                              "systemPrompt": "Local SSH fixture",
+                              "llm": {"provider": "openai", "model": "fixture"},
+                              "capabilities": {"codex": {"enabled": True}, **cfg["capabilities"]}}
+                    (assistant / ".neural-network/project.yaml").write_text(yaml.safe_dump({"assistant": config}))
+                    task_queue, traces = queue.Queue(), queue.Queue()
+                    stop = threading.Event()
+                    writer = threading.Thread(target=observability.run_writer,
+                        kwargs={"q": traces, "stop_event": stop, "poll_timeout": .01})
+                    worker = threading.Thread(target=tasks.run_worker,
+                        kwargs={"q": task_queue, "stop_event": stop, "traces_queue": traces,
+                                "poll_timeout": .01, "executors": {remote_audit.KIND: remote_audit.run_task}})
+                    writer.start()
+                    worker.start()
+                    try:
+                        task_id = tasks.enqueue(task_queue, str(assistant), index.KIND,
+                            {"name": skill.name.upper(), "capability": cap._asdict(), "assistant_cfg": cfg,
+                             "params": {"host": "storm590x", "operation": "inventory", "job_id": ""}},
+                            turn_id="real-ssh-turn")
+                        deadline = time.monotonic() + 10
+                        row = None
+                        while time.monotonic() < deadline:
+                            row = next((item for item in tasks.list_tasks(str(assistant))
+                                        if item["id"] == task_id and item["state"] in {"completed", "failed"}), None)
+                            if row:
+                                break
+                            stop.wait(.01)
+                        self.assertIsNotNone(row, "managed SSH task did not finish")
+                        self.assertEqual(row["state"], "completed", row)
+                        self.assertEqual(row["kind"], remote_audit.KIND)
+                        self.assertEqual(row["result"]["capabilities"]["demo"]["description"], "synthetic capability")
+                        self.assertNotIn("artifact_path", row["result"])
+                        events = [event for event in observability.query(str(assistant))
+                                  if event["kind"].startswith("remote.command.")]
+                        self.assertEqual([event["status"] for event in events], ["intent", "success"])
+                        self.assertEqual({event["turn_id"] for event in events}, {"real-ssh-turn"})
+                        self.assertEqual({event["parent_span_id"] for event in events}, {task_id})
+                    finally:
+                        stop.set()
+                        worker.join(6)
+                        writer.join(6)
+                        self.assertFalse(worker.is_alive())
+                        self.assertFalse(writer.is_alive())
                     inspect = client.build_ssh_argv(self.policy, "storm590x", "inventory")
                     cancel = client.build_ssh_argv(self.policy, "storm590x", "cancel", "demo")
                     sentinel = home / "SHELL_EXECUTED"

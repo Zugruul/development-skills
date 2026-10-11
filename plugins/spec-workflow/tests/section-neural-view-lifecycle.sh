@@ -459,7 +459,7 @@ echo "== neural-view (stop --force clears the shared assistant metrics port, 202
 _mstate="$(mktemp -d)"
 _mroot="$(mktemp -d)"
 _mport="$(_rand_port)"      # the metrics port the fixture root configures
-_mmain="$(_rand_port)"      # main port: free the whole time (that's the point)
+_mmain="$(_rand_port "$_mport")" # main port: distinct and free the whole time
 mkdir -p "$_mroot/.claude" "$_mroot/.neural-network"
 printf '%s\n' '# neural-network' >"$_mroot/.neural-network"
 cat >"$_mroot/.neural-network/project.yaml" <<EOF

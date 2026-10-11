@@ -95,12 +95,15 @@ _port_base() {
     printf '%s\n' $((20000 + (pid % _PORT_SLICE_COUNT) * _PORT_SLICE_WIDTH))
 }
 
+# _rand_port [excluded-port] -- command substitutions cannot share _used_ports
+# updates; pass an unbound sibling's port explicitly when it must stay distinct.
 _rand_port() {
-    local p tries=0 base
+    local p tries=0 base excluded="${1:-}"
     base="$(_port_base "$$")"
-    while :; do
+    while [[ $tries -lt 50 ]]; do
         p=$((base + RANDOM % _PORT_SLICE_WIDTH))
         tries=$((tries + 1))
+        [[ "$p" == "$excluded" ]] && continue
         case " ${_used_ports[*]-} " in
             *" $p "*) [[ $tries -lt 50 ]] && continue ;;
         esac
@@ -111,6 +114,7 @@ _rand_port() {
         fi
         [[ $tries -ge 50 ]] && { _used_ports+=("$p"); printf '%s\n' "$p"; return; }
     done
+    return 1
 }
 
 # lifecycle_start <check-name> <port-env-var-name> <command-string>
@@ -125,7 +129,7 @@ lifecycle_start() {
     local name="$1" portvar="$2" cmdstr="$3"
     local attempt p out expect
     for attempt in 1 2; do
-        p="$(_rand_port)"
+        p="$(_rand_port "")"
         export "$portvar=$p"
         out="$(eval "$cmdstr" 2>&1)"
         expect="RUNNING http://127.0.0.1:$p"

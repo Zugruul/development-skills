@@ -50,7 +50,7 @@ import uuid
 from datetime import datetime, timezone
 
 from assistant import (adapters, artifacts, capability_index, default_store, digest as digest_module,
-                        discovery, distill, harness, observability, selection_store, tasks, turns)
+                        discovery, distill, harness, observability, remote_audit, selection_store, tasks, turns)
 from assistant.store import SessionStore
 
 
@@ -578,8 +578,10 @@ class AssistantEngine:
                             "executors": {
                                 harness.KIND: harness.run_harness_job,
                                 capability_index.KIND: capability_index.run_capability_invoke_task,
+                                remote_audit.KIND: remote_audit.run_task,
                             },
-                            "resolvers": {harness.KIND: harness.resolve_harness_job},
+                            "resolvers": {harness.KIND: harness.resolve_harness_job,
+                                          remote_audit.KIND: remote_audit.resolve_task},
                         },
                         name=f"assistant-{name}",
                         daemon=False,
@@ -1300,6 +1302,9 @@ class AssistantEngine:
         name/params pair -- still one event, never silently dropped."""
         if isinstance(directive, turns.CapabilityDirectiveError):
             payload = {"reason": directive.reason}
+        elif remote_audit.is_remote(directive.name):
+            descriptor = remote_audit.prepare(directive.params)
+            payload = {"name": remote_audit.NAME, "params": descriptor["params"]}
         else:
             payload = {"name": directive.name, "params": directive.params}
         self._emit_trace(root, "skill.request", turn_id=turn_id, status=status, payload=payload)
@@ -1437,6 +1442,19 @@ class AssistantEngine:
 
                 index = self.capability_index_for(root)
                 entry = capability_index.resolve_by_name(index, primary.name)
+                if remote_audit.is_remote(primary.name):
+                    refusal = ("unavailable" if entry is None else
+                               "unprovisioned" if not entry.provisioned_ok else None)
+                    payload = remote_audit.prepare(primary.params, refusal)
+                    task_id = tasks.enqueue(self.queues["tasks"], root, remote_audit.KIND,
+                                             payload=payload, turn_id=turn_id)
+                    if task_id is None:
+                        # No effect can have occurred; trace admission is best
+                        # effort when even the task queue cannot accept work.
+                        context = remote_audit.Context(root, self.queues["traces"], turn_id=turn_id)
+                        remote_audit.record_refusal(context, payload, "queue_full")
+                        return {"text": "I could not queue remote work. No operation was attempted."}
+                    return {"text": "I have queued remote-compute-control in the background; the task will report its result."}
                 if entry is None:
                     gap = self._capability_gap_check(root, turn_id, user_message, requested_name=primary.name)
                     return {"text": gap.text if gap is not None else visible_text}
@@ -1560,9 +1578,15 @@ class AssistantEngine:
                 # established, extended to the whole hook -- an unexpected
                 # internal bug here must degrade to a traced error + plain
                 # reply, never a dropped connection with no turn.end.
-                self._emit_trace(root, "skill.error", turn_id=turn_id, status="error", payload={
-                    "reason": "internal_exception", "error": str(exc), "error_type": type(exc).__name__,
-                })
+                if not isinstance(primary, turns.CapabilityDirectiveError) and remote_audit.is_remote(primary.name):
+                    descriptor = remote_audit.prepare(primary.params, "internal_exception")
+                    tasks.enqueue(self.queues["tasks"], root, remote_audit.KIND, descriptor, turn_id=turn_id)
+                    self._emit_trace(root, "skill.error", turn_id=turn_id, status="error",
+                                     payload={"reason": "internal_exception", "capability": remote_audit.NAME})
+                else:
+                    self._emit_trace(root, "skill.error", turn_id=turn_id, status="error", payload={
+                        "reason": "internal_exception", "error": str(exc), "error_type": type(exc).__name__,
+                    })
                 return {"text": "Something went wrong while handling that request."}
         return _hook
 

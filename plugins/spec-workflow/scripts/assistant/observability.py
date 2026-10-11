@@ -220,6 +220,18 @@ def _db_path(root):
     return os.path.join(root, TRACES_DIR_REL, TRACES_FILE_NAME)
 
 
+def _remote_event(event):
+    if not isinstance(event, dict):
+        return False
+    payload = event.get("payload")
+    payload = payload if isinstance(payload, dict) else {}
+    return (str(event.get("kind", "")).startswith("remote.command.")
+            or event.get("skill") == "remote-compute-control"
+            or payload.get("name") == "remote-compute-control"
+            or payload.get("capability") == "remote-compute-control"
+            or payload.get("kind") == "remote-command")
+
+
 def emit(q, root, event):
     """Enqueue-only (Sec10.1/Sec17.7): never blocks, never raises into the
     caller. On a full or otherwise unusable queue this drops the event and
@@ -237,7 +249,50 @@ def emit(q, root, event):
             % (event or {}).get("kind")
         )
     except Exception as exc:  # never raise into a turn (Sec17.7)
-        sys.stderr.write("observability: emit failed: %s\n" % exc)
+        sys.stderr.write("observability: emit failed: %s\n" % (
+            "remote trace queue unavailable" if _remote_event(event) else exc))
+
+
+class AuditWriteError(Exception):
+    """A bounded, acknowledged write could not be confirmed committed."""
+
+
+class _CommitAck:
+    def __init__(self):
+        self.done = threading.Event()
+        self.committed = False
+
+    def finish(self, committed):
+        self.committed = committed
+        self.done.set()
+
+
+def emit_ack(q, root, event, timeout=2.0):
+    """Background-only admission: success means the writer committed this row.
+
+    Queue completion is deliberately unrelated. Freeze and validate the event
+    before enqueueing; acknowledged events never use the legacy marker fallback.
+    A timed-out item may later commit, but its caller must not perform the effect.
+    """
+    try:
+        if not isinstance(event, dict) or not isinstance(event.get("kind"), str):
+            raise ValueError()
+        encoded = json.dumps(event, allow_nan=False)
+        if len(encoded) > 16384 or not 0 < timeout <= 10:
+            raise ValueError()
+        ev = json.loads(encoded)
+        ev.setdefault("ts", _now_iso())
+    except (TypeError, ValueError, RecursionError):
+        raise AuditWriteError("audit event is invalid") from None
+    ack = _CommitAck()
+    try:
+        q.put_nowait({"root": root, "event": ev, "ack": ack})
+    except Exception:
+        raise AuditWriteError("audit queue unavailable") from None
+    if not ack.done.wait(timeout):
+        raise AuditWriteError("audit commit acknowledgement timed out")
+    if not ack.committed:
+        raise AuditWriteError("audit storage failed")
 
 
 def _open_conn(root):
@@ -264,7 +319,11 @@ def _bucket(buffers, item):
     root = item.get("root")
     event = item.get("event")
     if not root or not isinstance(event, dict) or "kind" not in event:
+        if isinstance(item.get("ack"), _CommitAck):
+            item["ack"].finish(False)
         return
+    if isinstance(item.get("ack"), _CommitAck):
+        event = dict(event, _ack=item["ack"])
     buffers.setdefault(root, []).append(event)
 
 
@@ -272,15 +331,24 @@ def _flush(conns, buffers):
     for root, events in buffers.items():
         if not events:
             continue
+        conn = None
+        committed_acks = []
         try:
             if root not in conns:
                 conns[root] = _open_conn(root)
             conn, next_seq = conns[root]
             rows = []
             for ev in events:
+                ack = ev.get("_ack")
+                if not isinstance(ack, _CommitAck):
+                    ack = None
                 try:
-                    payload_json = json.dumps(ev.get("payload") or {}, sort_keys=True)
+                    payload_json = json.dumps(ev.get("payload") or {}, sort_keys=True,
+                                              allow_nan=ack is None)
                 except (TypeError, ValueError) as exc:
+                    if ack is not None:
+                        ack.finish(False)
+                        continue
                     # issue #390: a single non-serializable payload must not
                     # roll back this root's WHOLE drain -- degrade THIS
                     # event to a marker payload (still inserted, still
@@ -311,16 +379,28 @@ def _flush(conns, buffers):
                     payload_json,
                 ))
                 next_seq += 1
+                if ack is not None:
+                    committed_acks.append(ack)
             conn.execute("BEGIN IMMEDIATE")
             conn.executemany(_INSERT_SQL, rows)
             conn.execute("COMMIT")
             conns[root] = (conn, next_seq)
+            for ack in committed_acks:
+                ack.finish(True)
         except Exception as exc:  # park-and-continue -- never kill the writer thread
             try:
                 conn.execute("ROLLBACK")
             except Exception:
                 pass
-            sys.stderr.write("observability writer: batch failed for %s: %s\n" % (root, exc))
+            for ev in events:
+                if isinstance(ev.get("_ack"), _CommitAck):
+                    ev["_ack"].finish(False)
+            # A mixed batch can include private remote diagnostics. Neither
+            # SQLite errors nor failed serialization may echo them to stderr.
+            if any(_remote_event(ev) for ev in events):
+                sys.stderr.write("observability writer: batch failed (remote trace storage failure)\n")
+            else:
+                sys.stderr.write("observability writer: batch failed for %s: %s\n" % (root, exc))
 
 
 def _resolve_retention(root, retention_config):

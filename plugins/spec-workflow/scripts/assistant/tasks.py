@@ -319,7 +319,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 
-from assistant import observability
+from assistant import observability, remote_audit
 
 TASKS_DIR_REL = os.path.join(".claude", "assistant")  # SAME dir traces.sqlite/
 # session.jsonl already use (observability.py's own docstring: this whole
@@ -429,12 +429,20 @@ def _db_path(root):
     return os.path.join(root, TASKS_DIR_REL, TASKS_FILE_NAME)
 
 
+def _managed_remote(kind, payload):
+    return kind == remote_audit.KIND or (kind == "capability-invoke" and isinstance(payload, dict)
+                                        and remote_audit.is_remote(payload.get("name")))
+
+
 def enqueue(q, root, kind, payload=None, turn_id=None):
     """See module docstring's Library entry. Returns `None` (never a
     phantom id -- round-2 review, issue #341) if the item never reached
     the queue."""
     task_id = uuid.uuid4().hex
+    managed = _managed_remote(kind, payload)
     try:
+        if managed:
+            kind, payload = remote_audit.KIND, remote_audit.task_payload(payload)
         q.put_nowait({
             "action": "create",
             "id": task_id,
@@ -447,7 +455,7 @@ def enqueue(q, root, kind, payload=None, turn_id=None):
         sys.stderr.write("tasks: queue full, dropping task kind=%r\n" % (kind,))
         return None
     except Exception as exc:  # never raise into a turn (Sec17)
-        sys.stderr.write("tasks: enqueue failed: %s\n" % exc)
+        sys.stderr.write("tasks: enqueue failed: %s\n" % ("remote queue unavailable" if managed else exc))
         return None
     return task_id
 
@@ -521,7 +529,7 @@ def _emit(traces_queue, root, kind, task_id, task_kind, state, extra=None, turn_
     observability.emit(traces_queue, root, {"kind": kind, "turn_id": turn_id, "payload": payload})
 
 
-def _transition_safe(conn, task_id, state, **fields):
+def _transition_safe(conn, task_id, state, _remote=False, **fields):
     """Best-effort `_transition` for a FAILURE-recording call site (round-2
     review, issue #341, ADVISORY 2): a failing `_transition` here must
     never raise back out -- there is no further fallback state to record
@@ -545,7 +553,8 @@ def _transition_safe(conn, task_id, state, **fields):
     try:
         _transition(conn, task_id, state, **fields)
     except Exception as exc:
-        sys.stderr.write("tasks worker: could not record %s transition for %s: %s\n" % (state, task_id, exc))
+        sys.stderr.write("tasks worker: could not record %s transition for %s: %s\n" % (
+            state, task_id, "remote storage failure" if _remote else exc))
 
 
 def _pid_alive(pid):
@@ -826,13 +835,17 @@ def _process_create(item, conns, executors, traces_queue, engine_id, owned, owne
     kind = item.get("kind")
     payload = item.get("payload")
     turn_id = item.get("turn_id")
+    managed = _managed_remote(kind, payload)
+    if managed:
+        kind, payload = remote_audit.KIND, remote_audit.task_payload(payload)
     if not root or not task_id or not kind or not isinstance(payload, dict):
         # ADVISORY 1 (round-2 review, issue #341): symmetry with every
         # other drop path in this module (enqueue's full/broken queue,
         # run_worker's unrecognized-action skip below) -- a malformed
         # item is silently SKIPPED (never crashes the worker), but never
         # silently, with no trace at all.
-        sys.stderr.write("tasks worker: skipping malformed create item: %r\n" % (item,))
+        sys.stderr.write("tasks worker: skipping malformed create item: %r\n" % (
+            "remote task envelope invalid" if managed else item,))
         return
 
     # #498 round-1 review MAJOR-1(a): the minimum gap between two
@@ -857,7 +870,8 @@ def _process_create(item, conns, executors, traces_queue, engine_id, owned, owne
             _claim_ownership(conn, engine_id)
             owned.add(root)
         except Exception as exc:
-            sys.stderr.write("tasks worker: ownership claim failed for root %s: %s\n" % (root, exc))
+            sys.stderr.write("tasks worker: ownership claim failed for root %s: %s\n" % (
+                root, "remote storage failure" if managed else exc))
 
         _insert(conn, task_id, kind, payload, turn_id)
         _emit(traces_queue, root, "task.queued", task_id, kind, STATE_QUEUED, turn_id=turn_id)
@@ -865,23 +879,31 @@ def _process_create(item, conns, executors, traces_queue, engine_id, owned, owne
         _transition(conn, task_id, STATE_STARTED)
         _emit(traces_queue, root, "task.started", task_id, kind, STATE_STARTED, turn_id=turn_id)
     except Exception as exc:  # never crash the worker thread; never a silent exit either
-        error = "task setup failed: %s" % exc
+        error = "remote task setup failed" if managed else "task setup failed: %s" % exc
         if root in conns:
-            _transition_safe(conns[root], task_id, STATE_FAILED, error=error)
+            _transition_safe(conns[root], task_id, STATE_FAILED, error=error, _remote=managed)
             _maybe_prune_owned_root(conns[root], root, owned)  # #498 advisory (a)
         _emit(traces_queue, root, "task.failed", task_id, kind, STATE_FAILED, {"error": error}, turn_id=turn_id)
+        if managed:
+            remote_audit.record_refusal(remote_audit.Context(root, traces_queue, turn_id=turn_id, task_id=task_id),
+                                        payload, "task_setup_failed")
         return
 
     executor = executors.get(kind)
     if executor is None:
         error = "no executor registered for kind %r" % (kind,)
-        _transition_safe(conn, task_id, STATE_FAILED, error=error)
+        _transition_safe(conn, task_id, STATE_FAILED, error=error, _remote=managed)
         _emit(traces_queue, root, "task.failed", task_id, kind, STATE_FAILED, {"error": error}, turn_id=turn_id)
         _maybe_prune_owned_root(conn, root, owned)  # #498 advisory (a)
         return
 
     def report_progress(progress_payload=None, external_job_id=None):
         nonlocal last_progress_heartbeat_mono
+        if managed:
+            if external_job_id is not None and not remote_audit.identifier(external_job_id):
+                raise remote_audit.Refused("invalid_response")
+            if progress_payload is not None:
+                progress_payload = remote_audit.project_result("status", progress_payload)
         # AST-070 (see module docstring's "AST-070 extension seam"):
         # external_job_id is OPTIONAL and omitted by every pre-existing
         # caller -- only written into the transition when a caller (a
@@ -907,13 +929,15 @@ def _process_create(item, conns, executors, traces_queue, engine_id, owned, owne
                 owned.add(root)
                 last_progress_heartbeat_mono = now_mono
             except Exception as exc:
-                sys.stderr.write("tasks worker: progress-triggered heartbeat refresh failed for root %s: %s\n" % (root, exc))
+                sys.stderr.write("tasks worker: progress-triggered heartbeat refresh failed for root %s: %s\n" % (
+                    root, "remote storage failure" if managed else exc))
 
     # AST-070: a task-scoped executor (e.g. harness.run_harness_job) reads
     # this to construct an artifact path deterministically from the task's
     # OWN id -- never from anything crossing the process boundary. Plain
     # attribute on the closure; no old executor reads or is affected by it.
     report_progress.task_id = task_id
+    report_progress.audit_context = remote_audit.Context(root, traces_queue, turn_id=turn_id, task_id=task_id)
 
     try:
         outcome = executor(payload, report_progress)
@@ -928,8 +952,9 @@ def _process_create(item, conns, executors, traces_queue, engine_id, owned, owne
         extra = {"artifact_path": artifact_path} if artifact_path else None
         _emit(traces_queue, root, "task.completed", task_id, kind, STATE_COMPLETED, extra, turn_id=turn_id)
     except Exception as exc:  # never crash the worker thread over one task's failure
-        error = str(exc)
-        _transition_safe(conn, task_id, STATE_FAILED, error=error)
+        error = (str(exc) if isinstance(exc, remote_audit.AuditError) else
+                 "remote outcome uncertain: task execution or storage failed; do not replay; reconcile durable task IDs") if managed else str(exc)
+        _transition_safe(conn, task_id, STATE_FAILED, error=error, _remote=managed)
         _emit(traces_queue, root, "task.failed", task_id, kind, STATE_FAILED, {"error": error}, turn_id=turn_id)
 
     _maybe_prune_owned_root(conn, root, owned)  # #498 advisory (a): covers both the completed and failed outcomes above
@@ -942,7 +967,7 @@ def _orphan_row(conn, root, row, reason, traces_queue):
     `_transition_safe` (never `_transition`) -- a reconciliation failure
     recording ITS OWN failure must not raise back out of the reconciliation
     pass (same posture `_process_create`'s except-branches already use)."""
-    _transition_safe(conn, row["id"], STATE_ORPHANED, error=reason)
+    _transition_safe(conn, row["id"], STATE_ORPHANED, error=reason, _remote=row["kind"] == remote_audit.KIND)
     _emit(traces_queue, root, "task.orphaned", row["id"], row["kind"], STATE_ORPHANED,
           {"error": reason, "reconciled": True}, turn_id=row.get("turn_id"))
 
@@ -989,9 +1014,14 @@ def _reconcile_row(conn, root, row, resolvers, traces_queue):
         payload = {}
 
     try:
-        outcome = resolver(external_job_id, payload)
+        if kind == remote_audit.KIND:
+            outcome = resolver(external_job_id, remote_audit.task_payload(payload),
+                               audit_context=remote_audit.Context(root, traces_queue, turn_id=turn_id, task_id=task_id))
+        else:
+            outcome = resolver(external_job_id, payload)
     except Exception as exc:  # protocol-layer failure: the remote system is someone else's -- never trust it, never crash on it
-        _orphan_row(conn, root, row, "reconciliation resolver raised: %s" % exc, traces_queue)
+        reason = (str(exc) if isinstance(exc, remote_audit.AuditError) else "remote reconciliation failed") if kind == remote_audit.KIND else "reconciliation resolver raised: %s" % exc
+        _orphan_row(conn, root, row, reason, traces_queue)
         return
 
     if not isinstance(outcome, dict) or outcome.get("state") not in _RESOLVER_STATES:

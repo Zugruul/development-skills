@@ -70,6 +70,51 @@ check_rc "PID->band mapping: adjacent pids land in different bands" 0 "$_b_diffe
 _b3="$(_port_base 100000)"
 check "PID->band mapping: pure function of pid (repeatable)" "$_b1" "$_b3"
 
+echo "== _rand_port excludes an unbound sibling port across command substitutions =="
+# Each substitution inherits the same empty _used_ports, as in the metrics
+# fixture. Seed inside each child so the duplicate first draw is deterministic.
+_excluded_out="$(bash -c '
+    source "$1/_lib.sh"
+    first="$(RANDOM=42; _rand_port)"
+    repeated="$(RANDOM=42; _rand_port)"
+    [[ "$first" == "$repeated" ]] || exit 2
+    echo "repeated draw confirmed"
+    second="$(RANDOM=42; _rand_port "$first")" || exit 3
+    [[ "$first" != "$second" ]]
+' _ "$HERE" 2>&1)"
+_excluded_rc=$?
+check "port exclusion fixture: same seed reproduces the sibling collision" "repeated draw confirmed" "$_excluded_out"
+check_rc "port exclusion: explicit sibling survives command-substitution isolation" 0 "$_excluded_rc"
+
+# One candidate forces every bounded attempt to hit the exclusion. Even the
+# busy-port fallback must fail rather than return that port or loop forever.
+# shellcheck disable=SC2016 # Match literal command syntax, never expand it.
+check_absent "port exhaustion probe does not require GNU timeout" '$(''timeout ' "$(cat "$HERE/section-lifecycle-retry.sh")"
+_exhausted_out="$(python3 - "$HERE" 2>&1 <<'PY'
+import subprocess
+import sys
+
+script = r'''
+    source "$1/_lib.sh"
+    _PORT_SLICE_WIDTH=1
+    _rand_port "$(_port_base)"
+'''
+try:
+    result = subprocess.run(["bash", "-c", script, "_", sys.argv[1]],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, timeout=5)
+except subprocess.TimeoutExpired:
+    print("port helper exceeded the five-second bound", file=sys.stderr)
+    sys.exit(124)
+sys.stdout.write(result.stdout)
+sys.exit(result.returncode)
+PY
+)"
+_exhausted_rc=$?
+check_rc "port exclusion: exhausted candidate set fails within the bound" 1 "$_exhausted_rc"
+if [[ -z "$_exhausted_out" ]]; then _empty_port_rc=0; else _empty_port_rc=1; fi
+check_rc "port exclusion: exhausted fallback emits no excluded port" 0 "$_empty_port_rc"
+
 # development-skills#97 item 3: with the fixture isolation above in place,
 # re-verify the kill gate's PID/cmdline binding under a REAL concurrent
 # collision -- two genuine neural-view servers, each its own "suite" (a

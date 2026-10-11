@@ -101,3 +101,74 @@ Native Windows SSH installation, autonomous key/host enrollment, OS sandboxing
 of existing recipes, arbitrary remote shell, CI/pipeline setup, paid APIs, new
 remote-compute CLI roles, and UI redesign are outside AST-080. ComfyUI execution,
 audit persistence and chat-to-artifact E2E remain the separately sequenced tasks.
+
+## AST-082: Command Audit and Retention
+
+Grounded in sections 10.1-10.3, 10.6-10.7, 12.3-12.4 and 14.3, plus the
+owner's #349 clarification: success, refusal, failure, cancellation and artifact
+transfer all require auditing; redact credentials and sensitive parameters before
+persistence; pruning history must preserve active-job reconciliation metadata.
+
+### Components and Authority
+
+- An engine-owned remote audit boundary wraps each managed remote operation,
+  including the existing restricted control skill. It is reusable by AST-081's
+  submit/status/cancel/transfer operations, not a second transport or authority
+  grant. Transfer coverage here tests this boundary; a real ComfyUI transfer is
+  still AST-081 and cannot be called complete until it uses the boundary.
+- The existing traces worker remains the only writer of traces.sqlite. Additive
+  acknowledged writes may provide a bounded commit acknowledgement to background
+  workers; ordinary emit callers retain their nonblocking legacy semantics.
+- The task worker owns durable recovery state independently of traces. An audit
+  context (assistant root, turn/task/correlation IDs, queue) is engine-created,
+  never selected through model parameters, remote output or a manifest command.
+- Existing named-capability enablement, schema validation and argv execution stay
+  in force. Do not add a general shell, invoke flavor or context-placeholder API.
+  Nonremote capabilities and the human remote-compute CLI retain their behavior.
+
+### Audit Contract
+
+- Each attempted managed operation has an engine-generated command ID and linked
+  turn/task/span identifiers. Record intent before invoking its transport, then a
+  terminal outcome distinguishing success, refusal, failure and cancellation (or
+  pending/unknown cancellation when that is all the remote evidence supports).
+  Validation/enablement/provisioning refusals also produce linked audit evidence.
+- A worker must observe the intent's commit acknowledgement before remote effects.
+  Queue overflow, writer failure or bounded acknowledgement timeout refuses the
+  operation without using a broader credential or retrying the remote action.
+  Chat threads only enqueue remote work and remain responsive.
+- Audit persistence failure after an attempted effect is an uncertain outcome,
+  never a reason to replay it. Surface a sanitized diagnostic and preserve the
+  recovery identifiers already owned by the task. Crash windows and unavailable
+  audit storage must be documented honestly, not reported as successful audit.
+- Audit payloads are bounded, explicit structured operational metadata, not raw
+  commands, environment/config snapshots, credential paths, workflow bodies,
+  remote stdout/stderr, or exception strings. Unknown fields and sensitive
+  parameters cannot become persistence fields just because they are JSON-safe.
+  Construct/redact before enqueueing as well as before SQL persistence.
+- Trace redaction cannot be defeated by a second copy in task payload/result/error
+  or an adjacent generic skill event. Review the entire managed remote path and
+  prevent these duplicate leaks. Preserve useful, nonsecret operation results and
+  recovery IDs; do not solve redaction by silently disabling the capability.
+- This contract covers engine-managed remote operations. Direct human diagnostic
+  CLI calls and the separate human controller are not assistant trace producers;
+  preserve their documented compatibility and name this distinction explicitly.
+
+### Persistence and Verification
+
+- Use existing age/size trace retention, including WAL checkpoint deferral. Audit
+  events are prunable history, not a second recovery database or permanent log.
+- Task ID, external job ID, ownership and the minimal nonsecret state needed for
+  reconciliation remain in tasks.sqlite. Retention never prunes that state and
+  reconciliation never requires an audit event still to exist. Existing tasks
+  remain readable; no silent replay after pruning or restart.
+- Tests drive the real engine/queue/writer boundary for successful commands,
+  refusals, failures, timeout, cancellation and the future transfer wrapper.
+  Prove commit-before-effect and no effect on audit-admission failure. Put secret
+  sentinels in nested input, credentials, returned data and errors; inspect raw
+  database/WAL bytes, not only redacted API output. Verify persisted nonsecret
+  results remain usable and legacy capability behavior is unchanged.
+- Deterministically prune audit rows by age and size while a task is active, then
+  restart/reconcile from its durable IDs without resubmission. Include reader-held
+  WAL contention and crash/incomplete-outcome coverage. No live target enrollment,
+  paid provider calls, UI redesign or pipeline setup is part of these tests.
