@@ -42,7 +42,8 @@ makes the brain the durable memory ("resume yesterday's travel plan instantly").
   thinking state is the v1 UX).
 - NG3 Note lifecycle beyond mint + strength-bump (merge/retire/aggregate primitives and
   end-of-session retro consolidation are E8).
-- NG4 Remote compute beyond the single Windows/ComfyUI target (E7's scope).
+- NG4 Remote compute beyond the single storm590x/WSL ComfyUI target (E7's scope).
+  Native PowerShell targets are excluded.
 - NG5 Mobile/remote (non-localhost) access; multi-user; authentication beyond localhost
   trust; encryption at rest.
 - NG6 Cloud/API LLM providers, even as a fallback.
@@ -386,18 +387,50 @@ assistant:
   stays text-in/text-out regardless of the STT choice.
 - §13.3 Voice metrics (STT/TTS spans) join the same trace stream.
 
-## §14 Remote compute (E7 — Windows/ComfyUI)
+## §14 Remote compute (E7 - WSL/ComfyUI)
 
-- §14.1 Control plane: SSH to the Windows box with key-based auth ONLY, pinned host keys
-  (StrictHostKeyChecking=yes with a pinned known_hosts), and per-operation-class forced
-  commands/restricted scopes — never a blanket interactive shell grant.
-- §14.2 Job plane: ComfyUI bound to localhost on the Windows box, reached exclusively
-  through an SSH tunnel (never LAN-exposed); workflows submitted via its native HTTP/WS
-  API; progress streams into trace events + the task queue; artifacts sync back over the
-  same SSH.
+- §14.1 Control plane: THE SYSTEM SHALL provide `remote-compute-control` for the
+  approved WSL target with key-based SSH authentication ONLY, strict pinned host
+  keys, and dedicated per-operation-class forced commands, never a blanket shell
+  grant. The fixed administrator-selected `inspect` class SHALL permit only
+  installed-capability inventory, job status and bounded logs; the fixed `cancel`
+  class SHALL permit only identity-checked cancellation of an existing job.
+  THE SYSTEM SHALL independently validate bounded versioned ASCII-safe requests
+  and exact operation schemas on both client and server, refusing unknown fields,
+  versions, operations and cross-class requests before any effect. THE SYSTEM
+  SHALL isolate client SSH configuration, credentials, certificate/agent access,
+  host trust, stdin, PTY, forwarding and connection reuse, and enforce finite
+  subprocess deadlines and output bounds without broader-credential fallback.
+  The target dispatcher SHALL run with isolated Python imports and absolute
+  administrator-selected code/helper/state paths; code, grants and configuration
+  SHALL be administrator-controlled, with no unrestricted alternative grant for
+  the dedicated keys. Log access SHALL remain confined to the selected jobs root
+  and reject symlinks and nonregular files. This control plane SHALL NOT provide
+  arbitrary commands, launch, install, policy mutation, file transfer or tunnels,
+  and SHALL NOT claim OS sandboxing of existing recipes.
+- §14.2 Job plane: ComfyUI bound to localhost on the WSL target, reached exclusively
+  through an SSH tunnel (never LAN-exposed); workflows submitted via its native
+  HTTP/WS API; progress streams into trace events + the task queue; artifacts sync
+  back over the same SSH.
 - §14.3 Every remote command SHALL be a trace event (full audit), subject to §10.3
   retention/redaction.
-- §14.4 Hosts SHALL be allowlisted in capability provisioning; anything else is refused.
+- §14.4 Hosts SHALL be explicitly allowlisted in the installed capability manifest's
+  `provisioning.hosts` mapping; anything else SHALL be refused. Each approved
+  nickname SHALL declare literal host, port, user, absolute pinned known-hosts path,
+  and separate dedicated inspect/cancel key paths. The client SHALL reread this
+  policy on every invocation. Remote-compute registration and project provisioning
+  check/TTL overrides SHALL NOT grant or override this host authority. Explicit
+  human installation SHALL copy only skill data into the assistant repository,
+  bind the absolute Python interpreter path without dereferencing its symlinks
+  (preserving virtual environment identity) and the resolved absolute plugin engine
+  path in version-1 check/invoke argv, preserve an existing installation by refusal,
+  and never copy engine code or enable the capability. Literal interpreter, engine and target
+  manifest binding paths containing either brace SHALL be refused before any
+  installer writes; ordinary spaces SHALL remain supported. Generic adapter
+  substitution semantics SHALL remain unchanged. Invocation SHALL use the existing
+  enablement, schema-validated argv and long-running task mechanisms without relying
+  on engine cwd. Local provisioning
+  checks SHALL distinguish local prerequisites from live server enforcement.
 
 ## §15 Non-functional & E1 gates (blocking)
 
