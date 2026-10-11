@@ -17,6 +17,11 @@
   > 1. Apply the reviewed replacement sections and archive the delta.
   > 2. Preserve all section 6 provider contracts unchanged.
   > 3. Verify the folded canonical contract with the full peer suite and config validation.
+- **194:** audit shipped remote-compute compatibility (#194) (`3ab7a10`)
+  > 1. Publish a bounded four-skill compatibility matrix with explicit evidence and live-execution limits.
+  > 2. Link separately filed gaps and update public documentation plus the narrow CDX-050 contract delta.
+  > 3. Add red-first structural, legacy-scan, and pending-to-archived lifecycle regressions.
+  > 4. Verify the full local gate and independent specification and quality approval in round 3.
 
 ### Chores
 - **release:** spec-workflow v0.66.0 (`9f2b213`)
