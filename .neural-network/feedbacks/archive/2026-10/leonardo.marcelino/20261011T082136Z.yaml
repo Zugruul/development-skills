@@ -1,0 +1,25 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-11T08:21:36Z'
+iteration:
+  task: '529'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: host-default
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Independent reversal probes exposed weak documentation contract checks.
+  detail: Both reviewers accepted the truthful prose but found whole-section matching
+    accepted opposite authority claims. Tests first reproduced those cases, then clause-scoped
+    checks rejected them before a second full local gate and approval.
+  evidence:
+  - Zugruul/development-skills#529
+  generalized: Documentation contract tests must reject reversed authority statements
+    instead of accepting keyword co-occurrence.
+  routing:
+    action: brain-note
+    ref: dev/bind-contract-checks-to-clauses
