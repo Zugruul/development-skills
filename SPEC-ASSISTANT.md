@@ -268,9 +268,11 @@ assistant:
 ## §10 Observability (event-sourced)
 
 - §10.1 THE SYSTEM SHALL emit an ordered event stream per assistant: turn.*, recall.*,
-  prompt.*, provider.*, skill.*, distill.*, task.*, tts.*, stt.* — each event carrying
-  monotonic seq, ts, session_id, turn_id, span_id, parent_span_id, kind, skill, modality,
-  status, and a JSON payload (including said/heard text where applicable).
+  prompt.*, provider.*, skill.*, distill.*, task.*, remote.command.*, tts.*, stt.* —
+  each event carrying monotonic seq, ts, session_id, turn_id, span_id, parent_span_id,
+  kind, skill, modality, status, and a JSON payload (including said/heard text where
+  applicable). Managed remote events SHALL carry an engine-generated command ID and
+  linked turn/task/span identifiers.
 - §10.2 traces.sqlite is the source of truth: append-only events table, WAL,
   busy_timeout, single writer thread; INDEXED first-class columns (seq, ts, session_id,
   turn_id, span_id, parent_span_id, kind, skill, modality, status) so time-range,
@@ -289,6 +291,9 @@ assistant:
   while readers pin history, or while the bounded size-pruning pass has not
   yet converged. THE SYSTEM SHALL NOT report logical compaction alone as
   successful physical shrink.
+  Remote audit events SHALL remain prunable under the same age/size policy, including
+  reader-held WAL checkpoint deferral. Trace retention SHALL NOT remove or require
+  the continued presence of task reconciliation state in tasks.sqlite.
 - §10.4 Prometheus exposition (host/port, enabled flag) SHALL serve computed
   histograms/counters and SHALL NOT own history; page/terminal metrics views query
   sqlite directly.
@@ -298,8 +303,21 @@ assistant:
   `events --since <dur>`.
 - §10.6 Every error (turn, skill, task, remote command) SHALL be a first-class event
   linked from its turn/task.
+  Managed remote errors and refusals SHALL use bounded structured reason codes;
+  raw exception strings, argv, credentials, configuration and remote stdio SHALL NOT
+  enter trace or task persistence through adjacent skill/task error paths.
 - §10.7 Durability classes: embeddings index = derived/rebuildable; traces = prunable
   history; tasks.sqlite = must-survive.
+  A background remote worker SHALL receive a bounded acknowledgement of the trace
+  writer's committed intent before invoking transport. Queue admission or completion
+  SHALL NOT constitute that acknowledgement. Acknowledged records SHALL be frozen
+  and validated before enqueueing; malformed records SHALL NOT use the best-effort
+  serialization marker fallback. Ordinary emit callers SHALL remain nonblocking.
+  Audit admission failure SHALL prevent transport; failed terminal acknowledgement
+  SHALL surface uncertainty without replay. Late intent commits after timeout SHALL
+  NOT authorize delayed effects. Storage loss or a crash between effect and terminal
+  persistence MAY leave incomplete history; THE SYSTEM SHALL NOT claim successful
+  audit in those windows.
 
 ## §11 Capabilities (skills) & roster
 
@@ -351,6 +369,23 @@ assistant:
 - §12.3 Long-running work SHALL queue in tasks.sqlite {id, kind, state, payload,
   external_job_id, artifact_path, timestamps}; states queued/started/progress/completed/
   failed/orphaned; every transition is a trace event.
+  Managed remote tasks SHALL persist only validated nonsecret operation descriptors
+  and projected useful results, excluding full manifests/configuration, raw argv/stdio
+  and private or unknown fields. Validation and redaction SHALL precede queueing as
+  well as SQL persistence, including adjacent skill events. Remote control SHALL
+  always use the background task worker regardless of name casing or longRunning.
+  Log/catalog text SHALL be bounded and redact known credentials and credential-bearing
+  syntax before persistence without discarding useful nonsecret output. Escaped JSON
+  credential keys and complete escaped quoted values, including single-quoted mixed
+  log assignments, serialized JSON string values and escaped URI separators, SHALL
+  NOT bypass redaction. Decoded object keys SHALL be sanitized as well as values;
+  sensitive fields SHALL be classified using their original decoded names. Embedded
+  JSON objects, arrays and quoted serialized strings in mixed text SHALL receive
+  the same sanitization while preserving useful surrounding text. Structured
+  sanitization SHALL bound recursion and mixed-text decode attempts, replacing
+  content beyond those bounds rather than persisting it unchecked. This SHALL
+  NOT change unrelated user-chat persistence or claim universal classification of
+  private prose.
 - §12.4 WHEN the engine restarts THE SYSTEM SHALL reconcile the queue: tasks with an
   external_job_id are re-polled against the remote system before any resubmission;
   unreconcilable tasks become orphaned (surfaced, never silently re-run).
@@ -365,6 +400,13 @@ assistant:
   skipped for ownership at startup are re-run startup-class once the owner stops
   blocking — crash recovery is bounded, never wedged. Graceful shutdown releases
   ownership; ownership lapses when a root has nothing in flight.
+  Remote task IDs, external job IDs, ownership and minimal nonsecret descriptors
+  required for reconciliation SHALL survive trace pruning. Restart recovery SHALL
+  re-poll known external IDs under a fresh audited status operation, never replay
+  the interrupted action based on missing trace history. Unknown IDs or unreconcilable
+  jobs SHALL become orphaned. Uncertain failed tasks SHALL retain their IDs for
+  inspection and SHALL NOT be silently retried. Existing task rows SHALL remain
+  readable; this contract does not retroactively erase legacy persisted data.
 - §12.5 WHILE tasks run, chat/voice remain fully usable; a queue indicator on the voice
   panel lists running/queued tasks; completion opens the artifact panel and announces
   (TTS when voice on); failures surface in-chat with the trace linked.
@@ -412,8 +454,28 @@ assistant:
   through an SSH tunnel (never LAN-exposed); workflows submitted via its native
   HTTP/WS API; progress streams into trace events + the task queue; artifacts sync
   back over the same SSH.
-- §14.3 Every remote command SHALL be a trace event (full audit), subject to §10.3
-  retention/redaction.
+- §14.3 Every engine-managed remote operation SHALL have linked intent and terminal
+  trace evidence distinguishing success, refusal, failure, confirmed cancellation,
+  pending cancellation and unknown cancellation, subject to §10.3 retention and the
+  remote redaction policy. Enablement, validation, provisioning and local admission
+  refusals SHALL be linked; pre-worker refusals MAY have an outcome without intent.
+  Audit metadata SHALL be bounded explicit operational fields, never raw commands,
+  credential paths, workflows, configuration or stdout/stderr. Unknown output SHALL
+  NOT select an assistant root, database, audit context or artifact path. The audit
+  context SHALL be engine-owned. Direct human diagnostic CLI/library calls and the
+  separate human controller SHALL retain compatibility and SHALL NOT be represented
+  as assistant trace producers. AST-081 submit/status/cancel/transfer executors SHALL
+  bind the reusable audit boundary, preserve external IDs before returning effects,
+  and construct artifact destinations engine-side. AST-082's local transfer callback
+  verification SHALL NOT claim an actual transfer feature.
+  Transfer receipts SHALL require a nonnegative integer byte count and explicit
+  state. Only `done` or `completed` SHALL constitute success (including an empty
+  completed transfer). `failed` SHALL audit failure; `cancelled` SHALL audit
+  cancellation; `unknown`/`lost` SHALL audit unknown; and `queued`, `started`,
+  `progress`, `running`, `reserved`, `pending` or `cancelling` SHALL audit pending.
+  Non-success receipts SHALL raise sanitized errors after outcome persistence,
+  never report task completion or trigger automatic replay. Missing, unrecognized
+  or ill-typed states/counts SHALL be malformed receipts and audit failure.
 - §14.4 Hosts SHALL be explicitly allowlisted in the installed capability manifest's
   `provisioning.hosts` mapping; anything else SHALL be refused. Each approved
   nickname SHALL declare literal host, port, user, absolute pinned known-hosts path,
