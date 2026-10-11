@@ -127,6 +127,15 @@ UUIDs keep machine identity independent of each client's nickname.
 registering a machine, declaring jobs, running and watching work, sharing a
 machine between projects, and adding support for a new tool.
 
+## Compatibility audit
+
+The [incremental compatibility matrix](docs/compatibility-matrix.md) audits the
+four shipped remote-compute skills for Claude Code and Codex. It separates
+source review and local tests from unverified live execution, names known
+gaps, and documents WSL/Linux/macOS execution with a WSL bridge for Windows
+Codex hosts. Native PowerShell is unsupported; this is not a marketplace-wide
+parity claim or completion of CDX-042.
+
 ## Update
 
 Refresh the marketplace listing, then update the installed plugin you need:

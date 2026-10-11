@@ -144,10 +144,10 @@ Bump `spec-workflow` and `scaffold-project` plugin versions (both manifests, bot
 
 ## E5 — Compatibility sweep for new/in-flight work (§11)
 
-### CDX-050 · Sweep compute-registry skill(s) for dual-host compliance — P2 · 3 pts · §11.1
-Once the compute-registry work (issue #166) lands a mergeable skill, review it against §7–§9 of this spec (interaction semantics, delegation config, enforcement parity — §10.1's CI already covers the §6.6 lint portion) and record the result as new row(s) in the CDX-042 compatibility matrix.
-**Acceptance:** review documented (compliant, or specific named gaps); any gap filed as its own follow-up board task, not fixed silently inline as part of this task.
-**DoD:** matrix updated; suite green if any fix was needed and included.
+### CDX-050 · Audit four shipped remote-compute skills for dual-host compliance — P1 · 3 pts · §11.1
+Owner triage (issue #194): audit `remote-compute`, `compute-top`, `scan`, and `ssh` against §7–§9. Add exactly four incremental rows to the [CDX-042 compatibility matrix](compatibility-matrix.md); the rest of the marketplace remains unaudited by this task and CDX-042 remains incomplete.
+**Acceptance:** source-backed interaction/invocation, delegation and enforcement review per skill; distinguish static review, executed hermetic behavior, external validators and live-host/SSH evidence. State WSL/Linux/macOS execution, native PowerShell unsupported, Windows-host WSL bridging, and justified N/A clauses. Name and link separately filed gaps; no inline fixes. Root README/AGENTS and plugin README link the scoped matrix, including a packaged-plugin fallback. Record the narrow §11 delta without editing the canonical spec or broad §10.1 infrastructure requirements.
+**DoD:** red-first audit coverage with negative fixtures, complete remote suite and scoped checks green using local tests only; missing validators and unperformed checks explicitly unverified. Parent owns the full recorded repository gate, independent review, merge and delta fold. Runtime, schemas, manifests and source skill instructions remain unchanged.
 
 ### CDX-051 · Sweep peer-review skill(s) for dual-host compliance — P2 · 3 pts · §11.2
 Same review as CDX-050, scoped to the peer-review work (issues #167/#168/#201, backlog at

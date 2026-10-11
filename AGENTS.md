@@ -91,6 +91,13 @@ contracts.
 
 ### remote-compute
 
+The [incremental compatibility matrix](docs/compatibility-matrix.md) records
+the CDX-050 audit of the four shipped skills below, their Claude/Codex semantics,
+source-backed limitations and separately filed gaps. WSL/Linux/macOS are the
+execution targets; Windows Codex needs a WSL bridge, and native PowerShell is
+unsupported. Local tests and metadata validation do not prove live host/SSH
+parity. The rest of the marketplace is outside this audit; CDX-042 remains open.
+
 Remote-compute separates machine registration, project availability, and actual
 allocation:
 

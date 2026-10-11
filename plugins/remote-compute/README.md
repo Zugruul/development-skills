@@ -28,6 +28,16 @@ with this plugin.
 
 ## Skills
 
+The [incremental compatibility matrix](../../docs/compatibility-matrix.md)
+audits these four skills' Claude/Codex interaction and safety semantics,
+distinguishing local tests from unverified live host/SSH execution and linking
+separately filed gaps. Execution targets are WSL/Linux/macOS; Windows Codex
+hosts need a WSL bridge and native PowerShell is unsupported. Interactive
+dashboards need the human's TTY; agent non-TTY output is a snapshot.
+This is a scoped CDX-050 contribution, not completion of CDX-042's whole
+marketplace inventory. In an installed plugin without repository docs, use
+the [published matrix](https://github.com/Zugruul/development-skills/blob/main/docs/compatibility-matrix.md).
+
 | Skill | What it does |
 | --- | --- |
 | `remote-compute` | Register/probe/enable machines, install capability bundles, dispatch jobs, cooperative locking. Engine: `scripts/remote-compute.py` (stdlib + PyYAML; registry at `$COMPUTE_HOME`, default `~/.remote-compute` — machine-local, never committed). |
