@@ -159,9 +159,12 @@ readiness, and back up reviewed custom bundles before any replacement.
 ### peer-review
 
 The [peer-review skill](plugins/peer-review/skills/peer-review/SKILL.md) obtains
-an independent code review from a different provider (currently Codex or
-Claude), reports the cloud disclosure, and returns severity-ranked findings.
-Provider selection and dispatch are data-driven; see
+an independent code review from OpenAI Codex or Anthropic Claude through trusted
+local provider scripts and returns source-labeled findings without applying them.
+The disclosure covers repository context beyond the diff; the user's CLI
+configuration owns authentication and transport. Review flags constrain intended
+edits, not network isolation. There is no peer HTTP dispatcher or endpoint
+allowlist; SSH-machine registration grants no peer HTTP authority. See
 [plugins/peer-review/README.md](plugins/peer-review/README.md) for provider and
 script details.
 

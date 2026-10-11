@@ -1,6 +1,14 @@
 # Generic multi-machine compute registry + peer-review — design proposal (v3)
 
-Status: DRAFT — pre-craft-spec. Not yet on the board (no issue exists yet for this work).
+Current status: **historical; HTTP authority assumptions superseded** by
+[peer-egress-authority.md](peer-egress-authority.md) (#529). E1 is **unimplemented
+and deferred**. No registry/status/HTTP dispatcher described below shipped; the
+original proposal and status are retained for history. Current peer review uses
+trusted local Codex and Claude scripts plus the user's CLI transport configuration.
+SSH registration does not authorize HTTP endpoints. Future HTTP work needs an
+explicit endpoint, token, redirect, and redaction design before implementation.
+
+Original status: DRAFT — pre-craft-spec. Not yet on the board (no issue exists yet for this work).
 Implementation not started. Supersedes
 [compute-registry-plan-v2.md](compute-registry-plan-v2.md). Date: 2026-07-15.
 

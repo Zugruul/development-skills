@@ -3,9 +3,29 @@
 Independent, cross-vendor code review of the current diff — you pick which provider reviews it
 (OpenAI Codex or Claude today, more later), deliberately never letting the orchestrating model
 review its own diff, since that shares its own blind spots. Which model is orchestrating the
-session never determines the reviewer; `/peer-review` always asks. Reviewing a diff sends it to
-that provider's cloud (for OpenAI Codex: via the user-installed `codex` CLI; for Claude: via the
-user-installed `claude` CLI).
+session never determines the reviewer; `/peer-review` always asks. Review material goes to
+the selected provider's cloud: OpenAI via the user-installed Codex CLI, or Anthropic via
+the user-installed Claude CLI. The CLI may read and send repository context beyond the diff.
+The user's CLI configuration owns authentication and transport, including configured
+endpoints or intermediaries; the plugin enforces no destination allowlist.
+
+## Egress authority
+
+Human selection authorizes a trusted local provider dispatch. `providers.tsv` and
+`PEER_REVIEW_PROVIDERS_FILE` overrides name scripts that execute local code; they
+are trusted executable configuration, not a security sandbox. Review uses Codex's
+`--sandbox read-only` or Claude's `--permission-mode plan` to constrain intended
+review edits, not network isolation. Findings are source-labeled and never applied;
+temporary diff/output files are cleaned up. Provider errors and raw fallback output
+are forwarded, without a plugin token-redaction guarantee. Keep secrets out of git
+and review material you authorize for transmission.
+
+There is no peer HTTP dispatcher. The proposed `.claude/compute-registry.yaml`,
+status skill, and HTTP helper are unimplemented and deferred historical E1 plans.
+Remote-compute's actual `~/.remote-compute/resources.yaml` records SSH machines,
+host identity, environments, and recipes; SSH registration does not authorize peer
+HTTP endpoints or token transmission. A future HTTP backend requires an explicit
+design for endpoint authority, tokens, redirects, and redaction before it ships.
 
 ## Skills
 
@@ -147,8 +167,8 @@ claude-review.sh [--label <name>] [--model <slug>] <diff-text-file>
 Same argument shape as `peer-review.sh`. Every invocation is hardcoded to `claude -p
 --output-format json --json-schema <schema/peer-review-findings.json's contents> [--model
 <slug>] --permission-mode plan <prompt>` — no argument or environment variable accepted by this
-script can change `--permission-mode` away from `plan` (the read-only equivalent of codex's
-`--sandbox read-only`); `--model <slug>` is only ever added by `--model`, and only after
+script can change `--permission-mode` away from `plan` (the intended review-edit constraint;
+neither provider flag enforces network isolation); `--model <slug>` is only ever added by `--model`, and only after
 `--permission-mode plan` is already fixed.
 
 Two things differ from codex's `--output-schema`: `--json-schema` takes the schema's **inline
@@ -195,7 +215,7 @@ bash plugins/peer-review/tests/run-tests.sh
 Epic 0 (`/peer-review` skill) is complete. `diff-source.sh` is the diff-resolution + preflight
 layer (PRV-001); `peer-review.sh` is the `codex exec` invocation + findings-parsing layer
 (PRV-002); `run.sh` + `skills/peer-review/SKILL.md` are the user-facing `/peer-review` command
-(PRV-003) that wires the two together, states the OpenAI-cloud disclosure, and renders the
+(PRV-003) that wires the two together, states the provider-cloud disclosure, and renders the
 result. `list-models.sh` + the `--model` flag on `peer-review.sh`/`run.sh` (PRV-004) add
 interactive model selection: the skill discovers available models, presents them via
 `AskUserQuestion` recommending codex's own top-priority pick, and threads the choice through.

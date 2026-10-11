@@ -1,4 +1,9 @@
 # Design — peer/E0: `/peer-review` skill
+Current egress-authority decision: [peer-egress-authority.md](peer-egress-authority.md)
+supersedes this design's original Codex-only and planned HTTP-registry assumptions.
+The original decomposition below is historical; current provider selection is
+data-driven and supports both Codex and Claude, without a peer HTTP registry.
+
 Grounded in: SPEC-PEER-REVIEW.md §5, §6, §9, §11. Amended for PRV-004 (§6.11, dynamic model
 selection) — see the new Component/Interface/Decision entries below, marked "(PRV-004)".
 

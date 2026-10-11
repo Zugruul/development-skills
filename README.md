@@ -258,6 +258,20 @@ overlay and read via its config loader). Full guide:
 | `remote-compute` | Register remote machines (SSH, key-only) as user-level compute resources; enable their availability per project (gitignored local overlay, non-exclusive); declared jobs for dispatch-by-intent (e.g. ComfyUI from a pre-authored workflow), exec/lock/dispatch with file-recoverable job state |
 | `compute-top` | Terminal dashboard, on the machine or over SSH, for what remote-compute work is running/finished there; opens logs, prunes history |
 
+### peer-review
+
+Get a source-labeled second opinion from OpenAI Codex or Anthropic Claude through
+trusted local provider scripts. Review material can include repository context
+beyond the diff; the user's CLI configuration owns authentication and transport.
+Review flags constrain intended edits, not network isolation. There is no peer HTTP
+dispatcher or endpoint allowlist; SSH-machine registration grants no peer HTTP
+authority. See [peer-review](plugins/peer-review/README.md) for the disclosure and
+provider configuration boundary.
+
+| Skill | Purpose |
+|---|---|
+| `peer-review` | Pick a trusted provider, disclose external transmission, and report source-labeled findings without applying them. |
+
 ### scaffold-project
 
 Scaffolds a new greenfield project's minikube dev-workflow scripts

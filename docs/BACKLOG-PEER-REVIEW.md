@@ -2,8 +2,12 @@
 
 Task ids: `PRV-<number>`. Ranges: E0 = 001–009, E1 = 010–019. Points ≈ complexity (1–10
 rubric, seed-board skill; no task ≥8 unsplit). Every task cites its spec §s; acceptance
-criteria are the merge bar. E0 ships first and standalone; E1 has no dependency on E0
-(no cross-epic guards needed). Within E1, PRV-011/PRV-012 are blockedBy PRV-010.
+criteria below record the original delivery plan. E0 shipped standalone and now
+supports both Codex and Claude. E1 is **unimplemented and deferred**, and its
+authority assumptions are **superseded** by the binding
+[egress decision](design/peer-egress-authority.md). E1 is not a prerequisite for
+shipped review or permission to implement an HTTP backend. Its original criteria
+and dependency ordering are preserved below as history only.
 
 ## E0 — `/peer-review` skill (§6)
 
@@ -54,6 +58,14 @@ on merge.
 *(PRV-005–009 headroom for discovered E0 work.)*
 
 ## E1 — Remote LLM dispatch (§7 §8)
+
+**Historical, unimplemented, deferred.** PRV-010/011/012 and their acceptance/DoD
+text below are superseded as active implementation criteria by #529's
+[egress decision](design/peer-egress-authority.md). No proposed registry, status
+skill, HTTP helper, or token-redaction guarantee shipped. A future design must
+decide endpoint authority, tokens, redirects, and redaction before enabling a
+backend; registering a remote-compute SSH machine cannot authorize HTTP dispatch.
+Within the original proposal, PRV-011/PRV-012 depended on PRV-010.
 
 ### PRV-010 · Registry file schema + loader/validation — P0 · 3 pts · §7.1 §7.2 §7.3
 `.claude/compute-registry.yaml` (schemaVersion literal 1, providers: id/endpoint/token) and

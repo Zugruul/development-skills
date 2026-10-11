@@ -6,14 +6,26 @@ allowed-tools: Bash, AskUserQuestion
 
 # Peer review — get an independent second opinion on your diff
 
-**Sends your diff to the chosen provider's cloud.** Reviewing shells out to that provider's
-review script (for OpenAI Codex: the user-installed `codex` CLI, `codex exec --sandbox
-read-only ...`; for Claude: the user-installed `claude` CLI, `claude -p --permission-mode
-plan ...`), which transmits the diff text to generate the review. Only run this on a diff you're
-comfortable leaving your machine.
+**Sends review material to the chosen provider's cloud:** OpenAI through the
+user-installed Codex CLI, or Anthropic through the user-installed Claude CLI.
+The CLI may read and send repository context beyond the diff. The user's CLI
+configuration owns authentication and transport, including configured endpoints
+or intermediaries; the plugin enforces no destination allowlist. Only run a
+review when you authorize that material to leave your machine.
 
-**This skill never writes.** Every provider backend runs read-only; nothing here edits a file,
-and the resulting findings are shown, never applied.
+**Review findings are shown, never applied.** Codex uses `--sandbox read-only`;
+Claude uses `--permission-mode plan`. These flags constrain intended review edits,
+not network isolation. The wrappers use private temporary diff/output files and
+clean them up. Provider errors and raw fallback output are forwarded; the plugin
+does not guarantee token redaction. Keep secrets out of committed/reviewed material.
+
+**Trust boundary.** `providers.tsv` and `PEER_REVIEW_PROVIDERS_FILE` overrides
+select local scripts to execute: they are trusted executable configuration,
+not a security sandbox. There is no peer HTTP dispatcher. Remote-compute's
+`~/.remote-compute/resources.yaml` records SSH machines; registration does not
+authorize peer HTTP endpoints or transmission. The former HTTP registry/status
+proposal is unimplemented and deferred until an explicit endpoint, token,
+redirect, and redaction design. See the [plugin README](../../README.md).
 
 **Never auto-detected.** Which model is orchestrating this session doesn't determine the
 reviewer — always ask. The whole point of `/peer-review` is a genuinely independent second
