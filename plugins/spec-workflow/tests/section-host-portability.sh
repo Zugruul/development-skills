@@ -11,6 +11,16 @@ REPO_ROOT="$PLUGIN/../.."
 out="$(python3 - "$REPO_ROOT" <<'PY'
 import os, re, sys
 root = sys.argv[1]
+
+def meaningful_scan_count(count):
+    return count >= 30
+
+# Pin the minimum and the decade transition that broke the former text-prefix check.
+for sample, expected in ((0, False), (3, False), (29, False), (30, True),
+                         (39, True), (40, True), (100, True)):
+    assert meaningful_scan_count(sample) == expected, f"scan-count boundary: {sample}"
+print("SCAN_BOUNDARIES OK")
+
 bad, count = [], 0
 for plugin in sorted(os.listdir(os.path.join(root, "plugins"))):
     sd = os.path.join(root, "plugins", plugin, "skills")
@@ -34,11 +44,13 @@ for plugin in sorted(os.listdir(os.path.join(root, "plugins"))):
         if not ds or not ds.group(1).strip():
             bad.append(f"{plugin}/{skill}: missing description")
 print(f"SCANNED {count}")
+print("SCAN_MINIMUM_OK", meaningful_scan_count(count))
 print("CONTRACT " + ("OK" if not bad else "BAD: " + "; ".join(bad)))
 PY
 )"
 check "portable contract holds for every skill" "CONTRACT OK" "$out"
-check "a meaningful number of skills were scanned" "SCANNED 3" "$out"
+check "scan-count minimum accepts 30 and above, including 40" "SCAN_BOUNDARIES OK" "$out"
+check "a meaningful number of skills were scanned (at least 30)" "SCAN_MINIMUM_OK True" "$out"
 
 echo "== host portability: install-skills.sh (opencode + all clients) =="
 INSTALLER="$REPO_ROOT/install-skills.sh"

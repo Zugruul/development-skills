@@ -1,0 +1,19 @@
+version: 1
+longRunning: true
+provisioning:
+  check: ["false"]
+  ttlSeconds: 30
+  hosts: {}
+permissions: [restricted-ssh-inspect, restricted-ssh-cancel]
+invoke:
+  exec: ["false"]
+  params:
+    host:
+      type: string
+      pattern: '[A-Za-z0-9][A-Za-z0-9._-]{0,63}'
+    operation:
+      type: string
+      allowlist: [inventory, status, logs, cancel]
+    job_id:
+      type: string
+      pattern: '([A-Za-z0-9][A-Za-z0-9._-]{0,63})?'

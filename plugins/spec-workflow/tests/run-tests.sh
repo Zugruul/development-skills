@@ -244,6 +244,7 @@ section-semver.sh
     section-capability-invoke.sh
     section-capability-invoke-mcp.sh
     section-capability-enablement.sh
+    section-remote-control.sh
     section-whisper-sidecar.sh
     section-setup-assistant.sh
     section-assistant-preflight.sh

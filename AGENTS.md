@@ -83,6 +83,7 @@ contracts.
 | [retrospective](plugins/spec-workflow/skills/retrospective/SKILL.md) | Triage workflow feedback and maintain identity-brain notes. |
 | [seed-board](plugins/spec-workflow/skills/seed-board/SKILL.md) | Create board issues from a backlog after complexity scoring and splitting. |
 | [setup-assistant](plugins/spec-workflow/skills/setup-assistant/SKILL.md) | Scaffold or configure a persistent assistant repo, its persona, and memory. |
+| [remote-compute-control](plugins/spec-workflow/skills/remote-compute-control/SKILL.md) | Use data-only assistant provisioning for allowlisted WSL inventory, status, bounded logs and cancellation through dedicated per-class forced-command SSH keys. |
 | [setup-project](plugins/spec-workflow/skills/setup-project/SKILL.md) | Initialize a repo's project config, GitHub Project board, and local-state ignores. |
 | [sync-project-configs](plugins/spec-workflow/skills/sync-project-configs/SKILL.md) | Dry-run or apply versioned config updates across discovered project repos. |
 | [ui-mode](plugins/spec-workflow/skills/ui-mode/SKILL.md) | Inspect or toggle human-directed iterative UI decisions. |
@@ -90,6 +91,14 @@ contracts.
 | [whisper-sidecar](plugins/spec-workflow/skills/whisper-sidecar/SKILL.md) | Install, run, stop, or health-check the private local whisper.cpp speech sidecar. |
 
 ### remote-compute
+
+Assistant restricted SSH is a separate spec-workflow capability: see the
+[provisioning and security guide](docs/assistant-remote-control.md). Its installed
+manifest owns `provisioning.hosts`; registration never grants access, and generic
+project provisioning overrides only affect check/TTL. The installer binds absolute
+engine argv without copying code or enabling the skill. `inspect` and `cancel`
+keys have distinct fixed target commands. ComfyUI execution and complete remote
+audit remain later tasks; the human controller below is unchanged.
 
 The [incremental compatibility matrix](docs/compatibility-matrix.md) records
 the CDX-050 audit of the four shipped skills below, their Claude/Codex semantics,
