@@ -44,3 +44,7 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "acceptance-criterion-outranks-test-spec-paraphrase", "task": "463", "ts": "2026-07-29T04:51:51+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "extract-harness-new-callee-sweep", "task": "479", "ts": "2026-07-29T05:46:12+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "gate-runs-take-minutes", "task": "479", "ts": "2026-07-29T05:46:12+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "bash-test-sections-shared-state", "task": "108", "ts": "2026-10-11T07:33:37+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "capture-real-output-as-fixtures", "task": "108", "ts": "2026-10-11T07:33:37+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "documented-placeholder-never-substituted", "task": "108", "ts": "2026-10-11T07:33:38+00:00"}
+{"note": null, "outcome": "dead_end", "schemaVersion": 1, "slug": "checkpoint-before-physical-wal-retention", "task": "108", "ts": "2026-10-11T07:33:38+00:00"}

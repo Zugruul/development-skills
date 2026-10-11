@@ -1,0 +1,25 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-11T07:33:12Z'
+iteration:
+  task: '108'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: host-default
+items:
+- category: worked-well
+  area: testing
+  severity: low
+  summary: Payload-level assertions survive installer staging changes.
+  detail: A fresh-main baseline proved two path assertions were inherited failures.
+    Capturing the staged inventory and hashes verified the actual contract; independent
+    malformed-transfer probes confirmed the checker rejects bad evidence.
+  evidence:
+  - Zugruul/development-skills#108
+  generalized: Installer tests should verify staged payload inventory and content
+    instead of relying on temporary source directory names.
+  routing:
+    action: brain-note
+    ref: dev/verify-staged-payload-content

@@ -22,3 +22,9 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reports-are-not-the-code", "task": "507", "ts": "2026-10-11T06:30:00+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "507", "ts": "2026-10-11T06:30:00+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "local-gate-green-doesnt-imply-ci-green-for-infra", "task": "507", "ts": "2026-10-11T06:30:00+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reports-are-not-the-code", "task": "108", "ts": "2026-10-11T07:33:38+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "verify-tdd-empirically-when-log-is-thin", "task": "108", "ts": "2026-10-11T07:33:38+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "confirm-named-scope-exclusions-respected", "task": "108", "ts": "2026-10-11T07:33:38+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "copied-precedent-needs-fresh-verification", "task": "108", "ts": "2026-10-11T07:33:38+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "distinguish-missed-vs-uncatchable-findings", "task": "108", "ts": "2026-10-11T07:33:39+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "equality-guards-invite-ordering-probes", "task": "108", "ts": "2026-10-11T07:33:39+00:00"}
