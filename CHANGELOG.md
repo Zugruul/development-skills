@@ -11,6 +11,9 @@
   > 3. Refuse ambiguous frontend behavior and report committed artifacts honestly when cleanup warns.
   > 4. Add committed RED-first regressions and synchronized usage documentation.
 
+### Documentation
+- **handoff:** record remote-compute deliveries and remaining blocker (`23e64e4`)
+
 ### Chores
 - **retro:** record bounded workflow import lessons (#526) (`36a37a2`)
   > 1. Record confirmed recall outcomes and independent review lessons.
