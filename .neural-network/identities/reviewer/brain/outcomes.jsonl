@@ -59,3 +59,8 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "distinguish-missed-vs-uncatchable-findings", "task": "525", "ts": "2026-10-11T15:27:15+00:00"}
 {"note": null, "outcome": "dead_end", "schemaVersion": 1, "slug": "equality-guards-invite-ordering-probes", "task": "525", "ts": "2026-10-11T15:27:18+00:00"}
 {"note": null, "outcome": "dead_end", "schemaVersion": 1, "slug": "verify-tdd-empirically-when-log-is-thin", "task": "525", "ts": "2026-10-11T15:27:21+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reports-are-not-the-code", "task": "526", "ts": "2026-10-11T16:48:33+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "confirm-named-scope-exclusions-respected", "task": "526", "ts": "2026-10-11T16:48:36+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "distinguish-missed-vs-uncatchable-findings", "task": "526", "ts": "2026-10-11T16:48:41+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "copied-precedent-needs-fresh-verification", "task": "526", "ts": "2026-10-11T16:48:44+00:00"}
+{"note": null, "outcome": "dead_end", "schemaVersion": 1, "slug": "equality-guards-invite-ordering-probes", "task": "526", "ts": "2026-10-11T16:48:47+00:00"}

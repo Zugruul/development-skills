@@ -1,0 +1,54 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-11T16:50:19Z'
+iteration:
+  task: '526'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: Codex host default (model ID unavailable)
+items:
+- category: recommendation
+  area: review
+  severity: medium
+  summary: Validate behavioral schema options at their supported use sites
+  generalized: Validate behavioral schema options at the specific node and input where
+    their serialization semantics are supported, including exact types and values.
+  detail: Independent spec review found a globally allowed flag changed serialization
+    at another input. RED regressions and site-specific validation closed it.
+  evidence:
+  - Zugruul/development-skills#526
+  routing:
+    action: brain-note
+    ref: dev/validate-behavioral-options-at-their-site
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Test publication failures on both sides of the commit point
+  generalized: Once exclusive publication commits an artifact, later temporary-file
+    cleanup failures must not report that the operation failed to publish.
+  detail: Both reviewers found committed output reported as failure after cleanup.
+    Parent reproduced it; tests now distinguish committed success, cleanup warning,
+    prepublication error, and existing-output preservation.
+  evidence:
+  - Zugruul/development-skills#526
+  routing:
+    action: brain-note
+    ref: reviewer/publication-success-is-not-cleanup-success
+- category: friction
+  area: permissions
+  severity: low
+  summary: Optional maintenance and comparison limits remain explicit
+  generalized: ''
+  detail: Prior auto-review denial of pruning remains honored; no notes removed. An
+    upstream runtime comparison fetch was denied during review and not retried; escape
+    evidence is source-derived. Existing brain event/link drift was not reconciled.
+    GitHub Project columns and numeric task-close estimate telemetry remain unavailable
+    due missing read:project scope.
+  evidence:
+  - Zugruul/development-skills#526
+  routing:
+    action: ignore
+    ref: Local permission limitations recorded; no pruning or denied runtime fetch
+      retried.
