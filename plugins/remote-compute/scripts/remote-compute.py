@@ -1218,6 +1218,13 @@ def validate_manifest(manifest):
     for rel in payload:
         if not isinstance(rel, str) or not rel or Path(rel).is_absolute() or ".." in Path(rel).parts or "\\" in rel:
             raise ValueError("unsafe payload path: %r" % rel)
+    preserved = manifest.get("preservePaths", [])
+    if not isinstance(preserved, list) or any(not isinstance(v, str) or not JOB_ID_RE.fullmatch(v) or v in (".", "..", "capability.yaml", ".installed.json") for v in preserved):
+        raise ValueError("preservePaths must contain safe top-level runtime names")
+    if len(set(preserved)) != len(preserved):
+        raise ValueError("preservePaths contains duplicates")
+    if any(rel.split("/")[0] in preserved for rel in payload):
+        raise ValueError("preservePaths must not overlap managed payload")
     for key, job in jobs.items():
         if not isinstance(key, str) or not JOB_ID_RE.fullmatch(key) or not isinstance(job, dict):
             raise ValueError("invalid job declaration: %r" % key)
@@ -1573,6 +1580,51 @@ def cmd_github_install(args):
         return EXIT_USAGE
 
 
+def cmd_local_repository_install(args):
+    parser = argparse.ArgumentParser(prog="remote-compute capabilities install")
+    parser.add_argument("nickname")
+    parser.add_argument("directory")
+    parser.add_argument("name", nargs="?")
+    parser.add_argument("--all", action="store_true", dest="all_bundles")
+    parser.add_argument("--env")
+    options = parser.parse_args(args)
+    if options.name and options.all_bundles:
+        parser.error("choose a capability name OR --all")
+    try:
+        directory = Path(options.directory).expanduser().resolve()
+        if not directory.is_dir():
+            raise ValueError("local repository directory does not exist")
+        bundles = discover_bundles(directory, options.name, options.all_bundles)
+        # Read-only Git metadata; no hooks, checkout, fetch or credential access.
+        def git(*arguments):
+            result = subprocess.run(["git", "-C", str(directory), *arguments], capture_output=True, text=True, timeout=15)
+            return result.stdout.strip() if result.returncode == 0 else None
+        provenance = {"kind": "local-directory", "path": str(directory)}
+        try:
+            repository = git("rev-parse", "--show-toplevel")
+            if repository:
+                provenance.update(kind="local-repository", repository=repository,
+                                  commit=git("rev-parse", "--verify", "HEAD"),
+                                  dirty=bool(git("status", "--porcelain", "--untracked-files=normal")))
+        except (OSError, subprocess.TimeoutExpired):
+            pass  # Bundle installation does not require Git for a plain directory.
+        get_resource(options.nickname)
+        print("SOURCE %s" % directory)
+        for bundle in bundles:
+            source = dict(provenance, bundle=str(bundle.relative_to(directory)))
+            arguments = [options.nickname, str(bundle)]
+            if options.env:
+                arguments += ["--env", options.env]
+            result = cmd_install_capability(arguments, provenance=source)
+            if result:
+                print("STOPPED at %s; earlier successful bundles remain installed" % bundle.name)
+                return result
+        return 0
+    except (ValueError, OSError) as exc:
+        print("ERROR: %s" % exc)
+        return EXIT_USAGE
+
+
 def cmd_capability_cli(args):
     if not args:
         print("ERROR: capabilities requires list, installed, install, sync, or validate")
@@ -1581,6 +1633,7 @@ def cmd_capability_cli(args):
     if action in ("help", "-h", "--help"):
         print("capabilities list | installed [nick] | sync nick | validate bundle-dir\n"
               "capabilities install nick name-or-dir [--env NAME]\n"
+              "capabilities install nick local-repository [name | --all] [--env NAME]\n"
               "capabilities install nick github-url [name | --all] [--ref REF] [--env NAME]\n"
               "Install only trusted bundles; payloads execute with the SSH account's permissions.")
         return 0
@@ -1602,6 +1655,8 @@ def cmd_capability_cli(args):
             return EXIT_USAGE
         if args[2].startswith(("https://", "http://", "git@", "ssh://")):
             return cmd_github_install(args[1:])
+        if Path(args[2]).expanduser().is_dir():
+            return cmd_local_repository_install(args[1:])
         try:
             bundle_dir = _resolve_capability_bundle(args[2])
         except ValueError as exc:
@@ -2337,14 +2392,27 @@ def cmd_identity(nick):
 # linked from ~/.local/bin so the human typing at the box and the orchestrator
 # over ssh drive the machine the same way (`remote-compute top`, `jobs`, ...).
 
+def normalize_shell_files(directory):
+    """Ship executable shell text with LF even from a Windows Git checkout."""
+    for path in Path(directory).rglob("*.sh"):
+        if path.is_file() and not path.is_symlink():
+            data = path.read_bytes()
+            if b"\r\n" in data:
+                path.write_bytes(data.replace(b"\r\n", b"\n"))
+
+
 def _install_tools(nick, res):
     """Ship _shared/ to ~/.remote-compute/tools and install the command.
     Returns (ok, on_path) and records a `tools` block on the resource."""
     tools, bindir = remote_path(REMOTE_TOOLS_ROOT), remote_path(REMOTE_BIN_ROOT)
     ssh_run(nick, "mkdir -p %s %s" % (tools, bindir))
-    rc = subprocess.run(rsync_argv(SHARED_TOOLS_DIR.rstrip("/") + "/",
-                                   "%s:%s/" % (nick, REMOTE_TOOLS_ROOT.replace("~/", ""))),
-                        capture_output=True).returncode
+    with tempfile.TemporaryDirectory(prefix="remote-compute-tools-") as temp:
+        staged = Path(temp, "tools")
+        shutil.copytree(SHARED_TOOLS_DIR, staged, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        normalize_shell_files(staged)
+        rc = subprocess.run(rsync_argv(str(staged) + "/",
+                                      "%s:%s/" % (nick, REMOTE_TOOLS_ROOT.replace("~/", ""))),
+                            capture_output=True).returncode
     if rc != 0:
         print("WARN: rsync of on-machine tools failed (exit %s) — run: install-tools %s" % (rc, nick))
         return False, False
@@ -2482,6 +2550,7 @@ def cmd_install_cli(args):
     stage = Path(tempfile.mkdtemp(prefix=".remote-compute-", dir=destination.parent))
     try:
         shutil.copytree(source, stage, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        normalize_shell_files(stage)
         previous = destination.with_name(".remote-compute-previous-" + uuid.uuid4().hex)
         if destination.exists():
             destination.rename(previous)
@@ -2792,3 +2861,4 @@ def main(argv):
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
+

@@ -362,6 +362,16 @@ def cap_commit(root, request):
             raise Refusal("unsafe or missing staged payload: %s" % rel)
         if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise Refusal("payload checksum mismatch: %s" % rel)
+    preserved = request["manifest"].get("preservePaths", [])
+    if not isinstance(preserved, list) or any(not isinstance(v, str) or not NAME.fullmatch(v) or v in (".", "..", "capability.yaml", ".installed.json") for v in preserved):
+        raise Refusal("invalid preservePaths")
+    if len(set(preserved)) != len(preserved):
+        raise Refusal("duplicate preservePaths")
+    for rel in preserved:
+        if any(Path(f).parts[0] == rel for f in request["files"]) or (stage / rel).exists():
+            raise Refusal("preserved runtime overlaps staged payload: %s" % rel)
+        if (destination / rel).is_symlink():
+            raise Refusal("preserved runtime must not be a symlink: %s" % rel)
     metadata = {"schemaVersion": "2.0.0", "manifest": request["manifest"], "digest": request["digest"],
                 "files": request["files"], "active": True, "installedAt": time.time()}
     if request.get("source"):
@@ -371,9 +381,22 @@ def cap_commit(root, request):
     previous = root / ".staging" / ("previous-" + uuid.uuid4().hex)
     if destination.exists():
         destination.rename(previous)
+    moved = []
+    installed = False
     try:
         stage.rename(destination)
+        installed = True
+        # Keep the absolute runtime paths unchanged (venv shebangs depend on
+        # them). The target lock prevents new jobs during this transaction.
+        for rel in preserved:
+            if (previous / rel).exists():
+                (previous / rel).rename(destination / rel)
+                moved.append(rel)
     except OSError:
+        for rel in reversed(moved):
+            (destination / rel).rename(previous / rel)
+        if installed:
+            destination.rename(stage)
         if previous.exists():
             previous.rename(destination)
         raise

@@ -95,3 +95,29 @@ deliberately-unregistered manual end-to-end against a real machine.
 spec-workflow keeps its own `section-compute-overlay.sh` proving the overlay
 machinery with a hand-crafted `compute:` section (the contract seam's other
 half).
+
+## Local repositories and runtime preservation
+
+Local checkouts can use the same bundle selection as GitHub repositories:
+
+```bash
+remote-compute capabilities install gpubox /path/to/repository --all
+remote-compute capabilities install gpubox /path/to/repository game-assets
+```
+
+Discovery validates all bundles before installation. Each bundle is replaced
+individually; a batch can stop after earlier bundles succeeded. Local source
+metadata records the resolved path, bundle path, Git commit and dirty state when
+available. Installation takes a snapshot; it does not create a live symlink.
+
+A manifest may declare `preservePaths: [runtime]` to retain named top-level
+runtime roots through replacement. Names must be unique safe path components,
+not symlinks, managed payload, capability.yaml or .installed.json. Runtime roots
+are moved while the target coordination lock is held and retain their absolute
+paths. An ordinary filesystem error rolls the replacement back. A process/host
+crash can leave a previous-* staging backup requiring manual recovery; this is
+not a crash-journaled transaction. Files not declared for preservation are
+replaced. Purge deliberately deletes runtime state. Prefer --retire-remote when
+switching a capability source, then install the new bundle.
+
+Shell scripts are normalized to LF in installer staging so Windows checkouts can install runnable WSL/Linux launchers. Source files are not rewritten by installation.
