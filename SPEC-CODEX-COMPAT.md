@@ -204,14 +204,29 @@ never be masked.
 
 ## §11 Compatibility sweep for new/in-flight work (E5)
 
-Note: §10.1's CI job already covers the automatable portion of this sweep (§6.6's skill-linter
-pass) for any new `SKILL.md` going forward. This epic's scope is specifically the non-CI-able
-review — §7-§9 (interaction semantics, delegation config, enforcement parity) — which requires
-human/agent judgment, not a lint pass.
+This epic reviews sections 7-9 (interaction semantics, delegation configuration,
+and enforcement parity) using source-backed judgment. Automatable validation,
+including section 6.6 skill lint, is a distinct evidence class: record the
+validator actually run and its result separately from semantic review and
+live-host execution. Unperformed checks remain unverified; neither the
+existence of section 10.1's CI requirement nor manifest/linter success proves
+pipeline execution or live-host parity. Follow the current task's authorized
+execution scope; CDX-050 uses local tests only. Section 10.1's broader
+infrastructure requirements remain unchanged and outside CDX-050's scope.
 
-- **§11.1** WHEN the **compute-registry** work (tracked from issue #166) reaches a mergeable skill
-  THE SYSTEM SHALL be reviewed against §7-§9 of this spec and the result (compliant, or specific
-  gaps) SHALL be recorded as new row(s) in the §10.3 compatibility matrix.
+- **§11.1** WHEN the shipped remote-compute plugin skills `remote-compute`, `compute-top`,
+  `scan`, and `ssh` are reviewed under CDX-050 (issue #194), THE SYSTEM SHALL
+  audit each against sections 7-9 and record exactly four incremental rows in
+  the section 10.3 compatibility matrix, with Claude Code support, Codex support,
+  specific limitations and evidence distinguishing static semantic review,
+  executed hermetic engine behavior, external validator results and actual
+  live-host/SSH execution. THE SYSTEM SHALL state WSL/Linux/macOS as supported
+  execution targets, native PowerShell as unsupported, and the WSL bridge
+  requirement for Windows-hosted agents. THE SYSTEM SHALL identify sections
+  that are inapplicable with reasons, file discovered gaps separately under
+  section 11.3 and link the resulting issues without fixing those gaps inline.
+  This bounded audit contributes to CDX-042; it does not certify the rest of the
+  marketplace or complete its full inventory.
 - **§11.2** WHEN the **peer-review** work (tracked from issues #167/#168) reaches a mergeable skill
   THE SYSTEM SHALL be reviewed against §7-§9 of this spec and the result recorded the same way as
   §11.1.
