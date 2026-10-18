@@ -15,6 +15,15 @@
 - **spec:** fold AST-081 render contracts (#348) (`57132be`)
   > 1. Add the reviewed render lifecycle and audit requirements to the canonical assistant specification.
   > 2. Archive the applied task delta while preserving every existing requirement.
+- **brain:** record render admission and file validation lessons (#348) (`fb7f668`)
+  > 1. Record all 13 recalled-note outcomes from developer and independent reviewer interviews.
+  > 2. Capture bounded file validation and pre-worker audit review lessons; refresh the directory and mark retrospective 133.
+  > 3. No prune candidates were found. Keep graduation unchanged; the existing full-suite RED prescription needs refinement before promotion.
+  > 
+  > The optional event-fold check reports identical pre-existing drift on baseline and candidate. New links introduce no additional divergence; event records accompany the feedback commit.
+- **feedback:** archive admission review feedback (#348) (`1057220`)
+  > 1. Archive the caller-admission review recommendation and link it to the new reviewer lesson.
+  > 2. Preserve feedback and retrospective event records together; no unrouted feedback remains.
 
 ## v0.71.1 — 2026-10-18
 
