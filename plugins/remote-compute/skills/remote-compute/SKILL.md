@@ -211,6 +211,17 @@ pipelines) from model output. A real end-to-end walkthrough lives in
 `tests/e2e-remote-compute-manual.sh` (manual, network-touching — deliberately
 not part of the hermetic gate).
 
+## setup plans after install
+
+`capabilities install` prints the bundle's declared setup plan (manifest
+`setup:` section: steps, required params, prerequisites, verify jobs). Relay it
+to the human verbatim. Agent shells are non-interactive, so setup never runs
+implicitly there: ask the human, then re-run with `--setup --param NAME=VALUE`
+or use `capabilities setup <nick> <capability> --param NAME=VALUE`. Never guess
+required values such as a ComfyUI root. Steps run in order and stop on the
+first failure; inspect `job-logs` before any manual retry. `--no-setup` only
+prints the plan. A completed setup is not service or inference readiness.
+
 ## ComfyUI UI-save import
 
 For an explicit request to import a trusted pre-authored UI save, use the

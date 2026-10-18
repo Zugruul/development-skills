@@ -111,6 +111,32 @@ on a compute machine, `remote-compute help` covers both modes. Bare
 check readiness. Installation does not install Python dependencies, model
 weights, or services. Trusted job code is not sandboxed.
 
+## Setup plans
+
+Installing copies a payload snapshot only. A bundle may declare how to provision
+itself in an optional `setup` section of `capability.yaml`:
+
+```yaml
+setup:
+  requires: [other-bundle]          # must be installed and set up first
+  prerequisites: [python3.12, ...]  # worker tools the steps expect
+  params: {comfy_root: "existing ComfyUI root"}
+  steps: [setup, setup-models]      # declared jobs, run in order
+  optional: [setup-reference]       # documented, never run implicitly
+  verify: [preflight]               # readiness checks once services run
+```
+
+After a successful `capabilities install`, the controller prints that plan:
+each step's job, description and parameters (required ones marked), plus the
+follow-up verification jobs. On an interactive terminal it then asks whether to
+run setup now and prompts for required parameters. `--setup` runs it without
+asking (pass `--param NAME=VALUE` for required inputs), `--no-setup` only prints
+the plan, and non-interactive installs never run it implicitly. Each step is an
+ordinary declared job, dispatched and awaited one at a time; the first failure
+stops setup and nothing is retried. Run a recorded plan later with
+`remote-compute capabilities setup <nick> <capability> [--param NAME=VALUE ...]`.
+Setup completion does not imply that services are running or inference works.
+
 ## Coordination and compatibility
 
 New jobs reserve slots atomically on the target account, retain immutable IDs,

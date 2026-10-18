@@ -74,11 +74,13 @@ Exit codes: 0 ok · 1 unreachable · 2 usage · 3 NEEDS_KEY_AUTH ·
 """
 import concurrent.futures
 import argparse
+import contextlib
 import copy
 import datetime
 import fcntl
 import getpass
 import hashlib
+import io
 import ipaddress
 import json
 import os
@@ -89,6 +91,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
@@ -1459,6 +1462,20 @@ def validate_manifest(manifest):
                 raise ValueError("invalid pattern for %s: %s" % (param, exc))
             if "default" in declaration and not regex.fullmatch(str(declaration["default"])):
                 raise ValueError("default for %s does not match its pattern" % param)
+    setup = manifest.get("setup")
+    if setup is not None:
+        if not isinstance(setup, dict):
+            raise ValueError("setup must be a map")
+        for field in ("steps", "optional", "verify", "requires", "prerequisites"):
+            values = setup.get(field, [])
+            if not isinstance(values, list) or any(not isinstance(v, str) or not v for v in values):
+                raise ValueError("setup.%s must be a list of names" % field)
+        for field in ("steps", "optional", "verify"):
+            for job in setup.get(field, []):
+                if job not in jobs:
+                    raise ValueError("setup.%s names undeclared job %r" % (field, job))
+        if not isinstance(setup.get("params", {}), dict):
+            raise ValueError("setup.params must map parameter names to descriptions")
     return manifest
 
 
@@ -1509,10 +1526,235 @@ def _record_capability(res, manifest, digest=None, default_env=None):
     res.setdefault("capabilities_installed", {})[cap] = {
         "version": manifest.get("version"), "installedAt": now_iso(), "digest": digest,
         "description": manifest.get("description") or "", "jobs": declared}
+    if manifest.get("setup"):
+        res["capabilities_installed"][cap]["setup"] = manifest["setup"]
     return declared
 
 
-def cmd_install_capability(argv, provenance=None):
+# --- bundle setup plans ----------------------------------------------------
+# A manifest may declare `setup: {steps, optional, verify, requires,
+# prerequisites, params, notes}`. Installing copies payload only; the plan names
+# the declared jobs that provision dependencies/models. Install always prints
+# the plan, then asks (TTY), runs it (--setup) or skips it (--no-setup).
+# Steps are ordinary declared jobs, run one at a time and never retried.
+
+SETUP_POLL_SECONDS = 3
+
+
+def _setup_required(manifest):
+    """Parameters each step needs that have no default, with their descriptions."""
+    setup = manifest.get("setup") or {}
+    described = setup.get("params") or {}
+    required = {}
+    for job in setup.get("steps", []):
+        for name, spec in (manifest["jobs"][job].get("params") or {}).items():
+            spec = spec if isinstance(spec, dict) else {"pattern": spec}
+            if "default" not in spec:
+                required.setdefault(name, (spec.get("pattern"), str(described.get(name, ""))))
+    return required
+
+
+def render_setup_plan(nick, manifest, given=None):
+    """Human-readable plan: what install did NOT do and which jobs would do it."""
+    setup = manifest.get("setup")
+    cap = manifest["name"]
+    if not setup:
+        return ["SETUP %s: no setup declared by this bundle; installed means payload only." % cap]
+    given = given or {}
+    lines = ["SETUP PLAN %s (declared by the bundle; nothing has run yet):" % cap]
+    if setup.get("requires"):
+        lines.append("  requires bundles: %s (install and set them up first)" % ", ".join(setup["requires"]))
+    for item in setup.get("prerequisites", []):
+        lines.append("  prerequisite: %s" % item)
+    steps = setup.get("steps", [])
+    if not steps:
+        lines.append("  steps: none; no setup job needs to run for this bundle")
+    for number, job in enumerate(steps, 1):
+        declared = manifest["jobs"][job]
+        lines.append("  %d. %s:%s" % (number, cap, job))
+        description = " ".join(str(declared.get("description") or "").split())
+        if description:
+            lines.append("       %s" % description)
+        for name, spec in (declared.get("params") or {}).items():
+            spec = spec if isinstance(spec, dict) else {"pattern": spec}
+            if name in given:
+                value = given[name]
+            elif "default" in spec:
+                value = "%s (default)" % spec["default"]
+            else:
+                value = "<required> %s" % (setup.get("params") or {}).get(name, "")
+            lines.append("       --param %s=%s" % (name, value.rstrip()))
+    for job in setup.get("optional", []):
+        lines.append("  optional: %s:%s" % (cap, job))
+    for job in setup.get("verify", []):
+        lines.append("  verify after services are running: %s:%s" % (cap, job))
+    if setup.get("notes"):
+        lines.append("  note: %s" % " ".join(str(setup["notes"]).split()))
+    if steps:
+        params = " ".join("--param %s=%s" % (name, given.get(name, "...")) for name in _setup_required(manifest))
+        lines.append("  run it later: remote-compute capabilities setup %s %s%s" % (
+            nick, cap, (" " + params) if params else ""))
+    return lines
+
+
+def _interactive():
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _ask(prompt):
+    try:
+        return input(prompt)
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return None
+
+
+def _await_job(job_id, deadline):
+    """Poll job-status until terminal. Returns (state, exitcode)."""
+    while True:
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cmd_job_status(job_id)
+        match = re.search(r"^state: (\S+)(?: exitcode: (\S+))?", buffer.getvalue(), re.MULTILINE)
+        state = match.group(1) if match else "unknown"
+        if state in ("completed", "failed", "cancelled", "lost"):
+            return state, match.group(2)
+        if time.monotonic() >= deadline:
+            return "waiting", None
+        time.sleep(SETUP_POLL_SECONDS)
+
+
+def run_setup(nick, manifest, given, wait_seconds=86400):
+    """Dispatch each setup step in order and wait for it; stop on the first problem."""
+    cap = manifest["name"]
+    setup = manifest.get("setup") or {}
+    reg = load_registry()
+    res = reg["resources"].get(nick)
+    if res is None:
+        print("ERROR: '%s' is not registered" % nick)
+        return EXIT_USAGE
+    installed = res.get("capabilities_installed") or {}
+    missing = [name for name in setup.get("requires", []) if name not in installed]
+    if missing:
+        print("ERROR: %s requires %s on %s; install and set those up first" % (cap, ", ".join(missing), nick))
+        return EXIT_USAGE
+    deadline = time.monotonic() + wait_seconds
+    for job in setup.get("steps", []):
+        declared = manifest["jobs"][job].get("params") or {}
+        params = ["%s=%s" % (k, v) for k, v in given.items() if k in declared]
+        opts = {"--job-id": None, "--holder": getpass.getuser(), "--inputs": None, "--param": params}
+        reg = load_registry()
+        res = reg["resources"][nick]
+        try:
+            workdir, rendered, launch_opts = _prepare_run(res, nick, "%s:%s" % (cap, job), opts)
+        except ValueError as exc:
+            print("ERROR: %s" % exc)
+            return EXIT_USAGE
+        print("SETUP STEP %s:%s" % (cap, job), flush=True)
+        rc = _launch_job(reg, res, nick, workdir, rendered, launch_opts)
+        if rc:
+            print("SETUP STOPPED at %s:%s; inspect the receipt before any retry" % (cap, job))
+            return rc
+        job_id = launch_opts["--job-id"]
+        try:
+            state, code = _await_job(job_id, deadline)
+        except KeyboardInterrupt:
+            print("\nStopped waiting; %s may still be running. Inspect job-status %s" % (job_id, job_id))
+            return 130
+        if state != "completed" or code != "0":
+            print("SETUP FAILED at %s:%s (%s, exit %s); see job-logs %s" % (cap, job, state, code, job_id))
+            return 1
+        print("SETUP STEP DONE %s:%s (%s)" % (cap, job, job_id), flush=True)
+    print("SETUP COMPLETE %s on %s; service and inference readiness are checked separately" % (cap, nick))
+    for job in setup.get("verify", []):
+        print("  next, once services run: remote-compute run %s %s:%s" % (nick, cap, job))
+    return 0
+
+
+def offer_setup(nick, manifest, mode="ask", given=None):
+    """After a successful install: show the plan, then ask, run or skip it."""
+    given = dict(given or {})
+    for line in render_setup_plan(nick, manifest, given):
+        print(line)
+    setup = manifest.get("setup") or {}
+    if not setup.get("steps") or mode == "skip":
+        return 0
+    if mode == "ask":
+        if not _interactive():
+            print("Setup not run (non-interactive). Re-run install with --setup, or use the command above.")
+            return 0
+        answer = _ask("Run setup for %s on %s now? [y/N] " % (manifest["name"], nick))
+        if not answer or answer.strip().lower() not in ("y", "yes"):
+            print("Setup skipped; run it later with the command above.")
+            return 0
+    for name, (pattern, description) in _setup_required(manifest).items():
+        while name not in given:
+            if not _interactive():
+                print("ERROR: setup needs --param %s=... %s" % (name, description))
+                return EXIT_USAGE
+            value = _ask("  %s%s: " % (name, (" (" + description + ")") if description else ""))
+            if value is None:
+                print("Setup skipped.")
+                return 0
+            value = value.strip()
+            if re.fullmatch(pattern or DEFAULT_PARAM_PATTERN, value):
+                given[name] = value
+            else:
+                print("  value must match %s" % pattern)
+    return run_setup(nick, manifest, given)
+
+
+def cmd_capability_setup(nick, cap, given):
+    """Run an installed capability's recorded setup plan."""
+    reg = load_registry()
+    res = reg["resources"].get(nick)
+    if res is None:
+        print("ERROR: '%s' is not registered" % nick)
+        return EXIT_USAGE
+    record = (res.get("capabilities_installed") or {}).get(cap)
+    if record is None:
+        print("ERROR: '%s' has no capability '%s'" % (nick, cap))
+        return EXIT_USAGE
+    prefix = cap + ":"
+    jobs = {name[len(prefix):]: job for name, job in (res.get("jobs") or {}).items()
+            if name.startswith(prefix) and job.get("capability") == cap}
+    manifest = {"name": cap, "jobs": jobs, "setup": record.get("setup")}
+    if not manifest["setup"]:
+        print("\n".join(render_setup_plan(nick, manifest)))
+        print("(reinstall the bundle from a source that declares setup to record a plan)")
+        return 0
+    # The plan was validated against these jobs when the bundle was installed.
+    return offer_setup(nick, manifest, "run", given)
+
+
+def split_setup_options(args):
+    """Remove --setup/--no-setup/--param from install arguments."""
+    mode, params, rest = "ask", {}, []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg in ("--setup", "--no-setup"):
+            new = "run" if arg == "--setup" else "skip"
+            if mode not in ("ask", new):
+                raise ValueError("choose --setup OR --no-setup")
+            mode = new
+        elif arg == "--param":
+            if index + 1 >= len(args):
+                raise ValueError("--param needs NAME=VALUE")
+            name, sep, value = args[index + 1].partition("=")
+            if not sep or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+                raise ValueError("--param needs NAME=VALUE")
+            params[name] = value
+            index += 1
+        else:
+            rest.append(arg)
+        index += 1
+    if params and mode == "skip":
+        raise ValueError("--param is for setup; it cannot be combined with --no-setup")
+    return rest, {"mode": mode, "params": params}
+
+
+def cmd_install_capability(argv, provenance=None, setup=None):
     nick, bundle = argv[0], argv[1]
     opts = _parse_opts(argv[1:], {"--env": None})
     try:
@@ -1558,6 +1800,8 @@ def cmd_install_capability(argv, provenance=None):
     print("installed capability '%s' on %s (payload -> %s)" % (cap, nick, capdir))
     for key in declared:
         print("  job: %s" % key)
+    if setup is not None:
+        return offer_setup(nick, manifest, setup["mode"], setup["params"])
     return 0
 
 
@@ -1741,7 +1985,7 @@ def discover_bundles(root, name=None, all_bundles=False):
     return [found[key] for key in sorted(found)]
 
 
-def cmd_github_install(args):
+def cmd_github_install(args, setup=None):
     parser = argparse.ArgumentParser(prog="remote-compute capabilities install")
     parser.add_argument("nickname")
     parser.add_argument("url")
@@ -1782,7 +2026,7 @@ def cmd_github_install(args):
                 arguments = [options.nickname, str(bundle)]
                 if options.env:
                     arguments += ["--env", options.env]
-                rc = cmd_install_capability(arguments, provenance=provenance)
+                rc = cmd_install_capability(arguments, provenance=provenance, setup=setup)
                 if rc:
                     print("STOPPED at %s; earlier successful bundles remain installed" % bundle.name)
                     return rc
@@ -1792,7 +2036,7 @@ def cmd_github_install(args):
         return EXIT_USAGE
 
 
-def cmd_local_repository_install(args):
+def cmd_local_repository_install(args, setup=None):
     parser = argparse.ArgumentParser(prog="remote-compute capabilities install")
     parser.add_argument("nickname")
     parser.add_argument("directory")
@@ -1827,7 +2071,7 @@ def cmd_local_repository_install(args):
             arguments = [options.nickname, str(bundle)]
             if options.env:
                 arguments += ["--env", options.env]
-            result = cmd_install_capability(arguments, provenance=source)
+            result = cmd_install_capability(arguments, provenance=source, setup=setup)
             if result:
                 print("STOPPED at %s; earlier successful bundles remain installed" % bundle.name)
                 return result
@@ -1847,6 +2091,9 @@ def cmd_capability_cli(args):
               "capabilities install nick name-or-dir [--env NAME]\n"
               "capabilities install nick local-repository [name | --all] [--env NAME]\n"
               "capabilities install nick github-url [name | --all] [--ref REF] [--env NAME]\n"
+              "  install options: --setup | --no-setup, --param NAME=VALUE (setup inputs);\n"
+              "  install prints the bundle's setup plan and asks before running it on a TTY\n"
+              "capabilities setup nick capability [--param NAME=VALUE ...]\n"
               "Install only trusted bundles; payloads execute with the SSH account's permissions.")
         return 0
     if action == "list":
@@ -1865,16 +2112,34 @@ def cmd_capability_cli(args):
         if len(args) < 3:
             print("ERROR: usage: capabilities install <nick> <name-or-bundle-dir> [--env NAME]")
             return EXIT_USAGE
+        try:
+            args, setup = split_setup_options(args)
+        except ValueError as exc:
+            print("ERROR: %s" % exc)
+            return EXIT_USAGE
         if args[2].startswith(("https://", "http://", "git@", "ssh://")):
-            return cmd_github_install(args[1:])
+            return cmd_github_install(args[1:], setup=setup)
         if Path(args[2]).expanduser().is_dir():
-            return cmd_local_repository_install(args[1:])
+            return cmd_local_repository_install(args[1:], setup=setup)
         try:
             bundle_dir = _resolve_capability_bundle(args[2])
         except ValueError as exc:
             print("ERROR: %s" % exc)
             return EXIT_USAGE
-        return cmd_install_capability([args[1], bundle_dir] + args[3:])
+        return cmd_install_capability([args[1], bundle_dir] + args[3:], setup=setup)
+    if action == "setup":
+        if len(args) < 3:
+            print("ERROR: usage: capabilities setup <nick> <capability> [--param NAME=VALUE ...]")
+            return EXIT_USAGE
+        try:
+            rest, setup = split_setup_options(args[3:])
+        except ValueError as exc:
+            print("ERROR: %s" % exc)
+            return EXIT_USAGE
+        if rest or setup["mode"] == "skip":
+            print("ERROR: capabilities setup accepts only --param NAME=VALUE")
+            return EXIT_USAGE
+        return cmd_capability_setup(args[1], args[2], setup["params"])
     if action == "sync" and len(args) == 2:
         return cmd_capability_sync(args[1])
     if action == "validate" and len(args) == 2:

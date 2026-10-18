@@ -182,6 +182,15 @@ bundle jobs are removed on upgrade; custom jobs are preserved. Active work block
 payload replacement. Installation alone does not install dependencies or start
 services: use `doctor NICK` and the bundle's own checks to establish readiness.
 
+When a bundle declares a `setup:` plan in its manifest, install prints it right
+after installing: every setup job in order with its description and parameters
+(required ones marked), prerequisites, required bundles and later verification
+jobs. On an interactive terminal it asks `Run setup ... now? [y/N]` and prompts
+for required values; `--setup --param NAME=VALUE` runs it without asking and
+`--no-setup` only prints it. Non-interactive installs never run setup on their own.
+Run it later with `remote-compute capabilities setup <nickname> <capability>`.
+See the plugin README's [setup plans](../plugins/remote-compute/README.md#setup-plans) section.
+
 Another client registers the same machine (its nickname may differ) and runs
 `remote-compute capabilities sync NICK` to import the target catalog without
 reinstalling payloads. Each client still configures its environment activation
