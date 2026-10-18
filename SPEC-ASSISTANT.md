@@ -38,8 +38,9 @@ makes the brain the durable memory ("resume yesterday's travel plan instantly").
 
 - NG1 Concurrent multi-assistant serving (one ACTIVE assistant at a time; design must not
   preclude concurrency later).
-- NG2 Streaming token-by-token replies (turns are one-shot CLI invocations; an elapsed-time
-  thinking state is the v1 UX).
+- NG2 Persistent warm provider sessions and token-by-token voice output. Stateless
+  CLI turns MAY expose genuine incremental assistant text through the chat stream
+  defined in §8.8; persistent sessions remain separate work (#539).
 - NG3 Note lifecycle beyond mint + strength-bump (merge/retire/aggregate primitives and
   end-of-session retro consolidation are E8).
 - NG4 Remote compute beyond the single storm590x/WSL ComfyUI target (E7's scope).
@@ -217,9 +218,16 @@ assistant:
 
 ## §8 Conversation turns
 
-- §8.1 WHEN a user message arrives THE SYSTEM SHALL execute the turn as one stateless
-  provider-CLI invocation (`codex exec --json -m <model>` / `claude -p --output-format
-  json`) via the adapter interface `complete(context) -> {text, usage, timings}`.
+- §8.1 WHEN a user message arrives THE SYSTEM SHALL execute its initial completion
+  as one stateless provider-CLI invocation (`codex exec --json -m <model>` /
+  `claude -p --output-format json` or supported `stream-json`) via the adapter
+  interface `complete(context) -> {text, usage, timings}`. WHEN a supported adapter
+  exposes a streaming callback THE SYSTEM SHALL accept incremental text while
+  returning the same authoritative final result. The one same-turn capability
+  follow-up permitted by §11.5 SHALL use the same optional streaming interface.
+  IF the installed CLI cannot expose incremental text THEN THE SYSTEM SHALL use
+  its blocking completion exactly once; THE SYSTEM SHALL NOT simulate streaming
+  by splitting a completed answer or retry an already-started completion.
 - §8.2 THE SYSTEM SHALL build the turn context as: systemPrompt persona + names + roster
   (§11) + rolling summary + top-k recalled notes + last N turns (N≤6) + user message,
   under a hard total budget (≤ ~6k tokens) with per-component caps; the rolling summary
@@ -238,13 +246,48 @@ assistant:
   fully read-only posture. Publishing moves only regular files (never symlinks or
   multi-link entries) from that workdir into the sanctioned directory, atomically and
   cross-filesystem-safe.
-- §8.5 IF the provider CLI exits nonzero, times out (mandatory timeout), or emits
-  unparseable output THEN THE SYSTEM SHALL surface a bounded-time, specific error in the
-  overlay — including an auth-expired state instructing `codex login`/`claude login`.
-- §8.6 WHILE a turn is in flight THE SYSTEM SHALL show an elapsed-time thinking state;
-  chat input SHALL remain open (messages queue).
+- §8.5 IF the provider CLI exits nonzero, times out (mandatory timeout), emits
+  malformed protocol output, or ends without its authoritative final result THEN
+  THE SYSTEM SHALL surface a bounded-time, specific error in the overlay —
+  including an auth-expired state instructing `codex login`/`claude auth login`.
+  THE SYSTEM SHALL NOT treat partial text as a successful reply. Streaming
+  transport SHALL drain both child pipes, bound buffered output and elapsed time,
+  terminate and reap owned process groups on failure or cancellation, and clean
+  isolated temporary directories while retaining the hardened file publication
+  relay. A stalled reader or descendant holding a pipe SHALL NOT defeat those
+  bounds.
+- §8.6 WHILE a turn is in flight and no public text has arrived THE SYSTEM SHALL
+  show an elapsed-time thinking state; chat input SHALL remain open (messages
+  queue). WHEN safe public text arrives THE SYSTEM SHALL replace thinking with
+  live text in the existing assistant reply row. THE SYSTEM SHALL preserve
+  sticky scrolling, final Markdown, recall chips and one voice output per final
+  reply. WHEN the selected assistant changes THE SYSTEM SHALL discard outgoing
+  stream events and errors without altering the incoming assistant's rows,
+  queue, timer or in-flight state.
 - §8.7 THE SYSTEM SHALL append each exchange to the session transcript (append-safe
   JSONL, fsync'd) so a crash loses at most the in-flight turn.
+
+- §8.8 WHEN `POST /assistant/chat` receives `Accept: text/event-stream` THE SYSTEM
+  SHALL negotiate SSE using typed JSON events: `start` with `turn_id`, `text`
+  with completion `phase` and cumulative sanitized `text`, `done` with the
+  existing final chat payload, or `error` with a specific error. Content-free
+  heartbeats MAY maintain liveness. A successful stream SHALL have one `done`;
+  a failed connected stream SHALL have one `error`; EOF without a terminal event
+  SHALL be a failure. Requests without stream negotiation and validation errors
+  before stream start SHALL retain the existing JSON contract. The browser SHALL
+  accept a JSON response from the same request without retrying it.
+- §8.9 THE SYSTEM SHALL emit and flush genuine safe provider text before provider
+  completion, targeting first visible text within roughly two seconds when the
+  provider emits promptly. Deterministic HTTP and browser tests SHALL prove this
+  ordering and prompt delivery. Actual CLI startup/reasoning latency SHALL be
+  recorded separately without promising the two-second target for every real
+  invocation. First-visible timing SHALL start before context composition and
+  count only safe public text, separately from completion timing.
+- §8.10 THE SYSTEM SHALL retain context budgets, enabled-capability gates,
+  per-assistant serialization and durable session/transcript updates for streamed
+  turns. Partial failed initial completions SHALL NOT be saved as successful
+  exchanges. Streaming SHALL retain subscription authentication and pinned
+  isolation; no metered API or persistent session SHALL be introduced.
 
 ## §9 Memory, self-feedback, background work
 
@@ -353,6 +396,17 @@ assistant:
   preserving node classes, links, topology and pre-authored output paths. Before
   POST, THE SYSTEM SHALL inspect native object_info for available nodes, inputs and
   model enum values, reporting bounded actionable dependency identifiers.
+  WHEN either completion streams THE SYSTEM SHALL withhold possible line-anchored
+  capability-fence prefixes across arbitrary chunk boundaries and hide complete,
+  malformed and unterminated directive blocks before public emission. Provider
+  message and text-block boundaries SHALL retain line boundaries before filtering,
+  including tool cycles allowed by the existing file-output exception. Only main
+  assistant text SHALL be public; thinking, signatures, tool/subagent output and
+  duplicate snapshots SHALL NOT be emitted. A follow-up phase SHALL replace the
+  provisional first reply; the final payload SHALL replace provisional text.
+  Disconnect SHALL NOT cause another completion or effect. An already-admitted
+  synchronous effect SHALL finish under its own deadline and retain a durable
+  result-bearing outcome; cancellation SHALL prevent a not-yet-started follow-up.
 - §11.6 capability.yaml `version` SHALL be checked against the engine's supported range;
   unsupported versions are unavailable-with-reason, never best-effort executed.
 - §11.7 MCP servers are an invoke flavor (`invoke: {mcp: ...}`).
