@@ -1,0 +1,58 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-18T15:41:02Z'
+iteration:
+  task: '530'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: Codex host default
+items:
+- category: worked-well
+  area: review
+  severity: low
+  summary: An isolated failing checkout made independent review concrete
+  detail: Both reviewers replayed the two original failures and exercised actual lifecycle
+    checks with missing, extra, dead and delayed workers. One parent-owned full gate
+    avoided redundant complete runs.
+  evidence:
+  - Zugruul/development-skills#530
+  generalized: Provide reviewers an isolated failing checkout and the exact tested
+    candidate so they can verify regression discrimination without repeating the entire
+    gate.
+  routing:
+    action: ignore
+    ref: Existing independent-review protocol and retrospective outcomes already cover
+      this successful practice; no additional workflow change requested.
+- category: worked-well
+  area: testing
+  severity: medium
+  summary: Preserved fixture state identified an unrelated gate failure
+  detail: The failed gate left a listener port file and server log. Reading them proved
+    both fixture listeners selected the same port. The separate defect was filed before
+    one diagnosed gate rerun, which passed.
+  evidence:
+  - Zugruul/development-skills#530
+  - Zugruul/development-skills#541
+  generalized: Preserve actual failed fixture state and compare it with candidate
+    scope before rerunning complete validation; separately track unrelated defects
+    instead of weakening assertions.
+  routing:
+    action: ignore
+    ref: Diagnostic practice succeeded; the separate test-harness defect is already
+      tracked in Zugruul/development-skills#541; no duplicate workflow task is needed.
+- category: friction
+  area: briefing
+  severity: low
+  summary: A required lint tool was outside the default executable path
+  detail: The developer rediscovered the existing ShellCheck tool location. Reviewer
+    briefs were updated with its exact path and the localhost escalation requirement.
+  evidence:
+  - Zugruul/development-skills#530
+  generalized: Include required tool locations and execution constraints in role briefs
+    to avoid repeated environment discovery.
+  routing:
+    action: ignore
+    ref: Resolved by adding the exact lint tool path and localhost execution constraint
+      to reviewer briefs; retain these details in the next dev brief.
