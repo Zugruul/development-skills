@@ -1,0 +1,53 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-18T14:58:03Z'
+iteration:
+  task: '523'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: Codex host default
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Independent reviews exposed interaction gaps despite green component tests
+  detail: Independent reviewers exercised actual assistant switches and provider message
+    topology, reproduced three defects, and verified committed RED regressions before
+    approval.
+  evidence:
+  - Zugruul/development-skills#523
+  generalized: Drive actual lifecycle entrypoints and protocol sequences during independent
+    review instead of constructing expected state in mocks.
+  routing:
+    action: brain-note
+    ref: reviewer/test-real-lifecycle-transitions
+- category: friction
+  area: other
+  severity: low
+  summary: Task-close telemetry cannot represent an unknown estimate
+  detail: An unestimated board item was rejected when estimate was null. A documented
+    numeric-zero sentinel was needed by the current schema, but it must not be treated
+    as a genuine estimate.
+  evidence:
+  - Zugruul/development-skills#523
+  generalized: Task-close telemetry should preserve unknown estimates explicitly and
+    keep them out of numeric calibration rather than require invented values.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#540
+- category: friction
+  area: brains
+  severity: low
+  summary: Existing event-feed divergence remains outside this retrospective
+  detail: verify-feed reports identical pre-existing diagnostics for all three roles
+    before and after the new notes. No prune candidates in touched dev/reviewer roles;
+    unrelated orchestrator aged links and existing graduation candidates retained.
+  evidence:
+  - Zugruul/development-skills#523
+  generalized: ''
+  routing:
+    action: ignore
+    ref: Identical pre-existing baseline feed divergence; no regression from this
+      task. Retain unrelated pruning/graduation candidates.
