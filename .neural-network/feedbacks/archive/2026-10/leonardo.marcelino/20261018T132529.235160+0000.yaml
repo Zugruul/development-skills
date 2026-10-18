@@ -1,0 +1,27 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-18T13:25:29.235160+00:00'
+iteration:
+  task: '348'
+  outcome: merged
+  reviewRounds: 3
+source:
+  role: orchestrator
+  model: gpt-6
+items:
+- category: recommendation
+  area: review
+  severity: medium
+  summary: Exercise admission refusal separately from worker audit coverage.
+  detail: Independent quality review caught a missing queue-full outcome before task
+    creation. The other reviewer reproduced it and revised the verdict. Committed
+    RED tests then covered submit/cancel correlation, trace queue saturation, privacy,
+    and the existing control path.
+  evidence:
+  - Zugruul/development-skills#348
+  generalized: Review managed capabilities at the caller admission boundary as well
+    as inside the worker; saturate the task queue and verify linked sanitized refusal
+    outcomes without remote effects.
+  routing:
+    action: brain-note
+    ref: reviewer/audit-admission-before-worker-start
