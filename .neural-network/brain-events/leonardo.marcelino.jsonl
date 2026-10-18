@@ -3825,3 +3825,22 @@
 {"action": "backlog", "idx": 1, "itemTs": "2026-10-18T14:58:03Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-10-18T14:58:28+00:00", "type": "FeedbackRouted", "v": 1}
 {"action": "ignore", "idx": 2, "itemTs": "2026-10-18T14:58:03Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-10-18T14:58:28+00:00", "type": "FeedbackRouted", "v": 1}
 {"itemCount": 3, "itemTs": "2026-10-18T14:58:03Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-10-18T14:58:28+00:00", "type": "FeedbackArchived", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "capture-dont-transcribe", "task": "530", "ts": "2026-10-18T15:38:43+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "deterministic-repro-fast", "task": "530", "ts": "2026-10-18T15:38:43+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "stderr-suppression-hides-evidence", "task": "530", "ts": "2026-10-18T15:38:43+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "batch-red-across-surfaces", "task": "530", "ts": "2026-10-18T15:38:43+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "poll-own-children", "task": "530", "ts": "2026-10-18T15:38:44+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "acceptance-criterion-outranks-test-spec-paraphrase", "task": "530", "ts": "2026-10-18T15:38:44+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "bash-test-sections-shared-state", "task": "530", "ts": "2026-10-18T15:38:44+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "capture-real-output-as-fixtures", "task": "530", "ts": "2026-10-18T15:38:44+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "dead_end", "repo": "Zugruul/development-skills", "role": "dev", "slug": "documented-placeholder-never-substituted", "task": "530", "ts": "2026-10-18T15:38:44+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "test-section-shell-plumbing-risk", "task": "530", "ts": "2026-10-18T15:38:44+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reports-are-not-the-code", "task": "530", "ts": "2026-10-18T15:38:44+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "red-commit-worktree-verify", "task": "530", "ts": "2026-10-18T15:38:44+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "confirm-named-scope-exclusions-respected", "task": "530", "ts": "2026-10-18T15:38:44+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reproduce-before-verdict", "task": "530", "ts": "2026-10-18T15:38:44+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "distinguish-missed-vs-uncatchable-findings", "task": "530", "ts": "2026-10-18T15:38:44+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "copied-precedent-needs-fresh-verification", "task": "530", "ts": "2026-10-18T15:38:44+00:00", "type": "RecallOutcome", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "retain-handles-before-clearing-registry", "strength": 1, "ts": "2026-10-18T15:38:44+00:00", "type": "NoteMinted", "v": 1}
+{"key": "retain-handles-before-clearing-registry->poll-own-children", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-10-18T15:38:44+00:00", "type": "LinkFormed", "v": 1}
+{"key": "retain-handles-before-clearing-registry->sanity-check-fix-against-broken-code", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-10-18T15:38:44+00:00", "type": "LinkFormed", "v": 1}

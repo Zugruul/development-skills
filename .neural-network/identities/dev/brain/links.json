@@ -524,6 +524,16 @@
     "last": "2026-10-11",
     "weight": 0.5
   },
+  "retain-handles-before-clearing-registry->poll-own-children": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "retain-handles-before-clearing-registry->sanity-check-fix-against-broken-code": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "sanitize-structured-credentials-before-storage->audit-new-path-parity-before-writing": {
     "fires": 1,
     "last": "2026-10-11",
