@@ -394,6 +394,11 @@
     "last": "2026-10-11",
     "weight": 0.5
   },
+  "parse-machine-output-without-stderr->pin-exit-code-not-just-output-in-helper-tests": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "pin-order-not-just-presence->copy-exact-strings-tests-assert-against": {
     "fires": 9,
     "last": "2026-10-11",
