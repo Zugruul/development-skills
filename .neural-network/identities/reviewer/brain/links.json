@@ -189,6 +189,16 @@
     "last": "2026-10-11",
     "weight": 0.5
   },
+  "test-real-lifecycle-transitions->reports-are-not-the-code": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "test-real-lifecycle-transitions->reproduce-before-verdict": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "tested-through-which-caller->reproduce-before-verdict": {
     "fires": 11,
     "last": "2026-10-11",

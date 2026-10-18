@@ -454,6 +454,16 @@
     "last": null,
     "weight": 0.5
   },
+  "preserve-stream-framing-before-filtering->capture-real-output-as-fixtures": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "preserve-stream-framing-before-filtering->protocol-layer-failure-enumeration": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "proxy-checks-vs-true-invariants->contract-invariant-preservation": {
     "fires": 9,
     "last": "2026-10-11",
