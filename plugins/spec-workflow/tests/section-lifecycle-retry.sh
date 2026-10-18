@@ -115,6 +115,110 @@ check_rc "port exclusion: exhausted candidate set fails within the bound" 1 "$_e
 if [[ -z "$_exhausted_out" ]]; then _empty_port_rc=0; else _empty_port_rc=1; fi
 check_rc "port exclusion: exhausted fallback emits no excluded port" 0 "$_empty_port_rc"
 
+# #541: exercise the real selector/helper under identical draws, including
+# the actual whisper call expressions. Replace only their server command in
+# a subprocess; the caller arguments and helper selection still execute.
+_lc541_out="$(python3 - "$HERE" 2>&1 <<'PY541'
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+here = Path(sys.argv[1])
+setup = r"""
+set -uo pipefail
+source "$1/_lib.sh"
+fails=0; flaky=0
+lc541_definition="$(declare -f _rand_port)"
+eval "${lc541_definition/_rand_port/lc541_real_rand}"
+_rand_port() { RANDOM=42; lc541_real_rand "$@"; }
+lc541_sibling="$(_rand_port)"
+[[ "$lc541_sibling" == "$(_rand_port)" ]] || exit 20
+lc541_calls="$(mktemp)"
+trap "rm -f \"$lc541_calls\"" EXIT
+lc541_command() {
+    echo attempt >>"$lc541_calls"
+    if [[ "$LC541_PORT" == "$lc541_sibling" ]]; then
+        echo "collision: lifecycle reused the configured sibling"
+    elif [[ "$(wc -l <"$lc541_calls")" -eq 1 ]]; then
+        echo "synthetic first-start failure"
+    else
+        echo "RUNNING http://127.0.0.1:$LC541_PORT"
+    fi
+}
+"""
+
+def run(label, script, *args):
+    try:
+        result = subprocess.run(["bash", "-c", setup + script, "_", str(here), *args],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, timeout=5)
+    except subprocess.TimeoutExpired:
+        print("FAIL " + label + ": exceeded five-second bound")
+        return False
+    if result.returncode:
+        print("FAIL " + label + ": " + result.stdout.strip())
+        return False
+    print("ok   " + label)
+    return True
+
+passed = run("lifecycle excludes sibling on both attempts and counts one flake", r"""
+lifecycle_start seeded LC541_PORT lc541_command "$lc541_sibling"
+lc541_rc=$?
+echo "rc=$lc541_rc fails=$fails flaky=$flaky calls=$(wc -l <"$lc541_calls")"
+[[ "$lc541_rc:$fails:$flaky" == "0:0:1" ]] &&
+    [[ "$(wc -l <"$lc541_calls")" -eq 2 ]]
+""")
+
+passed = run("lifecycle exhaustion fails once without exporting or dispatching", r"""
+_PORT_SLICE_WIDTH=1
+lc541_sibling="$(_port_base)"
+LC541_PORT=unchanged
+lifecycle_start exhausted LC541_PORT lc541_command "$lc541_sibling"
+lc541_rc=$?
+echo "rc=$lc541_rc fails=$fails flaky=$flaky port=$LC541_PORT"
+[[ "$lc541_rc:$fails:$flaky:$LC541_PORT" == "1:1:0:unchanged" ]] &&
+    [[ ! -s "$lc541_calls" ]]
+""") and passed
+
+# Execute every current whisper lifecycle call, keeping all its arguments.
+# Only substitute a synthetic server command after entering the wrapper;
+# a missing fourth argument therefore exercises the old collision for real.
+lines = (here / "section-whisper-sidecar.sh").read_text().splitlines()
+calls = []
+for index, line in enumerate(lines):
+    if line.startswith("lifecycle_start "):
+        command = line
+        while command.endswith("\\"):
+            index += 1
+            command = command[:-1] + lines[index]
+        calls.append(command)
+if len(calls) != 5:
+    print("FAIL whisper caller audit: expected five lifecycle invocations")
+    passed = False
+for call in calls:
+    passed = run("whisper caller excludes configured sibling: " + shlex.split(call)[1], r"""
+lc541_definition="$(declare -f lifecycle_start)"
+eval "${lc541_definition/lifecycle_start/lc541_real_start}"
+WS_NV_P_AUTO="$lc541_sibling"
+WS_NV_P_FAIL="$lc541_sibling"
+WS_NV_P_MISSING="$lc541_sibling"
+lifecycle_start() {
+    lc541_real_start "$1" LC541_PORT lc541_command "${4:-}"
+}
+eval "$2"
+lc541_rc=$?
+echo "rc=$lc541_rc fails=$fails flaky=$flaky"
+[[ "$lc541_rc:$fails:$flaky" == "0:0:1" ]] &&
+    [[ "$(wc -l <"$lc541_calls")" -eq 2 ]]
+""", call) and passed
+sys.exit(0 if passed else 1)
+PY541
+)"
+_lc541_rc=$?
+printf '%s\n' "$_lc541_out"
+check_rc "lifecycle sibling exclusions, retry accounting and bounded exhaustion" 0 "$_lc541_rc"
+
 # development-skills#97 item 3: with the fixture isolation above in place,
 # re-verify the kill gate's PID/cmdline binding under a REAL concurrent
 # collision -- two genuine neural-view servers, each its own "suite" (a

@@ -117,19 +117,25 @@ _rand_port() {
     return 1
 }
 
-# lifecycle_start <check-name> <port-env-var-name> <command-string>
+# lifecycle_start <check-name> <port-env-var-name> <command-string> [excluded-port]
 # Exports a fresh random port into <port-env-var-name>, then evals
 # <command-string> (a single shell command, possibly with its own
 # VAR=value prefixes) and expects its output to contain
 # "RUNNING http://127.0.0.1:<port>". On failure, retries ONCE with a newly
 # picked port. Leaves <port-env-var-name> exported to whichever port
 # actually worked, so follow-up curl calls / checks in the same section can
-# just keep referencing it.
+# just keep referencing it. Pass a configured, unbound sibling listener port
+# as [excluded-port] to exclude it on BOTH attempts. Allocation exhaustion
+# records one failure and returns without exporting a port or running the command.
 lifecycle_start() {
-    local name="$1" portvar="$2" cmdstr="$3"
+    local name="$1" portvar="$2" cmdstr="$3" excluded="${4:-}"
     local attempt p out expect
     for attempt in 1 2; do
-        p="$(_rand_port "")"
+        if ! p="$(_rand_port "$excluded")"; then
+            echo "FAIL $name — could not allocate a port (excluded: ${excluded:-none})"
+            fails=$((fails + 1))
+            return 1
+        fi
         export "$portvar=$p"
         out="$(eval "$cmdstr" 2>&1)"
         expect="RUNNING http://127.0.0.1:$p"
