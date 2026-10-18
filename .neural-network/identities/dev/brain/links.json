@@ -694,6 +694,11 @@
     "last": null,
     "weight": 0.5
   },
+  "validate-file-type-without-blocking-open->deterministic-repro-fast": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "vendored-bundles-load-by-build-mechanism->stub-failure-semantics": {
     "fires": 4,
     "last": "2026-07-28",

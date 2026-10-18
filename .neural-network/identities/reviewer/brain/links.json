@@ -1,4 +1,14 @@
 {
+  "audit-admission-before-worker-start->reproduce-before-verdict": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "audit-admission-before-worker-start->tested-through-which-caller": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "comments-deserve-code-scrutiny->record-why-safe-not-just-that": {
     "fires": 12,
     "last": "2026-10-11",
