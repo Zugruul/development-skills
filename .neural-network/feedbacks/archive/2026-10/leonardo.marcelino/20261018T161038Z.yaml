@@ -1,0 +1,60 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-18T16:10:38Z'
+iteration:
+  task: '541'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: Codex host default
+items:
+- category: worked-well
+  area: review
+  severity: low
+  summary: Isolated failing checkouts and executable callers made reviews concrete
+  detail: Both reviewers replayed all seven new scenarios and tested retry exhaustion
+    and legacy callers. One parent-owned full gate supplied the common reviewed candidate.
+  evidence:
+  - Zugruul/development-skills#541
+  generalized: Give independent reviewers an isolated failing checkout and executable
+    caller coverage so they can verify the regression without duplicating the entire
+    gate.
+  routing:
+    action: ignore
+    ref: Existing review protocol applied successfully; isolated RED and exact candidate
+      supplied to both reviewers. No new workflow defect. Dedup used the prior session
+      snapshot after GitHub rate-limited refresh.
+- category: worked-well
+  area: testing
+  severity: low
+  summary: Validation records distinguished compatibility review from runtime execution
+  detail: All roles explicitly recorded Bash 5.2 execution and inspection-only Bash
+    3.2 compatibility. The limitation is retained in the approval and completed issue
+    body.
+  evidence:
+  - Zugruul/development-skills#541
+  generalized: State which runtime versions were actually executed and which compatibility
+    claims rely on inspection or lint.
+  routing:
+    action: ignore
+    ref: Validation limitation recorded in the issue and approval; preserve the existing
+      requirement for truthful test claims. No workflow change required.
+- category: friction
+  area: other
+  severity: low
+  summary: An explicit worktree root put review telemetry in the wrong local file
+  detail: The first spec-review event was written under the task worktree. Before
+    the review preflight, the orchestrator moved the exact event to the primary checkout,
+    removed only its temporary local copy and recorded quality there. Both review
+    guards then passed.
+  evidence:
+  - Zugruul/development-skills#541
+  - Zugruul/development-skills#463
+  generalized: Resolve the primary repository explicitly when recording shared workflow
+    telemetry from a linked task worktree.
+  routing:
+    action: ignore
+    ref: Corrected caller-root mistake before preflight; direct telemetry CLI accepts
+      an explicit root, and the existing primary-root protocol from Zugruul/development-skills#463
+      provides the fix. No new product issue.
