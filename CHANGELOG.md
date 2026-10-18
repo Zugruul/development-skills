@@ -10,6 +10,10 @@
   > 2. Cover warning-bearing success, malformed output, and nonzero install status.
   > 3. Retain the real installed-cache and consumer changelog roundtrip.
 
+### Documentation
+- **retro:** record CLI stream separation lessons (#538) (`7d4c3a2`)
+- **feedback:** archive gate repair and resolved preflight feedback (#538) (`602f072`)
+
 ## v0.71.0 — 2026-10-18
 
 ### Chores
