@@ -1,0 +1,23 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-18T11:12:01+00:00'
+iteration:
+  task: preflight
+  outcome: blocked
+  reviewRounds: 0
+source:
+  role: orchestrator
+  model: gpt-6
+items:
+- category: friction
+  area: permissions
+  severity: high
+  summary: GitHub access could not be verified before task selection
+  detail: board.sh list failed with unknown owner type; gh issue list could not connect
+    to api.github.com; gh auth status reported an invalid token, which cannot be independently
+    confirmed while connectivity fails. No task selected.
+  generalized: ''
+  routing:
+    action: ignore
+    ref: GitHub reads and authorized merge succeeded after network escalation; earlier
+      sandbox connectivity failure is resolved.

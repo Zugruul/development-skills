@@ -1,0 +1,40 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-18T13:00:46.152589+00:00'
+iteration:
+  task: '538'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: gpt-6
+items:
+- category: worked-well
+  area: testing
+  severity: low
+  summary: Baseline reproduction isolated an upstream gate defect before feature review.
+  detail: The clean main reproduction separated a Codex smoke stream-parsing failure
+    from the ComfyUI feature. A dedicated prerequisite repair retained the real CLI
+    roundtrip and added deterministic negative cases.
+  evidence:
+  - Zugruul/development-skills#538
+  - Zugruul/development-skills#348
+  generalized: Reproduce an unexpected full-gate failure on unchanged main before
+    attributing it to a feature; repair confirmed upstream failures as separate tasks.
+  routing:
+    action: ignore
+    ref: Existing build-next rule 10 already requires baseline reproduction and separate
+      upstream hotfixes; this records successful application, with no new action.
+- category: friction
+  area: testing
+  severity: low
+  summary: An isolated test port collision forced a complete gate rerun.
+  detail: The Whisper failure fixture encountered an occupied ephemeral port. The
+    focused section and subsequent full gate passed without code changes.
+  evidence:
+  - Zugruul/development-skills#538
+  generalized: ''
+  routing:
+    action: ignore
+    ref: Transient local fixture-port conflict; focused and full repeats passed without
+      code changes.
