@@ -186,6 +186,38 @@ never be masked.
   two-pass review, identity-brain isolation (orchestrator-mediated only), mandatory retro/feedback
   at PR close, checkpoint behavior (no new task starts while paused), isolated concurrency lanes
   respecting `methodology.maxInProgress`, and bounded auto-merge review rounds.
+**Task-closure evidence (§9.2).**
+
+Before appending a new `task-close` telemetry event or mutating a board task to
+Ready/Deployed, the bundled scripts SHALL run one shared task-scoped closure
+check. This applies to direct commands and queued mutation replay. The check
+SHALL require a valid `retro-complete` or explicit `retro-skip` record for that
+task, plus `feedback-complete` when the effective `methodology.feedback` config
+enables feedback. Missing or malformed config SHALL fail closed; absent/disabled
+feedback adds no feedback prerequisite.
+
+Completion events SHALL carry `task`, `ts`, and nonblank string `evidence` naming
+the committed result or artifact. A `retro-skip` SHALL carry `task`, `ts`, and a
+nonblank string `reason`; permitted reasons remain disabled/absent identities or
+a genuine blocker, never a missing brain directory. Disabled identities SHALL
+NOT silently bypass the record. Evidence for another task and malformed records
+SHALL NOT satisfy closure. Refusal SHALL append no new task-close and perform no
+terminal board mutation.
+
+The sequence SHALL be merge/abandon, retrospective and committed result (or an
+explicit justified skip), enabled feedback emit/triage/archive and committed
+result, completion evidence, closure check, then task-close and the independently
+validated/published terminal board state. This includes standalone implement-task.
+The read-only `closure-preflight.sh --task ID [--root DIR]` SHALL default to the
+primary checkout even from linked worktrees and honor an explicit root.
+Historical metrics and earlier transition checks SHALL remain usable unchanged;
+deferred earlier transitions SHALL NOT expire task completion evidence. Shipped
+tasks SHALL NOT be reopened.
+
+The check is structural attestation enforcement, not proof of content or
+independent authorship. Arbitrary git/gh commands and callers bypassing bundled
+scripts remain outside the boundary. No lifecycle hook is required on either host.
+
 - **§9.3** THE SYSTEM SHALL keep Claude's `SessionStart`/`PreToolUse` hooks (`hooks/hooks.json`)
   unchanged and functioning as defense in depth; correctness SHALL NOT depend exclusively on them
   firing.
