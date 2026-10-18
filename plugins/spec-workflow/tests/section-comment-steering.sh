@@ -73,6 +73,7 @@ out="$(cd "$T4P" && PATH="$T4PGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 9 B
 check "comment-steering: move to Backlog unaffected by missing marker" "moved #9 -> Backlog" "$out"
 check_rc "comment-steering: move to Backlog exit 0" 0 "$rc"
 
+printf '%s\n' '{"kind":"retro-skip","task":"9","reason":"identities disabled in fixture","ts":"2026-01-01T00:00:00Z"}' > "$T4P/.claude/telemetry.jsonl"
 out="$(cd "$T4P" && PATH="$T4PGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 9 Deployed 2>&1)"; rc=$?
 check "comment-steering: move to Deployed unaffected by missing marker" "moved #9 -> Deployed" "$out"
 check_rc "comment-steering: move to Deployed exit 0" 0 "$rc"

@@ -313,6 +313,11 @@ _do_move() {
     if [[ "$norm_status" == "qa" ]]; then
         bash "$HERE/two-pass-review-preflight.sh" --root "$ROOT" --task "$num" || return 1
     fi
+    # #238: post-merge learning evidence precedes terminal board mutations,
+    # through this same entrypoint for direct commands and queued replay.
+    if [[ "$norm_status" == "ready" || "$norm_status" == "deployed" ]]; then
+        bash "$HERE/closure-preflight.sh" --root "$ROOT" --task "$num" || return 1
+    fi
     # #234 (CDX-031 gap #2): a move to "In progress" requires that this
     # issue's comments were actually read via `board.sh show` first --
     # existence-only marker (see board.sh's show) case), not staleness-aware

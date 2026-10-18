@@ -123,6 +123,60 @@ After a PR merges (or is set aside), the orchestrator runs a retro:
 6. Commit the brain changes as the **orchestrator** identity
    (`identity.sh orchestrator` flags line).
 
+
+## Closure evidence
+
+This protocol applies after merge (including local delivery) or abandonment,
+including standalone `implement-task`. Ordering is merge/abandon → retro and its
+committed result → enabled feedback emit/triage/archive and its committed result →
+evidence → closure preflight → task-close and Ready/Deployed when validation or
+publication independently permits. When feedback routes an item to `brain-note`,
+finish it through this same brain protocol before attesting feedback completion.
+
+Resolve the primary state root with the shared helper (paths below are relative to
+this skill directory). Use that root for all telemetry commands; the Python CLI
+honors the supplied root, it does not infer a checkout:
+
+```bash
+source "../../scripts/lib/repo-root.sh"
+ROOT="$(spec_workflow_repo_root)"
+python3 "../../scripts/telemetry.py" "$ROOT" record '{"kind":"retro-complete","task":"N","evidence":"commit:<retro-sha>","ts":"<now, UTC ISO 8601>"}'
+# Only when methodology.feedback is enabled, after its committed result:
+python3 "../../scripts/telemetry.py" "$ROOT" record '{"kind":"feedback-complete","task":"N","evidence":"commit:<feedback-sha>","ts":"<now, UTC ISO 8601>"}'
+bash "../../scripts/closure-preflight.sh" --task N --root "$ROOT"
+# Only after the preflight succeeds (estimate from board.sh show N):
+python3 "../../scripts/telemetry.py" "$ROOT" record '{"kind":"task-close","task":"N","estimate":3,"ts":"<now, UTC ISO 8601>"}'
+```
+
+Replace every placeholder with the actual task, commit/artifact reference, estimate,
+and timestamp. `retro-complete` and `feedback-complete` require task/ts and a
+nonblank string `evidence`. Instead of `retro-complete`, an explicit justified skip
+is permitted only for absent/disabled identities or a genuine blocker:
+
+```bash
+python3 "../../scripts/telemetry.py" "$ROOT" record '{"kind":"retro-skip","task":"N","reason":"<specific disabled-identity reason or genuine blocker>","ts":"<now, UTC ISO 8601>"}'
+```
+
+A skip's reason must be a nonblank string and the final report must name it.
+Missing brain directories never justify a skip; minting bootstraps them. Disabled
+identities still require this explicit record. A skip does not waive enabled
+feedback. With no new brain note needed, record the actual retro report/artifact
+instead of pretending the protocol was skipped.
+
+`closure-preflight.sh --task ID [--root DIR]` is read-only and defaults to the
+primary checkout from any linked worktree; an explicit root is honored. It shares
+one check with new `telemetry.py record` task-close writes and board Ready/Deployed
+mutations (direct or queued replay). Feedback is required for `true` or
+`{enabled: true}` in the effective config; absent, `false`, or an expanded mapping
+without enabled true adds no feedback requirement. Config read/type errors fail
+closed. Missing/malformed evidence or evidence for another task cannot authorize
+closure. Deferred earlier transitions do not expire completion evidence. Historical
+metrics remain readable; earlier transitions retain their existing guards.
+
+These are structural orchestrator attestations, not proof of content/authenticity.
+The guard neither intercepts arbitrary git/gh commands nor prevents a caller from
+bypassing bundled scripts. No host hook is needed. Shipped tasks are never reopened.
+
 ## Consult + recurrence
 A subagent can't read another role's brain. When its report requests `CONSULT <role>: <slug>`,
 the orchestrator runs `brain.sh consult <consumer-role> <owner-role> <slug>`: it prints the

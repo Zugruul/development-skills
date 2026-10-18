@@ -184,6 +184,7 @@ cp "$FIX/valid.project.yaml" "$T6I/.neural-network/project.yaml"
 T6IGH="$(mktemp -d)"
 MARKER_I="$T6IGH/mutated"
 _tp_gh_fixture "$T6IGH" "$MARKER_I"
+_tp_rec "$T6I" '{"kind":"retro-skip","task":"236","reason":"identities disabled in fixture","ts":"2026-01-01T00:00:00Z"}'
 for st in Backlog Ready Deployed; do
     out="$(cd "$T6I" && PATH="$T6IGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 236 "$st" 2>&1)"; rc=$?
     check "two-pass regression: (i) move to '$st' unaffected" "moved #236 -> $st" "$out"

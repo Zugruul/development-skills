@@ -187,3 +187,66 @@ Per the acceptance criterion and DoD ("any invariant that can't be verified as s
   8. Bash `bash -c "cat .claude/identities/dev/brain/notes/x.md"` (wrapped) → blocked, same recursion handling as `guard-board-move.sh`.
   9. Unrelated `Write`/`Edit`/`Grep` `tool_name` values → allowed unconditionally, regardless of path (limitation 1/2 made concrete in a test, not just prose).
   10. Hook payload with no `tool_name` field at all (old-style `hookjson()` output) → treated as `Bash`, existing `guard-board-move.sh` behavior/tests stay green and unaffected by this new script's addition to the same matcher.
+
+
+## Follow-up: #238 — gap #6 fix (mandatory retro and feedback at closure)
+
+Grounded in SPEC-CODEX-COMPAT §9.2 and build-next/implement-task's mandatory
+post-merge or abandonment retrospective. The existing audit above describes the
+pre-fix state. This follow-up makes the closure prerequisite host-neutral.
+
+### Components and contracts
+
+- Add task-scoped `retro-complete` and `feedback-complete` telemetry records with
+  the existing required task/ts fields plus a nonblank string `evidence` (a commit
+  or artifact reference recorded by the orchestrator after the work completes).
+  Retain `retro-skip`, requiring a nonblank string reason and task/ts. The only
+  policy-valid skips remain disabled identities or a genuine blocker; a missing
+  brain directory is not a skip reason.
+- A shared closure check reads valid telemetry for the exact task. It requires
+  retro-complete OR retro-skip, and feedback-complete when the effective project
+  configuration enables methodology.feedback. Use the shared config loader;
+  absent/disabled feedback adds no requirement, malformed config must not silently
+  disable enforcement. Missing/malformed telemetry cannot supply evidence.
+- Expose a read-only `closure-preflight.sh --task ID [--root DIR]` with an
+  actionable nonzero refusal. Default root is the primary checkout, matching
+  two-pass-review-preflight, including when invoked from a linked worktree.
+- Invoke that shared check before appending a NEW task-close telemetry record,
+  and in board-queue.sh `_do_move` before Ready or Deployed mutations, including
+  replay of queued mutations. Failure causes no board mutation and no task-close
+  append. Earlier transitions remain governed by their existing checks.
+- Historical logs remain readable for metrics. Evidence is task-scoped, not
+  globally satisfied by another task's retrospective. Do not use transition
+  append order to expire evidence: deferred board sync legitimately replays
+  earlier transitions after the retrospective. Shipped tasks are never reopened.
+
+### Sequence and decisions
+
+Merge or abandon -> retrospective and its committed result (or explicit justified
+skip) -> feedback emit/triage/archive and its committed result when enabled ->
+record task-scoped completion evidence -> closure preflight -> task-close and
+Ready/Deployed when their independent validation/publication requirements hold.
+Update both standalone implement-task and build-next, the shared brains protocol,
+and affected operational docs to state this ordering, root and commands exactly.
+Fix existing retro-skip examples that omit task. Do not claim that QA/merge is
+blocked pending a retrospective: retro happens AFTER merge, so that ordering
+would deadlock the workflow. No schema bump/config knob is required.
+
+This is structural evidence enforcement, like the adjacent review-pass guard.
+It does not prove the honesty/content of an orchestrator's completion attestation,
+inspect arbitrary git/gh commands, or guarantee a caller cannot bypass bundled
+scripts. No host hook is required; keep these limitations explicit.
+
+### Tests and boundaries
+
+Commit failing tests before implementation. Exercise real telemetry and direct
+board.sh calls with only external GitHub transport stubbed: missing retro,
+missing enabled feedback, wrong-task evidence, malformed/non-string/blank skip
+and completion records, valid completion, valid explicit skip, disabled/absent
+feedback, config errors, unchanged early transitions, queued replay (refusal and
+success), and linked-worktree shared-root resolution. Assert refused commands
+make no external mutation and append no task-close record. Verify existing metrics
+still read historical task-close/retro-skip records. Adapt fixtures only when they
+now legitimately need closure evidence; never weaken existing assertions.
+Checkpoint enforcement (#239), WIP enforcement (#240), review-round caps (#241),
+and null estimate support (#540) remain separate tasks.

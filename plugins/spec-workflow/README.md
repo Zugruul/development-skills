@@ -274,7 +274,26 @@ The safeguard contract (full protocol: [`skills/implement-task/references/clicku
 
 ## Telemetry
 
-`.claude/telemetry.jsonl` (gitignored) is the loop's own performance record — SPEC §8.4. `board.sh move` and `gate.sh` append events automatically (best-effort: a write failure, e.g. a read-only `.claude`, never fails the move or the gate); `build-next` records `review-round`/`task-close` events at the orchestrator level (see its SKILL.md). Four record kinds, one JSON object per line: `transition` (`task`/`from`/`to`/`ts` — `from` is not tracked by `board.sh`, so metrics only uses `to`+`ts`), `gate` (`task`/`ok`/`ts` — `task` is the current branch name, since `gate.sh` has no task id in scope), `review-round` (`task`/`round`/`verdict`/`ts`), `task-close` (`task`/`estimate`/`ts`). `board.sh metrics` (→ `telemetry.py <root> metrics`) reports cycle time per status, first-try gate rate, rework (multi-round review) rate, and a per-task estimate-vs-actual listing; malformed lines are skipped and counted, never fatal. See `scripts/telemetry.py`'s module docstring for the exact schema.
+`.claude/telemetry.jsonl` (gitignored) is the loop's own performance record — SPEC §8.4. `board.sh move` and `gate.sh` append events automatically (best-effort: a write failure, e.g. a read-only `.claude`, never fails the move or the gate); `build-next` records `review-round`/`task-close` events at the orchestrator level (see its SKILL.md). Record kinds use one JSON object per line: `transition` (`task`/`from`/`to`/`ts` — `from` is not tracked by `board.sh`, so metrics only uses `to`+`ts`), `gate` (`task`/`ok`/`ts` — `task` is the current branch name, since `gate.sh` has no task id in scope), `review-round` (`task`/`round`/`verdict`/`ts`), `task-close` (`task`/`estimate`/`ts`). `board.sh metrics` (→ `telemetry.py <root> metrics`) reports cycle time per status, first-try gate rate, rework (multi-round review) rate, and a per-task estimate-vs-actual listing; malformed lines are skipped and counted, never fatal. See `scripts/telemetry.py`'s module docstring for the exact schema.
+
+
+Task closure (#238) is enforced by the shared read-only
+`bash scripts/closure-preflight.sh --task ID [--root DIR]`. New `task-close` writes
+and board moves to Ready/Deployed (including queued replay) require task-scoped
+`retro-complete` or a justified `retro-skip`, plus `feedback-complete` when effective
+`methodology.feedback` enables it. Completion records require `task`, `ts`, and a
+nonblank string `evidence`; skips require `task`, `ts`, and a nonblank string
+`reason`. Missing/malformed evidence fails closed; config errors cannot silently
+turn off feedback. Historical logs still feed metrics without new prerequisites.
+
+Order: merge/abandon → retro → enabled feedback → committed result evidence →
+closure preflight → task-close and the independently justified Ready/Deployed
+state. Earlier transitions keep their existing guards. The shell preflight defaults
+to the primary checkout even from linked worktrees and honors an explicit root;
+`telemetry.py` uses its supplied root. See [the brains protocol](skills/build-next/references/brains.md#closure-evidence)
+for commands, explicit skip policy, and feedback completion. Records are structural
+attestations, not content/authenticity proof; arbitrary git/gh commands or callers
+bypassing bundled scripts are outside enforcement. No host hook is required.
 
 ## Neural view
 

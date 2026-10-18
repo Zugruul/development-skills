@@ -91,3 +91,9 @@ identity until someone notices and unsets it.
   same as `build-next` step 8.
 - Does not touch code, tests, or board task status — purely the feedback→brain
   pipeline.
+
+At a task closure boundary, after committing the retrospective result, record its
+`retro-complete` attestation for that exact task, then complete enabled feedback
+and its `feedback-complete` attestation before closure. Use the root, commands,
+and skip policy in `../build-next/references/brains.md` §"Closure evidence". An
+on-demand retro without a task closure does not invent a task completion record.

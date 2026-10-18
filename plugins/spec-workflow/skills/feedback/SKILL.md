@@ -41,7 +41,7 @@ Idempotent — safe to re-run; a clean feed reports `OK: no changes`.
 
 ## Triage (retro time)
 
-Triage — dedupe, routing, board-item creation — is the ORCHESTRATOR's job, done as part of the retro step in `build-next` (see `skills/build-next/SKILL.md` and `references/brains.md`). This skill only emits; it never routes.
+Triage — dedupe, routing, board-item creation — is the ORCHESTRATOR's job, done as part of the retro step in `build-next` (see `skills/build-next/SKILL.md` and `references/brains.md`). This skill only emits; it never routes. During task closure, the orchestrator records `feedback-complete` only after emit, triage, archive, and their committed result; emitting alone does not satisfy closure. See `../build-next/references/brains.md` §"Closure evidence".
 
 ## Standalone invocation — offer a retrospective now
 

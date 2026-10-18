@@ -24,11 +24,18 @@ board.sh/gate.sh stamp real wall-clock time when they record):
                   different concern) -- both are "a review round happened"
                   events sharing this kind, distinguished by `pass`'s
                   presence/absence, not a parallel schema.
+    retro-complete / feedback-complete
+                  {"kind": "<kind>", "task": <id>, "evidence": <nonblank string>,
+                   "ts": <iso8601>}
+                  Orchestrator attestation after committing the completed work.
+    retro-skip    {"kind": "retro-skip", "task": <id>, "reason": <nonblank string>,
+                   "ts": <iso8601>}
     task-close    {"kind": "task-close", "task": <id>, "estimate": <number>,
                    "ts": <iso8601>}
 
 CLI:
     telemetry.py <root> record <event-json-or-@file>   # validate + append
+    telemetry.py <root> closure-check <task>            # read-only prerequisite
     telemetry.py <root> metrics                        # report
 """
 import json
@@ -37,7 +44,8 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 
-KINDS = {"transition", "gate", "review-round", "task-close", "retro-skip"}
+CLOSURE_KINDS = {"retro-complete", "feedback-complete", "retro-skip"}
+KINDS = {"transition", "gate", "review-round", "task-close"} | CLOSURE_KINDS
 TELEMETRY_REL = os.path.join(".claude", "telemetry.jsonl")
 
 
@@ -51,7 +59,7 @@ def validate_event(rec):
         return ["record must be a JSON object"]
     errs = []
     kind = rec.get("kind")
-    if kind not in KINDS:
+    if not isinstance(kind, str) or kind not in KINDS:
         errs.append(f"kind must be one of {sorted(KINDS)} (got {kind!r})")
         return errs  # nothing more to check without a known kind
     if not rec.get("task"):
@@ -78,9 +86,17 @@ def validate_event(rec):
         est = rec.get("estimate")
         if not isinstance(est, (int, float)) or isinstance(est, bool):
             errs.append("task-close.estimate must be a number")
-    elif kind == "retro-skip":
-        if not rec.get("reason"):
-            errs.append("retro-skip.reason is required — a skip always needs a stated reason")
+    elif kind in CLOSURE_KINDS:
+        task = rec.get("task")
+        if (not isinstance(task, (str, int)) or isinstance(task, bool)
+                or not str(task).strip()):
+            errs.append(f"{kind}.task must be a nonblank string or integer")
+        if not isinstance(rec.get("ts"), str) or not rec["ts"].strip():
+            errs.append(f"{kind}.ts must be a nonblank string")
+        field = "reason" if kind == "retro-skip" else "evidence"
+        value = rec.get(field)
+        if not isinstance(value, str) or not value.strip():
+            errs.append(f"{kind}.{field} is required (nonblank string)")
     return errs
 
 
@@ -105,6 +121,11 @@ def cmd_record(root, arg):
         for e in errs:
             print(f"INVALID: {e}")
         return 1
+
+    if rec["kind"] == "task-close":
+        rc = cmd_closure_check(root, rec["task"])
+        if rc:
+            return rc
 
     path = telemetry_path(root)
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -139,6 +160,57 @@ def _load_events(path):
                 continue
             events.append(rec)
     return events, skipped
+
+
+def cmd_closure_check(root, task):
+    """Shared forward-only closure guard. Attestations are structural evidence,
+    not proof of content/authorship. Deferred transitions never expire evidence.
+    Historical metrics deliberately do not call this guard.
+    """
+    import config as C
+
+    try:
+        cfg = C.load_config(root=root, warn=False)
+        if cfg is None:
+            raise C.ConfigError("project config is missing; run setup-project")
+        methodology = cfg.get("methodology", {})
+        if not isinstance(methodology, dict):
+            raise C.ConfigError("methodology must be a mapping")
+        feedback = methodology.get("feedback", False)
+        if isinstance(feedback, dict):
+            allowed = {"enabled", "feed", "roles", "autoTriage"}
+            unknown = set(feedback) - allowed
+            if unknown:
+                raise C.ConfigError(
+                    f"methodology.feedback has unknown key(s): {sorted(unknown, key=str)}; "
+                    f"allowed keys: {sorted(allowed)}")
+            feedback = feedback.get("enabled", False)
+        if not isinstance(feedback, bool):
+            raise C.ConfigError("methodology.feedback must be a boolean or mapping with boolean enabled")
+    except (C.ConfigError, OSError, ValueError, TypeError, AttributeError) as exc:
+        print(f"BLOCKED: task #{task} closure cannot read config: {exc}. Fix the config and retry.",
+              file=sys.stderr)
+        return 2
+
+    try:
+        events, _ = _load_events(telemetry_path(root))
+    except (OSError, UnicodeError):
+        events = []  # missing/unreadable telemetry cannot supply evidence
+    found = {e["kind"] for e in events if str(e["task"]) == str(task)}
+    missing = []
+    if not found.intersection({"retro-complete", "retro-skip"}):
+        missing.append("retro-complete (or retro-skip with a nonblank reason)")
+    if feedback and "feedback-complete" not in found:
+        missing.append("feedback-complete")
+    if missing:
+        print(f"BLOCKED: task #{task} closure is missing {', '.join(missing)}. "
+              "After merge or abandonment, complete retrospective and enabled feedback, "
+              "commit their results, then record task-scoped evidence with "
+              "telemetry.py <root> record (task, ts, evidence; reason for retro-skip). "
+              "Retry closure-preflight.sh --task ID --root DIR before task-close or Ready/Deployed.",
+              file=sys.stderr)
+        return 2
+    return 0
 
 
 def cmd_metrics(root):
@@ -243,7 +315,7 @@ def cmd_metrics(root):
 
 def _cli(argv):
     if len(argv) < 2:
-        sys.stderr.write("usage: telemetry.py <root> {record <event-json-or-@file>|metrics}\n")
+        sys.stderr.write("usage: telemetry.py <root> {record <event-json-or-@file>|closure-check <task>|metrics}\n")
         return 2
     root, verb = argv[0], argv[1]
     if verb == "record":
@@ -251,6 +323,11 @@ def _cli(argv):
             sys.stderr.write("usage: telemetry.py <root> record <event-json-or-@file>\n")
             return 2
         return cmd_record(root, argv[2])
+    if verb == "closure-check":
+        if len(argv) != 3 or not argv[2].strip():
+            sys.stderr.write("usage: telemetry.py <root> closure-check <task>\n")
+            return 2
+        return cmd_closure_check(root, argv[2])
     if verb == "metrics":
         return cmd_metrics(root)
     sys.stderr.write(f"telemetry.py: unknown verb {verb!r}\n")

@@ -7,6 +7,7 @@
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== telemetry.py record (validation + append) =="
 TT="$(mktemp -d)"; mkdir -p "$TT/.claude" "$TT/.neural-network"
+cp "$FIX/valid.project.yaml" "$TT/.neural-network/project.yaml"
 rec() { python3 "$PLUGIN/scripts/telemetry.py" "$TT" record "$1" 2>&1; }
 check "record: unknown kind rejected" "INVALID" "$(rec '{"kind":"bogus","task":"1","ts":"2026-01-01T00:00:00Z"}')"
 check "record: malformed json rejected" "INVALID" "$(rec 'not-json')"
@@ -22,11 +23,12 @@ check "record: review-round.round must be an int" "INVALID" "$(rec '{"kind":"rev
 check "record: review-round.pass=spec-compliance ok" "OK: recorded review-round" "$(rec '{"kind":"review-round","task":"1","round":1,"verdict":"approved","pass":"spec-compliance","ts":"2026-01-01T02:00:00Z"}')"
 check "record: review-round.pass=code-quality ok" "OK: recorded review-round" "$(rec '{"kind":"review-round","task":"1","round":1,"verdict":"approved","pass":"code-quality","ts":"2026-01-01T02:00:00Z"}')"
 check "record: review-round.pass invalid literal rejected" "INVALID" "$(rec '{"kind":"review-round","task":"1","round":1,"verdict":"approved","pass":"bogus","ts":"2026-01-01T02:00:00Z"}')"
+check "record: retro completion ok" "OK: recorded retro-complete" "$(rec '{"kind":"retro-complete","task":"1","evidence":"commit:fixture","ts":"2026-01-01T02:30:00Z"}')"
 check "record: task-close ok" "OK: recorded task-close" "$(rec '{"kind":"task-close","task":"1","estimate":3,"ts":"2026-01-01T03:00:00Z"}')"
 check "record: task-close.estimate must be a number" "INVALID" "$(rec '{"kind":"task-close","task":"1","estimate":"big","ts":"2026-01-01T03:00:00Z"}')"
 n="$(wc -l < "$TT/.claude/telemetry.jsonl" | tr -d ' ')"
-if [[ "$n" == "6" ]]; then echo "ok   record: 6 valid records appended, invalid ones did not land"
-else echo "FAIL record: expected 6 lines in telemetry.jsonl, got $n"; fails=$((fails + 1)); fi
+if [[ "$n" == "7" ]]; then echo "ok   record: 7 valid records appended, invalid ones did not land"
+else echo "FAIL record: expected 7 lines in telemetry.jsonl, got $n"; fails=$((fails + 1)); fi
 rm -rf "$TT"
 
 echo "== telemetry.py metrics (missing / garbage log) =="
