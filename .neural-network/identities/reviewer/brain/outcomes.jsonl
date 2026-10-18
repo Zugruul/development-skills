@@ -97,3 +97,13 @@
 {"note": "Both reviewers independently replayed RED and adversarial lifecycle/worker mutations; combined outcome recorded once.", "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "530", "ts": "2026-10-18T15:38:44+00:00"}
 {"note": "Both reviewers independently replayed RED and adversarial lifecycle/worker mutations; combined outcome recorded once.", "outcome": "useful", "schemaVersion": 1, "slug": "distinguish-missed-vs-uncatchable-findings", "task": "530", "ts": "2026-10-18T15:38:44+00:00"}
 {"note": "Both reviewers independently replayed RED and adversarial lifecycle/worker mutations; combined outcome recorded once.", "outcome": "useful", "schemaVersion": 1, "slug": "copied-precedent-needs-fresh-verification", "task": "530", "ts": "2026-10-18T15:38:44+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reports-are-not-the-code", "task": "541", "ts": "2026-10-18T16:09:28+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "red-commit-worktree-verify", "task": "541", "ts": "2026-10-18T16:09:28+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "confirm-named-scope-exclusions-respected", "task": "541", "ts": "2026-10-18T16:09:28+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "541", "ts": "2026-10-18T16:09:28+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "distinguish-missed-vs-uncatchable-findings", "task": "541", "ts": "2026-10-18T16:09:28+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "copied-precedent-needs-fresh-verification", "task": "541", "ts": "2026-10-18T16:09:28+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "verify-tdd-empirically-when-log-is-thin", "task": "541", "ts": "2026-10-18T16:09:29+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "comments-deserve-code-scrutiny", "task": "541", "ts": "2026-10-18T16:09:29+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "conditional-correctness-premise-edges", "task": "541", "ts": "2026-10-18T16:09:29+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "dual-path-fixture-proves-sharing", "task": "541", "ts": "2026-10-18T16:09:29+00:00"}
