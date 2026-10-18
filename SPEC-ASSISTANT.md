@@ -324,6 +324,10 @@ assistant:
 - §11.1 A skill is `.claude/skills/<name>/` with SKILL.md and optional capability.yaml
   {version, provisioning.check (TTL-cached), permissions, invoke}; base capabilities
   ship in-plugin with the same shape. v1 discovery: installed-in-repo only (NG7).
+  WHEN an operator explicitly installs comfyui-render, THE SYSTEM SHALL copy only
+  skill data and bind absolute v1 check/invoke argv to the plugin engine, preserve
+  symlink interpreter identity, refuse existing destinations and literal braces in
+  binding paths before writes, and never enable the capability automatically.
 - §11.2 Enablement: only `assistant.capabilities.<name>.enabled: true` skills load;
   disabled skills SHALL be invisible (no roster, no prompt, never executed);
   project.yaml provisioning overrides localize the skill's defaults.
@@ -345,6 +349,10 @@ assistant:
   reply engine-side; the result feeds exactly one size-capped same-turn follow-up
   completion, and a follow-up failure degrades to a result-bearing reply rather than
   discarding an executed invocation.
+  THE SYSTEM SHALL allow replacement only of declared existing typed literals,
+  preserving node classes, links, topology and pre-authored output paths. Before
+  POST, THE SYSTEM SHALL inspect native object_info for available nodes, inputs and
+  model enum values, reporting bounded actionable dependency identifiers.
 - §11.6 capability.yaml `version` SHALL be checked against the engine's supported range;
   unsupported versions are unavailable-with-reason, never best-effort executed.
 - §11.7 MCP servers are an invoke flavor (`invoke: {mcp: ...}`).
@@ -386,6 +394,23 @@ assistant:
   content beyond those bounds rather than persisting it unchecked. This SHALL
   NOT change unrelated user-chat persistence or claim universal classification of
   private prose.
+  WHEN enabled comfyui-render is requested, THE SYSTEM SHALL queue it independently
+  of name casing or longRunning, validate its v1 parameter schema and fixed argv
+  binding, and execute through the engine-owned native lifecycle. Only this kind
+  SHALL use an opt-in deferred executor result; legacy executor/resolver returns
+  SHALL retain their meanings. Periodic context-aware reconciliation SHALL report
+  validated progress and recovery updates through the existing task writer.
+  THE SYSTEM SHALL refuse credential-bearing values, including decoded known
+  credential substrings in nested or embedded JSON strings, before queue/SQL
+  persistence and on fresh operation authority checks; generic skill/task events
+  SHALL NOT copy workflow/config/argv/stdio/private backend errors. This SHALL NOT
+  alter ordinary user-chat persistence or claim universal private-prose detection.
+  THE SYSTEM SHALL add optional recovery metadata through an atomic idempotent
+  tasks.sqlite migration; legacy rows SHALL remain readable. Recovery SHALL contain
+  only engine-generated request UUID, immutable deadline, policy/endpoint digest
+  and submission phase; the existing external_job_id SHALL hold validated backend
+  prompt identity. THE SYSTEM SHALL commit request identity before POST and backend
+  identity before submission acknowledgement. Trace pruning SHALL NOT affect it.
 - §12.4 WHEN the engine restarts THE SYSTEM SHALL reconcile the queue: tasks with an
   external_job_id are re-polled against the remote system before any resubmission;
   unreconcilable tasks become orphaned (surfaced, never silently re-run).
@@ -407,6 +432,17 @@ assistant:
   jobs SHALL become orphaned. Uncertain failed tasks SHALL retain their IDs for
   inspection and SHALL NOT be silently retried. Existing task rows SHALL remain
   readable; this contract does not retroactively erase legacy persisted data.
+  WHEN a response is lost, a process restarts, or terminal audit acknowledgement
+  fails, THE SYSTEM SHALL NOT replay submission. Recovery SHALL reread enablement
+  and policy, match exact owned request/client identity in bounded queue/history,
+  and orphan zero, ambiguous, malformed or policy-rebound matches. Failed/uncertain
+  tasks SHALL retain identifiers for operator inspection without automatic retry.
+  Completion recovery MAY repeat safe inspection/download, never render submission.
+  WHEN the backend prompt ID is known, recovery SHALL inspect bounded native
+  `/history/<prompt-id>` independently of the recent-history window, still checking
+  exact ownership and conflicting queue/recent-history matches. Malformed or
+  oversized responses SHALL be refused. Unknown backend IDs MAY use bounded recent
+  history and queue discovery; missing ownership SHALL NOT authorize resubmission.
 - §12.5 WHILE tasks run, chat/voice remain fully usable; a queue indicator on the voice
   panel lists running/queued tasks; completion opens the artifact panel and announces
   (TTS when voice on); failures surface in-chat with the trace linked.
@@ -454,6 +490,39 @@ assistant:
   through an SSH tunnel (never LAN-exposed); workflows submitted via its native
   HTTP/WS API; progress streams into trace events + the task queue; artifacts sync
   back over the same SSH.
+  THE SYSTEM SHALL access ComfyUI only through its owned isolated OpenSSH local
+  loopback forward to the fixed remote loopback port, verify startup/child liveness,
+  and bound cleanup on every path. Native HTTP/WebSocket SHALL bypass environment
+  proxies, refuse redirects, and bound total reads/frames including slow drip.
+  Only owned prompt node/count progress SHALL enter tasks/traces; missing events
+  SHALL NOT imply completion or fabricate elapsed-time progress.
+  Optional WebSocket connection, handshake or stream failures SHALL retain native
+  queue/history polling and SHALL NOT alone orphan an otherwise observable prompt.
+
+  THE DEPLOYMENT SHALL use a dedicated tunnel-only account or separate listener
+  with exact permitted destination, local-only TCP forwarding, no stream forwarding,
+  no shell/subsystems, PTY, agent, X11, user rc or remote forwarding. MaxSessions 0
+  SHALL NOT be applied to a shared existing control/human account or daemon. Local
+  checks SHALL NOT claim remote enforcement. The endpoint grant SHALL be documented
+  as access to the entire trusted ComfyUI service, not per-route authorization or an
+  OS sandbox; ComfyUI SHALL remain loopback-bound and controller loopback protected.
+
+  WHEN cancellation is requested, THE SYSTEM SHALL resolve an existing task within
+  the same assistant and delete only a proved owned pending ID. THE SYSTEM SHALL
+  never use global interrupt. Running cancellation SHALL remain pending/unsupported;
+  an empty delete receipt plus later absence SHALL remain unknown. Expired deadlines
+  SHALL attempt bounded safe pending deletion and state that running work may continue;
+  closing the tunnel SHALL NOT be reported as remote execution cancellation.
+  WHEN owned successful history declares the selected image, THE SYSTEM SHALL stream
+  native view over the same owned tunnel, validate resource identifiers, size/type,
+  symlinks and containment, and publish exclusively to a local path constructed solely
+  from its task ID and trusted PNG type. Backend metadata SHALL never supply a local
+  artifact path. Completion SHALL require validated transfer and audit acknowledgement.
+  An identical recovered artifact MAY be reused; another task's file SHALL NOT be
+  overwritten. Local image fixture proof SHALL NOT claim live GPU or video/3D evidence.
+  Existing artifact destinations SHALL be opened without blocking and validated
+  through the opened descriptor before reading; nonregular files SHALL fail the
+  task without blocking the task worker.
 - §14.3 Every engine-managed remote operation SHALL have linked intent and terminal
   trace evidence distinguishing success, refusal, failure, confirmed cancellation,
   pending cancellation and unknown cancellation, subject to §10.3 retention and the
@@ -476,6 +545,10 @@ assistant:
   Non-success receipts SHALL raise sanitized errors after outcome persistence,
   never report task completion or trigger automatic replay. Missing, unrecognized
   or ill-typed states/counts SHALL be malformed receipts and audit failure.
+  THE SYSTEM SHALL wrap submit/status/cancel/transfer with acknowledged audit intent
+  before effects and terminal outcomes afterward. Ambiguous submission SHALL audit
+  unknown, never confirmed success. Audit failure SHALL prevent admission or report
+  post-effect uncertainty without replay; crash windows SHALL remain explicit.
 - §14.4 Hosts SHALL be explicitly allowlisted in the installed capability manifest's
   `provisioning.hosts` mapping; anything else SHALL be refused. Each approved
   nickname SHALL declare literal host, port, user, absolute pinned known-hosts path,
@@ -493,6 +566,13 @@ assistant:
   enablement, schema-validated argv and long-running task mechanisms without relying
   on engine cwd. Local provisioning
   checks SHALL distinguish local prerequisites from live server enforcement.
+  THE SYSTEM SHALL read installed host/workflow provisioning for each operation,
+  including recovery; project check/TTL overrides and registry membership SHALL NOT
+  grant render authority. Each named host SHALL specify literal SSH endpoint/user,
+  port, pins, one dedicated tunnel key and a loopback ComfyUI port. Each named workflow
+  SHALL pin pre-authored API JSON by SHA-256, a finite timeout, typed scalar bindings
+  and one output selection. Unknown fields and model-selected paths, endpoints,
+  executables, graphs, timeout overrides and output destinations SHALL be refused.
 
 ## §15 Non-functional & E1 gates (blocking)
 
