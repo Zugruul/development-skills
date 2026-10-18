@@ -13,6 +13,7 @@
 ### Documentation
 - **handoff:** record rate-limit recovery and next-task evidence (#541) (`cfedd68`)
 - **handoff:** clarify API blocker and pending QA evidence (#541) (`91e6624`)
+- **handoff:** preserve integration QA and blocked-loop recovery (#541) (`a36169f`)
 
 ## v0.73.1 — 2026-10-18
 
