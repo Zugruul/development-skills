@@ -224,6 +224,16 @@
     "last": "2026-10-11",
     "weight": 0.5
   },
+  "validate-policy-keys-before-defaults->copied-precedent-needs-fresh-verification": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "validate-policy-keys-before-defaults->reproduce-before-verdict": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "verify-backcompat-claims-algebraically->verify-tdd-empirically-when-log-is-thin": {
     "fires": 15,
     "last": "2026-10-11",
