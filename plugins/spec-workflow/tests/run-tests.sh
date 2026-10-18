@@ -219,6 +219,7 @@ section-semver.sh
     section-codex-marketplace.sh
     section-codex-skill-lint.sh
     section-codex-e0-smoke.sh
+    section-codex-e0-smoke-streams.sh
     section-changelog.sh
     section-conventional-commit-mandate.sh
     section-commit-convention-config.sh

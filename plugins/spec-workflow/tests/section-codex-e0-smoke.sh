@@ -85,7 +85,8 @@ else
     check "spec-workflow enumerates as available" '"pluginId": "spec-workflow@development-skills"' "$avail_out"
     check "scaffold-project enumerates as available" '"pluginId": "scaffold-project@development-skills"' "$avail_out"
 
-    inst_out="$(codex plugin add spec-workflow@development-skills --json 2>&1)"; inst_rc=$?
+    # JSON lives on stdout; leave CLI warnings on stderr for diagnostics.
+    inst_out="$(codex plugin add spec-workflow@development-skills --json)"; inst_rc=$?
     check_rc "plugin add spec-workflow exits 0" 0 "$inst_rc"
     check "install reports an installedPath" '"installedPath"' "$inst_out"
 
