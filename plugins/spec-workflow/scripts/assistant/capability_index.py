@@ -1108,6 +1108,9 @@ def run_capability_invoke_task(payload, report_progress):
     # Managed workers normalize remote tasks before persistence and inject the
     # context. Direct legacy library callers remain a separate unaudited API.
     from assistant import remote_audit
+    from assistant import comfyui_render
+    if comfyui_render.is_render(payload.get("name")) and hasattr(report_progress, "audit_context"):
+        return comfyui_render.run_task(comfyui_render.task_payload(payload), report_progress)
     if remote_audit.is_remote(payload.get("name")) and hasattr(report_progress, "audit_context"):
         return remote_audit.run_task(remote_audit.task_payload(payload), report_progress)
     capability = Capability(**payload["capability"])

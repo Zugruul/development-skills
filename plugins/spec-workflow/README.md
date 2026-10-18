@@ -40,6 +40,7 @@ Ephemeral local state (board cache/queue, telemetry, gate-pass, CHECKPOINT, work
 | `setup-assistant` | Scaffold (or edit the settings of) a bare-brain assistant repo — marker, `assistant:` config section, brain dirs, generated persona `AGENTS.md`, gitignores; interviews the human after a fresh scaffold to compose a real persona and applies it via the `set-persona` verb (task #486 — writes `assistant.systemPrompt` plus a new marker-delimited persona block in `AGENTS.md`); idempotent, script-driven (`setup-assistant.sh`) |
 | `seed-board` | Issues + board items from the backlog (idempotent) |
 | `remote-compute-control` | Data-only assistant skill for audited WSL inventory, status, redacted bounded logs and cancellation through dedicated per-class forced-command SSH keys |
+| `comfyui-render` | Queue pinned ComfyUI image workflows over a dedicated SSH tunnel, recover owned requests, and publish audited artifacts |
 | `board` | All board reads/writes via `board.sh` (no hardcoded ids); comments are the human steering channel |
 | `next-task` | `PICK` / `RESUME` / `BLOCKED` decision from priority, epic order, guards, and the WIP limit |
 | `queue` | Read-only: renders the upcoming build-next picks (priority-first, with blocked reasons) — never mutates the board |
@@ -98,8 +99,16 @@ Client/helper deadlines remain 15/8 seconds; neither retries cancellation. The s
 fixes inspect versus cancel authority per key and constrains file reads. Direct human
 diagnostic CLI/library calls retain their legacy format and do not produce assistant
 traces. This is WSL/POSIX-only, not an OS sandbox or proof of live deployment.
-ComfyUI transport/transfer remains AST-081; it must bind the reusable audit callback
-and persist its own recovery IDs. Tests are integrated as `--section remote-control`
+ComfyUI uses the separate AST-081 `comfyui-render` executor and dedicated tunnel
+grant described in the [render guide](../../docs/assistant-comfyui-render.md).
+Known backend IDs recover through targeted history beyond the recent window;
+optional WebSocket failures retain polling. Nested credential-bearing inputs are
+refused before persistence and fresh operation checks, and existing nonregular
+artifact destinations fail without blocking the worker.
+Its opt-in deferred result releases the task worker between native API polls;
+other executors retain their completion semantics. Optional recovery metadata in
+tasks.sqlite survives pruning and binds each request to its original endpoint and
+policy. Tests are integrated as `--section comfyui-render`, `--section remote-control`
 and `--section remote-audit`, including real local OpenSSH, engine/queue/SQLite
 boundaries, a killed worker, retention and pinned WAL readers.
 

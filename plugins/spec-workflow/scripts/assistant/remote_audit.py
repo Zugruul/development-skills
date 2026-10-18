@@ -74,6 +74,7 @@ class Context:
     task_id: str = None
     timeout: float = 2.0
     command_id: str = None
+    skill: str = NAME
 
 
 def is_remote(name):
@@ -329,7 +330,8 @@ def _event(context, command_id, operation, host, job_id, phase, status, reason=N
         payload["reason"] = reason
     return {"kind": "remote.command." + phase, "session_id": os.path.realpath(context.root),
             "turn_id": context.turn_id, "span_id": command_id,
-            "parent_span_id": context.task_id or context.turn_id, "skill": NAME,
+            "parent_span_id": context.task_id or context.turn_id,
+            "skill": context.skill if context.skill in {NAME, "comfyui-render"} else NAME,
             "modality": "text", "status": status, "payload": payload}
 
 
@@ -340,6 +342,18 @@ def record_refusal(context, descriptor, reason):
     observability.emit(context.traces_queue, context.root, _event(
         context, descriptor["command_id"], params.get("operation", "invalid"),
         params.get("host"), params.get("job_id"), "outcome", "refused", reason))
+
+
+def record_operation_refusal(context, operation, reason, *, host=None):
+    """Best-effort pre-worker outcome for an already validated managed operation.
+
+    Unlike control descriptors, other managed capabilities need not have the
+    control skill's parameter schema. Never accept their raw payload here or
+    wait for a commit acknowledgement on the chat thread.
+    """
+    operation = operation if isinstance(operation, str) and operation in OPERATIONS else "invalid"
+    observability.emit(context.traces_queue, context.root, _event(
+        context, uuid.uuid4().hex, operation, host, None, "outcome", "refused", reason))
 
 
 def run(context, operation, effect, *, host=None, job_id=None, refusal=None, secrets=()):
@@ -368,6 +382,8 @@ def run(context, operation, effect, *, host=None, job_id=None, refusal=None, sec
             raise Refused(refusal)
         result = project_result(operation, effect(), job_id, secrets)
         status = "success"
+        if context.skill == "comfyui-render" and operation == "submit" and result.get("state") == "unknown":
+            status = "unknown"
         if operation == "cancel":
             status = {"cancelled": "cancelled", "cancelling": "pending"}.get(result.get("state"), "unknown")
         elif operation == "transfer":

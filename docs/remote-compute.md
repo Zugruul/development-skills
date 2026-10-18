@@ -1,5 +1,12 @@
 # Remote compute
 
+Assistant-managed ComfyUI image jobs use the separate spec-workflow
+[`comfyui-render` capability](assistant-comfyui-render.md), with a pinned template,
+dedicated tunnel-only SSH grant, native HTTP/WebSocket API and audited artifact
+publication. Its task queue does not invoke this human controller as a subprocess.
+The controller recipes and authoring-time importer documented below retain their
+existing behavior. A human CLI success is not assistant lifecycle verification.
+
 Use another computer as compute. You register a machine once, then send work to
 it from wherever you happen to be working.
 

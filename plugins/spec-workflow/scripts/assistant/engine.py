@@ -50,7 +50,7 @@ import uuid
 from datetime import datetime, timezone
 
 from assistant import (adapters, artifacts, capability_index, default_store, digest as digest_module,
-                        discovery, distill, harness, observability, remote_audit, selection_store, tasks, turns)
+                        discovery, distill, harness, observability, remote_audit, comfyui_render, selection_store, tasks, turns)
 from assistant.store import SessionStore
 
 
@@ -579,9 +579,11 @@ class AssistantEngine:
                                 harness.KIND: harness.run_harness_job,
                                 capability_index.KIND: capability_index.run_capability_invoke_task,
                                 remote_audit.KIND: remote_audit.run_task,
+                                comfyui_render.KIND: comfyui_render.run_task,
                             },
                             "resolvers": {harness.KIND: harness.resolve_harness_job,
-                                          remote_audit.KIND: remote_audit.resolve_task},
+                                          remote_audit.KIND: remote_audit.resolve_task,
+                                          comfyui_render.KIND: comfyui_render.resolve_task},
                         },
                         name=f"assistant-{name}",
                         daemon=False,
@@ -1302,6 +1304,9 @@ class AssistantEngine:
         name/params pair -- still one event, never silently dropped."""
         if isinstance(directive, turns.CapabilityDirectiveError):
             payload = {"reason": directive.reason}
+        elif comfyui_render.is_render(directive.name):
+            descriptor = comfyui_render.prepare(directive.params, root=root)
+            payload = {"name": comfyui_render.NAME, "params": {k: v for k, v in descriptor["params"].items() if k != "values"}}
         elif remote_audit.is_remote(directive.name):
             descriptor = remote_audit.prepare(directive.params)
             payload = {"name": remote_audit.NAME, "params": descriptor["params"]}
@@ -1442,6 +1447,18 @@ class AssistantEngine:
 
                 index = self.capability_index_for(root)
                 entry = capability_index.resolve_by_name(index, primary.name)
+                if comfyui_render.is_render(primary.name):
+                    refusal = ("unavailable" if entry is None else "unprovisioned" if not entry.provisioned_ok else None)
+                    payload = comfyui_render.prepare(primary.params, refusal, root=root)
+                    task_id = tasks.enqueue(self.queues["tasks"], root, comfyui_render.KIND, payload=payload, turn_id=turn_id)
+                    if task_id is None:
+                        context = remote_audit.Context(root, self.queues["traces"], turn_id=turn_id,
+                                                       skill=comfyui_render.NAME)
+                        params = payload["params"]
+                        operation = {"render": "submit", "cancel": "cancel"}.get(params.get("operation"), "invalid")
+                        remote_audit.record_operation_refusal(context, operation, "queue_full", host=params.get("host"))
+                        return {"text": "I could not queue the render. No operation was attempted."}
+                    return {"text": "I have queued comfyui-render in the background; the task will report its result."}
                 if remote_audit.is_remote(primary.name):
                     refusal = ("unavailable" if entry is None else
                                "unprovisioned" if not entry.provisioned_ok else None)
@@ -1578,7 +1595,12 @@ class AssistantEngine:
                 # established, extended to the whole hook -- an unexpected
                 # internal bug here must degrade to a traced error + plain
                 # reply, never a dropped connection with no turn.end.
-                if not isinstance(primary, turns.CapabilityDirectiveError) and remote_audit.is_remote(primary.name):
+                if not isinstance(primary, turns.CapabilityDirectiveError) and comfyui_render.is_render(primary.name):
+                    tasks.enqueue(self.queues["tasks"], root, comfyui_render.KIND,
+                                  {"name": comfyui_render.NAME, "params": {}, "refusal": "internal_exception"}, turn_id=turn_id)
+                    self._emit_trace(root, "skill.error", turn_id=turn_id, status="error",
+                                     payload={"reason": "internal_exception", "capability": comfyui_render.NAME})
+                elif not isinstance(primary, turns.CapabilityDirectiveError) and remote_audit.is_remote(primary.name):
                     descriptor = remote_audit.prepare(primary.params, "internal_exception")
                     tasks.enqueue(self.queues["tasks"], root, remote_audit.KIND, descriptor, turn_id=turn_id)
                     self._emit_trace(root, "skill.error", turn_id=turn_id, status="error",

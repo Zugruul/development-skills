@@ -247,6 +247,7 @@ section-semver.sh
     section-capability-enablement.sh
     section-remote-control.sh
     section-remote-audit.sh
+    section-comfyui-render.sh
     section-whisper-sidecar.sh
     section-setup-assistant.sh
     section-assistant-preflight.sh

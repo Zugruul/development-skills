@@ -1,0 +1,4 @@
+interface:
+  display_name: "ComfyUI Render"
+  short_description: "Queue pinned image workflows over restricted SSH"
+  default_prompt: "Use $comfyui-render to queue an approved image workflow."

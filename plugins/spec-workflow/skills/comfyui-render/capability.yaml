@@ -1,0 +1,16 @@
+version: 1
+longRunning: true
+provisioning:
+  check: ["false"]
+  ttlSeconds: 30
+  hosts: {}
+  workflows: {}
+permissions: [restricted-ssh-comfyui-tunnel]
+invoke:
+  exec: ["false"]
+  params:
+    host: {type: string}
+    operation: {type: string, allowlist: [render, cancel]}
+    workflow: {type: string}
+    values: {type: string}
+    task_id: {type: string}

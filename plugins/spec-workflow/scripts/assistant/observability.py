@@ -226,10 +226,10 @@ def _remote_event(event):
     payload = event.get("payload")
     payload = payload if isinstance(payload, dict) else {}
     return (str(event.get("kind", "")).startswith("remote.command.")
-            or event.get("skill") == "remote-compute-control"
-            or payload.get("name") == "remote-compute-control"
-            or payload.get("capability") == "remote-compute-control"
-            or payload.get("kind") == "remote-command")
+            or str(event.get("skill", "")).lower() in {"remote-compute-control", "comfyui-render"}
+            or str(payload.get("name", "")).lower() in {"remote-compute-control", "comfyui-render"}
+            or str(payload.get("capability", "")).lower() in {"remote-compute-control", "comfyui-render"}
+            or payload.get("kind") in ("remote-command", "comfyui-render"))
 
 
 def emit(q, root, event):

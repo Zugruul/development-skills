@@ -172,3 +172,138 @@ persistence; pruning history must preserve active-job reconciliation metadata.
   restart/reconcile from its durable IDs without resubmission. Include reader-held
   WAL contention and crash/incomplete-outcome coverage. No live target enrollment,
   paid provider calls, UI redesign or pipeline setup is part of these tests.
+
+## AST-081: ComfyUI Rendering Lifecycle
+
+Grounded in sections 11, 12, 14.2-14.4 and 17, and the owner clarification on
+#348. AST-080's inspect/cancel grants and the human controller remain unchanged.
+This extension implements the assistant job plane, not another machine registry.
+
+### Components and Trust
+
+- `assistant/comfyui_render.py` owns data-only installation, policy validation,
+  task execution/reconciliation and artifact publication. Small sibling transport
+  modules may separate bounded SSH/HTTP/WebSocket mechanics from this lifecycle.
+  `skills/comfyui-render/` contains skill data, never a copied engine.
+- Reuse the shipped ComfyUI API-workflow recipe format and the restricted SSH
+  client's isolation rules. Existing bundles/importer supply pre-authored API
+  workflows; no new registration, remote shell dispatcher or workflow generator.
+  Human `comfy-run.py` invocation and existing capabilities remain compatible.
+- Installed version-1 provisioning explicitly selects a host, pinned known-hosts
+  file, dedicated tunnel key, loopback ComfyUI port and named workflow entries.
+  Each workflow pins a local API JSON template by SHA-256, finite timeout,
+  allowlisted typed literal inputs and one declared output selection. Unknown
+  hosts/workflows/fields deny; model inputs cannot choose a path, graph, key,
+  URL, executable, output destination or timeout. Reload authority for every
+  remote operation; registration and check/TTL overrides grant no authority.
+- The new key is tunnel-only: an administrator restricts its server-side grant
+  to local forwarding to `127.0.0.1:<ComfyUI port>`, denies remote forwarding,
+  PTY, agent/X11 forwarding, user rc and sessions/shell/subsystems. It is NOT an
+  AST-080 inspect/cancel key. Document exact OpenSSH key AND sshd restrictions;
+  a client check cannot certify those restrictions or the service's bind address.
+  Scope session-denying sshd settings to a dedicated tunnel-only account or
+  listener. Never apply `MaxSessions 0` to an existing shared login and thereby
+  disable its human shell or AST-080 forced-command sessions.
+- A tunnel grants access to the entire selected ComfyUI HTTP service. It is not
+  a per-route authorization boundary or OS sandbox. The administrator must trust
+  the service, custom nodes, templates and local account, keep ComfyUI bound only
+  to loopback and protect controller-local loopback access. Do not advertise a
+  forced-command restriction as restricting forwarded HTTP traffic.
+
+### Interfaces and Durable State
+
+- The enabled `comfyui-render` capability always queues managed background work,
+  independent of casing or a changed `longRunning` flag. Version-1 schema/argv
+  validation remains in force; a fixed plugin entry point handles the managed
+  lifecycle. No model-selected executable or generic invoke flavor is added.
+- Render inputs select host/workflow and bounded values. Cancellation selects
+  an existing task in the SAME assistant, never an arbitrary backend prompt ID.
+  Installation is data-only, refuses an existing destination, preserves venv
+  interpreter identity, rejects literal binding braces and never auto-enables.
+- Only allowlisted scalar values replace EXISTING literal workflow inputs, with
+  exact type/range/length checks; links, node classes, connections and output
+  paths cannot change. Check actual `/object_info` node/input/model availability
+  before submission and return bounded actionable dependency identifiers, not
+  raw node errors, workflow contents or server exception text.
+- Reuse tasks.sqlite and its single writer/ownership guards. Additive recovery
+  metadata may carry only validated engine-owned request UUID, backend prompt ID,
+  deadline, endpoint/policy binding and submission phase. Persist the stable
+  request identity BEFORE POST; persist a returned prompt ID before acknowledging
+  submission. Neither traces nor remote marker paths are recovery authority.
+- Use an opt-in deferred executor result for this task kind: a submitted job stays
+  in progress and the existing periodic resolver advances it. Bounded polling
+  releases the worker so another task, including cancellation, can run. Existing
+  executors/resolvers and legacy database rows retain their current semantics.
+  Reconciliation receives engine-owned context and can report validated progress
+  and updated recovery state without accepting a root or task ID from payloads.
+
+### Submission, Progress and Recovery
+
+1. Validate enablement/policy/template/values, commit nonsecret recovery identity,
+   then use AST-082 acknowledged intent/outcome for submit, status, cancel and
+   transfer. No transport after audit admission failure. Exclude secret/config/
+   workflow/argv/stdio copies from generic events, task queues and SQL/WAL as well
+   as the dedicated audit events; refuse or sanitize credential-bearing values
+   before persistence without changing unrelated chat behavior.
+2. Open isolated OpenSSH with strict pins, explicit dedicated identity and one
+   loopback-only local forward to the fixed remote loopback endpoint. No ambient
+   SSH config, agents, certificates, proxies, reuse or remote commands. Verify
+   startup/child liveness and bound cleanup on EVERY path. HTTP and WebSocket
+   connect only to that owned tunnel, with no environment proxy or redirects,
+   bounded bytes/frames and total deadlines (including slow-drip responses).
+3. Submit the pinned graph through native `/prompt`, with a stable engine-owned
+   client/request identity in `client_id` and `extra_data`. Native `/ws` progress
+   is accepted only for the owned prompt; project bounded node/count/stage data
+   into task progress and linked traces, not previews or raw workflow/errors.
+   Queue/history snapshots recover progress after disconnect; missing WebSocket
+   events do not imply completion. No fabricated elapsed-time percentage.
+4. A dropped POST response is ambiguous, not permission to POST again. Recover
+   the original by exact request ownership in bounded `/queue` and `/history`
+   responses, then bind its backend prompt ID. Do not rely on every deployed
+   ComfyUI honoring caller-supplied `prompt_id`, or on that field deduplicating
+   submissions. Zero/ambiguous matches or lost history become an honest orphan/
+   unknown outcome, never a fresh render. Service restart never resets deadlines.
+   Once the backend ID is known, inspect its bounded `/history/<prompt-id>` entry
+   independently of the latest 256 history entries; retain queue/recent-history
+   checks for conflicting ownership. Optional WebSocket failures retain polling.
+5. Delete only an identified owned pending prompt via `/queue`'s explicit delete
+   list. Do NOT call legacy/global `/interrupt`: older versions ignore supplied
+   IDs, and check-then-interrupt can race another client. Running cancellation is
+   reported unconfirmed/unsupported unless independently proven safe targeted
+   backend semantics exist; no such guarantee is assumed in this initial adapter.
+   Recheck queue/history, preserve ownership, and distinguish cancellation request
+   from confirmation. Deadline expiration attempts safe pending deletion, reports
+   that running work may continue, and never mistakes killing SSH for GPU cancel.
+6. Confirm completion from owned history, distinguish execution failure/OOM and
+   lost history, then stream the declared artifact via native `/view` over the
+   SAME tunnel. Bounded backend filename/subfolder/type data select only the
+   remote HTTP resource, never a local path. Construct the local relative path
+   solely from the engine task ID and a trusted output type. Check size, type,
+   symlinks and containment, publish atomically without overwriting another task,
+   and report completion only after validated transfer and audit acknowledgement.
+   Recovered completion repeats only safe inspection/download, never submission.
+
+### Verification and Scope
+
+Red-first tests cover live engine/queue/SQLite/audit integration, deferred polling,
+restart before/after POST acknowledgement, lost response/history, cancellation
+races with foreign work, finite deadline/OOM errors, schema/type/graph injection,
+missing nodes/models, forged progress, hostile artifacts and privacy in SQL/WAL.
+Exercise real ephemeral OpenSSH forwarding and native HTTP/WebSocket fixtures
+locally, including pin mismatch, denied non-ComfyUI ports, child death and cleanup;
+mocked argv alone does not prove a tunnel. Preserve inspect/cancel and generic
+capability tests. Run the complete local gate; no pipeline is introduced.
+
+AST-081 proves an image artifact flow without claiming a live GPU or 3D workflow.
+AST-083/#350 owns installed video/3D evidence and the human-approved UI flow.
+No live target enrollment, key/sshd edits, model downloads or paid API calls.
+
+Protocol references (checked 2026-10-11):
+- https://docs.comfy.org/development/comfyui-server/comms_routes
+- https://docs.comfy.org/development/comfyui-server/comms_messages
+- https://github.com/Comfy-Org/ComfyUI/blob/7f7fd918ed0815c5d5ef2ccfe44bfc8e72cfd217/server.py
+- https://man.openbsd.org/sshd_config
+
+The upstream server accepts client prompt IDs, but submission is not an
+idempotency guarantee. Its legacy interrupt surface motivates the conservative
+cancellation policy above; tests must include older behavior, not only HEAD.

@@ -230,7 +230,9 @@ and explicitly enable it. Its installed manifest owns the host allowlist. Follow
 the [setup, security and testing guide](docs/assistant-remote-control.md); local
 checks do not prove live enforcement. Managed commands require committed audit intent,
 sanitize persisted data, and retain task recovery IDs independently of trace retention.
-ComfyUI transport and artifact transfer remain AST-081 work.
+The separate `comfyui-render` skill queues pinned API workflows through a dedicated
+SSH tunnel, samples native WebSocket progress, and publishes images through the
+existing artifact endpoint. See the [render deployment and recovery guide](docs/assistant-comfyui-render.md).
 
 Spec-driven autonomous build workflow. A repo declares its boards, specs, epics, guards, gate command, delegation roster, and conventions in a **versioned YAML config** (`.neural-network/project.yaml`, schemaVersion 2 — schema in `plugins/spec-workflow/schemas/`, wired for editor hover/autocomplete via a `# yaml-language-server` modeline; needs PyYAML); the plugin's skills and scripts read that config through one shared loader, so the same workflow drives any project. A legacy `.neural-network/project.json` (schemaVersion 1) is still read and auto-converted (deprecated).
 
@@ -240,6 +242,7 @@ Spec-driven autonomous build workflow. A repo declares its boards, specs, epics,
 | `setup-project` | Bootstrap a repo: config, GitHub Project board, validation |
 | `setup-assistant` | Scaffold a bare-brain assistant repo (marker, project.yaml assistant section, brain dirs, persona AGENTS.md, gitignores) and edit its settings |
 | `remote-compute-control` | Install data-only assistant access to approved WSL targets: audited inventory, status, redacted bounded logs and cancellation through dedicated forced-command SSH keys |
+| `comfyui-render` | Queue pinned ComfyUI image workflows over a dedicated SSH tunnel, recover owned requests, and publish audited artifacts |
 | `seed-board` | Create issues + board items from a spec's backlog (idempotent) |
 | `board` | All board reads/writes (single script, no hardcoded ids) |
 | `next-task` | Prioritized + sequenced + guarded pick; reads human comments |

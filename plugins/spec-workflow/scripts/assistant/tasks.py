@@ -319,7 +319,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 
-from assistant import observability, remote_audit
+from assistant import observability, remote_audit, comfyui_render
 
 TASKS_DIR_REL = os.path.join(".claude", "assistant")  # SAME dir traces.sqlite/
 # session.jsonl already use (observability.py's own docstring: this whole
@@ -430,8 +430,14 @@ def _db_path(root):
 
 
 def _managed_remote(kind, payload):
-    return kind == remote_audit.KIND or (kind == "capability-invoke" and isinstance(payload, dict)
-                                        and remote_audit.is_remote(payload.get("name")))
+    return kind in (remote_audit.KIND, comfyui_render.KIND) or (kind == "capability-invoke" and isinstance(payload, dict)
+                and (remote_audit.is_remote(payload.get("name")) or comfyui_render.is_render(payload.get("name"))))
+
+
+def _managed_payload(kind, payload, root):
+    if kind == comfyui_render.KIND or (isinstance(payload, dict) and comfyui_render.is_render(payload.get("name"))):
+        return comfyui_render.KIND, comfyui_render.task_payload(payload, root=root)
+    return remote_audit.KIND, remote_audit.task_payload(payload)
 
 
 def enqueue(q, root, kind, payload=None, turn_id=None):
@@ -442,7 +448,7 @@ def enqueue(q, root, kind, payload=None, turn_id=None):
     managed = _managed_remote(kind, payload)
     try:
         if managed:
-            kind, payload = remote_audit.KIND, remote_audit.task_payload(payload)
+            kind, payload = _managed_payload(kind, payload, root)
         q.put_nowait({
             "action": "create",
             "id": task_id,
@@ -471,6 +477,15 @@ def _open_conn(root):
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute(_SCHEMA_DDL)
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        if "recovery" not in {row[1] for row in conn.execute("PRAGMA table_info(tasks)")}:
+            conn.execute("ALTER TABLE tasks ADD COLUMN recovery TEXT")
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        conn.close()
+        raise
     for ddl in _INDEX_DDL:
         conn.execute(ddl)
     conn.execute(_OWNER_TABLE_DDL)  # #498: same db, same connection, no new file
@@ -837,7 +852,7 @@ def _process_create(item, conns, executors, traces_queue, engine_id, owned, owne
     turn_id = item.get("turn_id")
     managed = _managed_remote(kind, payload)
     if managed:
-        kind, payload = remote_audit.KIND, remote_audit.task_payload(payload)
+        kind, payload = _managed_payload(kind, payload, root)
     if not root or not task_id or not kind or not isinstance(payload, dict):
         # ADVISORY 1 (round-2 review, issue #341): symmetry with every
         # other drop path in this module (enqueue's full/broken queue,
@@ -897,13 +912,14 @@ def _process_create(item, conns, executors, traces_queue, engine_id, owned, owne
         _maybe_prune_owned_root(conn, root, owned)  # #498 advisory (a)
         return
 
-    def report_progress(progress_payload=None, external_job_id=None):
+    def report_progress(progress_payload=None, external_job_id=None, recovery=None):
         nonlocal last_progress_heartbeat_mono
         if managed:
             if external_job_id is not None and not remote_audit.identifier(external_job_id):
                 raise remote_audit.Refused("invalid_response")
             if progress_payload is not None:
-                progress_payload = remote_audit.project_result("status", progress_payload)
+                progress_payload = (comfyui_render.progress(progress_payload) if kind == comfyui_render.KIND
+                                    else remote_audit.project_result("status", progress_payload))
         # AST-070 (see module docstring's "AST-070 extension seam"):
         # external_job_id is OPTIONAL and omitted by every pre-existing
         # caller -- only written into the transition when a caller (a
@@ -911,6 +927,10 @@ def _process_create(item, conns, executors, traces_queue, engine_id, owned, owne
         # `report_progress()`/`report_progress({...})` call never clobbers
         # the column back to NULL.
         fields = {}
+        if recovery is not None:
+            if kind != comfyui_render.KIND:
+                raise remote_audit.Refused("invalid_response")
+            fields["recovery"] = json.dumps(comfyui_render.recovery(recovery), sort_keys=True)
         if external_job_id is not None:
             fields["external_job_id"] = external_job_id
         _transition(conn, task_id, STATE_PROGRESS, **fields)
@@ -938,9 +958,19 @@ def _process_create(item, conns, executors, traces_queue, engine_id, owned, owne
     # attribute on the closure; no old executor reads or is affected by it.
     report_progress.task_id = task_id
     report_progress.audit_context = remote_audit.Context(root, traces_queue, turn_id=turn_id, task_id=task_id)
+    if kind == comfyui_render.KIND:
+        def cancel_owned(target_id, recovery, prompt_id):
+            target = conn.execute("SELECT kind, state FROM tasks WHERE id = ?", (target_id,)).fetchone()
+            if not target or target[0] != comfyui_render.KIND or target[1] not in _LIVE_RECONCILE_TARGET_STATES:
+                raise comfyui_render.RenderError("ownership")
+            _transition(conn, target_id, STATE_PROGRESS, external_job_id=prompt_id,
+                        recovery=json.dumps(comfyui_render.recovery(recovery), sort_keys=True))
+        report_progress.cancel_owned = cancel_owned
 
     try:
         outcome = executor(payload, report_progress)
+        if kind == comfyui_render.KIND and isinstance(outcome, comfyui_render.Deferred):
+            return
         outcome = outcome if isinstance(outcome, dict) else {}
         artifact_path = outcome.get("artifact_path")
         result = outcome.get("result")
@@ -967,7 +997,8 @@ def _orphan_row(conn, root, row, reason, traces_queue):
     `_transition_safe` (never `_transition`) -- a reconciliation failure
     recording ITS OWN failure must not raise back out of the reconciliation
     pass (same posture `_process_create`'s except-branches already use)."""
-    _transition_safe(conn, row["id"], STATE_ORPHANED, error=reason, _remote=row["kind"] == remote_audit.KIND)
+    _transition_safe(conn, row["id"], STATE_ORPHANED, error=reason,
+                     _remote=row["kind"] in {remote_audit.KIND, comfyui_render.KIND})
     _emit(traces_queue, root, "task.orphaned", row["id"], row["kind"], STATE_ORPHANED,
           {"error": reason, "reconciled": True}, turn_id=row.get("turn_id"))
 
@@ -994,7 +1025,15 @@ def _reconcile_row(conn, root, row, resolvers, traces_queue):
                     traces_queue)
         return
 
-    if not external_job_id:
+    recovery_state = None
+    if kind == comfyui_render.KIND:
+        try:
+            recovery_row = conn.execute("SELECT recovery FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            recovery_state = comfyui_render.recovery(json.loads(recovery_row[0])) if recovery_row and recovery_row[0] else None
+        except Exception:
+            _orphan_row(conn, root, row, "ComfyUI recovery metadata invalid; do not replay", traces_queue)
+            return
+    if not external_job_id and not (kind == comfyui_render.KIND and recovery_state):
         _orphan_row(conn, root, row, (
             "no external_job_id at restart -- the in-process work that was "
             "%s when the engine stopped is gone, nothing to re-poll" % old_state
@@ -1014,13 +1053,32 @@ def _reconcile_row(conn, root, row, resolvers, traces_queue):
         payload = {}
 
     try:
-        if kind == remote_audit.KIND:
+        if kind == comfyui_render.KIND:
+            def report_progress(progress_payload=None, external_job_id=None, recovery=None):
+                fields = {}
+                if external_job_id is not None:
+                    if not remote_audit.identifier(external_job_id):
+                        raise comfyui_render.RenderError("ownership")
+                    fields["external_job_id"] = external_job_id
+                if recovery is not None:
+                    fields["recovery"] = json.dumps(comfyui_render.recovery(recovery), sort_keys=True)
+                _transition(conn, task_id, STATE_PROGRESS, **fields)
+                _emit(traces_queue, root, "task.progress", task_id, kind, STATE_PROGRESS,
+                      {"progress": comfyui_render.progress(progress_payload)}, turn_id=turn_id)
+            outcome = resolver(external_job_id, comfyui_render.task_payload(payload),
+                audit_context=remote_audit.Context(root, traces_queue, turn_id=turn_id, task_id=task_id),
+                recovery_state=recovery_state, report_progress=report_progress)
+        elif kind == remote_audit.KIND:
             outcome = resolver(external_job_id, remote_audit.task_payload(payload),
                                audit_context=remote_audit.Context(root, traces_queue, turn_id=turn_id, task_id=task_id))
         else:
             outcome = resolver(external_job_id, payload)
     except Exception as exc:  # protocol-layer failure: the remote system is someone else's -- never trust it, never crash on it
-        reason = (str(exc) if isinstance(exc, remote_audit.AuditError) else "remote reconciliation failed") if kind == remote_audit.KIND else "reconciliation resolver raised: %s" % exc
+        reason = (str(exc) if isinstance(exc, remote_audit.AuditError) else "remote reconciliation failed") if kind in {remote_audit.KIND, comfyui_render.KIND} else "reconciliation resolver raised: %s" % exc
+        if kind == comfyui_render.KIND and isinstance(exc, comfyui_render.RenderError) and str(exc) == "ComfyUI artifact":
+            _transition(conn, task_id, STATE_FAILED, error=reason)
+            _emit(traces_queue, root, "task.failed", task_id, kind, STATE_FAILED, {"error": reason}, turn_id=turn_id)
+            return
         _orphan_row(conn, root, row, reason, traces_queue)
         return
 
@@ -1223,7 +1281,7 @@ def _reconcile_live_root(conn, root, resolvers, traces_queue):
     placeholders = ", ".join("?" for _ in _LIVE_RECONCILE_TARGET_STATES)
     rows = conn.execute(
         "SELECT " + ", ".join(_SELECT_COLUMNS) + " FROM tasks WHERE state IN (" + placeholders + ") "
-        "AND external_job_id IS NOT NULL",
+        "AND (external_job_id IS NOT NULL OR (kind = 'comfyui-render' AND recovery IS NOT NULL))",
         _LIVE_RECONCILE_TARGET_STATES,
     ).fetchall()
     for raw_row in rows:
@@ -1405,6 +1463,11 @@ def run_worker(q, stop_event, executors=None, poll_timeout=DEFAULT_POLL_TIMEOUT_
 
 def _row_to_dict(row):
     values = dict(zip(_SELECT_COLUMNS, row))
+    if len(row) > len(_SELECT_COLUMNS):
+        try:
+            values["recovery"] = json.loads(row[-1]) if row[-1] else None
+        except (TypeError, ValueError, RecursionError):
+            values["recovery"] = None
     for key in ("payload", "result"):
         text = values.get(key)
         if text is None:
@@ -1424,7 +1487,8 @@ def list_tasks(root, state=None, limit=200):
     conn = sqlite3.connect(path, timeout=5.0)
     try:
         conn.execute("PRAGMA busy_timeout=5000")
-        sql = "SELECT " + ", ".join(_SELECT_COLUMNS) + " FROM tasks"
+        recovery_column = "recovery" if "recovery" in {r[1] for r in conn.execute("PRAGMA table_info(tasks)")} else "NULL"
+        sql = "SELECT " + ", ".join(_SELECT_COLUMNS) + ", " + recovery_column + " FROM tasks"
         args = []
         if state is not None:
             sql += " WHERE state = ?"
@@ -1456,7 +1520,8 @@ def get_task(root, task_id):
     conn = sqlite3.connect(path, timeout=5.0)
     try:
         conn.execute("PRAGMA busy_timeout=5000")
-        sql = "SELECT " + ", ".join(_SELECT_COLUMNS) + " FROM tasks WHERE id = ?"
+        recovery_column = "recovery" if "recovery" in {r[1] for r in conn.execute("PRAGMA table_info(tasks)")} else "NULL"
+        sql = "SELECT " + ", ".join(_SELECT_COLUMNS) + ", " + recovery_column + " FROM tasks WHERE id = ?"
         try:
             row = conn.execute(sql, (task_id,)).fetchone()
         except sqlite3.OperationalError:

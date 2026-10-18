@@ -84,6 +84,7 @@ contracts.
 | [seed-board](plugins/spec-workflow/skills/seed-board/SKILL.md) | Create board issues from a backlog after complexity scoring and splitting. |
 | [setup-assistant](plugins/spec-workflow/skills/setup-assistant/SKILL.md) | Scaffold or configure a persistent assistant repo, its persona, and memory. |
 | [remote-compute-control](plugins/spec-workflow/skills/remote-compute-control/SKILL.md) | Use data-only assistant provisioning for audited WSL inventory, status, redacted bounded logs and cancellation through dedicated per-class forced-command SSH keys. |
+| [comfyui-render](plugins/spec-workflow/skills/comfyui-render/SKILL.md) | Queue pinned ComfyUI image workflows over a dedicated SSH tunnel, recover owned requests, and publish audited artifacts. |
 | [setup-project](plugins/spec-workflow/skills/setup-project/SKILL.md) | Initialize a repo's project config, GitHub Project board, and local-state ignores. |
 | [sync-project-configs](plugins/spec-workflow/skills/sync-project-configs/SKILL.md) | Dry-run or apply versioned config updates across discovered project repos. |
 | [ui-mode](plugins/spec-workflow/skills/ui-mode/SKILL.md) | Inspect or toggle human-directed iterative UI decisions. |
@@ -99,8 +100,10 @@ project provisioning overrides only affect check/TTL. The installer binds absolu
 engine argv without copying code or enabling the skill. `inspect` and `cancel`
 keys have distinct fixed target commands. Managed operations require committed audit
 intent before transport; sanitized task descriptors and recovery IDs survive trace
-retention. ComfyUI execution/transfer remains AST-081, which must bind the shared
-audit boundary. The human controller below is unchanged.
+retention. The separate `comfyui-render` task executor uses that audit boundary for
+native submit/status/cancel/transfer over its dedicated tunnel grant. See the
+[render guide](docs/assistant-comfyui-render.md) for workflow pins, endpoint trust
+and conservative cancellation. The human controller below is unchanged.
 
 The [incremental compatibility matrix](docs/compatibility-matrix.md) records
 the CDX-050 audit of the four shipped skills below, their Claude/Codex semantics,
