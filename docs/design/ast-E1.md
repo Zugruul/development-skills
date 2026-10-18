@@ -19,6 +19,7 @@ Grounded in: SPEC-ASSISTANT.md §5/§5a (architecture + structural contract), §
 **Testing (AST-010).** Section-style integration: start the real server on a random port with a fixture scan dir (existing neural-view test patterns — see section-* files touching neural-view), assert /assistant/status shape, assert non-/assistant/ routes byte-identical to pre-change behavior (regression: /graph, / serve), assert stop joins every worker (no leaked threads — enumerate threading.enumerate() before/after), kill -term cleanliness. Unit: route-table dispatch (no server), worker registry start/stop idempotence.
 
 ## Constraints for later E1 tasks (binding)
+- #523 extends adapters and chat transport with optional streaming; see [the streaming chat design](523-streaming-chat.md). The blocking adapter contract remains available.
 - Adapters (011/012): argv-array invocation only (§17.3), pinned isolation flags (§8.4), mandatory timeout (§8.5), stub-binary contract tests (auth unavailable in CI, §16).
 - Turn pipeline (013): context budget ≤ ~6k tokens with per-component caps (§8.2); raw message to recall (§8.3); never blocks on distiller/index/tasks (§17.7).
 - Store (014): fsync'd JSONL appends; crash loses at most in-flight turn (§8.7).

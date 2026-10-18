@@ -318,4 +318,93 @@ def complete(context, *, timeout=DEFAULT_MODEL_TIMEOUT_SECONDS, env=None):
     return {"text": text, "usage": usage, "timings": {"elapsed_seconds": elapsed}}
 
 
+def complete_stream(context, on_text, *, timeout=DEFAULT_MODEL_TIMEOUT_SECONDS, env=None):
+    """Claude public stream-json protocol; authoritative result is required.
+
+    Discover support using CLI help BEFORE invocation. No retry follows an
+    already-started completion. Complete-only CLIs retain the blocking path.
+    """
+    call_env = dict(env) if env is not None else dict(os.environ)
+    start = time.monotonic()
+    help_result = adapters.invoke_cli_stream(["claude", "--help"], timeout=min(5, timeout), env=call_env)
+    if help_result.returncode or "--include-partial-messages" not in help_result.stdout:
+        return complete(context, timeout=timeout, env=env)
+    workdir = _isolated_cwd()
+    final = None
+    first_text = None
+    emitted_text = False
+    boundary_pending = False
+
+    def text_delta(text):
+        nonlocal first_text, emitted_text, boundary_pending
+        if not isinstance(text, str) or final is not None:
+            raise adapters.UnparseableOutput("claude stream contains invalid text delta")
+        if not text:
+            return
+        # A tool cycle may start another main message (or text block) whose
+        # first line is a capability fence. Preserve that line anchor BEFORE
+        # the turn's privacy filter sees any bytes; concatenating messages
+        # directly would turn a directive into apparently ordinary inline text.
+        if emitted_text and boundary_pending:
+            on_text("\n")
+        boundary_pending = False
+        if first_text is None:
+            first_text = time.monotonic() - start
+        emitted_text = True
+        on_text(text)
+
+    def record(line):
+        nonlocal final, boundary_pending
+        try:
+            event = json.loads(line)
+        except ValueError as exc:
+            raise adapters.UnparseableOutput("claude stream contains malformed JSON") from exc
+        if not isinstance(event, dict):
+            raise adapters.UnparseableOutput("claude stream record is not an object")
+        if event.get("type") == "result":
+            if final is not None:
+                raise adapters.UnparseableOutput("claude stream contains multiple final results")
+            final = event
+        elif event.get("type") == "stream_event" and event.get("parent_tool_use_id") is None:
+            inner = event.get("event")
+            if not isinstance(inner, dict):
+                raise adapters.UnparseableOutput("claude stream event has invalid shape")
+            delta = inner.get("delta", {})
+            if not isinstance(delta, dict):
+                raise adapters.UnparseableOutput("claude stream delta has invalid shape")
+            kind = inner.get("type")
+            if kind in ("message_start", "message_stop", "content_block_stop"):
+                boundary_pending = emitted_text
+            elif kind == "content_block_start":
+                block = inner.get("content_block")
+                if not isinstance(block, dict):
+                    raise adapters.UnparseableOutput("claude stream content block has invalid shape")
+                boundary_pending = emitted_text
+                if block.get("type") == "text":
+                    text_delta(block.get("text", ""))
+            elif kind == "content_block_delta" and delta.get("type") == "text_delta":
+                text_delta(delta.get("text"))
+    try:
+        argv = _build_argv(context["model"], context.get("fileOutputDir"))
+        argv[argv.index("--output-format") + 1] = "stream-json"
+        argv += ["--verbose", "--include-partial-messages", _build_prompt(context)]
+        result = adapters.invoke_cli_stream(argv, record, timeout=timeout, env=call_env, cwd=workdir)
+        combined = result.stdout + "\n" + result.stderr
+        if result.returncode or (final and final.get("is_error")):
+            if _looks_like_auth_failure(combined):
+                raise adapters.AuthExpired("claude authentication has expired or is missing -- run `claude auth login` and try again.")
+            raise adapters.NonzeroExit(f"claude failed (exit {result.returncode}): {_excerpt(result.stderr or (final or {}).get('result', ''))}")
+        if final is None or not isinstance(final.get("result"), str):
+            raise adapters.UnparseableOutput("claude stream ended without a final result; partial output was not saved")
+        return {"text": final["result"], "usage": final.get("usage"),
+                "timings": {"elapsed_seconds": time.monotonic()-start, "first_text_seconds": first_text}}
+    finally:
+        try:
+            if context.get("fileOutputDir"):
+                adapters.publish_workdir_files(workdir, context["fileOutputDir"])
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
+
+
+complete.stream = complete_stream
 adapters.register_adapter("claude", complete)

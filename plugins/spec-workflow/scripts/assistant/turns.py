@@ -1170,10 +1170,34 @@ def _merge_usage(first, second):
     return merged
 
 
+class PublicTextFilter:
+    """Cumulative public text with ambiguous line-anchored prefixes withheld.
+
+    The final parser remains the authority, including malformed/dangling fences.
+    Only the current unfinished opening prefix needs extra withholding; ordinary
+    text is emitted immediately, without waiting for a newline.
+    """
+    def __init__(self):
+        self.raw = ""
+
+    def feed(self, delta):
+        self.raw += delta
+        candidate = self.raw
+        last = candidate.rsplit("\n", 1)[-1]
+        token = _CAPABILITY_FENCE_TOKEN + CAPABILITY_DIRECTIVE_FENCE_LANG
+        if last and (token.lower().startswith(last.lower()) or
+                     (last.lower().startswith(token.lower()) and not last[len(token):].strip(" \t"))):
+            candidate = candidate[:-len(last)]
+        return parse_capability_directives(candidate)[0]
+
+    def finish(self):
+        return parse_capability_directives(self.raw)[0]
+
+
 def run_turn(persona_cfg, roster_provider, recall_fn, session_state, user_message,
              *, budgets=None, cache=None, summarizer=None,
              get_adapter=adapters.get_adapter, adapter_kwargs=None,
-             refresh_every=SUMMARY_REFRESH_EVERY_K_TURNS, on_reply=None):
+             refresh_every=SUMMARY_REFRESH_EVERY_K_TURNS, on_reply=None, on_text=None):
     """Runs one turn: compose -> adapter.complete -> [on_reply] -> advance
     session_state.
 
@@ -1214,11 +1238,34 @@ def run_turn(persona_cfg, roster_provider, recall_fn, session_state, user_messag
     completion never lets a stale/pre-invocation reply leak into the
     durable transcript."""
     resolved = _resolve_budgets(budgets)
+    stream_start = time.monotonic()
     composed = compose_context(persona_cfg, roster_provider, recall_fn,
                                 session_state, user_message, budgets, cache=cache)
 
+    first_visible = None
     provider = ((persona_cfg or {}).get("llm") or {}).get("provider")
     complete_fn = get_adapter(provider)
+    if on_text is not None:
+        original_complete = complete_fn
+        phase = 0
+        def complete_fn(context, **kwargs):
+            nonlocal phase
+            adapters.check_stream()
+            phase += 1
+            stream = getattr(original_complete, "stream", None)
+            if stream is None:
+                return original_complete(context, **kwargs)
+            public = PublicTextFilter()
+            previous = ""
+            def delta(text):
+                nonlocal previous, first_visible
+                visible = public.feed(text)
+                if visible != previous:
+                    if visible and first_visible is None:
+                        first_visible = time.monotonic() - stream_start
+                    on_text(phase, visible)
+                    previous = visible
+            return stream(context, delta, **kwargs)
     result = complete_fn(composed["context_for_adapter"], **(adapter_kwargs or {}))
 
     text = result.get("text", "")
@@ -1232,6 +1279,9 @@ def run_turn(persona_cfg, roster_provider, recall_fn, session_state, user_messag
             if "usage" in outcome:
                 usage = _merge_usage(usage, outcome["usage"])
             timings = outcome.get("timings", timings)
+
+    if on_text is not None:
+        timings = dict(timings or {}, first_visible_text_seconds=first_visible)
 
     updated_state = _advance_session_state(
         session_state or {}, user_message, text,

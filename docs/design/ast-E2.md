@@ -24,6 +24,7 @@ Scan result: `{repos: [(root, Classification)...], candidates: [(root, section).
 3. Switch (AST-024): flush in-flight turn state → load target → both assistants' background work keeps running (§7.7) → activation digest from trace events (§7.8).
 
 ## Decisions
+- #523 streams replies into the existing chat row without changing this epic's layout; see [the streaming chat design](523-streaming-chat.md).
 - **Own module, one classifier.** Discovery gets `discovery.py` (not more code in default_store): AST-021/022/024 all consume the scan, and preflight-style honesty needs rejection reasons that `discover_candidate`'s None can't carry. default_store delegates — never a second classification path.
 - **Config-authoritative, marker = anchor only.** A repo without the marker is never classified further (not scanned, §6.1); marker CONTENT can never reject a repo (tolerant §6.2 grammar — even unreadable marker bytes ⇒ `marker-unreadable`, still "no assistant", never a crash).
 - **Fail-closed per repo.** Every classification error path yields a non-candidate, never an exception out of `scan()` — one broken sibling repo must not take down discovery (mirrors neural-view `discover_repos`).

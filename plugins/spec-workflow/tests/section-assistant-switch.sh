@@ -458,6 +458,7 @@ if (typeof global.renderChatAssistantTabs === "undefined") global.renderChatAssi
 if (typeof global.loadChatHistory === "undefined") global.loadChatHistory = async () => {};
 if (typeof global.setAssistantMediaCtx === "undefined") global.setAssistantMediaCtx = () => {};
 if (typeof global.window.assistantChat === "undefined") global.window.assistantChat = { queue: [], inFlight: false, switchGen: 0 };
+eval(extract("stopChatElapsed"));
 eval(extract("switchAssistantTo"));
 eval(extract("openAssistantSwitchDropdown"));
 eval(extract("setAskAgainUi"));

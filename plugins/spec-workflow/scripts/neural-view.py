@@ -1822,16 +1822,45 @@ class Handler(BaseHTTPRequestHandler):
             # JSON is passed through as None, which _chat()'s missing-
             # "message" check turns into a clean 400 rather than a crash.
             body = None
+            stream_requested = (path == "/assistant/chat" and
+                                "text/event-stream" in self.headers.get("Accept", ""))
+            if stream_requested:
+                self.connection.settimeout(2.0)
             try:
                 length = min(int(self.headers.get("Content-Length", 0) or 0), 65536)
             except ValueError:
                 length = 0
             if length:
-                raw = self.rfile.read(length)
+                try:
+                    raw = self.rfile.read(length)
+                except TimeoutError:
+                    self.close_connection = True
+                    return self._send(408, {"error": "chat request body timed out"})
                 try:
                     body = json.loads(raw)
                 except ValueError:
                     body = None
+            if stream_requested and ENGINE is not None:
+                started = False
+                self.connection.settimeout(2.0)  # bounded writes to stalled readers
+                self.close_connection = True
+                def emit(kind, payload):
+                    nonlocal started
+                    if not started:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/event-stream")
+                        self.send_header("Cache-Control", "no-cache")
+                        self.send_header("Connection", "close")
+                        self.end_headers()
+                        started = True
+                    frame = "event: " + kind + "\ndata: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
+                    self.wfile.write(frame.encode("utf-8"))
+                    self.wfile.flush()
+                result = ENGINE.stream_chat(body, emit)
+                if started:
+                    return
+                status, payload, ctype = result
+                return self._send(status, payload, ctype)
             result = ENGINE.handle("POST", path, body=body) if ENGINE is not None else None
             if result is None:
                 return self._send(404, {"error": "not found"})

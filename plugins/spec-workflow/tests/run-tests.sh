@@ -264,6 +264,7 @@ section-semver.sh
     section-assistant-isolation.sh
     section-assistant-terminal.sh
     section-assistant-gates.sh
+    section-assistant-stream.sh
     section-assistant-chat.sh
     section-assistant-switch.sh
     section-assistant-distill.sh

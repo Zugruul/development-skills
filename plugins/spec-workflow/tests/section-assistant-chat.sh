@@ -991,6 +991,7 @@ window.__assistantCandidates = [
 // helper now -- extract it before the functions that call it.
 eval(extract("assistantModelSuffix"));
 eval(extract("renderChatAssistantTabs"));
+eval(extract("stopChatElapsed"));
 eval(extract("switchAssistantTo"));
 (async () => {
     // #492 review round 1, finding 5b: assistantModelSuffix must degrade to

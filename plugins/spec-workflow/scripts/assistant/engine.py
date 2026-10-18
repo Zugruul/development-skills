@@ -45,6 +45,7 @@ import os
 import queue
 import sqlite3
 import sys
+import time
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -1516,9 +1517,10 @@ class AssistantEngine:
                                   parent_span_id=turn_id, status="start",
                                   payload={"capability": entry.name})
                 try:
-                    result = capability_index.invoke_capability(
-                        entry.name, capability, primary.params, assistant_cfg,
-                        skill_dir=skill_dir, timeout=CAPABILITY_INVOKE_TIMEOUT_SECONDS)
+                    with adapters.defer_stream_cancellation():
+                        result = capability_index.invoke_capability(
+                            entry.name, capability, primary.params, assistant_cfg,
+                            skill_dir=skill_dir, timeout=CAPABILITY_INVOKE_TIMEOUT_SECONDS)
                 except capability_index.CapabilityDisabledError as exc:
                     self._emit_trace(root, "skill.error", turn_id=turn_id, span_id=span_id,
                                       parent_span_id=turn_id, status="refused", payload={
@@ -1711,7 +1713,48 @@ class AssistantEngine:
             "payload": payload or {},
         })
 
-    def _chat(self, body):
+    def stream_chat(self, body, emit):
+        """SSE contract: start {turn_id}, text {phase,text}, done {chat payload},
+        error {error}. Text is cumulative per completion; done is authoritative.
+        Validation failures retain their JSON status before any event is sent.
+        """
+        started = False
+        disconnected = False
+        last_heartbeat = time.monotonic()
+        def send(kind, payload):
+            nonlocal started, disconnected
+            if disconnected:
+                raise adapters.StreamCancelled("chat stream disconnected")
+            try:
+                emit(kind, payload)
+                started = True
+            except OSError as exc:
+                disconnected = True
+                raise adapters.StreamCancelled("chat stream disconnected") from exc
+        def poll():
+            nonlocal last_heartbeat
+            if disconnected:
+                raise adapters.StreamCancelled("chat stream disconnected")
+            if started and time.monotonic() - last_heartbeat >= 1:
+                send("heartbeat", {})
+                last_heartbeat = time.monotonic()
+        try:
+            with adapters.stream_transport(poll):
+                result = self._chat(body, emit=send)
+            status, payload, ctype = result
+            if started:
+                send("done" if status < 400 else "error", payload)
+                return 200, {}, "text/event-stream"
+            return result
+        except adapters.StreamCancelled:
+            return 499, {"error": "chat stream disconnected"}, "text/event-stream"
+        except Exception:
+            if started:
+                send("error", {"error": "chat failed while completing the turn"})
+                return 500, {}, "text/event-stream"
+            raise
+
+    def _chat(self, body, emit=None):
         """POST /assistant/chat -- {"message": str, "assistant"?: str} ->
         {"text", "chips", "warnings"} (§7.6, §5, AST-016, issue #314). The
         ENGINE-CORE turn endpoint: §7.6 resolution (flag -> sole assistant
@@ -1795,6 +1838,8 @@ class AssistantEngine:
 
         store = SessionStore(root)
         with self._chat_lock_for(root):
+            if emit is not None:
+                emit("start", {"turn_id": turn_id})
             session_state = store.load_state()
             provider_span_id = uuid.uuid4().hex
             try:
@@ -1849,7 +1894,9 @@ class AssistantEngine:
                 capability_reply_hook = self._capability_reply_hook_for(
                     root, turn_id, message, section)
                 result = turns.run_turn(persona_cfg, roster_provider, None, session_state, message,
-                                         on_reply=capability_reply_hook)
+                                         on_reply=capability_reply_hook,
+                                         **({"on_text": lambda phase, text: emit("text", {"phase": phase, "text": text})}
+                                            if emit is not None else {}))
             except adapters.AdapterError as exc:
                 # provider CLI failure (Sec8.5) -- a clean upstream error,
                 # never a raw traceback, and never a persisted exchange
@@ -1893,7 +1940,7 @@ class AssistantEngine:
                                    "slugs": [c.get("slug") for c in chips if isinstance(c, dict)]})
         self._emit_trace(root, "provider.call", turn_id=turn_id,
                           span_id=provider_span_id, parent_span_id=turn_id, status="ok",
-                          payload={"usage": result.get("usage")})
+                          payload={"usage": result.get("usage"), "timings": result.get("timings")})
 
         # AST-030 (Sec9.2/Sec9.5): enqueue-only, AFTER the turn's own
         # critical section has released the per-root lock -- a non-blocking

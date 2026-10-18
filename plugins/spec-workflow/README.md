@@ -292,6 +292,39 @@ The identities' **brains** (`.neural-network/identities/<role>/brain/`) are the 
 
 **Live sessions (best effort).** `GET /sessions` surfaces locally-discoverable Claude Code sessions from `~/.claude/jobs/<id>/state.json` — background-job orchestration metadata the harness itself writes (state/cwd/a short name label/timestamps). It is **never** the conversation transcript (that lives elsewhere and is never read); only `state`/`cwd`/`name`/`createdAt` are consulted. A job counts as active if its state is `working` or it was touched within the last `$NEURAL_VIEW_SESSION_RECENT_SECS` seconds (default 900); its `cwd` is matched to a discovered repo by path prefix so the repo label picks up a `· N LIVE` suffix and the repo tooltip gets a session count. `$NEURAL_VIEW_CLAUDE_DIR` overrides `~/.claude` (mainly for tests). If no `jobs/` directory is discoverable at all, this simply returns `[]`.
 
+### Assistant chat streaming
+
+The chat overlay requests live replies from `POST /assistant/chat` using
+`Accept: text/event-stream`. Claude streams genuine main-response text when its
+installed CLI advertises `--include-partial-messages`; its subscription login and
+pinned isolation flags remain in force. Codex exec currently exposes completed
+messages only, so it keeps the elapsed thinking state and returns the final answer
+once. Older servers returning JSON remain supported without retrying the request.
+
+Safe text replaces thinking in the existing reply row. Input stays open and queued,
+scrolling follows only while you are reading the bottom, and final replies retain
+Markdown, recall chips and one voice output. Capability directives stay hidden
+across chunk, message and text-block boundaries in both the initial completion and
+the single follow-up, including file-writing tool cycles. Follow-up text replaces the provisional preamble. Switching assistants discards
+outgoing updates. Failed partial replies are visibly interrupted and are not cached
+as successful exchanges; an already-admitted capability retains its durable result
+if the connection or follow-up fails.
+
+The stream sends `start {turn_id}`, `text {phase, text}` (cumulative per phase),
+`done {text, chips, warnings}`, or `error {error}`, with content-free heartbeat
+frames while waiting. EOF without `done`/`error` fails the turn. Existing JSON
+callers and validation statuses remain unchanged. Both subprocess pipes are drained;
+provider deadlines, an 8 MiB output cap, bounded diagnostic retention and a two-second
+socket write timeout bound failures and cleanup. No failed completion is retried.
+
+The first-text target is roughly two seconds **when the provider emits promptly**;
+deterministic provider/HTTP/browser tests verify delivery before completion. Real
+isolated CLI probes on 2026-10-18 measured Claude first text at 3.090s and final result
+at 3.251s; Codex delivered its completed message at 16.080s. Startup and reasoning
+still delay first text. Provider traces record `first_visible_text_seconds` starting
+before context composition, separately from completion timing. Persistent warm CLI
+sessions remain planned in [#539](https://github.com/Zugruul/development-skills/issues/539).
+
 ## Testing
 
 ```bash

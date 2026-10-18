@@ -80,6 +80,11 @@ own copy of the loop, the same "exactly one place" posture `invoke_cli`
 already established for the subprocess call itself.
 """
 import collections
+import codecs
+import contextlib
+import contextvars
+import selectors
+import signal
 import importlib
 import json
 import os
@@ -127,6 +132,132 @@ class NotFound(AdapterError):
     escaping OSError traceback)."""
 
 
+class StreamCancelled(AdapterError):
+    """The HTTP consumer disconnected; never retry a completion or effect."""
+
+
+_STREAM_POLL = contextvars.ContextVar("assistant_stream_poll", default=None)
+
+
+@contextlib.contextmanager
+def stream_transport(poll):
+    """Request-local transport; also bounds complete-only adapter subprocesses."""
+    token = _STREAM_POLL.set(poll)
+    try:
+        yield
+    finally:
+        _STREAM_POLL.reset(token)
+
+
+def check_stream():
+    poll = _STREAM_POLL.get()
+    if poll is not None:
+        poll()
+
+
+@contextlib.contextmanager
+def defer_stream_cancellation():
+    """An admitted synchronous effect must finish and retain its result.
+
+    The request remembers disconnects, but the effect's own deadline still
+    applies. The next completion checks cancellation BEFORE spawning a child.
+    """
+    original = _STREAM_POLL.get()
+    def poll():
+        try:
+            if original is not None:
+                original()
+        except StreamCancelled:
+            pass
+    with stream_transport(poll):
+        yield
+
+
+def invoke_cli_stream(argv, on_line=None, *, timeout=DEFAULT_TIMEOUT_SECONDS,
+                      env=None, cwd=None, input=None):
+    """Drain both pipes without threads; bound bytes, deadline and owned children.
+
+    Line framing and UTF-8 decoding tolerate arbitrary pipe read boundaries.
+    stderr retains only a bounded diagnostic tail. Callback failure cancels
+    the whole owned process group, including descendants holding pipes open.
+    """
+    if not isinstance(argv, (list, tuple)):
+        raise TypeError("invoke_cli_stream requires an argv array")
+    check_stream()
+    deadline = time.monotonic() + timeout
+    try:
+        child = subprocess.Popen(list(argv), stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, cwd=cwd,
+                                 start_new_session=True, shell=False)
+    except OSError as exc:
+        raise NotFound(f"provider CLI '{argv[0]}' could not start: {exc}") from exc
+    selector = selectors.DefaultSelector()
+    stdout, stderr, line = [], "", ""
+    decoder = codecs.getincrementaldecoder("utf-8")("strict")
+    err_decoder = codecs.getincrementaldecoder("utf-8")("replace")
+    size = 0
+    pending = memoryview(input.encode("utf-8")) if input is not None else None
+    try:
+        for pipe, kind in ((child.stdout, "out"), (child.stderr, "err")):
+            os.set_blocking(pipe.fileno(), False)
+            selector.register(pipe, selectors.EVENT_READ, kind)
+        if pending is not None:
+            os.set_blocking(child.stdin.fileno(), False)
+            selector.register(child.stdin, selectors.EVENT_WRITE, "in")
+        while selector.get_map() or child.poll() is None:
+            if time.monotonic() >= deadline:
+                raise Timeout(f"provider CLI '{argv[0]}' did not complete within {timeout}s")
+            poll = _STREAM_POLL.get()
+            if poll is not None:
+                poll()
+            for key, _ in selector.select(min(.1, max(0, deadline-time.monotonic()))):
+                pipe, kind = key.fileobj, key.data
+                if kind == "in":
+                    try:
+                        pending = pending[os.write(pipe.fileno(), pending[:65536]):] if pending else pending
+                    except BrokenPipeError:
+                        pending = pending[:0]
+                    if not pending:
+                        selector.unregister(pipe); pipe.close()
+                    continue
+                chunk = os.read(pipe.fileno(), 65536)
+                if not chunk:
+                    selector.unregister(pipe); pipe.close()
+                if kind == "err":
+                    stderr = (stderr + err_decoder.decode(chunk, final=not chunk))[-65536:]
+                    continue
+                size += len(chunk)
+                if size > 8 * 1024 * 1024:
+                    raise UnparseableOutput("provider output exceeded the 8 MiB limit")
+                try:
+                    decoded = decoder.decode(chunk, final=not chunk)
+                except UnicodeDecodeError as exc:
+                    raise UnparseableOutput("provider emitted invalid UTF-8") from exc
+                stdout.append(decoded)
+                if on_line is not None:
+                    line += decoded
+                    while "\n" in line:
+                        if time.monotonic() >= deadline:
+                            raise Timeout(f"provider CLI '{argv[0]}' did not complete within {timeout}s")
+                        record, line = line.split("\n", 1)
+                        if record.strip():
+                            on_line(record)
+                    if not chunk and line.strip():
+                        on_line(line); line = ""
+        return subprocess.CompletedProcess(argv, child.returncode, "".join(stdout), stderr)
+    finally:
+        # Always clean descendants too, even if the immediate child exited.
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        for pipe in (child.stdin, child.stdout, child.stderr):
+            if pipe is not None:
+                pipe.close()
+        selector.close()
+        child.wait(timeout=2)
+
+
 def invoke_cli(argv, *, timeout=DEFAULT_TIMEOUT_SECONDS, env=None, cwd=None, input=None):
     """Runs one provider-CLI turn. `argv` MUST be a list/tuple (never a
     shell string -- Sec17.3): every element travels to the OS as one literal
@@ -153,6 +284,8 @@ def invoke_cli(argv, *, timeout=DEFAULT_TIMEOUT_SECONDS, env=None, cwd=None, inp
             "invoke_cli requires argv as a list/tuple, never a shell string "
             "(SPEC-ASSISTANT.md Sec17.3)"
         )
+    if _STREAM_POLL.get() is not None:
+        return invoke_cli_stream(argv, timeout=timeout, env=env, cwd=cwd, input=input)
     start = time.monotonic()
     run_kwargs = dict(capture_output=True, text=True, timeout=timeout, env=env, cwd=cwd, shell=False)
     if input is None:
