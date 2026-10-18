@@ -49,7 +49,7 @@ mkdir -p "$_ae_unit_repo_b/.claude" "$_ae_unit_repo_b/.neural-network"
 printf '%s\n' '# neural-network' >"$_ae_unit_repo_b/.neural-network/marker"   # marker, no assistant: section -- not a candidate
 
 unit_out="$(SCRIPTS_DIR="$AE_SCRIPTS" REPO_A="$_ae_unit_repo_a" REPO_B="$_ae_unit_repo_b" STATE="$_ae_unit_state" python3 - <<'PY'
-import os, sys, threading
+import os, sys, threading, time
 sys.path.insert(0, os.environ["SCRIPTS_DIR"])
 from assistant import engine
 
@@ -73,35 +73,51 @@ print("UNMATCHED", e.handle("GET", "/assistant/nope") is None)
 # total while running; still 4 registered workers, still 0 after stop()
 # (the timer thread is joined inside run_worker own finally, before
 # run_worker itself returns and e.stop() considers that worker joined).
-e.start()
-names = sorted(n for n, _, _ in e.workers)
-print("WORKER_NAMES", names)
-after_start = {t.ident for t in threading.enumerate()} - baseline
-print("THREADS_AFTER_START", len(after_start))
+try:
+    e.start()
+    started_workers = list(e.workers)
+    names = sorted(n for n, _, _ in e.workers)
+    print("WORKER_NAMES", names)
+    # start() owns the four subsystem threads; the task worker starts its
+    # nested heartbeat asynchronously. Observe that named thread, with a
+    # deadline, rather than racing the scheduler or accepting just four.
+    deadline = time.monotonic() + 5.0
+    while True:
+        after_start = [t for t in threading.enumerate() if t.ident not in baseline]
+        if any(t.name == "assistant-tasks-heartbeat-timer" and t.is_alive()
+               for t in after_start):
+            break
+        if time.monotonic() >= deadline:
+            raise AssertionError("heartbeat readiness timed out after 5s; live threads: %r" %
+                                 sorted(t.name for t in after_start))
+        time.sleep(0.01)
+    print("THREADS_AFTER_START", len(after_start))
 
-status_code, payload, ctype = e.handle("GET", "/assistant/status")
-print("STATUS_CODE", status_code)
-print("CTYPE", ctype)
-print("ENGINE_FIELD", payload["engine"])
-print("SELECTED", payload["selected"])
-print("ASSISTANTS_BEFORE", payload["assistants"])
-print("WORKERS_ALIVE", all(w["alive"] for w in payload["workers"]))
-print("WORKERS_COUNT", len(payload["workers"]))
+    status_code, payload, ctype = e.handle("GET", "/assistant/status")
+    print("STATUS_CODE", status_code)
+    print("CTYPE", ctype)
+    print("ENGINE_FIELD", payload["engine"])
+    print("SELECTED", payload["selected"])
+    print("ASSISTANTS_BEFORE", payload["assistants"])
+    print("WORKERS_ALIVE", all(w["alive"] for w in payload["workers"]))
+    print("WORKERS_COUNT", len(payload["workers"]))
 
-# review r2 regression: mutate the SAME list object the getter closes over
-# (no engine reconstruction) -- the engine must read the live list, not a
-# constructor-time snapshot.
-repos_holder.append(("a", os.environ["REPO_A"]))
-_, payload2, _ = e.handle("GET", "/assistant/status")
-print("ASSISTANTS_AFTER", payload2["assistants"])
+    # review r2 regression: mutate the SAME list object the getter closes over
+    # (no engine reconstruction) -- the engine must read the live list, not a
+    # constructor-time snapshot.
+    repos_holder.append(("a", os.environ["REPO_A"]))
+    _, payload2, _ = e.handle("GET", "/assistant/status")
+    print("ASSISTANTS_AFTER", payload2["assistants"])
 
-# idempotence: start() again must not spawn duplicate workers
-e.start()
-print("WORKER_COUNT_AFTER_RESTART", len(e.workers))
+    # idempotence: start() again must not spawn duplicate workers
+    e.start()
+    print("WORKER_COUNT_AFTER_RESTART", len(e.workers))
+finally:
+    # Readiness/status failures must also join the non-daemon workers.
+    e.stop()
 
-e.stop()
 print("THREADS_AFTER_STOP", len({t.ident for t in threading.enumerate()} - baseline))
-print("ALL_JOINED", all(not t.is_alive() for _, t, _ in e.workers if t is not None) if e.workers else True)
+print("ALL_JOINED", all(not t.is_alive() for _, t, _ in started_workers))
 
 # idempotence: stop() again must not raise
 e.stop()
@@ -129,6 +145,11 @@ check "engine unit: stop() joins every worker (no leaked threads)" "THREADS_AFTE
 check "engine unit: stop() actually joins each worker thread" "ALL_JOINED True" "$unit_out"
 check "engine unit: stop() is idempotent (second call does not raise)" "DOUBLE_STOP_OK True" "$unit_out"
 rm -rf "$_ae_unit_state" "$_ae_unit_repo_a" "$_ae_unit_repo_b"
+
+echo "-- unit: deterministic nested heartbeat startup regression (#530) --"
+python3 "$HERE/test_engine_lifecycle.py"
+_ae_lifecycle_rc=$?
+check_rc "engine lifecycle tolerates delayed heartbeat but rejects missing heartbeat with cleanup" 0 "$_ae_lifecycle_rc"
 
 # --------------------------------------------------------------- integration: real server
 echo "-- integration: real server on a scratch port --"
