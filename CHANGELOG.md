@@ -11,6 +11,18 @@
   > 3. Document post-merge completion records, explicit skip reasons, and structural attestation limits.
   > 4. Add command-boundary regression tests committed before implementation.
 
+### Documentation
+- **spec:** fold task closure evidence contract (#238) (`f7f23f8`)
+
+### Chores
+- **feedback:** archive task closure workflow observations (#238) (`cc36877`)
+
+### Other
+- retro(238): record policy validation review lessons (#238) (`7494669`)
+  > 1. Record thirteen useful recall outcomes and the independent review lesson about unknown policy keys.
+  > 2. Advance the retrospective counter and regenerate the directory.
+  > 3. Leave existing feed divergences and proposed pruning or graduation unchanged pending reconciliation.
+
 ## v0.73.2 — 2026-10-18
 
 ### Fixes
