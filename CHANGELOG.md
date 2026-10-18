@@ -10,6 +10,9 @@
   > 2. Stop before exporting a port or dispatching when allocation is exhausted.
   > 3. Wire all five whisper fixtures and deterministically test collisions, retries and exhaustion.
 
+### Documentation
+- **handoff:** record rate-limit recovery and next-task evidence (#541) (`cfedd68`)
+
 ## v0.73.1 — 2026-10-18
 
 ### Fixes
