@@ -13,6 +13,7 @@
 
 ### Documentation
 - **spec:** fold task closure evidence contract (#238) (`f7f23f8`)
+- **handoff:** record completed closure enforcement iteration (#238) (`c5bdf7c`)
 
 ### Chores
 - **feedback:** archive task closure workflow observations (#238) (`cc36877`)
