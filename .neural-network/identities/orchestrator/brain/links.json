@@ -1,17 +1,17 @@
 {
   "brief-collisions-and-inflight-siblings->brief-load-bearing-lines": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "brief-report-on-commit->relay-apply-on-behalf": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "cheap-ab-before-10min-runs->discriminator-over-hypothesis": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "commit-bodies-are-changelog-copy->brief-load-bearing-lines": {
@@ -25,18 +25,18 @@
     "weight": 0.5
   },
   "dev-idle-recovery-ladder->retroactive-records-honesty": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "discriminator-over-hypothesis->cheap-ab-before-10min-runs": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "lessons-compound-when-briefed-forward->recall-injection-is-part-of-the-brief": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "live-browser-verify-before-ui-merges->ping-gated-lane-sequencing": {
@@ -50,13 +50,13 @@
     "weight": 0.5
   },
   "name-the-counterfactual-bar->check-shipped-before-implementing": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "no-silenced-stash-plumbing->retroactive-records-honesty": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "ping-gated-lane-sequencing->brief-collisions-and-inflight-siblings": {
@@ -70,48 +70,48 @@
     "weight": 0.5
   },
   "record-recalls-outside-task-history->canonical-merge-locus": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "record-recalls-outside-task-history->front-load-exact-mechanics-in-design-docs": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "relay-apply-on-behalf->serialize-moves-behind-matching-gate": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "retroactive-records-honesty->dev-idle-recovery-ladder": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "serialize-moves-behind-matching-gate->squash-merge-kills-branch-anchors": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "squash-merge-kills-branch-anchors->decision-lists-vs-fact-lists": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "subagent-pin-verification->dev-idle-recovery-ladder": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "subagent-pin-verification->worktree-lane-default": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "verify-state-before-assuming-stalled->self-authored-code-needs-adversarial-review": {
-    "fires": 0,
-    "last": null,
+    "fires": 1,
+    "last": "2026-10-19",
     "weight": 0.5
   },
   "version-const-collisions-hand-step->locks-need-owner-liveness-and-turns": {
