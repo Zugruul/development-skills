@@ -14,6 +14,7 @@
 - **spec:** fold task 240 WIP admission contract into Codex spec (`1102d46`)
   > 1. Record complete snapshot, counted mapping, local serialization and queue recovery guarantees.
   > 2. Archive the reviewed delta and retain explicit external enforcement limits.
+- **handoff:** record completed WIP admission delivery (#240) (`29fe3e7`)
 
 ## v0.73.4 — 2026-10-19
 
