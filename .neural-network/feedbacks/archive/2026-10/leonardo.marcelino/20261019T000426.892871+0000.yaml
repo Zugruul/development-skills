@@ -1,0 +1,67 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-19T00:04:26.892871+00:00'
+iteration:
+  task: '239'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: gpt-6
+items:
+- category: worked-well
+  area: review
+  severity: low
+  summary: Independent command probes exposed configured transition semantics
+  detail: Renamed work statuses revealed a bypass before formal review; independent
+    reviewers verified the correction and actual repeated-status replay recovery.
+  evidence:
+  - Zugruul/development-skills#239
+  generalized: Admission guards should be tested against configured transition semantics
+    and the actual data source read by queue replay
+  routing:
+    action: brain-note
+    ref: reviewer/derive-admission-from-configured-status-flow (retro commit 9e51ce9)
+- category: worked-well
+  area: testing
+  severity: low
+  summary: Divergent worktree probes protected current-tree validation
+  detail: An independent probe caught a shared-state change redirecting unrelated
+    spec validation to the primary checkout. The regression was committed before the
+    implementation.
+  evidence:
+  - Zugruul/development-skills#239
+  generalized: Shared-state root changes should preserve current-worktree source and
+    specification checks and be tested with divergent checkout contents
+  routing:
+    action: brain-note
+    ref: dev/preserve-current-tree-when-sharing-state (retro commit 9e51ce9)
+- category: friction
+  area: brains
+  severity: low
+  summary: Recall metadata preceded the first test commit
+  detail: The structural TDD guard classified early recall JSON as implementation.
+    Retained original history, reordered only unpublished metadata, proved identical
+    final tree and replayed genuine RED. Separate orchestrator bookkeeping avoids
+    this collision.
+  evidence:
+  - Zugruul/development-skills#239
+  generalized: Keep pre-brief recall bookkeeping outside task implementation history
+    and run structural TDD preflight before the full gate
+  routing:
+    action: brain-note
+    ref: orchestrator/record-recalls-outside-task-history (retro commit 9e51ce9)
+- category: friction
+  area: testing
+  severity: low
+  summary: An integration fixture transiently failed during the full gate
+  detail: Two existing periodic-reconciliation assertions failed in one run, then
+    passed in isolated unchanged-main and candidate replays and the final full gate.
+    No test or production code was altered to suppress the failure.
+  evidence:
+  - Zugruul/development-skills#239
+  generalized: ''
+  routing:
+    action: ignore
+    ref: Local-only transient fixture failure; baseline/candidate replay and final
+      full gate passed, no code suppression
