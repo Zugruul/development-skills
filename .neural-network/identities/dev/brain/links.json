@@ -344,6 +344,26 @@
     "last": "2026-10-18",
     "weight": 0.5
   },
+  "new-helper-integration-contracts->batch-red-across-surfaces": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "new-helper-integration-contracts->no-stage-specific-path-assertions": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "no-stage-specific-path-assertions->batch-red-across-surfaces": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "no-stage-specific-path-assertions->sourced-section-no-brace-cd": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "normalize-after-load-identity-fields->bool-excluded-before-int": {
     "fires": 24,
     "last": "2026-10-19",

@@ -4474,3 +4474,24 @@
 {"key": "verify-proximity-checks-dont-bleed-into-next-record->trace-dict-merge-for-key-collisions", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-10-19T04:07:34+00:00", "type": "LinkFired", "v": 1}
 {"key": "verify-reuse-by-symbol-grep->dual-path-fixture-proves-sharing", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-10-19T04:07:34+00:00", "type": "LinkFired", "v": 1}
 {"key": "when-does-the-test-observe->test-at-the-observed-layer", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-10-19T04:07:34+00:00", "type": "LinkFired", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "batch-red-across-surfaces", "task": "241", "ts": "2026-10-19T17:33:50+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "capture-dont-transcribe", "task": "241", "ts": "2026-10-19T17:33:51+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "stderr-suppression-hides-evidence", "task": "241", "ts": "2026-10-19T17:33:51+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "poll-own-children", "task": "241", "ts": "2026-10-19T17:33:51+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "deterministic-repro-fast", "task": "241", "ts": "2026-10-19T17:33:51+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "acceptance-criterion-outranks-test-spec-paraphrase", "task": "241", "ts": "2026-10-19T17:33:51+00:00", "type": "RecallOutcome", "v": 1}
+{"consumer": "reviewer", "count": 2, "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "red-commit-worktree-verify", "ts": "2026-10-19T17:33:51+00:00", "type": "ConsultPerformed", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "red-commit-worktree-verify", "task": "241", "ts": "2026-10-19T17:33:52+00:00", "type": "RecallOutcome", "v": 1}
+{"consumer": "reviewer", "count": 2, "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reports-are-not-the-code", "ts": "2026-10-19T17:33:52+00:00", "type": "ConsultPerformed", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reports-are-not-the-code", "task": "241", "ts": "2026-10-19T17:33:52+00:00", "type": "RecallOutcome", "v": 1}
+{"consumer": "reviewer", "count": 2, "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reproduce-before-verdict", "ts": "2026-10-19T17:33:52+00:00", "type": "ConsultPerformed", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reproduce-before-verdict", "task": "241", "ts": "2026-10-19T17:33:52+00:00", "type": "RecallOutcome", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "strict-reader-writer-roundtrip", "strength": 1, "ts": "2026-10-19T17:34:20+00:00", "type": "NoteMinted", "v": 1}
+{"key": "strict-reader-writer-roundtrip->reports-are-not-the-code", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-10-19T17:34:20+00:00", "type": "LinkFormed", "v": 1}
+{"key": "strict-reader-writer-roundtrip->reproduce-before-verdict", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-10-19T17:34:20+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "no-stage-specific-path-assertions", "strength": 2, "ts": "2026-10-19T17:34:21+00:00", "type": "NoteMinted", "v": 1}
+{"key": "no-stage-specific-path-assertions->sourced-section-no-brace-cd", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-10-19T17:34:21+00:00", "type": "LinkFormed", "v": 1}
+{"key": "no-stage-specific-path-assertions->batch-red-across-surfaces", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-10-19T17:34:21+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "new-helper-integration-contracts", "strength": 1, "ts": "2026-10-19T17:34:21+00:00", "type": "NoteMinted", "v": 1}
+{"key": "new-helper-integration-contracts->batch-red-across-surfaces", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-10-19T17:34:21+00:00", "type": "LinkFormed", "v": 1}
+{"key": "new-helper-integration-contracts->no-stage-specific-path-assertions", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-10-19T17:34:21+00:00", "type": "LinkFormed", "v": 1}

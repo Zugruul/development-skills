@@ -194,6 +194,16 @@
     "last": "2026-10-19",
     "weight": 0.5
   },
+  "strict-reader-writer-roundtrip->reports-are-not-the-code": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "strict-reader-writer-roundtrip->reproduce-before-verdict": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "stub-shaped-blind-spots->reproduce-before-verdict": {
     "fires": 14,
     "last": "2026-10-19",

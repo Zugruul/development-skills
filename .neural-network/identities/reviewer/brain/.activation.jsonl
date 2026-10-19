@@ -2533,3 +2533,6 @@
 {"event": "inject", "note": "red-commit-worktree-verify", "activation": 2.34, "ts": "2026-10-19T04:07:32+00:00", "role": "reviewer"}
 {"event": "inject", "note": "reports-are-not-the-code", "activation": 2.16, "ts": "2026-10-19T04:07:32+00:00", "role": "reviewer"}
 {"event": "inject", "note": "reproduce-before-verdict", "activation": 2.16, "ts": "2026-10-19T04:07:32+00:00", "role": "reviewer"}
+{"ts": "2026-10-19T17:33:51+00:00", "role": "reviewer", "event": "consult", "note": "red-commit-worktree-verify", "consumer": "reviewer"}
+{"ts": "2026-10-19T17:33:52+00:00", "role": "reviewer", "event": "consult", "note": "reports-are-not-the-code", "consumer": "reviewer"}
+{"ts": "2026-10-19T17:33:52+00:00", "role": "reviewer", "event": "consult", "note": "reproduce-before-verdict", "consumer": "reviewer"}
