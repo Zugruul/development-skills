@@ -79,6 +79,16 @@
     "last": "2026-10-18",
     "weight": 0.5
   },
+  "guard-resolved-identifiers-not-only-labels->distinguish-missed-vs-uncatchable-findings": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "guard-resolved-identifiers-not-only-labels->reports-are-not-the-code": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "knowledge-attaches-to-the-line->test-at-the-observed-layer": {
     "fires": 11,
     "last": "2026-10-18",

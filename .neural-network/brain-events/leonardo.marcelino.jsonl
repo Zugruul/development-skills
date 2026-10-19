@@ -4288,3 +4288,23 @@
 {"key": "verify-proximity-checks-dont-bleed-into-next-record->trace-dict-merge-for-key-collisions", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-10-19T00:13:16+00:00", "type": "LinkFired", "v": 1}
 {"key": "verify-reuse-by-symbol-grep->dual-path-fixture-proves-sharing", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-10-19T00:13:16+00:00", "type": "LinkFired", "v": 1}
 {"key": "when-does-the-test-observe->test-at-the-observed-layer", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-10-19T00:13:16+00:00", "type": "LinkFired", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "batch-red-across-surfaces", "task": "240", "ts": "2026-10-19T01:24:50+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "capture-dont-transcribe", "task": "240", "ts": "2026-10-19T01:24:50+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "stderr-suppression-hides-evidence", "task": "240", "ts": "2026-10-19T01:24:51+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "poll-own-children", "task": "240", "ts": "2026-10-19T01:24:51+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "deterministic-repro-fast", "task": "240", "ts": "2026-10-19T01:24:51+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "acceptance-criterion-outranks-test-spec-paraphrase", "task": "240", "ts": "2026-10-19T01:24:51+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "audit-before-build-per-ac-clause", "task": "240", "ts": "2026-10-19T01:24:51+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "boundary-test-needs-exact-value-plus-absence-check", "task": "240", "ts": "2026-10-19T01:24:51+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "dead_end", "repo": "Zugruul/development-skills", "role": "dev", "slug": "bash32-empty-array-set-u", "task": "240", "ts": "2026-10-19T01:24:52+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "red-commit-worktree-verify", "task": "240", "ts": "2026-10-19T01:24:52+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reports-are-not-the-code", "task": "240", "ts": "2026-10-19T01:24:52+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reproduce-before-verdict", "task": "240", "ts": "2026-10-19T01:24:52+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "confirm-named-scope-exclusions-respected", "task": "240", "ts": "2026-10-19T01:24:52+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "copied-precedent-needs-fresh-verification", "task": "240", "ts": "2026-10-19T01:24:52+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "distinguish-missed-vs-uncatchable-findings", "task": "240", "ts": "2026-10-19T01:24:53+00:00", "type": "RecallOutcome", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "dev", "slug": "queue-skips-need-validated-state", "strength": 1, "ts": "2026-10-19T01:24:53+00:00", "type": "NoteMinted", "v": 1}
+{"key": "queue-skips-need-validated-state->boundary-test-needs-exact-value-plus-absence-check", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-10-19T01:24:53+00:00", "type": "LinkFormed", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "guard-resolved-identifiers-not-only-labels", "strength": 1, "ts": "2026-10-19T01:24:53+00:00", "type": "NoteMinted", "v": 1}
+{"key": "guard-resolved-identifiers-not-only-labels->reports-are-not-the-code", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-10-19T01:24:53+00:00", "type": "LinkFormed", "v": 1}
+{"key": "guard-resolved-identifiers-not-only-labels->distinguish-missed-vs-uncatchable-findings", "repo": "Zugruul/development-skills", "role": "reviewer", "ts": "2026-10-19T01:24:53+00:00", "type": "LinkFormed", "v": 1}

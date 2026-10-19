@@ -119,3 +119,9 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "confirm-named-scope-exclusions-respected", "task": "239", "ts": "2026-10-19T00:02:27+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "copied-precedent-needs-fresh-verification", "task": "239", "ts": "2026-10-19T00:02:27+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "distinguish-missed-vs-uncatchable-findings", "task": "239", "ts": "2026-10-19T00:02:27+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "red-commit-worktree-verify", "task": "240", "ts": "2026-10-19T01:24:52+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reports-are-not-the-code", "task": "240", "ts": "2026-10-19T01:24:52+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "240", "ts": "2026-10-19T01:24:52+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "confirm-named-scope-exclusions-respected", "task": "240", "ts": "2026-10-19T01:24:52+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "copied-precedent-needs-fresh-verification", "task": "240", "ts": "2026-10-19T01:24:52+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "distinguish-missed-vs-uncatchable-findings", "task": "240", "ts": "2026-10-19T01:24:53+00:00"}
