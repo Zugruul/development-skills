@@ -11,6 +11,11 @@
   > 3. Keep invalid configs and unusual filename bytes visible in table and JSON output.
   > 4. Add the host-neutral skill, documentation and tests-first regression coverage.
 
+### Documentation
+- **spec:** fold 277 project inventory delta into SPEC (`7d57651`)
+  > 1. Record shipped project inventory behavior in section 6.6.
+  > 2. Archive the reviewed delta after publication.
+
 ## v0.73.8 — 2026-10-19
 
 ### Fixes
