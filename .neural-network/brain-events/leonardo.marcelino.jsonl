@@ -4711,3 +4711,10 @@
 {"key": "preserve-classifier-input-when-optimizing->sanitize-structured-credentials-before-storage", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-10-19T19:10:21+00:00", "type": "LinkPruned", "v": 1}
 {"key": "validate-behavioral-options-at-their-site->bind-contract-checks-to-clauses", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-10-19T19:10:21+00:00", "type": "LinkPruned", "v": 1}
 {"key": "validate-behavioral-options-at-their-site->bool-before-int-guard", "reason": "never fired, aged out", "repo": "Zugruul/development-skills", "role": "dev", "ts": "2026-10-19T19:10:21+00:00", "type": "LinkPruned", "v": 1}
+{"idx": 0, "itemTs": "2026-10-19T19:11:54Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-10-19T19:11:55+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 1, "itemTs": "2026-10-19T19:11:54Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-10-19T19:11:55+00:00", "type": "FeedbackEmitted", "v": 1}
+{"idx": 2, "itemTs": "2026-10-19T19:11:54Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-10-19T19:11:55+00:00", "type": "FeedbackEmitted", "v": 1}
+{"action": "brain-note", "idx": 0, "itemTs": "2026-10-19T19:11:54Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-10-19T19:12:15+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "brain-note", "idx": 1, "itemTs": "2026-10-19T19:11:54Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-10-19T19:12:15+00:00", "type": "FeedbackRouted", "v": 1}
+{"action": "ignore", "idx": 2, "itemTs": "2026-10-19T19:11:54Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-10-19T19:12:15+00:00", "type": "FeedbackRouted", "v": 1}
+{"itemCount": 3, "itemTs": "2026-10-19T19:11:54Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-10-19T19:12:15+00:00", "type": "FeedbackArchived", "v": 1}

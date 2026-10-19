@@ -1,0 +1,62 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-19T19:11:54Z'
+iteration:
+  task: '274'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: Codex host default (model identifier not exposed)
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Independent delimiter probes caught data loss that a green integration
+    suite missed.
+  detail: The independent spec and quality passes reproduced user-owned ignore deletion,
+    then the dev committed the exact failing cases before correcting the parser. The
+    final approval reviewer independently replayed both RED stages.
+  evidence:
+  - Zugruul/development-skills#274
+  generalized: For destructive text transformations, independently vary record delimiters
+    and assert exact preservation of surrounding bytes, even when the existing suite
+    is green.
+  routing:
+    action: brain-note
+    ref: dev/match-record-delimiters-before-replacement; reviewer/probe-markers-inside-user-records;
+      committed in b40ab5d266e21c44ab5b45f5bee999235b303c9d
+- category: worked-well
+  area: briefing
+  severity: low
+  summary: An exact file inventory paired with writer-family tracing made a broad
+    audit reviewable.
+  detail: The committed inventory enumerates every plugin file; the family table traces
+    current write destinations and explains external, configured and durable-state
+    policies. Review found and corrected one legacy-reader description.
+  evidence:
+  - Zugruul/development-skills#274
+  generalized: Pair complete per-file coverage with source-backed writer families
+    and explicit exclusions; membership alone does not prove a runtime audit correct.
+  routing:
+    action: brain-note
+    ref: orchestrator/pair-file-inventory-with-writer-tracing; committed in b40ab5d266e21c44ab5b45f5bee999235b303c9d
+- category: friction
+  area: testing
+  severity: medium
+  summary: An inherited intermittent failure required another full gate run.
+  detail: The orchestrator reproduced the legal process-exit-before-marker interleaving
+    on unchanged main and filed the product defect separately. The ordinary focused
+    baseline and a later full candidate gate passed; this did not erase the defect.
+    Existing baseline-comparison workflow guidance was sufficient.
+  evidence:
+  - Zugruul/development-skills#274
+  - Zugruul/development-skills#542
+  generalized: When a full gate exposes a timing-sensitive failure, compare unchanged
+    main and force the suspected interleaving before attributing it to the task or
+    accepting a successful retry.
+  routing:
+    action: ignore
+    ref: Existing baseline-comparison workflow was sufficient; the separately reproduced
+      product race is tracked in Zugruul/development-skills#542. No additional workflow
+      change requested.
