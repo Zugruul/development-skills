@@ -334,6 +334,8 @@ esac
         tree_cfg = dict(self.cfg, specs=[dict(self.cfg['specs'][0], specPath='tree-only.md')])
         (tree / '.neural-network/project.json').write_text(json.dumps(tree_cfg))
         (tree / 'tree-only.md').write_text('worktree spec')
+        result = self.run_cmd('bash', str(SCRIPTS / 'gitignore-sync.sh'), str(tree / '.gitignore'))
+        self.assertEqual(result.returncode, 0, result.stdout)
         self.flag.touch()
         result = self.run_cmd('bash', str(SCRIPTS / 'preflight.sh'), '--spec', cwd=tree)
         self.assertEqual(result.returncode, 0, result.stdout)

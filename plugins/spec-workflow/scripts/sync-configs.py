@@ -270,6 +270,8 @@ def mem013_gitignore_detect(repo_root):
     managed block is out of sync with the current manifest."""
     p = run(["bash", str(HERE / "gitignore-sync.sh"), "--dry-run",
              str(Path(repo_root) / ".gitignore")])
+    if p.returncode != 0:
+        raise RuntimeError("managed ignore inspection failed: " + (p.stdout + p.stderr).strip())
     diff_text = p.stdout
     return bool(diff_text.strip()), diff_text
 
@@ -278,7 +280,9 @@ def mem013_gitignore_apply(work_dir):
     """Writes the managed block into work_dir/.gitignore via
     gitignore-sync.sh. Returns the list of repo-relative paths that
     changed/need staging."""
-    run(["bash", str(HERE / "gitignore-sync.sh"), str(Path(work_dir) / ".gitignore")])
+    p = run(["bash", str(HERE / "gitignore-sync.sh"), str(Path(work_dir) / ".gitignore")])
+    if p.returncode != 0:
+        raise RuntimeError("managed ignore publication failed: " + (p.stdout + p.stderr).strip())
     return [".gitignore"]
 
 
@@ -421,7 +425,11 @@ def process_repo(repo_root, args):
     sw062_applies = sw062_detect(repo_root)
     if sw062_applies:
         applied.append("sw062-feedbacks-migration")
-    mem013_applies, mem013_diff = mem013_gitignore_detect(repo_root)
+    try:
+        mem013_applies, mem013_diff = mem013_gitignore_detect(repo_root)
+    except RuntimeError as exc:
+        result.add(f"route: skipped-ignore-inspection: {exc}")
+        return result, False
     if mem013_applies:
         applied.append("mem013-gitignore-managed-block")
 
@@ -515,6 +523,11 @@ def process_repo(repo_root, args):
             return result, False
 
         return result, True
+    except RuntimeError as exc:
+        result.add(f"route: skipped-sync-error: {exc}")
+        if worktree_dir is None:
+            result.add(f"uncommitted edits retained for inspection at {work_dir}")
+        return result, False
     finally:
         if worktree_dir is not None:
             git(["worktree", "remove", "--force", str(worktree_dir)], repo_root)

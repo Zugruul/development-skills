@@ -11,7 +11,7 @@
 # block (with markers) if absent; NEVER touches any line outside the markers.
 # Warns (path + matching rule) when a `track`-policy path is already ignored by
 # some OTHER, non-managed rule in the target. `--dry-run` prints the unified
-# diff and writes nothing. Idempotent: a second run is a no-op.
+# diff without editing the target. Idempotent: a second run is a no-op.
 #
 # Usage: gitignore-sync.sh [--dry-run] [target]   (target defaults to .gitignore)
 #
@@ -85,45 +85,65 @@ gs_block="$GS_START
 $gs_ignore
 $GS_END"
 
-# Split the existing target into the content before the block and after it,
-# recording whether a block was present. Everything outside the markers is
-# preserved byte-for-byte (for newline-terminated files, the norm).
-gs_before=""
-gs_after=""
-gs_have_block=0
-gs_in_block=0
-if [ -f "$gs_target" ]; then
-    while IFS= read -r gs_line || [ -n "$gs_line" ]; do
-        if [ "$gs_in_block" -eq 1 ]; then
-            [ "$gs_line" = "$GS_END" ] && gs_in_block=0
-            continue
-        fi
-        if [ "$gs_line" = "$GS_START" ]; then
-            gs_in_block=1
-            gs_have_block=1
-            continue
-        fi
-        if [ "$gs_have_block" -eq 0 ]; then
-            gs_before="$gs_before$gs_line
-"
-        else
-            gs_after="$gs_after$gs_line
-"
-        fi
-    done < "$gs_target"
-fi
+# Own one private directory and remove only that directory on every handled
+# exit. Explicit template honors TMPDIR on GNU and BSD mktemp alike.
+gs_tmpdir=""
+trap 'if [ -n "$gs_tmpdir" ] && ! rm -rf -- "$gs_tmpdir"; then
+    echo "gitignore-sync: cannot remove owned temporary directory $gs_tmpdir" >&2
+    exit 1
+fi' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+gs_tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/gitignore-sync.XXXXXXXX")" || {
+    echo "gitignore-sync: mktemp failed" >&2; exit 1; }
+gs_tmp="$gs_tmpdir/rendered"
+# Byte-oriented composition preserves even CRLF user rules and a final line
+# without a newline. Malformed markers and unreadable/non-file targets are
+# inspection errors, never an absent/current managed block.
+if ! python3 - "$gs_target" "$gs_tmp" "$gs_tmpdir/nonmanaged" "$gs_block" <<'PY_RENDER'
+import io
+import os
+from pathlib import Path
+import sys
 
-if [ "$gs_have_block" -eq 1 ]; then
-    gs_new="$gs_before$gs_block
-$gs_after"
-else
-    gs_new="$gs_before$gs_block
-"
+target, rendered, outside, block = sys.argv[1:]
+try:
+    if os.path.lexists(target) and not Path(target).is_file():
+        raise ValueError("target is not a readable regular file")
+    old = Path(target).read_bytes() if os.path.lexists(target) else b""
+    # Git ignore records are LF-delimited; a bare CR is user data. Remove
+    # exactly one supported terminator, never an arbitrary run of CR/LF.
+    lines = io.BytesIO(old).readlines()
+    def record_content(line):
+        if line.endswith(b"\r\n"):
+            return line[:-2]
+        if line.endswith(b"\n"):
+            return line[:-1]
+        return line
+    starts = [i for i, line in enumerate(lines) if record_content(line) == b"# >>> spec-workflow managed"]
+    ends = [i for i, line in enumerate(lines) if record_content(line) == b"# <<< spec-workflow managed"]
+    if starts or ends:
+        if len(starts) != 1 or len(ends) != 1 or starts[0] >= ends[0]:
+            raise ValueError("malformed managed markers; restore one complete start/end pair")
+        before = b"".join(lines[:starts[0]])
+        after = b"".join(lines[ends[0] + 1:])
+    else:
+        before, after = old, b""
+    separator = b"\n" if before and not before.endswith(b"\n") else b""
+    Path(rendered).write_bytes(before + separator + block.encode() + b"\n" + after)
+    Path(outside).write_bytes(before + after)
+except (OSError, ValueError) as exc:
+    print(f"gitignore-sync: cannot inspect/render {target}: {exc}", file=sys.stderr)
+    sys.exit(1)
+PY_RENDER
+then
+    exit 1
 fi
+gs_nonmanaged="$(cat "$gs_tmpdir/nonmanaged")" || exit 1
 
 # §7.2.1: warn (to stderr) for any track path already ignored by a non-managed
-# rule — i.e. any line outside the markers (gs_before + gs_after).
-gs_nonmanaged="$gs_before$gs_after"
+# rule — i.e. any line outside the markers.
 while IFS= read -r gs_tp; do
     [ -n "$gs_tp" ] || continue
     while IFS= read -r gs_rule; do
@@ -140,16 +160,17 @@ done <<EOF
 $gs_track
 EOF
 
-gs_tmp="$(mktemp)" || { echo "gitignore-sync: mktemp failed" >&2; exit 1; }
-printf '%s' "$gs_new" > "$gs_tmp"
-
 if [ "$gs_dry_run" -eq 1 ]; then
     gs_old="$gs_target"
-    [ -f "$gs_old" ] || gs_old=/dev/null
-    diff -u "$gs_old" "$gs_tmp" || true
-    rm -f "$gs_tmp"
-    exit 0
+    [ -e "$gs_old" ] || gs_old=/dev/null
+    diff -u "$gs_old" "$gs_tmp"
+    gs_rc=$?
+    case "$gs_rc" in
+        0|1) exit 0 ;;  # a diff is a successful inspection, not an I/O error
+        *) echo "gitignore-sync: comparison failed for $gs_target (diff exit $gs_rc)" >&2; exit "$gs_rc" ;;
+    esac
 fi
 
-mv "$gs_tmp" "$gs_target"
+mv "$gs_tmp" "$gs_target" || {
+    echo "gitignore-sync: cannot publish $gs_target" >&2; exit 1; }
 exit 0

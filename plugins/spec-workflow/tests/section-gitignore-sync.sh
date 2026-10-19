@@ -137,6 +137,7 @@ rm -rf "$gs_d"
 # addition landed without a paired .gitignore sync now fails CI here
 # instead of drifting silently again.
 GS_REPO_ROOT="$(cd "$PLUGIN/../.." && pwd)"
-gs_self_diff="$(bash "$GS_SCRIPT" --dry-run "$GS_REPO_ROOT/.gitignore" 2>&1)"
+gs_self_diff="$(bash "$GS_SCRIPT" --dry-run "$GS_REPO_ROOT/.gitignore")"
+check_rc "gitignore-sync: self inspection succeeds (warnings are separate)" 0 "$?"
 [[ -z "$gs_self_diff" ]] && r=CLEAN || r=DRIFTED
 check "gitignore-sync: this repo's own root .gitignore has zero drift from local-state.manifest" "CLEAN" "$r"

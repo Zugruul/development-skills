@@ -36,8 +36,31 @@ ignore	.claude/assistant/
 # line per entry (mirrors BASE_CAPABILITIES' own static-registry
 # posture); add a matching line here whenever a new base capability ships.
 ignore	.claude/skills/whisper-sidecar/
+# Runtime inventory #274: explicit local locks, atomic siblings and machine bindings.
+ignore	.claude/board-queue.lock/
+ignore	.claude/board-cache.json.tmp
+ignore	.claude/.setup-assistant.lock
+ignore	.neural-network/identities/.brain.lock
+ignore	.neural-network/identities/**/.brain-tmp-*
+ignore	.neural-network/identities/*/brain/index.sqlite3-journal
+ignore	.neural-network/identities/*/brain/index.sqlite3-wal
+ignore	.neural-network/identities/*/brain/index.sqlite3-shm
+ignore	.neural-network/feedbacks/**/*.yaml.tmp-*
+ignore	/.setup-assistant-tmp-*
+ignore	.neural-network/.setup-assistant-tmp-*
+ignore	.claude/skills/remote-compute-control/
+ignore	.claude/skills/comfyui-render/
+ignore	.claude/skills/.remote-control-*/
+ignore	.claude/skills/.comfyui-*/
+ignore	.neural-network/.project.*
+ignore	.neural-network/identities/assistant/brain/media/chat/.publish-tmp-*
+ignore	/CHANGELOG.md.tmp
 track	.neural-network/feedbacks/
 track	.neural-network/identities/
 track	.neural-network/brain-events/
 track	.neural-network/specs/
 track	.neural-network/project.yaml
+track	docs/handoffs/
+track	docs/ui-options/
+track	docs/design/
+track	docs/spec-deltas/

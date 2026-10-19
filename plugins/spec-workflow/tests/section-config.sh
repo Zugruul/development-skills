@@ -451,6 +451,7 @@ check "inline specs still VALID (deprecated, not an error)" "VALID: " "$out"
 check "validator notes the deprecation + new home" "DEPRECATION: inline 'specs:' in project.yaml — migrate to .neural-network/specs/<id>.yaml" "$out"
 ( cd "$IS" && git init -q . )
 touch "$IS/SPEC.md" "$IS/docs" 2>/dev/null; mkdir -p "$IS/docs"; touch "$IS/docs/BACKLOG.md"
+bash "$PLUGIN/scripts/gitignore-sync.sh" "$IS/.gitignore"
 out="$(cd "$IS" && bash "$PLUGIN/scripts/preflight.sh" --spec)"
 check "preflight suggests migrating inline specs before starting a task" "suggest: migrate inline specs" "$out"
 # specs/ dir wins over inline

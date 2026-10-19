@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# preflight.sh [--spec] — fast existence checks, injected into skill context at load time.
+# preflight.sh [--spec] — local config/freshness checks, injected at skill load time.
 # Always exits 0: the skill still loads so the model can read the FAIL line and redirect.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,7 +15,53 @@ fi
 # Advisory entrypoint retains its zero-exit/bootstrap contract.
 bash "$HERE/checkpoint-preflight.sh" 2>&1 || true
 
-if [[ "${1:-}" == "--spec" ]]; then
+# Use the existing validator and renderer as the sole authorities. Capture
+# stdout separately from diagnostics without creating temporary files in the
+# consumer (TMPDIR may itself be inside that repository).
+PREFLIGHT_CHECKS_OK=1
+if ! python3 - "$HERE" "$CONFIG" "$ROOT" <<'PY_CHECK'
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+here, config, root = sys.argv[1:]
+failed = False
+checks = [
+    ([sys.executable, str(Path(here) / "validate-config.py"), config], "config"),
+    (["bash", str(Path(here) / "gitignore-sync.sh"), "--dry-run", str(Path(root) / ".gitignore")], "ignores"),
+]
+for command, kind in checks:
+    try:
+        result = subprocess.run(command, capture_output=True, text=True)
+    except (OSError, UnicodeError) as exc:
+        result = None
+        evidence = str(exc)
+    else:
+        evidence = (result.stdout + result.stderr).strip()
+    if kind == "config":
+        if result is not None and result.returncode == 0:
+            continue
+        print(f"PREFLIGHT FAIL: invalid config {config} — STOP: fix the validator errors, then re-run "
+              + shlex.join(command))
+    else:
+        repair = shlex.join([command[0], command[1], command[-1]])
+        if result is not None and result.returncode == 0 and not result.stdout.strip():
+            continue
+        reason = "missing/stale managed block" if result is not None and result.returncode == 0 else "cannot establish managed-block freshness"
+        print(f"PREFLIGHT FAIL: {reason} in {command[-1]} — STOP: repair with {repair}; then re-run preflight.")
+    if evidence:
+        print(evidence)
+    failed = True
+sys.exit(1 if failed else 0)
+PY_CHECK
+then
+    PREFLIGHT_CHECKS_OK=0
+fi
+
+if [[ "$PREFLIGHT_CHECKS_OK" -eq 0 ]]; then
+    : # Keep the remaining independent advisories, but never report clean.
+elif [[ "${1:-}" == "--spec" ]]; then
     python3 - "$CONFIG" "$ROOT" <<'PY'
 import os, sys
 import config as C

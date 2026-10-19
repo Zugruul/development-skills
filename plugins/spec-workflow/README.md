@@ -249,6 +249,30 @@ Checkpoint enforcement covers bundled workflow admission, not arbitrary file edi
 
 `scripts/local-state.manifest` is the single source of truth (SPEC-MEMORY.md §7.1/§7.4/§9.2) for every path the plugin writes at runtime, each tagged `ignore` (local state — gitignored, never committed) or `track` (shared memory — committed alongside code). Read it — never re-hardcode these paths — via `scripts/lib/local-state.sh` (bash 3.2: `spec_workflow_local_state_paths ignore|track`, `spec_workflow_local_state_policy <path>`) or `scripts/lib/local_state.py` (python stdlib: `paths()`, `policy_of()`). `scripts/gitignore-sync.sh [--dry-run] [target]` (SPEC-MEMORY.md §7.2/§7.2.1) writes the manifest's `ignore`-policy entries into a target `.gitignore` (default `.gitignore`) as a managed block between `# >>> spec-workflow managed` / `# <<< spec-workflow managed` markers — replacing only that block on a re-run (idempotent), appending it if absent, never touching a line outside the markers, and warning (path + matching rule, never editing) when a `track`-policy path is already ignored by some other non-managed rule; `setup-project`'s Phase 5 gitignore step is this script. `sync-project-configs`' `mem013-gitignore-managed-block` rule reconciles this same managed block across every already-anchored repo, keeping repos that adopted the workflow before the manifest changed in sync without a human re-running `setup-project`. The table below is kept in sync with the manifest by a test (`section-local-state-manifest.sh`) — edit the manifest, not this table.
 
+`preflight.sh [--spec]` invokes `validate-config.py` against the resolved config
+and `gitignore-sync.sh --dry-run <root>/.gitignore` in both modes. Missing/stale
+blocks, invalid configuration and inspection errors emit actionable
+`PREFLIGHT FAIL` diagnostics; callers must stop even though the loader exits 0.
+Valid/current checks add no output. Repair is explicit, never automatic:
+
+```bash
+bash /path/to/spec-workflow/scripts/gitignore-sync.sh /path/to/repo/.gitignore
+```
+
+The helper owns rendering/comparison for preflight and mem013. Its private temp
+directory is removed on normal exits, failures and handled INT/TERM/HUP, including
+with TMPDIR inside the repository; it never sweeps unrelated temp files. SIGKILL
+and power loss are outside that cleanup guarantee. Read/render/diff/publish or
+cleanup errors are surfaced. Bytes outside the managed block are preserved, and
+tracked-path conflicts remain warnings. Already tracked local state requires an
+explicit index-only removal after review; do not unlink a live lock file.
+
+The [all-plugin inventory](../../docs/audits/runtime-paths-274.md) records defaults
+and source sites, including specific derived exceptions under tracked directories.
+External caches, browser storage, generated project source and caller-selected
+output/config paths are documented exclusions. Consumers own ignore policies for
+custom path overrides; there is no blanket temp/log/hidden-directory ignore.
+
 | Policy | Path |
 | --- | --- |
 | ignore | `.claude/CHECKPOINT` |
@@ -272,11 +296,33 @@ Checkpoint enforcement covers bundled workflow admission, not arbitrary file edi
 | ignore | `.neural-network/identities/*/brain/.staleness-cache.json` |
 | ignore | `.claude/assistant/` |
 | ignore | `.claude/skills/whisper-sidecar/` |
+| ignore | `.claude/board-queue.lock/` |
+| ignore | `.claude/board-cache.json.tmp` |
+| ignore | `.claude/.setup-assistant.lock` |
+| ignore | `.neural-network/identities/.brain.lock` |
+| ignore | `.neural-network/identities/**/.brain-tmp-*` |
+| ignore | `.neural-network/identities/*/brain/index.sqlite3-journal` |
+| ignore | `.neural-network/identities/*/brain/index.sqlite3-wal` |
+| ignore | `.neural-network/identities/*/brain/index.sqlite3-shm` |
+| ignore | `.neural-network/feedbacks/**/*.yaml.tmp-*` |
+| ignore | `/.setup-assistant-tmp-*` |
+| ignore | `.neural-network/.setup-assistant-tmp-*` |
+| ignore | `.claude/skills/remote-compute-control/` |
+| ignore | `.claude/skills/comfyui-render/` |
+| ignore | `.claude/skills/.remote-control-*/` |
+| ignore | `.claude/skills/.comfyui-*/` |
+| ignore | `.neural-network/.project.*` |
+| ignore | `.neural-network/identities/assistant/brain/media/chat/.publish-tmp-*` |
+| ignore | `/CHANGELOG.md.tmp` |
 | track | `.neural-network/feedbacks/` |
 | track | `.neural-network/identities/` |
 | track | `.neural-network/brain-events/` |
 | track | `.neural-network/specs/` |
 | track | `.neural-network/project.yaml` |
+| track | `docs/handoffs/` |
+| track | `docs/ui-options/` |
+| track | `docs/design/` |
+| track | `docs/spec-deltas/` |
 
 ## Telemetry
 

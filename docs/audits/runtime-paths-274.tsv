@@ -1,0 +1,482 @@
+file	families	disposition
+plugins/peer-review/.claude-plugin/plugin.json	READ	Provider metadata/schema/listing or documentation; no additional writer.
+plugins/peer-review/.codex-plugin/plugin.json	READ	Provider metadata/schema/listing or documentation; no additional writer.
+plugins/peer-review/README.md	READ	Provider metadata/schema/listing or documentation; no additional writer.
+plugins/peer-review/schema/peer-review-findings.json	READ	Provider metadata/schema/listing or documentation; no additional writer.
+plugins/peer-review/scripts/claude-review.sh	EXT-temp	Provider wrapper private temp/stdout only.
+plugins/peer-review/scripts/claude-run.sh	EXT-temp	Provider wrapper private temp/stdout only.
+plugins/peer-review/scripts/diff-source.sh	EXT-temp	Provider wrapper private temp/stdout only.
+plugins/peer-review/scripts/list-claude-models.sh	READ	Provider metadata/schema/listing or documentation; no additional writer.
+plugins/peer-review/scripts/list-models.sh	READ	Provider metadata/schema/listing or documentation; no additional writer.
+plugins/peer-review/scripts/peer-review.sh	EXT-temp	Provider wrapper private temp/stdout only.
+plugins/peer-review/scripts/provider-dispatch.sh	READ	Provider metadata/schema/listing or documentation; no additional writer.
+plugins/peer-review/scripts/providers.sh	READ	Provider metadata/schema/listing or documentation; no additional writer.
+plugins/peer-review/scripts/providers.tsv	READ	Provider metadata/schema/listing or documentation; no additional writer.
+plugins/peer-review/scripts/run.sh	EXT-temp	Provider wrapper private temp/stdout only.
+plugins/peer-review/skills/peer-review/SKILL.md	EXT-temp	Provider wrapper private temp/stdout only.
+plugins/peer-review/tests/_lib.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/peer-review/tests/run-tests.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/peer-review/tests/section-claude-review.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/peer-review/tests/section-claude-run.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/peer-review/tests/section-diff-source.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/peer-review/tests/section-egress-contract.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/peer-review/tests/section-list-claude-models.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/peer-review/tests/section-list-models.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/peer-review/tests/section-peer-review.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/peer-review/tests/section-provider-dispatch.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/peer-review/tests/section-providers.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/peer-review/tests/section-run.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/peer-review/tests/test-egress-contract.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/.claude-plugin/plugin.json	EXT-remote	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/.codex-plugin/plugin.json	EXT-remote	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/README.md	EXT-remote	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/scripts/remote-capabilities/_shared/compute-state.py	EXT-target	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/scripts/remote-capabilities/_shared/compute-top.py	EXT-target	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/scripts/remote-capabilities/_shared/remote-compute-remote.sh	EXT-target	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/scripts/remote-capabilities/comfyui/capability.yaml	EXT-target	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/scripts/remote-capabilities/comfyui/comfy-import.py	EXT-target	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/scripts/remote-capabilities/comfyui/comfy-run.py	EXT-target	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/scripts/remote-capabilities/slm-training/capability.yaml	EXT-target	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/scripts/remote-capabilities/slm-training/eval_suite.py	EXT-target	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/scripts/remote-capabilities/slm-training/export_gguf.py	EXT-target	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/scripts/remote-capabilities/slm-training/gpu_check.py	EXT-target	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/scripts/remote-capabilities/slm-training/tests/test_export_gguf.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/scripts/remote-capabilities/slm-training/train.py	EXT-target	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/scripts/remote-compute.py	RC-overlay,EXT-remote,EXT-target	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/skills/compute-top/SKILL.md	EXT-remote	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/skills/remote-compute/SKILL.md	EXT-remote	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/skills/scan/SKILL.md	EXT-remote	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/skills/ssh/SKILL.md	EXT-remote	Controller/target and declared payload destinations; see source family table.
+plugins/remote-compute/tests/_lib.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/e2e-remote-compute-manual.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/comfy-import/README.md	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/comfy-import/api.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/comfy-import/object-info.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/comfy-import/ui.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/compute/df-h.txt	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/compute/df-hpt.txt	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/compute/free-g.txt	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/compute/nvidia-smi-csv.txt	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/compute/nvidia-smi.txt	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/compute/system-profiler.txt	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/stub-compute-transport/nc	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/stub-compute-transport/ping	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/stub-compute-transport/protocol.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/stub-compute-transport/rsync	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/stub-compute-transport/ssh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/fixtures/stub-compute-transport/ssh-keyscan	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/run-tests.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/section-comfy-import.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/section-compatibility-audit.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/section-hardening.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/section-lint.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/section-remote-command.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/section-remote-compute.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/section-role-dispatch.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/section-setup-plan.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/test_comfy_import.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/test_compatibility_audit.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/test_hardening.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/test_role_dispatch.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/remote-compute/tests/test_setup_plan.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/scaffold-project/.claude-plugin/plugin.json	EXT-scaffold	Generated project source or external /tmp/cluster state; override paths are consumer-owned.
+plugins/scaffold-project/.codex-plugin/plugin.json	EXT-scaffold	Generated project source or external /tmp/cluster state; override paths are consumer-owned.
+plugins/scaffold-project/skills/scaffold-project/SKILL.md	EXT-scaffold	Generated project source or external /tmp/cluster state; override paths are consumer-owned.
+plugins/scaffold-project/skills/scaffold-project/references/package-json-scripts.md	EXT-scaffold	Generated project source or external /tmp/cluster state; override paths are consumer-owned.
+plugins/scaffold-project/skills/scaffold-project/templates/scripts/bootstrap-minikube.sh	EXT-scaffold	Generated project source or external /tmp/cluster state; override paths are consumer-owned.
+plugins/scaffold-project/skills/scaffold-project/templates/scripts/build.sh	EXT-scaffold	Generated project source or external /tmp/cluster state; override paths are consumer-owned.
+plugins/scaffold-project/skills/scaffold-project/templates/scripts/clean-docker.sh	EXT-scaffold	Generated project source or external /tmp/cluster state; override paths are consumer-owned.
+plugins/scaffold-project/skills/scaffold-project/templates/scripts/common.sh	EXT-scaffold	Generated project source or external /tmp/cluster state; override paths are consumer-owned.
+plugins/scaffold-project/skills/scaffold-project/templates/scripts/delete-minikube.sh	EXT-scaffold	Generated project source or external /tmp/cluster state; override paths are consumer-owned.
+plugins/scaffold-project/skills/scaffold-project/templates/scripts/dev.sh	EXT-scaffold	Generated project source or external /tmp/cluster state; override paths are consumer-owned.
+plugins/scaffold-project/skills/scaffold-project/templates/scripts/port-forward-stop.sh	EXT-scaffold	Generated project source or external /tmp/cluster state; override paths are consumer-owned.
+plugins/scaffold-project/skills/scaffold-project/templates/scripts/port-forward.sh	EXT-scaffold	Generated project source or external /tmp/cluster state; override paths are consumer-owned.
+plugins/scaffold-project/skills/scaffold-project/templates/scripts/start.sh	EXT-scaffold	Generated project source or external /tmp/cluster state; override paths are consumer-owned.
+plugins/scaffold-project/skills/scaffold-project/templates/scripts/stop.sh	EXT-scaffold	Generated project source or external /tmp/cluster state; override paths are consumer-owned.
+plugins/spec-workflow/.claude-plugin/plugin.json	READ	Shipped metadata/schema/hook routing/documentation; runtime writer is the routed script.
+plugins/spec-workflow/.codex-plugin/plugin.json	READ	Shipped metadata/schema/hook routing/documentation; runtime writer is the routed script.
+plugins/spec-workflow/README.md	READ	Shipped metadata/schema/hook routing/documentation; runtime writer is the routed script.
+plugins/spec-workflow/evals/board-commands/case.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/evals/comment-trust/case.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/evals/craft-spec-draft/case.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/evals/preflight-routing/case.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/evals/seed-file-format/case.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/hooks/hooks.json	READ	Shipped metadata/schema/hook routing/documentation; runtime writer is the routed script.
+plugins/spec-workflow/schemas/project-config.schema.json	READ	Shipped metadata/schema/hook routing/documentation; runtime writer is the routed script.
+plugins/spec-workflow/scripts/assistant/__init__.py	READ	Configuration/discovery/transport/read-only composition; delegates persistence to listed stores.
+plugins/spec-workflow/scripts/assistant/adapters.py	EXT-temp,SW-brain	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/artifacts.py	READ	Configuration/discovery/transport/read-only composition; delegates persistence to listed stores.
+plugins/spec-workflow/scripts/assistant/capability_index.py	READ	Configuration/discovery/transport/read-only composition; delegates persistence to listed stores.
+plugins/spec-workflow/scripts/assistant/claude.py	EXT-temp,SW-brain	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/codex.py	EXT-temp,SW-brain	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/comfyui_render.py	SW-cap-installs,SW-assistant	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/comfyui_transport.py	READ	Configuration/discovery/transport/read-only composition; delegates persistence to listed stores.
+plugins/spec-workflow/scripts/assistant/config.py	READ	Configuration/discovery/transport/read-only composition; delegates persistence to listed stores.
+plugins/spec-workflow/scripts/assistant/default_store.py	SW-neural	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/digest.py	READ	Configuration/discovery/transport/read-only composition; delegates persistence to listed stores.
+plugins/spec-workflow/scripts/assistant/discovery.py	READ	Configuration/discovery/transport/read-only composition; delegates persistence to listed stores.
+plugins/spec-workflow/scripts/assistant/distill.py	SW-brain	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/engine.py	SW-assistant,SW-brain,SW-neural	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/gates.py	FIXTURE	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/harness.py	SW-assistant,EXT-temp	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/marker.py	READ	Configuration/discovery/transport/read-only composition; delegates persistence to listed stores.
+plugins/spec-workflow/scripts/assistant/observability.py	SW-assistant	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/preflight.py	SW-neural	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/provisioning.py	READ	Configuration/discovery/transport/read-only composition; delegates persistence to listed stores.
+plugins/spec-workflow/scripts/assistant/remote_audit.py	SW-assistant	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/remote_control.py	SW-cap-installs,EXT-target	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/remote_control_server.py	EXT-target	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/selection_store.py	SW-neural	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/setup.py	SW-setup,SW-config,SW-brain,SRC-docs	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/store.py	SW-assistant	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/tasks.py	SW-assistant	Assistant writer/callee families.
+plugins/spec-workflow/scripts/assistant/turns.py	READ	Configuration/discovery/transport/read-only composition; delegates persistence to listed stores.
+plugins/spec-workflow/scripts/audit.py	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/board-queue.sh	SW-board,EXT-temp	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/board.sh	SW-board,EXT-temp	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/brain.py	SW-brain	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/brain.sh	SW-brain	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/capability.sh	EXT-cap	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/changelog.py	SW-changelog,EXT-temp	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/changelog.sh	SW-changelog,EXT-temp	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/checkpoint-preflight.sh	SW-control	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/checkpoint.py	SW-control	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/closure-preflight.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/concurrency.sh	SW-config	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/config.py	SW-config	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/design-registry-preflight.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/design-registry.py	SW-docs,SW-ui	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/diff-symbols.py	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/e0-smoke-manual.sh	FIXTURE	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/feedback.py	SW-feedback	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/gate-preflight.sh	SW-control	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/gate.sh	SW-control	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/gitignore-sync.sh	SW-sync	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/guard-board-move.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/guard-brain-access.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/guard-pr-create.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/identity.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/identity_lib.py	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/init-config.sh	SW-config,EXT-temp	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/kb-seed.py	SW-brain	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/kb-seed.sh	SW-brain	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/lib/capability-embed.py	EXT-cap	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/lib/local-state.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/lib/local_state.py	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/lib/plugin-root.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/lib/plugin_root.py	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/lib/repo-root.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/lib/repo_root.py	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/local-state.manifest	SW-sync	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/merge-mode.sh	SW-control	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/neural-view.py	SW-neural,SW-assistant,SW-brain,EXT-cap	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/next.py	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/paginate.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/preflight.sh	SW-sync,SW-neural,READ	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/red-first-preflight.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/review-round.sh	SW-events	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/review_rounds.py	SW-events	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/schema-lint.py	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/seed-board.sh	EXT-temp	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/semver.sh	SRC-docs	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/session-start.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/setup-assistant.sh	SW-setup,SW-sync	Dispatches setup.py; scaffold invokes gitignore-sync.
+plugins/spec-workflow/scripts/similar.py	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/snippet-lint.py	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/sync-configs.py	SW-sync,SW-worktrees,SW-config,SW-feedback	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/telemetry.py	SW-events	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/telemetry_lock.py	SW-events	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/tree-state.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/two-pass-review-preflight.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/ui-hub.py	SW-ui	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/ui-mode.sh	SW-control	Source-defined writer/callee families.
+plugins/spec-workflow/scripts/validate-config.py	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/vendor/axe.min.js	EXT-browser	Browser library/source asset; filesystem writes belong to its serving wrapper.
+plugins/spec-workflow/scripts/wip.py	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/scripts/work-mode.sh	READ	Read-only lookup/guard/parse or stdout-only transformation; no additional default writer.
+plugins/spec-workflow/skills/agent-identities/SKILL.md	SW-config	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/ask-brain/SKILL.md	READ	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/ask-identity/SKILL.md	READ	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/auto-merge/SKILL.md	SW-config,SW-control	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/board/SKILL.md	SW-board	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/brain/SKILL.md	SW-brain	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/build-next/SKILL.md	SW-worktrees,SW-control,SW-docs,SW-brain,SW-events	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/build-next/references/auto-review.md	SW-worktrees,SW-control,SW-docs,SW-brain,SW-events	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/build-next/references/brains.md	SW-worktrees,SW-control,SW-docs,SW-brain,SW-events	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/build-next/references/concurrency.md	SW-worktrees,SW-control,SW-docs,SW-brain,SW-events	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/changelog-generate/SKILL.md	SW-changelog	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/checkpoint/SKILL.md	SW-control,SW-docs	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/comfyui-render/SKILL.md	SW-cap-installs,SW-assistant,EXT-target	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/comfyui-render/agents/openai.yaml	SW-cap-installs,SW-assistant,EXT-target	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/comfyui-render/capability.yaml	SW-cap-installs,SW-assistant,EXT-target	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/concurrency/SKILL.md	SW-config	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/craft-spec/SKILL.md	SRC-docs,SW-config	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/craft-spec/references/host-claude.md	SRC-docs,SW-config	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/craft-spec/references/spec-guide.md	SRC-docs,SW-config	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/create-inbound/SKILL.md	EXT-temp,SW-board	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/dev-up/SKILL.md	EXT-scaffold	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/feedback/SKILL.md	SW-feedback	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/find-task/SKILL.md	EXT-temp,READ	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/gate/SKILL.md	SW-control,SW-events	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/handoff/SKILL.md	SW-docs	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/implement-task/SKILL.md	SW-worktrees,SW-docs,SW-events	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/implement-task/references/clickup.md	SW-worktrees,SW-docs,SW-events	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/implement-task/references/design-and-deltas.md	SW-worktrees,SW-docs,SW-events	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/knowledge-base-seed/SKILL.md	SW-brain	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/migrate-version/SKILL.md	SW-config,SRC-docs	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/migrate-version/references/migrations.md	SW-config,SRC-docs	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/neural-view/SKILL.md	SW-neural	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/next-task/SKILL.md	SW-board	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/pr-review-model/SKILL.md	SW-config	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/queue/SKILL.md	SW-board	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/refine-task-ui/SKILL.md	SW-docs,SW-ui	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/remote-compute-control/SKILL.md	SW-cap-installs,SW-assistant,EXT-target	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/remote-compute-control/capability.yaml	SW-cap-installs,SW-assistant,EXT-target	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/retrospective/SKILL.md	SW-brain,SW-feedback	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/seed-board/SKILL.md	EXT-temp,SW-board	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/setup-assistant/SKILL.md	SW-setup	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/setup-project/SKILL.md	SW-config,SW-docs,SW-sync,SRC-docs	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/setup-project/references/github-project-setup.md	SW-config,SW-docs,SW-sync,SRC-docs	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/setup-project/references/host-claude.md	SW-config,SW-docs,SW-sync,SRC-docs	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/sync-project-configs/SKILL.md	SW-sync,SW-worktrees	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/ui-mode/SKILL.md	SW-control	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/ui-options/SKILL.md	SW-ui,SW-docs	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/whisper-sidecar/SKILL.md	EXT-cap	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/whisper-sidecar/capability.yaml	EXT-cap	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/skills/whisper-sidecar/whisper_sidecar.py	EXT-cap	Skill and referenced instructions delegate to these writer families; configured artifacts remain consumer-owned.
+plugins/spec-workflow/templates/identities/dev/ROLE.md	SRC-docs,SW-config	Copied/configured project source; no hidden runtime cache.
+plugins/spec-workflow/templates/identities/orchestrator/ROLE.md	SRC-docs,SW-config	Copied/configured project source; no hidden runtime cache.
+plugins/spec-workflow/templates/identities/reviewer/ROLE.md	SRC-docs,SW-config	Copied/configured project source; no hidden runtime cache.
+plugins/spec-workflow/templates/neural-view.html	EXT-browser	Browser storage/server calls only.
+plugins/spec-workflow/templates/project.example.yaml	SRC-docs,SW-config	Copied/configured project source; no hidden runtime cache.
+plugins/spec-workflow/templates/spec.example.yaml	SRC-docs,SW-config	Copied/configured project source; no hidden runtime cache.
+plugins/spec-workflow/templates/ui-options.html	EXT-browser	Browser storage/server calls only.
+plugins/spec-workflow/templates/vendor/BufferGeometryUtils.js	EXT-browser	Browser library/source asset; filesystem writes belong to its serving wrapper.
+plugins/spec-workflow/templates/vendor/GLTFLoader.js	EXT-browser	Browser library/source asset; filesystem writes belong to its serving wrapper.
+plugins/spec-workflow/templates/vendor/README.md	EXT-browser	Browser library/source asset; filesystem writes belong to its serving wrapper.
+plugins/spec-workflow/templates/vendor/SkeletonUtils.js	EXT-browser	Browser library/source asset; filesystem writes belong to its serving wrapper.
+plugins/spec-workflow/templates/vendor/mermaid.min.js	EXT-browser	Browser library/source asset; filesystem writes belong to its serving wrapper.
+plugins/spec-workflow/templates/vendor/three.core.min.js	EXT-browser	Browser library/source asset; filesystem writes belong to its serving wrapper.
+plugins/spec-workflow/templates/vendor/three.module.min.js	EXT-browser	Browser library/source asset; filesystem writes belong to its serving wrapper.
+plugins/spec-workflow/tests/_lib.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/check-evals.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/e2e-voice-loop.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/assistant-bad.project.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/assistant-good.project.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/bounds-bool.project.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/bounds-float.project.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/broken.project.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/broken.project.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/chat-stream/claude.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/chat-stream/codex.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/clickup-bad.project.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/clickup-good.project.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/codex-capability-bad.project.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/codex-capability-good.project.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/entity-edge-color-bad.project.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/entity-kinds-bad.project.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/entity-kinds-good.project.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/feedback-bad-refs.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/feedback-unquoted-ts.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/feedback-valid.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/gh-failures/README.md	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/gh-failures/jsondecodeerror-ansi-traceback-py313.txt	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/gh-failures/masked-unknown-owner-type.txt	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/gh-failures/rate-limit-endpoint-graphql-absent.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/gh-failures/rate-limit-endpoint-near-exhausted.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/gh-failures/rate-limit-endpoint-sample.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/gh-failures/rate-limit-honest-user-id.txt	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/issues.control-chars.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/issues.sample.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/items.dance-full-progress.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/items.dance-full-review.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/items.dance-headroom.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/items.dance-mixed.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/items.sample.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/items.satisfied.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/items.serial-both.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/items.serial-progress.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/items.serial-review.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/items.serial-safe.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/items.unseeded.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/items.wip.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/outcome-ranking-golden.txt	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/shorthand.project.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/snippet-lint/bare-heredoc-match.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/snippet-lint/bash4-constructs.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/snippet-lint/bash4-marked-empty-reason.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/snippet-lint/bash4-marked.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/snippet-lint/clean.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/snippet-lint/dash-heredoc-match.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/snippet-lint/dq-interpolation-clean.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/snippet-lint/dq-match-with-interpolation.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/snippet-lint/match-statement.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/snippet-lint/module-heredoc-match.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/snippet-lint/nested-fstring-c.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/snippet-lint/nested-fstring-heredoc.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/snippet-lint/quote-idiom.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/snippet-lint/unterminated-dq.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/status-golden-lines.txt	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/stub-argv-echo/argvecho	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/stub-claude/claude	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/stub-codex/codex	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/stub-harness/claude	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/stub-harness/codex	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/stub-mcp-server/mcpserver	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/stub-provisioning-check/provcheck	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/stub-whisper-server/fake-whisper-server	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/telemetry.jsonl	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/valid.project.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/valid.project.serial.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/valid.project.serial4.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/valid.project.serial5.json	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/fixtures/valid.project.yaml	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/run-tests.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-agents-claude.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-argument-semantics.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-adapter.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-artifact-panel.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-artifacts.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-chat.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-claude.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-continuation.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-default.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-discovery.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-distill.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-embeddings.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-engine.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-gates.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-inspector.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-isolation.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-marker.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-metrics.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-preflight.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-selection-memory.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-selection.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-store.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-stream.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-stt.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-switch.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-tasks.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-terminal.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-traces.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-turns.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-voice-tts.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-assistant-voice-turn.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-board-audit.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-board-bug-add.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-board-cache.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-board-labels.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-board-queue.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-atomic.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-confidence.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-events.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-explain.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-hybrid-recall.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-index.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-library.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-outcome-ranking.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-outcome-tallies.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-outcome.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-path.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-recall-header.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-recency-decay.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-shrink-guard.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain-staleness.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-brain.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-capability-embeddings.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-capability-enablement.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-capability-index.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-capability-invoke-mcp.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-capability-invoke.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-capability-language.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-capability-provisioning.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-capability-roster.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-changelog-ui.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-changelog.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-checkpoint.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-closure.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-codex-e0-smoke-streams.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-codex-e0-smoke.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-codex-marketplace.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-codex-parity-walkthrough.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-codex-plugin-json.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-codex-skill-lint.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-comfyui-render.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-comment-steering.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-commit-convention-config.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-compute-overlay.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-concurrency.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-config.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-conventional-commit-mandate.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-design-registry.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-diff-symbols.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-entity-index.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-feedback.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-find-task.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-gate-changelog-race.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-gate-core.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-gate-fingerprint.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-gate-lessons.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-gate-preflight.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-gh-failures-corpus.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-gitignore-sync.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-guard-board-move-parse.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-guard-brain-access.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-guard-pr-create.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-host-portability.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-identity.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-kb-seed.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-lifecycle-retry.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-local-state-manifest.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-merge-dance.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-merge-mode.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-neural-view-entities.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-neural-view-lifecycle.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-neural-view-projects.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-neural-view-render-body.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-neural-view-rescan.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-neural-view-search-shortcut.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-neural-view-sessions.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-neural-view-template.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-next-similar.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-pagination.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-plugin-root.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-preflight.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-red-first-preflight.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-remote-audit.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-remote-control.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-repo-hygiene.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-repo-root.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-review-rounds.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-runner-filter.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-schema-lint.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-section-guard.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-semver.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-serial-delivery.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-session-init.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-setup-assistant.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-setup-project-gitignore.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-skill-contracts.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-snippet-lint.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-sync-configs.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-syntax.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-telemetry.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-tmpdir-isolation.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-two-pass-review-preflight.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-ui-hub.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-whisper-sidecar.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-wip-admission.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/section-work-mode.sh	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/test-preflight-freshness.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/test_chat_stream.cjs	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/test_chat_stream.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/test_chat_stream_lifecycle.cjs	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/test_checkpoint.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/test_closure.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/test_comfyui_render.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/test_engine_lifecycle.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/test_remote_audit.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/test_remote_control.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/test_review_rounds.py	FIXTURE	Verification source/fixture; no consumer runtime default.
+plugins/spec-workflow/tests/test_wip_admission.py	FIXTURE	Verification source/fixture; no consumer runtime default.

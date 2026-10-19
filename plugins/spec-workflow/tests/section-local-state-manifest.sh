@@ -37,13 +37,35 @@ LS_EXP_IGNORE="$(printf '%s\n' \
     '.neural-network/identities/*/brain/index.sqlite3' \
     '.neural-network/identities/*/brain/.staleness-cache.json' \
     '.claude/assistant/' \
-    '.claude/skills/whisper-sidecar/')"
+    '.claude/skills/whisper-sidecar/' \
+    '.claude/board-queue.lock/' \
+    '.claude/board-cache.json.tmp' \
+    '.claude/.setup-assistant.lock' \
+    '.neural-network/identities/.brain.lock' \
+    '.neural-network/identities/**/.brain-tmp-*' \
+    '.neural-network/identities/*/brain/index.sqlite3-journal' \
+    '.neural-network/identities/*/brain/index.sqlite3-wal' \
+    '.neural-network/identities/*/brain/index.sqlite3-shm' \
+    '.neural-network/feedbacks/**/*.yaml.tmp-*' \
+    '/.setup-assistant-tmp-*' \
+    '.neural-network/.setup-assistant-tmp-*' \
+    '.claude/skills/remote-compute-control/' \
+    '.claude/skills/comfyui-render/' \
+    '.claude/skills/.remote-control-*/' \
+    '.claude/skills/.comfyui-*/' \
+    '.neural-network/.project.*' \
+    '.neural-network/identities/assistant/brain/media/chat/.publish-tmp-*' \
+    '/CHANGELOG.md.tmp')"
 LS_EXP_TRACK="$(printf '%s\n' \
     '.neural-network/feedbacks/' \
     '.neural-network/identities/' \
     '.neural-network/brain-events/' \
     '.neural-network/specs/' \
-    '.neural-network/project.yaml')"
+    '.neural-network/project.yaml' \
+    'docs/handoffs/' \
+    'docs/ui-options/' \
+    'docs/design/' \
+    'docs/spec-deltas/')"
 
 # --- manifest exists ------------------------------------------------------
 if [[ -f "$LS_MANIFEST" ]]; then present=yes; else present=no; fi

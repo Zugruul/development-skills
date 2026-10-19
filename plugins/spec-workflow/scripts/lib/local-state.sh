@@ -46,15 +46,15 @@ spec_workflow_local_state_paths() {
     local want="$1" manifest="${2:-}" line policy path
     [[ -n "$manifest" ]] || manifest="$(spec_workflow_local_state_manifest)" || return 1
     [[ -f "$manifest" ]] || { echo "local-state: manifest not found: $manifest" >&2; return 1; }
+    [[ -r "$manifest" ]] || { echo "local-state: manifest unreadable: $manifest" >&2; return 1; }
     while IFS= read -r line || [[ -n "$line" ]]; do
         case "$line" in ''|'#'*) continue ;; esac
         policy="${line%%$'\t'*}"
         path="${line#*$'\t'}"
         [[ "$policy" == "$want" ]] && printf '%s\n' "$path"
-    done < "$manifest"
-    # The read-loop's EOF condition leaves $? == 1; return success explicitly so
-    # callers under `set -e`/rc-checks (and `bash local-state.sh ignore`) don't
-    # see a spurious failure on a normal read.
+        : # A nonmatching final policy is successful parsing, not a read error.
+    done < "$manifest" || return 1
+    # Reaching EOF is successful parsing; redirection failures above propagate.
     return 0
 }
 
@@ -64,6 +64,7 @@ spec_workflow_local_state_policy() {
     local target="$1" manifest="${2:-}" line policy path
     [[ -n "$manifest" ]] || manifest="$(spec_workflow_local_state_manifest)" || return 1
     [[ -f "$manifest" ]] || { echo "local-state: manifest not found: $manifest" >&2; return 1; }
+    [[ -r "$manifest" ]] || { echo "local-state: manifest unreadable: $manifest" >&2; return 1; }
     while IFS= read -r line || [[ -n "$line" ]]; do
         case "$line" in ''|'#'*) continue ;; esac
         policy="${line%%$'\t'*}"
@@ -72,7 +73,8 @@ spec_workflow_local_state_policy() {
             printf '%s\n' "$policy"
             return 0
         fi
-    done < "$manifest"
+        :
+    done < "$manifest" || return 1
     return 1
 }
 

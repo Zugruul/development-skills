@@ -11,6 +11,7 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 out="$(cd "$T" && bash "$PLUGIN/scripts/preflight.sh" --spec)"
 check "no config -> setup-project" "PREFLIGHT FAIL: no .neural-network/project.yaml" "$out"
 mkdir -p "$T/.claude" "$T/.neural-network" && cp "$FIX/valid.project.json" "$T/.neural-network/project.json"
+bash "$PLUGIN/scripts/gitignore-sync.sh" "$T/.gitignore"
 out="$(cd "$T" && bash "$PLUGIN/scripts/preflight.sh" --spec)"
 check "missing spec file -> craft-spec" "spec file(s) missing: SPEC.md" "$out"
 touch "$T/SPEC.md"
@@ -29,6 +30,7 @@ check "config-only ok" "preflight ok: config present" "$out"
 _sc_repo="$(mktemp -d)"
 ( cd "$_sc_repo" && git init -q . )
 mkdir -p "$_sc_repo/.claude" "$_sc_repo/.neural-network" && cp "$FIX/valid.project.json" "$_sc_repo/.neural-network/project.json"
+bash "$PLUGIN/scripts/gitignore-sync.sh" "$_sc_repo/.gitignore"
 touch "$_sc_repo/SPEC.md"
 mkdir -p "$_sc_repo/plugins/spec-workflow/scripts"
 printf 'identity content v1\n' >"$_sc_repo/plugins/spec-workflow/scripts/identity_lib.py"
@@ -67,6 +69,7 @@ check "no cache found: preflight still reports ok" "preflight ok" "$out"
 _sc_consumer="$(mktemp -d)"
 ( cd "$_sc_consumer" && git init -q . )
 mkdir -p "$_sc_consumer/.claude" "$_sc_consumer/.neural-network" && cp "$FIX/valid.project.json" "$_sc_consumer/.neural-network/project.json"
+bash "$PLUGIN/scripts/gitignore-sync.sh" "$_sc_consumer/.gitignore"
 touch "$_sc_consumer/SPEC.md"
 out="$(cd "$_sc_consumer" && SPEC_WORKFLOW_CACHE_SEARCH_BASE="$_sc_cachebase" bash "$PLUGIN/scripts/preflight.sh")"
 check_absent "no local plugin source: no warning" "PLUGIN CACHE WARN" "$out"
@@ -97,3 +100,9 @@ rm -rf "$_sc_multibase"
 
 rm -rf "$_sc_repo" "$_sc_cachebase" "$_sc_cachebase2" "$_sc_emptybase" "$_sc_consumer"
 
+
+# #274 exercises both loader modes, real rendering, failed I/O and cleanup.
+_freshness_out="$(python3 "$PLUGIN/tests/test-preflight-freshness.py" 2>&1)"
+_freshness_rc=$?
+check_rc "preflight freshness integration" 0 "$_freshness_rc"
+if [[ "$_freshness_rc" != 0 ]]; then printf '%s\n' "$_freshness_out"; fi

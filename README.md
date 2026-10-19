@@ -200,6 +200,16 @@ for the real-time view of recalls lighting up the network.
 
 ## Testing
 
+Task-start preflight validates the resolved project config and checks the managed
+ignore block against the current manifest. A missing/stale block or inspection
+failure prints `PREFLIGHT FAIL` with a repair command; skill callers stop on that
+line even though the loader exits zero. Repair explicitly with
+`bash plugins/spec-workflow/scripts/gitignore-sync.sh /path/to/repo/.gitignore`
+(or the corresponding installed plugin script), then rerun preflight. Dry-run
+uses the same comparison and cleans its own temporary files, even when TMPDIR
+points inside the repo. See the [runtime path audit](docs/audits/runtime-paths-274.md)
+for all-plugin coverage and caller-selected path exclusions.
+
 ```bash
 bash plugins/spec-workflow/tests/run-tests.sh    # hermetic: validator fixtures + preflight (CI runs this + shellcheck + manifest validation)
 claude plugin eval plugins/spec-workflow         # skill evals (early access; needs API credits)
