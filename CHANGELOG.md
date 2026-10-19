@@ -10,6 +10,9 @@
   > 2. Preserve user-owned ignore bytes, report helper failures, and clean owned temporary files on handled exits.
   > 3. Audit all shipped plugin files, register missing runtime paths, and document repair behavior and supported boundaries.
 
+### Documentation
+- **spec:** fold preflight freshness delta into memory contract (#274) (`7c25175`)
+
 ## v0.73.6 — 2026-10-19
 
 ### Fixes
