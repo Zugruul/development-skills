@@ -10,6 +10,9 @@
   > 2. Refuse pending or corrupt history and require a completed approval before either merge route.
   > 3. Preserve tagged review passes and historical metrics; document recovery and add regression coverage.
 
+### Documentation
+- **spec:** fold bounded review admission contract (#241) (`25e10ee`)
+
 ## v0.73.5 — 2026-10-19
 
 ### Fixes
