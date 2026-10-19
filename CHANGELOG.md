@@ -10,6 +10,16 @@
   > 2. Preserve queued starts for retry after resume and keep existing work able to reach a stable boundary.
   > 3. Cover primary worktree state, effective configuration and renamed board statuses with committed failing tests.
 
+### Documentation
+- **spec:** fold 239 checkpoint admission delta into compatibility contract (`66042ba`)
+  > 1. Describe shared checkpoint admission, configured board statuses and recoverable queued starts in §9.2.
+  > 2. Archive the applied task delta alongside the published implementation.
+
+### Chores
+- **feedback:** archive checkpoint enforcement workflow feedback (#239) (`c6104ec`)
+  > 1. Route root, configured-status and recall-ordering lessons to the completed retrospective.
+  > 2. Record the resolved transient integration failure without creating duplicate work.
+
 ## v0.73.3 — 2026-10-18
 
 ### Fixes
