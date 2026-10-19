@@ -14,6 +14,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as C  # noqa: E402
 from checkpoint import CheckpointError, require_running  # noqa: E402
+from wip import Policy, WipError, normalized  # noqa: E402
 
 
 def main(cfg_path, bid, items_path, only_spec=""):
@@ -27,16 +28,20 @@ def main(cfg_path, bid, items_path, only_spec=""):
     flow = board["statusFlow"]
     prios = list(board["fields"]["priority"]["options"])  # order = rank
     specs = [s for s in cfg["specs"] if s["board"] == board["id"] and (not only_spec or s["id"] == only_spec)]
-    max_wip = cfg.get("methodology", {}).get("maxInProgress", 1)
-    wip_status = flow[1] if len(flow) > 1 else flow[0]
-    review_status = flow[2] if len(flow) > 2 else None
-    serial_delivery = bool(cfg.get("methodology", {}).get("serialDelivery", False))
+    try:
+        policy = Policy(cfg, bid)
+    except WipError as exc:
+        sys.exit(f"WIP BLOCKED: {exc}")
+    max_wip = policy.limit
+    wip_status = policy.work
+    review_status = policy.review
+    serial_delivery = policy.serial
 
     def title_of(it):
         return it.get("title") or it.get("content", {}).get("title", "")
 
-    wip = [it for it in data["items"] if it.get("status") == wip_status]
-    review_wip = [it for it in data["items"] if review_status and it.get("status") == review_status]
+    wip = [it for it in data["items"] if normalized(it.get("status") or "") == normalized(wip_status)]
+    review_wip = [it for it in data["items"] if review_status and normalized(it.get("status") or "") == normalized(review_status)]
 
     def num_of(it):
         return it.get("content", {}).get("number")

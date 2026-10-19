@@ -160,6 +160,7 @@ SECTIONS=(
     section-merge-dance.sh
     section-preflight.sh
     section-checkpoint.sh
+    section-wip-admission.sh
     section-ui-hub.sh
     section-neural-view-template.sh
     section-neural-view-search-shortcut.sh

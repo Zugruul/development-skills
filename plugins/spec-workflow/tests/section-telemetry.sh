@@ -69,7 +69,7 @@ cat >"$BMGH/gh" <<'FAKE'
 #!/usr/bin/env bash
 set -uo pipefail
 case "$1 $2" in
-    "project item-list") echo '{"items":[{"id":"ITEM_1","content":{"number":1}}]}' ;;
+    "project item-list") printf '{"items":[{"id":"ITEM_1","status":"%s","content":{"number":1}}]}\n' "${FAKE_GH_ITEM_STATUS:-Backlog}" ;;
     "project item-edit") echo "edited" ;;
     *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
 esac
@@ -88,12 +88,25 @@ check "move telemetry: task field set" '"task": "1"' "$(cat "$BM/.claude/telemet
 
 BM2="$(mktemp -d)"; mkdir -p "$BM2/.claude" "$BM2/.neural-network"
 cp "$FIX/valid.project.yaml" "$BM2/.neural-network/project.yaml"
-# marker must exist BEFORE .claude goes read-only below (the check only reads it)
-printf '{"1": true}' >"$BM2/.claude/board-comments-seen.json"
+# An unwritable state directory cannot support the mandatory admission mutex.
+# Preserve telemetry/cache best-effort behavior on a capacity-release move:
+# the truthful remote snapshot is occupied, and Backlog needs no WIP admission.
 chmod 555 "$BM2/.claude"
-out2="$(cd "$BM2" && PATH="$BMGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 1 "In progress" 2>&1; echo "rc=$?")"
+out2="$(cd "$BM2" && PATH="$BMGH:$PATH" FAKE_GH_ITEM_STATUS="In progress" bash "$PLUGIN/scripts/board.sh" move 1 "Backlog" 2>&1; echo "rc=$?")"
 chmod 755 "$BM2/.claude"
-check "move telemetry: unwritable .claude does not fail the move" "moved #1 -> In progress" "$out2"
-check "move telemetry: unwritable .claude -- still exits 0" "rc=0" "$out2"
-rm -rf "$BM" "$BM2" "$BMGH"
+check "move telemetry: unwritable .claude does not fail capacity release" "moved #1 -> Backlog" "$out2"
+check "move telemetry: unwritable .claude -- release still exits 0" "rc=0" "$out2"
 
+# Isolate telemetry failure from admission: a directory cannot be opened for
+# JSONL append even as root, while the .claude parent still allows the mutex.
+BM3="$(mktemp -d)"; mkdir -p "$BM3/.claude/telemetry.jsonl" "$BM3/.neural-network"
+cp "$FIX/valid.project.yaml" "$BM3/.neural-network/project.yaml"
+printf '{"1": true}' >"$BM3/.claude/board-comments-seen.json"
+out3="$(cd "$BM3" && PATH="$BMGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 1 "In progress" 2>&1; echo "rc=$?")"
+check "move telemetry: failed telemetry append does not fail admitted start" "moved #1 -> In progress" "$out3"
+check "move telemetry: failed telemetry append -- admitted start exits 0" "rc=0" "$out3"
+[[ -d "$BM3/.claude/telemetry.jsonl" ]]
+check_rc "move telemetry: unwritable telemetry destination remains a directory" 0 "$?"
+[[ ! -e "$BM3/.claude/board-wip.lock" ]]
+check_rc "move telemetry: admission lock released despite telemetry failure" 0 "$?"
+rm -rf "$BM" "$BM2" "$BM3" "$BMGH"

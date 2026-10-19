@@ -3,9 +3,13 @@
 `maxInProgress` is THE concurrency knob: the board WIP limit AND the number of
 parallel implementation **lanes**. `1` (default) = strictly sequential — one task,
 one dev agent, at a time. `N>1` lets the orchestrator run up to N tasks at once,
-each in its own lane. The picker (`next.py`) already refuses to hand out more than
-N in-progress tasks, so the board can never exceed the limit; these rules govern
-how the orchestrator runs the lanes safely.
+each in its own lane. The picker (`next.py`) reports available capacity; `board.sh`
+checks a fresh complete board snapshot immediately before a direct or replayed
+mutation into a counted status. Cooperating processes and linked worktrees of
+one clone serialize that admission. Other clones, raw API writes and eventual
+consistency of GitHub reads remain external limits; there is no distributed
+reservation or guarantee that the board can never exceed the limit. These rules
+govern how the orchestrator runs the lanes safely.
 
 ## A lane
 

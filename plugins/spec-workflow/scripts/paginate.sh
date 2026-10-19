@@ -24,10 +24,14 @@ PAGINATE_HARD_CAP="${PAGINATE_HARD_CAP:-51200}"  # 400 * 2^7 — worst-case back
 
 # gh_project_items_json <project-number> <owner> -> full {"items":[...]} JSON, all pages
 gh_project_items_json() {
-    local pn="$1" owner_arg="$2" limit="$PAGINATE_BASE_LIMIT" out count
+    local pn="$1" owner_arg="$2" limit="$PAGINATE_BASE_LIMIT" out count strict="${3:-}"
     while :; do
         out="$(gh project item-list "$pn" --owner "$owner_arg" --format json --limit "$limit")" || return 1
-        count="$(python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("items",[])))' <<<"$out")"
+        if [[ "$strict" == "--strict" ]]; then
+            count="$(python3 "${BASH_SOURCE[0]%/*}/wip.py" page "$limit" <<<"$out")" || return 3
+        else
+            count="$(python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("items",[])))' <<<"$out")"
+        fi
         # count < limit is the only proof of exhaustion (gh returned less than a full page).
         # Hitting the hard cap with a still-full page means we stopped WITHOUT that proof —
         # that is a real truncation risk, not silent: warn on stderr (SPEC 7.4).
@@ -36,6 +40,10 @@ gh_project_items_json() {
             return 0
         fi
         if [[ "$limit" -ge "$PAGINATE_HARD_CAP" ]]; then
+            if [[ "$strict" == "--strict" ]]; then
+                echo "WIP BLOCKED: pagination hard cap ($PAGINATE_HARD_CAP); board snapshot incomplete" >&2
+                return 3
+            fi
             echo "WARNING: hit pagination hard cap ($PAGINATE_HARD_CAP) fetching project items — results may be incomplete" >&2
             printf '%s' "$out"
             return 0

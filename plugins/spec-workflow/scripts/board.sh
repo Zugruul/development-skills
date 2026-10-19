@@ -66,12 +66,13 @@ PY
 opt_id() { # $1=status|priority  $2=option name (case-insensitive) -> option id
     python3 - "$CONFIG" "${BOARD:-}" "$1" "$2" <<'PY'
 import sys
+from wip import normalized
 import config as C
 cfg = C.load_config(path=sys.argv[1], warn=False); bid = sys.argv[2]
 b = next((x for x in cfg["boards"] if x["id"] == bid), cfg["boards"][0])
 opts = b["fields"][sys.argv[3]]["options"]
-q = sys.argv[4].strip().lower()
-print(next((v for k, v in opts.items() if k.lower() == q), ""))
+q = normalized(sys.argv[4])
+print(next((v for k, v in opts.items() if normalized(k) == q), ""))
 PY
 }
 

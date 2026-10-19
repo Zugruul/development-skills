@@ -210,23 +210,13 @@ _poll_visible() {
 # refreshes the whole cache as a side effect (the fetch happens either way),
 # so _item_id_rl calls made right after this one are free.
 _current_status() { # issue# -> status string ("" if not found / lookup failed)
-    local num="$1" out
-    out="$(gh_project_items_json "$PN" "$OWNER" 2>/dev/null)" || { printf ''; return 0; }
-    # Side-effect cache refresh (best-effort write, see board.sh); THIS call's
-    # answer is parsed straight from $out, same reasoning as _item_id_rl.
+    local num="$1" out current
+    out="$(gh_project_items_json "$PN" "$OWNER" --strict)" || return 1
+    # A repeat can only be discarded when a complete snapshot establishes
+    # one target. A malformed/ambiguous read must retain queued recovery work.
+    current="$(python3 "$HERE/wip.py" current "$CONFIG" "${BOARD:-}" "$num" <<<"$out")" || return 1
     printf '%s' "$out" | _cache_refresh_from_items
-    python3 -c '
-import json, sys
-try:
-    n = int(sys.argv[1])
-    data = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-for it in data.get("items", []):
-    if (it.get("content") or {}).get("number") == n:
-        print(it.get("status") or "")
-        break
-' "$num" <<<"$out"
+    printf '%s' "$current"
 }
 
 # _mutate_field <issue#> <field-id> <edit-flag> <value> <new-status-or-empty>
@@ -245,7 +235,14 @@ for it in data.get("items", []):
 # rate-limited, 3 = no such item (caller prints the specific message).
 _mutate_field() {
     local num="$1" field="$2" flag="$3" value="$4" new_status="$5" id out rc id2
-    id="$(_item_id_rl "$num")"; rc=$?
+    # Admission passes the exact fresh identity. It must never be replaced by
+    # a concurrent cache refresh or the generic stale-id retry below.
+    if [[ -n "${6:-}" ]]; then
+        id="$6"
+        rc=0
+    else
+        id="$(_item_id_rl "$num")"; rc=$?
+    fi
     [[ $rc -eq 2 ]] && return 2
     [[ -z "$id" ]] && return 3
     out="$(gh project item-edit --id "$id" --project-id "$PID" --field-id "$field" "$flag" "$value" 2>&1)"; rc=$?
@@ -257,6 +254,10 @@ _mutate_field() {
         return 2
     fi
     _cache_drop "$num"
+    if [[ -n "${6:-}" ]]; then
+        echo "$out" >&2
+        return 1
+    fi
     id2="$(_item_id_rl "$num")"; rc=$?
     if [[ $rc -eq 2 ]]; then return 2; fi
     if [[ -z "$id2" || "$id2" == "$id" ]]; then
@@ -272,6 +273,50 @@ _mutate_field() {
     echo "$out" >&2
     return 1
 }
+
+# Lock ordering is flush -> WIP. Direct moves never take the flush lock.
+# A subshell owns cleanup without overwriting the caller's queue traps. This
+# directory is shared through ROOT across linked worktrees; never steal on age.
+# Hard-crash leftovers require verified-idle manual recovery (see README).
+_wip_mutate() (
+    local num="$1" status="$2" opt="$3" lock="$ROOT/.claude/board-wip.lock"
+    local waited=0 out err rc id
+    mkdir -p "$(dirname "$lock")" || return 1
+    until mkdir "$lock" 2>/dev/null; do
+        if [[ "$waited" -eq 0 ]]; then
+            echo "WIP: waiting for admission mutex $lock" >&2
+        fi
+        if [[ "$waited" -ge 200 ]]; then
+            echo "WIP BLOCKED: admission mutex busy or stuck at $lock; verify all holders and child commands are idle before manual recovery (never remove a live lock)" >&2
+            return 1
+        fi
+        sleep 0.05
+        waited=$((waited + 1))
+    done
+    trap 'rm -f "$lock/pid"; rmdir "$lock" 2>/dev/null || true' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    trap 'exit 129' HUP
+    printf '%s\n' "$$" >"$lock/pid" || return 1
+    # Do not stretch the early checkpoint check across time spent waiting.
+    bash "$HERE/checkpoint-preflight.sh" --root "$ROOT" --board "${BOARD:-}" --status "$status" || return 1
+    err="$(mktemp)" || return 1
+    out="$(gh_project_items_json "$PN" "$OWNER" --strict 2>"$err")"; rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        # rc=3 is malformed/incomplete data, never a transport rate limit.
+        if [[ "$rc" -ne 3 ]] && _rate_limited "$(cat "$err")"; then
+            rm -f "$err"
+            return 2
+        fi
+        echo "WIP BLOCKED: cannot obtain complete board snapshot" >&2
+        cat "$err" >&2
+        rm -f "$err"
+        return 1
+    fi
+    rm -f "$err"
+    id="$(python3 "$HERE/wip.py" admit "$CONFIG" "${BOARD:-}" "$num" <<<"$out")" || return 1
+    _mutate_field "$num" "$STATUS_FIELD" --single-select-option-id "$opt" "$status" "$id"
+)
 
 # _do_move/_do_prio/_do_est: same effect as the move/prio/est case branches,
 # factored out so both the live command AND flush replay share one
@@ -348,7 +393,12 @@ print("yes" if data.get(num) is True else "no")
         echo "ERROR: bad issue# or status '$status' (must match statusFlow)" >&2
         return 1
     fi
-    _mutate_field "$num" "$STATUS_FIELD" --single-select-option-id "$opt" "$status"; rc=$?
+    python3 "$HERE/wip.py" classify "$CONFIG" "${BOARD:-}" "$status"; rc=$?
+    case "$rc" in
+        0) _wip_mutate "$num" "$status" "$opt"; rc=$? ;;
+        3) _mutate_field "$num" "$STATUS_FIELD" --single-select-option-id "$opt" "$status"; rc=$? ;;
+        *) return 1 ;;
+    esac
     case "$rc" in
         0)
             echo "moved #$num -> $status"

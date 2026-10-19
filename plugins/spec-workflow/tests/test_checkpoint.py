@@ -227,7 +227,9 @@ esac
     def rename_work_status(self, board, name):
         old = board['statusFlow'][1]
         board['statusFlow'][1] = name
-        board['fields']['status']['options'][name] = board['fields']['status']['options'][old]
+        # A real rename replaces the label; keeping the old label with the
+        # same ID would be the ambiguous WIP alias rejected by #240.
+        board['fields']['status']['options'][name] = board['fields']['status']['options'].pop(old)
 
     def test_custom_work_status_refuses_then_recovers_without_broadening_comments(self):
         self.rename_work_status(self.cfg['boards'][0], 'Doing')
@@ -253,6 +255,7 @@ esac
         second['id'] = 'second'
         self.rename_work_status(second, 'Coding')
         first['fields']['status']['options']['Coding'] = 'other-option'
+        second['fields']['status']['options']['Doing'] = 'other-option'
         self.cfg['boards'].append(second)
         self.save()
         self.flag.touch()

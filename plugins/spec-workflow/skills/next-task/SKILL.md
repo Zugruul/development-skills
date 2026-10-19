@@ -32,3 +32,9 @@ Report the chosen `#N` and why (priority + epic + any comment-driven changes). H
 
 ## No work left?
 If `next` prints `(backlog empty)` or only BLOCKED items remain, stop the loop and write a handoff (see the `handoff` skill).
+
+### WIP admission at board mutations
+
+`board.sh` enforces WIP admission at direct and replayed status mutations. It counts every item in the active board's work status (`statusFlow[1]`, or the sole status), plus review (`statusFlow[2]`) when `serialDelivery` is true; `maxInProgress` defaults to 1 and must be a positive integer, and `serialDelivery` defaults to false and must be boolean. A task already occupying either counted status may resume or move between counted statuses without adding a slot, even on an over-limit board. Entry into review directly also requires capacity in serial mode. The command reads a fresh complete board snapshot, validates one target identity, and serializes admission across cooperating processes and linked worktrees of this clone. Capacity or invalid-state refusals do not newly queue direct starts; blocked queued starts remain recoverable and are checked again on replay. Proven rate limits still defer through the existing queue. Existing checkpoint, comments, gate, review and closure guards remain required.
+
+The picker reports capacity before work begins; mutation admission makes the final decision. The unchanged Claude hook is additional offline defense in depth; `SERIAL_DELIVERY_OVERRIDE=1` overrides only that hook, never command admission. There is no slot ledger or distributed reservation: other clones, raw API writes and eventual consistency of GitHub reads can still exceed the limit. See the plugin README's WIP admission recovery instructions for a busy or interrupted local mutex.
