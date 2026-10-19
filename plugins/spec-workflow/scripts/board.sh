@@ -283,6 +283,7 @@ _board_add() { # type title [prio] [origin-issue#] -> creates + boards one issue
 
 case "${1:-}" in
     next)
+        bash "$HERE/checkpoint-preflight.sh" --root "$ROOT" --board "${BOARD:-}" || exit 1
         _flush_queue
         _tmp="$(mktemp)"; _errf="$(mktemp)"; trap 'rm -f "$_tmp" "$_errf"' EXIT
         if gh_project_items_json "$PN" "$OWNER" >"$_tmp" 2>"$_errf"; then

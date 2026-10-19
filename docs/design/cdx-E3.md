@@ -250,3 +250,27 @@ still read historical task-close/retro-skip records. Adapt fixtures only when th
 now legitimately need closure evidence; never weaken existing assertions.
 Checkpoint enforcement (#239), WIP enforcement (#240), review-round caps (#241),
 and null estimate support (#540) remain separate tasks.
+
+
+## Follow-up: #239 — gap #7 fix (checkpoint enforcement)
+
+Grounded in SPEC-CODEX-COMPAT §9.2/§12 and the checkpoint skill's safe-boundary contract.
+
+### Components and interfaces
+A shared, read-only checkpoint check provides a standalone `checkpoint-preflight.sh [--root DIR]` entrypoint and reusable logic for task selection. It loads effective config with the existing config loader and resolves `paths.checkpointFile` (default `.claude/CHECKPOINT`). Relative paths belong to the PRIMARY repository root; absolute configured paths remain absolute. Linked worktrees share that primary pause state, using the existing root resolver. An explicit root is honored. The direct `next.py` entrypoint must also resolve primary state from its configured repository, rather than accidentally inspecting a linked worktree's local `.claude`.
+
+Absent flag means silent success. Present flag, including an empty flag, means a nonzero actionable refusal naming the path and resume action. Invalid/unreadable configuration or uninspectable checkpoint state fails closed; do not silently fall back from a malformed configured path. No new persistent state, config field, schema version, or host-specific implementation is introduced.
+
+### Enforcement and sequences
+1. Before task selection, `board.sh next` and direct `next.py` refuse to emit PICK/RESUME while paused. The shell entrypoint checks before board reads/replay so pause is detectable offline. General preflight and session-start report the same configured checkpoint state, retaining their existing advisory/bootstrap contracts.
+2. At the actual `_do_move()` boundary, every normalized target matching the active board's work status (`statusFlow[1]`, with the picker's single-status fallback) runs the same check before comments-marker lookup, API mutation, queueing or transition telemetry. This deliberately also refuses repeat work-status requests; it makes no claim to distinguish an idempotent status write from a new start using potentially stale board cache.
+3. A deferred work-status operation is rechecked at replay. If paused, no mutation occurs and the operation remains recoverable in the existing queue. Removing the flag permits the same operation to complete. Preserve current queue ordering/error handling.
+4. Other transitions remain subject to their existing guards, but checkpoint alone does not prevent an already-running task from reaching a stable boundary or completing post-merge bookkeeping. The gate itself is not globally blocked by pause.
+
+### Verification
+Commit failing behavioral tests before implementation. Cover direct/no-hook work-status refusal (default and renamed configured statuses) with prior comments-read evidence, empty/default/custom/absolute checkpoint paths, missing-flag success and removal recovery, effective/legacy config, malformed path/config refusal, linked-worktree primary state and explicit root, direct picker and board picker refusal without API work, queued replay retention/recovery, and an unrelated transition remaining possible while paused. Retain all existing gate/review/closure/comment guards and both hosts' hook behavior. Run the complete repository gate, including ShellCheck and both plugin validators.
+
+### Boundaries and documentation
+This guards bundled workflow start/selection paths; it cannot prevent arbitrary external code edits, raw git/gh commands, or a flag appearing after a check without a shared atomic admission lock. Document those limits rather than claim an OS-wide pause. WIP admission and review-round limits belong to #240/#241. Update the plugin README and checkpoint/build-next/next-task/implement-task instructions as needed, correcting the checkpoint skill's stale JSON-only example while retaining safe-boundary semantics. A spec delta records the shipped enforcement contract; the orchestrator folds it after merge.
+
+Configuration clarification: the schema permits arbitrary status names, and `next.py` already identifies work by the active board's second status rather than an English literal. The admission check must use that same configured work status for direct and queued moves, honoring BOARD selection. A configured `Doing` status is a start just like `In progress`; normalizing only the English label is insufficient. Keep unrelated comment/review/closure guard semantics unchanged. Validate the relevant board/status-flow shape fail-closed rather than silently omit checkpoint admission on malformed selection.

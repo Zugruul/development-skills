@@ -13,9 +13,14 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as C  # noqa: E402
+from checkpoint import CheckpointError, require_running  # noqa: E402
 
 
 def main(cfg_path, bid, items_path, only_spec=""):
+    try:
+        require_running(config_path=cfg_path, board_id=bid)
+    except CheckpointError as exc:
+        sys.exit(f"CHECKPOINT BLOCKED: {exc}")
     cfg = C.load_config(path=cfg_path, warn=False)
     data = json.load(open(items_path))
     board = next((x for x in cfg["boards"] if x["id"] == bid), cfg["boards"][0])

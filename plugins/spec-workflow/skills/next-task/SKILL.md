@@ -8,6 +8,9 @@ allowed-tools: Bash
 
 Pre-start check — run this now, before anything else: `bash "../../scripts/preflight.sh" --spec`. If it prints `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
+Before selecting or starting work, run `bash "../../scripts/checkpoint-preflight.sh"`. On `CHECKPOINT BLOCKED`, start no new task: preserve truthful board state, bring existing work to a safe boundary, write a handoff, and stop. The configured flag is shared through the primary checkout; empty flags pause too. Remove it to resume, or fix malformed configuration/state before retrying. `board.sh next`, direct `next.py`, and direct/replayed moves to the selected board's work status (`statusFlow[1]`, or its sole status) enforce this without hooks; queued starts remain recoverable. Other transition guards and the gate remain active. This is a local presence check, not an atomic lock or a restriction on arbitrary git/gh commands.
+
+
 ```bash
 bash "../../scripts/board.sh" next          # or: next <spec-id> to restrict to one spec
 ```

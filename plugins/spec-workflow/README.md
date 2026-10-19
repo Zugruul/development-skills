@@ -239,7 +239,11 @@ The safeguard contract (full protocol: [`skills/implement-task/references/clicku
 
 - **Issue comments** — read before every task; scope changes are folded into the issue body and acknowledged.
 - **Iterative UI mode** (default ON) — UI decisions go to the human via `docs/ui-options/<task-id>.html` (favorite selector + likeable aspect keywords + notes; "Copy selection" produces the comment to paste). Disable per-clone with `touch .claude/ITERATIVE_UI_OFF` or permanently with `methodology.iterativeUI: false`.
-- **Checkpoint flag** — `touch .claude/CHECKPOINT` pauses the loop at the next safe boundary with a handoff.
+- **Checkpoint flag** — `paths.checkpointFile` (default `.claude/CHECKPOINT`) pauses selection and starts. Relative paths use the primary checkout across linked worktrees; absolute paths and empty flags are supported. Resolve the effective path using the [checkpoint skill](skills/checkpoint/SKILL.md), finish existing work to a safe boundary, keep the board truthful, and write a handoff.
+
+`bash "$CLAUDE_PLUGIN_ROOT/scripts/checkpoint-preflight.sh" [--root DIR]` is the shared read-only check. Missing flags succeed silently; present flags or invalid/uninspectable configuration/state refuse admission. It honors `PROJECT_CONFIG` and the shared effective loader; explicit `--root` takes precedence over `SPEC_WORKFLOW_REPO_ROOT` and primary-root discovery. `board.sh next` checks before network/replay, and direct `next.py` checks the configured repository even from another cwd. Neither emits PICK/RESUME while paused. Direct and queued mutations to the active board's normalized work status (`statusFlow[1]`, or the sole status in a single-status flow) check before comments-marker lookup, mutation, queue append or telemetry, including repeated status requests. BOARD selection retains the picker's first-board fallback for unknown ids; structurally unusable selection/status-flow data fails closed. Queued starts remain pending for retry after flag removal. Other transitions retain their guards, and gate execution remains available; preflight/session-start remain advisory and bootstrap-safe.
+
+Checkpoint enforcement covers bundled workflow admission, not arbitrary file edits or raw git/gh commands. A flag can appear after a check because no shared atomic admission lock exists. Remove the configured flag to resume and retry retained queue operations. Custom flag paths must also be locally ignored.
 
 ## Local-state manifest
 

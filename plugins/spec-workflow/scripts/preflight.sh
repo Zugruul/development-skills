@@ -12,6 +12,9 @@ if [[ -z "$CONFIG" || ! -f "$CONFIG" ]]; then
     exit 0
 fi
 
+# Advisory entrypoint retains its zero-exit/bootstrap contract.
+bash "$HERE/checkpoint-preflight.sh" 2>&1 || true
+
 if [[ "${1:-}" == "--spec" ]]; then
     python3 - "$CONFIG" "$ROOT" <<'PY'
 import os, sys

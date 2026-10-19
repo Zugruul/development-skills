@@ -288,6 +288,9 @@ _mutate_field() {
 # (collapse whitespace, lowercase) so "In review"/"in review"/etc. all match.
 _do_move() {
     local num="$1" status="$2" opt rc norm_status _seen
+    # Check the active board's configured work status, independently of the
+    # historical English-label comment/review/closure guards below.
+    bash "$HERE/checkpoint-preflight.sh" --root "$ROOT" --board "${BOARD:-}" --status "$status" || return 1
     norm_status="$(python3 -c 'import re,sys; print(re.sub(r"\s+"," ",sys.argv[1].strip()).lower())' "$status")"
     if [[ "$norm_status" == "in review" ]]; then
         bash "$HERE/gate-preflight.sh" || return 1
@@ -708,12 +711,18 @@ _flush_queue_locked() {
         case "$op" in
             move)
                 status="$(_jf "$line" status)"
-                cur="$(_current_status "$issue")"
-                if [[ -n "$cur" && "$cur" == "$status" ]]; then
-                    echo "flush: skip move #$issue (already $status)"
-                    rc=0
+                # Pause also guards cached repeat requests: do not discard a
+                # pending start merely because stale cache says it happened.
+                if ! bash "$HERE/checkpoint-preflight.sh" --root "$ROOT" --board "${BOARD:-}" --status "$status"; then
+                    rc=1
                 else
-                    _do_move "$issue" "$status"; rc=$?
+                    cur="$(_current_status "$issue")"
+                    if [[ -n "$cur" && "$cur" == "$status" ]]; then
+                        echo "flush: skip move #$issue (already $status)"
+                        rc=0
+                    else
+                        _do_move "$issue" "$status"; rc=$?
+                    fi
                 fi
                 ;;
             prio)

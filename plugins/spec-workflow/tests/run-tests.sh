@@ -159,6 +159,7 @@ SECTIONS=(
     section-serial-delivery.sh
     section-merge-dance.sh
     section-preflight.sh
+    section-checkpoint.sh
     section-ui-hub.sh
     section-neural-view-template.sh
     section-neural-view-search-shortcut.sh
