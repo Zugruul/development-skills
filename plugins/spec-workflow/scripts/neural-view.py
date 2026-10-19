@@ -39,7 +39,7 @@ Repo discovery (both apply; results are deduped and sorted by repo name):
   - --dir / $NEURAL_VIEW_DIR: that root is ALWAYS included, marker or not.
   - Scan base (--scan, else $NEURAL_VIEW_SCAN, else ~/Development): every
     immediate child directory that has a <child>/.neural-network
-    marker FILE is included. Directories without the marker are ignored,
+    marker directory is included. Directories without the marker are ignored,
     even if they have brains — inclusion is explicit and cheap.
   - If neither yields anything (no flags/env at all, empty scan base), falls
     back to the git root of the cwd — the old single-repo default — and, as a
@@ -53,7 +53,7 @@ Repo discovery (both apply; results are deduped and sorted by repo name):
 Periodic rescan (serve/dev only): every $NEURAL_VIEW_RESCAN / --rescan seconds
 (default 60; 0 disables), a background daemon thread re-runs the same
 discovery above and APPENDS any newly-discovered (name, root) not already
-registered — e.g. a repo anchored with the marker file after this server
+registered — e.g. a repo anchored with the marker directory after this server
 booted. Existing entries are NEVER removed or reordered mid-flight (a marker
 deleted after boot leaves that repo registered until the next restart;
 removal is boot-only); repos.json is rewritten with the union and one
@@ -136,6 +136,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # import config (project.yaml reader) beside this script
+from repo_discovery import scan_anchored_repos
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))  # #463: shared primary-root resolver
 from repo_root import resolve_repo_root  # noqa: E402
 
@@ -2864,7 +2865,7 @@ def discover_repos(args):
       marker or not;
     - every immediate child of the scan base (--scan/$NEURAL_VIEW_SCAN, else
       ~/Development) that carries a <child>/.neural-network marker
-      FILE. Children without the marker are ignored even if they have brains.
+      directory. Children without the marker are ignored even if they have brains.
     Falls back to the git root of cwd if nothing was found at all (no flags,
     no env, empty/absent scan base) — the old single-repo default. Repo name
     is the directory basename; same-basename repos would collide, an accepted
@@ -2879,16 +2880,10 @@ def discover_repos(args):
         p = Path(os.path.abspath(explicit))
         found[str(p)] = p
     scan_base = raw_arg_scan(args) or str(Path.home() / "Development")
-    sb = Path(scan_base)
-    try:
-        children = sorted(sb.iterdir()) if sb.is_dir() else []
-    except OSError:
-        children = []
-    for child in children:
+    for child in scan_anchored_repos(scan_base):
         try:
-            if child.is_dir() and (child / MARKER_NAME).is_dir():
-                found.setdefault(str(child.resolve()), child)
-        except OSError:   # e.g. permission denied traversing into `child`
+            found.setdefault(str(child.resolve()), child)
+        except OSError:
             continue
     if not found:
         p = Path(git_root())

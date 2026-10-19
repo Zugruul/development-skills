@@ -75,6 +75,7 @@ contracts.
 | [implement-task](plugins/spec-workflow/skills/implement-task/SKILL.md) | Orchestrate one board task through delegated TDD, review, and board updates. |
 | [knowledge-base-seed](plugins/spec-workflow/skills/knowledge-base-seed/SKILL.md) | Seed or refresh the repository knowledge identity brain from project sources. |
 | [migrate-version](plugins/spec-workflow/skills/migrate-version/SKILL.md) | Migrate project config and related data through the versioned migration registry. |
+| [neural-network-projects-list](plugins/spec-workflow/skills/neural-network-projects-list/SKILL.md) | List anchored local repos with config toggles, configured boards and validation errors, without writes or network. |
 | [neural-view](plugins/spec-workflow/skills/neural-view/SKILL.md) | Start, stop, or inspect the live identity-brain and project visualization. |
 | [next-task](plugins/spec-workflow/skills/next-task/SKILL.md) | Select the next eligible board task, honoring priority, dependencies, and comments. |
 | [pr-review-model](plugins/spec-workflow/skills/pr-review-model/SKILL.md) | Inspect or set the allowed models for the autonomous reviewer identity. |

@@ -7,7 +7,7 @@ Usage:
     sync-configs.py --repo PATH [--apply] [--feedback-value true|false]
 
 Discovery (no --repo): every immediate child of the scan base (--scan, else
-~/Development) carrying a <child>/.neural-network marker file, EXCEPT
+~/Development) carrying a <child>/.neural-network marker directory, EXCEPT
 the repo this script itself lives in (that repo updates itself through its
 own build loop, not this script).
 
@@ -42,6 +42,8 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))  # support callers importing this script by absolute filename
+from repo_discovery import scan_anchored_repos
 MARKER_NAME = ".neural-network"
 CONFIG_REL = os.path.join(".neural-network", "project.yaml")
 
@@ -351,17 +353,8 @@ def is_self_repo(candidate, self_root):
 
 def discover_repos(scan_base, self_root):
     found = {}
-    sb = Path(scan_base).expanduser()
-    try:
-        children = sorted(sb.iterdir()) if sb.is_dir() else []
-    except OSError:
-        children = []
-    for child in children:
+    for child in scan_anchored_repos(Path(scan_base).expanduser()):
         try:
-            if not child.is_dir():
-                continue
-            if not (child / MARKER_NAME).is_dir():
-                continue
             rp = child.resolve()
             if is_self_repo(child, self_root):
                 continue

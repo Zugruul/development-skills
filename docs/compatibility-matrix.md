@@ -343,3 +343,24 @@ local-only instruction controls this work; no pipeline evidence is presumed.
 The parent owns the exact full repository gate, independent review, merge,
 and post-merge folding of CDX-050 in the [spec-delta registry](spec-deltas/)
 (pending at `CDX-050.md`, archived at `applied/CDX-050.md` after the fold).
+
+## Project inventory: scoped #277 addition
+
+This entry covers only the new `neural-network-projects-list` skill and does not
+complete CDX-042 or extend the four-skill remote-compute audit above.
+
+| Skill | Claude support | Codex support | Evidence and limitations |
+| --- | --- | --- | --- |
+| `neural-network-projects-list` | Automatic skills-directory discovery; source reviewed | Existing manifest `skills: ./skills/` discovery; source reviewed | Local metadata and hermetic CLI tests; live host invocation unverified |
+
+The [skill](../plugins/spec-workflow/skills/neural-network-projects-list/SKILL.md)
+uses `name`/`description` frontmatter and one Python engine resolved from its
+installed skill location, with quoted absolute paths independent of cwd.
+`allowed-tools` is a Claude-only enhancement, not a cross-host security boundary.
+Arguments come from request text, without implicit `ARGUMENTS` substitution or
+load-time commands. No delegation/model routing, session metadata, board access,
+or approval flow applies. Invalid configs remain inventory rows, so no workflow
+preflight rejects them. Tests exercise local discovery, shared scanner caller
+policies, config validation, metadata registration and no-write behavior; they
+do not establish live Claude/Codex installation or invocation parity. The command
+requires Python 3 and PyYAML; no native PowerShell execution was tested.

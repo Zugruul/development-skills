@@ -27,3 +27,57 @@ Board access: `similar.py` takes issue data as an argument/fixture, it does not 
 ## Out of scope for this epic
 `/find-task` and `/create-inbound` skills themselves (SW-002, SW-003) — this task only ships the scoring script they will wrap.
 OQ-1..OQ-4 answers (inbound marking scheme, override UX) — SW-003's concern.
+
+
+## #277 extension — read-only project inventory
+Grounded in SPEC §5 (current config engine/layout), §6 (workflow UX),
+SPEC-GRAPHIFY multi-repo discovery, and issue #277's acceptance criteria.
+
+### Components
+- A shared Python discovery helper owns immediate-child anchored-directory scanning.
+  `neural-view.py`, `sync-configs.py`, and the new inventory all call it.
+- `projects-list.py` owns config inventory and a compact textual table plus `--json`.
+- `neural-network-projects-list/SKILL.md` invokes the same engine on both hosts.
+
+### Data models
+Each row carries canonical repo path, project name, detected schema semver,
+methodology values (`maxInProgress`, `autoMerge`, `serialDelivery`, feedback enabled,
+`iterativeUI`), all board provider/number pairs, `OK`/`INVALID`, and first diagnostic.
+Unspecified settings are explicit null/unspecified; do not infer configured values.
+Boolean feedback shorthand is supported. Invalid rows preserve any safely readable
+fields, without assuming nested values have mapping/list types.
+
+### Interfaces / contracts
+`python3 <resolved-plugin-root>/scripts/projects-list.py [--scan BASE] [--root DIR] [--json]`.
+Scan defaults to `~/Development`; current root defaults to the invoking cwd's Git
+root, falling back to cwd. `--root` explicitly selects the always-included repo.
+Scanned siblings need a `.neural-network/` directory. Deduplicate canonical paths,
+sort deterministically, and tolerate inaccessible bases/children. The explicit
+current root is retained even when marker/config is absent, reporting INVALID.
+
+Use the shared config loader's canonical filename ordering and legacy handling,
+but ignore ambient `PROJECT_CONFIG` so one repo cannot impersonate every row.
+Detect schema on raw parsed config with `config.schema_semver()` before legacy
+normalization. Invoke the actual `validate-config.py` per repo in isolation; its
+first error supplies the invalid diagnostic. Missing/unreadable files and validator
+crashes are per-row INVALID diagnostics and never terminate the entire inventory.
+No network, board calls, marker creation, config edits, cache files, or bytecode
+writes. Invalid rows are successful inventory output; CLI usage errors remain errors.
+
+### Key sequence
+1. Pure shared discovery yields anchored immediate children; inventory adds current.
+2. Load/validate each config independently, retaining partial readable information.
+3. Print stable rows or structured JSON to stdout without saving inventory locally.
+
+### Decisions
+Preserve neural-view's existing explicit-root/fallback behavior (including its
+existing fallback marker creation) and sync-configs' self-exclusion policy outside
+the shared scan helper. The inventory never calls the mutating viewer fallback.
+No third scanner, recursive scan, host-specific engine, or new schema field.
+Skill registration uses existing Claude automatic discovery and Codex skills path;
+no invented manifest keys. Update root/plugin skill indexes and add a scoped CDX
+matrix entry without implying an audit of the whole marketplace.
+
+### Out of scope
+#278's selection/settings editing, live board status, recursive repository search,
+changes to existing scanner caller policies, and schema migrations.

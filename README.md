@@ -287,6 +287,7 @@ Spec-driven autonomous build workflow. A repo declares its boards, specs, epics,
 | `dev-up` | Bring up the project's dev stack for QA |
 | `neural-view` | Live JARVIS-style visualization of the identity brains — notes as neurons, recalls lighting up in real time |
 | `feedback` | Structured per-iteration process feedback about the workflow itself (`methodology.feedback`); triaged into backlog/brain-note/graduate/upstream/ignore at retro time |
+| `neural-network-projects-list` | Read-only inventory of anchored local repos, config toggles, configured boards and validation errors |
 | `sync-project-configs` | Discover every anchored repo and bring its `.neural-network/project.yaml` up to the plugin's current config surface via versioned sync rules; dry-run by default |
 | `changelog-generate` | Fully regenerates `CHANGELOG.md` from git history, versioned by `plugin.json`'s semver windows and grouped by conventional-commit type; idempotent, kept fresh on every push to `main` by a GitHub Action |
 

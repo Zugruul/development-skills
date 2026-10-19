@@ -62,6 +62,7 @@ Ephemeral local state (board cache/queue, telemetry, gate-pass, CHECKPOINT, work
 | `neural-view` | Start/stop/status for the live JARVIS-style visualization of the identity brains |
 | `feedback` | Emit structured process feedback about the workflow itself (`methodology.feedback`); triaged at retro time, or offers `retrospective` when run standalone |
 | `retrospective` | On-demand retro — triage pending feedback and mint/prune/graduate brain notes, outside a `build-next` PR-close |
+| `neural-network-projects-list` | Read-only local project inventory: config, toggles, configured boards and validation errors |
 | `sync-project-configs` | Discover anchored repos (`.neural-network` marker) and bring their `.neural-network/project.yaml` up to this plugin's config surface via versioned sync rules; dry-run by default |
 | `changelog-generate` | Fully regenerates the repo's `CHANGELOG.md` from git history via `changelog.py generate` — versioned by `plugin.json`'s semver windows, grouped by conventional-commit type, idempotent; kept fresh on every push to `main` by `.github/workflows/changelog.yml` (see `semver.sh` note below) |
 
