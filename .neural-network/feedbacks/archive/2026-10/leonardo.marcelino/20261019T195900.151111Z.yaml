@@ -1,0 +1,29 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-19T19:59:00.151111Z'
+iteration:
+  task: '285'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: unknown (Codex host default)
+items:
+- category: worked-well
+  area: briefing
+  severity: low
+  summary: Place preservation checks before preparatory writes
+  generalized: 'Trace the complete workflow before placing a preservation guard: design
+    preparation or registration can mutate a shared checkout before the apparent implementation
+    step.'
+  detail: 'The #285 entrypoint check was placed before implement-task design preparation
+    as well as before registration. Both independent reviews verified real isolation
+    recipes.'
+  evidence:
+  - Zugruul/development-skills#285
+  proposal:
+    target: brain-note
+    change: orchestrator/inspect-before-preparatory-workflow-writes
+  routing:
+    action: brain-note
+    ref: orchestrator/inspect-before-preparatory-workflow-writes

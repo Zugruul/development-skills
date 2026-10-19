@@ -1,0 +1,27 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-19T19:58:59.995563Z'
+iteration:
+  task: '285'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: reviewer
+  model: unknown (Codex host default)
+items:
+- category: worked-well
+  area: testing
+  severity: low
+  summary: Isolate probe effects from fixture preparation
+  generalized: Arm side-effect markers after fixture setup so setup commands cannot
+    be mistaken for effects of the command under review.
+  detail: 'The final reviewer initially saw fsmonitor output from fixture git rm,
+    then isolated setup and confirmed inspection suppressed the monitor for #285.'
+  evidence:
+  - Zugruul/development-skills#285
+  proposal:
+    target: brain-note
+    change: reviewer/arm-side-effect-probes-after-fixture-setup
+  routing:
+    action: brain-note
+    ref: reviewer/arm-side-effect-probes-after-fixture-setup

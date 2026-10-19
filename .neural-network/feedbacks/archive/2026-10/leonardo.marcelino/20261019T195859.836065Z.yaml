@@ -1,0 +1,28 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-19T19:58:59.836065Z'
+iteration:
+  task: '285'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: dev
+  model: unknown (Codex host default)
+items:
+- category: worked-well
+  area: testing
+  severity: low
+  summary: Real repository fixtures exposed inherited Git preferences
+  generalized: A parent command option may not override configuration consulted by
+    nested repository processes. Exercise real nested repositories with hiding preferences
+    enabled before claiming complete inspection.
+  detail: 'Hidden submodule untracked files in #285 required inherited -c status.showUntrackedFiles=all.
+    The real Git fixtures also exercised staged and unstaged type changes.'
+  evidence:
+  - Zugruul/development-skills#285
+  proposal:
+    target: brain-note
+    change: dev/propagate-git-status-policy-to-submodules
+  routing:
+    action: brain-note
+    ref: dev/propagate-git-status-policy-to-submodules
