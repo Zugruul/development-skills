@@ -1,4 +1,5 @@
 {
+  "reviewer:confirm-named-scope-exclusions-respected": 1,
   "reviewer:local-gate-green-doesnt-imply-ci-green-for-infra": 1,
   "reviewer:red-commit-worktree-verify": 2,
   "reviewer:reports-are-not-the-code": 2,

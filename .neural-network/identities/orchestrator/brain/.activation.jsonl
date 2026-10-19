@@ -754,3 +754,88 @@
 {"event": "inject", "note": "diagnose-stalls-before-attributing", "activation": 0.0017, "ts": "2026-10-19T19:24:37+00:00", "role": "orchestrator"}
 {"event": "inject", "note": "fetch-before-hotfix-filing", "activation": 0.0017, "ts": "2026-10-19T19:24:37+00:00", "role": "orchestrator"}
 {"event": "inject", "note": "merge-via-temp-worktree-when-main-held", "activation": 0.0017, "ts": "2026-10-19T19:24:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "align-worktree-and-test-git-runtime", "activation": 1.21, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "board-comment-bodies-via-file", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "brief-background-command-wait-discipline", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "brief-closed-action-set", "activation": 0.0015, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "brief-out-of-scope-failure-line", "activation": 0.0014, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "brief-report-on-commit", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "brief-subagents-to-report-before-idle", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "canonical-merge-locus", "activation": 1.21, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "cheap-ab-before-10min-runs", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "check-shipped-before-implementing", "activation": 1.2, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "check-stray-worktrees-before-branch-ops", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "claude-cli-deep-links-pattern", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "combined-two-pass-for-small-siblings", "activation": 0.0014, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "dev-server-port-contention", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "diagnose-stalls-before-attributing", "activation": 0.0014, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "discriminator-over-hypothesis", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "dual-independent-review-raises-confidence", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "fetch-before-hotfix-filing", "activation": 0.0014, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "finish-unresponsive-subagents-work-on-behalf", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "fix-trivial-review-nits-directly-on-behalf", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "fixed-iteration-shape", "activation": 0.0027, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "gate-verdict-before-merge", "activation": 0.0027, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "global-resources-in-test-briefs", "activation": 0.0502, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "idle-agent-is-not-done", "activation": 0.0017, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "inventory-stalled-agent-tree", "activation": 0.0027, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "last-action-is-delivery", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "lead-brief-with-last-failure", "activation": 0.0027, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "lessons-compound-when-briefed-forward", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "live-verify-catches-cascade-bugs", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "merge-via-temp-worktree-when-main-held", "activation": 0.0014, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "mode-elastic-loop", "activation": 0.0017, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "name-reserved-baseline-keys-when-briefing-shared-emitter", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "name-the-counterfactual-bar", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "name-the-failure-modes", "activation": 0.0027, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "never-pipe-gate-run-through-tail", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "numbers-gated-epic-doors", "activation": 0.0014, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "orchestrator-cd-prefix-own-commands", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "outcomes-after-interviews", "activation": 0.0189, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "parallel-independent-review-passes", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "parallel-push-races", "activation": 0.0027, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "pick-one-origin-for-verification", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "pin-reviewer-adhoc-checks", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "reconcile-incidental-delivery", "activation": 0.0027, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "record-recalls-outside-task-history", "activation": 1.21, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "relay-apply-on-behalf", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "research-agent-before-implementation-brief", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "resolve-design-questions-before-briefing", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "resumed-branch-staleness-pass", "activation": 0.0017, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "search-branches-before-reimplementing", "activation": 0.0017, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "self-authored-code-needs-adversarial-review", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "serial-delivery-prevents-stack-debt", "activation": 0.0001, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "serialize-moves-behind-matching-gate", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "session-close-protocol", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "squash-merge-kills-branch-anchors", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "squash-subject-needs-issue-ref", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "stack-hotfixes-under-one-gate", "activation": 0.0161, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "stacked-prs-retarget-before-delete", "activation": 0.0001, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "stage-specific-paths-in-takeovers", "activation": 0.0014, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "stall-hypothesis-backgrounded-gate", "activation": 0.0014, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "stamp-qa-even-after-a-fix-round", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "synthetic-corpus-perf-rig", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "ui-perf-metrics-loop", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "unresponsive-agent-take-over", "activation": 0.0014, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "use-repo-scripts-not-stale-marketplace-cache", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "verify-claimed-push-and-scope", "activation": 0.0001, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "verify-live-system-not-just-local-artifacts", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "verify-state-before-assuming-stalled", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "worktree-isolation-when-multitasking", "activation": 0.0, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "hop", "note": "relay-apply-on-behalf", "activation": 0.275, "link": "brief-report-on-commit->relay-apply-on-behalf", "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "hop", "note": "discriminator-over-hypothesis", "activation": 0.275, "link": "cheap-ab-before-10min-runs->discriminator-over-hypothesis", "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "hop", "note": "cheap-ab-before-10min-runs", "activation": 0.275, "link": "discriminator-over-hypothesis->cheap-ab-before-10min-runs", "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "hop", "note": "recall-injection-is-part-of-the-brief", "activation": 0.275, "link": "lessons-compound-when-briefed-forward->recall-injection-is-part-of-the-brief", "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "hop", "note": "check-shipped-before-implementing", "activation": 0.275, "link": "name-the-counterfactual-bar->check-shipped-before-implementing", "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "hop", "note": "canonical-merge-locus", "activation": 0.3025, "link": "record-recalls-outside-task-history->canonical-merge-locus", "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "hop", "note": "front-load-exact-mechanics-in-design-docs", "activation": 0.3025, "link": "record-recalls-outside-task-history->front-load-exact-mechanics-in-design-docs", "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "hop", "note": "serialize-moves-behind-matching-gate", "activation": 0.275, "link": "relay-apply-on-behalf->serialize-moves-behind-matching-gate", "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "hop", "note": "squash-merge-kills-branch-anchors", "activation": 0.275, "link": "serialize-moves-behind-matching-gate->squash-merge-kills-branch-anchors", "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "hop", "note": "self-authored-code-needs-adversarial-review", "activation": 0.275, "link": "verify-state-before-assuming-stalled->self-authored-code-needs-adversarial-review", "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "align-worktree-and-test-git-runtime", "activation": 1.21, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "canonical-merge-locus", "activation": 1.21, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "record-recalls-outside-task-history", "activation": 1.21, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "check-shipped-before-implementing", "activation": 1.2, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "brief-report-on-commit", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "cheap-ab-before-10min-runs", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "discriminator-over-hypothesis", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}

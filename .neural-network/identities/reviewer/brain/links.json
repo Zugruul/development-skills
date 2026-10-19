@@ -15,32 +15,32 @@
     "weight": 0.5
   },
   "comments-deserve-code-scrutiny->record-why-safe-not-just-that": {
-    "fires": 17,
+    "fires": 18,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "conditional-correctness-premise-edges->record-why-safe-not-just-that": {
-    "fires": 14,
+    "fires": 15,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "conditional-correctness-premise-edges->true-or-merely-true-today": {
-    "fires": 14,
+    "fires": 15,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "confirm-named-scope-exclusions-respected->note-dont-gate-on-unrelated-findings": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "copied-precedent-needs-fresh-verification->comments-deserve-code-scrutiny": {
-    "fires": 16,
+    "fires": 17,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "copied-precedent-needs-fresh-verification->stub-shaped-blind-spots": {
-    "fires": 16,
+    "fires": 17,
     "last": "2026-10-19",
     "weight": 0.5
   },
@@ -55,47 +55,47 @@
     "weight": 0.5
   },
   "derive-admission-from-configured-status-flow->confirm-named-scope-exclusions-respected": {
-    "fires": 4,
+    "fires": 5,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "derive-admission-from-configured-status-flow->reproduce-before-verdict": {
-    "fires": 4,
+    "fires": 5,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "distinguish-missed-vs-uncatchable-findings->verify-portability-claims-in-target-environment": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "golden-identical-covers-absent-not-present->parity-check-new-vs-existing-path": {
-    "fires": 15,
+    "fires": 16,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "grep-for-known-bug-class-before-deep-analysis->verify-portability-claims-in-target-environment": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "grep-for-the-third-site->reproduce-before-verdict": {
-    "fires": 14,
+    "fires": 15,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "guard-resolved-identifiers-not-only-labels->distinguish-missed-vs-uncatchable-findings": {
-    "fires": 3,
+    "fires": 4,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "guard-resolved-identifiers-not-only-labels->reports-are-not-the-code": {
-    "fires": 3,
+    "fires": 4,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "knowledge-attaches-to-the-line->test-at-the-observed-layer": {
-    "fires": 14,
+    "fires": 15,
     "last": "2026-10-19",
     "weight": 0.5
   },
@@ -120,32 +120,32 @@
     "weight": 0.5
   },
   "mutation-test-verify-suite-discriminates->reproduce-claimed-bug-fix-before-and-after": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "mutation-test-verify-suite-discriminates->verify-proximity-checks-dont-bleed-into-next-record": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "parity-check-new-vs-existing-path->golden-identical-covers-absent-not-present": {
-    "fires": 15,
+    "fires": 16,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "probe-markers-inside-user-records->reports-are-not-the-code": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "probe-markers-inside-user-records->reproduce-before-verdict": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "probe-spec-silent-input-categories->trace-boundary-operators-by-hand": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
@@ -160,77 +160,77 @@
     "weight": 0.5
   },
   "red-commit-worktree-verify->recompute-hashes-never-eyeball": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "red-commit-worktree-verify->reports-are-not-the-code": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "reproduce-before-verdict->grep-for-the-third-site": {
-    "fires": 17,
+    "fires": 18,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "reproduce-before-verdict->test-at-the-observed-layer": {
-    "fires": 17,
+    "fires": 18,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "reproduce-claimed-bug-fix-before-and-after->verify-backcompat-claims-algebraically": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "reproduce-claimed-bug-fix-before-and-after->verify-tdd-empirically-when-log-is-thin": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "reproduce-then-verify-fix->rerun-the-red-empirically": {
-    "fires": 19,
+    "fires": 20,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "rerun-the-red-empirically->reproduce-then-verify-fix": {
-    "fires": 19,
+    "fires": 20,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "reuse-the-projects-own-harness->reproduce-before-verdict": {
-    "fires": 14,
+    "fires": 15,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "review-your-own-fix-as-new-code->missing-test-twin-marks-the-bug": {
-    "fires": 14,
+    "fires": 15,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "strict-reader-writer-roundtrip->reports-are-not-the-code": {
-    "fires": 2,
+    "fires": 3,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "strict-reader-writer-roundtrip->reproduce-before-verdict": {
-    "fires": 2,
+    "fires": 3,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "stub-shaped-blind-spots->reproduce-before-verdict": {
-    "fires": 16,
+    "fires": 17,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "stub-shaped-blind-spots->tested-through-which-caller": {
-    "fires": 16,
+    "fires": 17,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "test-at-the-observed-layer->reproduce-before-verdict": {
-    "fires": 14,
+    "fires": 15,
     "last": "2026-10-19",
     "weight": 0.5
   },
@@ -245,92 +245,92 @@
     "weight": 0.5
   },
   "tested-through-which-caller->reproduce-before-verdict": {
-    "fires": 16,
+    "fires": 17,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "tested-through-which-caller->stub-shaped-blind-spots": {
-    "fires": 16,
+    "fires": 17,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "trace-boundary-operators-by-hand->equality-guards-invite-ordering-probes": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "trace-dict-merge-for-key-collisions->verify-backcompat-claims-algebraically": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "true-or-merely-true-today->one-time-assertion-as-live-gate": {
-    "fires": 14,
+    "fires": 15,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "validate-policy-keys-before-defaults->copied-precedent-needs-fresh-verification": {
-    "fires": 5,
+    "fires": 6,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "validate-policy-keys-before-defaults->reproduce-before-verdict": {
-    "fires": 5,
+    "fires": 6,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "verify-backcompat-claims-algebraically->verify-tdd-empirically-when-log-is-thin": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "verify-doc-links-and-quotes-against-live-source->confirm-named-scope-exclusions-respected": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "verify-guard-regex-on-real-artifact->match-repo-security-baseline": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "verify-guard-regex-on-real-artifact->recompute-hashes-never-eyeball": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "verify-guard-regex-on-real-artifact->red-commit-worktree-verify": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "verify-ordering-assertions-at-two-levels->trace-boundary-operators-by-hand": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "verify-portability-claims-in-target-environment->local-gate-green-doesnt-imply-ci-green-for-infra": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "verify-proximity-checks-dont-bleed-into-next-record->reproduce-claimed-bug-fix-before-and-after": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "verify-proximity-checks-dont-bleed-into-next-record->trace-dict-merge-for-key-collisions": {
-    "fires": 20,
+    "fires": 21,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "verify-reuse-by-symbol-grep->dual-path-fixture-proves-sharing": {
-    "fires": 14,
+    "fires": 15,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "when-does-the-test-observe->test-at-the-observed-layer": {
-    "fires": 14,
+    "fires": 15,
     "last": "2026-10-19",
     "weight": 0.5
   }

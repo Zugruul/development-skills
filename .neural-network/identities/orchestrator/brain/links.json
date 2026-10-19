@@ -5,12 +5,12 @@
     "weight": 0.5
   },
   "brief-report-on-commit->relay-apply-on-behalf": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "cheap-ab-before-10min-runs->discriminator-over-hypothesis": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-10-19",
     "weight": 0.5
   },
@@ -25,7 +25,7 @@
     "weight": 0.5
   },
   "discriminator-over-hypothesis->cheap-ab-before-10min-runs": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-10-19",
     "weight": 0.5
   },
@@ -40,12 +40,12 @@
     "weight": 0.5
   },
   "lessons-compound-when-briefed-forward->recall-injection-is-part-of-the-brief": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "name-the-counterfactual-bar->check-shipped-before-implementing": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-10-19",
     "weight": 0.5
   },
@@ -55,17 +55,17 @@
     "weight": 0.5
   },
   "record-recalls-outside-task-history->canonical-merge-locus": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "record-recalls-outside-task-history->front-load-exact-mechanics-in-design-docs": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-10-19",
     "weight": 0.5
   },
   "relay-apply-on-behalf->serialize-moves-behind-matching-gate": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-10-19",
     "weight": 0.5
   },
@@ -75,7 +75,7 @@
     "weight": 0.5
   },
   "serialize-moves-behind-matching-gate->squash-merge-kills-branch-anchors": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-10-19",
     "weight": 0.5
   },
@@ -90,7 +90,7 @@
     "weight": 0.5
   },
   "verify-state-before-assuming-stalled->self-authored-code-needs-adversarial-review": {
-    "fires": 1,
+    "fires": 2,
     "last": "2026-10-19",
     "weight": 0.5
   }
