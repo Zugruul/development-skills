@@ -454,6 +454,16 @@
     "last": null,
     "weight": 0.5
   },
+  "preserve-current-tree-when-sharing-state->acceptance-criterion-outranks-test-spec-paraphrase": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "preserve-current-tree-when-sharing-state->batch-red-across-surfaces": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "preserve-stream-framing-before-filtering->capture-real-output-as-fixtures": {
     "fires": 0,
     "last": null,

@@ -69,6 +69,16 @@
     "last": null,
     "weight": 0.5
   },
+  "record-recalls-outside-task-history->canonical-merge-locus": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "record-recalls-outside-task-history->front-load-exact-mechanics-in-design-docs": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "relay-apply-on-behalf->serialize-moves-behind-matching-gate": {
     "fires": 0,
     "last": null,

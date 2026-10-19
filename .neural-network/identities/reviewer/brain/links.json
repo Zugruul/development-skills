@@ -49,6 +49,16 @@
     "last": "2026-10-18",
     "weight": 0.5
   },
+  "derive-admission-from-configured-status-flow->confirm-named-scope-exclusions-respected": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "derive-admission-from-configured-status-flow->reproduce-before-verdict": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "distinguish-missed-vs-uncatchable-findings->verify-portability-claims-in-target-environment": {
     "fires": 16,
     "last": "2026-10-18",
