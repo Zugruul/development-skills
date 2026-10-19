@@ -14,6 +14,7 @@
 - **spec:** fold 239 checkpoint admission delta into compatibility contract (`66042ba`)
   > 1. Describe shared checkpoint admission, configured board statuses and recoverable queued starts in §9.2.
   > 2. Archive the applied task delta alongside the published implementation.
+- **handoff:** close checkpoint enforcement iteration (#239) (`97cadcd`)
 
 ### Chores
 - **feedback:** archive checkpoint enforcement workflow feedback (#239) (`c6104ec`)
