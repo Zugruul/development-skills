@@ -123,6 +123,16 @@ Named follow-up specs — deferred, not dropped:
   `.claude/.flush*`, `.claude/worktrees/`; track `.neural-network/feedbacks/`,
   `.neural-network/identities/`, `.neural-network/brain-events.jsonl`, `.neural-network`,
   `.neural-network/project.yaml`.
+  - **§7.1.1 runtime inventory coverage** — WHEN a shipped plugin introduces a repository-owned
+    runtime output, the workflow SHALL classify its default path in the canonical local-state
+    manifest as local/derived `ignore` state or durable shared `track` state. Directory entries
+    SHALL cover their descendants, with explicit derived exceptions permitted inside tracked
+    directories. Source audits SHALL include every plugin's skills, scripts, references, generated
+    templates and capability payloads, and SHALL record source sites and coverage or an
+    evidence-based exclusion for external state, caller-selected paths, browser storage, generated
+    project source and test fixtures. Caller-selected overrides SHALL remain the consumer's
+    responsibility. The workflow SHALL NOT introduce blanket ignore patterns to conceal unknown
+    output paths.
 - **§7.2 managed block** — WHEN setup-project (or the new `gitignore-sync` script)
   runs THE SYSTEM SHALL write the `ignore`-policy paths into `.gitignore` between
   `# >>> spec-workflow managed` / `# <<< spec-workflow managed` markers, replacing
@@ -130,11 +140,36 @@ Named follow-up specs — deferred, not dropped:
   markers.
   - **§7.2.1** — IF a `track`-policy path is ignored by the repo's own rules THEN THE
     SYSTEM SHALL warn (path + matching rule) and SHALL NOT edit non-managed lines.
+  - **§7.2.2 preflight freshness and validation** — WHEN preflight resolves an existing project
+    configuration, in either normal or `--spec` mode, it SHALL invoke the existing configuration
+    validator against that resolved configuration path and SHALL compare the repository's managed
+    ignore block through `gitignore-sync.sh --dry-run`. IF the configuration is invalid, the block
+    is missing or stale, or freshness cannot be established because inspection fails, preflight
+    SHALL emit an actionable `PREFLIGHT FAIL` naming the affected target and validator evidence or a
+    safely quoted repair command, and SHALL NOT report a clean core preflight result. Preflight
+    SHALL preserve its exit-zero skill-loader contract; skill callers SHALL stop on `PREFLIGHT
+    FAIL`. A current block and valid configuration SHALL add no successful-check transcript.
+    Preflight SHALL NOT repair files automatically and SHALL preserve independent checkpoint,
+    identity, assistant, cache and design advisories.
+  - **§7.2.3 temporary ownership and diagnostics** — WHEN gitignore synchronization completes
+    successfully, fails, or receives handled INT, TERM or HUP, it SHALL remove its own temporary
+    artifacts, including when TMPDIR points inside the consumer repository. It SHALL NOT remove
+    arbitrary user files and SHALL make inspection, rendering, comparison, publication and cleanup
+    failures visible. SIGKILL and power-loss cleanup are outside this guarantee. Dry-run SHALL
+    preserve the target bytes; apply SHALL preserve bytes outside the managed block and SHALL retain
+    warnings for tracked paths ignored by non-managed rules. Malformed managed markers SHALL be
+    reported as inspection errors.
 - **§7.3 sync rule** — WHEN `sync-project-configs` runs against an anchored repo THE
   SYSTEM SHALL reconcile the managed block to the current manifest (versioned sync
   rule, dry-run first, per that skill's conventions).
-- **§7.4 single source** — setup-project's Phase-5 inline list is replaced by reads
-  of §7.1's manifest; no second copy of the path list may exist in skills or scripts.
+- **§7.4 shared authority** — The manifest SHALL remain the sole path-policy registry and
+  gitignore-sync SHALL remain the sole managed-block rendering/comparison authority for both
+  preflight and the mem013 sync-project-configs rule. WHEN an explicit repair applies the current
+  manifest, a subsequent preflight SHALL accept that managed block without drift diagnostics.
+  Configuration validity SHALL remain owned by the existing validator, including supported legacy
+  formats and local overlay semantics; preflight SHALL NOT duplicate schema validation or perform
+  automatic migrations. setup-project's Phase-5 inline list is replaced by reads of §7.1's manifest;
+  no second copy of the path list may exist in skills or scripts.
 
 ## §8 Unified brain-event feed (E2)
 
