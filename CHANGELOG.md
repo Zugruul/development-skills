@@ -12,6 +12,7 @@
 
 ### Documentation
 - **spec:** fold bounded review admission contract (#241) (`25e10ee`)
+- **handoff:** record completed review-round enforcement (#241) (`ff3e597`)
 
 ## v0.73.5 — 2026-10-19
 
