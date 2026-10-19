@@ -14,6 +14,11 @@
 - **spec:** fold checkout preservation contract (#285) (`53b62b8`)
   > 1. Publish the reviewed startup inspection and isolation contract in section 7.9.
   > 2. Archive the applied task delta.
+- **handoff:** record deployed checkout preservation (#285) (`857933f`)
+  > 1. Record merge, validation, review and retrospective evidence.
+  > 2. Preserve the dependency plan and the board-read rate-limit boundary.
+  > 
+  > Closes #285
 
 ### Chores
 - **brain:** record checkout isolation recalls (#285) (`5882878`)
