@@ -61,6 +61,42 @@ options:
 
 ## 1. Spawn the reviewer
 
+Before the first reviewer invocation, and before **every** re-invocation in §2,
+reserve a round with the shared command below. Do not spawn or message the
+reviewer unless admission succeeds. It returns JSON containing the allocated
+`round`; use that value, never a session-local counter. This applies to PR and
+local work equally, including resumed tasks and linked worktrees.
+
+```bash
+# Resolve the helper path relative to this file; keep the consumer checkout as cwd.
+source "../../../scripts/lib/plugin-root.sh"
+REVIEW_PLUGIN_ROOT="$(spec_workflow_plugin_root)" || exit 2
+source "${REVIEW_PLUGIN_ROOT}/scripts/lib/repo-root.sh"
+REVIEW_STATE_ROOT="$(spec_workflow_repo_root)" || exit 2
+REVIEW_TASK=241 # replace with the actual task id
+REVIEW_ADMISSION="$(bash "${REVIEW_PLUGIN_ROOT}/scripts/review-round.sh" admit \
+  --task "$REVIEW_TASK" --ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)")" || exit 2
+REVIEW_ROUND="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["round"])' "$REVIEW_ADMISSION")" || exit 2
+# Only NOW invoke/re-invoke the reviewer with the brief below.
+```
+
+After its verdict, complete the reservation before deciding the next step:
+
+```bash
+REVIEW_VERDICT=REQUEST_CHANGES # or APPROVE, exactly reflecting the actual verdict
+REVIEW_EVENT="$(python3 -c 'import json,sys; print(json.dumps(dict(kind="review-round", task=sys.argv[1], round=int(sys.argv[2]), verdict=sys.argv[3], ts=sys.argv[4])))' \
+  "$REVIEW_TASK" "$REVIEW_ROUND" "$REVIEW_VERDICT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")" || exit 2
+python3 "${REVIEW_PLUGIN_ROOT}/scripts/telemetry.py" "$REVIEW_STATE_ROOT" record "$REVIEW_EVENT" || exit 2
+```
+
+A pending reservation blocks another launch, even after a crash. Record an
+honest non-approval such as `ABORTED` if no verdict was obtained, or hand off;
+never invent approval, erase history or reset the budget. Failed admission or
+recording means stop, post the evidence on the issue, write a handoff, and leave
+*In review* for a human. At most three reserved attempts belong to the task.
+Legacy completed untagged rounds also count; tagged `spec-compliance` and
+`code-quality` passes remain separate and do not consume this budget.
+
 After the task reaches *In review* (gate recorded green), delegate to ONE fresh reviewer agent when the host supports delegation, with `model:` a
 suitable id from the reviewer identity's allowed set (`bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/identity.sh" reviewer` prints its `models:`
@@ -119,7 +155,7 @@ On `REQUEST_CHANGES`:
    built the task, via SendMessage — it has the context) with "fix exactly
    these, TDD still applies, push to the same branch".
 2. Re-run the gate yourself after the push (green stays mandatory).
-3. SendMessage the reviewer: "round <k>: pushed <commits>; here is the new
+3. Run the §1 `review-round.sh admit` command again, then only on success SendMessage the reviewer: "round <k>: pushed <commits>; here is the new
    diff for your findings — re-review". The reviewer re-verdicts.
 4. Findings the dev agent disputes: relay the dispute to the reviewer and let
    the two positions land in front of you; YOU decide (spec is the tiebreaker)
@@ -165,6 +201,18 @@ LOCAL-ROUTE fallback. Never repeat the same gated call after a denial.
 
 ## 4. Record the approval + merge — decision table
 
+Before posting approval or performing either merge route, run:
+
+```bash
+bash "${REVIEW_PLUGIN_ROOT}/scripts/review-round.sh" approval-check --task "$REVIEW_TASK" || exit 2
+```
+
+This read-only check requires the latest completed autonomous verdict to be
+`APPROVE` (also accepts `approved`), with no pending attempt. Third-round approval
+is valid. It does not replace the green gate, two-pass review, closure,
+checkpoint or WIP guards. It attests only to local records, not reviewer identity,
+review quality or the inspected SHA. Recheck immediately before the actual merge.
+
 | `requirements`             | `reviewerTokenEnv` | Action |
 |-----------------------------|---------------------|--------|
 | `none` or `unknown (...)`   | n/a                 | Record the reviewer's verdict as a comment (PR mode: `gh pr comment`; local mode: `board.sh comment`) signed with the reviewer identity, then merge autonomously — no approval step is required. |
@@ -208,6 +256,7 @@ setup (the `merge-mode.sh method` subcommand changes it later):
 
 ```bash
 # mergeMethod = squash (default) — attribution goes in the squash body:
+bash "${REVIEW_PLUGIN_ROOT}/scripts/review-round.sh" approval-check --task "$REVIEW_TASK" || exit 2
 gh pr merge <n> --squash --delete-branch --body "$(cat <<'EOF'
 <one-line summary of the task>
 
@@ -220,6 +269,7 @@ EOF
 
 # mergeMethod = merge or rebase — the branch's own per-role commits carry the
 # attribution; no extra body:
+bash "${REVIEW_PLUGIN_ROOT}/scripts/review-round.sh" approval-check --task "$REVIEW_TASK" || exit 2
 gh pr merge <n> --<cfg:methodology.mergeMethod> --delete-branch
 
 board.sh move N "QA"        # then fold the spec delta (build-next §Advancing)
@@ -254,7 +304,7 @@ Route:
 1. The recorded verdict comment from §4 already exists (PR comment or issue
    comment, signed with the reviewer identity) — that record is unchanged;
    only the merge MECHANISM changes.
-2. Plain-git squash-merge in a clean worktree with role attribution: create a
+2. Run `bash "${REVIEW_PLUGIN_ROOT}/scripts/review-round.sh" approval-check --task "$REVIEW_TASK"` and stop on failure. Then plain-git squash-merge in a clean worktree with role attribution: create a
    temporary worktree off `origin/<mainBranch>`, `git merge --squash
    <branch>`, commit with the same on-behalf attribution recipe as the PR
    path (`identity.sh on-behalf ...` — Applied-by/Reviewed-by/Co-authored-by,
@@ -378,3 +428,22 @@ renders an avatar/link only when the resolved email belongs to a GitHub
 account; plus-addressed mail (`local+tag@domain`) still delivers to the
 owner's inbox on Outlook/Gmail/Fastmail. The `agent-identities` skill
 shows/edits all of this.
+
+### Enforcement boundary and recovery
+
+Admission/verdict writes serialize under `.claude/telemetry.lock/` with a bounded
+wait; approval checks take the same mutex without changing history. Default shell
+state is shared across linked worktrees; `--root DIR` explicitly selects state,
+and Python callers must supply the primary root. The root must already exist as
+a consumer directory; missing roots are refused before state or mutex creation.
+All telemetry appends cooperate.
+A hard crash may leave the lock: stop all writers, verify none is active, then a
+human may remove the empty lock directory. Never steal a lock based on age.
+Malformed, truncated, unreadable or ambiguous history fails closed; preserve it
+for human investigation. There is no reset or bypass command.
+
+These commands enforce bundled workflow boundaries. They do not intercept
+arbitrary agent invocations, raw git/gh, other clones or manual telemetry changes;
+an explicit different root is a different local attestation store. Approval does
+not hold a lock through external merge operations. Existing historical metrics
+remain tolerant and readable.

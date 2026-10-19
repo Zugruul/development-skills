@@ -115,3 +115,20 @@ Board reflects reality at every step (verify with `board.sh audit`, #76 — it r
 `board.sh` enforces WIP admission at direct and replayed status mutations. It counts every item in the active board's work status (`statusFlow[1]`, or the sole status), plus review (`statusFlow[2]`) when `serialDelivery` is true; `maxInProgress` defaults to 1 and must be a positive integer, and `serialDelivery` defaults to false and must be boolean. A task already occupying either counted status may resume or move between counted statuses without adding a slot, even on an over-limit board. Entry into review directly also requires capacity in serial mode. The command reads a fresh complete board snapshot, validates one target identity, and serializes admission across cooperating processes and linked worktrees of this clone. Capacity or invalid-state refusals do not newly queue direct starts; blocked queued starts remain recoverable and are checked again on replay. Proven rate limits still defer through the existing queue. Existing checkpoint, comments, gate, review and closure guards remain required.
 
 The picker reports capacity before work begins; mutation admission makes the final decision. The unchanged Claude hook is additional offline defense in depth; `SERIAL_DELIVERY_OVERRIDE=1` overrides only that hook, never command admission. There is no slot ledger or distributed reservation: other clones, raw API writes and eventual consistency of GitHub reads can still exceed the limit. See the plugin README's WIP admission recovery instructions for a busy or interrupted local mutex.
+
+### Autonomous review admission (#241)
+
+For the auto-review dialogue (both PR and local delivery), run
+`bash "../../scripts/review-round.sh" admit --task N --ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)"`
+before every reviewer invocation or re-invocation. Only success authorizes launch;
+record its returned round as an untagged `review-round` verdict through
+`telemetry.py` using the primary state root. Before approval and immediately before
+either `gh pr merge` or local git merge, run
+`bash "../../scripts/review-round.sh" approval-check --task N`.
+A refusal means stop, comment on the issue, write a handoff and leave *In review*
+for a human. Three rounds are durable across sessions/worktrees; third-round
+approval remains mergeable. Pending/ambiguous history cannot restart the budget.
+The tagged spec-compliance/code-quality passes and existing gate, closure,
+checkpoint and WIP checks remain required independently. Follow auto-review.md §1,
+§2, §4 and §5 for executable reservation/verdict examples and both merge routes;
+these are local attestations, not interception of arbitrary agent/git/gh commands.

@@ -327,3 +327,9 @@ Scaffolds a new greenfield project's minikube dev-workflow scripts
 ```bash
 claude plugin install scaffold-project@development-skills
 ```
+
+
+Autonomous spec-workflow approval now uses durable three-round admission before
+each reviewer invocation, shared across linked worktrees. The read-only approval
+check applies to both PR and local delivery; tagged two-pass reviews remain
+separate. See [commands, compatibility and recovery](plugins/spec-workflow/README.md#bounded-autonomous-reviewer-rounds).

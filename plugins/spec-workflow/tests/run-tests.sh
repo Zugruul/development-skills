@@ -210,6 +210,7 @@ SECTIONS=(
     section-neural-view-entities.sh
     section-feedback.sh
     section-telemetry.sh
+    section-review-rounds.sh
     section-closure.sh
 section-semver.sh
     section-two-pass-review-preflight.sh

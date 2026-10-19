@@ -15,6 +15,7 @@ ignore	.claude/ITERATIVE_UI_OFF
 ignore	.claude/ui-hub/
 ignore	.claude/gate-pass
 ignore	.claude/telemetry.jsonl
+ignore	.claude/telemetry.lock/
 ignore	.claude/lessons.jsonl
 ignore	.claude/board-queue.jsonl
 ignore	.claude/board-cache.json

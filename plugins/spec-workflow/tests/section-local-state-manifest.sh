@@ -23,6 +23,7 @@ LS_EXP_IGNORE="$(printf '%s\n' \
     '.claude/ui-hub/' \
     '.claude/gate-pass' \
     '.claude/telemetry.jsonl' \
+    '.claude/telemetry.lock/' \
     '.claude/lessons.jsonl' \
     '.claude/board-queue.jsonl' \
     '.claude/board-cache.json' \

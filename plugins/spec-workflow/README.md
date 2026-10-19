@@ -257,6 +257,7 @@ Checkpoint enforcement covers bundled workflow admission, not arbitrary file edi
 | ignore | `.claude/ui-hub/` |
 | ignore | `.claude/gate-pass` |
 | ignore | `.claude/telemetry.jsonl` |
+| ignore | `.claude/telemetry.lock/` |
 | ignore | `.claude/lessons.jsonl` |
 | ignore | `.claude/board-queue.jsonl` |
 | ignore | `.claude/board-cache.json` |
@@ -279,7 +280,7 @@ Checkpoint enforcement covers bundled workflow admission, not arbitrary file edi
 
 ## Telemetry
 
-`.claude/telemetry.jsonl` (gitignored) is the loop's own performance record — SPEC §8.4. `board.sh move` and `gate.sh` append events automatically (best-effort: a write failure, e.g. a read-only `.claude`, never fails the move or the gate); `build-next` records `review-round`/`task-close` events at the orchestrator level (see its SKILL.md). Record kinds use one JSON object per line: `transition` (`task`/`from`/`to`/`ts` — `from` is not tracked by `board.sh`, so metrics only uses `to`+`ts`), `gate` (`task`/`ok`/`ts` — `task` is the current branch name, since `gate.sh` has no task id in scope), `review-round` (`task`/`round`/`verdict`/`ts`), `task-close` (`task`/`estimate`/`ts`). `board.sh metrics` (→ `telemetry.py <root> metrics`) reports cycle time per status, first-try gate rate, rework (multi-round review) rate, and a per-task estimate-vs-actual listing; malformed lines are skipped and counted, never fatal. See `scripts/telemetry.py`'s module docstring for the exact schema.
+`.claude/telemetry.jsonl` (gitignored) is the loop's own performance record — SPEC §8.4. `board.sh move` and `gate.sh` append events automatically (best-effort: a write failure, e.g. a read-only `.claude`, never fails the move or the gate); `build-next` records `review-round`/`task-close` events at the orchestrator level (see its SKILL.md). Record kinds use one JSON object per line: `transition` (`task`/`from`/`to`/`ts` — `from` is not tracked by `board.sh`, so metrics only uses `to`+`ts`), `gate` (`task`/`ok`/`ts` — `task` is the current branch name, since `gate.sh` has no task id in scope), `review-round-start` (`task`/`round`/`ts`, durable autonomous admission), `review-round` (`task`/`round`/`verdict`/`ts`, optional two-pass `pass` tag), `task-close` (`task`/`estimate`/`ts`). `board.sh metrics` (→ `telemetry.py <root> metrics`) reports cycle time per status, first-try gate rate, rework (multi-round review) rate, and a per-task estimate-vs-actual listing; malformed lines are skipped and counted, never fatal. See `scripts/telemetry.py`'s module docstring for the exact schema.
 
 
 Task closure (#238) is enforced by the shared read-only
@@ -401,3 +402,40 @@ The picker reports capacity before work begins; mutation admission makes the fin
 Admission uses the gitignored primary-checkout directory `.claude/board-wip.lock/` as a portable mutex, registered in the local-state manifest. It is not a slot ledger. Direct calls acquire only this lock; replay acquires the existing flush lock first, then this admission lock. The critical section covers the fresh complete read, target validation, capacity check and mutation. The checkpoint is checked again after any lock wait. Malformed/incomplete responses, pagination hard-cap truncation, missing or ambiguous targets, and invalid policy fail before mutation or transition telemetry. A fresh validated already-target replay may skip without another mutation. Counted status labels must each resolve to one normalized option label and a nonempty option ID; no other label may share that counted ID, including labels elsewhere in `statusFlow`. Ambiguous counted option mappings fail closed before choosing either the admitted or ordinary mutation path, so an alias cannot bypass capacity checks.
 
 Admission waits at most approximately ten seconds for another holder, then reports busy/stuck state without mutation. Ordinary success, failure and handled signals release ownership after any surviving foreground child finishes. A hard crash can leave the directory behind; it is never stolen based on age or a PID check. For recovery, inspect the reported lock path and its `pid` file (the invoking board process), and verify **all** board/flush holders and their child commands are idle before removing `pid` and the empty lock directory. If a remote write may have happened before interruption, inspect the actual board before retrying; absence of a success message does not prove the write failed. Do not remove a live or uncertain lock. The separate historical flush-lock recovery policy is unchanged.
+
+### Bounded autonomous reviewer rounds
+
+`review-round.sh admit --task ID --ts ISO8601 [--root DIR]` durably reserves the
+next autonomous dialogue round (JSON stdout) before reviewer invocation.
+`review-round.sh approval-check --task ID [--root DIR]` is the read-only prerequisite
+before approval and both PR/local merges. Shell defaults share the primary checkout;
+Python equivalents are `telemetry.py ROOT review-admit ID ISO8601` and
+`telemetry.py ROOT review-approval-check ID`, with explicit state root.
+The root must be an existing consumer directory; all telemetry writes refuse a
+missing root before creating `.claude` or a mutex. The commands do not create
+consumer directories implicitly.
+Complete each reservation using an untagged `review-round` event with the returned
+round and actual verdict. See [executable workflow examples](skills/build-next/references/auto-review.md#1-spawn-the-reviewer).
+
+At most three attempts belong to a task across sessions and worktrees. Legacy
+sequential completed untagged rounds count, while tagged spec-compliance and
+code-quality events remain independent. Direct legacy verdict appends remain
+compatible only while the task has no reservation history, always sequential
+and bounded 1..3. Pending attempts block admission; record an honest `ABORTED`
+when appropriate or hand off. Latest completed `APPROVE`/`approved` permits merge,
+including round three; exhaustion without approval requires an issue comment,
+handoff and *In review* for a human. No reset or bypass is provided.
+
+All telemetry appends and review checks share `.claude/telemetry.lock/` with a
+two-second bounded acquisition. Normal completion/errors release it. After a hard
+crash, verify every writer is stopped before a human removes the empty directory;
+never remove a live lock or use age as proof. A write/fsync failure is never
+reported as admission success and may leave evidence requiring investigation.
+Malformed/truncated/unreadable history blocks forward review operations; metrics
+remain tolerant of historical data. Policy refusals do not alter telemetry.
+
+The commands do not intercept arbitrary agent invocation, raw git/gh, manual log
+tampering or other clones. Explicit roots select distinct local stores. Approval
+is a local attestation, not proof of reviewer identity, inspected SHA or quality,
+and its mutex is not held through an external merge. Green gate, tagged two-pass
+reviews, closure, checkpoint and WIP prerequisites remain independently necessary.

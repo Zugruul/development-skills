@@ -2,7 +2,8 @@
 """telemetry.py — per-iteration build-loop telemetry (JSONL) + metrics.
 
 Storage — OQ-5 (SPEC §12, decided): fixed at `.claude/telemetry.jsonl` under
-the repo root. Gitignored; no config knob. One JSON object per line.
+an existing repo root directory. Missing roots are refused before state creation.
+Gitignored; no config knob. One JSON object per line.
 
 Record kinds (all require `task` and `ts`; `ts` is an INPUT, an ISO 8601
 string — this script never reads the clock in tested paths; callers such as
@@ -14,6 +15,9 @@ board.sh/gate.sh stamp real wall-clock time when they record):
                   metrics only uses `to` + `ts` pairs, so an empty `from`
                   does not affect any computed number).
     gate          {"kind": "gate", "task": <id>, "ok": <bool>, "ts": <iso8601>}
+    review-round-start {"kind": "review-round-start", "task": <id>,
+                        "round": <1..3>, "ts": <iso8601>}
+                  Durable reservation before autonomous reviewer invocation.
     review-round  {"kind": "review-round", "task": <id>, "round": <int>,
                    "verdict": <str>, "ts": <iso8601>,
                    "pass": <"spec-compliance"|"code-quality">?}
@@ -36,6 +40,8 @@ board.sh/gate.sh stamp real wall-clock time when they record):
 CLI:
     telemetry.py <root> record <event-json-or-@file>   # validate + append
     telemetry.py <root> closure-check <task>            # read-only prerequisite
+    telemetry.py <root> review-admit <task> <timestamp> # reserve, JSON stdout
+    telemetry.py <root> review-approval-check <task>     # read-only prerequisite
     telemetry.py <root> metrics                        # report
 """
 import json
@@ -44,8 +50,11 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 
+import review_rounds as R
+from telemetry_lock import locked, append
+
 CLOSURE_KINDS = {"retro-complete", "feedback-complete", "retro-skip"}
-KINDS = {"transition", "gate", "review-round", "task-close"} | CLOSURE_KINDS
+KINDS = {"transition", "gate", "review-round", "review-round-start", "task-close"} | CLOSURE_KINDS
 TELEMETRY_REL = os.path.join(".claude", "telemetry.jsonl")
 
 
@@ -82,6 +91,11 @@ def validate_event(rec):
             errs.append("review-round.verdict is required")
         if "pass" in rec and rec.get("pass") not in ("spec-compliance", "code-quality"):
             errs.append('review-round.pass must be "spec-compliance" or "code-quality" if present')
+    elif kind == "review-round-start":
+        try:
+            R.validate_review(rec)
+        except R.ReviewError as exc:
+            errs.append(str(exc))
     elif kind == "task-close":
         est = rec.get("estimate")
         if not isinstance(est, (int, float)) or isinstance(est, bool):
@@ -112,7 +126,7 @@ def cmd_record(root, arg):
     else:
         raw = arg
     try:
-        rec = json.loads(raw)
+        rec = R.strict_json(raw)
     except Exception as e:  # noqa: BLE001
         print(f"INVALID: not valid JSON: {e}")
         return 1
@@ -128,11 +142,43 @@ def cmd_record(root, arg):
             return rc
 
     path = telemetry_path(root)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "a") as fh:
-        fh.write(json.dumps(rec, sort_keys=True) + "\n")
+    try:
+        with locked(root):
+            if rec['kind'] in ('review-round', 'review-round-start') and 'pass' not in rec:
+                history = R.read_history(path, rec['task'], validate_event)
+                history.apply(rec)
+            append(path, rec)
+    except (ValueError, TypeError, OSError) as exc:
+        return review_blocked(rec['task'], exc)
     print(f"OK: recorded {rec['kind']} event for task {rec['task']} -> {path}")
     return 0
+
+
+def review_blocked(task, exc):
+    print(f"BLOCKED: task #{task}: {exc}. Do not invoke another autonomous reviewer or merge. "
+          "Post an issue comment with the evidence, write a handoff, and leave In review for a human. "
+          "No automatic reset or bypass.", file=sys.stderr)
+    return 2
+
+
+def cmd_review(root, task, ts=None):
+    """Reservation and read-only approval share the same serialized policy."""
+    try:
+        if ts is None and not os.path.isdir(os.path.join(root, '.claude')):
+            raise R.ReviewError('no autonomous review history')
+        with locked(root):
+            history = R.read_history(telemetry_path(root), task, validate_event)
+            if ts is None:
+                history.approval()
+                return 0
+            rec = dict(kind='review-round-start', task=task,
+                       round=history.next_round(), ts=ts)
+            history.apply(rec)
+            append(telemetry_path(root), rec)
+        print(json.dumps(rec, sort_keys=True))
+        return 0
+    except (ValueError, TypeError, OSError) as exc:
+        return review_blocked(task, exc)
 
 
 def _parse_ts(ts):
@@ -328,6 +374,16 @@ def _cli(argv):
             sys.stderr.write("usage: telemetry.py <root> closure-check <task>\n")
             return 2
         return cmd_closure_check(root, argv[2])
+    if verb == "review-admit":
+        if len(argv) != 4:
+            sys.stderr.write("usage: telemetry.py <root> review-admit <task> <timestamp>\n")
+            return 2
+        return cmd_review(root, argv[2], argv[3])
+    if verb == "review-approval-check":
+        if len(argv) != 3:
+            sys.stderr.write("usage: telemetry.py <root> review-approval-check <task>\n")
+            return 2
+        return cmd_review(root, argv[2])
     if verb == "metrics":
         return cmd_metrics(root)
     sys.stderr.write(f"telemetry.py: unknown verb {verb!r}\n")

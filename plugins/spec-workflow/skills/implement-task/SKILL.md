@@ -121,7 +121,7 @@ work.type governs delivery (absent == `pr`): `pr` — push the branch, `gh pr cr
 ## 4. Retro + feedback — MANDATORY at PR close, standalone or via `build-next`
 This step applies every time this skill closes a task (merge OR abandon), including a direct, standalone invocation of this skill. Do not assume a wrapping `build-next` loop will run it for you — if nothing else ran it this session, you own it.
 
-**Telemetry**: after each review round in step 3, `telemetry.py <root> record '{"kind":"review-round","task":"N","round":R,"verdict":"...","ts":"<now, UTC ISO 8601>"}'` — for THIS skill's own two-pass review (§3), include `"pass":"spec-compliance"` or `"pass":"code-quality"` matching which of the two passes the round belongs to (#236, CDX-031 gap #4: `two-pass-review-preflight.sh` reads this back before the move to *QA*; auto-merge's separate reviewer-approval dialogue in `auto-review.md` stays as-is, no `pass` field); only after the post-merge retro, enabled feedback, and closure preflight below, `telemetry.py <root> record '{"kind":"task-close","task":"N","estimate":<points>,"ts":"<now>"}'` (estimate from `board.sh show N` / the issue).
+**Telemetry**: after each review round in step 3, `telemetry.py <root> record '{"kind":"review-round","task":"N","round":R,"verdict":"...","ts":"<now, UTC ISO 8601>"}'` — for THIS skill's own two-pass review (§3), include `"pass":"spec-compliance"` or `"pass":"code-quality"` matching which of the two passes the round belongs to (#236, CDX-031 gap #4: `two-pass-review-preflight.sh` reads this back before the move to *QA*; auto-merge's separate reviewer-approval dialogue in `auto-review.md` uses durable admission, no `pass` field); only after the post-merge retro, enabled feedback, and closure preflight below, `telemetry.py <root> record '{"kind":"task-close","task":"N","estimate":<points>,"ts":"<now>"}'` (estimate from `board.sh show N` / the issue).
 
 **Retro**: interview the dev and reviewer agents, mint/prune/graduate brain notes, regenerate the directory, commit as the orchestrator — full protocol, including `.claude/lessons.jsonl` (SW-020) as retro input, in `../../skills/build-next/references/brains.md`. If the brief(s) injected recalled notes, record an outcome for each pasted slug before minting — `brain.sh outcome <role> <slug> useful|dead_end|corrected [--task <ref>] [--note "<what was wrong>"]`, `--note` required for `corrected` — same protocol, `../../skills/build-next/references/brains.md` §"Closing the loop". `.neural-network/identities/` not existing yet is NOT a skip reason — minting is self-bootstrapping (`brain.py mint` creates the directory); treat a missing dir the same as an empty one and mint into it. The only valid skips are `delegation.identities` being absent/fully disabled for this repo, or a genuine blocker (e.g. no orchestrator identity configured to author the commit) — either way, state it via `retro: SKIPPED — <reason>` in your final report, AND `telemetry.py <root> record '{"kind":"retro-skip","task":"N","reason":"...","ts":"<now>"}'` — a silent skip is never acceptable.
 
@@ -150,3 +150,20 @@ One task per invocation. Report: task, gate result, PR link, board status, and a
 `board.sh` enforces WIP admission at direct and replayed status mutations. It counts every item in the active board's work status (`statusFlow[1]`, or the sole status), plus review (`statusFlow[2]`) when `serialDelivery` is true; `maxInProgress` defaults to 1 and must be a positive integer, and `serialDelivery` defaults to false and must be boolean. A task already occupying either counted status may resume or move between counted statuses without adding a slot, even on an over-limit board. Entry into review directly also requires capacity in serial mode. The command reads a fresh complete board snapshot, validates one target identity, and serializes admission across cooperating processes and linked worktrees of this clone. Capacity or invalid-state refusals do not newly queue direct starts; blocked queued starts remain recoverable and are checked again on replay. Proven rate limits still defer through the existing queue. Existing checkpoint, comments, gate, review and closure guards remain required.
 
 The picker reports capacity before work begins; mutation admission makes the final decision. The unchanged Claude hook is additional offline defense in depth; `SERIAL_DELIVERY_OVERRIDE=1` overrides only that hook, never command admission. There is no slot ledger or distributed reservation: other clones, raw API writes and eventual consistency of GitHub reads can still exceed the limit. See the plugin README's WIP admission recovery instructions for a busy or interrupted local mutex.
+
+### Autonomous review admission (#241)
+
+For the auto-review dialogue (both PR and local delivery), run
+`bash "../../scripts/review-round.sh" admit --task N --ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)"`
+before every reviewer invocation or re-invocation. Only success authorizes launch;
+record its returned round as an untagged `review-round` verdict through
+`telemetry.py` using the primary state root. Before approval and immediately before
+either `gh pr merge` or local git merge, run
+`bash "../../scripts/review-round.sh" approval-check --task N`.
+A refusal means stop, comment on the issue, write a handoff and leave *In review*
+for a human. Three rounds are durable across sessions/worktrees; third-round
+approval remains mergeable. Pending/ambiguous history cannot restart the budget.
+The tagged spec-compliance/code-quality passes and existing gate, closure,
+checkpoint and WIP checks remain required independently. Follow auto-review.md §1,
+§2, §4 and §5 for executable reservation/verdict examples and both merge routes;
+these are local attestations, not interception of arbitrary agent/git/gh commands.
