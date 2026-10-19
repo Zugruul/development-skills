@@ -15,6 +15,17 @@
   > 1. Publish the reviewed startup inspection and isolation contract in section 7.9.
   > 2. Archive the applied task delta.
 
+### Chores
+- **brain:** record checkout isolation recalls (#285) (`5882878`)
+- **brain:** record checkout preservation retrospective (#285) (`28937a4`)
+  > 1. Record 13 recalled-note outcomes and three new lessons from the developer and reviewer interviews.
+  > 2. Prune eight obsolete links and graduate isolated historical RED verification into the reviewer charter.
+  > 3. Regenerate the directory and mark retrospective 142; preserve inherited feed divergences.
+- **feedback:** archive checkout preservation iteration (#285) (`3a85933`)
+  > 1. Record developer, reviewer and orchestrator process feedback.
+  > 2. Deduplicate the generalized signals against the issue corpus and route them to the committed retrospective notes.
+  > 3. Archive all three records with no pending feedback.
+
 ## v0.73.7 — 2026-10-19
 
 ### Fixes
