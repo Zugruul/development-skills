@@ -12,6 +12,8 @@
 
 ### Documentation
 - **spec:** fold preflight freshness delta into memory contract (#274) (`7c25175`)
+- **handoff:** record deployed freshness audit and continuation (#274) (`7ac48ea`)
+  > Closes #274
 
 ### Chores
 - **brain:** recall reviewer lessons for freshness audit (#274) (`f380554`)
