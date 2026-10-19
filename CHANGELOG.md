@@ -10,6 +10,11 @@
   > 2. Preserve existing work and use authorized clean worktrees for dirty-clone startup.
   > 3. Cover Git status variants, hidden submodule changes, inspection failures and checkout preservation with real repository tests.
 
+### Documentation
+- **spec:** fold checkout preservation contract (#285) (`53b62b8`)
+  > 1. Publish the reviewed startup inspection and isolation contract in section 7.9.
+  > 2. Archive the applied task delta.
+
 ## v0.73.7 — 2026-10-19
 
 ### Fixes
