@@ -10,6 +10,11 @@
   > 2. Bind the validated item identity and serialize admission across this clone's linked worktrees.
   > 3. Preserve blocked queued work, checkpoint and telemetry behavior, and document enforcement limits and lock recovery.
 
+### Documentation
+- **spec:** fold task 240 WIP admission contract into Codex spec (`1102d46`)
+  > 1. Record complete snapshot, counted mapping, local serialization and queue recovery guarantees.
+  > 2. Archive the reviewed delta and retain explicit external enforcement limits.
+
 ## v0.73.4 — 2026-10-19
 
 ### Fixes
