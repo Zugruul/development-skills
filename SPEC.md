@@ -44,6 +44,37 @@ Constraint for all of §6: `board.sh` is the ONLY board access; similarity/dedup
 - **§6.4** WHEN an inbound task is created THE SYSTEM SHALL mark it as inbound with the GitHub label `inbound` (Status stays `Backlog`, no dedicated inbound status column), assign a priority, and add it to the board so `next.py` can pick it.
 - **§6.5** WHERE the match confidence is medium THE SYSTEM SHALL follow the user's OQ-4 decision (default: ask the human).
 
+### §6.6 Project inventory
+
+WHEN the human invokes `/neural-network-projects-list`, the system SHALL enumerate
+anchored immediate-child repositories under the selected scan base (default
+`~/Development`) using discovery shared with neural-view and sync-configs, and
+SHALL always include the selected current repository (default cwd Git root,
+falling back to cwd), even when its anchor or config is absent. The inventory
+SHALL deduplicate canonical paths and sort rows deterministically. Unreadable
+scan bases or children SHALL not abort other repository rows.
+
+FOR EACH repository, the system SHALL report its path, `project.name`, schema
+semver detected from raw config using the shared version detector, methodology
+`maxInProgress`, `autoMerge`, `serialDelivery`, feedback enabled (including boolean
+shorthand), `iterativeUI`, and every configured board provider/project number.
+Absent settings SHALL remain unspecified rather than receiving guessed defaults.
+Config selection SHALL use the shared canonical YAML/YML/legacy JSON loader
+behavior independently of ambient `PROJECT_CONFIG`.
+
+WHEN a repository config is missing, unreadable or invalid, the inventory SHALL
+retain its row as `INVALID`, include the actual validator's first error when
+available (otherwise an explicit load/validator-failure diagnostic), and continue
+with other rows. Safely readable fields SHALL be retained. Valid rows SHALL show
+`OK`. The command SHALL support a compact textual table and structured `--json`
+output; invalid rows SHALL not cause inventory failure.
+
+The operation SHALL read local filesystem data only and SHALL NOT create anchors,
+edit config, write caches/bytecode or fetch board/network data. The skill SHALL
+use the same engine on Claude and Codex with plugin-root resolution from the
+installed skill location, preserving existing host discovery metadata and existing
+scanner-specific fallback, explicit-root and self-exclusion policies.
+
 ## §7 Hardening (E1)
 
 - **§7.1 tree-state** — WHEN untracked files exist in the working tree THE SYSTEM SHALL include their content hashes in the gate fingerprint, so editing an untracked file after a green gate invalidates the recorded pass.
