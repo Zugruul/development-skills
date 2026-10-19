@@ -252,6 +252,49 @@ WHEN classifying a work-status transition, THE SYSTEM SHALL honor the active BOA
 - The picker SHALL report selection-time headroom; the actual bundled mutation boundary SHALL independently enforce admission. Existing checkpoint, comment-steering, gate, red-first, review and closure guards SHALL remain necessary. Claude hooks SHALL remain defense in depth; `SERIAL_DELIVERY_OVERRIDE` SHALL override only its existing hook behavior, not command admission.
 - Documentation SHALL state that this mutex is local serialization, not a slot ledger or distributed reservation service. Other clones, raw API writes and eventual consistency of GitHub reads SHALL remain explicit external limits; the implementation SHALL NOT claim an atomic GitHub count-and-mutate transaction or a globally enforced WIP ceiling.
 
+**Bounded autonomous review rounds (§9.2).**
+
+WHEN a bundled workflow invokes or re-invokes an autonomous approval reviewer,
+THE SYSTEM SHALL first durably reserve the next sequential task round through
+`review-round.sh admit --task ID --ts ISO8601`, before delegation, and SHALL admit
+at most three rounds across restarts and linked worktrees. Default shell state
+SHALL resolve to the primary checkout; explicit roots SHALL be honored and Python
+callers SHALL supply their state root explicitly. The root SHALL denote an
+existing consumer directory; telemetry writes SHALL refuse a missing root before
+creating local state or acquiring the mutex, rather than implicitly creating
+consumer directories whose parent entries have not been persisted.
+
+WHEN recording untagged review verdicts, THE SYSTEM SHALL serialize validation
+and append with admission and all cooperating telemetry writers, reject invalid,
+duplicate, conflicting, regressed, skipped or out-of-range rounds, and require a
+matching reservation once a task has reservation history. Valid sequential legacy
+untagged verdicts SHALL count toward the same budget and remain directly writable
+only before reservation history begins. Tagged spec-compliance/code-quality
+passes SHALL remain separate from the autonomous dialogue budget.
+
+IF a reservation is pending, history is malformed, truncated, ambiguous or
+unreadable, or acquisition/persistence fails, THEN THE SYSTEM SHALL refuse further
+autonomous admission without reporting success or automatically resetting history.
+Policy refusals SHALL leave telemetry unchanged. A failed append MAY leave partial
+or durable evidence; forward operations SHALL require truthful resolution or human
+handoff. Unattributable corrupt history SHALL NOT establish a fresh budget.
+
+WHEN approving or merging autonomously through either PR or local delivery,
+THE SYSTEM SHALL require the shared read-only `review-round.sh approval-check`
+to establish a completed latest APPROVE (including compatible approved spelling)
+within the bound, with no pending attempt. A third-round approval SHALL remain
+valid. IF three rounds finish without approval, THEN THE SYSTEM SHALL require an
+issue comment, handoff and In review status for a human. Gate, independent two-pass
+review, closure, checkpoint and WIP prerequisites SHALL remain independently required.
+
+THE SYSTEM SHALL retain tolerant historical metric reading and document the
+local command/attestation boundary: arbitrary agent/git/gh invocation, manual log
+tampering, distinct roots and other clones are not intercepted; the check does not
+prove reviewer identity, inspected SHA or review quality, and does not hold a lock
+through an external merge. Acquisition SHALL be bounded; hard-crash lock recovery
+SHALL require verified-idle human intervention, never age-based stealing. No reset
+or bypass command SHALL be supplied.
+
 - **§9.3** THE SYSTEM SHALL keep Claude's `SessionStart`/`PreToolUse` hooks (`hooks/hooks.json`)
   unchanged and functioning as defense in depth; correctness SHALL NOT depend exclusively on them
   firing.
