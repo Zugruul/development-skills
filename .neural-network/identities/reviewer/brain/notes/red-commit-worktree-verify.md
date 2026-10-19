@@ -3,7 +3,7 @@ tags: [review, tdd, git]
 paths: ["plugins/spec-workflow/**"]
 strength: 3
 source: "PR#128 MEM-004 retro"
-graduated: false
+graduated: true
 created: 2026-07-07
 ---
 

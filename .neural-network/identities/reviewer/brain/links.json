@@ -1,4 +1,9 @@
 {
+  "arm-side-effect-probes-after-fixture-setup->reproduce-before-verdict": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "audit-admission-before-worker-start->reproduce-before-verdict": {
     "fires": 3,
     "last": "2026-10-19",

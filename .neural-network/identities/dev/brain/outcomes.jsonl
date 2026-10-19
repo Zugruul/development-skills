@@ -169,3 +169,9 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "test-section-shell-plumbing-risk", "task": "274", "ts": "2026-10-19T19:09:40+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "audit-before-build-per-ac-clause", "task": "274", "ts": "2026-10-19T19:09:40+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "boundary-test-needs-exact-value-plus-absence-check", "task": "274", "ts": "2026-10-19T19:09:40+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "batch-red-across-surfaces", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "capture-dont-transcribe", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "stderr-suppression-hides-evidence", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
+{"note": null, "outcome": "dead_end", "schemaVersion": 1, "slug": "poll-own-children", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "acceptance-criterion-outranks-test-spec-paraphrase", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "deterministic-repro-fast", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}

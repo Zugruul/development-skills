@@ -484,6 +484,16 @@
     "last": null,
     "weight": 0.5
   },
+  "propagate-git-status-policy-to-submodules->acceptance-criterion-outranks-test-spec-paraphrase": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "propagate-git-status-policy-to-submodules->capture-dont-transcribe": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "proxy-checks-vs-true-invariants->contract-invariant-preservation": {
     "fires": 14,
     "last": "2026-10-19",

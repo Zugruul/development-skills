@@ -134,3 +134,6 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "confirm-named-scope-exclusions-respected", "task": "274", "ts": "2026-10-19T19:09:41+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "copied-precedent-needs-fresh-verification", "task": "274", "ts": "2026-10-19T19:09:41+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "distinguish-missed-vs-uncatchable-findings", "task": "274", "ts": "2026-10-19T19:09:41+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "red-commit-worktree-verify", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reports-are-not-the-code", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
