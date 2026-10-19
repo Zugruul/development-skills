@@ -16,6 +16,11 @@
   > 1. Record shipped project inventory behavior in section 6.6.
   > 2. Archive the reviewed delta after publication.
 
+### Chores
+- **277:** record role recalls and scope consult (`419d231`)
+- **277:** record post-merge retrospective and note outcomes (`37c8dc5`)
+- **277:** archive routed workflow feedback (`211e90f`)
+
 ## v0.73.8 — 2026-10-19
 
 ### Fixes
