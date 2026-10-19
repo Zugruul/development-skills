@@ -15,6 +15,7 @@
 - **spec:** fold 277 project inventory delta into SPEC (`7d57651`)
   > 1. Record shipped project inventory behavior in section 6.6.
   > 2. Archive the reviewed delta after publication.
+- **handoff:** record completed project inventory delivery (#277) (`f66c829`)
 
 ### Chores
 - **277:** record role recalls and scope consult (`419d231`)
