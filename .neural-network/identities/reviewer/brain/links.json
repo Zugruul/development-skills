@@ -129,6 +129,16 @@
     "last": "2026-10-19",
     "weight": 0.5
   },
+  "probe-markers-inside-user-records->reports-are-not-the-code": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "probe-markers-inside-user-records->reproduce-before-verdict": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "probe-spec-silent-input-categories->trace-boundary-operators-by-hand": {
     "fires": 19,
     "last": "2026-10-19",

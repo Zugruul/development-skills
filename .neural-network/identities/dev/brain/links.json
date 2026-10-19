@@ -179,16 +179,6 @@
     "last": "2026-10-19",
     "weight": 0.5
   },
-  "exclude-unbound-sibling-ports-explicitly->bash-test-sections-shared-state": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "exclude-unbound-sibling-ports-explicitly->deterministic-repro-fast": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
   "execute-paste-recipes->circular-fixture-detector": {
     "fires": 30,
     "last": "2026-10-19",
@@ -317,6 +307,16 @@
   "keep-refused-jobs-out-of-owned-receipts->deterministic-repro-fast": {
     "fires": 1,
     "last": "2026-10-18",
+    "weight": 0.5
+  },
+  "match-record-delimiters-before-replacement->boundary-test-needs-exact-value-plus-absence-check": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "match-record-delimiters-before-replacement->capture-dont-transcribe": {
+    "fires": 0,
+    "last": null,
     "weight": 0.5
   },
   "multiline-body-stdin-contract-gap->sanity-check-fix-against-broken-code": {
@@ -462,16 +462,6 @@
   "present-vs-demanding-policy-rules->circular-fixture-detector": {
     "fires": 29,
     "last": "2026-10-19",
-    "weight": 0.5
-  },
-  "preserve-classifier-input-when-optimizing->batch-red-across-surfaces": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "preserve-classifier-input-when-optimizing->sanitize-structured-credentials-before-storage": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "preserve-current-tree-when-sharing-state->acceptance-criterion-outranks-test-spec-paraphrase": {
@@ -737,16 +727,6 @@
   "unassumed-full-pipeline-repro->trace-state-mutation-not-named-trigger": {
     "fires": 39,
     "last": "2026-10-19",
-    "weight": 0.5
-  },
-  "validate-behavioral-options-at-their-site->bind-contract-checks-to-clauses": {
-    "fires": 0,
-    "last": null,
-    "weight": 0.5
-  },
-  "validate-behavioral-options-at-their-site->bool-before-int-guard": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "validate-file-type-without-blocking-open->deterministic-repro-fast": {
