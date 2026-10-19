@@ -2,3 +2,10 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "align-worktree-and-test-git-runtime", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "canonical-merge-locus", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "front-load-exact-mechanics-in-design-docs", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "align-worktree-and-test-git-runtime", "task": "277", "ts": "2026-10-19T21:22:38+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "canonical-merge-locus", "task": "277", "ts": "2026-10-19T21:22:38+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "record-recalls-outside-task-history", "task": "277", "ts": "2026-10-19T21:22:38+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "check-shipped-before-implementing", "task": "277", "ts": "2026-10-19T21:22:38+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "brief-report-on-commit", "task": "277", "ts": "2026-10-19T21:22:38+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "cheap-ab-before-10min-runs", "task": "277", "ts": "2026-10-19T21:22:38+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "discriminator-over-hypothesis", "task": "277", "ts": "2026-10-19T21:22:38+00:00"}

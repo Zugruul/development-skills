@@ -474,12 +474,12 @@
     "last": "2026-10-19",
     "weight": 0.5
   },
-  "preserve-stream-framing-before-filtering->capture-real-output-as-fixtures": {
+  "preserve-filesystem-path-bytes->batch-red-across-surfaces": {
     "fires": 0,
     "last": null,
     "weight": 0.5
   },
-  "preserve-stream-framing-before-filtering->protocol-layer-failure-enumeration": {
+  "preserve-filesystem-path-bytes->capture-dont-transcribe": {
     "fires": 0,
     "last": null,
     "weight": 0.5
@@ -497,11 +497,6 @@
   "proxy-checks-vs-true-invariants->contract-invariant-preservation": {
     "fires": 15,
     "last": "2026-10-19",
-    "weight": 0.5
-  },
-  "queue-skips-need-validated-state->boundary-test-needs-exact-value-plus-absence-check": {
-    "fires": 0,
-    "last": null,
     "weight": 0.5
   },
   "read-config-live-not-hardcoded-in-tests->verify-design-doc-quotes-against-live-file": {

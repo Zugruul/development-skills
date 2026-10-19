@@ -175,3 +175,8 @@
 {"note": null, "outcome": "dead_end", "schemaVersion": 1, "slug": "poll-own-children", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "acceptance-criterion-outranks-test-spec-paraphrase", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "deterministic-repro-fast", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "batch-red-across-surfaces", "task": "277", "ts": "2026-10-19T21:22:37+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "capture-dont-transcribe", "task": "277", "ts": "2026-10-19T21:22:37+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "stderr-suppression-hides-evidence", "task": "277", "ts": "2026-10-19T21:22:38+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "acceptance-criterion-outranks-test-spec-paraphrase", "task": "277", "ts": "2026-10-19T21:22:38+00:00"}
+{"note": "Synchronous subprocess calls introduce no new child lifecycle management.", "outcome": "dead_end", "schemaVersion": 1, "slug": "poll-own-children", "task": "277", "ts": "2026-10-19T21:22:38+00:00"}

@@ -137,3 +137,7 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "red-commit-worktree-verify", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reports-are-not-the-code", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "285", "ts": "2026-10-19T19:57:19+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "reports-are-not-the-code", "task": "277", "ts": "2026-10-19T21:22:38+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "277", "ts": "2026-10-19T21:22:38+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "confirm-named-scope-exclusions-respected", "task": "277", "ts": "2026-10-19T21:22:38+00:00"}
+{"note": "Applied and verified during task277; see committed retrospective report.", "outcome": "useful", "schemaVersion": 1, "slug": "copied-precedent-needs-fresh-verification", "task": "277", "ts": "2026-10-19T21:22:38+00:00"}

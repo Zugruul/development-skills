@@ -1,4 +1,14 @@
 {
+  "batch-filesystem-boundary-probes->align-worktree-and-test-git-runtime": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
+  "batch-filesystem-boundary-probes->cheap-ab-before-10min-runs": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "brief-collisions-and-inflight-siblings->brief-load-bearing-lines": {
     "fires": 1,
     "last": "2026-10-19",
