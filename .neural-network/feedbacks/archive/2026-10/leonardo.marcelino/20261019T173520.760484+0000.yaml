@@ -1,0 +1,53 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-19T17:35:20.760484+00:00'
+iteration:
+  task: '241'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: codex-host-default
+items:
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Independent readback probes exposed a shared-history poisoning bug
+  detail: The quality reviewer exercised a successful write followed by unrelated
+    admission and found exponent overflow that the original focused suite missed.
+    Tests-first remediation covered parsing, serialization and recovery.
+  generalized: When introducing a strict reader, independently consume successful
+    official writes through it, including numeric conversion and cross-task effects.
+  evidence:
+  - Zugruul/development-skills#241
+  routing:
+    action: brain-note
+    ref: reviewer/strict-reader-writer-roundtrip
+- category: friction
+  area: testing
+  severity: low
+  summary: Focused checks missed existing integration requirements
+  detail: The full gate caught a host-specific skill path and a missing standalone
+    section guard. Runtime-state registration also spans manifest, ignore list, exact-list
+    tests and documentation.
+  generalized: Check existing registration and portability contracts alongside focused
+    tests when adding a helper, runtime state or test section.
+  evidence:
+  - Zugruul/development-skills#241
+  routing:
+    action: brain-note
+    ref: dev/new-helper-integration-contracts
+- category: worked-well
+  area: testing
+  severity: low
+  summary: Simulating artifact movement caught a post-merge test failure
+  detail: The parent moved the pending spec delta in an isolated copy and confirmed
+    the original path assertion failed. The corrected assertion accepts pending and
+    applied regular files and still fails if both are absent.
+  generalized: Test workflow artifacts in every legitimate lifecycle location, plus
+    a missing-artifact negative case, before merge.
+  evidence:
+  - Zugruul/development-skills#241
+  routing:
+    action: brain-note
+    ref: dev/no-stage-specific-path-assertions
