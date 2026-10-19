@@ -1,0 +1,28 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-19T21:24:56.274583+00:00'
+iteration:
+  task: '277'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: reviewer
+  model: unknown (Codex host default)
+items:
+- category: worked-well
+  area: review
+  severity: low
+  summary: Independent probes found gaps beyond the author test suite.
+  detail: The inventory task required scalar-rendering, non-UTF8 decoding and CR/CRLF
+    path corrections. Spec review used three passes, quality review two, and autonomous
+    approval one admitted round. Relevant post-merge interviews and lessons are recorded
+    in the task retrospective.
+  evidence:
+  - Zugruul/development-skills#277
+  - commit:a256ed862498291282695107b1724ed33afd2bd6
+  generalized: Independent reviewers should exercise actual CLI inputs beyond existing
+    fixtures and replay the historical failing tests before approval.
+  routing:
+    action: brain-note
+    ref: .neural-network/identities/reviewer/brain/notes/check-decoding-and-rendering-boundaries.md
+      (minted in the same post-merge retrospective; commit d5e00c7)

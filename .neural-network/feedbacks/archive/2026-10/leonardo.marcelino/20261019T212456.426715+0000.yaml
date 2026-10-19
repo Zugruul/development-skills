@@ -1,0 +1,28 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-10-19T21:24:56.426715+00:00'
+iteration:
+  task: '277'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: unknown (Codex host default)
+items:
+- category: friction
+  area: testing
+  severity: medium
+  summary: Adjacent boundary failures required repeated expensive gate runs.
+  detail: The inventory task required scalar-rendering, non-UTF8 decoding and CR/CRLF
+    path corrections. Spec review used three passes, quality review two, and autonomous
+    approval one admitted round. Relevant post-merge interviews and lessons are recorded
+    in the task retrospective.
+  evidence:
+  - Zugruul/development-skills#277
+  - commit:a256ed862498291282695107b1724ed33afd2bd6
+  generalized: Run a small matrix of parsing, subprocess transport and rendering boundaries
+    before the full quality gate.
+  routing:
+    action: brain-note
+    ref: .neural-network/identities/orchestrator/brain/notes/batch-filesystem-boundary-probes.md
+      (minted in the same post-merge retrospective; commit d5e00c7)
