@@ -15,10 +15,22 @@ fi
 # Advisory entrypoint retains its zero-exit/bootstrap contract.
 bash "$HERE/checkpoint-preflight.sh" 2>&1 || true
 
+# Dirty is a routing decision, not a blanket load-time stop: build-next can
+# isolate under the session's existing authorization. Unknown state stops.
+# Keep config/ignore checks independent, including on a dirty checkout.
+PREFLIGHT_CHECKS_OK=1
+CHECKOUT_RESULT="$(bash "$HERE/checkout-preflight.sh" 2>&1)"
+CHECKOUT_RC=$?
+if [[ "$CHECKOUT_RC" -eq 1 ]]; then
+    printf 'CHECKOUT ACTION REQUIRED: %s — preserve these changes; run checkout-preflight.sh with the authorized session --checkout mode before any switch/pull.\n' "$CHECKOUT_RESULT"
+elif [[ "$CHECKOUT_RC" -ne 0 ]]; then
+    printf 'PREFLIGHT FAIL: checkout uninspectable — STOP before checkout mutation: %s\n' "$CHECKOUT_RESULT"
+    PREFLIGHT_CHECKS_OK=0
+fi
+
 # Use the existing validator and renderer as the sole authorities. Capture
 # stdout separately from diagnostics without creating temporary files in the
 # consumer (TMPDIR may itself be inside that repository).
-PREFLIGHT_CHECKS_OK=1
 if ! python3 - "$HERE" "$CONFIG" "$ROOT" <<'PY_CHECK'
 from pathlib import Path
 import shlex

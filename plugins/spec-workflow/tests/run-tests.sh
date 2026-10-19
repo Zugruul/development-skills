@@ -159,6 +159,7 @@ SECTIONS=(
     section-serial-delivery.sh
     section-merge-dance.sh
     section-preflight.sh
+    section-checkout-preflight.sh
     section-checkpoint.sh
     section-wip-admission.sh
     section-ui-hub.sh

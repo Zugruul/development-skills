@@ -245,6 +245,37 @@ The safeguard contract (full protocol: [`skills/implement-task/references/clicku
 
 Checkpoint enforcement covers bundled workflow admission, not arbitrary file edits or raw git/gh commands. A flag can appear after a check because no shared atomic admission lock exists. Remove the configured flag to resume and retry retained queue operations. Custom flag paths must also be locally ignored.
 
+## Checkout preservation at startup
+
+Before any startup switch/pull, build-next runs
+`bash <resolved-plugin-root>/scripts/checkout-preflight.sh [--root DIR] [--checkout main|worktree]`.
+The script resolves its engine beside itself and inspects the actual cwd/explicit
+checkout, including linked worktrees; shared telemetry-root and ambient Git
+repository/index targeting variables do not redirect this check. It emits one
+JSON line with `root`, `status`, `action` and `changes` (porcelain XY `status`,
+`path`, and `source` for a rename/copy), or `error` on inspection failure. Paths
+are JSON escaped, including unusual filename bytes. Direct exit codes are 0
+(`clean`/`proceed`), 1 (`dirty`/`isolate` for an authorized worktree session,
+otherwise `pause`), and 2 (`uninspectable`/`stop`). `--checkout` communicates
+existing session authorization; it does not grant it or change config.
+
+Inspection overrides hidden-untracked and ignored-submodule status preferences,
+retains normal ignored-file exclusions, disables optional index writes and
+filesystem-monitor hooks, and creates no consumer temp files or network requests.
+HEAD, index, file bytes and stashes remain untouched. The advisory `preflight.sh`
+stays zero-exit: dirty emits `CHECKOUT ACTION REQUIRED` so authorized isolation can
+proceed; unknown emits `PREFLIGHT FAIL` and suppresses the config-ok line. Existing
+config validation and managed-ignore freshness checks still run independently.
+
+The [build-next startup sequence](skills/build-next/SKILL.md#dirty-checkout-isolation-285)
+fetches without switching a dirty checkout, then creates an unused sibling
+orchestration worktree from the fetched main commit (local main if no remote).
+It reinspects that lane and registers task branches from the verified base.
+Explicit main-only sessions pause for the human's choice; no automatic stash,
+reset, add or commit handles pre-existing work. Clean linked worktrees are not
+blocked by dirtiness in the primary checkout. These are point-in-time observations,
+not OS locks, ownership detection or enforcement of arbitrary Git commands.
+
 ## Local-state manifest
 
 `scripts/local-state.manifest` is the single source of truth (SPEC-MEMORY.md §7.1/§7.4/§9.2) for every path the plugin writes at runtime, each tagged `ignore` (local state — gitignored, never committed) or `track` (shared memory — committed alongside code). Read it — never re-hardcode these paths — via `scripts/lib/local-state.sh` (bash 3.2: `spec_workflow_local_state_paths ignore|track`, `spec_workflow_local_state_policy <path>`) or `scripts/lib/local_state.py` (python stdlib: `paths()`, `policy_of()`). `scripts/gitignore-sync.sh [--dry-run] [target]` (SPEC-MEMORY.md §7.2/§7.2.1) writes the manifest's `ignore`-policy entries into a target `.gitignore` (default `.gitignore`) as a managed block between `# >>> spec-workflow managed` / `# <<< spec-workflow managed` markers — replacing only that block on a re-run (idempotent), appending it if absent, never touching a line outside the markers, and warning (path + matching rule, never editing) when a `track`-policy path is already ignored by some other non-managed rule; `setup-project`'s Phase 5 gitignore step is this script. `sync-project-configs`' `mem013-gitignore-managed-block` rule reconciles this same managed block across every already-anchored repo, keeping repos that adopted the workflow before the manifest changed in sync without a human re-running `setup-project`. The table below is kept in sync with the manifest by a test (`section-local-state-manifest.sh`) — edit the manifest, not this table.

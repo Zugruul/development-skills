@@ -23,3 +23,24 @@ Empty-untracked-set behavior: fingerprint must remain stable/equal to the tracke
 
 ## Out of scope for this epic
 Workflow UX (E0) and self-improvement machinery (E2). Neural-view work (#28/#30). Telemetry (SW-023/024 are E2 §8.4 despite the SW-02x numbering — follow the board's epic mapping).
+
+## Follow-up: #285 — preserve pre-existing checkout changes
+
+Grounded in SPEC §4 (isolated lanes), §7 (hardening), §9 (script decisions, TDD), SPEC-CODEX-COMPAT §9.2 (no-hook enforcement and unrelated work preservation), and the issue's explicit dirty-clone isolation request. #532 introduced checkout preference but build-next still says to switch/pull before inspecting local changes.
+
+### Components and interface
+A shared read-only checkout inspection command (`scripts/checkout-preflight.sh`, with a stdlib Python helper if useful) examines the ACTUAL checkout selected by cwd (or an explicit root), not the primary checkout returned by shared telemetry resolution. It reports a deterministic clean/dirty/uninspectable decision and the checkout path. Direct callers receive a nonzero result for dirty or unknown state; the existing advisory preflight retains its always-zero load-time contract and surfaces the decision without pretending a dirty checkout is clean.
+
+Use Git's stable machine-readable status, including staged, unstaged, deleted, renamed, unmerged and untracked paths, independent of status.showUntrackedFiles and submodule ignore preferences. Ignored runtime state stays ignored. No index refresh writes (disable optional locks), no network, no temp files in the consumer, no stash/checkout/reset/add/commit. Report filenames safely without reading file contents; do not interpret unusual filenames as shell syntax. Inspection failures are unknown, never clean. Do not claim to distinguish the human's edits from another agent's edits: all pre-existing changes are treated as unowned.
+
+### Startup sequence
+1. Before any switch/pull or implementation, build-next inspects the selected checkout. Clean follows the existing checkout preference and workflow.
+2. Dirty: preserve HEAD, index and all worktree bytes. With existing authorization for worktree isolation, fetch without switching the dirty checkout and create a separate clean orchestration/task worktree from the configured remote main (or local main if no remote exists); follow existing register-first workflow there. Do not quietly switch an explicitly chosen main-only session to worktree mode: if isolation is not authorized, pause with the exact dirty paths and the needed choice.
+3. Uninspectable: stop checkout mutation and report the inspection error. Re-run inspection in the isolated checkout before its switch/pull. A dirty primary must not block a separately verified clean linked task checkout.
+
+Update build-next startup ordering and implement-task registration references; reuse the helper from advisory preflight. Explicitly document the limitation: a check is a point-in-time observation, not an OS lock against another writer appearing afterward. Existing per-task complete commits/lane isolation and gate checks still apply; no false cross-process enforcement claim.
+
+### Validation and scope
+Real disposable Git repositories test clean/dirty variants, hidden untracked/submodule dirtiness, unusual names, linked worktree vs primary, Git inspection errors and before/after identity of HEAD/index/worktree/stash. Exercise the actual startup/advisory entrypoints, with instruction-order coverage for check-before-switch/pull. Preserve #274's existing config/ignore freshness behavior and advisory exit contract. Tests fail and commit before production edits; full configured gate remains mandatory.
+
+No automatic cleanup/stashing, no session ownership registry, no changes to WIP/session-scoping or remote sync, no schema change. Update root/plugin README and a pending SPEC delta for the new hardening contract; canonical SPEC changes only after merge.

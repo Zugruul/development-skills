@@ -210,6 +210,20 @@ uses the same comparison and cleans its own temporary files, even when TMPDIR
 points inside the repo. See the [runtime path audit](docs/audits/runtime-paths-274.md)
 for all-plugin coverage and caller-selected path exclusions.
 
+Before switching branches or pulling, build-next also inspects the actual checkout
+with `bash plugins/spec-workflow/scripts/checkout-preflight.sh [--root DIR]`.
+The read-only command reports JSON `clean`/`dirty`/`uninspectable` (exit 0/1/2),
+including staged, unstaged, untracked, conflicting and submodule changes even when
+Git status preferences hide them. Ignored files stay ignored. Pass
+`--checkout worktree` only for an already authorized worktree session: dirty work
+then routes to a separate clean lane based on fetched remote main (local main
+when no remote exists). An explicit main-only session pauses for a decision.
+Existing edits, HEAD, index and stashes are preserved; nothing is auto-stashed or
+committed. The advisory loader remains zero-exit and surfaces the routing decision.
+This is a point-in-time check, not a lock against concurrent writers; a clean
+linked worktree is checked independently of a dirty primary checkout. See the
+[startup protocol](plugins/spec-workflow/skills/build-next/SKILL.md#dirty-checkout-isolation-285).
+
 ```bash
 bash plugins/spec-workflow/tests/run-tests.sh    # hermetic: validator fixtures + preflight (CI runs this + shellcheck + manifest validation)
 claude plugin eval plugins/spec-workflow         # skill evals (early access; needs API credits)

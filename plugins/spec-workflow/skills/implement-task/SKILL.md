@@ -8,6 +8,8 @@ allowed-tools: Bash
 
 Pre-start check — run this now, before anything else: `bash "../../scripts/preflight.sh" --spec`. If it prints `PREFLIGHT FAIL`, STOP — follow its instruction instead of continuing.
 
+Before prep, including design-doc creation or commits, run `bash "../../scripts/checkout-preflight.sh" --checkout <authorized-session-mode>` from the actual checkout. If no session mode is established, omit `--checkout`. Obey `isolate` via build-next's dirty-checkout isolation sequence, `pause` by preserving work until the human chooses, and `stop` by reporting the inspection error; only `proceed` permits prep in this checkout. The loader's `CHECKOUT ACTION REQUIRED` is routing guidance, not permission to modify pre-existing work. Resolve the installed plugin script path before changing checkout directories.
+
 Before selecting or starting work, run `bash "../../scripts/checkpoint-preflight.sh"`. On `CHECKPOINT BLOCKED`, start no new task: preserve truthful board state, bring existing work to a safe boundary, write a handoff, and stop. The configured flag is shared through the primary checkout; empty flags pause too. Remove it to resume, or fix malformed configuration/state before retrying. `board.sh next`, direct `next.py`, and direct/replayed moves to the selected board's work status (`statusFlow[1]`, or its sole status) enforce this without hooks; queued starts remain recoverable. Other transition guards and the gate remain active. This is a local presence check, not an atomic lock or a restriction on arbitrary git/gh commands.
 
 
@@ -20,10 +22,13 @@ You (the orchestrator) do **not** write the implementation. You brief a subagent
 2. Read the task's acceptance criteria in `<cfg:specs[].backlogPath>` and the referenced sections of `<cfg:specs[].specPath>`. **Stale-criteria check**: criteria are written at seed time and the spec moves on — any criterion that contradicts the CURRENT spec/design doc (renamed concepts, dropped features, superseded contracts) gets flagged on the issue (`board.sh comment`) and resolved (spec wins) BEFORE the brief; implementing a stale criterion is a wasted PR.
 3. **Design-doc guard**: the task's epic must have `<cfg:paths.designDir|docs/design>/<spec-id>-<epic-id>.md`. Missing → YOU write it now from the spec §s (format: `../../skills/implement-task/references/design-and-deltas.md` §1) and commit it before briefing anyone. Existing → read it; it constrains the brief.
 4. Branch + board (same step, real time) — the branch step follows the session's checkout mode (`work.checkout`, absent == `worktree`; see build-next "Checkout mode", #532):
+   Before registration, run `bash "../../scripts/checkout-preflight.sh" --checkout <authorized-session-mode>` in the actual checkout and obey its decision: `proceed` continues; `isolate` uses build-next's dirty-checkout isolation sequence; `pause` preserves the checkout pending the main-only/isolation choice; `stop` reports the inspection error. Do not auto-stash/reset/add/commit pre-existing work. When build-next isolated startup, use its **verified base** commit for the branch below instead of potentially stale local main; recheck the new task worktree before its registration commit or implementation. The dirty primary does not block a separately verified clean lane.
    - **`worktree` (default)** — register the work BEFORE implementation: the branch, its worktree, and the draft PR all exist before any code is written, so in-flight work is always visible even if it dies early. The `--allow-empty` registration commit is what makes an effectively-empty draft PR possible (GitHub refuses a PR with zero commits).
      ```bash
-     git worktree add .claude/worktrees/<task-id> -b <branch from cfg:project.branchPattern, e.g. cp/012-error-model> <cfg:project.mainBranch>
+     git worktree add .claude/worktrees/<task-id> -b <branch from cfg:project.branchPattern, e.g. cp/012-error-model> <verified base from isolated startup, otherwise cfg:project.mainBranch>
      cd .claude/worktrees/<task-id>
+     # Resolve the installed script path before changing directories; require action=proceed.
+     bash <resolved-plugin-root>/scripts/checkout-preflight.sh --checkout worktree
      git commit --allow-empty -m "chore(<task-id>): register work (#N)"
      git push -u origin <branch>
      gh pr create --draft --title "<title per cfg:commit.convention>" --body "Closes #N"   # open the draft PR BEFORE implementation
