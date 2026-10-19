@@ -13,6 +13,19 @@
 ### Documentation
 - **spec:** fold preflight freshness delta into memory contract (#274) (`7c25175`)
 
+### Chores
+- **brain:** recall reviewer lessons for freshness audit (#274) (`f380554`)
+- **brain:** record freshness audit retrospective (#274) (`b40ab5d`)
+  > 1. Record 15 recalled-note outcomes and three direct lessons from the independent reviews.
+  > 
+  > 2. Prune six stale dev links; retain orchestrator candidates under the shrink guard. No notes graduated.
+  > 
+  > 3. Advance retro 141 and regenerate the directory; no new normalized feed divergences.
+- **feedback:** archive freshness audit iteration feedback (#274) (`0574332`)
+  > 1. Route two review/audit lessons to the committed retrospective notes.
+  > 
+  > 2. Record the inherited gate failure and its separately tracked recovery defect without duplicating backlog work.
+
 ## v0.73.6 — 2026-10-19
 
 ### Fixes
