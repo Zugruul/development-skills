@@ -75,6 +75,103 @@ use the same engine on Claude and Codex with plugin-root resolution from the
 installed skill location, preserving existing host discovery metadata and existing
 scanner-specific fallback, explicit-root and self-exclusion policies.
 
+### §6.7 Herdr integration
+
+WHERE the project config has a top-level `herdr` object, the system SHALL accept
+only the keys `enabled`, `worktrees.taskLanes` and `worktrees.subagents`, each a
+boolean, and `validate-config.py` and the schema SHALL reject unknown keys and
+non-boolean values. `enabled` SHALL default to off, `worktrees.taskLanes` SHALL
+default to on while `enabled` is true, and `worktrees.subagents` SHALL default to
+off. WHEN the `herdr` object is absent, THE SYSTEM SHALL NOT call herdr.
+
+WHEN `scripts/herdr-worktree.sh add` or `remove` is invoked and herdr task lanes
+are enabled, THE SYSTEM SHALL create or remove the task-lane worktree through
+herdr, for branch lanes, detached lanes and explicit paths, from any checkout of
+the repository, SHALL NOT move focus, and SHALL NOT pass `--trust-repository`.
+`implement-task` and `build-next` SHALL create and remove their lanes through
+this helper. Without `--base`, a new branch lane SHALL start from the invoking
+checkout's HEAD, and `remove` SHALL succeed when run from inside the lane it deletes.
+
+WHEN herdr is missing or fails, or answers success but did not create or remove
+the worktree, THE SYSTEM SHALL fall back to git with a notice that names the real
+reason, and SHALL NOT block the work. Herdr SHALL start only from the primary
+checkout, found from the git dirs; when there is none (a bare repo), git makes the
+lane. `remove` SHALL use herdr
+whenever herdr is enabled and a workspace is open for that path, even with `worktrees.taskLanes` off, so no "(deleted)" sidebar
+entry is left. The hook SHALL always exit 0 and print nothing, and an unreadable
+config SHALL count as off. Errors reported by git itself SHALL still fail, and
+a lane path that is already in use SHALL be refused.
+
+WHEN an isolated subagent starts and `herdr.worktrees.subagents` is enabled, THE
+SYSTEM SHALL open its worktree in herdr from the `SubagentStart` hook, and WHEN it
+stops SHALL close that workspace from the `SubagentStop` hook, without using
+`WorktreeCreate`. WHEN the setting is off, or the subagent is not isolated, THE
+SYSTEM SHALL make no herdr call and print nothing. THE SYSTEM SHALL NOT close a
+workspace it did not open. THE `SubagentStop` hook SHALL close by agent id alone, so a stop whose
+working directory is a subdirectory still closes the workspace the start opened.
+
+WHEN the herdr tasks panel is toggled, THE SYSTEM SHALL open or close it for the
+current tab only, open it to the right without moving focus and narrow it, read only local task
+state, make no network call, and strip control characters from task text before
+display. A record of the wrong shape (the shape `task_state.py` accepts) SHALL be listed as
+unreadable without hiding other tasks, a herdr reply of an unexpected shape SHALL NOT
+stop the panel, Ctrl-C SHALL quit it even from a background job, and a live panel whose herdr lookup fails SHALL keep its record.
+
+### §6.8 Task state
+
+THE SYSTEM SHALL keep one record per task under `<git common dir>/spec-workflow/
+task-state/`, shared by every worktree of the repository, holding the task id,
+title, status, agents, worktrees and numbered TODOs. Concurrent writers SHALL NOT
+corrupt a record. TODO numbers SHALL stay stable, and seeding the same TODOs again
+SHALL change nothing.
+
+WHEN an agent works a task, THE `implement-task` skill and the parallel-lane
+documentation SHALL instruct it to maintain that record through
+`scripts/task-state.sh`.
+
+WHEN work leaves a task's scope, `task-state.sh todo --drop` SHALL keep the TODO in
+the list with its number, show it as `[-]`, and leave it out of the done and total
+counts in `show`, `list`, `describe` and the herdr tasks panel. `--undo` SHALL
+restore a dropped TODO to open, `--done` on a dropped TODO SHALL be refused, and
+seeding the same TODOs again SHALL NOT bring a dropped TODO back.
+
+WHEN an agent begins a TODO, `task-state.sh todo --start` SHALL mark it active with
+the agent's role; `show` SHALL print `[>]` and the role, `--done`, `--undo` and
+`--drop` SHALL clear the mark, and several TODOs MAY be active across agents. THE
+tasks panel SHALL draw an active TODO bold, not dimmed, and add a wrapped
+`Now: <text> · <agent>` line per active TODO under the task header.
+
+THE list SHALL read in the order the work happens. Every TODO SHALL carry a
+permanent number, so `--done 5` always means the same TODO. `todo --add TEXT
+--before REF` SHALL insert ahead of REF, `todo --move REF --before REF` SHALL
+reorder, new TODOs SHALL get the highest number plus one, and `show` SHALL list
+permanent numbers in display order. A reference is a number or exact text, and an
+unknown one SHALL be refused with exit 1. A stored number that is not a positive
+integer SHALL make the record unreadable. `--add` of text that already exists SHALL
+add nothing, name the existing TODO's number on stderr, and exit 0. A record written before numbers were
+stored SHALL get them from its positions on read, without being rewritten by a
+read, and `set --todo` SHALL still append only what is new.
+
+EVERY agent brief the workflow writes (the dev brief, each review-pass brief and the
+auto-review reviewer brief) SHALL carry a required `## TODO UPKEEP (required)`
+section. It SHALL tell the agent to tick a TODO when it is finished, one at a time;
+to `--add` new work and `--drop` work that leaves scope when that happens; to `--start` a TODO when beginning it and not leave it set, to insert new work
+with `--before` where it happens (normally ahead of the gate, review and merge items,
+never at the end by default, with a re-gate staying after the fix), to `--undo`
+every TODO a failed check or finding makes untrue before starting the fix, and re-tick
+only after the redo; and, for reviewers, to record a finding as a TODO or a reopening.
+THE tasks panel SHALL NOT claim something a regression has undone.
+
+WHEN `board.sh move` changes a task's status, THE SYSTEM SHALL update the status of
+an existing record, and SHALL remove the record WHEN the new status is past review
+(a status after the third in the board's `statusFlow`, compared ignoring case and
+spacing). Backlog and the working statuses SHALL keep it.
+THE SYSTEM SHALL NOT create a record from a move, and a missing, unreadable or
+corrupt record SHALL NOT make the move fail. `task-state.sh list` SHALL skip a
+corrupt record, including valid JSON of the wrong shape, with a notice rather than
+fail, and `show`, `set` and `todo` SHALL refuse it rather than crash or overwrite.
+`todo` SHALL refuse an empty reference or text with a clear error.
+
 ## §7 Hardening (E1)
 
 - **§7.1 tree-state** — WHEN untracked files exist in the working tree THE SYSTEM SHALL include their content hashes in the gate fingerprint, so editing an untracked file after a green gate invalidates the recorded pass.
