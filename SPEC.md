@@ -177,9 +177,93 @@ fail, and `show`, `set` and `todo` SHALL refuse it rather than crash or overwrit
 - **§7.1 tree-state** — WHEN untracked files exist in the working tree THE SYSTEM SHALL include their content hashes in the gate fingerprint, so editing an untracked file after a green gate invalidates the recorded pass.
 - **§7.2 guard-board-move** — WHEN a `board.sh comment` (or any non-`move` subcommand) whose text contains a status name is executed THE SYSTEM SHALL NOT block it; the guard SHALL key on the parsed subcommand and target status, not substrings.
 - **§7.3 next.py** — WHEN a `blockedBy` epic has zero seeded tasks THE SYSTEM SHALL remain fail-closed AND report `epic <id> unseeded — run seed-board` (never the misleading "not fully <status>").
-- **§7.4 board.sh** — WHEN a board or issue list exceeds one API page THE SYSTEM SHALL paginate until exhausted; no silent 400/500-item truncation in `next`, `list`, `move`, or seeding.
+- **§7.4 board.sh** — WHEN a board or issue list exceeds one API page THE SYSTEM SHALL paginate until exhausted; no silent 400/500-item truncation in `next`, `list`, `move`, or seeding. Project-item reads: see "§7.4 Board pagination" below.
 - **§7.5 test flakes** — WHEN a server-lifecycle check fails in `run-tests.sh` THE SYSTEM SHALL retry it once and report the flake distinctly (closes issue #8); server-lifecycle sections SHALL use per-run randomized ports.
 - **§7.6 brain.py** — WHEN a tag contains both an embedded double-quote and a comma THE SYSTEM SHALL round-trip it intact through `render_note` (escape on write, unescape on parse).
+
+### §7.4 Board pagination
+
+WHEN the system reads project items (every `next`, `list`, `move`, `audit`, `flush`
+and seeding read) it SHALL do so through a slim, cursor-paginated `gh api graphql`
+query, not `gh project item-list`. The query SHALL resolve the owner with
+`repositoryOwner(login:) { ... on ProjectV2Owner { projectV2(number:) } }` (or
+`viewer` for an `@me` owner), so user- and organization-owned projects share one
+call with no owner-type lookup. It SHALL request only the fields callers use
+(`Status`, `Priority`, `Estimate` through `fieldValueByName` aliases, plus content
+number, title, body, url, repository and labels) and SHALL NOT request
+`fieldValues(first:100)` or any other nested connection per item, with one named
+exception: `labels(first: 20)` on the content (kept so the output keeps the
+`gh project item-list` shape; no current caller reads it; items with more than 20
+labels are truncated to 20; the measured cost below includes it). Its output SHALL
+keep the JSON shape of `gh project item-list --format json`
+(`{"items":[{id,title,status,priority,estimate,labels,repository,content:{type,number,title,body,url,repository}}],"totalCount"}`;
+absent field values are omitted).
+
+`fieldValueByName` matches names case-sensitively while project field names are
+case-insensitive in config and gh, so before the items query the system SHALL
+resolve the project's real Status, Priority and Estimate names case-insensitively
+(one extra query, 1 point) and use them in the aliases; output keys stay lowercase.
+WHEN the project has no Status field a strict read SHALL fail closed (`WIP BLOCKED`);
+any other read SHALL warn on stderr and return items without a status, as
+`gh project item-list` did. A missing Priority or Estimate field is not an error.
+
+Pagination SHALL follow `pageInfo.endCursor` until `hasNextPage` is false, which is
+the only proof of exhaustion. No page SHALL be read twice; the former `--limit`
+doubling re-read is removed for project items (`gh_issues_json` is unchanged).
+A read that cannot progress SHALL fail: `hasNextPage` true with an empty page, or any
+cursor seen twice in one read. Any nonzero `gh` exit is a failed read. `PAGINATE_HARD_CAP` remains a backstop counted in items: reaching it with
+`hasNextPage` still true SHALL warn on stderr (non-strict) or fail with
+`WIP BLOCKED` (strict).
+
+Nothing SHALL be written to stdout until every page has been read. An error on page
+N SHALL return nonzero with empty stdout, never the earlier pages. `--strict` reads
+SHALL additionally validate the merged snapshot (unique item identities,
+`totalCount` present and equal to the items read) and fail closed on any error or
+incomplete read.
+
+Cost (measured with `rateLimit(dryRun: true) { cost }` against the real boards of
+owner Zugruul, 2026-11-05): one 100-node page of the final query costs 1 GraphQL point on project 5 and
+on project 12, and the field-name query costs 1 point (live `rateLimit { cost }`). A full read costs
+`ceil(items / 100) + 1` points: project 5 (428 items, `totalCount` from one real read) = 6
+points, against 911 points for `gh project item-list` on the same board; a 280-item board = 4
+points, against 304.
+
+### §7.7 board.sh rate-limit resilience
+
+WHEN a board read is rejected by GitHub THE SYSTEM SHALL report GitHub's own error
+(for GraphQL, the `errors[]` message and type, e.g. `RATE_LIMIT` /
+`graphql_rate_limit`), including a 200 response that carries `errors`, instead of
+`unknown owner type`. `_rate_limited` SHALL recognize that payload by its text or
+code without consulting `gh api rate_limit`, because one token has two GraphQL
+counters and the REST endpoint can show quota while requests are rejected. The
+`unknown owner type` probe remains for the `gh project` write commands
+(`item-edit`, `item-add`, `field-list`).
+
+The reset time in `RATE-LIMITED until <reset>` and `QUEUED (rate-limited until
+<reset>)` SHALL come from the rejected response's `X-Ratelimit-Reset` (or
+`Retry-After`) header when present and still in the future, adding no API call; it
+falls back to `gh api rate_limit` otherwise. `Retry-After` (what applies on a secondary
+limit, and can be far later) takes precedence over `X-Ratelimit-Reset`. The saved reset
+is private to the invocation (a per-run temporary file removed on exit), so another
+run's or account's rejection is never reported. Header parsing SHALL NOT alter the JSON
+written to stdout. The error `code` (e.g. `graphql_rate_limit`) SHALL be part of the
+reported message, so a reworded payload is still classified.
+
+WHEN a board read fails for a reason other than a rate limit, the system SHALL print
+GitHub's error and fail; it SHALL NOT report a bad issue number, and `adopt`/`add`
+SHALL NOT `item-add` on a read failure (a failed read is not "not on the board"). When
+`add`'s read-back fails this way the `add-finish` op stays queued so no work is lost, but
+the command prints GitHub's error and a `DEFERRED (board read failed, not a rate limit)`
+line (never `QUEUED` or a rate-limit claim) and exits nonzero, so a loop treats it as a
+stop condition.
+
+Known limits: a `Retry-After` given as an HTTP date (instead of seconds) is ignored and the
+primary reset is used; a project with more than 100 fields (the `fields(first: 100)` page) may
+hide Priority/Estimate or Status, in which case Status is reported missing and strict reads
+fail closed. Several Status fields differing only by case (`status` and `Status`) are
+ambiguous: strict reads fail closed; other reads warn and use the exact-case `Status` field if
+it exists (otherwise Status is unresolved). Whether GitHub allows such duplicates was not
+checked.
 
 ### §7.9 Checkout preservation at startup
 
