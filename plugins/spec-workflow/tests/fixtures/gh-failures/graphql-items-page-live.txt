@@ -1,0 +1,160 @@
+# provenance: REAL `gh api -i graphql` response (headers + body) for the slim
+# project-items query used by gh_project_items_json (#544), LIVE-captured
+# 2026-11-05T04:29Z. command: gh api graphql -i -f query=<items query, first:100>
+# -f owner=Zugruul -F number=5 (a user-owned project; account Zugruul, PAT).
+# account state at capture: graphql remaining=277/5000 (X-Ratelimit-Remaining).
+# measured: rateLimit.cost=1 for the 100-node page; items.totalCount=428.
+# TRIMMED for the repo: header lines other than content-type and X-Ratelimit-*
+# dropped; nodes cut from 100 to 3 and issue bodies cut to 60 chars. All
+# values are otherwise as returned (body re-indented for readability; estimate is a float,
+# an item with no Estimate has "estimate":null).
+# source: live gh invocation, task #544.
+# query-begin (exactly what was sent, as -f query=...; golden-tested by test_project_items.py)
+#   query($owner: String!, $number: Int!, $first: Int!, $after: String) {
+#     rateLimit { cost remaining resetAt }
+#     repositoryOwner(login: $owner) {
+#       ... on ProjectV2Owner {
+#         projectV2(number: $number) {
+#           items(first: $first, after: $after) {
+#             totalCount
+#             pageInfo { hasNextPage endCursor }
+#             nodes {
+#               id
+#               status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+#               priority: fieldValueByName(name: "Priority") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+#               estimate: fieldValueByName(name: "Estimate") { ... on ProjectV2ItemFieldNumberValue { number } }
+#               content {
+#                 __typename
+#                 ... on Issue { number title body url repository { nameWithOwner } labels(first: 20) { nodes { name } } }
+#                 ... on PullRequest { number title body url repository { nameWithOwner } labels(first: 20) { nodes { name } } }
+#                 ... on DraftIssue { title body }
+#               }
+#             }
+#           }
+#         }
+#       }
+#     }
+#   }
+# query-end
+
+HTTP/2.0 200 OK
+Content-Type: application/json; charset=utf-8
+X-Ratelimit-Limit: 5000
+X-Ratelimit-Remaining: 277
+X-Ratelimit-Reset: 1793854221
+X-Ratelimit-Resource: graphql
+X-Ratelimit-Used: 4723
+
+{
+ "data": {
+  "rateLimit": {
+   "cost": 1,
+   "remaining": 277,
+   "resetAt": "2026-11-05T04:50:21Z"
+  },
+  "repositoryOwner": {
+   "projectV2": {
+    "items": {
+     "totalCount": 428,
+     "pageInfo": {
+      "hasNextPage": true,
+      "endCursor": "Y3Vyc29yOnYyOpKrMDAwMDAwMDAuMDHODLe84Q=="
+     },
+     "nodes": [
+      {
+       "id": "PVTI_lAHOAL1A3M4Bc3aizgyMIr4",
+       "status": {
+        "name": "Backlog"
+       },
+       "priority": {
+        "name": "P2"
+       },
+       "estimate": {
+        "number": 2.0
+       },
+       "content": {
+        "__typename": "Issue",
+        "number": 17,
+        "title": "SW-015: brain.py: quote+comma tag round-trip escaping",
+        "body": "**Epic:** E1  \u00b7  **Priority:** P2  \u00b7  **Story points (Estima",
+        "url": "https://github.com/Zugruul/development-skills/issues/17",
+        "repository": {
+         "nameWithOwner": "Zugruul/development-skills"
+        },
+        "labels": {
+         "nodes": [
+          {
+           "name": "type:feature"
+          },
+          {
+           "name": "epic:E1"
+          }
+         ]
+        }
+       }
+      },
+      {
+       "id": "PVTI_lAHOAL1A3M4Bc3aizgyMIr8",
+       "status": {
+        "name": "Backlog"
+       },
+       "priority": {
+        "name": "P2"
+       },
+       "estimate": {
+        "number": 2.0
+       },
+       "content": {
+        "__typename": "Issue",
+        "number": 22,
+        "title": "SW-024: estimate calibration report in board.sh metrics",
+        "body": "**Epic:** E2  \u00b7  **Priority:** P2  \u00b7  **Story points (Estima",
+        "url": "https://github.com/Zugruul/development-skills/issues/22",
+        "repository": {
+         "nameWithOwner": "Zugruul/development-skills"
+        },
+        "labels": {
+         "nodes": [
+          {
+           "name": "type:feature"
+          },
+          {
+           "name": "epic:E2"
+          }
+         ]
+        }
+       }
+      },
+      {
+       "id": "PVTI_lAHOAL1A3M4Bc3aizgyMIsA",
+       "status": {
+        "name": "Deployed"
+       },
+       "priority": {
+        "name": "P2"
+       },
+       "estimate": null,
+       "content": {
+        "__typename": "Issue",
+        "number": 45,
+        "title": "gate: language-version-floor lint over all inline interpreter snippets (graduation from #15 review)",
+        "body": "Captured via /create-inbound after a dedup search found no h",
+        "url": "https://github.com/Zugruul/development-skills/issues/45",
+        "repository": {
+         "nameWithOwner": "Zugruul/development-skills"
+        },
+        "labels": {
+         "nodes": [
+          {
+           "name": "inbound"
+          }
+         ]
+        }
+       }
+      }
+     ]
+    }
+   }
+  }
+ }
+}

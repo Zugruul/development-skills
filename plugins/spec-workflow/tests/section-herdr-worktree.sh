@@ -469,8 +469,8 @@ check "README lists the todo verbs --start, --move and --before" "--add|--done|-
 check "build-next isolated lanes go through the helper" 'herdr-worktree.sh" add' "$(cat "$PLUGIN/skills/build-next/SKILL.md")"
 
 check "README: remove uses herdr whenever herdr is enabled and a workspace is open" "whenever herdr is enabled and a workspace is open for that path" "$(cat "$PLUGIN/README.md")"
-check "spec delta: remove uses herdr whenever herdr is enabled and a workspace is open" "whenever herdr is enabled and a workspace is open for that path" "$(cat "$PLUGIN/../../docs/spec-deltas/543.md")"
-check "spec delta: the panel is narrowed when opened" "narrow" "$(cat "$PLUGIN/../../docs/spec-deltas/543.md")"
+check "spec delta: remove uses herdr whenever herdr is enabled and a workspace is open" "whenever herdr is enabled and a workspace is open for that path" "$(cat "$PLUGIN/../../docs/spec-deltas/applied/543.md")"
+check "spec delta: the panel is narrowed when opened" "narrow" "$(cat "$PLUGIN/../../docs/spec-deltas/applied/543.md")"
 check_absent "design doc: resizing is not out of scope any more" "resizing or reordering" "$(cat "$PLUGIN/../../docs/design/sw-E0.md")"
 check "design doc: reordering panels stays out of scope" "reordering panels" "$(cat "$PLUGIN/../../docs/design/sw-E0.md")"
 

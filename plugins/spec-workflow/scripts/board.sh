@@ -78,11 +78,11 @@ PY
 
 item_id() { # issue number -> project item id (searches every page; SPEC 7.4)
     # capture-then-parse, never a straight pipe: a gh failure (rate limit,
-    # auth, gh's "unknown owner type" masking either) must surface as a clean
+    # auth) must surface as a clean
     # ERROR, not a JSONDecodeError traceback from parsing empty stdin.
     local out
     out="$(gh_project_items_json "$PN" "$OWNER")" ||
-        { echo "ERROR: gh project item-list failed — if gh said 'unknown owner type', the GraphQL rate limit is usually exhausted (check: gh api rate_limit)" >&2; return 1; }
+        { echo "ERROR: reading the project board (gh api graphql) failed — see GitHub's error above" >&2; return 1; }
     python3 -c '
 import json, sys
 n = int(sys.argv[1])
@@ -96,7 +96,7 @@ for it in data.get("items", []):
 
 # Local item-id cache (issue #78): issue# -> {itemId, lastKnownStatus}, gitignored.
 # Mutating/lookup commands resolve from here first; on a miss the ONE gh call
-# that would have happened anyway (a full item-list) refreshes the WHOLE
+# that would have happened anyway (a full board read) refreshes the WHOLE
 # cache as a side effect, so every subsequent lookup this session is free.
 # Never used for `next`/`list`/`audit` (those already need the whole board;
 # they refresh the cache themselves rather than reading it).
@@ -271,6 +271,12 @@ _board_add() { # type title [prio] [origin-issue#] -> creates + boards one issue
     if [[ $rc -ne 0 ]]; then
         # shellcheck disable=SC2153  # FIRST_STATUS is the global set by the eval block above, not a typo of first_status
         queue_append add-finish issue="$num" url="$url" first_status="$FIRST_STATUS" prio="$prio"
+        if [[ $rc -eq 4 ]]; then
+            # The board read failed for a reason other than a rate limit (GitHub's error is above): the
+            # work is kept, but this is a stop condition for the caller, not a quota wait.
+            echo "DEFERRED (board read failed, not a rate limit): add-finish #$num is kept in the queue; fix the error above, then run: board.sh flush" >&2
+            return 1
+        fi
         echo "QUEUED (rate-limited until $(_rate_limit_reset_human)): item-add #$num"
         return 0
     fi
@@ -286,7 +292,7 @@ case "${1:-}" in
     next)
         bash "$HERE/checkpoint-preflight.sh" --root "$ROOT" --board "${BOARD:-}" || exit 1
         _flush_queue
-        _tmp="$(mktemp)"; _errf="$(mktemp)"; trap 'rm -f "$_tmp" "$_errf"' EXIT
+        _tmp="$(mktemp)"; _errf="$(mktemp)"; trap 'rm -f "$_tmp" "$_errf" "$PAGINATE_RESET_FILE"' EXIT
         if gh_project_items_json "$PN" "$OWNER" >"$_tmp" 2>"$_errf"; then
             # stderr on the success path is a non-fatal warning (e.g. paginate.sh's
             # hard-cap notice) -- forward it instead of silently swallowing it.
@@ -506,10 +512,11 @@ for f in json.load(sys.stdin)["fields"]:
     for o in f.get("options", []): print(f'"'"'    {o["id"]}  {o["name"]}'"'"')' <<<"$out"
         ;;
     config)
-        exec python3 "$HERE/validate-config.py" "$CONFIG"
+        # no exec: the EXIT trap (paginate.sh's private reset file) must run
+        python3 "$HERE/validate-config.py" "$CONFIG"; exit $?
         ;;
     metrics)
-        exec python3 "$HERE/telemetry.py" "$ROOT" metrics
+        python3 "$HERE/telemetry.py" "$ROOT" metrics; exit $?
         ;;
     audit)
         # Reconciles board reality (#76): open PRs missing a board-issue

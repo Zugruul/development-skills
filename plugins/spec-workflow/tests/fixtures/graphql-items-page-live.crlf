@@ -1,0 +1,9 @@
+HTTP/2.0 200 OK
+Content-Type: application/json; charset=utf-8
+X-Ratelimit-Limit: 5000
+X-Ratelimit-Remaining: 277
+X-Ratelimit-Reset: 1793854221
+X-Ratelimit-Resource: graphql
+X-Ratelimit-Used: 4723
+
+{"data":{"rateLimit":{"cost":1,"remaining":277,"resetAt":"2026-11-05T04:50:21Z"},"repositoryOwner":{"projectV2":{"items":{"totalCount":428,"pageInfo":{"hasNextPage":true,"endCursor":"Y3Vyc29yOnYyOpKrMDAwMDAwMDAuMDHODLe84Q=="},"nodes":[{"id":"PVTI_lAHOAL1A3M4Bc3aizgyMIr4","status":{"name":"Backlog"},"priority":{"name":"P2"},"estimate":{"number":2.0},"content":{"__typename":"Issue","number":17,"title":"SW-015: brain.py: quote+comma tag round-trip escaping","body":"**Epic:** E1  \u00b7  **Priority:** P2  \u00b7  **Story points (Estima","url":"https://github.com/Zugruul/development-skills/issues/17","repository":{"nameWithOwner":"Zugruul/development-skills"},"labels":{"nodes":[{"name":"type:feature"},{"name":"epic:E1"}]}}},{"id":"PVTI_lAHOAL1A3M4Bc3aizgyMIr8","status":{"name":"Backlog"},"priority":{"name":"P2"},"estimate":{"number":2.0},"content":{"__typename":"Issue","number":22,"title":"SW-024: estimate calibration report in board.sh metrics","body":"**Epic:** E2  \u00b7  **Priority:** P2  \u00b7  **Story points (Estima","url":"https://github.com/Zugruul/development-skills/issues/22","repository":{"nameWithOwner":"Zugruul/development-skills"},"labels":{"nodes":[{"name":"type:feature"},{"name":"epic:E2"}]}}},{"id":"PVTI_lAHOAL1A3M4Bc3aizgyMIsA","status":{"name":"Deployed"},"priority":{"name":"P2"},"estimate":null,"content":{"__typename":"Issue","number":45,"title":"gate: language-version-floor lint over all inline interpreter snippets (graduation from #15 review)","body":"Captured via /create-inbound after a dedup search found no h","url":"https://github.com/Zugruul/development-skills/issues/45","repository":{"nameWithOwner":"Zugruul/development-skills"},"labels":{"nodes":[{"name":"inbound"}]}}}]}}}}}

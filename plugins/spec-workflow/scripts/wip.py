@@ -118,10 +118,13 @@ def main():
     try:
         action = sys.argv[1]
         if action == 'page':
+            # Merged cursor-paginated snapshot (paginate.sh --strict): hasNextPage already
+            # proved exhaustion, so require the API's own total to agree with what was read.
             data = json.load(sys.stdin)
             items = snapshot(data)
-            # A short result contradicting the API's total count is incomplete.
-            if len(items) < int(sys.argv[2]) and data.get('totalCount', len(items)) != len(items):
+            if 'totalCount' not in data:
+                raise WipError('incomplete board snapshot: no totalCount')
+            if data['totalCount'] != len(items):
                 raise WipError('incomplete board snapshot: totalCount exceeds returned items')
             print(len(items))
             return 0

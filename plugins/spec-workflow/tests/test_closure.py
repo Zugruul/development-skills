@@ -9,6 +9,7 @@ import unittest
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 FIX = Path(__file__).resolve().parent / "fixtures"
+os.environ.setdefault("GH_GQL_ADAPTER", str(FIX / "gh-graphql-adapter.py"))  # #544: fake gh answers the slim api graphql read through it
 TS = "2026-01-01T00:00:00Z"
 
 
@@ -29,6 +30,7 @@ class ClosureTests(unittest.TestCase):
         gh = self.bin / "gh"
         gh.write_text('''#!/usr/bin/env bash
 case "$1 $2" in
+  "api graphql") exec python3 "$GH_GQL_ADAPTER" "$0" "$@" ;;
   "project item-list") echo '{"items":[{"id":"ITEM_238","content":{"number":238},"status":"Backlog"}]}' ;;
   "project item-edit") echo "$*" >> "$MUTATIONS"; echo edited ;;
   *) echo "unexpected gh call: $*" >&2; exit 1 ;;

@@ -51,6 +51,7 @@ case "$1 $2" in
             : >"$FAKE_GH_ITEM_ADD_MARKER"
         fi
         ;;
+    "api graphql") exec python3 "$GH_GQL_ADAPTER" "$0" "$@" ;;
     "project item-list")
         n=$(( $(cat "$FAKE_GH_LIST_CALLCOUNT" 2>/dev/null || echo 0) + 1 ))
         echo "$n" >"$FAKE_GH_LIST_CALLCOUNT"

@@ -11,6 +11,7 @@ import unittest
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 FIX = Path(__file__).resolve().parent / "fixtures"
+os.environ.setdefault("GH_GQL_ADAPTER", str(FIX / "gh-graphql-adapter.py"))  # #544: fake gh answers the slim api graphql read through it
 
 
 class CheckpointTests(unittest.TestCase):
@@ -41,6 +42,7 @@ class CheckpointTests(unittest.TestCase):
         gh.write_text('''#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$CALLS"
 case "$1 $2" in
+  "api graphql") exec python3 "$GH_GQL_ADAPTER" "$0" "$@" ;;
   "project item-list") cat "$ITEMS" ;;
   "project item-edit") echo edited ;;
   *) echo "unexpected fake gh call: $*" >&2; exit 1 ;;

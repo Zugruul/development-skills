@@ -147,7 +147,7 @@ EOF
 done < <(read_tasks)
 
 echo "==> Phase 2: set Status/Priority/Estimate on every task's project item"
-MAP="$(mktemp)"; trap 'rm -f "$MAP"' EXIT
+MAP="$(mktemp)"; trap 'rm -f "$MAP" "$PAGINATE_RESET_FILE"' EXIT
 gh_project_items_json "$PN" "$OWNER" | python3 -c '
 import json, sys
 data = json.load(sys.stdin)

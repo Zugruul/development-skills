@@ -1,0 +1,28 @@
+# provenance: REAL `gh api -i graphql` response (headers + body) of the field-name
+# resolution query used before the items query (#544 review), LIVE-captured
+# 2026-11-05 against project 5 (owner Zugruul, user-owned, PAT). measured:
+# rateLimit.cost=1. Header lines other than content-type and X-Ratelimit-*
+# dropped. Body is verbatim.
+# query-begin
+#   query($owner: String!, $number: Int!) {
+#     rateLimit { cost remaining resetAt }
+#     repositoryOwner(login: $owner) {
+#       ... on ProjectV2Owner {
+#         projectV2(number: $number) {
+#           fields(first: 50) { nodes { ... on ProjectV2FieldCommon { name } } }
+#         }
+#       }
+#     }
+#   }
+# query-end
+# source: live gh invocation, task #544 review round 1.
+
+HTTP/2.0 200 OK
+Content-Type: application/json; charset=utf-8
+X-Ratelimit-Limit: 5000
+X-Ratelimit-Remaining: 4998
+X-Ratelimit-Reset: 1793861040
+X-Ratelimit-Resource: graphql
+X-Ratelimit-Used: 2
+
+{"data":{"rateLimit":{"cost":1,"remaining":4998,"resetAt":"2026-11-05T06:44:00Z"},"repositoryOwner":{"projectV2":{"fields":{"nodes":[{"name":"Title"},{"name":"Assignees"},{"name":"Status"},{"name":"Labels"},{"name":"Linked pull requests"},{"name":"Milestone"},{"name":"Repository"},{"name":"Reviewers"},{"name":"Parent issue"},{"name":"Sub-issues progress"},{"name":"Created"},{"name":"Updated"},{"name":"Closed"},{"name":"Priority"},{"name":"Estimate"}]}}}}}

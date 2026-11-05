@@ -3,7 +3,8 @@
 sequencing, blockedBy guards, and the work-in-progress resume guard.
 
 Usage: next.py <config-path> <board-id-or-empty> <item-list.json> [spec-id]
-<item-list.json> is `gh project item-list --format json` output.
+<item-list.json> is the board read (gh_project_items_json), in the JSON shape
+`gh project item-list --format json` produces.
 Prints candidates and either "=> PICK: #N" or "=> RESUME: #N" (WIP limit reached).
 """
 import json

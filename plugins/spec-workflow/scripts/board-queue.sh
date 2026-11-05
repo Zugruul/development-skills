@@ -41,6 +41,10 @@ QUEUE_LOCK_TTL="${BOARD_QUEUE_LOCK_TTL:-600}"  # seconds
 #     truth. remaining>0 means the error is real — surface it verbatim.
 _rate_limited() {
     grep -qi "rate limit" <<<"$1" && return 0
+    # GitHub's own GraphQL payload (#544): {"type":"RATE_LIMIT","code":"graphql_rate_limit"}.
+    # Recognised by code even when the text is reworded, and WITHOUT the REST probe below:
+    # one token has two GraphQL counters and `gh api rate_limit` shows only one of them.
+    grep -qE 'RATE_LIMIT|graphql_rate_limit' <<<"$1" && return 0
     _graphql_remaining_is_zero
 }
 
@@ -61,8 +65,9 @@ except Exception:
     [[ "$remaining" == "0" ]]
 }
 
-# _rate_limit_reset_human -> ISO-8601 UTC reset time of the GRAPHQL resource
-# from the REST rate_limit endpoint (the counter that's actually exhausted when
+# _rate_limit_reset_human -> ISO-8601 UTC reset time: from the last rejected read's
+# response header when still in the future, else the GRAPHQL resource of the
+# REST rate_limit endpoint (the counter that's actually exhausted when
 # GraphQL masks its own errors). If `resources.graphql` is absent from the
 # payload, report "unknown" rather than falling back to the top-level `rate`
 # key: in real gh responses `rate` ALIASES resources.core, whose reset can differ
@@ -70,7 +75,18 @@ except Exception:
 # issue #101). This string is interpolated into "rate-limited until X" messages,
 # where a confident-but-wrong core-based timestamp is worse than an honest unknown.
 _rate_limit_reset_human() {
-    local raw
+    local raw saved now
+    # Prefer the reset from the REJECTED response's X-Ratelimit-Reset header (saved by
+    # project_items.py, #544): no extra call, and it is the counter that actually rejected.
+    saved="$(cat "${PAGINATE_RESET_FILE:-/dev/null}" 2>/dev/null)"
+    now="$(date +%s)"
+    if [[ "$saved" =~ ^[0-9]+$ && "$saved" -gt "$now" ]]; then
+        python3 -c '
+import datetime, sys
+print(datetime.datetime.fromtimestamp(int(sys.argv[1]), datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+' "$saved"
+        return
+    fi
     raw="$(gh api rate_limit 2>/dev/null)" || { echo "unknown"; return; }
     python3 -c '
 import json, sys, datetime
@@ -134,16 +150,18 @@ _flush_sync() {
 
 # _item_id_rl <issue#> -> prints the project item id to stdout if found.
 # Cache-first (issue #78, .claude/board-cache.json, see board.sh): a cache
-# HIT costs zero gh calls. A cache MISS costs exactly one gh call -- a full
-# item-list, whose result refreshes the WHOLE cache as a side effect, so
-# every other issue's lookup this session is then free too -- instead of a
-# blind full re-list per lookup. Unlike item_id() (board.sh) this does NOT
-# swallow the underlying gh error on a miss's fetch — it distinguishes "no
-# such item" from "the lookup itself failed rate-limited (incl. masked,
-# #90)" so callers can queue instead of misreporting a masked rate limit as
-# "bad issue# or status" (#90).
-# Return: 0 = found (id on stdout), 1 = real miss (gh call succeeded, no
-# such item/issue), 2 = the gh call failed and looks rate-limited.
+# HIT costs zero gh calls. A cache MISS costs one full board read
+# (gh_project_items_json: a cursor-paginated slim GraphQL query), whose result
+# refreshes the WHOLE cache as a side effect, so every other issue's lookup
+# this session is then free too -- instead of a blind full re-read per lookup.
+# Unlike item_id() (board.sh) this does NOT swallow the underlying read error
+# — it distinguishes "no such item" from "the lookup itself failed" so callers
+# can queue a rate limit (#90) and never misreport a failed read as
+# "bad issue# or status".
+# Return: 0 = found (id on stdout), 1 = real miss (the read succeeded, no
+# such item/issue), 2 = the read failed and looks rate-limited, 4 = the read
+# failed for another reason (GitHub's error is already on stderr). Callers
+# must NOT treat 4 as "not on the board" (adopt/add-finish would item-add).
 _item_id_rl() {
     local num="$1" hit out err rc id
     hit="$(_cache_get "$num")" && { cut -f1 <<<"$hit"; return 0; }
@@ -154,8 +172,9 @@ _item_id_rl() {
             rm -f "$err"
             return 2
         fi
+        cat "$err" >&2
         rm -f "$err"
-        return 1
+        return 4
     fi
     rm -f "$err"
     # The cache refresh below is a pure side effect (best-effort write, see
@@ -189,12 +208,13 @@ for it in data.get("items", []):
 # miss costs one full-board call, not a blind re-list. Return: 0 = found (id
 # on stdout), 1 = still not visible after the cap (caller defers to the
 # queue), 2 = a lookup attempt looked rate-limited (caller defers to the
-# queue too -- further polling would just burn quota for nothing).
+# queue too -- further polling would just burn quota for nothing), 4 = a
+# lookup attempt failed for another reason (error already printed).
 _poll_visible() {
     local num="$1" delays=(0.3 0.6) i id rc
     for i in 0 1; do
         id="$(_item_id_rl "$num")"; rc=$?
-        if [[ $rc -eq 2 ]]; then return 2; fi
+        if [[ $rc -eq 2 || $rc -eq 4 ]]; then return "$rc"; fi
         if [[ -n "$id" ]]; then printf '%s' "$id"; return 0; fi
         sleep "${delays[$i]}"
     done
@@ -244,6 +264,7 @@ _mutate_field() {
         id="$(_item_id_rl "$num")"; rc=$?
     fi
     [[ $rc -eq 2 ]] && return 2
+    [[ $rc -eq 4 ]] && return 1
     [[ -z "$id" ]] && return 3
     out="$(gh project item-edit --id "$id" --project-id "$PID" --field-id "$field" "$flag" "$value" 2>&1)"; rc=$?
     if [[ $rc -eq 0 ]]; then
@@ -260,6 +281,7 @@ _mutate_field() {
     fi
     id2="$(_item_id_rl "$num")"; rc=$?
     if [[ $rc -eq 2 ]]; then return 2; fi
+    if [[ $rc -eq 4 ]]; then return 1; fi
     if [[ -z "$id2" || "$id2" == "$id" ]]; then
         echo "$out" >&2
         return 1
@@ -453,6 +475,7 @@ _do_add_finish() {
     local num="$1" url="$2" first_status="$3" prio="$4" id out rc cur
     id="$(_item_id_rl "$num")"; rc=$?
     [[ $rc -eq 2 ]] && return 2
+    [[ $rc -eq 4 ]] && return 1  # could not read the board: that is not "not on the board"
     if [[ -z "$id" ]]; then
         out="$(gh project item-add "$PN" --owner "$OWNER" --url "$url" 2>&1)"; rc=$?
         if [[ $rc -ne 0 ]]; then
@@ -460,7 +483,8 @@ _do_add_finish() {
             echo "ERROR: add-finish #$num: gh project item-add failed: $out" >&2
             return 1
         fi
-        id="$(_poll_visible "$num")"
+        id="$(_poll_visible "$num")"; rc=$?
+        [[ $rc -eq 4 ]] && return 1
         [[ -z "$id" ]] && return 2  # still not visible (or rate-limited) within the cap -- re-queue, try again later
     fi
     cur="$(_current_status "$num")"
@@ -487,6 +511,7 @@ _do_adopt() {
     local num="$1" id url out rc cur
     id="$(_item_id_rl "$num")"; rc=$?
     [[ $rc -eq 2 ]] && return 2
+    [[ $rc -eq 4 ]] && return 1  # could not read the board: that is not "not on the board"
     if [[ -n "$id" ]]; then
         echo "adopt #$num: already on board"
         return 0
@@ -500,6 +525,7 @@ _do_adopt() {
     fi
     id="$(_poll_visible "$num")"; rc=$?
     if [[ $rc -eq 2 ]]; then echo "adopted #$num"; return 0; fi
+    if [[ $rc -eq 4 ]]; then echo "ERROR: adopt #$num: added to board but could not read it back to set the initial status" >&2; return 1; fi
     if [[ -n "$id" ]]; then
         cur="$(_current_status "$num")"
         # shellcheck disable=SC2153  # FIRST_STATUS is the global set by board.sh's

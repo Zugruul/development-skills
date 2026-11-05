@@ -19,6 +19,7 @@ cat >"$NVP_GH/gh" <<'FAKE'
 #!/usr/bin/env bash
 set -uo pipefail
 case "$1 $2" in
+    "api graphql") exec python3 "$GH_GQL_ADAPTER" "$0" "$@" ;;
     "project item-list")
         [[ -n "${FAKE_GH_LOG:-}" ]] && echo "$*" >>"$FAKE_GH_LOG"
         if [[ -n "${FAKE_GH_CALLCOUNT:-}" ]]; then

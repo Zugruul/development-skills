@@ -20,6 +20,7 @@ case "$1 $2" in
     "project item-add")
         : # board.sh discards item-add's stdout; only the call itself (in FAKE_GH_LOG) matters
         ;;
+    "api graphql") exec python3 "$GH_GQL_ADAPTER" "$0" "$@" ;;
     "project item-list")
         n=$(( $(cat "$FAKE_GH_CALLCOUNT" 2>/dev/null || echo 0) + 1 ))
         echo "$n" >"$FAKE_GH_CALLCOUNT"
@@ -102,6 +103,7 @@ case "$1 $2" in
             exit 1
         fi
         ;;
+    "api graphql") exec python3 "$GH_GQL_ADAPTER" "$0" "$@" ;;
     "project item-list")
         n=$(( $(cat "$FAKE_GH_CALLCOUNT" 2>/dev/null || echo 0) + 1 ))
         echo "$n" >"$FAKE_GH_CALLCOUNT"
@@ -199,6 +201,7 @@ case "$1 $2" in
     "project item-add")
         : # unconditionally OK for this fixture
         ;;
+    "api graphql") exec python3 "$GH_GQL_ADAPTER" "$0" "$@" ;;
     "project item-list")
         echo "{\"items\":[{\"id\":\"ITEM_${FAKE_GH_ISSUE_NUM:-701}\",\"content\":{\"number\":${FAKE_GH_ISSUE_NUM:-701}}}]}"
         ;;

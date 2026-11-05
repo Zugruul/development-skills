@@ -33,6 +33,7 @@ items_json="${FAKE_GH_ITEMS_JSON:-}"
 prs_json="${FAKE_GH_PRS_JSON:-}"
 [[ -z "$prs_json" ]] && prs_json='[]'
 case "$1 $2" in
+    "api graphql") exec python3 "$GH_GQL_ADAPTER" "$0" "$@" ;;
     "project item-list")
         printf '%s' "$items_json"
         ;;

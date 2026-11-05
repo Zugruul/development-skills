@@ -150,6 +150,7 @@ cat >"$T5HGH/gh" <<FAKE
 #!/usr/bin/env bash
 set -uo pipefail
 case "\$1 \$2" in
+    "api graphql") exec python3 "\$GH_GQL_ADAPTER" "\$0" "\$@" ;;
     "project item-list") echo '{"items":[{"id":"ITEM_7","content":{"number":7}}]}' ;;
     "project item-edit") touch "$MUTATION_MARKER_H" 2>/dev/null; echo "edited" ;;
     *) echo "fake gh: unexpected: \$*" >&2; exit 1 ;;
@@ -202,6 +203,7 @@ cat >"$T5JGH/gh" <<FAKE
 #!/usr/bin/env bash
 set -uo pipefail
 case "\$1 \$2" in
+    "api graphql") exec python3 "\$GH_GQL_ADAPTER" "\$0" "\$@" ;;
     "project item-list") echo '{"items":[{"id":"ITEM_7","content":{"number":7}}]}' ;;
     "project item-edit") touch "$MUTATION_MARKER_J" 2>/dev/null; echo "edited" ;;
     *) echo "fake gh: unexpected: \$*" >&2; exit 1 ;;

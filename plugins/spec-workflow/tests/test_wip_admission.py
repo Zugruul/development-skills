@@ -176,6 +176,7 @@ class WipAdmissionTests(unittest.TestCase):
         gh.write_text('''#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$CALLS"
 case "$1 $2" in
+ "api graphql") exec python3 "$GH_GQL_ADAPTER" "$0" "$@" ;;
  "project item-list") cat "$ITEMS" ;;
  "project item-edit") echo '{"239":{"itemId":"WRONG","status":"Backlog"}}' > .claude/board-cache.json; echo "fake edit failure" >&2; exit 1 ;;
  "api rate_limit") echo '{"resources":{"graphql":{"remaining":100}}}' ;;
@@ -204,8 +205,8 @@ esac
         self.items.write_text('{broken')
         self.refused(self.board('move', '239', 'In progress'))
         self.reset_effects()
-        self.state(['Backlog'])
-        self.env.update(PAGINATE_BASE_LIMIT='1', PAGINATE_HARD_CAP='1')
+        self.state(['Backlog', 'Backlog'])
+        self.env.update(PAGINATE_PAGE_SIZE='1', PAGINATE_HARD_CAP='1')
         self.refused(self.board('move', '239', 'In progress'))
 
     def test_invalid_policy_fails_closed(self):
@@ -244,7 +245,7 @@ esac
             with self.subTest(message=message):
                 self.reset_effects()
                 gh.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CALLS"\n'
-                              + 'if [[ "$1 $2" == "project item-list" ]]; then echo "' + message + '" >&2; exit 1; fi\n'
+                              + 'if [[ "$1 $2" == "project item-list" || "$1 $2" == "api graphql" ]]; then echo "' + message + '" >&2; exit 1; fi\n'
                               + 'if [[ "$1 $2" == "api rate_limit" ]]; then echo \'{"resources":{"graphql":{"remaining":100,"reset":1}}}\'; exit 0; fi\nexit 1\n')
                 result = self.board('move', '239', 'In progress')
                 self.assertEqual(self.queue.exists(), queued, result.stdout)
@@ -341,7 +342,8 @@ esac
 import json, os, pathlib, signal, sys, time
 root = pathlib.Path(os.environ['ITEMS']).parent
 args = sys.argv[1:]
-if args[:2] == ['project', 'item-list']: print((root / 'items.json').read_text())
+if args[:2] == ['api', 'graphql']: os.execvp(sys.executable, [sys.executable, os.environ['GH_GQL_ADAPTER'], sys.argv[0]] + args)
+elif args[:2] == ['project', 'item-list']: print((root / 'items.json').read_text())
 elif args[:2] == ['project', 'item-edit']:
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     (root / 'edit.ready').write_text(str(os.getpid()))
@@ -387,6 +389,7 @@ import json, os, pathlib, sys, time
 root = pathlib.Path(os.environ['ITEMS']).parent
 args = sys.argv[1:]
 with open(os.environ['CALLS'], 'a') as out: out.write(' '.join(args) + '\\n')
+if args[:2] == ['api', 'graphql']: os.execvp(sys.executable, [sys.executable, os.environ['GH_GQL_ADAPTER'], sys.argv[0]] + args)
 if args[:2] == ['project', 'item-list']:
     if not (root / 'read.ready').exists():
         (root / 'read.ready').touch()

@@ -83,6 +83,7 @@ export NEURAL_VIEW_NO_SIDECAR=1
 PLUGIN="$(dirname "$HERE")"
 # shellcheck disable=SC2034
 FIX="$HERE/fixtures"
+export GH_GQL_ADAPTER="$FIX/gh-graphql-adapter.py"  # fake-gh stubs answer `api graphql` board reads through it (#544)
 fails=0
 flaky=0
 
@@ -220,6 +221,7 @@ section-semver.sh
     section-two-pass-review-preflight.sh
     section-find-task.sh
     section-pagination.sh
+    section-project-items.sh
     section-skill-contracts.sh
     section-capability-language.sh
     section-argument-semantics.sh

@@ -1,0 +1,30 @@
+# provenance: GraphQL rate-limit rejection, the shape gh hides behind
+# "unknown owner type" for `gh project` commands (#544). The ERROR OBJECT
+# {"type":"RATE_LIMIT","code":"graphql_rate_limit","message":"API rate limit
+# already exceeded for user ID 12402908."} is verbatim from the live payload
+# reported in the #544 task brief (measured by the orchestrator against
+# account Zugruul, 2026-11-05, while `gh api rate_limit` still showed quota).
+# NOT live-captured here: the surrounding {"errors":[...]} envelope, the
+# HTTP/2.0 200 status line and the X-Ratelimit-* headers are RECONSTRUCTED
+# (header NAMES and the Reset epoch format are real, copied from
+# graphql-items-page-live.txt; remaining is set to 0 as for a rejection).
+# Reproducing it for real would exhaust quota shared with running agents.
+# source: #544 task brief; graphql-items-page-live.txt for header names.
+
+HTTP/2.0 200 OK
+Content-Type: application/json; charset=utf-8
+X-Ratelimit-Limit: 5000
+X-Ratelimit-Remaining: 0
+X-Ratelimit-Reset: 1793854221
+X-Ratelimit-Resource: graphql
+X-Ratelimit-Used: 5000
+
+{
+ "errors": [
+  {
+   "type": "RATE_LIMIT",
+   "code": "graphql_rate_limit",
+   "message": "API rate limit already exceeded for user ID 12402908."
+  }
+ ]
+}

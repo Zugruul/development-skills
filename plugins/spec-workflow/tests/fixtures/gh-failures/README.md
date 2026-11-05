@@ -86,3 +86,9 @@ genuine live captures from this account's ambient usage, not a forced drain).
 | `jsondecodeerror-ansi-traceback-py313.txt` | The colorized Python 3.13 `JSONDecodeError` traceback tail from board.sh's old ungated `json.load` pipe (pre-#77), live-recaptured this task |
 | `rate-limit-endpoint-sample.json` | Real `gh api rate_limit` response, live-captured (`resources.graphql.remaining=41`) |
 | `rate-limit-endpoint-near-exhausted.json` | Real `gh api rate_limit` response, live-captured (`resources.graphql.remaining=1`, genuinely near-exhausted from ambient account usage) |
+| `graphql-items-page-live.txt` | Real `gh api -i graphql` response (headers + body) of the slim project-items query (#544), live-captured against a user-owned project; the exact query sent is in its provenance header and golden-tested against `project_items.py query` |
+| `graphql-fields-live.txt` | Real `gh api -i graphql` response of the field-name resolution query (#544 review), live-captured; query in its provenance header, golden-tested against `project_items.py fields-query` |
+| `graphql-rate-limit-payload.txt` | GraphQL `RATE_LIMIT` rejection (#544): the error object is verbatim from a live payload, the envelope and headers are reconstructed (marked in its header) |
+
+`tests/fixtures/graphql-items-page-live.crlf` (outside this corpus: it is a byte-exact binary, not a `#`-headed text file) is the
+same live items capture trimmed, with the real wire quirk preserved: LF after the status line, CRLF between headers.

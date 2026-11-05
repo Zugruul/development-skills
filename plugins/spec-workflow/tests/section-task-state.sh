@@ -150,6 +150,9 @@ case "$1 $2" in
     "project item-list") echo '{"items":[{"id":"I1","status":"In progress","content":{"number":12,"type":"Issue"}}],"totalCount":1}' ;;
     "project item-edit") echo '{}' ;;
     "issue view") echo '{"comments":[],"number":12,"title":"x","body":"","url":"u"}' ;;
+    "api graphql") # board reads (#544) go through the shared adapter; task_state's own issue lookup keeps its canned answer
+        if [[ "$*" == *"projectV2(number"* ]]; then exec python3 "$GH_GQL_ADAPTER" "$0" "$@"; fi
+        echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"id":"I1","project":{"id":"PVT_x"},"fieldValueByName":{"name":"In progress"}}]}}}}}' ;;
     "api "*) echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"id":"I1","project":{"id":"PVT_x"},"fieldValueByName":{"name":"In progress"}}]}}}}}' ;;
 esac
 exit 0

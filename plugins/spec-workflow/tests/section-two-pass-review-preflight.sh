@@ -96,6 +96,7 @@ _tp_gh_fixture() {
 #!/usr/bin/env bash
 set -uo pipefail
 case "\$1 \$2" in
+    "api graphql") exec python3 "\$GH_GQL_ADAPTER" "\$0" "\$@" ;;
     "project item-list") echo '{"items":[{"id":"ITEM_236","content":{"number":236}}]}' ;;
     "project item-edit") touch "$marker" 2>/dev/null; echo "edited" ;;
     *) echo "fake gh: unexpected: \$*" >&2; exit 1 ;;
@@ -167,6 +168,7 @@ cat >"$T6HGH/gh" <<FAKE
 #!/usr/bin/env bash
 set -uo pipefail
 case "\$1 \$2" in
+    "api graphql") exec python3 "\$GH_GQL_ADAPTER" "\$0" "\$@" ;;
     "project item-list") echo '{"items":[{"id":"ITEM_236","content":{"number":236}}]}' ;;
     "project item-edit") touch "$MARKER_H" 2>/dev/null; echo "edited" ;;
     *) echo "fake gh: unexpected: \$*" >&2; exit 1 ;;
