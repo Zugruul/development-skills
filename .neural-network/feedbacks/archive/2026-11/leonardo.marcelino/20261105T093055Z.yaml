@@ -1,0 +1,135 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-11-05T09:30:55Z'
+iteration:
+  task: '543'
+  outcome: merged
+  reviewRounds: 2
+source:
+  role: orchestrator
+  model: claude-opus-5-5
+items:
+- category: friction
+  area: board
+  component: plugins/spec-workflow/scripts/guard-board-move.sh
+  severity: medium
+  summary: The move guard fingerprints the shell's starting directory and ignores
+    a leading cd.
+  detail: A forked orchestrator pinned to the main checkout could not move its lane's
+    task to In review, though the recorded pass was valid. The main session had to
+    run the move from the worktree.
+  evidence:
+  - Zugruul/development-skills#543
+  generalized: A gate guard that checks the shell's starting directory blocks orchestrators
+    pinned to the primary checkout from moving a lane's task; it should honour the
+    command's target checkout.
+  routing:
+    action: upstream
+    ref: human-decision-from-543-report
+- category: friction
+  area: concurrency
+  component: plugins/spec-workflow/scripts/gate.sh
+  severity: medium
+  summary: One shared gate-pass file means a parallel lane's gate can clear another
+    lane's recorded pass.
+  evidence:
+  - Zugruul/development-skills#543
+  generalized: With parallel lanes, one shared gate-pass marker lets any lane's gate
+    overwrite or clear another lane's pass; passes should be keyed by tree.
+  routing:
+    action: upstream
+    ref: human-decision-from-543-report
+- category: incident
+  area: testing
+  component: plugins/spec-workflow/tests/section-neural-view-lifecycle.sh
+  severity: medium
+  summary: A lifecycle test fails intermittently under load because of a short-lived
+    port holder.
+  detail: Failed the full gate twice on this branch while other suites ran (load about
+    60). Passed at load about 8. Reviewer root-caused it to an 8 s holder and saw
+    it pass with a longer one; main passed 4 of 4 in my own low-load runs, and reportedly
+    failed under load. Unrelated to this diff.
+  evidence:
+  - Zugruul/development-skills#543
+  generalized: Test fixtures with short fixed lifetimes turn into load-dependent gate
+    failures when suites run in parallel.
+  routing:
+    action: upstream
+    ref: human-decision-from-543-report
+- category: incident
+  area: testing
+  component: plugins/spec-workflow/scripts/gate.sh
+  severity: medium
+  summary: Setting the plugin root variable makes preflight tests fail on an unchanged
+    tree.
+  detail: Six failures appeared from the launch environment alone, and cost a misdiagnosis.
+  evidence:
+  - Zugruul/development-skills#543
+  generalized: A gate should clear ambient plugin environment variables before running
+    tests, so results do not depend on how it was launched.
+  routing:
+    action: upstream
+    ref: human-decision-from-543-report
+- category: friction
+  area: board
+  component: plugins/spec-workflow/scripts/task_state.py
+  severity: low
+  summary: Moving a task to QA clears its progress record while retro and closure
+    steps are still open.
+  evidence:
+  - Zugruul/development-skills#543
+  generalized: A progress record cleared on the move past review disappears before
+    post-merge steps finish; clear it at closure instead.
+  routing:
+    action: upstream
+    ref: human-decision-from-543-report
+- category: friction
+  area: board
+  component: plugins/spec-workflow/scripts/board.sh
+  severity: high
+  summary: The hosted CLI hides a rate-limit error behind a misleading message, and
+    whole-board reads are expensive.
+  evidence:
+  - Zugruul/development-skills#543
+  generalized: Board reads should translate a CLI's misleading rate-limit error and
+    avoid full-board queries, because several agents share one API budget.
+  routing:
+    action: backlog
+    ref: Zugruul/development-skills#544
+- category: friction
+  area: merge
+  component: plugins/spec-workflow/skills/build-next/references/auto-review.md
+  severity: low
+  summary: The merge protocol couples squash, version bump and push, with no documented
+    way to stop after the local merge.
+  evidence:
+  - Zugruul/development-skills#543
+  generalized: When a human authorizes a local merge only, the protocol should say
+    how to record skipped version and push steps and who owns them.
+  routing:
+    action: upstream
+    ref: human-decision-from-543-report
+- category: worked-well
+  area: review
+  severity: low
+  summary: Tagged passes followed by one independent reviewer caught different bugs
+    at each stage.
+  evidence:
+  - Zugruul/development-skills#543
+  generalized: Separate spec and quality passes followed by a fresh whole-diff reviewer
+    catch different classes of defect; keep all three on non-trivial changes.
+  routing:
+    action: brain-note
+    ref: reviewer/final-reviewer-reads-the-whole-diff
+- category: worked-well
+  area: briefing
+  severity: low
+  summary: A live record with reopen rules kept a long rework honest and visible to
+    the human.
+  evidence:
+  - Zugruul/development-skills#543
+  generalized: A live task record that requires reopening items on regression keeps
+    long rework honest for a watching human.
+  routing:
+    action: brain-note
+    ref: orchestrator/tick-only-your-own-todos-in-briefs
