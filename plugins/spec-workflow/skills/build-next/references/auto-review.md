@@ -135,6 +135,16 @@ Review `gh pr diff <n>` (and checked-out files as needed) for ALL of:
     the doc file and what's now wrong in it. Pure refactors/test-only diffs
     need no doc change; do not demand doc edits for their own sake.
 
+## TODO UPKEEP (required)
+Task id N; your role is <role>. The human watches this record live. Run `bash <resolved-plugin-root>/scripts/task-state.sh show --id N` first, since others may have changed it.
+- Completion: tick a TODO when it is really finished, one at a time, not in a batch at the end: `task-state.sh todo --id N --done <number> --agent <role>`.
+- Start: mark a TODO with `task-state.sh todo --id N --start <number> --agent <role>` when you begin it, and do not leave it set after you stop (done, undo and drop clear it). Several agents may each have one active.
+- Scope change: add new work with `task-state.sh todo --id N --add "<text>" --agent <role>`; when work leaves scope, `task-state.sh todo --id N --drop <number> --agent <role>`. Do this when the change happens, including when an issue comment or review changes scope.
+- Order: insert new work where it really happens with `task-state.sh todo --id N --add "<text>" --before <number> --agent <role>`, normally before the gate, review and merge items it must precede, never at the end by default. `task-state.sh todo --id N --move <number> --before <number> --agent <role>` fixes an item already in the wrong place. Numbers never change, so `--done 5` always means the same TODO. If you re-gate after a fix, the gate item stays after the fix.
+- Regression or rework: when a check fails or a finding sends the work back to an earlier step, reopen every TODO that is no longer true with `task-state.sh todo --id N --undo <number> --agent <role>`, before starting the fix. Example: a failed review reopens "implementation" and "gate green". Re-tick only after the redo is finished.
+- Reviewers record findings: a finding that needs a fix is added as a TODO or reopens one.
+- Always pass `--agent <role>` and task id N.
+
 Reply with exactly one verdict line first:
 VERDICT: REQUEST_CHANGES  — followed by a numbered findings list, each with
   file:line, why it fails, and the concrete fix you expect; or

@@ -291,6 +291,28 @@ def main(path):
             if "entityEdgeColor" in neural_view and not isinstance(neural_view["entityEdgeColor"], str):
                 errs.append("neuralView.entityEdgeColor must be a string (\"gradient\" or a CSS color)")
 
+    # herdr: terminal workspace integration. Absent == off (additive-only).
+    herdr_cfg = cfg.get("herdr")
+    if herdr_cfg is not None:
+        if not isinstance(herdr_cfg, dict):
+            errs.append("herdr: must be a mapping with 'enabled' and optional 'worktrees'")
+        else:
+            for k in herdr_cfg:
+                if k not in ("enabled", "worktrees"):
+                    errs.append(f"herdr.{k}: unknown key (allowed: ['enabled', 'worktrees'])")
+            if "enabled" in herdr_cfg and not isinstance(herdr_cfg["enabled"], bool):
+                errs.append("herdr.enabled: must be a boolean")
+            herdr_worktrees = herdr_cfg.get("worktrees")
+            if herdr_worktrees is not None:
+                if not isinstance(herdr_worktrees, dict):
+                    errs.append("herdr.worktrees: must be a mapping with 'taskLanes'/'subagents'")
+                else:
+                    for k, v in herdr_worktrees.items():
+                        if k not in ("taskLanes", "subagents"):
+                            errs.append(f"herdr.worktrees.{k}: unknown key (allowed: ['subagents', 'taskLanes'])")
+                        elif not isinstance(v, bool):
+                            errs.append(f"herdr.worktrees.{k}: must be a boolean")
+
     # work: PR-less local delivery (type) + board-sync batching policy (sync)
     # + checkout placement (#532) + definition of agent work done (done).
     # Absent == {type: pr, checkout: worktree} and the legacy done-gate (the

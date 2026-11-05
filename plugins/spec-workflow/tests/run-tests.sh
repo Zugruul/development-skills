@@ -160,6 +160,9 @@ SECTIONS=(
     section-merge-dance.sh
     section-preflight.sh
     section-checkout-preflight.sh
+    section-herdr-worktree.sh
+    section-herdr-tasks-panel.sh
+    section-task-state.sh
     section-checkpoint.sh
     section-wip-admission.sh
     section-ui-hub.sh

@@ -343,6 +343,10 @@ except OSError:
         ;;
     move)
         _do_move "$2" "$3"; rc=$?
+        # Keep the local task record honest; this never fails the move.
+        if [[ $rc -eq 0 || $rc -eq 2 ]]; then
+            python3 "$HERE/task_state.py" --root "$ROOT" sync --id "$2" --status "$3" >/dev/null 2>&1 || true
+        fi
         if [[ $rc -eq 2 ]]; then
             queue_append move issue="$2" status="$3"
             echo "QUEUED (rate-limited until $(_rate_limit_reset_human)): move #$2 -> $3"

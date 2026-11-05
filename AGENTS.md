@@ -88,6 +88,7 @@ contracts.
 | [comfyui-render](plugins/spec-workflow/skills/comfyui-render/SKILL.md) | Queue pinned ComfyUI image workflows over a dedicated SSH tunnel, recover owned requests, and publish audited artifacts. |
 | [setup-project](plugins/spec-workflow/skills/setup-project/SKILL.md) | Initialize a repo's project config, GitHub Project board, and local-state ignores. |
 | [sync-project-configs](plugins/spec-workflow/skills/sync-project-configs/SKILL.md) | Dry-run or apply versioned config updates across discovered project repos. |
+| [task-state](plugins/spec-workflow/skills/task-state/SKILL.md) | Keep the local record of tasks in progress and their TODOs, shared across agents and worktrees. |
 | [ui-mode](plugins/spec-workflow/skills/ui-mode/SKILL.md) | Inspect or toggle human-directed iterative UI decisions. |
 | [ui-options](plugins/spec-workflow/skills/ui-options/SKILL.md) | Present UI alternatives in the local decision hub and capture the user's choice. |
 | [whisper-sidecar](plugins/spec-workflow/skills/whisper-sidecar/SKILL.md) | Install, run, stop, or health-check the private local whisper.cpp speech sidecar. |

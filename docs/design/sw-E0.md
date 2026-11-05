@@ -81,3 +81,34 @@ matrix entry without implying an audit of the whole marketplace.
 ### Out of scope
 #278's selection/settings editing, live board status, recursive repository search,
 changes to existing scanner caller policies, and schema migrations.
+
+## #543 extension — herdr integration and task state
+Grounded in SPEC §5 (config engine), §6 (workflow UX) and issue #543's acceptance criteria. Behaviour below was checked against herdr 0.9.5 and Claude Code hooks.
+
+### Components
+- `herdr-worktree.sh add|remove` owns task-lane creation and removal. Skills call it instead of `git worktree`.
+- The `subagent-hook` mode of that script answers `SubagentStart` and `SubagentStop` from the plugin's `hooks.json`.
+- `task-state.sh` owns the record of work in progress. `board.sh move` calls its `sync` verb.
+- `herdr-plugin/` is a herdr plugin whose panel reads that record.
+
+### Data models
+- Config: `herdr: {enabled: bool, worktrees: {taskLanes: bool, subagents: bool}}`. Additive and absent by default, so no schema version bump.
+- Task record: `{id, title, status, agents[], worktrees[], todos[{num, text, done, dropped?, active?, activeBy?}], updatedAt}`; a dropped TODO keeps its number and is not counted, stored at `<git common dir>/spec-workflow/task-state/<id>.json`.
+
+### Decisions
+- Top-level `herdr`, not `integrations.herdr` — WHY: `integrations` is defined as external task sources.
+- Subagents use `SubagentStart`/`SubagentStop`, not `WorktreeCreate` — WHY: that hook replaces Claude Code's creation in every repo with the plugin, including `.worktreeinclude` handling. The chosen hooks are a no-op while off.
+- Close the subagent workspace on stop — WHY: Claude Code removes clean agent worktrees, which would otherwise leave a "(deleted)" sidebar entry.
+- Herdr only adds visibility, so any herdr failure falls back to git — WHY: display must never block delivery. A failed reply is checked against `git worktree list` first, because it does not prove nothing happened.
+- Herdr's `--cwd` is the primary checkout, found from the git dirs rather than guessed (a submodule, separate git dir or bare repo has no `<parent>/.git`); when none is found git makes the lane — WHY: guessing put lanes in the wrong repository. It is always the primary checkout — WHY: herdr refuses worktree actions from a linked worktree (`linked_worktree_source`).
+- Detached lanes use `git worktree add --detach` then `herdr worktree open` — WHY: `herdr worktree create` invents a branch when given none.
+- Lanes keep the workflow's paths — WHY: herdr's default directory is on another filesystem, which breaks repos that depend on their location.
+- `--trust-repository` is never passed — WHY: herdr reserves it for a human decision.
+- The panel reads only local state, never the board — WHY: board reads take 10-20 s each and exhaust the shared GraphQL limit. The human decided this after testing a board-backed panel. `board.sh show` and `list` also have side effects a poller must not trigger: the comments-read marker and queue replay.
+- State lives in the git common dir, not `.claude/` — WHY: every worktree shares it, it cannot be committed, and consumers need no new gitignore rule.
+- TODO numbers are permanent and seeding is idempotent (new TODOs are appended unless `--before` or `--move` places them; only the order can change, never a number); scope reduction drops a TODO instead of deleting it — WHY: several agents can hold stable numbers and re-seed without losing progress or resurrecting dropped work.
+- A TODO stores a permanent `num` and the list order is the display order; `active`/`activeBy` mark work in progress — WHY: `--before` and `--move` put work in the order it happens without changing what `--done 5` means for agents holding old numbers. Records without `num` get it from their positions on read and are written back only on the next write; the panel reads both forms because it does not import `task_state.py`.
+- Every agent brief carries a required `## TODO UPKEEP (required)` section — WHY: subagents see only their brief, and a record that claims undone work or cannot show reduced scope misleads the human watching.
+
+### Out of scope
+Enabling the integration in a consumer repo, capturing agents' private to-do lists, and reordering panels.

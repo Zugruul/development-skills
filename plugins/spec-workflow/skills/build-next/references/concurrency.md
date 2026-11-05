@@ -14,7 +14,7 @@ govern how the orchestrator runs the lanes safely.
 ## A lane
 
 One lane = one task, end to end, isolated:
-- **Own git worktree** — `git worktree add <abs path> <branch>` off `mainBranch`.
+- **Own git worktree** — `bash <resolved-plugin-root>/scripts/herdr-worktree.sh add --path <abs path> --branch <branch> --base <mainBranch>` (herdr when `herdr` config enables it, plain git otherwise).
   Never run two lanes in the same working tree. Absolute-path discipline (build-next
   rule 9) is mandatory: every git/gate command for a lane starts with
   `cd <that lane's absolute worktree path> &&` in the SAME call — a bare `git push`
@@ -48,7 +48,8 @@ not a mandate.
 - **Checkpoint pauses ALL lanes.** If `paths.checkpointFile` appears, no lane starts new
   work; each finishes to a safe boundary (or parks) and the loop writes one handoff covering
   every lane. The gate/`guard-board-move` hook still applies per lane.
-- Clean up a lane's worktree after its PR merges (`git worktree remove <path>`).
+- **Task state** — every lane keeps its own task current with `task-state.sh`, which all worktrees share; the rules for several agents are in `skills/task-state/SKILL.md`. Every lane's brief carries the required `## TODO UPKEEP (required)` section (template: `skills/implement-task/SKILL.md`), so each lane ticks, adds, drops and reopens its TODOs as the work changes. A lane updates only its own task id.
+- Clean up a lane's worktree after its PR merges (`bash <resolved-plugin-root>/scripts/herdr-worktree.sh remove --path <path>`, which also clears its herdr workspace).
 
 ## Naming (role-prefix FIRST, always)
 

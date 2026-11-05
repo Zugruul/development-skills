@@ -1,0 +1,18 @@
+id = "spec-workflow.tasks"
+name = "Spec-workflow tasks"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Side panel listing the tasks agents are working on and their TODOs, from the local task record they keep."
+platforms = ["linux", "macos"]
+
+[[panes]]
+id = "panel"
+title = "Tasks"
+placement = "split"
+command = ["python3", "tasks_panel.py", "run"]
+
+[[actions]]
+id = "toggle"
+title = "Tasks: toggle panel"
+contexts = ["global"]
+command = ["python3", "tasks_panel.py", "toggle"]

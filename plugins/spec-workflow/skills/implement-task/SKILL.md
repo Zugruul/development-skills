@@ -25,17 +25,20 @@ You (the orchestrator) do **not** write the implementation. You brief a subagent
    Before registration, run `bash "../../scripts/checkout-preflight.sh" --checkout <authorized-session-mode>` in the actual checkout and obey its decision: `proceed` continues; `isolate` uses build-next's dirty-checkout isolation sequence; `pause` preserves the checkout pending the main-only/isolation choice; `stop` reports the inspection error. Do not auto-stash/reset/add/commit pre-existing work. When build-next isolated startup, use its **verified base** commit for the branch below instead of potentially stale local main; recheck the new task worktree before its registration commit or implementation. The dirty primary does not block a separately verified clean lane.
    - **`worktree` (default)** — register the work BEFORE implementation: the branch, its worktree, and the draft PR all exist before any code is written, so in-flight work is always visible even if it dies early. The `--allow-empty` registration commit is what makes an effectively-empty draft PR possible (GitHub refuses a PR with zero commits).
      ```bash
-     git worktree add .claude/worktrees/<task-id> -b <branch from cfg:project.branchPattern, e.g. cp/012-error-model> <verified base from isolated startup, otherwise cfg:project.mainBranch>
+     # Uses herdr when cfg:herdr enables it, plain git otherwise. Resolve the installed script path before changing directories.
+     bash <resolved-plugin-root>/scripts/herdr-worktree.sh add --path .claude/worktrees/<task-id> --branch <branch from cfg:project.branchPattern, e.g. cp/012-error-model> --base <verified base from isolated startup, otherwise cfg:project.mainBranch> --label "<task-id>"
      cd .claude/worktrees/<task-id>
-     # Resolve the installed script path before changing directories; require action=proceed.
+     # Require action=proceed.
      bash <resolved-plugin-root>/scripts/checkout-preflight.sh --checkout worktree
      git commit --allow-empty -m "chore(<task-id>): register work (#N)"
      git push -u origin <branch>
      gh pr create --draft --title "<title per cfg:commit.convention>" --body "Closes #N"   # open the draft PR BEFORE implementation
      board.sh move N "In progress"        # respect cfg:methodology.maxInProgress
+     # Live progress for the human. One --todo per acceptance criterion (rules: skills/task-state/SKILL.md).
+     bash <resolved-plugin-root>/scripts/task-state.sh set --id N --title "<title>" --status "In progress" --agent orchestrator --todo "<criterion>" ...
      ```
      The dev agent works inside that worktree; its pushes update this SAME PR, and gate-green flips it out of draft with `gh pr ready` (brief step 4 below: the PR already exists — never open a second one). Under `work.type: local`, skip the push and the draft PR (no PR is ever opened in local delivery — the branch + worktree themselves are the registration); everything else stands.
-   - **`main`** — no branch, no worktree: stay on `<cfg:project.mainBranch>`; just `board.sh move N "In progress"`. The brief must mandate small complete commits directly on main as the work goes (never a long-lived dirty tree), and with `methodology.maxInProgress > 1` the orchestrator serializes workers' edits — one worker's uncommitted changes at a time, tree verified clean between hand-offs (protocol: build-next "Checkout mode").
+   - **`main`** — no branch, no worktree: stay on `<cfg:project.mainBranch>`; just `board.sh move N "In progress"` and the same `task-state.sh set` as above. The brief must mandate small complete commits directly on main as the work goes (never a long-lived dirty tree), and with `methodology.maxInProgress > 1` the orchestrator serializes workers' edits — one worker's uncommitted changes at a time, tree verified clean between hand-offs (protocol: build-next "Checkout mode").
 
 ## 1. Spawn the dev agent
 Resolve the dev identity for THIS task's paths first: `bash "../../scripts/identity.sh" dev <a representative changed/expected path>`. In a monorepo the `covers` globs route to the right per-package dev agent; with a single dev identity it just returns that one. The resolved `models:` line is that agent's ALLOWED set — pick the most SUITABLE one for this task (cheaper/smaller for a simple change, a larger-context `[1m]` variant for a big diff), never reflexively the most powerful. Under Codex, resolve with `identity.sh --host codex dev <path>` and pick the model from its `codex-capability:` line (or the host's own default if it reads `(unset — host default)`) — never a Claude-only model id. Under Claude Code, resolve normally (no `--host` flag) and pick from `models:`, as today. Delegate to a fresh implementation agent when the host supports delegation, with `model: <the id you chose from that allowed set>` and `name: dev-<task-id>` (role-prefix FIRST, then the scope it serves — e.g. `dev-cp012`; a re-brief on the same task appends a letter, `dev-cp012-b`; never a bare counter — see build-next `references/concurrency.md` §Naming). (On Claude Code, this is the Agent tool with `subagent_type: general-purpose`.) One agent = one task. Fill EVERY section of the brief — specific WHAT/WHY beats generic. The subagent sees ONLY the brief: paste actual text (criteria, spec excerpts, invariants, error output), never write "as discussed" or "see above".
@@ -52,6 +55,16 @@ Branch already checked out: <branch, in worktree <path> — or "<mainBranch> (wo
 - Acceptance criteria: <paste from issue body + backlog row, including comment-driven updates>
 - In scope: <exact deliverables>. Out of scope: <what NOT to build — later tasks>.
 - Relevant spec sections: <spec path + section numbers, one line each>.
+
+## TODO UPKEEP (required)
+Task id N; your role is <role>. The human watches this record live. Run `bash <resolved-plugin-root>/scripts/task-state.sh show --id N` first, since others may have changed it.
+- Completion: tick a TODO when it is really finished, one at a time, not in a batch at the end: `task-state.sh todo --id N --done <number> --agent <role>`.
+- Start: mark a TODO with `task-state.sh todo --id N --start <number> --agent <role>` when you begin it, and do not leave it set after you stop (done, undo and drop clear it). Several agents may each have one active.
+- Scope change: add new work with `task-state.sh todo --id N --add "<text>" --agent <role>`; when work leaves scope, `task-state.sh todo --id N --drop <number> --agent <role>`. Do this when the change happens, including when an issue comment or review changes scope.
+- Order: insert new work where it really happens with `task-state.sh todo --id N --add "<text>" --before <number> --agent <role>`, normally before the gate, review and merge items it must precede, never at the end by default. `task-state.sh todo --id N --move <number> --before <number> --agent <role>` fixes an item already in the wrong place. Numbers never change, so `--done 5` always means the same TODO. If you re-gate after a fix, the gate item stays after the fix.
+- Regression or rework: when a check fails or a finding sends the work back to an earlier step, reopen every TODO that is no longer true with `task-state.sh todo --id N --undo <number> --agent <role>`, before starting the fix. Example: a failed review reopens "implementation" and "gate green". Re-tick only after the redo is finished.
+- Reviewers record findings: a finding that needs a fix is added as a TODO or reopens one.
+- Always pass `--agent <role>` and task id N.
 
 ## HOW (non-negotiable)
 1. TDD: write FAILING tests first, commit them ("test(<id>): ... (red)"), then minimal
@@ -111,6 +124,22 @@ Large task? Split into sequential briefs (e.g. tests+core, then edge cases), eac
 board.sh move N "In review"     # a hook blocks this unless gate.sh recorded a pass for the current tree
 ```
 Under `methodology.serialDelivery` (#423, count-based slots): moving to *In review* does **not** free #N's slot — a slot is occupied from PICK until MERGE, so *In progress* and *In review* both count toward `maxInProgress`. The merge that actually frees the slot is a SEPARATE, serialized step owned by the merge dance (`../../skills/build-next/references/concurrency.md`), never a side effect of reaching *In review* — never assume headroom opened up just because this task left *In progress*.
+**TODO UPKEEP applies to every review pass and to you.** `## TODO UPKEEP (required)` is a required, always-filled section of EACH review-pass brief (spec compliance and code quality), with these rules written out; the orchestrator pastes `## TODO UPKEEP (required)` into each review-pass brief, with role `reviewer`:
+
+```
+## TODO UPKEEP (required)
+Task id N; your role is <role>. The human watches this record live. Run `bash <resolved-plugin-root>/scripts/task-state.sh show --id N` first, since others may have changed it.
+- Completion: tick a TODO when it is really finished, one at a time, not in a batch at the end: `task-state.sh todo --id N --done <number> --agent <role>`.
+- Start: mark a TODO with `task-state.sh todo --id N --start <number> --agent <role>` when you begin it, and do not leave it set after you stop (done, undo and drop clear it). Several agents may each have one active.
+- Scope change: add new work with `task-state.sh todo --id N --add "<text>" --agent <role>`; when work leaves scope, `task-state.sh todo --id N --drop <number> --agent <role>`. Do this when the change happens, including when an issue comment or review changes scope.
+- Order: insert new work where it really happens with `task-state.sh todo --id N --add "<text>" --before <number> --agent <role>`, normally before the gate, review and merge items it must precede, never at the end by default. `task-state.sh todo --id N --move <number> --before <number> --agent <role>` fixes an item already in the wrong place. Numbers never change, so `--done 5` always means the same TODO. If you re-gate after a fix, the gate item stays after the fix.
+- Regression or rework: when a check fails or a finding sends the work back to an earlier step, reopen every TODO that is no longer true with `task-state.sh todo --id N --undo <number> --agent <role>`, before starting the fix. Example: a failed review reopens "implementation" and "gate green". Re-tick only after the redo is finished.
+- Reviewers record findings: a finding that needs a fix is added as a TODO or reopens one.
+- Always pass `--agent <role>` and task id N.
+```
+
+The orchestrator follows these rules itself: a failed review or red gate reopens the TODOs it makes untrue (`--undo`) before the fix is briefed, and a scope change from a comment is added or dropped when it is folded in.
+
 Review in **two passes**, each by a review agent (`model:` a suitable id from the reviewer identity's allowed set — `bash "../../scripts/identity.sh" reviewer` prints its `models:` line): (1) **spec compliance** — does the diff satisfy each acceptance criterion and cited spec §, nothing more, nothing less; (2) **code quality** — correctness, style, tests. Relay findings to a dev agent; re-gate. A single combined pass reliably misses "passes tests but isn't what the spec said."
 
 If per-identity brains exist, prepend the reviewer role's `ROLE.md` and a `## LESSONS (recalled)` block from `brain.sh recall reviewer --paths "<the diff's paths>" --keywords "<task keywords>"` to EACH review-pass brief — same protocol as the dev brief (brains.md mandates recall for dev AND reviewer briefs; a reviewer brain that is minted at retro but never recalled never fires its links and its lessons never reach a review).
@@ -148,6 +177,10 @@ Completion evidence attests to performed work; it does not prove content or auth
 If the task involves UI-affecting decisions and iterative UI mode is on (`.claude/ITERATIVE_UI_OFF` absent, `methodology.iterativeUI` not false): BEFORE any UI-affecting work, run `python3 "../../scripts/design-registry.py" find --tags <the task's surfaces>` — a FINALIZED match is BINDING (implement exactly what it says), a STALE match needs human re-confirmation before use, no match means run a `ui-options` round. Follow the `ui-options` skill's protocol (see `build-next` skill, "Iterative UI mode") rather than guessing — this applies whether or not a `build-next` loop is wrapping this invocation. This includes `build-next`'s "placeholder-and-close" rule: shipping non-UI plumbing while a decision is still pending is fine, but do not close this issue with placeholder-only decision-surface styling — either hold it open until the real decision is applied, or file a linked restyle follow-up in the same step that closes it.
 
 ## 5. Stop
+When the task is closed or abandoned, run `bash <resolved-plugin-root>/scripts/task-state.sh clear --id N`.
+
+After the merge, or when the task is abandoned, remove its lane through the helper, run from OUTSIDE the lane: `bash <resolved-plugin-root>/scripts/herdr-worktree.sh remove --path <lane-path>` (it also clears the lane's herdr workspace, so lanes do not pile up in the sidebar). If the task failed and the lane is needed for recovery, keep it and retain its path instead.
+
 One task per invocation. Report: task, gate result, PR link, board status, and a **retro-status line** (`retro: done (notes minted/pruned: ...)` or `retro: SKIPPED — <reason>`) per step 4. Later statuses (QA/Ready/Deployed) only when merge/validation/publish actually happen. When `work.done` is configured (§3), the report's "done" claim means THAT gate was reached — name the phase (`work done: phase=<phase>`) and, if you stopped earlier than merge because of it, list what remains for whoever picks it up.
 
 ### WIP admission at board mutations

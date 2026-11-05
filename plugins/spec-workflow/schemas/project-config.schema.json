@@ -729,6 +729,35 @@
                 }
             }
         },
+        "herdr": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Integration with the herdr terminal workspace manager. Absent == off (additive-only); while off, nothing calls herdr. When herdr is unavailable the workflow falls back to plain git worktrees with a notice.",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Master switch for the herdr integration. false keeps the section on file while nothing calls herdr."
+                },
+                "worktrees": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Which worktrees appear in herdr's spaces sidebar while enabled.",
+                    "properties": {
+                        "taskLanes": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Create and remove spec-workflow task lanes through herdr (scripts/herdr-worktree.sh)."
+                        },
+                        "subagents": {
+                            "type": "boolean",
+                            "default": false,
+                            "description": "Show each isolated subagent's worktree while that subagent runs: opened on SubagentStart, closed on SubagentStop. Claude Code hosts only, and the worktree itself stays under Claude Code's control."
+                        }
+                    }
+                }
+            }
+        },
         "compute": {
             "type": "object",
             "additionalProperties": false,
