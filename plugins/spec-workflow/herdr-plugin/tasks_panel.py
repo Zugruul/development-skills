@@ -30,6 +30,7 @@ POLL_SECONDS = 2  # local files only, so polling costs almost nothing
 REPO_SECONDS = 30  # how often to look for newly opened repos
 OSC_OR_CSI = re.compile(r'\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b\[[0-?]*[ -/]*[@-~]|\x1b.?')
 CONTROL = re.compile(r'[\x00-\x1f\x7f-\x9f]')
+SCROLL_STEP = 1.5  # lines per key press; kept as a fraction, so two presses move 3 lines
 PANEL_WIDTH_SHRINK = 0.2  # the split starts at half the pane; this narrows it
 
 
@@ -327,13 +328,19 @@ class Panel:
         self.scroll = 0
         self.last_frame = None
 
+    def move(self, direction):
+        self.scroll = max(0, self.scroll + direction * SCROLL_STEP)
+
+    def first_line(self):
+        return int(self.scroll)
+
     def draw(self, boards):
         size = shutil.get_terminal_size((60, 24))
         body = render(boards, size.columns - 1, color=True)
-        height = max(size.lines - 2, 1)
+        height = max(size.lines, 1)
         self.scroll = max(0, min(self.scroll, len(body) - height))
-        header = f'{BOLD}Tasks{RESET}'
-        frame = '\x1b[H\x1b[2J' + header + '\r\n\r\n' + '\r\n'.join(body[self.scroll:self.scroll + height])
+        first = self.first_line()
+        frame = '\x1b[H\x1b[2J' + '\r\n'.join(body[first:first + height])
         if frame != self.last_frame:
             self.last_frame = frame
             try:
@@ -400,10 +407,10 @@ def run():
                         next_read = 0
                         REPO_CACHE['at'] = 0
                     elif key in (b'j', b'\x1b[B'):
-                        panel.scroll += 1
+                        panel.move(1)
                         redraw = True
                     elif key in (b'k', b'\x1b[A'):
-                        panel.scroll = max(0, panel.scroll - 1)
+                        panel.move(-1)
                         redraw = True
             if time.time() >= next_read:
                 boards = collect(rescan=False)

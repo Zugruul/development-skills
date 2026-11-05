@@ -360,6 +360,55 @@ check_absent "latin-1 project.yaml: no traceback" "Traceback" "$out"
 check "latin-1 project.yaml: its own task still shows" "Latin one task" "$out"
 check "latin-1 project.yaml: other repos' tasks still show" "Separate git dir task" "$out"
 
+echo "== tasks panel: scrolling and frame =="
+frame_out="$(python3 - "$TP_PLUGIN" <<'PY' 2>&1
+import io, os, sys
+sys.path.insert(0, sys.argv[1])
+os.environ['COLUMNS'], os.environ['LINES'] = '40', '6'
+import tasks_panel as panel
+tasks = [{'id': str(n), 'title': f'task{n}', 'status': 's', 'agents': [], 'worktrees': [], 'todos': [], 'updatedAt': 0}
+         for n in range(40)]
+boards = [{'name': 'repo', 'tasks': tasks, 'unreadable': []}]
+body_len = len(panel.render(boards, 39))
+p = panel.Panel()
+def frame():
+    out, sys.stdout = sys.stdout, io.StringIO()
+    try:
+        p.last_frame = None
+        p.draw(boards)
+        return sys.stdout.getvalue()
+    finally:
+        sys.stdout = out
+print('step', panel.SCROLL_STEP)
+print('title-line', 'Tasks' in frame())
+print('rows', frame().count('\r\n') + 1)
+p.move(1); print('one', p.first_line())
+p.move(1); print('two', p.first_line())
+p.move(1); p.move(1); print('four', p.first_line())
+p.move(-1); print('back', p.first_line())
+for _ in range(100):
+    p.move(-1)
+print('top', p.first_line())
+for _ in range(100):
+    p.move(1)
+frame()
+print('bottom', p.first_line() == body_len - 6)
+p.move(-1); frame()
+print('leaves-bottom', p.first_line() < body_len - 6)
+PY
+)"
+check "scroll: moves 50% further per step" "step 1.5" "$frame_out"
+check "scroll: one step moves 1 line" "one 1" "$frame_out"
+check "scroll: two steps move 3 lines" "two 3" "$frame_out"
+check "scroll: four steps move 6 lines" "four 6" "$frame_out"
+check "scroll: moving back is symmetric" "back 4" "$frame_out"
+check "scroll: stops at the top" "top 0" "$frame_out"
+check "scroll: stops at the bottom" "bottom True" "$frame_out"
+check "scroll: moving up from the bottom works at once" "leaves-bottom True" "$frame_out"
+check "frame: no title line, the pane border already says Tasks" "title-line False" "$frame_out"
+check "frame: the list uses every row" "rows 6" "$frame_out"
+check_absent "frame: no traceback" "Traceback" "$frame_out"
+
 echo "== tasks panel: run (pseudo-terminal) =="
 # Drives the real panel in a pty: leaving through any path must restore the terminal.
 cat >"$TP_TMP/pty_run.py" <<'PY'
@@ -413,8 +462,8 @@ def scenario(label, act, close_master=False):
                              env=env, start_new_session=True, close_fds=True)
     result = {}
     try:
-        seen = read_until(master, b'Tasks', 10)
-        result['started'] = b'\x1b[?1049h' in seen and b'Tasks' in seen
+        seen = read_until(master, b'\x1b[2J', 10)
+        result['started'] = b'\x1b[?1049h' in seen and b'\x1b[2J' in seen
         result['cbreak'] = termios.tcgetattr(slave) != before
         result['record'] = os.path.exists(record)
         tail = act(child, master, seen)
@@ -483,7 +532,7 @@ def scrolled(keys, expect_line):
         os.write(master, keys)
         out = drain(master, 1.0)
         frame = ANSI.sub(b'', out.rsplit(b'\x1b[H\x1b[2J', 1)[-1]).split(b'\r\n')
-        scrolled.first_body = frame[2].decode('utf-8', 'replace').strip() if len(frame) > 2 else ''
+        scrolled.first_body = frame[0].decode('utf-8', 'replace').strip() if frame else ''
         os.write(master, b'q')
         return out + read_until(master, b'\x1b[?1049l', 5)
     return act
@@ -502,7 +551,7 @@ TP_PANES_PTY="$(python3 -c 'import json,sys; print(json.dumps({"result":{"panes"
 export TP_PANES="$TP_PANES_PTY" HERDR_BIN_PATH="$TP_HBIN/herdr"
 TP_SNAP_LINES=(); while IFS= read -r pty_line; do TP_SNAP_LINES+=("$pty_line"); done < <(COLUMNS=39 python3 "$TP_PLUGIN/tasks_panel.py" snapshot)
 # a job started with `cmd &` inherits SIGINT ignored; the panel must still quit on it
-pty_out="$(trap '' INT; python3 "$TP_TMP/pty_run.py" "$TP_PLUGIN/tasks_panel.py" "$TP_TMP/state-run" 8 "${TP_SNAP_LINES[1]}" "${TP_SNAP_LINES[2]}" 2>&1)"
+pty_out="$(trap '' INT; python3 "$TP_TMP/pty_run.py" "$TP_PLUGIN/tasks_panel.py" "$TP_TMP/state-run" 8 "${TP_SNAP_LINES[1]}" "${TP_SNAP_LINES[3]}" 2>&1)"
 unset TP_PANES HERDR_BIN_PATH
 while IFS= read -r pty_line; do echo "     $pty_line"; done <<<"$pty_out"
 for label in "quit with q" "SIGTERM" "SIGINT" "SIGHUP"; do
@@ -517,7 +566,7 @@ line="$(grep '^stdin closed:' <<<"$pty_out")"
 check "run, stdin closed: exits 0 instead of spinning or crashing" "hung=0 rc=0" "$line"
 check "run, stdin closed: removes its panel record" "record_gone=1" "$line"
 check_rc "run, scroll j shows the second line" 1 "$(grep -c '^scroll j: .*match=1' <<<"$pty_out")"
-check_rc "run, a read of jj scrolls twice" 1 "$(grep -c '^scroll jj: .*match=1' <<<"$pty_out")"
+check_rc "run, a read of jj scrolls twice, 3 lines" 1 "$(grep -c '^scroll jj: .*match=1' <<<"$pty_out")"
 (cd "$TP_R" && bash "$PLUGIN/scripts/task-state.sh" clear --id 21)
 
 rm -rf "$TP_TMP"
