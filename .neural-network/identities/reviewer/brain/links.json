@@ -129,6 +129,11 @@
     "last": "2026-10-19",
     "weight": 0.5
   },
+  "mutate-when-stubs-ignore-the-request->reproduce-before-verdict": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "mutation-test-verify-suite-discriminates->reproduce-claimed-bug-fix-before-and-after": {
     "fires": 25,
     "last": "2026-11-05",

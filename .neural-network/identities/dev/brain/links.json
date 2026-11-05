@@ -354,6 +354,11 @@
     "last": "2026-11-05",
     "weight": 0.5
   },
+  "new-return-code-audit-every-caller->stderr-suppression-hides-evidence": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "no-stage-specific-path-assertions->batch-red-across-surfaces": {
     "fires": 5,
     "last": "2026-11-05",

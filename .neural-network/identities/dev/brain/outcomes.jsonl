@@ -183,3 +183,6 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "batch-red-across-surfaces", "task": "543", "ts": "2026-11-05T09:30:52+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "stderr-suppression-hides-evidence", "task": "543", "ts": "2026-11-05T09:30:52+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "poll-own-children", "task": "543", "ts": "2026-11-05T09:30:52+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "batch-red-across-surfaces", "task": "544", "ts": "2026-11-05T18:26:09+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "capture-dont-transcribe", "task": "544", "ts": "2026-11-05T18:26:09+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "stderr-suppression-hides-evidence", "task": "544", "ts": "2026-11-05T18:26:10+00:00"}
