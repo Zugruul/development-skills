@@ -10,6 +10,12 @@
   > - Keep ordinary source such as attest.rs, benches.rs and testbench.rs as implementation.
   > - Pin each pattern and near-miss through the real script.
 
+### Chores
+- **551:** record post-merge retrospective and note outcomes (`2604f61`)
+  > 1. Mint a note on proving guard fixes on the real branch.
+  > 2. Record outcomes for the recalled notes.
+- **551:** archive routed workflow feedback (`b19d6c9`)
+
 ## v0.75.0 — 2026-11-05
 
 ### Features
