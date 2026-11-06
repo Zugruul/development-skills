@@ -220,3 +220,32 @@ else
     fails=$((fails+1))
 fi
 rm -rf "$T5J" "$T5JGH"
+
+# --- #551: Rust test files kept in src/ are recognized by NAME. Each case is a
+# branch whose first commit touches ONLY the given path, then an impl commit.
+# Test-name paths: the first commit is a RED commit, so the branch passes.
+# Near-miss paths: the first commit is implementation, so the branch is blocked.
+_rf_rust_case() {
+    local want="$1" path="$2" d out rc
+    d="$(mktemp -d)"
+    _rf_repo "$d"
+    _rf_commit "$d" "$path" "test(551): first commit"
+    _rf_commit "$d" "src/impl.sh" "feat(551): green"
+    out="$(bash "$RFS" --root "$d" --branch feature 2>&1)"; rc=$?
+    if [[ "$want" == "test" ]]; then
+        check_rc "red-first #551: $path is a test file -- exit 0" 0 "$rc"
+    else
+        check_rc "red-first #551: $path is implementation -- blocked" 2 "$rc"
+        check "red-first #551: $path -- message is BLOCKED" "BLOCKED" "$out"
+    fi
+    rm -rf "$d"
+}
+for p in server/crates/rpg_server/src/server/world_step_bench.rs \
+         src/world_tests.rs src/world_test.rs src/world_bench.rs \
+         crates/x/benches/throughput.rs benches/a/b.rs; do
+    _rf_rust_case test "$p"
+done
+for p in src/attest.rs src/contest.rs src/benches.rs src/tests_helper.rs \
+         src/testbench.rs src/latest.rs src/bench.rs; do
+    _rf_rust_case impl "$p"
+done
