@@ -1,0 +1,21 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-11-06T00:26:31Z'
+iteration:
+  task: '551'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-opus-5-5
+items:
+- category: worked-well
+  area: review
+  severity: low
+  summary: A narrow guard fix went through review and independent approval in one
+    round with a read-only check on the real branch
+  generalized: Small, tightly scoped guard fixes with a real-branch check can clear
+    review in one round.
+  routing:
+    action: brain-note
+    ref: orchestrator/run-guard-fixes-on-the-real-branch
