@@ -249,3 +249,13 @@ for p in src/attest.rs src/contest.rs src/benches.rs src/tests_helper.rs \
          src/testbench.rs src/latest.rs src/bench.rs; do
     _rf_rust_case impl "$p"
 done
+
+# --- A C++ project keeps tests in a capitalised Tests/ directory (Unreal plugins).
+# Only the exact directory name counts: Testsuite/ and tests.cpp stay implementation.
+for p in client/unreal/Plugins/RpgPredict/Tests/EntityAgreement.h \
+         Plugins/X/Tests/Foo.cpp Tests/Bar.cpp; do
+    _rf_rust_case test "$p"
+done
+for p in Plugins/X/Testsuite/Foo.cpp src/Tests.cpp; do
+    _rf_rust_case impl "$p"
+done
