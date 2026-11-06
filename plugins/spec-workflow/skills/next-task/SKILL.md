@@ -12,7 +12,7 @@ Before selecting or starting work, run `bash "../../scripts/checkpoint-preflight
 
 
 ```bash
-bash "../../scripts/board.sh" next          # or: next <spec-id> to restrict to one spec
+bash "../../scripts/board.sh" next          # or: next <spec-id> to restrict to one spec (its tasks only: no bugs/inbound; WIP limit stays board-wide)
 ```
 The script already applies priority order, epic sequencing, `blockedBy` guards, and the work-in-progress limit from `.neural-network/project.yaml`. It prints one of:
 - `=> PICK: #N` (+ any `BLOCKED` items with the reason) — proceed with #N;
@@ -31,7 +31,7 @@ The script already applies priority order, epic sequencing, `blockedBy` guards, 
 Report the chosen `#N` and why (priority + epic + any comment-driven changes). Hand off to the `implement-task` skill.
 
 ## No work left?
-If `next` prints `(backlog empty)` or only BLOCKED items remain, stop the loop and write a handoff (see the `handoff` skill).
+If `next` prints `(backlog empty)` (or `(no backlog tasks for spec <id>)` under a spec filter) or only BLOCKED items remain, stop the loop and write a handoff (see the `handoff` skill).
 
 ### WIP admission at board mutations
 

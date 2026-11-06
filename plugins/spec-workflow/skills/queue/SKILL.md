@@ -12,7 +12,7 @@ Pre-start check — run this now, before anything else: `bash "../../scripts/pre
 
 ## 1. Get the prioritized + sequenced candidate list
 ```bash
-bash "../../scripts/board.sh" next          # or: next <spec-id> to restrict to one spec
+bash "../../scripts/board.sh" next          # or: next <spec-id> to restrict to one spec (its tasks only: no bugs/inbound; WIP limit stays board-wide)
 ```
 This prints, in pick order, up to 5 candidates, any `BLOCKED` items with their reason, and the `=> PICK: #N` / `=> RESUME: #N` decision line — the same priority order, epic sequencing, `blockedBy` guards, and WIP-limit logic `next-task` uses.
 
@@ -40,4 +40,4 @@ Finally, add a short note explaining the decision line:
 Tell the human they can steer this queue by commenting on an issue (fold into acceptance criteria, seen by `next-task`) or by changing an issue's Priority field on the board — either changes what `queue`/`next-task` picks on the next run.
 
 ## No candidates?
-If `next` prints `(backlog empty)` or only `BLOCKED` items remain, say so plainly — there is nothing queued.
+If `next` prints `(backlog empty)` (or `(no backlog tasks for spec <id>)` under a spec filter) or only `BLOCKED` items remain, say so plainly — there is nothing queued.

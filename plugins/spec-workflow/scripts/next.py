@@ -5,6 +5,7 @@ sequencing, blockedBy guards, and the work-in-progress resume guard.
 Usage: next.py <config-path> <board-id-or-empty> <item-list.json> [spec-id]
 <item-list.json> is the board read (gh_project_items_json), in the JSON shape
 `gh project item-list --format json` produces.
+With spec-id, candidates and PICK are that spec's tasks only; WIP/RESUME/WAIT stay board-wide.
 Prints candidates and either "=> PICK: #N" or "=> RESUME: #N" (WIP limit reached).
 """
 import json
@@ -28,7 +29,11 @@ def main(cfg_path, bid, items_path, only_spec=""):
     board = next((x for x in cfg["boards"] if x["id"] == bid), cfg["boards"][0])
     flow = board["statusFlow"]
     prios = list(board["fields"]["priority"]["options"])  # order = rank
-    specs = [s for s in cfg["specs"] if s["board"] == board["id"] and (not only_spec or s["id"] == only_spec)]
+    # classify() needs every board spec so another spec's task is recognised as
+    # that spec's (not as untagged); only_spec narrows the rows further down.
+    specs = [s for s in cfg["specs"] if s["board"] == board["id"]]
+    if only_spec and only_spec not in (s["id"] for s in specs):
+        sys.exit(f"unknown spec '{only_spec}' on board '{board['id']}' (known: {', '.join(s['id'] for s in specs) or 'none'})")
     try:
         policy = Policy(cfg, bid)
     except WipError as exc:
@@ -153,6 +158,8 @@ def main(cfg_path, bid, items_path, only_spec=""):
         num = it.get("content", {}).get("number")
         pr = prios.index(it["priority"]) if it.get("priority") in prios else len(prios)
         c = classify(title)
+        if only_spec and (c is None or c[0]["id"] != only_spec):
+            continue  # #553: a spec filter keeps only that spec's tasks (not other specs', not bugs/inbound)
         if c is None:  # untagged (bugs): priority decides, near front
             rows.append((pr, -1, 0, num, title))
             continue
@@ -163,7 +170,9 @@ def main(cfg_path, bid, items_path, only_spec=""):
             continue
         rows.append((pr, erank, n, num, title))
     rows.sort()
-    if not rows:
+    if not rows and only_spec:
+        print(f"(no backlog tasks for spec {only_spec}" + (" or fully blocked)" if held else ")"))
+    elif not rows:
         print("(backlog empty" + (" or fully blocked)" if held else ")"))
     else:
         print("Next candidates (prioritized + sequenced):")

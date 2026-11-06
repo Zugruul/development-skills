@@ -29,6 +29,10 @@ check "satisfied epic: downstream candidate picked" "=> PICK: #20" "$out"
 check_absent "satisfied epic: no unseeded message" "unseeded — run seed-board" "$out"
 check_absent "satisfied epic: no blocked entry" "BLOCKED #20" "$out"
 
+# #553: spec filter keeps only that spec's tasks; WIP stays board-wide
+python3 "$HERE/test_next_spec_filter.py" >/dev/null 2>&1
+check_rc "next <spec-id> filters by spec (#553)" 0 "$?"
+
 echo "== similar.py (dedup/similarity) =="
 SIM="$PLUGIN/scripts/similar.py"
 export SIMILAR_ISSUES_FILE="$FIX/issues.sample.json"
