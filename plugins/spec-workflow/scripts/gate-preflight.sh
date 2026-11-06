@@ -45,11 +45,11 @@ fi
 
 MARKER="$STATE_ROOT/.claude/gate-pass"
 if [[ ! -f "$MARKER" ]]; then
-    echo "BLOCKED: no recorded gate pass. Run \`bash \"$HERE/gate.sh\"\` to green (it records the pass), then retry the move to 'In review'." >&2
+    echo "BLOCKED: no recorded gate pass at $MARKER (checked for tree $TREE_ROOT). Run \`bash \"$HERE/gate.sh\"\` to green (it records the pass), then retry the move to 'In review'." >&2
     exit 2
 fi
 if [[ "$(cat "$MARKER")" != "$(cd "$TREE_ROOT" && bash "$HERE/tree-state.sh")" ]]; then
-    echo "BLOCKED: the tree changed since the last recorded gate pass. Re-run \`bash \"$HERE/gate.sh\"\`, then retry the move to 'In review'." >&2
+    echo "BLOCKED: the tree changed since the last recorded gate pass (marker $MARKER, tree $TREE_ROOT). Re-run \`bash \"$HERE/gate.sh\"\`, then retry the move to 'In review'." >&2
     exit 2
 fi
 exit 0
