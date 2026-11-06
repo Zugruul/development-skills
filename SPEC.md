@@ -175,11 +175,55 @@ fail, and `show`, `set` and `todo` SHALL refuse it rather than crash or overwrit
 ## §7 Hardening (E1)
 
 - **§7.1 tree-state** — WHEN untracked files exist in the working tree THE SYSTEM SHALL include their content hashes in the gate fingerprint, so editing an untracked file after a green gate invalidates the recorded pass.
-- **§7.2 guard-board-move** — WHEN a `board.sh comment` (or any non-`move` subcommand) whose text contains a status name is executed THE SYSTEM SHALL NOT block it; the guard SHALL key on the parsed subcommand and target status, not substrings.
+- **§7.2 guard-board-move** — WHEN a `board.sh comment` (or any non-`move` subcommand) whose text contains a status name is executed THE SYSTEM SHALL NOT block it; the guard SHALL key on the parsed subcommand and target status, not substrings. Root resolution: see "§7.2 guard-board-move root resolution" below.
 - **§7.3 next.py** — WHEN a `blockedBy` epic has zero seeded tasks THE SYSTEM SHALL remain fail-closed AND report `epic <id> unseeded — run seed-board` (never the misleading "not fully <status>").
 - **§7.4 board.sh** — WHEN a board or issue list exceeds one API page THE SYSTEM SHALL paginate until exhausted; no silent 400/500-item truncation in `next`, `list`, `move`, or seeding. Project-item reads: see "§7.4 Board pagination" below.
 - **§7.5 test flakes** — WHEN a server-lifecycle check fails in `run-tests.sh` THE SYSTEM SHALL retry it once and report the flake distinctly (closes issue #8); server-lifecycle sections SHALL use per-run randomized ports.
 - **§7.6 brain.py** — WHEN a tag contains both an embedded double-quote and a comma THE SYSTEM SHALL round-trip it intact through `render_note` (escape on write, unescape on parse).
+
+### §7.2 guard-board-move root resolution
+
+WHEN a Bash command contains a `board.sh move <n> "In review"` segment, THE SYSTEM SHALL
+resolve the tree whose recorded gate pass is checked from the directory a shell would really
+run that segment in, not only from the hook's ambient cwd. It SHALL honour a `cd <path>` only
+when the cd is the first command of its own segment and sits directly before the board.sh
+segment, joined by `&&` or `;` (or a newline): `cd P && board.sh move ...`,
+`cd P; board.sh move ...`, also inside a `bash -c` string. With no such prefix the behaviour
+is unchanged.
+
+The resolution SHALL fail closed. A cd target the guard cannot resolve literally (a variable,
+command or backtick substitution, a glob or brace expansion, `~`, `-`, a `cd` with options,
+an empty target, a path that does not exist or is not inside a git checkout) SHALL be ignored
+and the ambient root used, so the move is blocked unless the ambient tree truly has the pass.
+A relative target SHALL resolve against the ambient cwd, and SHALL be honoured only when the
+cd is the very first command of the line (or of its `bash -c` string, with nothing before the
+`bash -c`) and `CDPATH` is not set in the hook's environment, because any earlier command
+(`eval`, `source`, a `CDPATH=` assignment, an indirect cd) may have changed the directory
+unseen. No cd SHALL be honoured when the command contains a carriage return or the guard's
+internal sentinel character, follows a comment, heredoc or `function`, `for`/`select`/`repeat` (zsh runs them with an empty list or count 0), a paren (a `f()` definition, group or subshell), literally redefines `cd`, or
+comes after an operator continued by a newline, also a backslash-newline (`true ||<NL>cd P; board.sh ...`). A
+non-numeric issue number never carries a cd target. `bash <path>/board.sh move ...` after
+the cd is the same segment as `board.sh move ...`. A `cd` that does not govern the board.sh segment (`cd P && echo hi; board.sh ...`,
+`cd P || board.sh ...`, `true && cd P; board.sh ...`, a pipe or subshell, an env-assignment
+prefix between them) SHALL NOT be honoured. Shell operators inside quotes or heredoc bodies
+are data and SHALL NOT count.
+
+Resolving the root SHALL NOT widen what passes: the fingerprint SHALL still be computed for
+the resolved tree and compared with the recorded pass, so a cd to a tree whose state differs
+from the recorded pass is blocked, and a cd to a clean sibling does not pass with another
+tree's fingerprint. Non-`move` commands are unaffected.
+
+Every BLOCKED message of the gate check (`gate-preflight.sh`, shared by the hook and
+`board.sh`) SHALL name the tree root it fingerprinted and the marker path it read, so a root
+mismatch is visible. The serialDelivery check for `board.sh move <n> "In progress"` SHALL
+resolve its primary root (config and `board-cache.json`) from the same cd rules, and from a
+linked worktree SHALL still read the primary checkout's state.
+
+Known limit: a literal parser cannot see an `alias cd=:`, an `eval 'cd() { :; }'`, an
+exported `cd` function, `enable -n cd` (bash) or `disable cd` (zsh), nor a `CDPATH` set only in
+the shell profile (the hook's own environment is checked, the shell's startup files are not). A cd made unreliable that way can still be honoured, so the guard is
+the fast layer only; `board.sh`'s own gate check (`gate-preflight.sh` in the move path) is the
+backstop that judges the tree the move really runs in.
 
 ### §7.4 Board pagination
 
