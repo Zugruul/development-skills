@@ -11,6 +11,12 @@
   > - Run the classifier isolated from PYTHONPATH and the working directory.
   > - Read the diff from git, with a size cap and no checkout.
 
+### Chores
+- **151,552,553:** record post-merge retrospective and note outcomes (`e3b86bb`)
+  > 1. Mint notes on generated search for shadow parsers and on questions parking lanes.
+  > 2. Record outcomes for the recalled notes.
+- **151,552,553:** archive routed workflow feedback (`731420d`)
+
 ## v0.75.2 — 2026-11-06
 
 ### Fixes
