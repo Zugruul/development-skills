@@ -5760,3 +5760,11 @@
 {"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "confirm-named-scope-exclusions-respected", "task": "551", "ts": "2026-11-06T00:26:23+00:00", "type": "RecallOutcome", "v": 1}
 {"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "run-guard-fixes-on-the-real-branch", "strength": 1, "ts": "2026-11-06T00:26:23+00:00", "type": "NoteMinted", "v": 1}
 {"key": "run-guard-fixes-on-the-real-branch->check-external-api-semantics-live-early", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-11-06T00:26:23+00:00", "type": "LinkFormed", "v": 1}
+{"idx": 0, "itemTs": "2026-11-06T00:26:31Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-11-06T00:26:31+00:00", "type": "FeedbackEmitted", "v": 1}
+{"action": "brain-note", "idx": 0, "itemTs": "2026-11-06T00:26:31Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-11-06T00:26:31+00:00", "type": "FeedbackRouted", "v": 1}
+{"itemCount": 1, "itemTs": "2026-11-06T00:26:31Z", "repo": "Zugruul/development-skills", "role": "orchestrator", "ts": "2026-11-06T00:26:31+00:00", "type": "FeedbackArchived", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "batch-red-across-surfaces", "task": "552", "ts": "2026-11-06T17:02:38+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "dev", "slug": "capture-dont-transcribe", "task": "552", "ts": "2026-11-06T17:02:38+00:00", "type": "RecallOutcome", "v": 1}
+{"outcome": "useful", "repo": "Zugruul/development-skills", "role": "reviewer", "slug": "reproduce-before-verdict", "task": "552", "ts": "2026-11-06T17:02:38+00:00", "type": "RecallOutcome", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "reviewer", "slug": "shadow-parsers-need-generated-search", "strength": 1, "ts": "2026-11-06T17:02:39+00:00", "type": "NoteMinted", "v": 1}
+{"repo": "Zugruul/development-skills", "role": "orchestrator", "slug": "one-question-must-not-park-every-lane", "strength": 1, "ts": "2026-11-06T17:02:39+00:00", "type": "NoteMinted", "v": 1}
