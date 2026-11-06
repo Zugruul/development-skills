@@ -147,3 +147,6 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reports-are-not-the-code", "task": "544", "ts": "2026-11-05T18:26:10+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "544", "ts": "2026-11-05T18:26:10+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "confirm-named-scope-exclusions-respected", "task": "544", "ts": "2026-11-05T18:26:10+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reports-are-not-the-code", "task": "551", "ts": "2026-11-06T00:26:22+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "551", "ts": "2026-11-06T00:26:23+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "confirm-named-scope-exclusions-respected", "task": "551", "ts": "2026-11-06T00:26:23+00:00"}

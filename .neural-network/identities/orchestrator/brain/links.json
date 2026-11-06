@@ -84,6 +84,11 @@
     "last": "2026-10-19",
     "weight": 0.5
   },
+  "run-guard-fixes-on-the-real-branch->check-external-api-semantics-live-early": {
+    "fires": 0,
+    "last": null,
+    "weight": 0.5
+  },
   "serialize-moves-behind-matching-gate->squash-merge-kills-branch-anchors": {
     "fires": 2,
     "last": "2026-10-19",
