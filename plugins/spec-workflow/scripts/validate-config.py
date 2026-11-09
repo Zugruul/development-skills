@@ -248,7 +248,7 @@ def main(path):
     # for these two keys — keep both in sync if either changes.
     methodology = cfg.get("methodology")
     if isinstance(methodology, dict):
-        for key in ("maxInProgress", "graduationThreshold"):
+        for key in ("maxInProgress", "graduationThreshold", "qaStaleHours"):
             if key not in methodology:
                 continue
             val = methodology[key]

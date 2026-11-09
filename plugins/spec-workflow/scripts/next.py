@@ -17,17 +17,30 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as C  # noqa: E402
 from checkpoint import CheckpointError, repository_root, require_running  # noqa: E402
 from wip import Policy, WipError, live_overages, normalized, read_over, update_over  # noqa: E402
+import stale_qa  # noqa: E402
 
 
 def main(cfg_path, bid, items_path, only_spec=""):
     try:
-        require_running(config_path=cfg_path, board_id=bid)
+        root = repository_root(config_path=cfg_path)  # resolved once; shared with the stale-QA report
+    except CheckpointError as exc:
+        sys.exit(f"CHECKPOINT BLOCKED: {exc}")
+    loaded = []
+    _pick(cfg_path, bid, items_path, only_spec, root, loaded)
+    if loaded:  # #567: advisory, board-wide, local data only; runs after every print path
+        stale_qa.main(*loaded[0])
+
+
+def _pick(cfg_path, bid, items_path, only_spec, root, loaded):
+    try:
+        require_running(root=root, config_path=cfg_path, board_id=bid)
     except CheckpointError as exc:
         sys.exit(f"CHECKPOINT BLOCKED: {exc}")
     cfg = C.load_config(path=cfg_path, warn=False)
     data = json.load(open(items_path))
     board = next((x for x in cfg["boards"] if x["id"] == bid), cfg["boards"][0])
     flow = board["statusFlow"]
+    loaded.append((cfg, flow, data["items"], root))
     prios = list(board["fields"]["priority"]["options"])  # order = rank
     # classify() needs every board spec so another spec's task is recognised as
     # that spec's (not as untagged); only_spec narrows the rows further down.
@@ -91,7 +104,6 @@ def main(cfg_path, bid, items_path, only_spec=""):
             wip_line += f", {review_status} {len(review_wip)}/{policy.review_limit}"
         print(wip_line)
     try:
-        root = repository_root(None, cfg_path)
         live, drop = live_overages(policy, data["items"], read_over(root))
         for num, rec, occupied, limit in sorted(live, key=lambda e: int(e[0])):
             print(f"OVER WIP {occupied}/{limit}: #{num} ({rec.get('reason', '')})")

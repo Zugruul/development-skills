@@ -607,3 +607,9 @@ tampering or other clones. Explicit roots select distinct local stores. Approval
 is a local attestation, not proof of reviewer identity, inspected SHA or quality,
 and its mutex is not held through an external merge. Green gate, tagged two-pass
 reviews, closure, checkpoint and WIP prerequisites remain independently necessary.
+
+## Stale QA report (#567)
+
+`board.sh next` reports QA items older than `methodology.qaStaleHours` (positive integer, default 24), oldest first, at most 5 lines: `STALE QA: #N in QA for 3d — validate and move on, or record why not`, then `STALE QA: +N more`. Items with no readable local record (or a malformed latest timestamp) fold into one line: `STALE QA: N items with age unknown: #a, #b, ...` (also capped at 5 ids, then `+N more`). Age comes only from the latest local `transition` into QA in `.claude/telemetry.jsonl` plus the item list `next` already fetched, so it adds no GitHub call.
+
+QA is the fourth entry of statusFlow (the same position-based derivation as the work and review statuses); a board whose flow has fewer than four entries reports nothing. The report is board-wide: `next <spec-id>` narrows candidates only, not this report, and it prints on pick, resume and wait paths alike.

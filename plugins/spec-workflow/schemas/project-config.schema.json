@@ -606,6 +606,12 @@
                     },
                     "description": "Optional (#563): separate WIP limits. Absent (default): methodology.maxInProgress is ONE shared limit across In progress (+ In review under serialDelivery), unchanged. Present: board.sh admits each status against its own limit, so a full In review does not block a new In progress. A missing key falls back to maxInProgress; setting inReview counts In review even without serialDelivery. maxInProgress still sets the number of parallel lanes. A move may exceed a limit with `board.sh move <n> <status> --over-wip \"<reason>\"` (#560), which is flagged on the issue and in `board.sh next`."
                 },
+                "qaStaleHours": {
+                    "type": "integer",
+                    "default": 24,
+                    "minimum": 1,
+                    "description": "Hours a task may sit in QA before `board.sh next` prints a `STALE QA: #N ...` line for it (#567). Age comes from the local telemetry transition events only (no extra GitHub call); a QA item with no local record is reported as age unknown. Advisory: it never blocks a pick."
+                },
                 "graduationThreshold": {
                     "type": "integer",
                     "default": 3,

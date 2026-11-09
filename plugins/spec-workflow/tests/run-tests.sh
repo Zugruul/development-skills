@@ -199,6 +199,7 @@ SECTIONS=(
     section-board-bug-add.sh
     section-board-queue.sh
     section-board-cache.sh
+    section-stale-qa.sh
     section-identity.sh
     section-merge-mode.sh
     section-concurrency.sh
