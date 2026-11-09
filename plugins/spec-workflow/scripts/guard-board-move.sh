@@ -417,6 +417,27 @@ def evaluate(command, depth, outer_cd=False):
             subcmd, num, status = tokens[i + 1], tokens[i + 2], tokens[i + 3]
             if subcmd == "move" and norm(status) in (REVIEW_STATUS, PROGRESS_STATUS):
                 kind = "review-move:" if norm(status) == REVIEW_STATUS else "progress-move:"
+                # #560: `--over-wip "<non-empty reason>"` on THIS move (before the next
+                # operator) is the human-requested lane; board.sh enforces and records it.
+                if kind == "progress-move:":
+                    j = i + 4
+                    while j < n and not tokens[j].startswith(OP):
+                        if tokens[j] in ("--over-wip", "--over-wip-by", "--accepted-by-user"):
+                            # the next token is the VALUE of this flag: it may start with a hash
+                            # (a quoted ops name) without being a shell comment
+                            if (j + 1 < n and tokens[j + 1].strip() and not tokens[j + 1].startswith(OP)
+                                    and not tokens[j + 1].startswith("--")):
+                                if tokens[j] == "--over-wip":
+                                    kind = "progress-over:"
+                                    break
+                                j += 2
+                                continue
+                            if tokens[j] == "--accepted-by-user" and j + 1 < n and not tokens[j + 1].startswith(OP):
+                                j += 2  # the quote is a value, whatever it starts with
+                                continue
+                        elif tokens[j].startswith("#"):
+                            break
+                        j += 1
                 # The result is a tab-separated line, so a non-numeric issue
                 # number is neutralised (it must not smuggle a cd target) and
                 # never gets a cd honoured.
@@ -515,6 +536,19 @@ blocking = set(flow[1:3])
 # generalized). Block only when the OTHER occupying items already fill every
 # slot -- i.e. there is no headroom left for this one.
 max_wip = int((cfg.get("methodology") or {}).get("maxInProgress", 1) or 1)
+# #563: with wipLimits, starting work is gated by the In progress pool alone, against
+# inProgress (falling back to maxInProgress); a full In review never blocks it.
+wip_limits = (cfg.get("methodology") or {}).get("wipLimits")
+if isinstance(wip_limits, dict) and wip_limits:
+    blocking = set(flow[1:2])
+    max_wip = int(wip_limits.get("inProgress", max_wip) or max_wip)
+
+# A card already in a counted status (In progress or In review) moving between them adds
+# no slot: never refused, matching board.sh admission.
+mine = cache.get(num)
+if isinstance(mine, dict) and mine.get("status", "") in set(flow[1:3]):
+    print("allow")
+    sys.exit(0)
 
 blockers = [
     (n, e.get("status", ""))
@@ -544,6 +578,7 @@ while IFS= read -r LINE; do
             _resolve_cd "$([[ "$REST" == *$'\t'* ]] && printf '%s' "${REST#*$'\t'}")"
             REVIEW_DIRS+=("$CD_DIR")
             ;;
+        progress-over:*) ;;  # #560: board.sh admits and records the over-WIP lane
         progress-move:*)
             REST="${LINE#progress-move:}"
             NUM="${REST%%$'\t'*}"

@@ -20,6 +20,10 @@ ignore	.claude/lessons.jsonl
 ignore	.claude/board-queue.jsonl
 ignore	.claude/board-cache.json
 ignore	.claude/board-wip.lock/
+ignore	.claude/over-wip.json
+ignore	.claude/over-wip.lock
+ignore	.claude/over-wip.json.tmp*
+ignore	.claude/over-wip.json.corrupt-*
 ignore	.claude/board-comments-seen.json
 ignore	.claude/neural-view/
 ignore	.claude/merge-requirements.json

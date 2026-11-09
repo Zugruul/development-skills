@@ -15,8 +15,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as C  # noqa: E402
-from checkpoint import CheckpointError, require_running  # noqa: E402
-from wip import Policy, WipError, normalized  # noqa: E402
+from checkpoint import CheckpointError, repository_root, require_running  # noqa: E402
+from wip import Policy, WipError, live_overages, normalized, read_over, update_over  # noqa: E402
 
 
 def main(cfg_path, bid, items_path, only_spec=""):
@@ -82,12 +82,30 @@ def main(cfg_path, bid, items_path, only_spec=""):
     # first by In-review entry" proxy.
     review_queue = sorted(review_wip, key=lambda it: (num_of(it) is None, num_of(it)))
 
+    # #563: with separate limits, show both pools. #560: list lanes that moved over
+    # the limit (local record + the items already read; no extra board call) and
+    # drop records that no longer apply. Handing out new work stays refused below.
+    if policy.split:
+        wip_line = f"WIP: {wip_status} {len(wip)}/{policy.limit}"
+        if review_status and policy.occupies(review_status):
+            wip_line += f", {review_status} {len(review_wip)}/{policy.review_limit}"
+        print(wip_line)
+    try:
+        root = repository_root(None, cfg_path)
+        live, drop = live_overages(policy, data["items"], read_over(root))
+        for num, rec, occupied, limit in sorted(live, key=lambda e: int(e[0])):
+            print(f"OVER WIP {occupied}/{limit}: #{num} ({rec.get('reason', '')})")
+        if drop:  # re-read under the lock; drop a key only if it is still the record judged stale
+            update_over(root, lambda cur: {k: v for k, v in cur.items() if drop.get(k) != v})
+    except (CheckpointError, OSError):
+        pass
+
     if serial_delivery and review_queue:
         print("Merge queue (In review, oldest-first by issue number):")
         for it in review_queue:
             print(f'  #{num_of(it)}  {title_of(it)}')
 
-    if serial_delivery:
+    if serial_delivery and not policy.split:
         occupied = len(wip) + len(review_wip)
         if occupied >= max_wip:
             if wip:
@@ -131,6 +149,12 @@ def main(cfg_path, bid, items_path, only_spec=""):
             print(f'  #{it.get("content", {}).get("number")}  {title_of(it)}')
         print(f'\n=> RESUME: #{wip[0].get("content", {}).get("number")}  {title_of(wip[0])}')
         return
+
+    # #563: a full In review pool never blocks starting work (only In progress's own
+    # limit does, via the resume guard above); it is surfaced as a warning.
+    if policy.split and review_status and policy.occupies(review_status) and len(review_wip) >= policy.review_limit:
+        print(f"WARN: {review_status} {len(review_wip)}/{policy.review_limit} is at its limit — "
+              "finish reviews before starting more")
 
     # epic completion map: (spec_id, epic_id) -> [statuses of its tasks]
     epic_status = {}

@@ -33,11 +33,12 @@ You (the orchestrator) do **not** write the implementation. You brief a subagent
      git commit --allow-empty -m "chore(<task-id>): register work (#N)"
      git push -u origin <branch>
      gh pr create --draft --title "<title per cfg:commit.convention>" --body "Closes #N"   # open the draft PR BEFORE implementation
-     board.sh move N "In progress"        # respect cfg:methodology.maxInProgress
+     board.sh move N "In progress"        # respect cfg:methodology.maxInProgress; human-requested lane: add --over-wip "<reason>"
      # Live progress for the human. One --todo per acceptance criterion (rules: skills/task-state/SKILL.md).
      bash <resolved-plugin-root>/scripts/task-state.sh set --id N --title "<title>" --status "In progress" --agent orchestrator --todo "<criterion>" ...
      ```
      The dev agent works inside that worktree; its pushes update this SAME PR, and gate-green flips it out of draft with `gh pr ready` (brief step 4 below: the PR already exists — never open a second one). Under `work.type: local`, skip the push and the draft PR (no PR is ever opened in local delivery — the branch + worktree themselves are the registration); everything else stands.
+   - **Over the WIP limit (#560):** When the human asked for this lane, pass `--over-wip "<reason>"` (optionally `--over-wip-by <who>`): at the WIP limit the card still moves, flagged by one issue comment and a local record, and `board.sh next` lists it as `OVER WIP`. A refused or failed move (WIP full, rate limit, any error) never stops lane registration or the work: carry on with the remaining registration steps and the task, and report the failed move in the lane summary.
    - **`main`** — no branch, no worktree: stay on `<cfg:project.mainBranch>`; just `board.sh move N "In progress"` and the same `task-state.sh set` as above. The brief must mandate small complete commits directly on main as the work goes (never a long-lived dirty tree), and with `methodology.maxInProgress > 1` the orchestrator serializes workers' edits — one worker's uncommitted changes at a time, tree verified clean between hand-offs (protocol: build-next "Checkout mode").
 
 ## 1. Spawn the dev agent
@@ -194,7 +195,7 @@ One task per invocation. Report: task, gate result, PR link, board status, and a
 
 `board.sh` enforces WIP admission at direct and replayed status mutations. It counts every item in the active board's work status (`statusFlow[1]`, or the sole status), plus review (`statusFlow[2]`) when `serialDelivery` is true; `maxInProgress` defaults to 1 and must be a positive integer, and `serialDelivery` defaults to false and must be boolean. A task already occupying either counted status may resume or move between counted statuses without adding a slot, even on an over-limit board. Entry into review directly also requires capacity in serial mode. The command reads a fresh complete board snapshot, validates one target identity, and serializes admission across cooperating processes and linked worktrees of this clone. Capacity or invalid-state refusals do not newly queue direct starts; blocked queued starts remain recoverable and are checked again on replay. Proven rate limits still defer through the existing queue. Existing checkpoint, comments, gate, review and closure guards remain required.
 
-The picker reports capacity before work begins; mutation admission makes the final decision. The unchanged Claude hook is additional offline defense in depth; `SERIAL_DELIVERY_OVERRIDE=1` overrides only that hook, never command admission. There is no slot ledger or distributed reservation: other clones, raw API writes and eventual consistency of GitHub reads can still exceed the limit. See the plugin README's WIP admission recovery instructions for a busy or interrupted local mutex.
+The picker reports capacity before work begins; mutation admission makes the final decision. The Claude hook understands `--over-wip "<reason>"` (such a move passes the hook; `board.sh` enforces and records it) and, under `wipLimits`, counts only In progress against `inProgress`; it is additional offline defense in depth; `SERIAL_DELIVERY_OVERRIDE=1` overrides only that hook, never command admission. There is no slot ledger or distributed reservation: other clones, raw API writes and eventual consistency of GitHub reads can still exceed the limit. See the plugin README's WIP admission recovery instructions for a busy or interrupted local mutex.
 
 ### Autonomous review admission (#241)
 

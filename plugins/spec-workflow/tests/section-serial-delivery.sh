@@ -186,3 +186,76 @@ NEXT_TASK_SKILL="$(cat "$PLUGIN/skills/next-task/SKILL.md")"
 check "next-task SKILL.md documents WAIT" "WAIT: merge-dance" "$NEXT_TASK_SKILL"
 check "next-task SKILL.md's WAIT protocol checks the named PR's merge state" "gh pr view" "$NEXT_TASK_SKILL"
 check "next-task SKILL.md's WAIT protocol: a merged PR moves the item to QA and re-runs next" "QA" "$NEXT_TASK_SKILL"
+
+echo "== guard-board-move.sh: --over-wip and wipLimits (#560/#563) =="
+_serial_guard() { # <cache json> <command text for hookjson> [extra env]
+    out="$(hookjson "$2" | (cd "$T" && bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
+}
+_serial_repo 1 '{"5": {"itemId": "ITEM_5", "status": "In progress"}}'
+_serial_guard x 'bash board.sh move 7 \"In progress\" --over-wip \"human asked\"'
+check "serial guard: --over-wip with a reason is allowed through" "rc=0" "$out"
+_serial_guard x 'cd . && bash board.sh move 7 \"In progress\" --over-wip-by alice --over-wip \"human asked\" && echo done'
+check "serial guard: --over-wip after --over-wip-by is allowed" "rc=0" "$out"
+_serial_guard x 'bash board.sh move 7 \"In progress\" --over-wip \"\"'
+check "serial guard: --over-wip with an empty reason still blocks" "rc=2" "$out"
+_serial_guard x 'bash board.sh move 7 \"In progress\" --over-wip \"   \"'
+check "serial guard: a whitespace-only reason still blocks" "rc=2" "$out"
+_serial_guard x 'bash board.sh move 7 \"In progress\" --over-wip --over-wip-by bob'
+check "serial guard: a reason starting with -- still blocks" "rc=2" "$out"
+_serial_guard x 'bash board.sh move 7 \"In progress\" # --over-wip \"x\"'
+check "serial guard: a flag inside a shell comment does not count" "rc=2" "$out"
+_serial_guard x 'bash board.sh move 7 \"In progress\" --over-wip-by \"#ops\" --over-wip \"reason\"'
+check "serial guard: a #-prefixed --over-wip-by value is not a comment" "rc=0" "$out"
+_serial_guard x 'bash board.sh move 7 \"In progress\" --over-wip \"#42 asked\"'
+check "serial guard: a #-prefixed --over-wip reason is a valid reason" "rc=0" "$out"
+_serial_guard x 'bash board.sh move 7 \"In progress\" --accepted-by-user \"#approved\" --over-wip \"reason\"'
+check "serial guard: a #-prefixed --accepted-by-user value is a value, not a comment" "rc=0" "$out"
+_serial_guard x 'bash board.sh move 7 \"In progress\" --accepted-by-user=ok # --over-wip \"x\"'
+check "serial guard: a real comment after --accepted-by-user= still stops the scan" "rc=2" "$out"
+_serial_guard x 'bash board.sh move 7 \"In progress\" --over-wip-by bob # --over-wip \"x\"'
+check "serial guard: a real comment after the flags still stops the scan" "rc=2" "$out"
+_serial_guard x 'bash board.sh move 7 \"In progress\" --over-wip'
+check "serial guard: --over-wip without a reason still blocks" "rc=2" "$out"
+_serial_guard x 'bash board.sh move 7 \"In progress\" && bash board.sh move 8 \"In progress\" --over-wip \"x\"'
+check "serial guard: the flag on one move never covers another move" "rc=2" "$out"
+_serial_guard x 'bash board.sh move 7 \"In progress\"'
+check "serial guard: no flag still blocks" "rc=2" "$out"
+rm -rf "$T"
+_wip_limits_repo() { # <wipLimits yaml lines> <cache>
+    _serial_repo 1 "$2"
+    python3 - "$T/.neural-network/project.yaml" "$1" <<'PY'
+import sys
+p, lines = sys.argv[1], sys.argv[2]
+text = open(p).read()
+text = text.replace("methodology:\n", "methodology:\n    wipLimits:\n" + lines + "\n", 1)
+open(p, "w").write(text)
+PY
+}
+_wip_limits_repo $'      inProgress: 1\n      inReview: 1' '{"5": {"itemId": "ITEM_5", "status": "In review"}}'
+_serial_guard x 'bash board.sh move 7 \"In progress\"'
+check "serial guard + wipLimits: a full In review never blocks starting work" "rc=0" "$out"
+rm -rf "$T"
+_wip_limits_repo $'      inProgress: 1\n      inReview: 3' '{"5": {"itemId": "ITEM_5", "status": "In progress"}}'
+_serial_guard x 'bash board.sh move 7 \"In progress\"'
+check "serial guard + wipLimits: In progress at its own limit blocks" "rc=2" "$out"
+rm -rf "$T"
+_wip_limits_repo $'      inProgress: 2\n      inReview: 1' '{"5": {"itemId": "ITEM_5", "status": "In progress"}, "6": {"itemId": "ITEM_6", "status": "In review"}}'
+_serial_guard x 'bash board.sh move 7 \"In progress\"'
+check "serial guard + wipLimits: counts In progress against inProgress only" "rc=0" "$out"
+rm -rf "$T"
+_wip_limits_repo $'      inProgress: 1\n      inReview: 2' '{"5": {"itemId": "ITEM_5", "status": "In progress"}, "6": {"itemId": "ITEM_6", "status": "In review"}}'
+_serial_guard x 'bash board.sh move 6 \"In progress\"'
+check "serial guard + wipLimits: rework In review -> In progress is never refused" "rc=0" "$out"
+_serial_guard x 'bash board.sh move 7 \"In progress\"'
+check "serial guard + wipLimits: a card from outside the counted statuses is still blocked" "rc=2" "$out"
+rm -rf "$T"
+_serial_repo 1 '{"5": {"itemId": "ITEM_5", "status": "In progress"}, "6": {"itemId": "ITEM_6", "status": "In review"}}'
+_serial_guard x 'bash board.sh move 6 \"In progress\"'
+check "serial guard shared pool: a counted card moving In review -> In progress adds no slot" "rc=0" "$out"
+rm -rf "$T"
+_serial_repo 1 '{"5": {"itemId": "ITEM_5", "status": "In progress"}}'
+out="$(hookjson 'bash board.sh move 7 \"In progress\"' | (cd "$T" && SERIAL_DELIVERY_OVERRIDE=1 bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
+check "serial guard: SERIAL_DELIVERY_OVERRIDE still allows" "rc=0" "$out"
+rm -rf "$T"
+check "README no longer calls the hook unchanged" "Claude hook understands" "$(cat "$PLUGIN/README.md")"
+check_absent "README: no 'unchanged Claude hook'" "unchanged Claude hook" "$(cat "$PLUGIN/README.md")"

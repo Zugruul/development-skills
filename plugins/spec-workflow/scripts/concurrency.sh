@@ -27,7 +27,9 @@ case "${1:-status}" in
             echo "concurrency: 1 (strictly sequential — one task at a time; the default)"
         else
             echo "concurrency: $n (up to $n tasks in parallel lanes — each its own worktree + branch + dev agent; only for non-overlapping tasks)"
-        fi ;;
+        fi
+        # #563: separate WIP limits; only the enforced ones, under the board's own status names
+        python3 "$HERE/wip.py" describe "$CONFIG" "${BOARD:-}" || true ;;
     set)
         v="${2:-}"
         [[ "$v" =~ ^[1-9][0-9]*$ ]] || { echo "usage: concurrency.sh set <positive-integer>" >&2; exit 1; }

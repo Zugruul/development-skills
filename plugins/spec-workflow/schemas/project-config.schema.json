@@ -596,6 +596,16 @@
                     "minimum": 1,
                     "description": "Maximum number of tasks worked CONCURRENTLY — THE concurrency knob. It is both the board WIP limit (reported by next.py and enforced at direct/replayed board.sh admissions using a fresh complete snapshot and same-clone mutex; ambiguous counted option labels or IDs are refused before mutation classification) AND the number of parallel implementation lanes. 1 (default) = strictly sequential, one task at a time (the current behavior). N>1 = up to N tasks in parallel, each in its own git worktree + branch + dev agent — only safe for NON-overlapping tasks (see skills/build-next/references/concurrency.md). Set via the concurrency skill / concurrency.sh."
                 },
+                "wipLimits": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                        "inProgress": {"type": "integer", "minimum": 1, "description": "Limit for the work status (In progress) alone."},
+                        "inReview": {"type": "integer", "minimum": 1, "description": "Limit for the review status (In review) alone."}
+                    },
+                    "description": "Optional (#563): separate WIP limits. Absent (default): methodology.maxInProgress is ONE shared limit across In progress (+ In review under serialDelivery), unchanged. Present: board.sh admits each status against its own limit, so a full In review does not block a new In progress. A missing key falls back to maxInProgress; setting inReview counts In review even without serialDelivery. maxInProgress still sets the number of parallel lanes. A move may exceed a limit with `board.sh move <n> <status> --over-wip \"<reason>\"` (#560), which is flagged on the issue and in `board.sh next`."
+                },
                 "graduationThreshold": {
                     "type": "integer",
                     "default": 3,

@@ -28,6 +28,10 @@ LS_EXP_IGNORE="$(printf '%s\n' \
     '.claude/board-queue.jsonl' \
     '.claude/board-cache.json' \
     '.claude/board-wip.lock/' \
+    '.claude/over-wip.json' \
+    '.claude/over-wip.lock' \
+    '.claude/over-wip.json.tmp*' \
+    '.claude/over-wip.json.corrupt-*' \
     '.claude/board-comments-seen.json' \
     '.claude/neural-view/' \
     '.claude/merge-requirements.json' \

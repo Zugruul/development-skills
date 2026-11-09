@@ -256,6 +256,19 @@ def main(path):
                 errs.append(f"methodology.{key}: must be an integer >= 1 (got {val!r})")
             elif val < 1:
                 errs.append(f"methodology.{key}: must be >= 1 (got {val})")
+        # #563: optional separate limits per counted status.
+        if "wipLimits" in methodology:
+            wl = methodology["wipLimits"]
+            if not isinstance(wl, dict):
+                errs.append("methodology.wipLimits: must be a mapping of inProgress/inReview to integers >= 1")
+            elif not wl:
+                errs.append("methodology.wipLimits: must set inProgress and/or inReview (omit the key for one shared limit)")
+            else:
+                for key, val in wl.items():
+                    if key not in ("inProgress", "inReview"):
+                        errs.append(f"methodology.wipLimits.{key}: unknown key (allowed: inProgress, inReview)")
+                    elif isinstance(val, bool) or not isinstance(val, int) or val < 1:
+                        errs.append(f"methodology.wipLimits.{key}: must be an integer >= 1 (got {val!r})")
 
     # methodology.recencyDecayGraceRetros / recencyDecayFactor (GL-010):
     # mirrors schemas/project-config.schema.json's {minimum: 0} / {exclusiveMinimum: 0, maximum: 1}.

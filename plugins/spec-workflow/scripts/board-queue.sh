@@ -336,9 +336,36 @@ _wip_mutate() (
         return 1
     fi
     rm -f "$err"
-    id="$(python3 "$HERE/wip.py" admit "$CONFIG" "${BOARD:-}" "$num" <<<"$out")" || return 1
-    _mutate_field "$num" "$STATUS_FIELD" --single-select-option-id "$opt" "$status" "$id"
+    local over_flag=()
+    [[ -n "${OVER_WIP_REASON:-}" ]] && over_flag=(--over)
+    out="$(python3 "$HERE/wip.py" admit "$CONFIG" "${BOARD:-}" "$num" "$status" ${over_flag[@]+"${over_flag[@]}"} <<<"$out")" || return 1
+    id="${out%%$'\n'*}"
+    _mutate_field "$num" "$STATUS_FIELD" --single-select-option-id "$opt" "$status" "$id"; rc=$?
+    # #560: an over-limit admission moved the card anyway; flag it once, from the
+    # snapshot already read above (no extra board read): one comment, one local record.
+    if [[ "$rc" -eq 0 && "$out" == *$'\nOVER '* ]]; then
+        _over_wip_flag "$num" "$status" "${out##*OVER }"
+    fi
+    return "$rc"
 )
+
+# Same rule as guard-board-move.sh: a value must not be blank or start with `--`
+# (a likely mis-parsed flag).
+_over_wip_value_ok() { [[ -n "${1//[[:space:]]/}" && "$1" != --* ]]; }
+
+_over_wip_flag() {
+    local num="$1" status="$2" ratio="$3" by="${OVER_WIP_BY:-orchestrator}"
+    # REST (not `gh issue comment`, which is GraphQL): one call, and a failure only warns.
+    local bodyf
+    bodyf="$(mktemp)" && printf 'Over WIP (%s): moved to %s although the lane limit was reached. Reason: %s. Asked by: %s.\n' \
+        "$ratio" "$status" "$OVER_WIP_REASON" "$by" >"$bodyf" \
+        && gh api -X POST "repos/$REPO/issues/$num/comments" -F "body=@$bodyf" >/dev/null \
+        || echo "WARN: could not post the over-WIP comment on #$num (the move is applied)" >&2
+    rm -f "$bodyf"
+    python3 "$HERE/wip.py" record-over "$ROOT" "$CONFIG" "${BOARD:-}" "$num" "$OVER_WIP_REASON" "$by" "$status" "$ratio" \
+        || echo "WARN: could not write the over-WIP record for #$num" >&2
+    echo "OVER WIP $ratio: #$num moved to $status ($OVER_WIP_REASON)"
+}
 
 # _do_move/_do_prio/_do_est: same effect as the move/prio/est case branches,
 # factored out so both the live command AND flush replay share one
@@ -779,6 +806,7 @@ _flush_queue_locked() {
         line="${lines[$i]}"
         op="$(_jf "$line" op)"
         issue="$(_jf "$line" issue)"
+        OVER_WIP_REASON=""; OVER_WIP_BY=""  # #560: only a queued move entry may set these
         if [[ "$requeued" -eq 1 ]]; then
             printf '%s\n' "$line" >>"$QUEUE_FILE"
             _aside_write_remaining "$aside" "${lines[@]:$((i + 1))}"
@@ -787,6 +815,8 @@ _flush_queue_locked() {
         case "$op" in
             move)
                 status="$(_jf "$line" status)"
+                OVER_WIP_REASON="$(_jf "$line" over_wip)"; OVER_WIP_BY="$(_jf "$line" over_wip_by)"
+                _over_wip_value_ok "$OVER_WIP_REASON" || { OVER_WIP_REASON=""; OVER_WIP_BY=""; }
                 # Pause also guards cached repeat requests: do not discard a
                 # pending start merely because stale cache says it happened.
                 if ! bash "$HERE/checkpoint-preflight.sh" --root "$ROOT" --board "${BOARD:-}" --status "$status"; then

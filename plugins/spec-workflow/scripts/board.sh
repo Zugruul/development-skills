@@ -5,7 +5,7 @@
 #
 #   board.sh next [spec-id]           # prioritized + sequenced pick (guards applied) => PICK: #N
 #   board.sh show <issue#>            # issue title + body + ALL comments (human feedback!)
-#   board.sh move <issue#> <status>   # set Status (must be a statusFlow name)
+#   board.sh move <issue#> <status> [--over-wip "<reason>" [--over-wip-by <who>]]   # set Status (must be a statusFlow name); --over-wip applies it even at the WIP limit, flagged (#560)
 #   board.sh prio <issue#> <P0|...>   # set Priority (must be a priority option name)
 #   board.sh est  <issue#> <points>   # set Estimate
 #   board.sh add  [--type bug|feature|inbound] "<title>" [<prio>] [<origin-issue#>]  # file work into Backlog
@@ -30,6 +30,7 @@
 #
 # Env: PROJECT_CONFIG (config path override), BOARD (boards[].id override; default = first board).
 set -uo pipefail
+unset OVER_WIP_REASON OVER_WIP_BY  # #560: never inherited; only `move` and a queued move entry set them
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"  # inline python readers import config.py
@@ -350,23 +351,44 @@ except OSError:
         fi
         ;;
     move)
-        # #562: --accepted-by-user "<quote>" (or =<quote>) records the human's
-        # acceptance (telemetry + one REST comment) BEFORE the QA guard in _do_move.
-        _ua_usage='usage: board.sh move N STATUS [--accepted-by-user "<quote>" | --accepted-by-user=<quote>]'
+        # #562 + #560: ONE parser after STATUS for both flag families, in any order:
+        #   --over-wip "<reason>" [--over-wip-by <who>]    applies the move even at the WIP limit
+        #   --accepted-by-user "<quote>" | --accepted-by-user=<quote>   records the human's acceptance
+        # (telemetry + one REST comment) BEFORE the QA guard in _do_move.
+        _mv_usage='usage: board.sh move N STATUS [--over-wip "<reason>" [--over-wip-by <who>]] [--accepted-by-user "<quote>" | --accepted-by-user=<quote>]'
         if [[ "${3:-}" == --* ]]; then
-            echo "$_ua_usage (--accepted-by-user goes after STATUS)" >&2; exit 2
+            echo "$_mv_usage (flags such as --accepted-by-user go after STATUS)" >&2; exit 2
         fi
+        OVER_WIP_REASON=""; OVER_WIP_BY=""
         _ua_quote="" _ua_set=0
-        case "${4:-}" in
-            "") ;;
-            --accepted-by-user)
-                [[ $# -eq 5 ]] || { echo "$_ua_usage: --accepted-by-user needs a quote" >&2; exit 2; }
-                _ua_quote="$5"; _ua_set=1 ;;
-            --accepted-by-user=*)
-                [[ $# -eq 4 ]] || { echo "$_ua_usage" >&2; exit 2; }
-                _ua_quote="${4#--accepted-by-user=}"; _ua_set=1 ;;
-            --*) echo "$_ua_usage: unknown option '$4'" >&2; exit 2 ;;
-        esac
+        _mv_args=("${@:4}")
+        while [[ ${#_mv_args[@]} -gt 0 ]]; do
+            case "${_mv_args[0]}" in
+                --over-wip|--over-wip-by)
+                    if [[ ${#_mv_args[@]} -lt 2 ]] || ! _over_wip_value_ok "${_mv_args[1]}"; then
+                        echo "ERROR: ${_mv_args[0]} needs a real value, not empty, blank or starting with -- ($_mv_usage)" >&2
+                        exit 2
+                    fi
+                    if [[ "${_mv_args[0]}" == "--over-wip" ]]; then OVER_WIP_REASON="${_mv_args[1]}"; else OVER_WIP_BY="${_mv_args[1]}"; fi
+                    _mv_args=("${_mv_args[@]:2}") ;;
+                --accepted-by-user)
+                    [[ ${#_mv_args[@]} -ge 2 ]] || { echo "$_mv_usage: --accepted-by-user needs a quote" >&2; exit 2; }
+                    _ua_quote="${_mv_args[1]}"; _ua_set=1
+                    _mv_args=("${_mv_args[@]:2}") ;;
+                --accepted-by-user=*)
+                    _ua_quote="${_mv_args[0]#--accepted-by-user=}"; _ua_set=1
+                    _mv_args=("${_mv_args[@]:1}") ;;
+                *) echo "$_mv_usage: unknown option '${_mv_args[0]}'" >&2; exit 2 ;;
+            esac
+        done
+        if [[ -n "$OVER_WIP_BY" && -z "$OVER_WIP_REASON" ]]; then
+            echo "ERROR: --over-wip-by needs --over-wip \"<reason>\" ($_mv_usage)" >&2
+            exit 2
+        fi
+        if [[ "$_ua_set" -eq 1 && -n "$OVER_WIP_REASON" ]]; then
+            echo "ERROR: --over-wip applies to a move into a counted status and cannot be combined with --accepted-by-user ($_mv_usage)" >&2
+            exit 2
+        fi
         if [[ "$_ua_set" -eq 1 ]]; then
             bash "$HERE/user-acceptance.sh" --root "$ROOT" --repo "$REPO" --task "$2" --status "$3" --quote "$_ua_quote" || exit $?
         fi
@@ -376,7 +398,11 @@ except OSError:
             python3 "$HERE/task_state.py" --root "$ROOT" sync --id "$2" --status "$3" >/dev/null 2>&1 || true
         fi
         if [[ $rc -eq 2 ]]; then
-            queue_append move issue="$2" status="$3"
+            if [[ -n "$OVER_WIP_REASON" ]]; then
+                queue_append move issue="$2" status="$3" over_wip="$OVER_WIP_REASON" over_wip_by="${OVER_WIP_BY:-orchestrator}"
+            else
+                queue_append move issue="$2" status="$3"
+            fi
             echo "QUEUED (rate-limited until $(_rate_limit_reset_human)): move #$2 -> $3"
             exit 0
         fi
