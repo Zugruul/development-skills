@@ -12,6 +12,7 @@
 #   board.sh bug  "<title>" <prio> [<origin-issue#>]   # alias for: add --type bug
 #   board.sh adopt <issue#>           # add an EXISTING issue to the board (idempotent; #84)
 #   board.sh agent <issue#> <name>|--clear  # label the card `agent: <name>` (REST only, replaces any other agent label; never fails the caller; #566)
+#   board.sh ensure-issue --title T [--for-branch B] [--body-file F] [--prio P]  # print the issue # a PR must close: existing, else a new inbound (REST lookup; #565)
 #   board.sh flush                    # replay the local rate-limit queue now (also runs automatically before next/list/show)
 #   board.sh ensure-labels            # idempotent: create any configured label (bug/feature/inbound) missing on the repo
 #   board.sh list [status]            # tab-separated: status, priority, #, title
@@ -498,6 +499,9 @@ print(json.dumps({"issues": issues}))
         ;;
     agent)
         bash "$HERE/board-agent-label.sh" "$REPO" "${2:-}" "${3:-}"; exit $?  # #566: REST-only label; invalid args exit 2
+        ;;
+    ensure-issue)
+        shift; bash "$HERE/board-ensure-issue.sh" "$REPO" "$CONFIG" "$@"; exit $?  # #565: REST-only lookup, else add --type inbound
         ;;
     comment)
         gh issue comment "$2" -R "$REPO" --body-file - && echo "commented on #$2"

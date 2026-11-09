@@ -328,14 +328,14 @@ elif body_file is not None:
         except OSError:
             problem = "could not read the referenced --body-file \x27" + body_file + "\x27 to verify a board-issue reference. Pass a real, readable file."
 else:
-    problem = "gh pr create has no --body/--body-file. Pass a PR body referencing the board issue (e.g. \x27Closes #76\x27 or \x27<slug>#76\x27) -- file or pick the issue first with board.sh."
+    problem = "gh pr create has no --body/--body-file. Pass a PR body referencing the board issue (e.g. \x27Closes #76\x27 or \x27<slug>#76\x27) -- get the number with `board.sh ensure-issue --title \"<title>\" [--for-branch <branch>]` first."
 
 if problem is None and body_text is not None:
     if not (CLOSE_RE.search(body_text) or QUALIFIED_RE.search(body_text)):
         if SUBSTITUTION_RE.search(body_text):
             problem = "cannot verify body (command substitution) -- pass a literal --body, or a --body-file whose contents already include the reference."
         else:
-            problem = "PR body does not reference a board issue (need \x27Closes #N\x27 / \x27Fixes #N\x27 or \x27<slug>#N\x27). File or pick the issue first (board.sh next / board.sh add), then include the reference in --body."
+            problem = "PR body does not reference a board issue (need \x27Closes #N\x27 / \x27Fixes #N\x27 or \x27<slug>#N\x27). Get the issue number first with `board.sh ensure-issue --title \"<title>\" [--for-branch <branch>]` (it reuses a linked issue or files an inbound one), then put `Closes #N` in --body."
 
 if problem is not None:
     print("BLOCK")
