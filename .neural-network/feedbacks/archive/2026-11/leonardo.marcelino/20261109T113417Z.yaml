@@ -1,0 +1,59 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-11-09T11:34:17Z'
+iteration:
+  task: 560-567
+  outcome: merged
+  reviewRounds: 5
+source:
+  role: orchestrator
+  model: claude-opus-5-5
+items:
+- category: friction
+  area: concurrency
+  severity: high
+  summary: Serial merges with one shared gate-pass forced a fresh full gate per lane
+    after every merge
+  evidence:
+  - Zugruul/development-skills#547
+  - Zugruul/development-skills#556
+  generalized: A shared gate marker plus rebase-and-regate makes every merge invalidate
+    all other lanes' gates.
+  routing:
+    action: ignore
+    ref: 'local: tracked in Zugruul/development-skills#547 and Zugruul/development-skills#556'
+- category: incident
+  area: permissions
+  severity: high
+  summary: Reviewers reproduced three environment-variable bypasses of WIP admission
+    and move guards
+  evidence:
+  - Zugruul/development-skills#561
+  - Zugruul/development-skills#564
+  generalized: Uninitialised internal shell globals let a caller's environment skip
+    guards.
+  routing:
+    action: brain-note
+    ref: reviewer/unset-internal-env-at-entry
+- category: friction
+  area: board
+  severity: medium
+  summary: Four lanes used GraphQL-backed gh commands while claiming REST
+  evidence:
+  - Zugruul/development-skills#560
+  - Zugruul/development-skills#562
+  - Zugruul/development-skills#565
+  generalized: gh issue comment, gh issue create and gh pr list spend GraphQL points.
+  routing:
+    action: brain-note
+    ref: dev/gh-commands-that-are-graphql
+- category: worked-well
+  area: review
+  severity: medium
+  summary: Quality passes that tried to break the change found real bypasses after
+    the independent approval
+  generalized: An adversarial quality pass after approval catches defects the approving
+    reviewer missed.
+  routing:
+    action: ignore
+    ref: 'local: practice already in the workflow'
