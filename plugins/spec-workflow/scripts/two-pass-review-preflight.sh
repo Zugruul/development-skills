@@ -63,6 +63,9 @@ import sys
 path = sys.argv[1]
 task = os.environ["TASK"]
 found = set()
+accepted = False     # #562: a user-acceptance is the last relevant line (file order)
+pending = set()      # reserved rounds without a recorded verdict
+
 
 try:
     with open(path) as fh:
@@ -80,13 +83,30 @@ for line in lines:
         continue
     if not isinstance(rec, dict):
         continue
-    if rec.get("kind") != "review-round":
-        continue
     if str(rec.get("task")) != task:
         continue
-    p = rec.get("pass")
-    if p in ("spec-compliance", "code-quality"):
-        found.add(p)
+    kind = rec.get("kind")
+    if kind == "user-acceptance":
+        if isinstance(rec.get("quote"), str) and rec["quote"].strip():
+            accepted = True
+        continue
+    if kind in ("review-round", "review-round-start"):
+        accepted = False
+    if kind == "review-round-start":
+        pending.add(rec.get("round"))
+    elif kind == "review-round":
+        if "pass" not in rec:
+            pending.discard(rec.get("round"))
+        p = rec.get("pass")
+        if p in ("spec-compliance", "code-quality"):
+            found.add(p)
+
+# #562: the human's recorded acceptance stands in for both passes only if it
+# was recorded after the task's last review-round line (file order, not ts)
+# and no round is pending.
+if accepted and not pending:
+    print("")
+    sys.exit(0)
 
 missing = [p for p in ("spec-compliance", "code-quality") if p not in found]
 print(",".join(missing))

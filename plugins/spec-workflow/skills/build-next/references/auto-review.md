@@ -176,6 +176,19 @@ findings as a `board.sh comment` on the issue, write a `handoff`, leave the
 task *In review* for a human. Endless agent ping-pong is a stop condition, not
 a loop.
 
+If the human then accepts the work without an `APPROVE` (they are the final
+authority), record their actual words as the evidence and move the card with
+`board.sh move N QA --accepted-by-user "<their exact words>"` (or
+`--accepted-by-user=<words>`). It records a `user-acceptance` telemetry event
+first, then posts one REST issue comment, all before the QA review guard runs, so
+the same move passes. `review-round.sh approval-check` accepts that event in place
+of an `APPROVE`, but only while it was recorded after the last review round and no
+round is pending: a later review round overrides it. While a round is pending the flag
+is refused (exit 2, nothing recorded): record that round's verdict first. A retry adds neither a second
+event nor a second comment, and a failed comment only warns. Quote the human
+verbatim; an empty quote or a non-QA target is refused. Never use it without a real
+human message accepting the work, and without the flag the QA move stays refused.
+
 ## 3. Determine merge requirements (no interactive branch)
 
 In auto mode the orchestrator decides itself which path applies — it never

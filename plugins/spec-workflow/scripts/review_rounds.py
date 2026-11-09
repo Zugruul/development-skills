@@ -60,6 +60,7 @@ class History:
         self.pending = None
         self.reserved = False
         self.verdict = None
+        self.accepted = False  # #562: a user-acceptance is the last relevant line
 
     def apply(self, rec):
         validate_review(rec)
@@ -88,6 +89,11 @@ class History:
         return self.completed + 1
 
     def approval(self):
+        # #562: the human's acceptance stands in for an APPROVE only if it was
+        # recorded AFTER the task's last review-round line (file order, never
+        # timestamps) and no round is pending; a later round overrides it.
+        if self.accepted and self.pending is None:
+            return
         if self.pending is not None or not self.completed or self.verdict not in ('APPROVE', 'APPROVED'):
             raise ReviewError('latest autonomous round must be completed APPROVE with no pending reservation')
 
@@ -115,6 +121,11 @@ def read_history(path, task, validate_event):
                     raise ReviewError(f'malformed telemetry line {number}: {exc}') from exc
                 if rec_task != key:
                     continue
+                if rec['kind'] == 'user-acceptance':
+                    history.accepted = True
+                    continue
+                if rec['kind'] in ('review-round', 'review-round-start'):
+                    history.accepted = False
                 if rec['kind'] in ('review-round', 'review-round-start') and 'pass' not in rec:
                     history.apply(rec)
     except FileNotFoundError:

@@ -350,6 +350,26 @@ except OSError:
         fi
         ;;
     move)
+        # #562: --accepted-by-user "<quote>" (or =<quote>) records the human's
+        # acceptance (telemetry + one REST comment) BEFORE the QA guard in _do_move.
+        _ua_usage='usage: board.sh move N STATUS [--accepted-by-user "<quote>" | --accepted-by-user=<quote>]'
+        if [[ "${3:-}" == --* ]]; then
+            echo "$_ua_usage (--accepted-by-user goes after STATUS)" >&2; exit 2
+        fi
+        _ua_quote="" _ua_set=0
+        case "${4:-}" in
+            "") ;;
+            --accepted-by-user)
+                [[ $# -eq 5 ]] || { echo "$_ua_usage: --accepted-by-user needs a quote" >&2; exit 2; }
+                _ua_quote="$5"; _ua_set=1 ;;
+            --accepted-by-user=*)
+                [[ $# -eq 4 ]] || { echo "$_ua_usage" >&2; exit 2; }
+                _ua_quote="${4#--accepted-by-user=}"; _ua_set=1 ;;
+            --*) echo "$_ua_usage: unknown option '$4'" >&2; exit 2 ;;
+        esac
+        if [[ "$_ua_set" -eq 1 ]]; then
+            bash "$HERE/user-acceptance.sh" --root "$ROOT" --repo "$REPO" --task "$2" --status "$3" --quote "$_ua_quote" || exit $?
+        fi
         _do_move "$2" "$3"; rc=$?
         # Keep the local task record honest; this never fails the move.
         if [[ $rc -eq 0 || $rc -eq 2 ]]; then

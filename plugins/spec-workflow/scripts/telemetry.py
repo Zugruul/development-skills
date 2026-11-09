@@ -34,6 +34,12 @@ board.sh/gate.sh stamp real wall-clock time when they record):
                   Orchestrator attestation after committing the completed work.
     retro-skip    {"kind": "retro-skip", "task": <id>, "reason": <nonblank string>,
                    "ts": <iso8601>}
+    user-acceptance {"kind": "user-acceptance", "task": <id>,
+                   "quote": <nonblank string>, "ts": <iso8601>}
+                  #562: the human accepted a merge without a reviewer APPROVE;
+                  `quote` is their words. Satisfies two-pass-review-preflight.sh
+                  and review-approval-check for that task. Written by
+                  user-acceptance.sh (board.sh move N QA --accepted-by-user).
     task-close    {"kind": "task-close", "task": <id>, "estimate": <number>,
                    "ts": <iso8601>}
 
@@ -54,7 +60,7 @@ import review_rounds as R
 from telemetry_lock import locked, append
 
 CLOSURE_KINDS = {"retro-complete", "feedback-complete", "retro-skip"}
-KINDS = {"transition", "gate", "review-round", "review-round-start", "task-close"} | CLOSURE_KINDS
+KINDS = {"transition", "gate", "review-round", "review-round-start", "task-close", "user-acceptance"} | CLOSURE_KINDS
 TELEMETRY_REL = os.path.join(".claude", "telemetry.jsonl")
 
 
@@ -96,6 +102,10 @@ def validate_event(rec):
             R.validate_review(rec)
         except R.ReviewError as exc:
             errs.append(str(exc))
+    elif kind == "user-acceptance":
+        q = rec.get("quote")
+        if not isinstance(q, str) or not q.strip():
+            errs.append("user-acceptance.quote is required (nonblank string)")
     elif kind == "task-close":
         est = rec.get("estimate")
         if not isinstance(est, (int, float)) or isinstance(est, bool):

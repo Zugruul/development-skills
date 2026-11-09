@@ -174,6 +174,11 @@ or moving to Ready/Deployed; it defaults to the primary checkout even from a lin
 worktree, while `--root DIR` honors an explicit root. Both write boundaries enforce
 this again, including queued board replay. A stopped invocation before merge must
 leave closure for the later owner; QA retains its existing review/merge guards.
+When the human accepts the work without a reviewer `APPROVE` (for example after three
+`REQUEST_CHANGES` rounds), move the card with
+`board.sh move N QA --accepted-by-user "<their exact words>"` so their words become the
+recorded evidence (a telemetry event, then one REST comment); otherwise the card keeps its
+*In review* WIP slot forever. Use it only with a real human message accepting the work, quoted verbatim; never to get out of a review stalemate on your own. The acceptance counts only while it was recorded after the last review round and no round is pending, so a later review round overrides it; while a round is pending the flag is refused until its verdict is recorded.
 Completion evidence attests to performed work; it does not prove content or authorship.
 
 If the task involves UI-affecting decisions and iterative UI mode is on (`.claude/ITERATIVE_UI_OFF` absent, `methodology.iterativeUI` not false): BEFORE any UI-affecting work, run `python3 "../../scripts/design-registry.py" find --tags <the task's surfaces>` — a FINALIZED match is BINDING (implement exactly what it says), a STALE match needs human re-confirmation before use, no match means run a `ui-options` round. Follow the `ui-options` skill's protocol (see `build-next` skill, "Iterative UI mode") rather than guessing — this applies whether or not a `build-next` loop is wrapping this invocation. This includes `build-next`'s "placeholder-and-close" rule: shipping non-UI plumbing while a decision is still pending is fine, but do not close this issue with placeholder-only decision-surface styling — either hold it open until the real decision is applied, or file a linked restyle follow-up in the same step that closes it.
