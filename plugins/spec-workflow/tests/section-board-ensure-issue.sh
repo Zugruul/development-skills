@@ -330,5 +330,5 @@ for sk in build-next implement-task; do
     check "skill $sk: local direct merge references #N in subject" "merge commit subject" "$(cat "$PLUGIN/skills/$sk/SKILL.md")"
     check "skill $sk: path forward when no issue can be created" "retry board.sh ensure-issue after the rate-limit reset" "$(cat "$PLUGIN/skills/$sk/SKILL.md")"
 done
-check "spec delta exists" "ensure-issue" "$(cat "$PLUGIN/../../docs/spec-deltas/565.md" 2>&1)"
-check "spec delta: path forward when no issue can be created" "retry board.sh ensure-issue after the rate-limit reset" "$(cat "$PLUGIN/../../docs/spec-deltas/565.md" 2>&1)"
+check "spec delta exists" "ensure-issue" "$(delta_body 565)"
+check "spec delta: path forward when no issue can be created" "retry board.sh ensure-issue after the rate-limit reset" "$(delta_body 565)"

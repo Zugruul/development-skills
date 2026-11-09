@@ -26,6 +26,15 @@ check_rc() { # name  expected-exit-code  actual-exit-code
     fi
 }
 
+delta_body() { # delta-name -- prints docs/spec-deltas/<name>.md, or its folded copy under applied/ (#570).
+    # The spec fold moves an applied delta to applied/, so a test that reads only the pending
+    # path passes on its branch and fails on main once the delta is folded.
+    local d="$PLUGIN/../../docs/spec-deltas"
+    if [[ -f "$d/$1.md" ]]; then cat "$d/$1.md"
+    elif [[ -f "$d/applied/$1.md" ]]; then cat "$d/applied/$1.md"
+    else echo "delta_body: no spec delta named $1 (pending or applied)"; fi
+}
+
 check_absent() { # name  forbidden-substring  actual-output
     if grep -qF -- "$2" <<<"$3"; then
         echo "FAIL $1 — must NOT contain: $2"
