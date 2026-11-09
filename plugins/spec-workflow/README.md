@@ -326,6 +326,19 @@ reset, add or commit handles pre-existing work. Clean linked worktrees are not
 blocked by dirtiness in the primary checkout. These are point-in-time observations,
 not OS locks, ownership detection or enforcement of arbitrary Git commands.
 
+## Board truth: `board.sh audit --fix` (#564)
+
+The board is the human's only view of what agents are doing, so the audit is the backstop that keeps it honest. `board.sh audit` (report only, exit 1 on any discrepancy) now also lists what `--fix` would change as `WOULD FIX` lines. `board.sh audit --fix` makes the changes and prints one `FIX #N: <from> -> <to> (<why>)` line for each:
+
+- **In progress**: a live worktree (under `.claude/worktrees/`, or on a `project.branchPattern` branch) or an open PR for a task whose card is before In progress. It moves with `--over-wip "audit: work is running"`, so the WIP limit never hides running work (flagged on the card like any over-WIP move).
+- **In review**: `work.type: pr`, an open PR that is not a draft; both modes, a live worktree or open PR whose task has `review-round` / `review-round-start` telemetry (a green `gate` event is not a signal). The move runs from the worktree, so the gate and red-first preflights check that tree; a refusal is a `NOTE`, never forced.
+- **QA**: `work.type: pr`, a merged PR linked to the task; `work.type: local`, a squash commit on the main branch whose subject ends in `(#N)` (registration commits and the process commits are ignored) for a card in In progress or In review, with no live worktree or open PR (rework is never overridden) and newer than the card's last move into work; `test(`, `docs(` and `chore(` follow-up commits do not count. Only when the two-pass review guard allows it; otherwise `NOTE #N: merged but review evidence missing — record it or use --accepted-by-user`.
+- **No linked issue**: a live worktree or open PR whose branch has no issue gets `board.sh ensure-issue --title <PR title or branch> --for-branch <branch>`; the result is recorded in `.claude/audit-links.json` (branch to issue) so the next run reuses it. A link is only that record, the branch's own `<id>`, or `Closes/Fixes/Resolves #N` in the PR body, never a guess. An issue the audit files has no human comments, so it is marked as read for the In progress guard.
+
+Every move is a plain `board.sh move`; a failed or queued move is printed and the audit carries on. With `--fix` the exit is 0 unless a fix failed. `board.sh audit --fix --if-due` (`--if-due` needs `--fix`; run by build-next at each iteration and by the board skill) does nothing, with zero GitHub calls, until `methodology.auditIntervalMinutes` (default 10) have passed since the last run (`.claude/audit-stamp`), and is skipped, with one line, while a rate limit is in force: every detected rate limit persists its reset time to `.claude/rate-limit-reset`, and the tick skips only while that time is in the future (a non-empty queue alone does not skip it). Three consecutive board-wide read failures that are not rate limits (an outage) back off board reads for 10 minutes (`.claude/board-read-backoff`), for `next`, `list` and `audit`, so polling does not spend a read per poll; a successful read clears it. A busy admission mutex skips the `--fix` pass with a NOTE.
+
+API budget per run: ONE board read for the whole audit (taken strictly, under the WIP admission mutex that `--fix` holds once; every move reuses that snapshot through the same mechanism as the queue replay and the snapshot is patched after each applied move, so no move re-reads the board; the one extra read is the visibility poll of `ensure-issue`'s `board.sh add` when it files a card), PR lists over REST only (`pulls?state=open` up to 3 pages of 100, one `state=closed` page; none under `work.type: local`), worktrees and branches from local git, and the `board.sh move` mutations. Note that each move into In progress or In review re-reads the board for WIP admission, as every such move does.
+
 ## Local-state manifest
 
 `scripts/local-state.manifest` is the single source of truth (SPEC-MEMORY.md §7.1/§7.4/§9.2) for every path the plugin writes at runtime, each tagged `ignore` (local state — gitignored, never committed) or `track` (shared memory — committed alongside code). Read it — never re-hardcode these paths — via `scripts/lib/local-state.sh` (bash 3.2: `spec_workflow_local_state_paths ignore|track`, `spec_workflow_local_state_policy <path>`) or `scripts/lib/local_state.py` (python stdlib: `paths()`, `policy_of()`). `scripts/gitignore-sync.sh [--dry-run] [target]` (SPEC-MEMORY.md §7.2/§7.2.1) writes the manifest's `ignore`-policy entries into a target `.gitignore` (default `.gitignore`) as a managed block between `# >>> spec-workflow managed` / `# <<< spec-workflow managed` markers — replacing only that block on a re-run (idempotent), appending it if absent, never touching a line outside the markers, and warning (path + matching rule, never editing) when a `track`-policy path is already ignored by some other non-managed rule; `setup-project`'s Phase 5 gitignore step is this script. `sync-project-configs`' `mem013-gitignore-managed-block` rule reconciles this same managed block across every already-anchored repo, keeping repos that adopted the workflow before the manifest changed in sync without a human re-running `setup-project`. The table below is kept in sync with the manifest by a test (`section-local-state-manifest.sh`) — edit the manifest, not this table.
@@ -366,6 +379,13 @@ custom path overrides; there is no blanket temp/log/hidden-directory ignore.
 | ignore | `.claude/lessons.jsonl` |
 | ignore | `.claude/board-queue.jsonl` |
 | ignore | `.claude/board-cache.json` |
+| ignore | `.claude/audit-stamp` |
+| ignore | `.claude/audit-links.json` |
+| ignore | `.claude/audit-links.json.tmp` |
+| ignore | `.claude/rate-limit-reset` |
+| ignore | `.claude/rate-limit-reset.tmp` |
+| ignore | `.claude/board-read-backoff` |
+| ignore | `.claude/board-read-backoff.tmp` |
 | ignore | `.claude/board-wip.lock/` |
 | ignore | `.claude/over-wip.json` |
 | ignore | `.claude/over-wip.lock` |

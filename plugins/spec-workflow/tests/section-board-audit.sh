@@ -12,7 +12,7 @@
 # whose subject lacks a #N reference, excluding the recognized orchestrator
 # process-commit classes (retro(, spec(, feedback(, config:) -- which are
 # still enumerated (counted), never silently hidden. Fake gh understands
-# `project item-list` and `pr list` only.
+# `project item-list` and REST `api repos/R/pulls` (#564: no `pr list`).
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== board.sh audit (#76) =="
 
@@ -37,8 +37,10 @@ case "$1 $2" in
     "project item-list")
         printf '%s' "$items_json"
         ;;
-    "pr list")
-        printf '%s' "$prs_json"
+    "api repos/"*)
+        # #564: PR lists are REST (GraphQL-free); `pr list` is no longer accepted.
+        echo "$*" >>"${FAKE_GH_LOG:-/dev/null}"
+        case "$*" in *state=open*) printf '%s' "$prs_json" ;; *) printf '[]' ;; esac
         ;;
     *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
 esac
@@ -142,4 +144,17 @@ check "(g) pr-mode: no commit-subject discrepancy" "AUDIT: clean" "$out"
 check_absent "(g) pr-mode: no scan-window note (commit scan doesn't run outside work.type: local)" "commit scan window" "$out"
 check "(g) exits 0" "rc=0" "$out"
 unset FAKE_GH_ITEMS_JSON FAKE_GH_PRS_JSON
+rm -rf "$AQ" "$FGH"
+
+# --- (h) #564: audit reads PRs over REST only (never `gh pr list`, a GraphQL call) ---
+_asetup
+export FAKE_GH_LOG="$AQ/gh.log"; : >"$FAKE_GH_LOG"
+export FAKE_GH_ITEMS_JSON='{"items":[]}'
+export FAKE_GH_PRS_JSON='[{"number":5,"body":"Closes #5"}]'
+out="$(audit)"
+n="$(grep -c 'pulls?state=open' "$FAKE_GH_LOG")"
+check_rc "(h) exactly one REST open-PR list call" 1 "$n"
+check "(h) the REST call carries per_page" "per_page=" "$(cat "$FAKE_GH_LOG")"
+check_absent "(h) no gh pr list" "pr list" "$(cat "$FAKE_GH_LOG")"
+unset FAKE_GH_ITEMS_JSON FAKE_GH_PRS_JSON FAKE_GH_LOG
 rm -rf "$AQ" "$FGH"

@@ -256,6 +256,13 @@ def main(path):
                 errs.append(f"methodology.{key}: must be an integer >= 1 (got {val!r})")
             elif val < 1:
                 errs.append(f"methodology.{key}: must be >= 1 (got {val})")
+        # #564: how often `board.sh audit --fix --if-due` may run (minutes).
+        if "auditIntervalMinutes" in methodology:
+            val = methodology["auditIntervalMinutes"]
+            if isinstance(val, bool) or not isinstance(val, int):
+                errs.append(f"methodology.auditIntervalMinutes: must be an integer >= 1 (got {val!r})")
+            elif val < 1:
+                errs.append(f"methodology.auditIntervalMinutes: must be >= 1 (got {val})")
         # #563: optional separate limits per counted status.
         if "wipLimits" in methodology:
             wl = methodology["wipLimits"]

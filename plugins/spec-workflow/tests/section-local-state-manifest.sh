@@ -27,6 +27,13 @@ LS_EXP_IGNORE="$(printf '%s\n' \
     '.claude/lessons.jsonl' \
     '.claude/board-queue.jsonl' \
     '.claude/board-cache.json' \
+    '.claude/audit-stamp' \
+    '.claude/audit-links.json' \
+    '.claude/audit-links.json.tmp' \
+    '.claude/rate-limit-reset' \
+    '.claude/rate-limit-reset.tmp' \
+    '.claude/board-read-backoff' \
+    '.claude/board-read-backoff.tmp' \
     '.claude/board-wip.lock/' \
     '.claude/over-wip.json' \
     '.claude/over-wip.lock' \

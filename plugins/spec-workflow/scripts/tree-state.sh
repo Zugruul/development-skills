@@ -110,7 +110,8 @@ else:
 # current, unrelated gate pass.
 #
 # .claude/board-queue.* and .claude/board-wip.lock* (the queue file, supersede markers, spool and
-# lock directories, #561) are excluded for the same reason.
+# lock directories, #561) are excluded for the same reason, as are #564's .claude/audit-*,
+# .claude/rate-limit-reset* and .claude/board-read-backoff* (a rate-limited read writes them).
 #
 # CHANGELOG.md is excluded here too (status/diff, not just the HEAD-tree hash
 # above) for the same reason as the .claude/ files: a LOCAL, not-yet-committed
@@ -122,6 +123,7 @@ h.update(run([
     ":(exclude).claude/gate-pass", ":(exclude).claude/telemetry.jsonl",
     ":(exclude).claude/lessons.jsonl", ":(exclude).claude/board-cache.json",
     ":(exclude).claude/board-queue.*", ":(exclude).claude/board-wip.lock*",
+    ":(exclude).claude/audit-*", ":(exclude).claude/rate-limit-reset*", ":(exclude).claude/board-read-backoff*",
     ":(exclude)CHANGELOG.md",
 ]))
 h.update(run(["git", "diff", "HEAD", "--", ".", ":(exclude)CHANGELOG.md"]))
@@ -138,7 +140,8 @@ _EXCLUDED = (b".claude/gate-pass", b".claude/telemetry.jsonl", b".claude/lessons
 # #561: board.sh's queue, supersede markers, spool and lock directories are runtime state
 # a routine move writes (a supersede marker on EVERY applied move), so a repo that does not
 # gitignore them must not see its gate pass invalidated either.
-_EXCLUDED_PREFIXES = (b".claude/board-queue.", b".claude/board-wip.lock")
+_EXCLUDED_PREFIXES = (b".claude/board-queue.", b".claude/board-wip.lock", b".claude/audit-",
+                      b".claude/rate-limit-reset", b".claude/board-read-backoff")
 paths = sorted(p for p in listing.split(b"\0")
                if p and p not in _EXCLUDED and not p.startswith(_EXCLUDED_PREFIXES))
 for p in paths:

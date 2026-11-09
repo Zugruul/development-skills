@@ -25,7 +25,9 @@ comment <issue#>            # body on stdin: printf '%s' "text" | board.sh comme
 edit-body <issue#> <file>   # replace issue body (e.g. updated acceptance criteria)
 fields                      # discover field/option ids (setup only)
 config                      # validate project.yaml + print summary
+audit [--fix] [--if-due]    # reconcile the board with live work (#564): --fix moves cards (worktree/open PR -> In progress, ready PR or review telemetry -> In review, merged -> QA when the review guard allows) and files an issue for work that has none; --if-due = at most once per methodology.auditIntervalMinutes, free when not due
 ```
+Run `board.sh audit --fix --if-due` whenever you read the board in this skill: it is the backstop that keeps running work visible.
 Multiple boards: set `BOARD=<boards[].id>` env var; default is the first board in config.
 
 ## Rules (STRICT)

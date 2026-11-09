@@ -39,7 +39,7 @@ QUEUE_LOCK_TTL="${BOARD_QUEUE_LOCK_TTL:-600}"  # seconds
 #     REST rate_limit endpoint (works even while GraphQL itself is
 #     exhausted) and treat remaining==0 on the graphql resource as ground
 #     truth. remaining>0 means the error is real — surface it verbatim.
-_rate_limited() {
+_rate_limited_raw() {
     grep -qi "rate limit" <<<"$1" && return 0
     # GitHub's own GraphQL payload (#544): {"type":"RATE_LIMIT","code":"graphql_rate_limit"}.
     # Recognised by code even when the text is reworded, and WITHOUT the REST probe below:
@@ -49,6 +49,71 @@ _rate_limited() {
     [[ "$(_gh_failure_label "$1")" != "gh error" ]] && return 1
     _graphql_remaining_is_zero
 }
+
+# _rate_limited wraps the detection and PERSISTS the reset epoch to .claude/rate-limit-reset
+# (#564), so a loop tick (`board.sh audit --fix --if-due`) can tell a real rate limit from
+# a merely non-empty queue. The reset is the rejected response's X-Ratelimit-Reset when
+# paginate saved one, else now + BOARD_RATE_LIMIT_DEFAULT_WINDOW (300s); an existing later
+# reset is never shortened. Best effort: a write failure never changes the answer.
+_rate_limited() {
+    _rate_limited_raw "$1" || return 1
+    _rate_limit_persist
+    return 0
+}
+
+_rate_limit_persist() {
+    local f="$ROOT/.claude/rate-limit-reset" saved now until prev
+    saved="$(cat "${PAGINATE_RESET_FILE:-/dev/null}" 2>/dev/null)"; now="$(date +%s)"
+    if [[ "$saved" =~ ^[0-9]+$ && "$saved" -gt "$now" ]]; then until="$saved"; else until=$((now + ${BOARD_RATE_LIMIT_DEFAULT_WINDOW:-300})); fi
+    prev="$(cat "$f" 2>/dev/null)"
+    if [[ "$prev" =~ ^[0-9]+$ && "$prev" -gt "$until" ]]; then return 0; fi
+    mkdir -p "$ROOT/.claude" 2>/dev/null && printf '%s\n' "$until" >"$f.tmp" 2>/dev/null && mv "$f.tmp" "$f" 2>/dev/null
+    return 0
+}
+
+# _rate_limit_until -> the persisted reset epoch when it is still in the future (rc 0), else rc 1.
+_rate_limit_until() {
+    local v now
+    v="$(cat "$ROOT/.claude/rate-limit-reset" 2>/dev/null)"; now="$(date +%s)"
+    [[ "$v" =~ ^[0-9]+$ && "$v" -gt "$now" ]] && { printf '%s' "$v"; return 0; }
+    return 1
+}
+
+# Board-wide read backoff (#564): after 3 consecutive NON-rate-limit read failures (an
+# outage), skip the board read for 10 minutes so polling does not spend a read per poll.
+# State: .claude/board-read-backoff {"fails": n, "until": epoch}.
+# _read_backoff_gate -> rc 1 (message on stderr) while backing off, else rc 0.
+_read_backoff_gate() {
+    local until
+    until="$(python3 -c '
+import json, sys, time
+try:
+    d = json.load(open(sys.argv[1]))
+    u = int(d.get("until", 0))
+except Exception:
+    u = 0
+print(u if u > time.time() else "")
+' "$ROOT/.claude/board-read-backoff")"
+    [[ -z "$until" ]] && return 0
+    echo "board read skipped: 3 consecutive board read failures; not retrying until $(date -u -d "@$until" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "epoch $until")" >&2
+    return 1
+}
+_read_backoff_fail() {
+    mkdir -p "$ROOT/.claude" 2>/dev/null
+    python3 -c '
+import json, os, sys, time
+p = sys.argv[1]
+try:
+    d = json.load(open(p))
+except Exception:
+    d = {}
+fails = int(d.get("fails", 0)) + 1
+out = {"fails": fails, "until": int(time.time()) + 600 if fails >= 3 else 0}
+open(p + ".tmp", "w").write(json.dumps(out))
+os.replace(p + ".tmp", p)
+' "$ROOT/.claude/board-read-backoff" 2>/dev/null || true
+}
+_read_backoff_clear() { rm -f "$ROOT/.claude/board-read-backoff"; }
 
 # _graphql_remaining_is_zero -> 0 (true) iff `gh api rate_limit`'s graphql
 # resource reports remaining==0. A probe failure (gh itself erroring, e.g.
@@ -101,7 +166,7 @@ _bq_exit() {
     [[ -n "${PAGINATE_RESET_FILE:-}" ]] && rm -f "$PAGINATE_RESET_FILE"
     while IFS= read -r l; do
         [[ -z "$l" ]] && continue
-        if [[ -d "$l" ]]; then rm -f "$l/pid"; rmdir "$l" 2>/dev/null || true; else rm -f "$l"; fi
+        if [[ -d "$l" ]]; then rm -f "$l/pid" "$l/audit-snap.json" "$l/audit-snap.json.tmp" "$l/audit-token"; rmdir "$l" 2>/dev/null || true; else rm -f "$l"; fi
     done <<<"$_CLEAN_LIST"
     _CLEAN_LIST=""
     return 0
@@ -547,6 +612,7 @@ _wip_mutate() (
         out="$_FLUSH_SNAP"; rc=0
     else
         out="$(gh_project_items_json "$PN" "$OWNER" --strict 2>"$err")"; rc=$?
+        [[ "$rc" -eq 0 ]] && _read_backoff_clear
     fi
     if [[ "$rc" -ne 0 ]]; then
         local errtext label
@@ -1330,6 +1396,7 @@ _flush_snap_status() {
             return 1
         fi
         rm -f "$err"
+        _read_backoff_clear
         printf '%s' "$_FLUSH_SNAP" | _cache_refresh_from_items
         # Test-only pause (no-op in production): the snapshot is in hand, the WIP mutex is held.
         [[ "${_FLUSH_HOLDS_WIP:-0}" == "1" ]] && _flush_sync "${BOARD_QUEUE_TEST_TAG:-flush}-snap"
@@ -1436,7 +1503,8 @@ _flush_wip_prepare() {
 _flush_wip_release() {
     local lock="$ROOT/.claude/board-wip.lock"
     if [[ "${_FLUSH_HOLDS_WIP:-0}" == "1" ]]; then
-        rm -f "$lock/pid"; rmdir "$lock" 2>/dev/null || true
+        rm -f "$lock/pid" "$lock/audit-snap.json" "$lock/audit-snap.json.tmp" "$lock/audit-token"
+        rmdir "$lock" 2>/dev/null || true
         _cleanup_del "$lock"
     fi
     _FLUSH_HOLDS_WIP=0

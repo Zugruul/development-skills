@@ -23,7 +23,7 @@
 #   board.sh fields                   # discover field + option ids (used by setup-project)
 #   board.sh config                   # validate the config and print a summary
 #   board.sh metrics                  # telemetry.py cycle time / gate / rework / estimate report
-#   board.sh audit                    # reconcile board reality: PR refs, branch<->In-progress drift, local-mode commit refs (#76)
+#   board.sh audit [--fix] [--if-due]  # reconcile board reality: PR refs, branch<->In-progress drift, local-mode commit refs (#76); --fix moves cards to match live work (#564); --if-due: at most once per methodology.auditIntervalMinutes
 #
 # Rate-limit resilience (issue #77): move/prio/est/add's item-add step, when they hit a
 # GitHub rate limit, queue instead of failing -- see board-queue.sh. Queue file:
@@ -32,6 +32,10 @@
 # Env: PROJECT_CONFIG (config path override), BOARD (boards[].id override; default = first board).
 set -uo pipefail
 unset OVER_WIP_REASON OVER_WIP_BY  # #560: never inherited; only `move` and a queued move entry set them
+# #564: the queue replay's internals are never inherited either. An environment that pre-sets
+# _FLUSH_HOLDS_WIP / _FLUSH_SNAP would skip the WIP mutex and admit against a forged snapshot.
+unset _FLUSH_HOLDS_WIP _FLUSH_SNAP _FLUSH_SNAP_FAILED _FLUSH_USE_SNAP _FLUSH_WIP_FAILED \
+    FLUSH_CUR FLUSH_SNAP_RC FLUSH_SNAP_REASON _APPLIED_NS _QREASON_FILE _QREASON_WANT _CLEAN_LIST _GUARDS_DONE
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"  # inline python readers import config.py
@@ -313,25 +317,48 @@ _board_add() { # type title [prio] [origin-issue#] -> creates + boards one issue
     fi
 }
 
+# #564: is BOARD_AUDIT_SNAP_FILE really the snapshot of a LIVE `audit --fix` that holds the WIP
+# mutex? Trusted only if (1) the path is exactly <lock>/audit-snap.json, (2) <lock>/pid names an
+# ancestor of this process, (3) <lock>/audit-token equals BOARD_AUDIT_TOKEN, and (4) the file is a
+# JSON object with an items list. Anything else fails closed to ordinary admission.
+_audit_snap_trusted() {
+    local lock="$ROOT/.claude/board-wip.lock" holder p n=0 token
+    [[ "${BOARD_AUDIT_SNAP_FILE:-}" == "$lock/audit-snap.json" && -f "$BOARD_AUDIT_SNAP_FILE" ]] || return 1
+    holder="$(cat "$lock/pid" 2>/dev/null)"; [[ "$holder" =~ ^[0-9]+$ ]] || return 1
+    token="$(cat "$lock/audit-token" 2>/dev/null)"
+    [[ -n "$token" && "$token" == "${BOARD_AUDIT_TOKEN:-}" ]] || return 1
+    p="$PPID"
+    while [[ "$p" =~ ^[0-9]+$ && "$p" -gt 1 && $n -lt 64 ]]; do
+        [[ "$p" == "$holder" ]] && break
+        p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')"; n=$((n + 1))
+    done
+    [[ "$p" == "$holder" ]] || return 1
+    python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); sys.exit(0 if isinstance(d, dict) and isinstance(d.get("items"), list) else 1)' "$BOARD_AUDIT_SNAP_FILE" 2>/dev/null
+}
+
 case "${1:-}" in
     next)
         bash "$HERE/checkpoint-preflight.sh" --root "$ROOT" --board "${BOARD:-}" || exit 1
+        _read_backoff_gate || exit 1
         _flush_queue
         _tmp="$(mktemp)"; _errf="$(mktemp)"; trap 'rm -f "$_tmp" "$_errf"; _bq_exit' EXIT
         if gh_project_items_json "$PN" "$OWNER" >"$_tmp" 2>"$_errf"; then
             # stderr on the success path is a non-fatal warning (e.g. paginate.sh's
             # hard-cap notice) -- forward it instead of silently swallowing it.
             [[ -s "$_errf" ]] && cat "$_errf" >&2
+            _read_backoff_clear
             _cache_refresh_from_items <"$_tmp"  # whole-board command (#78): refresh the cache as a side effect
             # #561: queued moves print BEFORE #567's stale-QA report (next.py prints this text
             # just ahead of it); local queue file only, no gh call.
             NEXT_PENDING_TEXT="$(_queue_pending)" python3 "$HERE/next.py" "$CONFIG" "${BOARD:-}" "$_tmp" "${2:-}"
         else
+            _rc=$?
             _errtext="$(cat "$_errf")"
             if _rate_limited "$_errtext"; then
                 echo "RATE-LIMITED until $(_rate_limit_reset_human) — work continues; mutations queue; retry reads after reset." >&2
             else
                 echo "$_errtext" >&2
+                [[ $_rc -ne 3 ]] && _read_backoff_fail
             fi
             _queue_pending
             exit 1
@@ -419,8 +446,28 @@ except OSError:
         fi
         # Older queued moves replay first (oldest first), so a newer move can never be
         # overtaken by a stale one; one replay per call (#561).
-        _flush_queue
+        # #564: under `board.sh audit --fix` the audit holds the WIP mutex and shares its board
+        # snapshot (BOARD_AUDIT_SNAP_FILE) with each move it makes, through #561's replay mechanism
+        # (_FLUSH_HOLDS_WIP + _FLUSH_SNAP): no extra board read, no second mutex, and the audit
+        # already replayed the queue (a flush here would take its lock after the WIP mutex).
+        _audit_snap=0
+        if [[ -n "${BOARD_AUDIT_SNAP_FILE:-}" || -n "${BOARD_AUDIT_TOKEN:-}" ]]; then
+            if _audit_snap_trusted; then
+                _audit_snap=1; _FLUSH_HOLDS_WIP=1; _FLUSH_SNAP="$(cat "$BOARD_AUDIT_SNAP_FILE")"
+                # Keep the path for the write-back, but no child of this move may inherit the trust.
+                _audit_snap_path="$BOARD_AUDIT_SNAP_FILE"
+                unset BOARD_AUDIT_SNAP_FILE BOARD_AUDIT_TOKEN
+            else
+                echo "WARN: ignoring BOARD_AUDIT_SNAP_FILE (not the live audit's snapshot); using normal WIP admission" >&2
+                unset BOARD_AUDIT_SNAP_FILE BOARD_AUDIT_TOKEN
+            fi
+        fi
+        [[ $_audit_snap -eq 1 ]] || _flush_queue
         _do_move "$2" "$3"; rc=$?
+        if [[ $_audit_snap -eq 1 && $rc -eq 0 ]]; then
+            _flush_snap_patch "$2" "$3"
+            printf '%s' "$_FLUSH_SNAP" >"$_audit_snap_path.tmp" && mv "$_audit_snap_path.tmp" "$_audit_snap_path"
+        fi
         # Keep the local task record honest; this never fails the move.
         if [[ $rc -eq 0 || $rc -eq 2 || $rc -eq 5 ]]; then
             python3 "$HERE/task_state.py" --root "$ROOT" sync --id "$2" --status "$3" >/dev/null 2>&1 || true
@@ -545,6 +592,7 @@ except OSError:
         # pattern itself (stdout/stderr captured separately, gated on gh's
         # own exit code before touching json.load) is kept as-is, it's the
         # right fix for the traceback-leak issue e0df2a9 was chasing.
+        _read_backoff_gate || exit 1
         _flush_queue
         _errf="$(mktemp)"
         out="$(gh_project_items_json "$PN" "$OWNER" 2>"$_errf")"; _rc=$?
@@ -554,10 +602,12 @@ except OSError:
                 echo "RATE-LIMITED until $(_rate_limit_reset_human) — work continues; mutations queue; retry reads after reset." >&2
             else
                 echo "$_errtext" >&2
+                [[ $_rc -ne 3 ]] && _read_backoff_fail
             fi
             _queue_pending
             exit 1
         fi
+        _read_backoff_clear
         [[ -s "$_errf" ]] && cat "$_errf" >&2
         rm -f "$_errf"
         printf '%s' "$out" | _cache_refresh_from_items  # whole-board command (#78): refresh the cache as a side effect
@@ -637,31 +687,109 @@ for f in json.load(sys.stdin)["fields"]:
         # Reconciles board reality (#76): open PRs missing a board-issue
         # reference, branches vs In-progress items (both directions), and
         # (work.type: local only) merged main commits missing a #N
-        # reference. See audit.py for the full contract. Exit 1 on any
-        # discrepancy.
+        # reference. #564: --fix also corrects the board from live work (see
+        # audit.py); --if-due makes it a no-op unless the last run is older than
+        # methodology.auditIntervalMinutes (default 10) and skips while rate-limited
+        # (queued board operations pending). Exit 1 on any discrepancy
+        # (report mode); with --fix, 1 only if a fix failed.
+        shift
+        _fix=0; _due=0
+        for _a in "$@"; do
+            case "$_a" in
+                --fix) _fix=1 ;;
+                --if-due) _due=1 ;;
+                *) echo "usage: board.sh audit [--fix] [--if-due]" >&2; exit 2 ;;
+            esac
+        done
+        if [[ $_due -eq 1 && $_fix -eq 0 ]]; then
+            echo "usage: board.sh audit [--fix] [--if-due] (--if-due needs --fix)" >&2; exit 2
+        fi
+        _stamp="$ROOT/.claude/audit-stamp"
+        if [[ $_due -eq 1 ]]; then
+            _mins="$(python3 "$HERE/config.py" "$ROOT" get methodology.auditIntervalMinutes 2>/dev/null)"
+            [[ "$_mins" =~ ^[1-9][0-9]*$ ]] || _mins=10
+            _last="$(cat "$_stamp" 2>/dev/null)"; _now="$(date +%s)"
+            if [[ "$_last" =~ ^[0-9]+$ && $(( _now - _last )) -lt $(( _mins * 60 )) ]]; then
+                echo "audit not due (last run $(( (_now - _last) / 60 )) min ago, interval $_mins min)"
+                exit 0
+            fi
+            if _until="$(_rate_limit_until)"; then
+                echo "audit skipped: rate-limited until $(date -u -d "@$_until" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "epoch $_until")"
+                exit 0
+            fi
+        fi
+        if [[ $_fix -eq 1 ]]; then
+            mkdir -p "$ROOT/.claude" 2>/dev/null && date +%s >"$_stamp" 2>/dev/null  # stamp the ATTEMPT: a failing run must not retry every tick
+        fi
+        _read_backoff_gate || exit 1
         _flush_queue
+        # --fix: take the WIP admission mutex ONCE for the whole pass (after the flush: lock order
+        # is flush -> WIP), read the board ONCE (strict, so it is a valid admission snapshot) and
+        # share that snapshot with every move below (see the move case).
+        _snapf=""
+        if [[ $_fix -eq 1 ]]; then
+            _work_status="$(python3 -c 'import sys, config as C; c=C.load_config(path=sys.argv[1], warn=False); bs=c["boards"]; b=next((x for x in bs if x["id"]==sys.argv[2]), bs[0]); f=b.get("statusFlow") or []; print(f[1] if len(f) > 1 else "In progress")' "$CONFIG" "${BOARD:-}" 2>/dev/null)"
+            if ! _flush_wip_prepare "${_work_status:-In progress}"; then
+                echo "NOTE: admission mutex busy; audit --fix skipped this tick (work continues; retry later)"
+                exit 0
+            fi
+        fi
         _errf="$(mktemp)"
-        _items="$(gh_project_items_json "$PN" "$OWNER" 2>"$_errf")"; _rc=$?
+        _strict=(); [[ $_fix -eq 1 ]] && _strict=(--strict)
+        _items="$(gh_project_items_json "$PN" "$OWNER" ${_strict[@]+"${_strict[@]}"} 2>"$_errf")"; _rc=$?
         if [[ $_rc -ne 0 ]]; then
             _errtext="$(cat "$_errf")"; rm -f "$_errf"
-            if _rate_limited "$_errtext"; then
+            _flush_wip_release
+            if [[ $_rc -ne 3 ]] && _rate_limited "$_errtext"; then
                 echo "RATE-LIMITED until $(_rate_limit_reset_human) — work continues; mutations queue; retry reads after reset." >&2
             else
                 echo "$_errtext" >&2
+                [[ $_rc -ne 3 ]] && _read_backoff_fail
             fi
             exit 1
+        fi
+        _read_backoff_clear
+        if [[ $_fix -eq 1 && "${_FLUSH_HOLDS_WIP:-0}" == "1" ]]; then
+            _snapf="$ROOT/.claude/board-wip.lock/audit-snap.json"
+            _token="$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
+            printf '%s\n' "$_token" >"$ROOT/.claude/board-wip.lock/audit-token"
+            printf '%s' "$_items" >"$_snapf"
         fi
         [[ -s "$_errf" ]] && cat "$_errf" >&2
         rm -f "$_errf"
         printf '%s' "$_items" | _cache_refresh_from_items  # whole-board command (#78): refresh the cache as a side effect
-        _prs_file="$(mktemp)"
-        if ! gh pr list -R "$REPO" --state open --json number,body >"$_prs_file" 2>/dev/null; then
-            echo "[]" >"$_prs_file"
-        fi
         WORK_TYPE="$(bash "$HERE/work-mode.sh" type)"
-        printf '%s' "$_items" | python3 "$HERE/audit.py" "$CONFIG" "${BOARD:-}" "$ROOT" "$WORK_TYPE" "$_prs_file"
+        _prs_file="$(mktemp)"; _closed_file="$(mktemp)"
+        echo "[]" >"$_prs_file"; echo "[]" >"$_closed_file"
+        if [[ "$WORK_TYPE" != "local" ]]; then
+            # #564: PR lists over REST only (`gh pr list` is GraphQL): open pages capped at 3 x 100,
+            # one page of recently updated closed PRs (merged ones are the signal).
+            _pg=1
+            while [[ $_pg -le 3 ]]; do
+                _page="$(gh api "repos/$REPO/pulls?state=open&per_page=100&page=$_pg" 2>/dev/null)" || break
+                python3 -c '
+import json, sys
+total = json.load(open(sys.argv[1]))
+try:
+    page = json.loads(sys.argv[2])
+except ValueError:
+    page = []
+total.extend(page if isinstance(page, list) else [])
+json.dump(total, open(sys.argv[1], "w"))
+print(len(page) if isinstance(page, list) else 0)
+' "$_prs_file" "$_page" >"$_prs_file.n" 2>/dev/null || break
+                [[ "$(cat "$_prs_file.n")" -ge 100 ]] || break
+                _pg=$((_pg + 1))
+            done
+            rm -f "$_prs_file.n"
+            gh api "repos/$REPO/pulls?state=closed&sort=updated&direction=desc&per_page=100" >"$_closed_file" 2>/dev/null || echo "[]" >"$_closed_file"
+        fi
+        _fixflag=(); [[ $_fix -eq 1 ]] && _fixflag=(--fix)
+        printf '%s' "$_items" | python3 "$HERE/audit.py" "$CONFIG" "${BOARD:-}" "$ROOT" "$WORK_TYPE" "$_prs_file" \
+            --closed-file "$_closed_file" --board-sh "$HERE/board.sh" ${_snapf:+--snap-file "$_snapf" --token "$_token"} ${_fixflag[@]+"${_fixflag[@]}"}
         rc=$?
-        rm -f "$_prs_file"
+        _flush_wip_release
+        rm -f "$_prs_file" "$_closed_file"
         exit "$rc"
         ;;
     *)

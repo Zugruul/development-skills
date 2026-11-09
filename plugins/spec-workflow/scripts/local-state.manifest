@@ -19,6 +19,13 @@ ignore	.claude/telemetry.lock/
 ignore	.claude/lessons.jsonl
 ignore	.claude/board-queue.jsonl
 ignore	.claude/board-cache.json
+ignore	.claude/audit-stamp
+ignore	.claude/audit-links.json
+ignore	.claude/audit-links.json.tmp
+ignore	.claude/rate-limit-reset
+ignore	.claude/rate-limit-reset.tmp
+ignore	.claude/board-read-backoff
+ignore	.claude/board-read-backoff.tmp
 ignore	.claude/board-wip.lock/
 ignore	.claude/over-wip.json
 ignore	.claude/over-wip.lock

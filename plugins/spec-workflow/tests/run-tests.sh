@@ -247,6 +247,8 @@ section-semver.sh
     section-sync-configs.sh
     section-guard-pr-create.sh
     section-board-audit.sh
+    section-board-audit-fix.sh
+    section-board-truth-sim.sh
     section-board-labels.sh
     section-board-agent-label.sh
     section-board-ensure-issue.sh

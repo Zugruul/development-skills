@@ -596,6 +596,12 @@
                     "minimum": 1,
                     "description": "Maximum number of tasks worked CONCURRENTLY — THE concurrency knob. It is both the board WIP limit (reported by next.py and enforced at direct/replayed board.sh admissions using a fresh complete snapshot and same-clone mutex; ambiguous counted option labels or IDs are refused before mutation classification) AND the number of parallel implementation lanes. 1 (default) = strictly sequential, one task at a time (the current behavior). N>1 = up to N tasks in parallel, each in its own git worktree + branch + dev agent — only safe for NON-overlapping tasks (see skills/build-next/references/concurrency.md). Set via the concurrency skill / concurrency.sh."
                 },
+                "auditIntervalMinutes": {
+                    "type": "integer",
+                    "default": 10,
+                    "minimum": 1,
+                    "description": "Optional (#564): minimum minutes between runs of the loop-tick `board.sh audit --fix --if-due`, which moves cards to match live worktrees, open PRs and merges (so no running work is invisible on the board). Within the interval the tick is a no-op that makes zero GitHub calls; it is also skipped while board operations are queued behind a rate limit. A plain `board.sh audit --fix` always runs."
+                },
                 "wipLimits": {
                     "type": "object",
                     "additionalProperties": false,
