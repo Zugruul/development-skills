@@ -1,0 +1,34 @@
+schemaVersion: 1
+kind: loop-feedback
+ts: '2026-11-09T17:29:38Z'
+iteration:
+  task: '570'
+  outcome: merged
+  reviewRounds: 1
+source:
+  role: orchestrator
+  model: claude-opus-5-5
+items:
+- category: incident
+  area: testing
+  severity: high
+  summary: The spec fold shipped in 0.77.0 without a fresh gate and broke 11 test
+    checks on main
+  evidence:
+  - Zugruul/development-skills#570
+  generalized: Folding moves delta files; tests reading the pending path pass on the
+    branch and fail on main.
+  routing:
+    action: brain-note
+    ref: orchestrator/regate-main-after-spec-fold
+- category: friction
+  area: testing
+  severity: medium
+  summary: A full-suite run hung for 40 minutes in an assistant task-engine test on
+    a SQLite lock
+  evidence:
+  - Zugruul/development-skills#570
+  generalized: One hung section stalls the whole suite with no per-section timeout.
+  routing:
+    action: ignore
+    ref: 'local: not reproduced on the next two full runs; noted on Zugruul/development-skills#570'
