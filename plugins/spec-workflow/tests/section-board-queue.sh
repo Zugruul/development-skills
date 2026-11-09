@@ -47,6 +47,14 @@ case "$1 $2" in
             awk 'f{print} /^$/{f=1}' "$GH_FAILURES/masked-unknown-owner-type.txt" >&2
             exit 1
         fi
+        if [[ -n "${FAKE_GH_ITEM_ADD_FAIL_TEXT:-}" ]]; then
+            echo "$FAKE_GH_ITEM_ADD_FAIL_TEXT" >&2
+            exit 1
+        fi
+        if [[ -n "${FAKE_GH_ITEM_ADD_TRANSIENT:-}" ]]; then
+            awk 'f{print} /^$/{f=1}' "$GH_FAILURES/$FAKE_GH_ITEM_ADD_TRANSIENT" >&2
+            exit 1
+        fi
         if [[ -n "${FAKE_GH_ITEM_ADD_MARKER:-}" ]]; then
             : >"$FAKE_GH_ITEM_ADD_MARKER"
         fi
@@ -62,6 +70,32 @@ case "$1 $2" in
         if [[ "${FAKE_GH_ITEM_LIST_MASKED_RATE_LIMIT:-0}" == "1" ]]; then
             awk 'f{print} /^$/{f=1}' "$GH_FAILURES/masked-unknown-owner-type.txt" >&2
             exit 1
+        fi
+        if [[ -n "${FAKE_GH_ITEM_LIST_LATE_FAIL_TEXT:-}" && "$n" -ge "${FAKE_GH_ITEM_LIST_FAIL_FROM:-999}" ]]; then
+            echo "$FAKE_GH_ITEM_LIST_LATE_FAIL_TEXT" >&2
+            exit 1
+        fi
+        if [[ -n "${FAKE_GH_ITEM_LIST_FAIL_TEXT:-}" ]]; then
+            echo "$FAKE_GH_ITEM_LIST_FAIL_TEXT" >&2
+            exit 1
+        fi
+        if [[ -n "${FAKE_GH_ITEM_LIST_TRANSIENT:-}" ]]; then
+            awk 'f{print} /^$/{f=1}' "$GH_FAILURES/$FAKE_GH_ITEM_LIST_TRANSIENT" >&2
+            exit 1
+        fi
+        # #561: FAKE_GH_ITEMS_JSON replaces the whole snapshot; FAKE_GH_ISSUES
+        # ("901 902 ...") makes several issues visible, all at FAKE_GH_ITEM_STATUS.
+        if [[ -n "${FAKE_GH_ITEMS_JSON:-}" ]]; then
+            echo "$FAKE_GH_ITEMS_JSON"
+            exit 0
+        fi
+        if [[ -n "${FAKE_GH_ISSUES:-}" ]]; then
+            body=""
+            for i in $FAKE_GH_ISSUES; do
+                body="$body${body:+,}{\"id\":\"ITEM_$i\",\"content\":{\"number\":$i},\"status\":\"${FAKE_GH_ITEM_STATUS:-Backlog}\"}"
+            done
+            echo "{\"items\":[$body]}"
+            exit 0
         fi
         # FAKE_GH_ITEM_ADD_MARKER (if set): the item is invisible until
         # project item-add has actually run once -- models eventual-consistency
@@ -83,6 +117,18 @@ case "$1 $2" in
         fi
         if [[ "$n" -ge "${FAKE_GH_EDIT_MASKED_RATE_LIMIT_FROM:-999}" ]]; then
             awk 'f{print} /^$/{f=1}' "$GH_FAILURES/masked-unknown-owner-type.txt" >&2
+            exit 1
+        fi
+        if [[ "$n" -eq "${FAKE_GH_EDIT_RATE_LIMIT_ONLY_ON:-0}" ]]; then
+            awk 'f{print} /^$/{f=1}' "$GH_FAILURES/rate-limit-honest-user-id.txt" >&2
+            exit 1
+        fi
+        if [[ -n "${FAKE_GH_EDIT_FAIL_TEXT:-}" ]]; then
+            echo "$FAKE_GH_EDIT_FAIL_TEXT" >&2
+            exit 1
+        fi
+        if [[ -n "${FAKE_GH_EDIT_TRANSIENT:-}" && "$n" -ge "${FAKE_GH_EDIT_TRANSIENT_FROM:-1}" ]]; then
+            awk 'f{print} /^$/{f=1}' "$GH_FAILURES/$FAKE_GH_EDIT_TRANSIENT" >&2
             exit 1
         fi
         # #104: a REAL (non-rate-limit) failure on exactly one call number --
@@ -324,15 +370,10 @@ out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_EDIT_CALLCOUNT="
     FAKE_GH_EDIT_MASKED_RATE_LIMIT_FROM=1 FAKE_GH_GRAPHQL_REMAINING=5000 FAKE_GH_RESET_EPOCH=1735689600 \
     bash "$PLUGIN/scripts/board.sh" move 811 "In progress" 2>&1; echo "rc=$?")"
 check "(j) masked-but-real error: original error surfaced verbatim" "unknown owner type" "$out"
-check "(j) masked-but-real error: exits non-zero" "rc=1" "$out"
-check_absent "(j) masked-but-real error: not treated as QUEUED" "QUEUED" "$out"
+check "(j) masked-but-real error: queued, exits 0 (round 2: a live unrecognised error never stops work)" "rc=0" "$out"
+check "(j) masked-but-real error: QUEUED as a gh error, not as a rate limit" "QUEUED (gh error): move #" "$out"
 qf="$BQ/.claude/board-queue.jsonl"
-if [[ -s "$qf" ]]; then
-    echo "FAIL (j) masked-but-real error: must NOT be queued"
-    fails=$((fails + 1))
-else
-    echo "ok   (j) masked-but-real error: nothing queued"
-fi
+check "(j) masked-but-real error: queued with attempts=1" '"attempts": "1"' "$(cat "$qf" 2>/dev/null)"
 rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC"
 
 # --- (k) #90: move's item-id LOOKUP (item-list) fails masked-rate-limited -> QUEUED, not "bad issue# or status" ---
@@ -376,8 +417,8 @@ out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_EDIT_CALLCOUNT="
     FAKE_GH_EDIT_MASKED_RATE_LIMIT_FROM=1 FAKE_GH_RATE_LIMIT_REAL_SAMPLE=rate-limit-endpoint-sample.json \
     bash "$PLUGIN/scripts/board.sh" move 813 "In progress" 2>&1; echo "rc=$?")"
 check "(t) real rate_limit sample (remaining=41): masked error surfaced verbatim" "unknown owner type" "$out"
-check "(t) real rate_limit sample (remaining=41): exits non-zero" "rc=1" "$out"
-check_absent "(t) real rate_limit sample (remaining=41): not treated as QUEUED" "QUEUED" "$out"
+check "(t) real rate_limit sample (remaining=41): queued, exits 0 (round 2: a live unrecognised error never stops work)" "rc=0" "$out"
+check "(t) real rate_limit sample (remaining=41): QUEUED as a gh error, not as a rate limit" "QUEUED (gh error): move #" "$out"
 rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC"
 
 _qsetup
@@ -388,8 +429,8 @@ out="$(cd "$BQ" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_EDIT_CALLCOUNT="
     FAKE_GH_EDIT_MASKED_RATE_LIMIT_FROM=1 FAKE_GH_RATE_LIMIT_REAL_SAMPLE=rate-limit-endpoint-near-exhausted.json \
     bash "$PLUGIN/scripts/board.sh" move 814 "In progress" 2>&1; echo "rc=$?")"
 check "(u) real rate_limit sample (remaining=1, near-exhausted boundary): masked error surfaced verbatim" "unknown owner type" "$out"
-check "(u) real rate_limit sample (remaining=1, near-exhausted boundary): exits non-zero" "rc=1" "$out"
-check_absent "(u) real rate_limit sample (remaining=1, near-exhausted boundary): not treated as QUEUED" "QUEUED" "$out"
+check "(u) real rate_limit sample (remaining=1, near-exhausted boundary): queued, exits 0 (round 2: a live unrecognised error never stops work)" "rc=0" "$out"
+check "(u) real rate_limit sample (remaining=1, near-exhausted boundary): QUEUED as a gh error, not as a rate limit" "QUEUED (gh error): move #" "$out"
 rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC"
 
 # --- (v) #101: _rate_limit_reset_human against a REAL rate_limit payload that
@@ -597,6 +638,10 @@ mkdir -p "$BQ/.claude" "$BQ/.neural-network"
 # (separately covered, see section-two-pass-review-preflight.sh) two-pass
 # gate itself.
 printf '{"kind":"review-round","task":"900","round":1,"verdict":"approved","pass":"spec-compliance","ts":"2020-01-01T00:00:00Z"}\n{"kind":"review-round","task":"900","round":2,"verdict":"approved","pass":"code-quality","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/telemetry.jsonl"
+# #561: local guards now run before the replay's board read, so the queued Ready move
+# meets closure-preflight before the "already Ready" skip. Record closure evidence so
+# this scenario keeps exercising the dedupe/skip it targets.
+printf '{"kind":"retro-skip","task":"900","reason":"fixture","ts":"2020-01-01T00:00:02Z"}\n' >>"$BQ/.claude/telemetry.jsonl"
 printf '{"op":"move","issue":"900","status":"QA","ts":"2020-01-01T00:00:00Z"}\n' >"$BQ/.claude/board-queue.jsonl"
 SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
 LOG1="$(mktemp)"; LISTCC="$(mktemp)"; EDITCC="$(mktemp)"; OUT1="$(mktemp)"
@@ -786,8 +831,9 @@ check "(x) real apply failure: exits 0 (the loop keeps going for other tasks)" "
 check_absent "(x) real apply failure: never misreported as QUEUED/rate-limited" "QUEUED" "$out"
 check "(x) real apply failure: the OTHER (successful, est) entry still applies" "est #930 -> 5" "$out"
 remainder="$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
-check "(x) real apply failure: the failed (prio) entry survives on disk in the live queue file" '"op":"prio","issue":"930"' "$remainder"
-check_absent "(x) real apply failure: the OTHER (successful, est) entry is not left behind too" '"op":"est"' "$remainder"
+check "(x) real apply failure: the failed (prio) entry survives on disk in the live queue file (round 3: format-agnostic, the attempts path rewrites the line)" '"op": "prio", "issue": "930"' "$remainder"
+check "(x) real apply failure: the failure is counted on the entry" '"attempts": "1"' "$remainder"
+check_absent "(x) real apply failure: the OTHER (successful, est) entry is not left behind too" '"op": "est"' "$remainder"
 rm -rf "$BQ" "$FGH" "$LOG" "$LISTCC" "$EDITCC"
 
 # --- (y) liveness probe: a lockdir whose pidfile names a definitively-dead
@@ -927,6 +973,733 @@ else
     fails=$((fails + 1))
 fi
 rm -rf "$BQ" "$FGH" "$SYNC" "$LOG" "$LISTCC" "$EDITCC" "$OUT" "$LOG2" "$EDITCC2"
+
+# =====================================================================
+# #561 -- board truth: queue failed moves and replay them ASAP.
+# A non-guard failure (transient API/network, 5xx, timeout, incomplete
+# snapshot, busy admission mutex) is queued and exits 0; a guard refusal
+# is NOT queued. Replay shares ONE board snapshot, and the pending
+# display reads the local queue file only.
+# =====================================================================
+echo "== board.sh queue failed moves (#561): fake gh =="
+
+# _bq <extra env assignments...> -- <board.sh args...>: run board.sh in $BQ, all output + rc.
+_bq() {
+    local -a envs=()
+    while [[ "$1" != "--" ]]; do envs+=("$1"); shift; done
+    shift
+    (cd "$BQ" && env PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG" FAKE_GH_EDIT_CALLCOUNT="$EDITCC" FAKE_GH_LIST_CALLCOUNT="$LISTCC" \
+        FAKE_GH_GRAPHQL_REMAINING=9999 ${envs[@]+"${envs[@]}"} bash "$PLUGIN/scripts/board.sh" "$@" 2>&1; echo "rc=$?")
+}
+_cnt() { grep -c -- "$1" "$LOG" || true; }  # gh calls whose argv contains $1
+_seen_all() { printf '{"%s": true, "%s": true, "%s": true}' "$1" "$2" "$3" >"$BQ/.claude/board-comments-seen.json"; }
+_qlogs() { LOG="$(mktemp)"; EDITCC="$(mktemp)"; LISTCC="$(mktemp)"; }
+
+# --- (ab) classifier: real-form gh transient wording is recognised; a schema error is not ---
+_qsetup
+_lbl() { bash -c 'ROOT=/nonexistent; source "$1"; _gh_failure_label "$2"' _ "$PLUGIN/scripts/board-queue.sh" "$(awk 'f{print} /^$/{f=1}' "$GH_FAILURES/$1")"; }
+check "(ab) classifier: HTTP 502 -> 'HTTP 502'" "HTTP 502" "$(_lbl transient-http-502.txt)"
+check "(ab) classifier: HTTP 504 gateway timeout -> 'HTTP 504' (status wins over the word timeout)" "HTTP 504" "$(_lbl transient-http-504.txt)"
+check "(ab) classifier: context deadline -> 'timeout'" "timeout" "$(_lbl transient-timeout.txt)"
+check "(ab) classifier: error connecting -> 'network error'" "network error" "$(_lbl transient-connecting.txt)"
+check "(ab) classifier: no such host -> 'network error'" "network error" "$(_lbl transient-no-such-host.txt)"
+check "(ab) classifier: gh api graphql wording 'gh: Bad Gateway (HTTP 502)' -> 'HTTP 502'" "HTTP 502" "$(_lbl transient-graphql-502.txt)"
+check "(ab) classifier: an unrecognised error is a generic 'gh error'" "gh error" "$(bash -c 'ROOT=/nonexistent; source "$1"; _gh_failure_label "GraphQL: field value does not match schema (invalid input)"' _ "$PLUGIN/scripts/board-queue.sh")"
+rm -rf "$BQ" "$FGH"
+
+# --- (ac) transient item-edit failure on an In progress move: QUEUED, exit 0, exact gh call counts ---
+_calls() { grep -cE '^(api|project|issue) ' "$LOG" || true; }  # top-level gh invocations (query bodies span lines)
+_qsetup; _seed_seen 970; _qlogs
+out="$(_bq FAKE_GH_ISSUE_NUM=970 FAKE_GH_ITEM_STATUS=Backlog FAKE_GH_EDIT_TRANSIENT=transient-http-502.txt -- move 970 "In progress")"
+check "(ac) transient move: QUEUED with the reason" "QUEUED (HTTP 502): move #970 -> In progress" "$out"
+check "(ac) transient move: exits 0 (work never stops)" "rc=0" "$out"
+check_absent "(ac) transient move: not claimed as rate-limited" "rate-limited" "$out"
+check "(ac) transient move: queued on disk" '"op": "move"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+check "(ac) transient move: reason stored for the pending display" 'HTTP 502' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+check_rc "(ac) gh calls for a queued In progress move: exactly 1 board read (admission)" 1 "$(_cnt 'project item-list')"
+check_rc "(ac) gh calls for a queued In progress move: exactly 1 edit attempt (no stale-id re-resolve on a 5xx)" 1 "$(_cnt 'project item-edit')"
+check_rc "(ac) gh calls for a queued In progress move: NO rate-limit probe for a recognised 5xx" 0 "$(_cnt 'api rate_limit')"
+check_rc "(ac) gh calls for a queued In progress move: total" 4 "$(_calls)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (ad) incomplete board snapshot while admitting to a WIP status: QUEUED ---
+_qsetup; _seed_seen 971; _qlogs
+out="$(_bq FAKE_GH_ISSUE_NUM=971 FAKE_GH_ITEMS_JSON='{"items":[{"id":"ITEM_971","content":{"number":971},"status":"Backlog"}],"totalCount":2}' -- move 971 "In progress")"
+check "(ad) incomplete snapshot data: QUEUED, reason names the snapshot" "QUEUED (board snapshot incomplete" "$out"
+check "(ad) snapshot failure: exits 0" "rc=0" "$out"
+check "(ad) snapshot failure: queued on disk" '"issue": "971"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (ae) busy admission mutex: QUEUED ---
+_qsetup; _seed_seen 972; _qlogs
+mkdir -p "$BQ/.claude/board-wip.lock"
+out="$(_bq FAKE_GH_ISSUE_NUM=972 BOARD_WIP_MUTEX_MAX_WAIT_ITERS=3 -- move 972 "In progress")"
+check "(ae) busy mutex: QUEUED with the reason" "QUEUED (admission mutex busy): move #972 -> In progress" "$out"
+check "(ae) busy mutex: exits 0" "rc=0" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (af) guard refusals are NOT queued and still fail loudly ---
+_qsetup; _qlogs   # no comments-seen marker => the comments guard refuses
+out="$(_bq FAKE_GH_ISSUE_NUM=973 -- move 973 "In progress")"
+check "(af) comments-not-read guard: still printed" "BLOCKED" "$out"
+check_absent "(af) comments-not-read guard: exit is non-zero" "rc=0" "$out"
+check_absent "(af) comments-not-read guard: not QUEUED" "QUEUED" "$out"
+out="$(_bq FAKE_GH_ISSUE_NUM=973 -- move 973 "No Such Status")"
+check "(af) bad status: still printed" "bad issue# or status" "$out"
+check_absent "(af) bad status: exit is non-zero" "rc=0" "$out"
+check_absent "(af) bad status: not QUEUED" "QUEUED" "$out"
+_seed_seen 974
+out="$(_bq FAKE_GH_ISSUE_NUM=974 FAKE_GH_ITEMS_JSON='{"items":[{"id":"ITEM_1","content":{"number":1},"status":"In progress"},{"id":"ITEM_974","content":{"number":974},"status":"Backlog"}]}' -- move 974 "In progress")"
+check "(af) WIP capacity refusal: still printed" "capacity 1/1 occupied" "$out"
+check_absent "(af) WIP capacity refusal: exit is non-zero" "rc=0" "$out"
+check_absent "(af) WIP capacity refusal: not QUEUED" "QUEUED" "$out"
+if [[ -s "$BQ/.claude/board-queue.jsonl" ]]; then echo "FAIL (af) a guard refusal must leave the queue empty"; fails=$((fails + 1)); else echo "ok   (af) guard refusals left the queue empty"; fi
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (ag) replay of N queued moves: oldest first, ONE shared snapshot read ---
+_qsetup; _seen_all 981 982 983; _qlogs
+printf '{"op":"move","issue":"981","status":"Backlog","reason":"HTTP 502","ts":"2020-01-01T00:00:01Z"}\n{"op":"move","issue":"982","status":"Backlog","reason":"HTTP 502","ts":"2020-01-01T00:00:02Z"}\n{"op":"move","issue":"983","status":"Backlog","reason":"HTTP 502","ts":"2020-01-01T00:00:03Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="981 982 983" FAKE_GH_ITEM_STATUS=Ready -- flush)"
+check "(ag) replay of 3 queued moves: each applied" "moved #983 -> Backlog" "$out"
+check "(ag) replay of 3: exactly 1 snapshot read (not one per op)" "1" "$(_cnt 'project item-list')"
+check "(ag) replay of 3: exactly 3 edits" "3" "$(_cnt 'project item-edit')"
+o1="$(grep -n ITEM_981 "$LOG" | head -1 | cut -d: -f1)"; o3="$(grep -n ITEM_983 "$LOG" | head -1 | cut -d: -f1)"
+if [[ -n "$o1" && -n "$o3" && "$o1" -lt "$o3" ]]; then echo "ok   (ag) replay: oldest first"; else echo "FAIL (ag) replay order (981 at '$o1', 983 at '$o3')"; fails=$((fails + 1)); fi
+if [[ -s "$BQ/.claude/board-queue.jsonl" ]]; then echo "FAIL (ag) queue should be empty after replay"; fails=$((fails + 1)); else echo "ok   (ag) queue empty after replay"; fi
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (ah) replay also runs on a later MOVE call; a replay that still fails stays queued ---
+_qsetup; _seen_all 984 985 986; _qlogs
+printf '{"op":"move","issue":"984","status":"Backlog","reason":"HTTP 502","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="984 985" FAKE_GH_ITEM_STATUS=Ready -- move 985 Backlog)"
+check "(ah) a later move call replays the older queued move" "moved #984 -> Backlog" "$out"
+check "(ah) and then applies its own move" "moved #985 -> Backlog" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+_qsetup; _qlogs
+printf '{"op":"move","issue":"987","status":"Backlog","reason":"HTTP 502","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="987" FAKE_GH_ITEM_STATUS=Ready FAKE_GH_EDIT_TRANSIENT=transient-timeout.txt -- flush)"
+check "(ah) replay still failing: stays queued" '"issue":"987"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+check "(ah) replay still failing: exits 0" "rc=0" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (ai) replay: a refusal that can never clear DROPS the entry with a printed line ---
+_qsetup; _qlogs   # a status that is not in statusFlow can never apply
+printf '{"op":"move","issue":"988","status":"No Such Status","reason":"HTTP 502","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="988" FAKE_GH_ITEM_STATUS="In review" -- flush)"
+check "(ai) guard refusal on replay: dropped with a printed line" "flush: DROPPED move #988 -> No Such Status" "$out"
+if [[ -s "$BQ/.claude/board-queue.jsonl" ]]; then echo "FAIL (ai) dropped entry still in the queue"; fails=$((fails + 1)); else echo "ok   (ai) dropped entry left the queue"; fi
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (aj) add: a non-rate-limit item-add failure queues add-finish ---
+_qsetup; _qlogs
+out="$(_bq FAKE_GH_ISSUE_NUM=990 FAKE_GH_ITEM_ADD_TRANSIENT=transient-http-502.txt -- add --type feature "found something" P2)"
+check "(aj) add + item-add failure: QUEUED" "QUEUED (HTTP 502): item-add #990" "$out"
+check "(aj) add + item-add failure: exits 0" "rc=0" "$out"
+check_absent "(aj) add + item-add failure: no 'not on the board' claim" "it is not on the board" "$out"
+check "(aj) add + item-add failure: add-finish queued" '"op": "add-finish"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+check "(aj) gh calls: no board read for the queued add" "0" "$(_cnt 'project item-list')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+# the false failure: the item IS on the board; replay must not item-add again and sets status + priority
+_qsetup; _qlogs
+printf '{"op":"add-finish","issue":"991","url":"https://github.com/fixture-owner/fixture-project/issues/991","first_status":"Backlog","prio":"P2","reason":"HTTP 502","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="991" FAKE_GH_ITEM_STATUS="Ready" -- flush)"
+check "(aj) replay of add-finish on an item already on the board: finished" "flush: finished add #991" "$out"
+check "(aj) replay: no second item-add" "0" "$(_cnt 'project item-add')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (ak) adopt: a non-rate-limit item-add failure queues adopt ---
+_qsetup; _qlogs
+out="$(_bq FAKE_GH_ISSUE_NUM=992 FAKE_GH_ITEM_VISIBLE=0 FAKE_GH_ITEM_ADD_TRANSIENT=transient-connecting.txt -- adopt 992)"
+check "(ak) adopt + item-add failure: QUEUED" "QUEUED (network error): adopt #992" "$out"
+check "(ak) adopt + item-add failure: exits 0" "rc=0" "$out"
+check "(ak) adopt + item-add failure: adopt queued" '"op": "adopt"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (al) pending display: local file only (0 gh calls); also shown by list ---
+_qsetup; _qlogs
+printf '{"op":"move","issue":"993","status":"Backlog","reason":"HTTP 502","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq -- pending)"
+check "(al) pending: prints the PENDING line" "PENDING: move #993 -> Backlog (queued " "$out"
+check "(al) pending: shows the reason" "HTTP 502)" "$out"
+check "(al) pending: ZERO gh calls" "0" "$(wc -l <"$LOG" | tr -d ' ')"
+rm -f "$LOG"; LOG="$(mktemp)"
+out="$(_bq FAKE_GH_ISSUES="993" FAKE_GH_ITEM_STATUS=Ready FAKE_GH_EDIT_TRANSIENT=transient-http-502.txt -- list)"
+check "(al) list: prints the still-pending move" "PENDING: move #993 -> Backlog" "$out"
+check "(al) list: replay shares one snapshot (flush 1 read + list 1 read)" "2" "$(_cnt 'project item-list')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+
+# --- (am) replay of N WIP-status moves: ONE board read total; capacity honoured within the snapshot ---
+_qsetup; _seen_all 981 982 983; _qlogs
+sed -i 's/maxInProgress: 1/maxInProgress: 3/' "$BQ/.neural-network/project.yaml"
+printf '{"op":"move","issue":"981","status":"In progress","reason":"HTTP 502","seq":"1","ts":"2020-01-01T00:00:01Z"}\n{"op":"move","issue":"982","status":"In progress","reason":"HTTP 502","seq":"2","ts":"2020-01-01T00:00:02Z"}\n{"op":"move","issue":"983","status":"In progress","reason":"HTTP 502","seq":"3","ts":"2020-01-01T00:00:03Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="981 982 983" FAKE_GH_ITEM_STATUS=Backlog -- flush)"
+check "(am) WIP replay of 3: last one applied" "moved #983 -> In progress" "$out"
+check_rc "(am) WIP replay of 3: exactly 1 board read in total" 1 "$(_cnt 'project item-list')"
+check_rc "(am) WIP replay of 3: exactly 3 edits" 3 "$(_cnt 'project item-edit')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+_qsetup; _seen_all 981 982 983; _qlogs
+sed -i 's/maxInProgress: 1/maxInProgress: 2/' "$BQ/.neural-network/project.yaml"
+printf '{"op":"move","issue":"981","status":"In progress","reason":"HTTP 502","seq":"1","ts":"2020-01-01T00:00:01Z"}\n{"op":"move","issue":"982","status":"In progress","reason":"HTTP 502","seq":"2","ts":"2020-01-01T00:00:02Z"}\n{"op":"move","issue":"983","status":"In progress","reason":"HTTP 502","seq":"3","ts":"2020-01-01T00:00:03Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="981 982 983" FAKE_GH_ITEM_STATUS=Backlog -- flush)"
+check "(am) capacity 2: the third start is refused by the patched snapshot" "capacity 2/2 occupied" "$out"
+check_rc "(am) capacity 2: exactly 2 edits" 2 "$(_cnt 'project item-edit')"
+check_rc "(am) capacity 2: still exactly 1 board read" 1 "$(_cnt 'project item-list')"
+check "(am) capacity 2: the refused start stays queued" '"issue":"983"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (an) local guards run BEFORE any board read: a guard-refused entry costs 0 gh calls per call ---
+_qsetup; _qlogs   # no two-pass review recorded => the QA guard refuses
+printf '{"op":"move","issue":"985","status":"QA","reason":"HTTP 502","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+for _i in 1 2 3; do out="$(_bq FAKE_GH_ISSUES="985" FAKE_GH_ITEM_STATUS="In review" -- flush)"; done
+check_rc "(an) QA move refused by the two-pass guard, replayed 3 times: 0 gh calls" 0 "$(wc -l <"$LOG" | tr -d ' ')"
+check "(an) the refused entry stays queued" '"issue":"985"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (ao) retry policy ---
+# network/timeout stops the pass (like a rate limit): the second entry is not even tried
+_qsetup; _seen_all 995 996 996; _qlogs
+printf '{"op":"move","issue":"995","status":"Backlog","reason":"timeout","seq":"1","ts":"2020-01-01T00:00:01Z"}\n{"op":"move","issue":"996","status":"Backlog","reason":"timeout","seq":"2","ts":"2020-01-01T00:00:02Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="995 996" FAKE_GH_ITEM_STATUS=Ready FAKE_GH_EDIT_TRANSIENT=transient-timeout.txt -- flush)"
+check_rc "(ao) timeout stops the flush pass: only 1 edit attempted" 1 "$(_cnt 'project item-edit')"
+check "(ao) a per-entry item-edit timeout has its own line" "flush: move #995 hit a timeout" "$out"
+check_absent "(ao) a per-entry item-edit timeout is not called a board read failure" "board read failed" "$out"
+check "(ao) timeout: first entry kept" '"issue":"995"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+check "(ao) timeout: second entry kept untouched" '"issue":"996"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+# a 5xx retries forever: six passes, still queued, never dropped
+_qsetup; _qlogs
+printf '{"op":"move","issue":"997","status":"Backlog","reason":"HTTP 502","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+for _i in 1 2 3 4 5 6; do out="$(_bq FAKE_GH_ISSUES="997" FAKE_GH_ITEM_STATUS=Ready FAKE_GH_EDIT_TRANSIENT=transient-http-502.txt -- flush)"; done
+check "(ao) HTTP 502 retries without limit: still queued after 6 passes" '"issue":"997"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+check_absent "(ao) HTTP 502 is never dropped" "DROPPED" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+# an unrecognised error label: counted, dropped on the 5th attempt with a clear line
+_qsetup; _qlogs
+printf '{"op":"adopt","issue":"998","reason":"gh error","attempts":"4","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUE_NUM=998 FAKE_GH_ITEM_VISIBLE=0 FAKE_GH_ITEM_ADD_FAIL_TEXT="boom: something gh never said before" -- flush)"
+check "(ao) 5th failed attempt: dropped with the fix hint" "flush: DROPPED adopt #998 after 5 attempts (gh error) — fix and re-run board.sh adopt 998" "$out"
+if [[ -s "$BQ/.claude/board-queue.jsonl" ]]; then echo "FAIL (ao) dropped entry still queued"; fails=$((fails + 1)); else echo "ok   (ao) dropped entry left the queue"; fi
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+_qsetup; _qlogs
+printf '{"op":"adopt","issue":"998","reason":"gh error","attempts":"1","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUE_NUM=998 FAKE_GH_ITEM_VISIBLE=0 FAKE_GH_ITEM_ADD_FAIL_TEXT="boom: something gh never said before" -- flush)"
+check "(ao) 2nd failed attempt: counted in the entry" '"attempts": "2"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+_qsetup; _qlogs
+out="$(_bq FAKE_GH_ISSUE_NUM=999 FAKE_GH_ITEM_ADD_FAIL_TEXT="boom: something gh never said before" -- add --type feature "unrecognised failure" P2)"
+check "(ao) live add with an unrecognised item-add error: the first attempt is counted" '"attempts": "1"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (ap) snapshot failure on a WIP move: transient label queues; anything else is loud ---
+_qsetup; _seed_seen 971; _qlogs
+out="$(_bq FAKE_GH_ISSUE_NUM=971 FAKE_GH_ITEM_LIST_FAIL_TEXT="HTTP 401: Bad credentials (https://api.github.com/graphql)" -- move 971 "In progress")"
+check "(ap) 401 on the snapshot: queued as a gh error (round 2), never stops work" "QUEUED (board read failed: gh error): move #971 -> In progress" "$out"
+check "(ap) 401 on the snapshot: exits 0" "rc=0" "$out"
+check "(ap) 401 on the snapshot: attempts=1, same as a non-WIP live move" '"attempts": "1"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+check "(ap) 401 on the snapshot: GitHub's error is shown" "Bad credentials" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+_qsetup; _seed_seen 971; _qlogs
+out="$(_bq FAKE_GH_ISSUE_NUM=971 FAKE_GH_ITEM_LIST_TRANSIENT=transient-timeout.txt -- move 971 "In progress")"
+check "(ap) timeout on the snapshot: queued with the label" "QUEUED (board read failed: timeout): move #971 -> In progress" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (aq) supersede: the drop runs under the queue file lock; a concurrent flush honours it ---
+_qh() { bash -c 'ROOT="$1"; export BOARD_QUEUE_FILE="$2"; source "$3"; shift 3; "$@"' _ "$QT" "$QT/q.jsonl" "$PLUGIN/scripts/board-queue.sh" "$@"; }
+_wait_for() { local f="$1" n=0; while [[ ! -e "$f" && "$n" -lt 200 ]]; do sleep 0.05; n=$((n + 1)); done; [[ -e "$f" ]]; }
+QT="$(mktemp -d)"; mkdir -p "$QT"
+printf '{"op":"move","issue":"7","status":"Backlog","seq":"1","ts":"2020-01-01T00:00:01Z"}\n{"op":"move","issue":"8","status":"Backlog","seq":"2","ts":"2020-01-01T00:00:02Z"}\n' >"$QT/q.jsonl"
+mkdir "$QT/board-queue.file.lock"   # hold the lock by hand
+_qh _queue_drop_moves 7 & DPID=$!
+_qh queue_append move issue=9 status=Backlog & APID=$!
+if _wait_for "$QT/board-queue.superseded/7"; then echo "ok   (aq) drop writes its supersede marker before waiting for the lock"; else echo "FAIL (aq) no supersede marker"; fails=$((fails + 1)); fi
+check "(aq) while the lock is held the queue file is untouched (old move still there)" '"issue":"7"' "$(cat "$QT/q.jsonl")"
+rmdir "$QT/board-queue.file.lock"
+wait "$DPID"; wait "$APID"
+qc="$(cat "$QT/q.jsonl")"
+check_absent "(aq) after the lock: the superseded move #7 is gone" '"issue": "7"' "$qc"
+check_absent "(aq) after the lock: no compact #7 either" '"issue":"7"' "$qc"
+check "(aq) the unrelated move #8 survives the rewrite" '"issue":"8"' "$qc"
+check "(aq) the racing append (#9) was not lost" '"issue": "9"' "$qc"
+check_rc "(aq) exactly 2 entries remain" 2 "$(grep -c . "$QT/q.jsonl")"
+rm -rf "$QT"
+# a flush replaying an older entry honours the marker (0 gh calls)
+_qsetup; _seen_all 7 7 7; _qlogs
+printf '{"op":"move","issue":"7","status":"Backlog","reason":"HTTP 502","seq":"1000","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+mkdir -p "$BQ/.claude/board-queue.superseded"; printf '2000' >"$BQ/.claude/board-queue.superseded/7"
+out="$(_bq FAKE_GH_ISSUES="7" FAKE_GH_ITEM_STATUS=Ready -- flush)"
+check "(aq) flush skips a superseded move with a printed line" "flush: skip superseded move #7" "$out"
+check_rc "(aq) superseded replay: 0 gh calls" 0 "$(wc -l <"$LOG" | tr -d ' ')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+# a direct move that applies (another flusher holds the lock, so no replay first) writes the marker and drops older queued moves
+_qsetup; _seen_all 7 7 7; _qlogs
+printf '{"op":"move","issue":"7","status":"Backlog","reason":"HTTP 502","seq":"1","ts":"2020-01-01T00:00:01Z"}\n{"op":"move","issue":"8","status":"Backlog","reason":"HTTP 502","seq":"2","ts":"2020-01-01T00:00:02Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+mkdir "$BQ/.claude/board-queue.lock"; echo "$$" >"$BQ/.claude/board-queue.lock/pid"
+out="$(_bq FAKE_GH_ISSUES="7 8" FAKE_GH_ITEM_STATUS=Ready -- move 7 Backlog)"
+check "(aq) direct move applied while another flusher held the lock" "moved #7 -> Backlog" "$out"
+check_absent "(aq) direct move: the older queued #7 was dropped" '"issue":"7"' "$(cat "$BQ/.claude/board-queue.jsonl")"
+check "(aq) direct move: the unrelated queued #8 is kept" '"issue":"8"' "$(cat "$BQ/.claude/board-queue.jsonl")"
+if [[ -f "$BQ/.claude/board-queue.superseded/7" ]]; then echo "ok   (aq) direct move: supersede marker written"; else echo "FAIL (aq) direct move: no supersede marker"; fails=$((fails + 1)); fi
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (ar) reason plumbing: no predictable /tmp path, nothing of ours left behind
+# (paginate.sh's sw-gh-reset file is a separate, pre-existing leak and is ignored here) ---
+check_absent "(ar) no pid-derived reason file path in board-queue.sh" 'board-qreason.$$' "$(cat "$PLUGIN/scripts/board-queue.sh")"
+_qsetup; _qlogs; TD="$(mktemp -d)"
+out="$(_bq TMPDIR="$TD" FAKE_GH_ISSUE_NUM=970 FAKE_GH_ITEM_STATUS=Ready FAKE_GH_EDIT_TRANSIENT=transient-http-502.txt -- move 970 Backlog)"
+check "(ar) queued move still reports its reason" "QUEUED (HTTP 502)" "$out"
+check_rc "(ar) no temp files left behind after the run" 0 "$(find "$TD" -type f ! -name 'sw-gh-reset.*' | grep -c . || true)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC" "$TD"
+
+
+# =====================================================================
+# #561 review round 2
+# =====================================================================
+echo "== board.sh queue failed moves (#561 round 2) =="
+
+# --- (as) WIP over-admission: the flush takes the WIP mutex BEFORE its snapshot and holds it ---
+_qsetup; _seen_all 981 982 983; _qlogs
+printf '{"op":"move","issue":"981","status":"In progress","reason":"HTTP 502","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
+: >"$SYNC/wipflush.go"; : >"$SYNC/wipflush-done.go"   # only the -snap pause is wanted
+(_bq FAKE_GH_ISSUES="981 982 983" FAKE_GH_ITEM_STATUS=Backlog BOARD_QUEUE_TEST_SYNC="$SYNC" BOARD_QUEUE_TEST_TAG=wipflush -- flush >"$SYNC/flush.out") &
+FPID=$!
+_wait_for "$SYNC/wipflush-snap.ready" || echo "FAIL (as) flush never reached the snapshot sync point" >&2
+# a LIVE start while the flush holds its snapshot: must not be admitted
+out="$(_bq FAKE_GH_ISSUES="981 982 983" FAKE_GH_ITEM_STATUS=Backlog BOARD_WIP_MUTEX_MAX_WAIT_ITERS=3 BOARD_QUEUE_FILE_LOCK_ITERS=3 -- move 982 "In progress")"
+check "(as) live start during the replay waits for the mutex and queues" "QUEUED (admission mutex busy): move #982 -> In progress" "$out"
+check "(as) the live start exits 0" "rc=0" "$out"
+: >"$SYNC/wipflush-snap.go"
+wait "$FPID"
+check_rc "(as) WIP limit 1 is never exceeded: exactly 1 edit in total (the replayed start only)" 1 "$(_cnt 'project item-edit')"
+check "(as) the replayed start applied" "moved #981 -> In progress" "$(cat "$SYNC/flush.out")"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC" "$SYNC"
+
+# --- (at) a board-wide read failure never counts attempts and never drops the queue ---
+_qsetup; _seen_all 971 972 973; _qlogs
+for n in 971 972 973; do printf '{"op":"move","issue":"%s","status":"Backlog","reason":"HTTP 502","attempts":"4","seq":"%s","ts":"2020-01-01T00:00:01Z"}\n' "$n" "$n" >>"$BQ/.claude/board-queue.jsonl"; done
+for _i in 1 2 3 4 5 6; do out="$(_bq FAKE_GH_ISSUES="971 972 973" FAKE_GH_ITEM_LIST_FAIL_TEXT="HTTP 401: Bad credentials (https://api.github.com/graphql)" -- flush)"; done
+check "(at) auth outage: one loud line, queue kept" "flush: board read failed" "$out"
+check_rc "(at) auth outage: exactly one board read per pass (6 passes, 6 reads)" 6 "$(_cnt 'project item-list')"
+check_absent "(at) auth outage: nothing is dropped" "DROPPED" "$out"
+check_rc "(at) auth outage, 6 passes: all 3 entries still queued" 3 "$(grep -c . "$BQ/.claude/board-queue.jsonl")"
+check_rc "(at) auth outage: attempts untouched (still 4 on every entry)" 3 "$(grep -c '"attempts":"4"' "$BQ/.claude/board-queue.jsonl")"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (au) per-entry unrecognised item-edit error in replay: attempts path, no stale-id re-read ---
+_qsetup; _seen_all 975 975 975; _qlogs
+printf '{"op":"move","issue":"975","status":"Backlog","reason":"gh error","attempts":"4","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="975" FAKE_GH_ITEM_STATUS=Ready FAKE_GH_EDIT_FAIL_TEXT="GraphQL: Could not resolve to a node with the global id of 'x'" -- flush)"
+check "(au) 5th failed attempt of a move: dropped, hint carries the status" 'flush: DROPPED move #975 after 5 attempts (gh error) — fix and re-run board.sh move 975 "Backlog"' "$out"
+check_rc "(au) replay of one failing move: exactly 1 board read (no stale-id re-read)" 1 "$(_cnt 'project item-list')"
+check_rc "(au) replay of one failing move: exactly 1 edit" 1 "$(_cnt 'project item-edit')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+_qsetup; _seen_all 976 976 976; _qlogs
+sed -i 's/maxInProgress: 1/maxInProgress: 3/' "$BQ/.neural-network/project.yaml"
+printf '{"op":"move","issue":"976","status":"In progress","reason":"gh error","attempts":"1","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="976" FAKE_GH_ITEM_STATUS=Backlog FAKE_GH_EDIT_FAIL_TEXT="GraphQL: Could not resolve to a node with the global id of 'x'" -- flush)"
+check "(au) WIP move: failure counted in the entry" '"attempts": "2"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+check_rc "(au) WIP move replay: exactly 1 board read" 1 "$(_cnt 'project item-list')"
+check_rc "(au) WIP move replay: exactly 1 edit" 1 "$(_cnt 'project item-edit')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (av) a live unrecognised move error is queued with attempts=1 (round 2 decision) ---
+_qsetup; _qlogs
+out="$(_bq FAKE_GH_ISSUE_NUM=977 FAKE_GH_ITEM_STATUS=Ready FAKE_GH_EDIT_FAIL_TEXT="GraphQL: Could not resolve to a node with the global id of 'x'" -- move 977 Backlog)"
+check "(av) live move, unrecognised gh error: QUEUED" "QUEUED (gh error): move #977 -> Backlog" "$out"
+check "(av) live move, unrecognised gh error: exit 0" "rc=0" "$out"
+check "(av) live move, unrecognised gh error: attempts=1" '"attempts": "1"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (av2) a live board READ failure with an unrecognised error is queued with attempts=1 too ---
+_qsetup; _qlogs
+out="$(_bq FAKE_GH_ISSUE_NUM=978 FAKE_GH_ITEM_LIST_FAIL_TEXT="GraphQL: Your token has not been granted the required scopes" -- move 978 Backlog)"
+check "(av2) live move, unreadable board: QUEUED with the read reason" "QUEUED (board read failed: gh error): move #978 -> Backlog" "$out"
+check "(av2) live move, unreadable board: attempts=1" '"attempts": "1"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (aw) add-finish with the network down: stop the pass after ONE board read, attempts untouched ---
+_qsetup; _qlogs
+printf '{"op":"add-finish","issue":"991","url":"https://github.com/fixture-owner/fixture-project/issues/991","first_status":"Backlog","prio":"P2","seq":"1","ts":"2020-01-01T00:00:01Z"}\n{"op":"add-finish","issue":"992","url":"https://github.com/fixture-owner/fixture-project/issues/992","first_status":"Backlog","prio":"P2","seq":"2","ts":"2020-01-01T00:00:02Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ITEM_LIST_TRANSIENT=transient-timeout.txt -- flush)"
+check_rc "(aw) network down: exactly 1 board read for 2 queued add-finish" 1 "$(_cnt 'project item-list')"
+check_rc "(aw) network down: both entries still queued" 2 "$(grep -c . "$BQ/.claude/board-queue.jsonl")"
+check_absent "(aw) network down: no attempts counted" "attempts" "$(cat "$BQ/.claude/board-queue.jsonl")"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (ax) the supersede marker time is the apply time handed in, not the drop time ---
+QT="$(mktemp -d)"
+printf '{"op":"move","issue":"7","status":"Backlog","seq":"4999","ts":"2020-01-01T00:00:01Z"}\n{"op":"move","issue":"7","status":"In review","seq":"5001","ts":"2020-01-01T00:00:02Z"}\n' >"$QT/q.jsonl"
+_qh _queue_drop_moves 7 5000
+qc="$(cat "$QT/q.jsonl")"
+check_absent "(ax) a move queued BEFORE the apply is dropped" '"seq":"4999"' "$qc"
+check "(ax) a move queued AFTER the apply is kept" '"seq":"5001"' "$qc"
+rm -rf "$QT"
+
+# --- (ay) queue file lock: dead holder broken at once; live holder -> spool, never an unlocked write ---
+QT="$(mktemp -d)"; mkdir "$QT/board-queue.file.lock"
+( : ) & DEADP=$!; wait "$DEADP"; echo "$DEADP" >"$QT/board-queue.file.lock/pid"
+BOARD_QUEUE_FILE_LOCK_ITERS=2 _qh queue_append move issue=5 status=Backlog
+check_rc "(ay) dead-holder file lock is broken and released" 0 "$([[ -d "$QT/board-queue.file.lock" ]] && echo 1 || echo 0)"
+check "(ay) append after breaking the stale lock lands in the queue" '"issue": "5"' "$(cat "$QT/q.jsonl" 2>/dev/null)"
+rm -rf "$QT"
+QT="$(mktemp -d)"; mkdir "$QT/board-queue.file.lock"; echo "$$" >"$QT/board-queue.file.lock/pid"
+BOARD_QUEUE_FILE_LOCK_ITERS=2 _qh queue_append move issue=6 status=Backlog
+check_rc "(ay) live-holder lock: queue file not written unlocked" 0 "$([[ -s "$QT/q.jsonl" ]] && echo 1 || echo 0)"
+check_rc "(ay) live-holder lock: the entry was spooled (1 file)" 1 "$(find "$QT/board-queue.spool" -type f 2>/dev/null | grep -c . || true)"
+rm -rf "$QT"
+# a spooled entry is merged and replayed by the next flush
+_qsetup; _seen_all 7 7 7; _qlogs
+mkdir -p "$BQ/.claude/board-queue.spool"
+printf '{"op":"move","issue":"7","status":"Backlog","reason":"HTTP 502","seq":"9","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.spool/0001.1"
+out="$(_bq FAKE_GH_ISSUES="7" FAKE_GH_ITEM_STATUS=Ready -- flush)"
+check "(ay) flush merges and replays the spooled entry" "moved #7 -> Backlog" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (az) cleanup registry, not trap parsing ---
+check_absent "(az) no trap -p parsing in board-queue.sh" 'trap -p' "$(cat "$PLUGIN/scripts/board-queue.sh")"
+
+
+# =====================================================================
+# #561 review round 3
+# =====================================================================
+echo "== board.sh queue failed moves (#561 round 3) =="
+
+# --- (ba) a mixed queue [Backlog, In progress] reads the board ONCE ---
+_qsetup; _seen_all 5 6 6; _qlogs
+sed -i 's/maxInProgress: 1/maxInProgress: 3/' "$BQ/.neural-network/project.yaml"
+printf '{"op":"move","issue":"5","status":"Backlog","reason":"HTTP 502","seq":"1","ts":"2020-01-01T00:00:01Z"}\n{"op":"move","issue":"6","status":"In progress","reason":"HTTP 502","seq":"2","ts":"2020-01-01T00:00:02Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="5 6" FAKE_GH_ITEM_STATUS=Ready -- flush)"
+check "(ba) mixed queue: the WIP start applied" "moved #6 -> In progress" "$out"
+check_rc "(ba) mixed queue [Backlog, In progress]: exactly 1 board read" 1 "$(_cnt 'project item-list')"
+check_rc "(ba) mixed queue: exactly 2 edits" 2 "$(_cnt 'project item-edit')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (bb) live add / adopt whose read-back fails: queued with a reason, exit 0 ---
+_qsetup; _qlogs
+out="$(_bq FAKE_GH_ISSUE_NUM=990 FAKE_GH_ITEM_LIST_FAIL_TEXT="GraphQL: Your token has not been granted the required scopes" -- add --type feature "found something" P2)"
+check "(bb) add + unreadable board: QUEUED with the read reason" "QUEUED (board read failed: gh error): item-add #990" "$out"
+check "(bb) add + unreadable board: exit 0" "rc=0" "$out"
+check_absent "(bb) add + unreadable board: no DEFERRED stop" "DEFERRED" "$out"
+check "(bb) add + unreadable board: add-finish queued with attempts=1" '"attempts": "1"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (bc) queue file lock: the break verifies the pid it probed; unlock only removes our own lock ---
+_dead_pid() { ( : ) & local d=$!; wait "$d"; echo "$d"; }
+QT="$(mktemp -d)"; mkdir "$QT/board-queue.file.lock"; echo "$$" >"$QT/board-queue.file.lock/pid"
+_qh _lock_break_if "$QT/board-queue.file.lock" 999999
+check_rc "(bc) break probed for a DIFFERENT pid leaves a live lock alone" 1 "$([[ -d "$QT/board-queue.file.lock" ]] && echo 1 || echo 0)"
+check "(bc) and the live holder's pid file is intact" "$$" "$(cat "$QT/board-queue.file.lock/pid" 2>/dev/null)"
+DP="$(_dead_pid)"; echo "$DP" >"$QT/board-queue.file.lock/pid"
+_qh _lock_break_if "$QT/board-queue.file.lock" "$DP"
+check_rc "(bc) break of the probed dead pid removes the lock" 0 "$([[ -d "$QT/board-queue.file.lock" ]] && echo 1 || echo 0)"
+mkdir "$QT/board-queue.file.lock"; echo "$$" >"$QT/board-queue.file.lock/pid"
+_qh _qfile_unlock
+check_rc "(bc) unlock by a process that is not the holder leaves the lock" 1 "$([[ -d "$QT/board-queue.file.lock" ]] && echo 1 || echo 0)"
+rm -rf "$QT"
+
+# --- (bd) prio/est replay: attempts path, no stale-id re-read, board-wide failure stops the pass ---
+_qsetup; _qlogs
+printf '{"op":"prio","issue":"930","priority":"P1","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="930" FAKE_GH_ITEM_STATUS=Backlog FAKE_GH_EDIT_FAIL_TEXT="GraphQL: Could not resolve to a node with the global id of 'x'" -- flush)"
+check "(bd) prio replay failure is counted" '"attempts": "1"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+check_rc "(bd) prio replay failure: exactly 1 board read (no stale-id re-read)" 1 "$(_cnt 'project item-list')"
+check_rc "(bd) prio replay failure: exactly 1 edit" 1 "$(_cnt 'project item-edit')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+_qsetup; _qlogs
+printf '{"op":"prio","issue":"930","priority":"P1","attempts":"4","seq":"1","ts":"2020-01-01T00:00:01Z"}\n{"op":"est","issue":"931","points":"5","attempts":"4","seq":"2","ts":"2020-01-01T00:00:02Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="930 931" FAKE_GH_ITEM_LIST_FAIL_TEXT="HTTP 401: Bad credentials (https://api.github.com/graphql)" -- flush)"
+check "(bd) unreadable board on prio/est: the pass stops with the board line" "flush: board read failed" "$out"
+check_rc "(bd) unreadable board on prio/est: exactly 1 board read" 1 "$(_cnt 'project item-list')"
+check_rc "(bd) unreadable board on prio/est: both entries kept" 2 "$(grep -c . "$BQ/.claude/board-queue.jsonl")"
+check_rc "(bd) unreadable board on prio/est: attempts untouched" 2 "$(grep -c '"attempts":"4"' "$BQ/.claude/board-queue.jsonl")"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (be) a WIP mutex whose holder is dead is broken (live move and flush) ---
+_qsetup; _seed_seen 984; _qlogs
+mkdir -p "$BQ/.claude/board-wip.lock"; _dead_pid >"$BQ/.claude/board-wip.lock/pid"
+out="$(_bq FAKE_GH_ISSUES="984" FAKE_GH_ITEM_STATUS=Backlog BOARD_WIP_MUTEX_MAX_WAIT_ITERS=3 -- move 984 "In progress")"
+check "(be) live start: a dead holder's WIP mutex is broken, the move applies" "moved #984 -> In progress" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+_qsetup; _seen_all 985 985 985; _qlogs
+mkdir -p "$BQ/.claude/board-wip.lock"; _dead_pid >"$BQ/.claude/board-wip.lock/pid"
+printf '{"op":"move","issue":"985","status":"In progress","reason":"HTTP 502","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="985" FAKE_GH_ITEM_STATUS=Backlog BOARD_WIP_MUTEX_MAX_WAIT_ITERS=3 -- flush)"
+check "(be) flush: a dead holder's WIP mutex is broken, the start applies" "moved #985 -> In progress" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+# a live holder is never broken
+_qsetup; _seed_seen 986; _qlogs
+mkdir -p "$BQ/.claude/board-wip.lock"; echo "$$" >"$BQ/.claude/board-wip.lock/pid"
+out="$(_bq FAKE_GH_ISSUES="986" FAKE_GH_ITEM_STATUS=Backlog BOARD_WIP_MUTEX_MAX_WAIT_ITERS=3 -- move 986 "In progress")"
+check "(be) a LIVE holder's WIP mutex is never broken" "QUEUED (admission mutex busy): move #986 -> In progress" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (bf) flush skips the pass when the queue file lock stays busy (no unlocked move-aside) ---
+_qsetup; _seen_all 987 987 987; _qlogs
+printf '{"op":"move","issue":"987","status":"Backlog","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+mkdir "$BQ/.claude/board-queue.file.lock"; echo "$$" >"$BQ/.claude/board-queue.file.lock/pid"
+out="$(_bq FAKE_GH_ISSUES="987" FAKE_GH_ITEM_STATUS=Ready BOARD_QUEUE_FILE_LOCK_ITERS=2 -- flush)"
+check "(bf) busy queue file lock: one line, pass skipped" "flush: SKIP -- queue file lock busy" "$out"
+check "(bf) busy queue file lock: the queue is untouched" '"issue":"987"' "$(cat "$BQ/.claude/board-queue.jsonl")"
+check_rc "(bf) busy queue file lock: 0 gh calls" 0 "$(wc -l <"$LOG" | tr -d ' ')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (bg) dedupe ranks by seq, not the one-second ts ---
+_qsetup; _qlogs
+printf '{"op":"prio","issue":"930","priority":"P1","seq":"2000","ts":"2020-01-01T00:00:01Z"}\n{"op":"prio","issue":"930","priority":"P2","seq":"1000","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="930" FAKE_GH_ITEM_STATUS=Backlog -- flush)"
+check "(bg) the entry with the higher seq wins inside one second" "prio #930 -> P1" "$out"
+check_absent "(bg) the lower seq is dropped, not applied" "prio #930 -> P2" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+
+# =====================================================================
+# #561 review round 4
+# =====================================================================
+echo "== board.sh queue failed moves (#561 round 4) =="
+
+# --- (ca) a queued move for an item that is NOT on the board: 1 read per call, attempts, dropped on the 5th ---
+_qsetup; _qlogs
+printf '{"op":"move","issue":"998","status":"Backlog","reason":"HTTP 502","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+for _i in 1 2 3; do out="$(_bq FAKE_GH_ISSUES="1" FAKE_GH_ITEM_STATUS=Backlog -- flush)"; done
+check_rc "(ca) absent item, 3 flushes: exactly 3 board reads (1 per call)" 3 "$(_cnt 'project item-list')"
+check_rc "(ca) absent item, 3 flushes: 0 edits" 0 "$(_cnt 'project item-edit')"
+check "(ca) absent item: counted on the entry" '"attempts": "3"' "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+for _i in 4 5; do out="$(_bq FAKE_GH_ISSUES="1" FAKE_GH_ITEM_STATUS=Backlog -- flush)"; done
+check "(ca) absent item: dropped on the 5th attempt with the adopt hint" "flush: DROPPED move #998 after 5 attempts (not on the board) — fix and re-run board.sh adopt 998" "$out"
+check_rc "(ca) absent item, 5 flushes: exactly 5 board reads, 0 edits" 5 "$(_cnt 'project item-list')"
+check_rc "(ca) absent item: nothing left in the queue" 0 "$(grep -c . "$BQ/.claude/board-queue.jsonl" 2>/dev/null || true)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (cb) adopt read-back failure queues an adopt-style op: membership re-checked, status only if empty ---
+_qsetup; _qlogs
+printf '{"op":"adopt","issue":"9","reason":"board read failed: gh error","attempts":"1","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ITEMS_JSON='{"items":[{"id":"ITEM_9","content":{"number":9},"status":"In progress"}]}' -- flush)"
+check "(cb) card moved by a human before the replay: left alone" "adopt #9: already on board" "$out"
+check_rc "(cb) human-moved card: 0 edits" 0 "$(_cnt 'project item-edit')"
+check_rc "(cb) human-moved card: exactly 1 board read" 1 "$(_cnt 'project item-list')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+_qsetup; _qlogs
+printf '{"op":"adopt","issue":"9","reason":"board read failed: gh error","attempts":"1","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ITEMS_JSON='{"items":[{"id":"ITEM_9","content":{"number":9}}]}' -- flush)"
+check "(cb) card on the board with an EMPTY status: first status set" "moved #9 -> Backlog" "$out"
+check_rc "(cb) empty status: exactly 1 edit" 1 "$(_cnt 'project item-edit')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+_qsetup; _qlogs
+printf '{"op":"adopt","issue":"9","reason":"board read failed: gh error","attempts":"1","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUE_NUM=9 FAKE_GH_ITEM_ADD_MARKER="$BQ/added" -- flush)"
+check_rc "(cb) card absent: item-add runs again" 1 "$(_cnt 'project item-add')"
+check_rc "(cb) card absent: at most 2 board reads for the entry (snapshot + one read-back)" 2 "$(_cnt 'project item-list')"
+check "(cb) card absent: the entry is done" "adopted #9" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (cc) bug verb: only QUEUED lines for THIS issue's move/prio count; stderr stays on stderr ---
+_qsetup; _qlogs
+printf '{"op":"move","issue":"999","status":"Backlog","reason":"HTTP 502","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUE_NUM=905 FAKE_GH_ISSUES="999 905" FAKE_GH_ITEM_STATUS=Ready FAKE_GH_EDIT_RATE_LIMIT_ONLY_ON=1 FAKE_GH_RESET_EPOCH=1735689600 -- bug "stray queued line" P2)"
+check "(cc) a stray QUEUED line for ANOTHER issue does not turn a filed bug into a queued one" "filed bug #905 [P2]" "$out"
+check_absent "(cc) and it is not called queued" "board update queued" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (cd) live adopt: attempts only for an unrecognised label ---
+_qsetup; _qlogs
+out="$(_bq FAKE_GH_ISSUE_NUM=992 FAKE_GH_ITEM_VISIBLE=0 FAKE_GH_ITEM_ADD_TRANSIENT=transient-http-502.txt -- adopt 992)"
+check_absent "(cd) live adopt, 5xx item-add: no attempts counted" "attempts" "$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (ce) a guard-refused queued start does not hold the WIP mutex ---
+_qsetup; _seed_seen 982; _qlogs   # 981 has no comments-seen marker: its start is guard-refused
+printf '{"op":"move","issue":"981","status":"In progress","reason":"HTTP 502","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+SYNC="$(mktemp -d)"; : >"$SYNC/.board-queue-test-sync"
+: >"$SYNC/wipflush.go"; : >"$SYNC/wipflush-snap.go"
+(_bq FAKE_GH_ISSUES="981 982" FAKE_GH_ITEM_STATUS=Backlog BOARD_QUEUE_TEST_SYNC="$SYNC" BOARD_QUEUE_TEST_TAG=wipflush -- flush >"$SYNC/flush.out") &
+FPID=$!
+_wait_for "$SYNC/wipflush-done.ready" || echo "FAIL (ce) flush never reached its end" >&2
+out="$(_bq FAKE_GH_ISSUES="981 982" FAKE_GH_ITEM_STATUS=Backlog BOARD_WIP_MUTEX_MAX_WAIT_ITERS=3 -- move 982 "In progress")"
+check "(ce) a live start while the pass holds only a refused entry applies at once" "moved #982 -> In progress" "$out"
+: >"$SYNC/wipflush-done.go"
+wait "$FPID"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC" "$SYNC"
+
+
+# =====================================================================
+# #561 round 5
+# =====================================================================
+echo "== board.sh queue failed moves (#561 round 5) =="
+
+# --- (da) replay adopt trusts the SNAPSHOT status, not the cache (a cache write can fail) ---
+_qsetup; _qlogs
+mkdir -p "$BQ/.claude/board-cache.json.tmp"      # makes every cache write fail
+printf '{"9": {"itemId": "ITEM_9", "status": ""}}' >"$BQ/.claude/board-cache.json"
+printf '{"op":"adopt","issue":"9","reason":"board read failed: gh error","attempts":"1","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ITEMS_JSON='{"items":[{"id":"ITEM_9","content":{"number":9},"status":"In progress"}]}' -- flush)"
+check "(da) stale empty cache status, snapshot says In progress: card left alone" "adopt #9: already on board" "$out"
+check_rc "(da) a human-moved card is never moved back: 0 edits" 0 "$(_cnt 'project item-edit')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (db) replay add-finish uses the flush snapshot, not a separate status read ---
+_qsetup; _qlogs
+printf '{"op":"add-finish","issue":"991","url":"https://github.com/fixture-owner/fixture-project/issues/991","first_status":"Backlog","prio":"P2","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="991" FAKE_GH_ITEM_STATUS=Ready -- flush)"
+check "(db) add-finish replay finished" "flush: finished add #991" "$out"
+check_rc "(db) add-finish replay on a present card: exactly 1 board read" 1 "$(_cnt 'project item-list')"
+check_rc "(db) add-finish replay on a card that already has a status: 1 edit (priority only, round 6: status only when empty)" 1 "$(_cnt 'project item-edit')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+_qsetup; _qlogs
+printf '{"op":"add-finish","issue":"9","url":"https://github.com/fixture-owner/fixture-project/issues/9","first_status":"Backlog","prio":"P2","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUE_NUM=9 FAKE_GH_ITEM_ADD_MARKER="$BQ/added" -- flush)"
+check "(db) add-finish replay on an absent card: finished" "flush: finished add #9" "$out"
+check_rc "(db) add-finish replay on an absent card: item-add once" 1 "$(_cnt 'project item-add')"
+check_rc "(db) add-finish replay on an absent card: exactly 2 board reads (snapshot + read-back)" 2 "$(_cnt 'project item-list')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (dc) a card added during the flush is visible to a later entry of the same flush ---
+_qsetup; _qlogs
+printf '{"op":"adopt","issue":"9","seq":"1","ts":"2020-01-01T00:00:01Z"}\n{"op":"prio","issue":"9","priority":"P1","seq":"2","ts":"2020-01-01T00:00:02Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUE_NUM=9 FAKE_GH_ITEM_ADD_MARKER="$BQ/added" -- flush)"
+check "(dc) the prio after the adopt finds the new card" "prio #9 -> P1" "$out"
+check_absent "(dc) and is not counted as not on the board" "not on the board" "$out"
+check_rc "(dc) adopt + prio in one flush: exactly 2 board reads" 2 "$(_cnt 'project item-list')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (dd) replay adopt whose read-back fails stops the pass, keeps the entry, queues nothing new ---
+_qsetup; _qlogs
+printf '{"op":"adopt","issue":"9","attempts":"1","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUE_NUM=9 FAKE_GH_ITEM_ADD_MARKER="$BQ/added" FAKE_GH_ITEM_LIST_LATE_FAIL_TEXT="GraphQL: Your token has not been granted the required scopes" FAKE_GH_ITEM_LIST_FAIL_FROM=2 -- flush)"
+check "(dd) read-back failure in replay: the board line, pass stopped" "flush: board read failed" "$out"
+check_absent "(dd) read-back failure in replay: no new QUEUED line" "QUEUED (board read failed: gh error): adopt" "$out"
+check_rc "(dd) read-back failure in replay: the original entry is the only one" 1 "$(grep -c . "$BQ/.claude/board-queue.jsonl")"
+check_rc "(dd) read-back failure in replay: attempts untouched" 1 "$(grep -c '"attempts":"1"' "$BQ/.claude/board-queue.jsonl")"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+
+# =====================================================================
+# #561 x #560: a queued --over-wip move keeps its flag through the new flush paths
+# =====================================================================
+echo "== board.sh queue (#561 x #560): over-wip flag survives requeue and attempts =="
+_qsetup; _seen_all 981 981 981; _qlogs
+BOARD_JSON='{"items":[{"id":"ITEM_1","content":{"number":1},"status":"In progress"},{"id":"ITEM_981","content":{"number":981},"status":"Backlog"}]}'
+printf '{"op":"move","issue":"981","status":"In progress","reason":"rate-limited","over_wip":"urgent fix","over_wip_by":"orchestrator","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ITEMS_JSON="$BOARD_JSON" FAKE_GH_EDIT_FAIL_TEXT="GraphQL: Could not resolve to a node with the global id of 'x'" -- flush)"
+q1="$(cat "$BQ/.claude/board-queue.jsonl" 2>/dev/null)"
+check "(ea) a failed replay keeps the over_wip flag on the requeued line" '"over_wip": "urgent fix"' "$q1"
+check "(ea) and counts the attempt on the same line" '"attempts": "1"' "$q1"
+out="$(_bq FAKE_GH_ITEMS_JSON="$BOARD_JSON" -- flush)"
+check "(ea) the next flush applies the flagged move above the limit" "OVER WIP" "$out"
+check "(ea) the move itself is reported" "moved #981 -> In progress" "$out"
+check_rc "(ea) the queue is empty afterwards" 0 "$(grep -c . "$BQ/.claude/board-queue.jsonl" 2>/dev/null || true)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+# independent review 1: dedupe keeps ONLY the newest move per issue; a flagged older move never overrides it
+_qsetup; _seen_all 981 981 981; _qlogs
+printf '{"op":"move","issue":"981","status":"In progress","over_wip":"urgent fix","over_wip_by":"orchestrator","seq":"1","ts":"2020-01-01T00:00:01Z"}\n{"op":"move","issue":"981","status":"Backlog","seq":"2","ts":"2020-01-01T00:00:02Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ITEMS_JSON='{"items":[{"id":"ITEM_1","content":{"number":1},"status":"In progress"},{"id":"ITEM_981","content":{"number":981},"status":"Ready"}]}' -- flush)"
+check_absent "(ea) dedupe: the flagged OLDER move is never applied over the newer plain one" "OVER WIP" "$out"
+check "(ea) dedupe: only the newest move applies" "moved #981 -> Backlog" "$out"
+check_rc "(ea) dedupe: exactly 1 edit" 1 "$(_cnt 'project item-edit')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+
+# --- (fa) next: PENDING lines print BEFORE #567's stale-QA report ---
+echo "== board.sh next (#561 x #567): PENDING before STALE QA =="
+_qsetup; _qlogs
+_old="$(date -u -d '3 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-3d +%Y-%m-%dT%H:%M:%SZ)"
+printf '{"kind":"transition","task":"777","from":"In review","to":"QA","ts":"%s"}\n' "$_old" >"$BQ/.claude/telemetry.jsonl"
+printf '{"op":"move","issue":"5","status":"Backlog","reason":"HTTP 502","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ITEMS_JSON='{"items":[{"id":"ITEM_777","content":{"number":777},"title":"FX-001: t","status":"QA"},{"id":"ITEM_5","content":{"number":5},"title":"FX-002: u","status":"Ready"}]}' FAKE_GH_EDIT_TRANSIENT=transient-http-502.txt -- next)"
+check "(fa) next still prints the PENDING line" "PENDING: move #5 -> Backlog" "$out"
+check "(fa) next still prints the stale QA report" "STALE QA: #777 in QA for 3d" "$out"
+_pl="$(grep -n 'PENDING:' <<<"$out" | head -1 | cut -d: -f1)"; _sl="$(grep -n 'STALE QA:' <<<"$out" | head -1 | cut -d: -f1)"
+if [[ -n "$_pl" && -n "$_sl" && "$_pl" -lt "$_sl" ]]; then echo "ok   (fa) PENDING precedes STALE QA"; else echo "FAIL (fa) PENDING (line '$_pl') must precede STALE QA (line '$_sl')"; fails=$((fails + 1)); fi
+check_rc "(fa) PENDING printed exactly once" 1 "$(grep -c 'PENDING:' <<<"$out")"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+
+# =====================================================================
+# #561 independent review 1
+# =====================================================================
+echo "== board.sh queue (#561 independent review 1) =="
+
+# --- (ga) the repro: flagged X kept by a guard, newer plain Y applies; X must never apply later ---
+_qsetup; _qlogs
+printf '{"op":"move","issue":"981","status":"In progress","over_wip":"urgent fix","over_wip_by":"orchestrator","seq":"1","ts":"2020-01-01T00:00:01Z"}\n{"op":"move","issue":"981","status":"Backlog","seq":"2","ts":"2020-01-01T00:00:02Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+J1='{"items":[{"id":"ITEM_1","content":{"number":1},"status":"In progress"},{"id":"ITEM_981","content":{"number":981},"status":"Ready"}]}'
+out="$(_bq FAKE_GH_ITEMS_JSON="$J1" -- flush)"
+check "(ga) the newest plain move applies" "moved #981 -> Backlog" "$out"
+check_rc "(ga) flush 1: the older flagged entry is gone, queue empty" 0 "$(grep -c . "$BQ/.claude/board-queue.jsonl" 2>/dev/null || true)"
+_seen_all 981 981 981
+out="$(_bq FAKE_GH_ITEMS_JSON='{"items":[{"id":"ITEM_1","content":{"number":1},"status":"In progress"},{"id":"ITEM_981","content":{"number":981},"status":"Backlog"}]}' -- flush)"
+check_absent "(ga) flush 2: the flagged move never applies later" "OVER WIP" "$out"
+check_rc "(ga) total edits across both flushes: 1" 1 "$(_cnt 'project item-edit')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+# the flag is carried onto the newest move only when it targets the same status
+_qsetup; _seen_all 981 981 981; _qlogs
+printf '{"op":"move","issue":"981","status":"In progress","over_wip":"urgent fix","over_wip_by":"orchestrator","seq":"1","ts":"2020-01-01T00:00:01Z"}\n{"op":"move","issue":"981","status":"In progress","seq":"2","ts":"2020-01-01T00:00:02Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ITEMS_JSON="$J1" -- flush)"
+check "(ga) same target status: the flag is carried onto the newest move" "OVER WIP" "$out"
+check_rc "(ga) same target status: exactly 1 edit" 1 "$(_cnt 'project item-edit')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+# a move applied during REPLAY leaves a supersede marker holding that entry's seq
+_qsetup; _qlogs
+printf '{"op":"move","issue":"981","status":"Backlog","seq":"5000","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="981" FAKE_GH_ITEM_STATUS=Ready -- flush)"
+check "(ga) replayed move: supersede marker holds the entry's seq" "5000" "$(cat "$BQ/.claude/board-queue.superseded/981" 2>/dev/null; cat "$BQ/.claude/board-queue.superseded/981" 2>/dev/null)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (gb) add-finish sets the first status only when the status is empty ---
+_qsetup; _qlogs
+printf '{"op":"add-finish","issue":"991","url":"https://github.com/fixture-owner/fixture-project/issues/991","first_status":"Backlog","prio":"P2","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="991" FAKE_GH_ITEM_STATUS="In review" -- flush)"
+check "(gb) add-finish on a card a human/agent already moved: finished" "flush: finished add #991" "$out"
+check_absent "(gb) add-finish never moves it back to the first status" "moved #991" "$out"
+check_rc "(gb) add-finish on a moved card: 1 edit (priority only)" 1 "$(_cnt 'project item-edit')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+_qsetup; _qlogs
+printf '{"op":"add-finish","issue":"991","url":"https://github.com/fixture-owner/fixture-project/issues/991","first_status":"Backlog","prio":"P2","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ITEMS_JSON='{"items":[{"id":"ITEM_991","content":{"number":991}}]}' -- flush)"
+check "(gb) add-finish on a card with an EMPTY status: first status set" "moved #991 -> Backlog" "$out"
+check_rc "(gb) add-finish on an empty-status card: 2 edits" 2 "$(_cnt 'project item-edit')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (gc) a queued prio/est with an invalid option is dropped with a printed line ---
+_qsetup; _qlogs
+printf '{"op":"prio","issue":"930","priority":"P9","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+out="$(_bq FAKE_GH_ISSUES="930" FAKE_GH_ITEM_STATUS=Backlog -- flush)"
+check "(gc) invalid priority: dropped with a printed line" "flush: DROPPED prio #930" "$out"
+check_rc "(gc) invalid priority: queue empty" 0 "$(grep -c . "$BQ/.claude/board-queue.jsonl" 2>/dev/null || true)"
+check_rc "(gc) invalid priority: 0 edits" 0 "$(_cnt 'project item-edit')"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+# --- (gd) persistent transient failure backs off: after 3 fails, at most one replay per 10 minutes ---
+_qsetup; _qlogs
+printf '{"op":"move","issue":"997","status":"Backlog","reason":"HTTP 502","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+for _i in 1 2 3 4 5; do out="$(_bq FAKE_GH_ISSUES="997" FAKE_GH_ITEM_STATUS=Ready FAKE_GH_EDIT_TRANSIENT=transient-http-502.txt -- flush)"; done
+check_rc "(gd) 5 polls of a persistently failing entry: only 3 board reads" 3 "$(_cnt 'project item-list')"
+check_rc "(gd) 5 polls of a persistently failing entry: only 3 edits" 3 "$(_cnt 'project item-edit')"
+check_rc "(gd) the entry counts its failures (the line keeps its compact style)" 1 "$(grep -cE '"fails": ?"3"' "$BQ/.claude/board-queue.jsonl")"
+check "(gd) and stores when it last tried" '"last_try"' "$(cat "$BQ/.claude/board-queue.jsonl")"
+check_rc "(gd) a backed-off poll makes 0 gh calls" 0 "$(: >"$LOG"; _bq FAKE_GH_ISSUES="997" -- flush >/dev/null; wc -l <"$LOG" | tr -d ' ')"
+# once the 10 minutes are over the entry is tried again
+sed -i 's/"last_try": \?"[0-9]*"/"last_try":"1"/' "$BQ/.claude/board-queue.jsonl"
+: >"$LOG"; out="$(_bq FAKE_GH_ISSUES="997" FAKE_GH_ITEM_STATUS=Ready -- flush)"
+check "(gd) after the back-off window the entry is replayed and applies" "moved #997 -> Backlog" "$out"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
+
+
+# --- (ha) runtime files a move writes are gitignored local state (a routine move must not dirty the tree) ---
+echo "== board.sh runtime files are ignored local state (#561) =="
+_qsetup; _qlogs
+git -C "$BQ" init -q 2>/dev/null
+bash "$PLUGIN/scripts/gitignore-sync.sh" "$BQ/.gitignore" >/dev/null
+git -C "$BQ" add -A >/dev/null 2>&1
+git -C "$BQ" -c user.name=t -c user.email=t@t commit -q -m base >/dev/null 2>&1
+printf '{"op":"move","issue":"7","status":"Backlog","reason":"HTTP 502","seq":"1","ts":"2020-01-01T00:00:01Z"}\n' >"$BQ/.claude/board-queue.jsonl"
+mkdir -p "$BQ/.claude/board-queue.spool" "$BQ/.claude/board-queue.file.lock.stale.1.2" "$BQ/.claude/board-wip.lock.stale.1.2"
+: >"$BQ/.claude/board-queue.spool/0001-1-1"; : >"$BQ/.claude/board-queue.jsonl.drop.99"
+out="$(_bq FAKE_GH_ISSUES="7 8" FAKE_GH_ITEM_STATUS=Ready -- move 8 Backlog)"
+check "(ha) the direct move applied (it wrote a supersede marker)" "moved #8 -> Backlog" "$out"
+check_rc "(ha) the supersede marker exists" 1 "$([[ -f "$BQ/.claude/board-queue.superseded/8" ]] && echo 1 || echo 0)"
+check_rc "(ha) git status is clean after the move: every runtime path is ignored" 0 "$(git -C "$BQ" status --porcelain | grep -c . || true)"
+rm -rf "$BQ" "$FGH" "$LOG" "$EDITCC" "$LISTCC"
 
 echo "== setup-project: .gitignore covers the board-queue feed =="
 check "local-state manifest ignores .claude/board-queue.jsonl" '.claude/board-queue.jsonl' "$(bash "$PLUGIN/scripts/lib/local-state.sh" ignore)"

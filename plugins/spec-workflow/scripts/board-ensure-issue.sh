@@ -132,7 +132,7 @@ if [[ -z "$num" ]]; then
     exit 0
 fi
 if grep -qE "^QUEUED .*item-add #${num}([^0-9]|\$)" <<<"$add_out"; then
-    echo "ensure-issue: QUEUED - issue #$num exists; board placement is queued for after the rate limit" >&2
+    echo "ensure-issue: QUEUED - issue #$num exists; board placement is queued and applies on a later board.sh call" >&2
 elif [[ $add_rc -ne 0 ]]; then
     echo "ensure-issue: issue #$num created but board placement failed: $(head -c 200 <<<"$add_out" | tr '\n' ' ')" >&2
 else

@@ -81,7 +81,8 @@ LOG4="$(mktemp)"; CC4="$(mktemp)"
 out="$(cd "$BG" && PATH="$FGH:$PATH" FAKE_GH_LOG="$LOG4" FAKE_GH_CALLCOUNT="$CC4" FAKE_GH_ISSUE_NUM=504 FAKE_GH_VISIBLE_AFTER=1 FAKE_GH_FAIL_EDIT=1 \
     bash "$PLUGIN/scripts/board.sh" bug "move/prio fails" P0 2>&1; echo "rc=$?")"
 check_absent "bug verb: move/prio failure -- no false success line" "filed bug" "$out"
-check "bug verb: move/prio failure exits nonzero" "rc=1" "$out"
+check "bug verb: move/prio failure is queued, exit 0 (#561 round 3: work never stops)" "rc=0" "$out"
+check "bug verb: move/prio failure says the board update is pending" "board update queued" "$out"
 
 rm -rf "$BG" "$FGH" "$LOG1" "$CC1" "$LOG2" "$CC2" "$LOG3" "$CC3" "$LOG4" "$CC4"
 
@@ -156,13 +157,14 @@ check "add: never-visible item -- QUEUED message names the issue" "item-add #604
 check_absent "add: never-visible item -- no false success line" "filed inbound" "$out"
 check "add: never-visible item exits 0 (loop keeps going)" "rc=0" "$out"
 
-# scenario 5: item-add failure -- honest non-zero failure, no false success line
+# scenario 5: item-add failure (#561) -- queued as add-finish (the item is often on the board anyway), no false success line
 LOGA5="$(mktemp)"; CCA5="$(mktemp)"
 out="$(cd "$AG" && PATH="$AGH:$PATH" FAKE_GH_LOG="$LOGA5" FAKE_GH_CALLCOUNT="$CCA5" FAKE_GH_ISSUE_NUM=605 FAKE_GH_FAIL_ITEM_ADD=1 \
     bash "$PLUGIN/scripts/board.sh" add --type inbound "item-add will fail" P2 2>&1; echo "rc=$?")"
-check "add: item-add failure -- actionable ERROR naming the issue" "ERROR: issue #605 was created but gh project item-add failed" "$out"
+check "add: item-add failure -- queued, naming the issue" "QUEUED (gh error): item-add #605" "$out"
+check_absent "add: item-add failure -- no false 'not on the board' claim (#561)" "it is not on the board" "$out"
 check_absent "add: item-add failure -- no false success line" "filed inbound" "$out"
-check "add: item-add failure exits nonzero" "rc=1" "$out"
+check "add: item-add failure exits 0 (the work never stops)" "rc=0" "$out"
 
 # scenario 6: unknown --type -- rejected, no gh calls made
 out="$(cd "$AG" && PATH="$AGH:$PATH" FAKE_GH_LOG="$(mktemp)" bash "$PLUGIN/scripts/board.sh" add --type nonsense "whatever" 2>&1; echo "rc=$?")"

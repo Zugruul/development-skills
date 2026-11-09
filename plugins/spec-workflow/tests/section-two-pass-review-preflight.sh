@@ -356,7 +356,9 @@ rm -rf "$T6S" "$T6SGH"
 # (p) idempotent + ordered: a move that fails after acceptance, re-run -> exactly 1 comment, 1 event.
 T6P="$(_ua_root)"; T6PGH="$(mktemp -d)"; _ua_gh_fixture "$T6PGH" "$T6PGH/calls"
 out="$(cd "$T6P" && UA_EDIT_FAIL=1 PATH="$T6PGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 562 QA --accepted-by-user "$QUOTE" 2>&1)"; rc=$?
-if [[ "$rc" -ne 0 ]]; then echo "ok   user-accept: (p) failing move exits non-zero"; else echo "FAIL user-accept: (p) failing move should exit non-zero"; fails=$((fails+1)); fi
+# #561: an unrecognised edit failure no longer stops work: the move is queued (exit 0) and replays later.
+check_rc "user-accept: (p) failing move is queued, exit 0" 0 "$rc"
+check "user-accept: (p) failing move says QUEUED" "QUEUED (gh error): move #562 -> QA" "$out"
 out="$(cd "$T6P" && PATH="$T6PGH:$PATH" bash "$PLUGIN/scripts/board.sh" move 562 QA --accepted-by-user "$QUOTE" 2>&1)"; rc=$?
 check_rc "user-accept: (p) re-run succeeds" 0 "$rc"
 check_rc "user-accept: (p) exactly 1 REST comment across both runs" 1 "$(_ua_count '^api -X POST repos/.*/issues/562/comments' "$T6PGH/calls")"

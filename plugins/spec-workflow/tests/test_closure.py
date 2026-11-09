@@ -1,5 +1,6 @@
 """Task closure contract exercised through bundled command boundaries."""
 import json
+import shutil
 import os
 from pathlib import Path
 import subprocess
@@ -197,6 +198,9 @@ esac
                 self.marker.unlink(missing_ok=True)
                 (self.root / ".claude/board-cache.json").unlink(missing_ok=True)
                 queue.unlink(missing_ok=True)
+                # #561: an applied direct move leaves a supersede marker; this subtest re-seeds an
+                # old-ts queue entry as if it had never applied, so forget the marker too.
+                shutil.rmtree(self.root / ".claude/board-queue.superseded", ignore_errors=True)
                 if name.startswith("queued "):
                     queue.write_text(json.dumps(dict(op="move", issue="238",
                                                     status=name.split()[1], ts=TS)) + "\n")

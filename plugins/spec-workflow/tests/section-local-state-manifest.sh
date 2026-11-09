@@ -43,6 +43,12 @@ LS_EXP_IGNORE="$(printf '%s\n' \
     '.claude/assistant/' \
     '.claude/skills/whisper-sidecar/' \
     '.claude/board-queue.lock/' \
+    '.claude/board-queue.file.lock/' \
+    '.claude/board-queue.file.lock.stale.*' \
+    '.claude/board-queue.spool/' \
+    '.claude/board-queue.superseded/' \
+    '.claude/board-queue.jsonl.drop.*' \
+    '.claude/board-wip.lock.stale.*' \
     '.claude/board-cache.json.tmp' \
     '.claude/.setup-assistant.lock' \
     '.neural-network/identities/.brain.lock' \

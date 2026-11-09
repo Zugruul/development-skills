@@ -13,6 +13,7 @@
 #   board.sh adopt <issue#>           # add an EXISTING issue to the board (idempotent; #84)
 #   board.sh agent <issue#> <name>|--clear  # label the card `agent: <name>` (REST only, replaces any other agent label; never fails the caller; #566)
 #   board.sh ensure-issue --title T [--for-branch B] [--body-file F] [--prio P]  # print the issue # a PR must close: existing, else a new inbound (REST lookup; #565)
+#   board.sh pending                  # list queued (not yet applied) moves; reads the local queue only, no gh call
 #   board.sh flush                    # replay the local rate-limit queue now (also runs automatically before next/list/show)
 #   board.sh ensure-labels            # idempotent: create any configured label (bug/feature/inbound) missing on the repo
 #   board.sh list [status]            # tab-separated: status, priority, #, title
@@ -259,8 +260,14 @@ _board_add() { # type title [prio] [origin-issue#] -> creates + boards one issue
             echo "QUEUED (rate-limited until $(_rate_limit_reset_human)): item-add #$num"
             return 0
         fi
-        echo "ERROR: issue #$num was created but gh project item-add failed — it is not on the board" >&2
-        return 1
+        # Not a rate limit (#561): item-add often reports failure although the item landed
+        # (6 of 9 issues on 2026-11-06/09). add-finish re-checks presence before it adds,
+        # then sets status and priority; the work never stops on it.
+        echo "$add_out" >&2
+        # shellcheck disable=SC2153  # FIRST_STATUS is the global set by the eval block above
+        queue_append add-finish issue="$num" url="$url" first_status="$FIRST_STATUS" prio="$prio" reason="$(_gh_failure_label "$add_out")" attempts=1
+        echo "QUEUED ($(_gh_failure_label "$add_out")): item-add #$num"
+        return 0
     fi
     # item-add is eventually consistent: poll for the new item before touching it,
     # instead of a blind sleep that flakes under load. Capped at 2 attempts with
@@ -270,24 +277,39 @@ _board_add() { # type title [prio] [origin-issue#] -> creates + boards one issue
     # zero gh calls; a miss costs exactly one, refreshing the whole cache) -- past
     # the cap we defer to the #77 queue (issue already exists; item-add/move/prio
     # still need to happen) instead of erroring.
+    _qreason_begin
     id="$(_poll_visible "$num")"; rc=$?
     if [[ $rc -ne 0 ]]; then
+        if [[ $rc -eq 4 ]]; then
+            # The board read failed for a reason other than a rate limit (GitHub's error is above).
+            # The issue exists and the work goes on: queue add-finish with the read reason (#561).
+            _why="$(_take_reason)"
+            # shellcheck disable=SC2153  # FIRST_STATUS is the global set by the eval block above
+            queue_append add-finish issue="$num" url="$url" first_status="$FIRST_STATUS" prio="$prio" reason="$_why" attempts="$(_reason_attempts "$_why")"
+            echo "QUEUED ($_why): item-add #$num"
+            return 0
+        fi
         # shellcheck disable=SC2153  # FIRST_STATUS is the global set by the eval block above, not a typo of first_status
         queue_append add-finish issue="$num" url="$url" first_status="$FIRST_STATUS" prio="$prio"
-        if [[ $rc -eq 4 ]]; then
-            # The board read failed for a reason other than a rate limit (GitHub's error is above): the
-            # work is kept, but this is a stop condition for the caller, not a quota wait.
-            echo "DEFERRED (board read failed, not a rate limit): add-finish #$num is kept in the queue; fix the error above, then run: board.sh flush" >&2
-            return 1
-        fi
         echo "QUEUED (rate-limited until $(_rate_limit_reset_human)): item-add #$num"
         return 0
     fi
-    if "$0" move "$num" "$FIRST_STATUS" && "$0" prio "$num" "$prio"; then
-        echo "filed $type #$num [$prio]"
-    else
+    local mv_out pr_out mv_rc pr_rc=0
+    mv_out="$("$0" move "$num" "$FIRST_STATUS")"; mv_rc=$?
+    printf '%s\n' "$mv_out"
+    if [[ $mv_rc -eq 0 ]]; then
+        pr_out="$("$0" prio "$num" "$prio")"; pr_rc=$?
+        printf '%s\n' "$pr_out"
+    fi
+    if [[ $mv_rc -ne 0 || $pr_rc -ne 0 ]]; then
         echo "ERROR: issue #$num is on the board but move/prio failed" >&2
         return 1
+    elif grep -Eq "^QUEUED \(.*\): (move|prio) #$num( |$)" <<<"$mv_out"$'\n'"${pr_out:-}"; then
+        # A queued move/prio is a delayed update, not a failure and not yet a filed card (#561).
+        # Same line shape as the rate-limited add, so ensure-issue (#565) parses it (#561).
+        echo "QUEUED (board update queued): item-add #$num"
+    else
+        echo "filed $type #$num [$prio]"
     fi
 }
 
@@ -295,13 +317,15 @@ case "${1:-}" in
     next)
         bash "$HERE/checkpoint-preflight.sh" --root "$ROOT" --board "${BOARD:-}" || exit 1
         _flush_queue
-        _tmp="$(mktemp)"; _errf="$(mktemp)"; trap 'rm -f "$_tmp" "$_errf" "$PAGINATE_RESET_FILE"' EXIT
+        _tmp="$(mktemp)"; _errf="$(mktemp)"; trap 'rm -f "$_tmp" "$_errf"; _bq_exit' EXIT
         if gh_project_items_json "$PN" "$OWNER" >"$_tmp" 2>"$_errf"; then
             # stderr on the success path is a non-fatal warning (e.g. paginate.sh's
             # hard-cap notice) -- forward it instead of silently swallowing it.
             [[ -s "$_errf" ]] && cat "$_errf" >&2
             _cache_refresh_from_items <"$_tmp"  # whole-board command (#78): refresh the cache as a side effect
-            python3 "$HERE/next.py" "$CONFIG" "${BOARD:-}" "$_tmp" "${2:-}"
+            # #561: queued moves print BEFORE #567's stale-QA report (next.py prints this text
+            # just ahead of it); local queue file only, no gh call.
+            NEXT_PENDING_TEXT="$(_queue_pending)" python3 "$HERE/next.py" "$CONFIG" "${BOARD:-}" "$_tmp" "${2:-}"
         else
             _errtext="$(cat "$_errf")"
             if _rate_limited "$_errtext"; then
@@ -309,6 +333,7 @@ case "${1:-}" in
             else
                 echo "$_errtext" >&2
             fi
+            _queue_pending
             exit 1
         fi
         ;;
@@ -392,27 +417,50 @@ except OSError:
         if [[ "$_ua_set" -eq 1 ]]; then
             bash "$HERE/user-acceptance.sh" --root "$ROOT" --repo "$REPO" --task "$2" --status "$3" --quote "$_ua_quote" || exit $?
         fi
+        # Older queued moves replay first (oldest first), so a newer move can never be
+        # overtaken by a stale one; one replay per call (#561).
+        _flush_queue
         _do_move "$2" "$3"; rc=$?
         # Keep the local task record honest; this never fails the move.
-        if [[ $rc -eq 0 || $rc -eq 2 ]]; then
+        if [[ $rc -eq 0 || $rc -eq 2 || $rc -eq 5 ]]; then
             python3 "$HERE/task_state.py" --root "$ROOT" sync --id "$2" --status "$3" >/dev/null 2>&1 || true
         fi
-        if [[ $rc -eq 2 ]]; then
+        if [[ $rc -eq 0 ]]; then
+            _queue_drop_moves "$2" "${_APPLIED_NS:-}"  # this move supersedes any older queued one for the issue
+        elif [[ $rc -eq 2 ]]; then
             if [[ -n "$OVER_WIP_REASON" ]]; then
-                queue_append move issue="$2" status="$3" over_wip="$OVER_WIP_REASON" over_wip_by="${OVER_WIP_BY:-orchestrator}"
+                queue_append move issue="$2" status="$3" reason="rate-limited" over_wip="$OVER_WIP_REASON" over_wip_by="${OVER_WIP_BY:-orchestrator}"
             else
-                queue_append move issue="$2" status="$3"
+                queue_append move issue="$2" status="$3" reason="rate-limited"
             fi
             echo "QUEUED (rate-limited until $(_rate_limit_reset_human)): move #$2 -> $3"
             exit 0
+        elif [[ $rc -eq 5 ]]; then
+            # Not a guard refusal and not a rate limit: the board update is delayed, never lost.
+            _reason="$(_take_reason)"
+            if [[ -n "$OVER_WIP_REASON" ]]; then
+                queue_append move issue="$2" status="$3" reason="$_reason" attempts="$(_reason_attempts "$_reason")" over_wip="$OVER_WIP_REASON" over_wip_by="${OVER_WIP_BY:-orchestrator}"
+            else
+                queue_append move issue="$2" status="$3" reason="$_reason" attempts="$(_reason_attempts "$_reason")"
+            fi
+            echo "QUEUED ($_reason): move #$2 -> $3"
+            exit 0
         fi
         exit "$rc"
+        ;;
+    pending)
+        _queue_pending  # local queue file only: no gh call
         ;;
     prio)
         _do_prio "$2" "$3"; rc=$?
         if [[ $rc -eq 2 ]]; then
             queue_append prio issue="$2" priority="$3"
             echo "QUEUED (rate-limited until $(_rate_limit_reset_human)): prio #$2 -> $3"
+            exit 0
+        elif [[ $rc -eq 5 ]]; then
+            _reason="$(_take_reason)"
+            queue_append prio issue="$2" priority="$3" reason="$_reason" attempts="$(_reason_attempts "$_reason")"
+            echo "QUEUED ($_reason): prio #$2 -> $3"
             exit 0
         fi
         exit "$rc"
@@ -422,6 +470,11 @@ except OSError:
         if [[ $rc -eq 2 ]]; then
             queue_append est issue="$2" points="$3"
             echo "QUEUED (rate-limited until $(_rate_limit_reset_human)): est #$2 -> $3"
+            exit 0
+        elif [[ $rc -eq 5 ]]; then
+            _reason="$(_take_reason)"
+            queue_append est issue="$2" points="$3" reason="$_reason" attempts="$(_reason_attempts "$_reason")"
+            echo "QUEUED ($_reason): est #$2 -> $3"
             exit 0
         fi
         exit "$rc"
@@ -438,10 +491,16 @@ except OSError:
         ;;
     adopt)
         [[ -z "${2:-}" ]] && { echo "ERROR: adopt requires an issue number" >&2; exit 1; }
+        _flush_queue
         _do_adopt "$2"; rc=$?
         if [[ $rc -eq 2 ]]; then
             queue_append adopt issue="$2"
             echo "QUEUED (rate-limited until $(_rate_limit_reset_human)): adopt #$2"
+            exit 0
+        elif [[ $rc -eq 5 ]]; then
+            _reason="$(_take_reason)"
+            queue_append adopt issue="$2" reason="$_reason" attempts="$(_reason_attempts "$_reason")"
+            echo "QUEUED ($_reason): adopt #$2"
             exit 0
         fi
         exit "$rc"
@@ -496,6 +555,7 @@ except OSError:
             else
                 echo "$_errtext" >&2
             fi
+            _queue_pending
             exit 1
         fi
         [[ -s "$_errf" ]] && cat "$_errf" >&2
@@ -515,6 +575,7 @@ for it in data.get("items", []):
     title = it.get("title") or content.get("title", "")
     print(f"{status}\t{priority}\t#{num}\t{title}")
 ' "${2:-}" <<<"$out"
+        _queue_pending
         ;;
     issues)
         # Read-only dump for the dedup pipeline (similar.py). This is the ONLY gh call
@@ -604,7 +665,7 @@ for f in json.load(sys.stdin)["fields"]:
         exit "$rc"
         ;;
     *)
-        echo "usage: board.sh {next|show|move|prio|est|add|bug|adopt|agent|flush|ensure-labels|list|issues|comment|edit-body|fields|config|metrics|audit} ..." >&2
+        echo "usage: board.sh {next|show|move|prio|est|add|bug|adopt|pending|agent|flush|ensure-labels|list|issues|comment|edit-body|fields|config|metrics|audit} ..." >&2
         exit 1
         ;;
 esac

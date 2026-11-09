@@ -45,6 +45,8 @@ _rate_limited() {
     # Recognised by code even when the text is reworded, and WITHOUT the REST probe below:
     # one token has two GraphQL counters and `gh api rate_limit` shows only one of them.
     grep -qE 'RATE_LIMIT|graphql_rate_limit' <<<"$1" && return 0
+    # A recognised 5xx/timeout/network failure is not a masked rate limit: no probe call (#561).
+    [[ "$(_gh_failure_label "$1")" != "gh error" ]] && return 1
     _graphql_remaining_is_zero
 }
 
@@ -63,6 +65,89 @@ except Exception:
     print(-1)
 ' "$raw")"
     [[ "$remaining" == "0" ]]
+}
+
+# _gh_failure_label <gh-error-text> -> short human reason for a non-rate-limit
+# gh failure, used in "QUEUED (<reason>)" and the PENDING display (#561). It
+# only LABELS: every non-guard failure is queued, the label says why. Order
+# matters -- an "HTTP 504: Gateway Timeout" must read as HTTP 504, not timeout.
+# Wording covered (see tests/fixtures/gh-failures/transient-*.txt): gh's
+# "HTTP <code>: <text> (<url>)", Go net/http deadline/DNS errors, and gh's own
+# "error connecting to api.github.com". Anything else is a generic "gh error".
+_gh_failure_label() {
+    local t="$1" code
+    code="$(grep -oE 'HTTP 5[0-9][0-9]' <<<"$t" | head -1)"
+    if [[ -n "$code" ]]; then printf '%s' "$code"; return 0; fi
+    if grep -qiE 'timeout|timed out|deadline exceeded' <<<"$t"; then printf 'timeout'; return 0; fi
+    if grep -qiE 'error connecting to|no such host|dial tcp|connection (refused|reset)|network is unreachable|TLS handshake|unexpected EOF|: EOF' <<<"$t"; then printf 'network error'; return 0; fi
+    printf 'gh error'
+}
+
+# Cleanup registry (#561): ONE EXIT trap function removes every temp file and held
+# lock directory this script registered, so no trap parsing or chaining is needed.
+# paginate.sh's own EXIT trap only removes its reset file, which _bq_exit does too
+# (callers that install their own EXIT trap must call _bq_exit from it).
+_CLEAN_LIST=""
+_cleanup_add() { _CLEAN_LIST="$_CLEAN_LIST$1"$'\n'; }
+_cleanup_del() {
+    local out="" l
+    while IFS= read -r l; do
+        if [[ -n "$l" && "$l" != "$1" ]]; then out="$out$l"$'\n'; fi
+    done <<<"$_CLEAN_LIST"
+    _CLEAN_LIST="$out"
+}
+_bq_exit() {
+    local l
+    [[ -n "${PAGINATE_RESET_FILE:-}" ]] && rm -f "$PAGINATE_RESET_FILE"
+    while IFS= read -r l; do
+        [[ -z "$l" ]] && continue
+        if [[ -d "$l" ]]; then rm -f "$l/pid"; rmdir "$l" 2>/dev/null || true; else rm -f "$l"; fi
+    done <<<"$_CLEAN_LIST"
+    _CLEAN_LIST=""
+    return 0
+}
+trap _bq_exit EXIT
+
+# Why the last move failed retryably (#561). _do_move runs parts of its work in
+# subshells, so the reason travels through a private mktemp file, not a variable.
+# Each _do_* that can fail retryably calls _qreason_begin (allocates the file once,
+# empties it); every other _do_* sets _QREASON_WANT=0 so nothing is written.
+# The caller reads it once with _take_reason; the EXIT trap removes the file.
+_QREASON_FILE=""
+_QREASON_WANT=0
+_qreason_begin() {
+    _QREASON_WANT=1
+    if [[ -z "$_QREASON_FILE" ]]; then
+        _QREASON_FILE="$(mktemp)"
+        _cleanup_add "$_QREASON_FILE"
+    fi
+    : >"$_QREASON_FILE"
+}
+_qreason() {
+    [[ "${_QREASON_WANT:-0}" == "1" && -n "$_QREASON_FILE" ]] && printf '%s' "$1" >"$_QREASON_FILE"
+    return 0
+}
+_take_reason() {
+    local r=""
+    [[ -n "$_QREASON_FILE" ]] && { r="$(cat "$_QREASON_FILE" 2>/dev/null)"; : >"$_QREASON_FILE"; }
+    printf '%s' "${r:-gh error}"
+}
+_qreason_cleanup() { _bq_exit; }
+
+# _reason_attempts <reason> -> "1" for a live failure whose label is unrecognised
+# (the live attempt counts), nothing otherwise.
+_reason_attempts() {
+    case "$1" in "gh error"|"board read failed: gh error") printf '1' ;; esac
+}
+
+# _now_ns -> wall clock in nanoseconds (bash 5 EPOCHREALTIME is free; python elsewhere).
+_now_ns() {
+    if [[ -n "${EPOCHREALTIME:-}" ]]; then
+        local t="${EPOCHREALTIME//[.,]/}"
+        printf '%s000' "$t"
+    else
+        python3 -c 'import time; print(time.time_ns())'
+    fi
 }
 
 # _rate_limit_reset_human -> ISO-8601 UTC reset time: from the last rejected read's
@@ -98,23 +183,130 @@ except Exception:
 ' "$raw"
 }
 
-# queue_append <op> <key=value>... -> appends one JSON line (op + given keys
-# + a ts) to QUEUE_FILE. Values are passed as argv (never string-concatenated
-# into JSON by hand) so titles/statuses with quotes/spaces stay safe.
-queue_append() {
-    local op="$1"; shift
+# Short mutex around every REWRITE of the live queue file and every append to
+# it (#561): a drop that rewrites the file must not lose an append or a flush
+# requeue made meanwhile. Bounded wait (BOARD_QUEUE_FILE_LOCK_ITERS x 0.05s). A
+# holder whose pid is dead is broken at once; a pidless lock only after 30s; a
+# live holder never. The break renames the lock aside first (atomic), so two
+# waiters cannot both end up holding it. Distinct from the flush lock above,
+# which is held for a whole replay. Returns 1 if the wait ran out.
+QUEUE_FILE_LOCK_DIR="$(dirname "$QUEUE_FILE")/board-queue.file.lock"
+QUEUE_SPOOL_DIR="$(dirname "$QUEUE_FILE")/board-queue.spool"
+# _lock_break_if <lockdir> <probed-pid>: break a lock whose holder was probed dead.
+# The dir is renamed aside FIRST (atomic: one breaker wins), then the pid inside the
+# renamed copy must still be the one that was probed -- otherwise another waiter broke
+# it and a live holder re-took it between our probe and our rename, so the lock is put
+# back. Returns 0 only when the stale lock is gone.
+_lock_break_if() {
+    local dir="$1" probed="$2" aside inner
+    aside="$dir.stale.$$.$RANDOM"
+    mv "$dir" "$aside" 2>/dev/null || return 1
+    inner="$(cat "$aside/pid" 2>/dev/null || true)"
+    if [[ "$inner" == "$probed" ]]; then
+        rm -rf "$aside"
+        return 0
+    fi
+    mv "$aside" "$dir" 2>/dev/null || rm -rf "$aside"
+    return 1
+}
+
+# _lock_dead_holder <lockdir> -> prints the holder pid and returns 0 iff a pid file
+# names a process that is no longer running.
+_lock_dead_holder() {
+    local hp
+    hp="$(cat "$1/pid" 2>/dev/null || true)"
+    [[ -n "$hp" ]] && ! kill -0 "$hp" 2>/dev/null && { printf '%s' "$hp"; return 0; }
+    return 1
+}
+
+_qfile_lock() {
+    local n=0 max="${BOARD_QUEUE_FILE_LOCK_ITERS:-100}" hp age dead
     mkdir -p "$(dirname "$QUEUE_FILE")"
-    python3 -c '
+    while :; do
+        if mkdir "$QUEUE_FILE_LOCK_DIR" 2>/dev/null; then
+            echo "$$" >"$QUEUE_FILE_LOCK_DIR/pid" 2>/dev/null || true
+            _cleanup_add "$QUEUE_FILE_LOCK_DIR"
+            return 0
+        fi
+        dead=0
+        hp="$(cat "$QUEUE_FILE_LOCK_DIR/pid" 2>/dev/null || true)"
+        if [[ -n "$hp" ]]; then
+            kill -0 "$hp" 2>/dev/null || dead=1
+        else
+            age=$(( $(date +%s) - $(_dir_mtime "$QUEUE_FILE_LOCK_DIR") ))
+            [[ "$age" -ge 30 ]] && dead=1
+        fi
+        [[ "$dead" -eq 1 ]] && _lock_break_if "$QUEUE_FILE_LOCK_DIR" "$hp"
+        n=$((n + 1))
+        [[ "$n" -ge "$max" ]] && return 1
+        [[ "$dead" -eq 1 ]] || sleep 0.05
+    done
+}
+# Remove the lock only if the pid inside is ours (a lock broken and re-taken by
+# another process must not be released by its former, slow holder).
+_qfile_unlock() {
+    local hp
+    hp="$(cat "$QUEUE_FILE_LOCK_DIR/pid" 2>/dev/null || true)"
+    [[ "$hp" == "$$" ]] || return 0
+    rm -f "$QUEUE_FILE_LOCK_DIR/pid" 2>/dev/null
+    rmdir "$QUEUE_FILE_LOCK_DIR" 2>/dev/null || true
+    _cleanup_del "$QUEUE_FILE_LOCK_DIR"
+}
+
+# _qwrite_line <json-line>: append one line to the queue. Two bounded waits for the
+# file lock; if it is still held, write an atomic spool file instead (never an
+# unlocked append next to a rewrite). The next flush merges the spool.
+_qwrite_line() {
+    mkdir -p "$(dirname "$QUEUE_FILE")"
+    if _qfile_lock || _qfile_lock; then
+        printf '%s\n' "$1" >>"$QUEUE_FILE"
+        _qfile_unlock
+        return 0
+    fi
+    mkdir -p "$QUEUE_SPOOL_DIR"
+    local tmp name
+    tmp="$(mktemp "$QUEUE_SPOOL_DIR/.tmp.XXXXXX")" || return 1
+    printf '%s\n' "$1" >"$tmp"
+    name="$(date +%s)-$$-$RANDOM"
+    mv "$tmp" "$QUEUE_SPOOL_DIR/$name"
+    return 0
+}
+
+# _spool_merge: move spooled entries into the queue file (caller holds the file lock).
+_spool_merge() {
+    local f
+    [[ -d "$QUEUE_SPOOL_DIR" ]] || return 0
+    for f in "$QUEUE_SPOOL_DIR"/*; do
+        [[ -f "$f" ]] || continue
+        cat "$f" >>"$QUEUE_FILE" && rm -f "$f"
+    done
+}
+
+# queue_append <op> <key=value>... -> appends one JSON line (op + given keys
+# + a ts and a nanosecond seq) to QUEUE_FILE. Values are passed as argv (never
+# string-concatenated into JSON by hand) so titles/statuses with quotes/spaces
+# stay safe. seq orders an entry against a supersede marker (see
+# _queue_drop_moves) finer than the one-second ts.
+queue_append() {
+    local op="$1" line; shift
+    line="$(python3 -c '
 import json, sys, time
 op = sys.argv[1]
 d = {"op": op}
 for pair in sys.argv[2:]:
     k, _, v = pair.partition("=")
+    if k == "attempts" and v == "":
+        continue
     d[k] = v
 d["ts"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+d.setdefault("seq", str(time.time_ns()))
 print(json.dumps(d))
-' "$op" "$@" >>"$QUEUE_FILE"
+' "$op" "$@")"
+    _qwrite_line "$line"
 }
+
+# _queue_append_raw <json-line>: flush's requeue, same lock and spool rules.
+_queue_append_raw() { _qwrite_line "$1"; }
 
 _jf() { # <json-line> <field> -> value ("" if absent)
     python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get(sys.argv[2],""))' "$1" "$2"
@@ -163,7 +355,7 @@ _flush_sync() {
 # failed for another reason (GitHub's error is already on stderr). Callers
 # must NOT treat 4 as "not on the board" (adopt/add-finish would item-add).
 _item_id_rl() {
-    local num="$1" hit out err rc id
+    local num="$1" hit out err rc id label
     hit="$(_cache_get "$num")" && { cut -f1 <<<"$hit"; return 0; }
     err="$(mktemp)"
     out="$(gh_project_items_json "$PN" "$OWNER" 2>"$err")"; rc=$?
@@ -173,6 +365,10 @@ _item_id_rl() {
             return 2
         fi
         cat "$err" >&2
+        # Board-wide read failure (#561): the reason names it, so a replay stops the pass
+        # and keeps the queue instead of counting attempts against every entry.
+        label="$(_gh_failure_label "$(cat "$err")")"
+        _qreason "board read failed: $label"
         rm -f "$err"
         return 4
     fi
@@ -252,9 +448,13 @@ _current_status() { # issue# -> status string ("" if not found / lookup failed)
 # per criterion 5 ("a mutation rejected because remote state changed drops
 # the entry and re-resolves once").
 # Return: 0 = applied, 1 = real failure (message already printed), 2 =
-# rate-limited, 3 = no such item (caller prints the specific message).
+# rate-limited, 3 = no such item (caller prints the specific message), 5 =
+# queueable gh failure (#561: a board read or edit failed, not a rate limit; the
+# reason is left for _take_reason: a transient label, "board read failed: <label>"
+# for a board-wide read, or "gh error" for an unrecognised per-entry error, which
+# the queue counts attempts for). Callers queue it so work never stops on a card.
 _mutate_field() {
-    local num="$1" field="$2" flag="$3" value="$4" new_status="$5" id out rc id2
+    local num="$1" field="$2" flag="$3" value="$4" new_status="$5" id out rc id2 label
     # Admission passes the exact fresh identity. It must never be replaced by
     # a concurrent cache refresh or the generic stale-id retry below.
     if [[ -n "${6:-}" ]]; then
@@ -264,7 +464,7 @@ _mutate_field() {
         id="$(_item_id_rl "$num")"; rc=$?
     fi
     [[ $rc -eq 2 ]] && return 2
-    [[ $rc -eq 4 ]] && return 1
+    [[ $rc -eq 4 ]] && return 5   # board-wide read failure; _item_id_rl left the reason
     [[ -z "$id" ]] && return 3
     out="$(gh project item-edit --id "$id" --project-id "$PID" --field-id "$field" "$flag" "$value" 2>&1)"; rc=$?
     if [[ $rc -eq 0 ]]; then
@@ -274,17 +474,25 @@ _mutate_field() {
     if _rate_limited "$out"; then
         return 2
     fi
-    _cache_drop "$num"
-    if [[ -n "${6:-}" ]]; then
+    label="$(_gh_failure_label "$out")"
+    # A 5xx/timeout/network failure says nothing about the cached id: report
+    # and let the caller queue, without another board read (#561). During a
+    # replay the id came from a snapshot read moments ago, so an unrecognised
+    # error is not a stale id either: no full-board re-read, the entry's
+    # attempt count takes it from here.
+    if [[ "$label" != "gh error" || "${_FLUSH_USE_SNAP:-0}" == "1" || -n "${6:-}" ]]; then
         echo "$out" >&2
-        return 1
+        _qreason "$label"
+        return 5
     fi
+    _cache_drop "$num"
     id2="$(_item_id_rl "$num")"; rc=$?
     if [[ $rc -eq 2 ]]; then return 2; fi
-    if [[ $rc -eq 4 ]]; then return 1; fi
+    if [[ $rc -eq 4 ]]; then return 5; fi
     if [[ -z "$id2" || "$id2" == "$id" ]]; then
         echo "$out" >&2
-        return 1
+        _qreason "$label"
+        return 5
     fi
     out="$(gh project item-edit --id "$id2" --project-id "$PID" --field-id "$field" "$flag" "$value" 2>&1)"; rc=$?
     if [[ $rc -eq 0 ]]; then
@@ -293,7 +501,8 @@ _mutate_field() {
     fi
     if _rate_limited "$out"; then return 2; fi
     echo "$out" >&2
-    return 1
+    _qreason "$(_gh_failure_label "$out")"
+    return 5
 }
 
 # Lock ordering is flush -> WIP. Direct moves never take the flush lock.
@@ -302,38 +511,62 @@ _mutate_field() {
 # Hard-crash leftovers require verified-idle manual recovery (see README).
 _wip_mutate() (
     local num="$1" status="$2" opt="$3" lock="$ROOT/.claude/board-wip.lock"
-    local waited=0 out err rc id
-    mkdir -p "$(dirname "$lock")" || return 1
-    until mkdir "$lock" 2>/dev/null; do
-        if [[ "$waited" -eq 0 ]]; then
-            echo "WIP: waiting for admission mutex $lock" >&2
-        fi
-        if [[ "$waited" -ge 200 ]]; then
-            echo "WIP BLOCKED: admission mutex busy or stuck at $lock; verify all holders and child commands are idle before manual recovery (never remove a live lock)" >&2
-            return 1
-        fi
-        sleep 0.05
-        waited=$((waited + 1))
-    done
-    trap 'rm -f "$lock/pid"; rmdir "$lock" 2>/dev/null || true' EXIT
-    trap 'exit 130' INT
-    trap 'exit 143' TERM
-    trap 'exit 129' HUP
-    printf '%s\n' "$$" >"$lock/pid" || return 1
+    local waited=0 out err rc id dead
+    if [[ "${_FLUSH_HOLDS_WIP:-0}" != "1" ]]; then
+        mkdir -p "$(dirname "$lock")" || return 1
+        until mkdir "$lock" 2>/dev/null; do
+            # A SIGKILLed holder must not freeze board moves: break only on a DEAD pid.
+            if dead="$(_lock_dead_holder "$lock")"; then
+                echo "WIP: breaking admission mutex of dead holder (pid $dead)" >&2
+                _lock_break_if "$lock" "$dead"
+                continue
+            fi
+            if [[ "$waited" -eq 0 ]]; then
+                echo "WIP: waiting for admission mutex $lock" >&2
+            fi
+            if [[ "$waited" -ge "${BOARD_WIP_MUTEX_MAX_WAIT_ITERS:-200}" ]]; then
+                echo "WIP BLOCKED: admission mutex busy or stuck at $lock; verify all holders and child commands are idle before manual recovery (never remove a live lock)" >&2
+                _qreason "admission mutex busy"
+                return 5
+            fi
+            sleep 0.05
+            waited=$((waited + 1))
+        done
+        trap 'rm -f "$lock/pid"; rmdir "$lock" 2>/dev/null || true' EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        trap 'exit 129' HUP
+        printf '%s\n' "$$" >"$lock/pid" || return 1
+    fi
     # Do not stretch the early checkpoint check across time spent waiting.
     bash "$HERE/checkpoint-preflight.sh" --root "$ROOT" --board "${BOARD:-}" --status "$status" || return 1
     err="$(mktemp)" || return 1
-    out="$(gh_project_items_json "$PN" "$OWNER" --strict 2>"$err")"; rc=$?
+    if [[ "${_FLUSH_HOLDS_WIP:-0}" == "1" && -n "${_FLUSH_SNAP:-}" ]]; then
+        # Replay (#561): the flush already read a complete snapshot under its lock and
+        # patches it after every applied move, so N queued starts cost ONE board read.
+        out="$_FLUSH_SNAP"; rc=0
+    else
+        out="$(gh_project_items_json "$PN" "$OWNER" --strict 2>"$err")"; rc=$?
+    fi
     if [[ "$rc" -ne 0 ]]; then
+        local errtext label
+        errtext="$(cat "$err")"
         # rc=3 is malformed/incomplete data, never a transport rate limit.
-        if [[ "$rc" -ne 3 ]] && _rate_limited "$(cat "$err")"; then
+        if [[ "$rc" -ne 3 ]] && _rate_limited "$errtext"; then
             rm -f "$err"
             return 2
         fi
         echo "WIP BLOCKED: cannot obtain complete board snapshot" >&2
-        cat "$err" >&2
+        printf '%s\n' "$errtext" >&2
         rm -f "$err"
-        return 1
+        if [[ "$rc" -eq 3 ]]; then
+            label="board snapshot incomplete"
+        else
+            # Same label as a non-WIP live move that cannot read the board.
+            label="board read failed: $(_gh_failure_label "$errtext")"
+        fi
+        _qreason "$label"
+        return 5
     fi
     rm -f "$err"
     local over_flag=()
@@ -367,21 +600,12 @@ _over_wip_flag() {
     echo "OVER WIP $ratio: #$num moved to $status ($OVER_WIP_REASON)"
 }
 
-# _do_move/_do_prio/_do_est: same effect as the move/prio/est case branches,
-# factored out so both the live command AND flush replay share one
-# implementation. Return 0 = applied, 1 = real (non-rate-limit) failure,
-# 2 = rate-limited (caller decides: queue live, or re-queue-and-stop in flush).
-#
-# CDX-030 (SPEC-CODEX-COMPAT.md §9.1/§12): a move to "In review" runs
-# gate-preflight.sh BEFORE any mutation, regardless of entrypoint (direct
-# call, flush replay, a future non-hook wrapper) -- this is the actual
-# gate-before-review enforcement point; the Claude PreToolUse hook
-# (guard-board-move.sh) is defense in depth on top of it, not the sole
-# mechanism (Codex has no hook-equivalent lifecycle event at all). Status
-# comparison is normalized the same way guard-board-move.sh's norm() does
-# (collapse whitespace, lowercase) so "In review"/"in review"/etc. all match.
-_do_move() {
-    local num="$1" status="$2" opt rc norm_status _seen
+# _move_guards <issue#> <status>: every LOCAL precondition of a move (checkpoint,
+# gate, red-first, design-registry, two-pass review, closure, comments read). No
+# gh call. Returns 1 with the refusal printed. Flush runs it BEFORE any board read
+# so a guard-refused queued entry costs zero gh calls per board.sh call (#561).
+_move_guards() {
+    local num="$1" status="$2" norm_status _seen
     # Check the active board's configured work status, independently of the
     # historical English-label comment/review/closure guards below.
     bash "$HERE/checkpoint-preflight.sh" --root "$ROOT" --board "${BOARD:-}" --status "$status" || return 1
@@ -437,6 +661,31 @@ print("yes" if data.get(num) is True else "no")
             return 1
         fi
     fi
+    return 0
+}
+
+# _do_move/_do_prio/_do_est: same effect as the move/prio/est case branches,
+# factored out so both the live command AND flush replay share one
+# implementation. Return 0 = applied, 1 = guard/validation refusal (never
+# queued; replay drops it), 2 = rate-limited (caller decides: queue live, or
+# re-queue-and-stop in flush), 5 = retryable failure that is not a rate limit
+# (#561: gh/network error, incomplete snapshot, busy admission mutex; the
+# caller queues it and reads the reason with _take_reason).
+#
+# CDX-030 (SPEC-CODEX-COMPAT.md §9.1/§12): a move to "In review" runs
+# gate-preflight.sh BEFORE any mutation, regardless of entrypoint (direct
+# call, flush replay, a future non-hook wrapper) -- this is the actual
+# gate-before-review enforcement point; the Claude PreToolUse hook
+# (guard-board-move.sh) is defense in depth on top of it, not the sole
+# mechanism (Codex has no hook-equivalent lifecycle event at all). Status
+# comparison is normalized the same way guard-board-move.sh's norm() does
+# (collapse whitespace, lowercase) so "In review"/"in review"/etc. all match.
+_do_move() {
+    local num="$1" status="$2" opt rc
+    _qreason_begin
+    if [[ "${_GUARDS_DONE:-}" != "$num:$status" ]]; then
+        _move_guards "$num" "$status" || return 1
+    fi
     opt="$(opt_id status "$status")"
     if [[ -z "$opt" ]]; then
         echo "ERROR: bad issue# or status '$status' (must match statusFlow)" >&2
@@ -450,6 +699,7 @@ print("yes" if data.get(num) is True else "no")
     esac
     case "$rc" in
         0)
+            _APPLIED_NS="$(_now_ns)"
             echo "moved #$num -> $status"
             python3 "$HERE/telemetry.py" "$ROOT" record \
                 "{\"kind\":\"transition\",\"task\":\"$num\",\"from\":\"\",\"to\":\"$status\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
@@ -457,6 +707,7 @@ print("yes" if data.get(num) is True else "no")
             return 0
             ;;
         2) return 2 ;;
+        5) return 5 ;;
         3) echo "ERROR: bad issue# or status '$status' (must match statusFlow)" >&2; return 1 ;;
         *) return 1 ;;
     esac
@@ -464,6 +715,7 @@ print("yes" if data.get(num) is True else "no")
 
 _do_prio() {
     local num="$1" prio="$2" opt rc
+    _qreason_begin
     opt="$(opt_id priority "$prio")"
     if [[ -z "$opt" ]]; then
         echo "ERROR: bad issue# or priority '$prio'" >&2
@@ -473,6 +725,7 @@ _do_prio() {
     case "$rc" in
         0) echo "prio #$num -> $prio"; return 0 ;;
         2) return 2 ;;
+        5) return 5 ;;
         3) echo "ERROR: bad issue# or priority '$prio'" >&2; return 1 ;;
         *) return 1 ;;
     esac
@@ -480,6 +733,7 @@ _do_prio() {
 
 _do_est() {
     local num="$1" points="$2" rc
+    _qreason_begin
     if [[ -z "$EST_FIELD" ]]; then
         echo "ERROR: no estimate field configured" >&2
         return 1
@@ -488,6 +742,7 @@ _do_est() {
     case "$rc" in
         0) echo "est #$num -> $points"; return 0 ;;
         2) return 2 ;;
+        5) return 5 ;;
         3) echo "ERROR: bad issue# '$num'" >&2; return 1 ;;
         *) return 1 ;;
     esac
@@ -500,24 +755,48 @@ _do_est() {
 # the item is already visible / already at the target status.
 _do_add_finish() {
     local num="$1" url="$2" first_status="$3" prio="$4" id out rc cur
-    id="$(_item_id_rl "$num")"; rc=$?
-    [[ $rc -eq 2 ]] && return 2
-    [[ $rc -eq 4 ]] && return 1  # could not read the board: that is not "not on the board"
-    if [[ -z "$id" ]]; then
-        out="$(gh project item-add "$PN" --owner "$OWNER" --url "$url" 2>&1)"; rc=$?
-        if [[ $rc -ne 0 ]]; then
-            _rate_limited "$out" && return 2
-            echo "ERROR: add-finish #$num: gh project item-add failed: $out" >&2
-            return 1
+    _qreason_begin
+    if [[ "${_FLUSH_USE_SNAP:-0}" == "1" ]]; then
+        # Replay: the flush snapshot answers presence and status; at most ONE extra read
+        # (after item-add) to see the new card -- no polling, no separate status read.
+        if ! _flush_snap_has "$num"; then
+            out="$(gh project item-add "$PN" --owner "$OWNER" --url "$url" 2>&1)"; rc=$?
+            if [[ $rc -ne 0 ]]; then
+                _rate_limited "$out" && return 2
+                echo "ERROR: add-finish #$num: gh project item-add failed: $out" >&2
+                _qreason "$(_gh_failure_label "$out")"
+                return 5
+            fi
+            _flush_snap_refresh; rc=$?
+            [[ $rc -eq 2 ]] && return 2
+            [[ $rc -ne 0 ]] && return 5
+            if ! _flush_snap_has "$num"; then _qreason "board read failed: card not visible yet"; return 5; fi
         fi
-        id="$(_poll_visible "$num")"; rc=$?
-        [[ $rc -eq 4 ]] && return 1
-        [[ -z "$id" ]] && return 2  # still not visible (or rate-limited) within the cap -- re-queue, try again later
+        cur="$(_flush_snap_status_of "$num")"
+    else
+        id="$(_item_id_rl "$num")"; rc=$?
+        [[ $rc -eq 2 ]] && return 2
+        [[ $rc -eq 4 ]] && return 5  # could not read the board: that is not "not on the board"; retry later, never counts an attempt
+        if [[ -z "$id" ]]; then
+            out="$(gh project item-add "$PN" --owner "$OWNER" --url "$url" 2>&1)"; rc=$?
+            if [[ $rc -ne 0 ]]; then
+                _rate_limited "$out" && return 2
+                echo "ERROR: add-finish #$num: gh project item-add failed: $out" >&2
+                _qreason "$(_gh_failure_label "$out")"
+                return 5
+            fi
+            id="$(_poll_visible "$num")"; rc=$?
+            [[ $rc -eq 4 ]] && return 5
+            [[ -z "$id" ]] && return 2  # still not visible (or rate-limited) within the cap -- re-queue, try again later
+        fi
+        cur="$(_current_status "$num")"
     fi
-    cur="$(_current_status "$num")"
-    if [[ "$cur" != "$first_status" ]]; then
+    # The first status is only for a card that has NONE: a card somebody (or a direct move)
+    # already moved is never put back (independent review 1).
+    if [[ -z "$cur" || "$cur" == "-" ]]; then
         _do_move "$num" "$first_status"; rc=$?
         [[ "$rc" -ne 0 ]] && return "$rc"
+        [[ "${_FLUSH_USE_SNAP:-0}" == "1" ]] && _flush_snap_patch "$num" "$first_status"
     fi
     _do_prio "$num" "$prio"; rc=$?
     [[ "$rc" -ne 0 ]] && return "$rc"
@@ -536,10 +815,33 @@ _do_add_finish() {
 # move instead of failing the whole adopt.
 _do_adopt() {
     local num="$1" id url out rc cur
-    id="$(_item_id_rl "$num")"; rc=$?
+    _qreason_begin
+    if [[ "${_FLUSH_USE_SNAP:-0}" == "1" ]] && ! _flush_snap_has "$num"; then
+        id=""; rc=0   # the fresh snapshot already proves it is absent: no second read
+    else
+        id="$(_item_id_rl "$num")"; rc=$?
+    fi
     [[ $rc -eq 2 ]] && return 2
-    [[ $rc -eq 4 ]] && return 1  # could not read the board: that is not "not on the board"
+    [[ $rc -eq 4 ]] && return 5  # could not read the board: that is not "not on the board"
     if [[ -n "$id" ]]; then
+        # Already a board item. Its status may still be empty (a half-finished add/adopt):
+        # set the first status then, never touch a card somebody already moved (#561).
+        local st
+        if [[ "${_FLUSH_USE_SNAP:-0}" == "1" ]]; then
+            st="$(_flush_snap_status_of "$num")"   # the fresh snapshot, never a cache that may be stale
+        else
+            st="$(_cache_get "$num" | cut -f2)"
+            if [[ -z "$st" || "$st" == "-" ]]; then st="$(_current_status "$num")" || st="?"; fi
+        fi
+        # shellcheck disable=SC2153  # FIRST_STATUS is the global set by board.sh's eval block
+        if [[ -z "$st" || "$st" == "-" ]]; then
+            _do_move "$num" "$FIRST_STATUS"; rc=$?
+            if [[ "$rc" -eq 0 ]]; then
+                [[ "${_FLUSH_USE_SNAP:-0}" == "1" ]] && _flush_snap_patch "$num" "$FIRST_STATUS"
+                echo "adopt #$num: already on board, initial status set"; return 0
+            fi
+            return "$rc"
+        fi
         echo "adopt #$num: already on board"
         return 0
     fi
@@ -548,11 +850,38 @@ _do_adopt() {
     if [[ $rc -ne 0 ]]; then
         _rate_limited "$out" && return 2
         echo "ERROR: adopt #$num: gh project item-add failed: $out" >&2
-        return 1
+        _qreason "$(_gh_failure_label "$out")"
+        return 5
+    fi
+    if [[ "${_FLUSH_USE_SNAP:-0}" == "1" ]]; then
+        # Replay: one read-back, patched into the shared snapshot; a failure is retryable and
+        # stops the pass (the original queue entry stays; nothing new is queued).
+        _flush_snap_refresh; rc=$?
+        [[ $rc -eq 2 ]] && return 2
+        [[ $rc -ne 0 ]] && return 5
+        if ! _flush_snap_has "$num"; then _qreason "board read failed: card not visible yet"; return 5; fi
+        local st; st="$(_flush_snap_status_of "$num")"
+        if [[ -z "$st" || "$st" == "-" ]]; then
+            # shellcheck disable=SC2153  # FIRST_STATUS is the global set by board.sh's eval block
+            _do_move "$num" "$FIRST_STATUS"; rc=$?
+            [[ "$rc" -ne 0 ]] && return "$rc"
+            _flush_snap_patch "$num" "$FIRST_STATUS"
+        fi
+        echo "adopted #$num"
+        return 0
     fi
     id="$(_poll_visible "$num")"; rc=$?
     if [[ $rc -eq 2 ]]; then echo "adopted #$num"; return 0; fi
-    if [[ $rc -eq 4 ]]; then echo "ERROR: adopt #$num: added to board but could not read it back to set the initial status" >&2; return 1; fi
+    if [[ $rc -eq 4 ]]; then
+        # The item IS on the board; only its initial status is unknown. Queue an adopt op:
+        # replay re-checks membership and sets the first status only if it is still empty,
+        # so a card a human moved meanwhile is left alone (#561 round 4).
+        local why; why="$(_take_reason)"
+        echo "adopt #$num: added to board but could not read it back to set the initial status" >&2
+        queue_append adopt issue="$num" reason="$why" attempts="$(_reason_attempts "$why")"
+        echo "QUEUED ($why): adopt #$num"
+        return 0
+    fi
     if [[ -n "$id" ]]; then
         cur="$(_current_status "$num")"
         # shellcheck disable=SC2153  # FIRST_STATUS is the global set by board.sh's
@@ -560,7 +889,10 @@ _do_adopt() {
         if [[ "$cur" != "$FIRST_STATUS" ]]; then
             _do_move "$num" "$FIRST_STATUS"; rc=$?
             if [[ "$rc" -eq 2 ]]; then
-                queue_append move issue="$num" status="$FIRST_STATUS"
+                queue_append move issue="$num" status="$FIRST_STATUS" reason="rate-limited"
+            elif [[ "$rc" -eq 5 ]]; then
+                local why; why="$(_take_reason)"
+                queue_append move issue="$num" status="$FIRST_STATUS" reason="$why" attempts="$(_reason_attempts "$why")"
             elif [[ "$rc" -ne 0 ]]; then
                 echo "ERROR: adopt #$num: added to board but failed to set initial status" >&2
                 return 1
@@ -569,6 +901,155 @@ _do_adopt() {
     fi
     echo "adopted #$num"
     return 0
+}
+
+# _queue_pending -> prints one "PENDING: move #N -> S (queued <age>, <reason>)"
+# line per queued move, oldest first. Reads QUEUE_FILE only: ZERO gh calls
+# (#561 -- the human's quota budget). Entries queued before reasons existed
+# were rate-limit queued, so they read "rate-limited".
+_queue_pending() {
+    local spooled=""
+    [[ -d "$QUEUE_SPOOL_DIR" ]] && spooled="$(cat "$QUEUE_SPOOL_DIR"/* 2>/dev/null)"
+    [[ -s "$QUEUE_FILE" || -n "$spooled" ]] || return 0
+    { cat "$QUEUE_FILE" 2>/dev/null; [[ -n "$spooled" ]] && printf '%s\n' "$spooled"; true; } | python3 -c '
+import json, sys, time, calendar
+now = time.time()
+for ln in sys.stdin.read().splitlines():
+    try:
+        d = json.loads(ln)
+    except Exception:
+        continue
+    if d.get("op") != "move":
+        continue
+    try:
+        age = max(0, int(now - calendar.timegm(time.strptime(d.get("ts", ""), "%Y-%m-%dT%H:%M:%SZ"))))
+    except Exception:
+        age = 0
+    if age < 60:
+        a = "%ds ago" % age
+    elif age < 3600:
+        a = "%dm ago" % (age // 60)
+    elif age < 86400:
+        a = "%dh ago" % (age // 3600)
+    else:
+        a = "%dd ago" % (age // 86400)
+    print("PENDING: move #%s -> %s (queued %s, %s)" % (d.get("issue", "?"), d.get("status", "?"), a, d.get("reason") or "rate-limited"))
+'
+}
+
+# Supersede markers (#561): $(dirname QUEUE_FILE)/board-queue.superseded/<issue>
+# holds the nanosecond time a direct move of that issue applied. Any queued move
+# of the issue with a smaller seq is stale: it must not replay and regress the
+# newer status. The marker is written first and without a lock (one atomic
+# rename), so a flush that already moved the queue aside still honours it.
+_supersede_dir() { printf '%s' "$(dirname "$QUEUE_FILE")/board-queue.superseded"; }
+
+# _queue_drop_moves <issue#>: a move that just applied supersedes older queued
+# moves for the same issue. Marker first, then the rewrite under the queue file
+# lock (bounded wait; if it runs out the marker alone keeps replay correct).
+_queue_drop_moves() {
+    local dir ns="${2:-}"; dir="$(_supersede_dir)"
+    [[ -n "$ns" ]] || ns="$(_now_ns)"
+    mkdir -p "$dir"
+    python3 -c '
+import os, sys
+d, num, ns = sys.argv[1], sys.argv[2], sys.argv[3]
+tmp = os.path.join(d, ".%s.%d" % (num, os.getpid()))
+with open(tmp, "w") as f:
+    f.write(ns)
+os.replace(tmp, os.path.join(d, num))
+' "$dir" "$1" "$ns"
+    find "$dir" -type f -mtime +1 -delete 2>/dev/null || true
+    _qfile_lock || return 0
+    if [[ -s "$QUEUE_FILE" ]]; then
+        python3 -c '
+import calendar, json, os, sys, time
+path, num, marker = sys.argv[1], sys.argv[2], int(open(sys.argv[3]).read() or 0)
+def seq(d):
+    try:
+        return int(d["seq"])
+    except Exception:
+        return calendar.timegm(time.strptime(d.get("ts", ""), "%Y-%m-%dT%H:%M:%SZ")) * 10**9
+keep = []
+for ln in open(path).read().splitlines():
+    if not ln.strip():
+        continue
+    try:
+        d = json.loads(ln)
+        if d.get("op") == "move" and str(d.get("issue")) == num and seq(d) < marker:
+            continue
+    except Exception:
+        pass
+    keep.append(ln)
+tmp = path + ".drop.%d" % os.getpid()
+with open(tmp, "w") as f:
+    for ln in keep:
+        f.write(ln + "\n")
+os.replace(tmp, path)
+' "$QUEUE_FILE" "$1" "$dir/$1"
+    fi
+    _qfile_unlock
+}
+
+# _entry_seq <json-line> -> the entry's nanosecond seq (an entry without one: its ts as ns).
+_entry_seq() {
+    python3 -c '
+import calendar, json, sys, time
+d = json.loads(sys.argv[1])
+try:
+    print(int(d["seq"]))
+except Exception:
+    print(calendar.timegm(time.strptime(d.get("ts", ""), "%Y-%m-%dT%H:%M:%SZ")) * 10**9)
+' "$1"
+}
+
+# _superseded <json-line> -> 0 iff a newer applied move of the same issue exists.
+_superseded() {
+    local m; m="$(_supersede_dir)/$(_jf "$1" issue)"
+    [[ -f "$m" ]] || return 1
+    python3 -c '
+import calendar, json, sys, time
+d = json.loads(sys.argv[1])
+try:
+    seq = int(d["seq"])
+except Exception:
+    seq = calendar.timegm(time.strptime(d.get("ts", ""), "%Y-%m-%dT%H:%M:%SZ")) * 10**9
+sys.exit(0 if seq < int(open(sys.argv[2]).read() or 0) else 1)
+' "$1" "$m" 2>/dev/null
+}
+
+# Back-off (#561): an entry that failed retryably 3 times in a row is replayed at most once
+# per BOARD_QUEUE_BACKOFF_SECS (default 600), so polling (neural-view's `list`) cannot burn a
+# read + an edit per poll against a persistently failing call.
+_line_with_fail() {
+    python3 -c '
+import json, sys, time
+d = json.loads(sys.argv[1])
+d["fails"] = str(int(d.get("fails") or 0) + 1)
+d["last_try"] = str(int(time.time()))
+# keep the line style it came in (compact stays compact)
+print(json.dumps(d, separators=(",", ":")) if "\": \"" not in sys.argv[1] else json.dumps(d))
+' "$1"
+}
+_backed_off() {
+    python3 -c '
+import json, sys, time
+d = json.loads(sys.argv[1])
+try:
+    fails, last = int(d.get("fails") or 0), int(d.get("last_try") or 0)
+except ValueError:
+    sys.exit(1)
+sys.exit(0 if fails >= 3 and time.time() - last < int(sys.argv[2]) else 1)
+' "$1" "${BOARD_QUEUE_BACKOFF_SECS:-600}" 2>/dev/null
+}
+
+# _line_with_attempts <json-line> <n> -> the line with attempts=n (string).
+_line_with_attempts() {
+    python3 -c '
+import json, sys
+d = json.loads(sys.argv[1]); d["attempts"] = sys.argv[2]
+print(json.dumps(d))
+' "$1" "$2"
 }
 
 # _dir_mtime <dir> -> mtime as epoch seconds (GNU stat, then BSD/macOS stat;
@@ -657,7 +1138,19 @@ DEDUPE_OPS = {"move", "prio", "est"}
 with open(path) as f:
     lines = [ln for ln in f.read().splitlines() if ln.strip()]
 
-best_idx = {}  # (op, issue) -> (ts, line-index) of the winning entry
+import calendar, time
+
+def rank(d):
+    # nanosecond seq when present; the one-second ts (as ns) only for entries without one
+    try:
+        return int(d["seq"])
+    except Exception:
+        try:
+            return calendar.timegm(time.strptime(d.get("ts", ""), "%Y-%m-%dT%H:%M:%SZ")) * 10**9
+        except Exception:
+            return 0
+
+best_idx = {}  # (op, issue) -> (rank, line-index) of the winning entry
 for i, ln in enumerate(lines):
     try:
         d = json.loads(ln)
@@ -666,12 +1159,29 @@ for i, ln in enumerate(lines):
     op = d.get("op")
     if op not in DEDUPE_OPS:
         continue
+    # Only the NEWEST entry per (op, issue) survives; an older flagged move never overrides a
+    # newer plain one (the flag is carried over below, and only to the same target status).
     key = (op, d.get("issue"))
-    ts = d.get("ts", "")
-    if key not in best_idx or ts >= best_idx[key][0]:
-        best_idx[key] = (ts, i)
+    r = rank(d)
+    if key not in best_idx or r >= best_idx[key][0]:
+        best_idx[key] = (r, i)
 
 winners = {idx for _, idx in best_idx.values()}
+
+# #560 x #561: a winning plain move inherits the over_wip flag of the newest OLDER flagged
+# move for the same issue, but only when both target the same status.
+carry = {}
+for i, ln in enumerate(lines):
+    try:
+        d = json.loads(ln)
+    except Exception:
+        continue
+    if d.get("op") != "move" or not d.get("over_wip") or i in winners:
+        continue
+    k = (d.get("issue"), d.get("status"))
+    if k not in carry or rank(d) >= rank(carry[k]):
+        carry[k] = d
+
 kept = []
 for i, ln in enumerate(lines):
     try:
@@ -680,6 +1190,12 @@ for i, ln in enumerate(lines):
         kept.append(ln)
         continue
     if d.get("op") not in DEDUPE_OPS or i in winners:
+        if d.get("op") == "move" and not d.get("over_wip"):
+            c = carry.get((d.get("issue"), d.get("status")))
+            if c is not None and rank(c) < rank(d):
+                d["over_wip"] = c["over_wip"]
+                d["over_wip_by"] = c.get("over_wip_by", "orchestrator")
+                ln = json.dumps(d)
         kept.append(ln)
 
 with open(path, "w") as f:
@@ -708,6 +1224,7 @@ _flush_queue() {
         echo "flush: SKIP -- another flush holds the lock ($QUEUE_LOCK_DIR)"
         return 0
     fi
+    if _qfile_lock; then _spool_merge; _qfile_unlock; fi
     if [[ -s "$QUEUE_FILE" ]]; then
         _flush_queue_locked
     elif [[ "$verbose" -eq 1 ]]; then
@@ -786,12 +1303,160 @@ _aside_write_remaining() {
 # to stderr) instead of dropping it, and the loop keeps processing the
 # REMAINING lines (unlike rc==2, which stops touching gh at all -- once
 # rate-limited, further calls this pass would just burn quota for nothing).
+# Replay reads the board AT MOST ONCE per flush (#561): the first queued move
+# fetches a complete snapshot (under the flush lock); every later one -- WIP
+# admission included, see _wip_mutate -- reuses it, and _flush_snap_patch keeps it
+# current after each applied move. A failed fetch is not retried per op and sets
+# FLUSH_SNAP_RC (2 rate-limited, 5 retryable + FLUSH_SNAP_REASON, 1 loud).
+# Called directly, never in $(...), so the globals survive. Sets FLUSH_CUR.
+_flush_snap_status() {
+    local err rc errtext
+    FLUSH_CUR=""
+    if [[ -z "${_FLUSH_SNAP:-}" && "${_FLUSH_SNAP_FAILED:-0}" != "1" ]]; then
+        err="$(mktemp)"
+        _FLUSH_SNAP="$(gh_project_items_json "$PN" "$OWNER" --strict 2>"$err")"; rc=$?
+        if [[ "$rc" -ne 0 ]]; then
+            _FLUSH_SNAP=""; _FLUSH_SNAP_FAILED=1
+            errtext="$(cat "$err")"; rm -f "$err"
+            echo "WIP BLOCKED: cannot obtain complete board snapshot" >&2
+            printf '%s\n' "$errtext" >&2
+            if [[ "$rc" -ne 3 ]] && _rate_limited "$errtext"; then
+                FLUSH_SNAP_RC=2
+            elif [[ "$rc" -eq 3 ]]; then
+                FLUSH_SNAP_RC=5; FLUSH_SNAP_REASON="board snapshot incomplete"
+            else
+                FLUSH_SNAP_RC=5; FLUSH_SNAP_REASON="$(_gh_failure_label "$errtext")"
+            fi
+            return 1
+        fi
+        rm -f "$err"
+        printf '%s' "$_FLUSH_SNAP" | _cache_refresh_from_items
+        # Test-only pause (no-op in production): the snapshot is in hand, the WIP mutex is held.
+        [[ "${_FLUSH_HOLDS_WIP:-0}" == "1" ]] && _flush_sync "${BOARD_QUEUE_TEST_TAG:-flush}-snap"
+    fi
+    [[ -n "${_FLUSH_SNAP:-}" ]] || return 1
+    FLUSH_CUR="$(python3 "$HERE/wip.py" current "$CONFIG" "${BOARD:-}" "$1" <<<"$_FLUSH_SNAP")" || FLUSH_CUR=""
+}
+
+# _flush_snap_has <issue#>: 0 unless the (complete, fresh) flush snapshot proves the
+# issue is NOT a board item. An unusable snapshot counts as "present": the normal path
+# then reports its own error.
+_flush_snap_has() {
+    [[ -n "${_FLUSH_SNAP:-}" ]] || return 0
+    python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+    items = d["items"]
+    sys.exit(0 if any(isinstance(i, dict) and str((i.get("content") or {}).get("number")) == sys.argv[1] for i in items) else 1)
+except Exception:
+    sys.exit(0)
+' "$1" <<<"$_FLUSH_SNAP"
+}
+
+# _flush_snap_status_of <issue#> -> the issue's status in the flush snapshot ("" empty
+# status, "?" when the snapshot cannot say: no match, several matches, unusable).
+_flush_snap_status_of() {
+    python3 -c '
+import json, sys
+try:
+    items = json.loads(sys.stdin.read())["items"]
+    m = [i for i in items if isinstance(i, dict) and str((i.get("content") or {}).get("number")) == sys.argv[1]]
+    print(m[0].get("status") or "" if len(m) == 1 else "?")
+except Exception:
+    print("?")
+' "$1" <<<"${_FLUSH_SNAP:-}"
+}
+
+# _flush_snap_refresh: ONE re-read of the board after the flush added a card, replacing the
+# shared snapshot (so later entries see the card). Returns 0 ok, 2 rate-limited, 1 failed
+# (reason left for _take_reason; the caller maps it to the retryable code).
+_flush_snap_refresh() {
+    local err out rc errtext
+    err="$(mktemp)"
+    out="$(gh_project_items_json "$PN" "$OWNER" --strict 2>"$err")"; rc=$?
+    errtext="$(cat "$err")"; rm -f "$err"
+    if [[ "$rc" -ne 0 ]]; then
+        if [[ "$rc" -ne 3 ]] && _rate_limited "$errtext"; then return 2; fi
+        printf '%s\n' "$errtext" >&2
+        if [[ "$rc" -eq 3 ]]; then _qreason "board snapshot incomplete"; else _qreason "board read failed: $(_gh_failure_label "$errtext")"; fi
+        return 1
+    fi
+    _FLUSH_SNAP="$out"
+    printf '%s' "$out" | _cache_refresh_from_items
+    return 0
+}
+
+# _flush_snap_patch <issue#> <status>: record an applied move in the shared snapshot.
+_flush_snap_patch() {
+    [[ -n "${_FLUSH_SNAP:-}" ]] || return 0
+    _FLUSH_SNAP="$(python3 -c '
+import json, sys
+d = json.loads(sys.stdin.read())
+for it in d.get("items", []):
+    if isinstance(it, dict) and str((it.get("content") or {}).get("number")) == sys.argv[1]:
+        it["status"] = sys.argv[2]
+print(json.dumps(d))
+' "$1" "$2" <<<"$_FLUSH_SNAP")" || _FLUSH_SNAP=""
+}
+
+# _flush_wip_prepare <status>: before the flush reads its snapshot for a WIP-counted
+# status, take the WIP admission mutex FIRST and hold it until the pass ends (#561:
+# lock order flush -> WIP). Admission from a snapshot taken BEFORE the mutex could
+# over-admit next to a live start. A snapshot read earlier for a non-WIP entry is
+# dropped and re-read once under the mutex. Returns 1 if the mutex stayed busy
+# (bounded wait; not retried again this pass).
+_flush_wip_prepare() {
+    local c waited=0 dead lock="$ROOT/.claude/board-wip.lock"
+    [[ "${_FLUSH_HOLDS_WIP:-0}" == "1" ]] && return 0
+    python3 "$HERE/wip.py" classify "$CONFIG" "${BOARD:-}" "$1"; c=$?
+    [[ "$c" -eq 3 ]] && return 0            # not WIP-counted: no mutex needed
+    [[ "${_FLUSH_WIP_FAILED:-0}" == "1" ]] && return 1
+    mkdir -p "$(dirname "$lock")" || return 1
+    until mkdir "$lock" 2>/dev/null; do
+        if dead="$(_lock_dead_holder "$lock")"; then
+            echo "WIP: breaking admission mutex of dead holder (pid $dead)" >&2
+            _lock_break_if "$lock" "$dead"
+            continue
+        fi
+        if [[ "$waited" -ge "${BOARD_WIP_MUTEX_MAX_WAIT_ITERS:-200}" ]]; then
+            echo "WIP BLOCKED: admission mutex busy or stuck at $lock; verify all holders and child commands are idle before manual recovery (never remove a live lock)" >&2
+            _FLUSH_WIP_FAILED=1
+            return 1
+        fi
+        sleep 0.05
+        waited=$((waited + 1))
+    done
+    printf '%s\n' "$$" >"$lock/pid"
+    _cleanup_add "$lock"
+    _FLUSH_HOLDS_WIP=1
+    _FLUSH_SNAP=""; _FLUSH_SNAP_FAILED=0
+    return 0
+}
+_flush_wip_release() {
+    local lock="$ROOT/.claude/board-wip.lock"
+    if [[ "${_FLUSH_HOLDS_WIP:-0}" == "1" ]]; then
+        rm -f "$lock/pid"; rmdir "$lock" 2>/dev/null || true
+        _cleanup_del "$lock"
+    fi
+    _FLUSH_HOLDS_WIP=0
+}
+
 _flush_queue_locked() {
-    local aside line op issue status priority points url first_status prio rc cur requeued reset
+    local aside line op issue status priority points url first_status prio rc cur requeued reset reason attempts hint
     local -a lines
     local i n
+    _FLUSH_SNAP=""; _FLUSH_SNAP_FAILED=0; _FLUSH_USE_SNAP=1; _FLUSH_HOLDS_WIP=0; _FLUSH_WIP_FAILED=0
     aside="$(mktemp "$(dirname "$QUEUE_FILE")/.flush.XXXXXX")"
-    mv "$QUEUE_FILE" "$aside" 2>/dev/null || { rm -f "$aside"; return 0; }
+    # The move-aside shares the queue file lock with appends and drops (#561).
+    if ! _qfile_lock; then
+        # Never move the queue aside unlocked (a rewrite or append could be in flight).
+        echo "flush: SKIP -- queue file lock busy ($QUEUE_FILE_LOCK_DIR); the queue is untouched, the next call retries"
+        rm -f "$aside"; _FLUSH_USE_SNAP=0
+        return 0
+    fi
+    mv "$QUEUE_FILE" "$aside" 2>/dev/null || { _qfile_unlock; rm -f "$aside"; _FLUSH_USE_SNAP=0; return 0; }
+    _qfile_unlock
     _dedupe_aside "$aside"
     _flush_sync "${BOARD_QUEUE_TEST_TAG:-flush}"
 
@@ -801,6 +1466,20 @@ _flush_queue_locked() {
         lines+=("$line")
     done <"$aside"
     n=${#lines[@]}
+    # A queue holding ANY WIP-counted move takes the WIP mutex before the first board
+    # read, so a mixed queue still costs one read (the snapshot must be read under it).
+    for ((i = 0; i < n; i++)); do
+        [[ "$(_jf "${lines[$i]}" op)" == "move" ]] || continue
+        status="$(_jf "${lines[$i]}" status)"
+        issue="$(_jf "${lines[$i]}" issue)"
+        # Only an entry that will really be attempted needs the mutex: a superseded, paused
+        # or guard-refused one must not block live starts (the loop prints its refusal).
+        _superseded "${lines[$i]}" && continue
+        bash "$HERE/checkpoint-preflight.sh" --root "$ROOT" --board "${BOARD:-}" --status "$status" >/dev/null 2>&1 || continue
+        _move_guards "$issue" "$status" >/dev/null 2>&1 || continue
+        python3 "$HERE/wip.py" classify "$CONFIG" "${BOARD:-}" "$status"; rc=$?
+        if [[ "$rc" -ne 3 ]]; then _flush_wip_prepare "$status" || true; break; fi
+    done
     requeued=0
     for ((i = 0; i < n; i++)); do
         line="${lines[$i]}"
@@ -808,7 +1487,13 @@ _flush_queue_locked() {
         issue="$(_jf "$line" issue)"
         OVER_WIP_REASON=""; OVER_WIP_BY=""  # #560: only a queued move entry may set these
         if [[ "$requeued" -eq 1 ]]; then
-            printf '%s\n' "$line" >>"$QUEUE_FILE"
+            _queue_append_raw "$line"
+            _aside_write_remaining "$aside" "${lines[@]:$((i + 1))}"
+            continue
+        fi
+        if _backed_off "$line"; then
+            # Failed 3 times in a row and tried within the back-off window: zero gh calls.
+            _queue_append_raw "$line"
             _aside_write_remaining "$aside" "${lines[@]:$((i + 1))}"
             continue
         fi
@@ -817,35 +1502,91 @@ _flush_queue_locked() {
                 status="$(_jf "$line" status)"
                 OVER_WIP_REASON="$(_jf "$line" over_wip)"; OVER_WIP_BY="$(_jf "$line" over_wip_by)"
                 _over_wip_value_ok "$OVER_WIP_REASON" || { OVER_WIP_REASON=""; OVER_WIP_BY=""; }
+                if _superseded "$line"; then
+                    echo "flush: skip superseded move #$issue -> $status (a newer move already applied)"
+                    rc=0
                 # Pause also guards cached repeat requests: do not discard a
                 # pending start merely because stale cache says it happened.
-                if ! bash "$HERE/checkpoint-preflight.sh" --root "$ROOT" --board "${BOARD:-}" --status "$status"; then
-                    rc=1
+                elif ! bash "$HERE/checkpoint-preflight.sh" --root "$ROOT" --board "${BOARD:-}" --status "$status"; then
+                    rc=6  # a pause is temporary: keep the move for after resume (#561)
+                elif ! _move_guards "$issue" "$status"; then
+                    rc=1  # local guards first: a refused entry costs ZERO gh calls (#561)
+                elif ! _flush_wip_prepare "$status"; then
+                    rc=5; _qreason_begin; _qreason "admission mutex busy"
+                elif ! _flush_snap_status "$issue" && [[ "${_FLUSH_SNAP_FAILED:-0}" == "1" ]]; then
+                    rc="$FLUSH_SNAP_RC"
+                    # A board-wide read failure belongs to no entry: stop the pass, keep all.
+                    if [[ "$rc" -eq 5 ]]; then _qreason_begin; _qreason "board read failed: $FLUSH_SNAP_REASON"; fi
+                elif ! _flush_snap_has "$issue"; then
+                    # Decided from the fresh snapshot: no second read. Counted, dropped on the 5th.
+                    rc=5; _qreason_begin; _qreason "not on the board"
                 else
-                    cur="$(_current_status "$issue")"
+                    cur="$FLUSH_CUR"
                     if [[ -n "$cur" && "$cur" == "$status" ]]; then
                         echo "flush: skip move #$issue (already $status)"
                         rc=0
                     else
-                        _do_move "$issue" "$status"; rc=$?
+                        if _superseded "$line"; then
+                            # Re-checked right before the apply: a newer move landed meanwhile.
+                            echo "flush: skip superseded move #$issue -> $status (a newer move already applied)"
+                            rc=0
+                        else
+                            _GUARDS_DONE="$issue:$status"
+                            _do_move "$issue" "$status"; rc=$?
+                            _GUARDS_DONE=""
+                            if [[ "$rc" -eq 0 ]]; then
+                                _flush_snap_patch "$issue" "$status"
+                                # A replayed move supersedes OLDER queued moves of the issue too.
+                                _seq="$(_entry_seq "$line")"
+                                _queue_drop_moves "$issue" "$_seq"
+                            fi
+                        fi
                     fi
                 fi
                 ;;
             prio)
                 priority="$(_jf "$line" priority)"
-                _do_prio "$issue" "$priority"; rc=$?
+                # The id comes from the cache: refresh it from this flush's snapshot first, so
+                # the replay's "no stale-id re-read" is true for prio/est too.
+                if ! _flush_snap_status "$issue" && [[ "${_FLUSH_SNAP_FAILED:-0}" == "1" ]]; then
+                    rc="$FLUSH_SNAP_RC"
+                    if [[ "$rc" -eq 5 ]]; then _qreason_begin; _qreason "board read failed: $FLUSH_SNAP_REASON"; fi
+                elif ! _flush_snap_has "$issue"; then
+                    rc=5; _qreason_begin; _qreason "not on the board"
+                else
+                    _do_prio "$issue" "$priority"; rc=$?
+                fi
                 ;;
             est)
                 points="$(_jf "$line" points)"
-                _do_est "$issue" "$points"; rc=$?
+                if ! _flush_snap_status "$issue" && [[ "${_FLUSH_SNAP_FAILED:-0}" == "1" ]]; then
+                    rc="$FLUSH_SNAP_RC"
+                    if [[ "$rc" -eq 5 ]]; then _qreason_begin; _qreason "board read failed: $FLUSH_SNAP_REASON"; fi
+                elif ! _flush_snap_has "$issue"; then
+                    rc=5; _qreason_begin; _qreason "not on the board"
+                else
+                    _do_est "$issue" "$points"; rc=$?
+                fi
                 ;;
             add-finish)
                 url="$(_jf "$line" url)"
                 first_status="$(_jf "$line" first_status)"; prio="$(_jf "$line" prio)"
-                _do_add_finish "$issue" "$url" "$first_status" "$prio"; rc=$?
+                if ! _flush_snap_status "$issue" && [[ "${_FLUSH_SNAP_FAILED:-0}" == "1" ]]; then
+                    rc="$FLUSH_SNAP_RC"
+                    if [[ "$rc" -eq 5 ]]; then _qreason_begin; _qreason "board read failed: $FLUSH_SNAP_REASON"; fi
+                else
+                    _do_add_finish "$issue" "$url" "$first_status" "$prio"; rc=$?
+                fi
                 ;;
             adopt)
-                _do_adopt "$issue"; rc=$?
+                # Fresh snapshot first: the cache then tells the adopt whether the card is on the
+                # board and whether its status is empty, without another read.
+                if ! _flush_snap_status "$issue" && [[ "${_FLUSH_SNAP_FAILED:-0}" == "1" ]]; then
+                    rc="$FLUSH_SNAP_RC"
+                    if [[ "$rc" -eq 5 ]]; then _qreason_begin; _qreason "board read failed: $FLUSH_SNAP_REASON"; fi
+                else
+                    _do_adopt "$issue"; rc=$?
+                fi
                 ;;
             *)
                 echo "flush: WARNING dropping queued line with unknown op '$op'" >&2
@@ -856,12 +1597,65 @@ _flush_queue_locked() {
             2)
                 reset="$(_rate_limit_reset_human)"
                 echo "QUEUED (rate-limited until $reset): $op #$issue"
-                printf '%s\n' "$line" >>"$QUEUE_FILE"
+                _queue_append_raw "$line"
                 requeued=1
                 ;;
+            5)
+                reason="$(_take_reason)"
+                case "$reason" in
+                    "timeout"|"network error")
+                        # One entry's own call timed out: the network is down for everyone, so
+                        # stop this pass, but say it was this entry's call, not a board read.
+                        echo "flush: $op #$issue hit a $reason — stopping this pass, entry kept" >&2
+                        _queue_append_raw "$line"
+                        requeued=1
+                        ;;
+                    "board read failed"*)
+                        # Board-wide failure or the network is down: it belongs to no entry,
+                        # so no attempt is counted. Stop touching gh this pass, keep everything.
+                        echo "flush: board read failed (${reason#board read failed: }) — queue kept: $op #$issue kept in queue for follow-up" >&2
+                        _queue_append_raw "$line"
+                        requeued=1
+                        ;;
+                    "gh error"|"not on the board")
+                        # Unrecognised wording: bounded, so a config error cannot loop for ever.
+                        attempts=$(( $(_jf "$line" attempts | grep -E '^[0-9]+$' || echo 0) + 1 ))
+                        if [[ "$attempts" -ge 5 ]]; then
+                            case "$op" in
+                                add-finish) hint="adopt $issue" ;;
+                                *) if [[ "$reason" == "not on the board" ]]; then hint="adopt $issue"
+                                   elif [[ "$op" == "move" ]]; then hint="move $issue \"$status\""
+                                   else hint="$op $issue"; fi ;;
+                            esac
+                            echo "flush: DROPPED $op #$issue after 5 attempts ($reason) — fix and re-run board.sh $hint"
+                        else
+                            echo "flush: still queued ($reason, attempt $attempts of 5): $op #$issue" >&2
+                            _queue_append_raw "$(_line_with_attempts "$line" "$attempts")"
+                        fi
+                        ;;
+                    *)
+                        echo "flush: still queued ($reason): $op #$issue" >&2
+                        _queue_append_raw "$(_line_with_fail "$line")"
+                        ;;
+                esac
+                ;;
             1)
+                # A refusal that can still clear (gate, review, closure evidence, comments read,
+                # WIP room) keeps the move queued, as before #561. Only a status that does not
+                # exist in statusFlow can never apply: that one is dropped with a printed line.
+                if [[ "$op" == "move" && -z "$(opt_id status "$status")" ]]; then
+                    echo "flush: DROPPED move #$issue -> $status (invalid status, see above)"
+                elif [[ "$op" == "prio" || "$op" == "est" ]]; then
+                    # An invalid option or a missing item can never apply: drop it, say so.
+                    echo "flush: DROPPED $op #$issue (invalid value or item, see above)"
+                else
+                    echo "flush: ERROR $op #$issue failed (not rate-limited) -- kept in queue for follow-up" >&2
+                    _queue_append_raw "$line"
+                fi
+                ;;
+            6)
                 echo "flush: ERROR $op #$issue failed (not rate-limited) -- kept in queue for follow-up" >&2
-                printf '%s\n' "$line" >>"$QUEUE_FILE"
+                _queue_append_raw "$line"
                 ;;
         esac
         _aside_write_remaining "$aside" "${lines[@]:$((i + 1))}"
@@ -871,5 +1665,7 @@ _flush_queue_locked() {
     # see the durability comment above) -- lets a test pin the exact
     # "last mutation confirmed, cleanup not yet run" window.
     _flush_sync "${BOARD_QUEUE_TEST_TAG:-flush}-done"
+    _FLUSH_USE_SNAP=0
+    _flush_wip_release
     rm -f "$aside"
 }

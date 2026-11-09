@@ -27,6 +27,9 @@ def main(cfg_path, bid, items_path, only_spec=""):
         sys.exit(f"CHECKPOINT BLOCKED: {exc}")
     loaded = []
     _pick(cfg_path, bid, items_path, only_spec, root, loaded)
+    pending = os.environ.get("NEXT_PENDING_TEXT", "")  # #561: queued moves, from the local queue file only
+    if pending:
+        print(pending)
     if loaded:  # #567: advisory, board-wide, local data only; runs after every print path
         stale_qa.main(*loaded[0])
 

@@ -246,9 +246,9 @@ check_rc "ensure newline in title: 0 gh calls" 0 "$(calls)"
 # 13. add's other non-zero / odd paths (real add against the fake gh)
 _reset; export EI_FAIL_EDIT=1
 out="$(_ei --title "Edit fails")"
-check_rc "ensure ERROR move/prio failed: still prints the created issue" 0 "$(is 77)"
-check_rc "ensure ERROR move/prio failed: exits 0" 0 "$(rcof)"
-check "ensure ERROR move/prio failed: says board placement failed" "board placement failed" "$(err)"
+check_rc "ensure move/prio queued (#561): still prints the created issue" 0 "$(is 77)"
+check_rc "ensure move/prio queued: exits 0" 0 "$(rcof)"
+check "ensure move/prio queued (#561): says board placement is queued, never a failure" "board placement is queued" "$(err)"
 check_rc "ensure ERROR move/prio failed: body PATCH on 77" 1 "$(patches)"
 _reset; export EI_ITEMLIST_FAIL=1
 out="$(_ei --title "Board read fails #540")"

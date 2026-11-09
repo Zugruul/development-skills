@@ -39,6 +39,14 @@ class WipAdmissionTests(unittest.TestCase):
         self.assertFalse(self.telemetry.exists())
         self.assertFalse(self.queue.exists())
 
+    def queued(self, result):
+        """No mutation happened and the move waits in the queue (#561: incomplete snapshot data)."""
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('QUEUED (board snapshot incomplete', result.stdout)
+        self.assertTrue(self.queue.exists(), result.stdout)
+        self.assertNotIn('item-edit', self.calls.read_text() if self.calls.exists() else '')
+        self.assertFalse(self.telemetry.exists())
+
     def test_plain_default_explicit_and_over_capacity(self):
         self.cfg['methodology'].pop('maxInProgress', None)
         self.save()
@@ -183,7 +191,9 @@ case "$1 $2" in
 esac
 ''')
         result = self.board('move', '239', 'In progress')
-        self.assertNotEqual(result.returncode, 0, result.stdout)
+        # #561 round 2: an unrecognised live edit error is queued (exit 0), never retargeted.
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('QUEUED (gh error)', result.stdout)
         self.assertNotIn('--id WRONG', self.calls.read_text())
         self.assertEqual(self.calls.read_text().count('project item-edit'), 1)
         self.assertFalse(self.telemetry.exists())
@@ -191,23 +201,43 @@ esac
     def test_missing_ambiguous_malformed_and_incomplete_snapshots(self):
         self.settings()
         valid = {'id': 'ITEM239', 'status': 'Backlog', 'content': {'number': 239}}
-        payloads = [None, {}, {'items': None}, {'items': {}}, {'items': []},
-                    {'items': [valid, dict(valid, id='OTHER')]},
-                    {'items': [valid, {'id': 'OTHER', 'status': 42}]},
-                    {'items': [valid, None]}, {'items': [dict(valid, id='')]},
-                    {'items': [valid], 'totalCount': 2}, {'items': [valid], 'totalCount': '1'},
-                    {'items': [valid, dict(valid, content={'number': 240})]}]
-        for payload in payloads:
-            with self.subTest(payload=payload):
+        # A complete snapshot that cannot admit this item is a refusal (non-zero, nothing queued).
+        refused = [None, {}, {'items': None}, {'items': {}}, {'items': []},
+                   {'items': [valid, dict(valid, id='OTHER')]},
+                   ]
+        # Incomplete snapshot data (read rc 3) and, since round 2, any other failed read are
+        # queued (exit 0): a live move never stops work. Only incomplete data has its own label.
+        queued = [{'items': [valid, {'id': 'OTHER', 'status': 42}]},
+                  {'items': [dict(valid, id='')]},
+                  {'items': [valid], 'totalCount': 2},
+                  {'items': [valid, dict(valid, content={'number': 240})]}]
+        for payload in refused:
+            with self.subTest(refused=payload):
                 self.reset_effects()
                 self.items.write_text(json.dumps(payload))
                 self.refused(self.board('move', '239', 'In progress'))
+        for payload in queued:
+            with self.subTest(queued=payload):
+                self.reset_effects()
+                self.items.write_text(json.dumps(payload))
+                self.queued(self.board('move', '239', 'In progress'))
+        self.reset_effects()
         self.items.write_text('{broken')
-        self.refused(self.board('move', '239', 'In progress'))
+        self.reset_effects()
+        result = self.board('move', '239', 'In progress')
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('QUEUED (board read failed: gh error)', result.stdout)
+        for payload in ({'items': [valid, None]}, {'items': [valid], 'totalCount': '1'}):
+            with self.subTest(malformed=payload):
+                self.reset_effects()
+                self.items.write_text(json.dumps(payload))
+                result = self.board('move', '239', 'In progress')
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertIn('QUEUED (board read failed: gh error)', result.stdout)
         self.reset_effects()
         self.state(['Backlog', 'Backlog'])
         self.env.update(PAGINATE_PAGE_SIZE='1', PAGINATE_HARD_CAP='1')
-        self.refused(self.board('move', '239', 'In progress'))
+        self.queued(self.board('move', '239', 'In progress'))
 
     def test_invalid_policy_fails_closed(self):
         for key, values in (('maxInProgress', [0, -1, True, None, '2', 1.5]),
@@ -241,7 +271,7 @@ esac
     def test_transport_failure_rate_limit_and_replay_recheck(self):
         gh = self.root / 'bin/gh'
         original = gh.read_text()
-        for message, queued in (('fake network failure', False), ('API rate limit exceeded', True)):
+        for message, queued in (('fake network failure', True), ('API rate limit exceeded', True)):
             with self.subTest(message=message):
                 self.reset_effects()
                 gh.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CALLS"\n'
@@ -251,8 +281,13 @@ esac
                 self.assertEqual(self.queue.exists(), queued, result.stdout)
                 self.assertNotIn('item-edit', self.calls.read_text())
                 self.assertFalse(self.telemetry.exists())
-                if not queued:
-                    self.assertNotEqual(result.returncode, 0)
+                if queued:
+                    self.assertEqual(result.returncode, 0)
+                    self.assertIn('QUEUED', result.stdout)
+                else:
+                    # Unrecognised gh wording on the snapshot read is queued as a gh error.
+                    self.assertEqual(result.returncode, 0)
+                    self.assertIn('QUEUED (board read failed: gh error)', result.stdout)
         gh.write_text(original)
         self.settings()
         self.state(['Backlog', 'In progress'])

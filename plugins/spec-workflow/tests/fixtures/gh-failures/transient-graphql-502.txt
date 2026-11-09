@@ -1,0 +1,6 @@
+# provenance: RECONSTRUCTED (not a live capture) from the documented wording `gh api graphql`
+# prints for a 5xx: "gh: <status text> (HTTP <code>)" (gh's own error wrapper, cli/cli api command).
+# Written 2026-11-09 for issue #561. If a live sample is ever observed, replace this payload
+# with the captured bytes (see README practice).
+
+gh: Bad Gateway (HTTP 502)

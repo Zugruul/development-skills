@@ -42,6 +42,12 @@ ignore	.claude/assistant/
 ignore	.claude/skills/whisper-sidecar/
 # Runtime inventory #274: explicit local locks, atomic siblings and machine bindings.
 ignore	.claude/board-queue.lock/
+ignore	.claude/board-queue.file.lock/
+ignore	.claude/board-queue.file.lock.stale.*
+ignore	.claude/board-queue.spool/
+ignore	.claude/board-queue.superseded/
+ignore	.claude/board-queue.jsonl.drop.*
+ignore	.claude/board-wip.lock.stale.*
 ignore	.claude/board-cache.json.tmp
 ignore	.claude/.setup-assistant.lock
 ignore	.neural-network/identities/.brain.lock

@@ -382,6 +382,12 @@ custom path overrides; there is no blanket temp/log/hidden-directory ignore.
 | ignore | `.claude/assistant/` |
 | ignore | `.claude/skills/whisper-sidecar/` |
 | ignore | `.claude/board-queue.lock/` |
+| ignore | `.claude/board-queue.file.lock/` |
+| ignore | `.claude/board-queue.file.lock.stale.*` |
+| ignore | `.claude/board-queue.spool/` |
+| ignore | `.claude/board-queue.superseded/` |
+| ignore | `.claude/board-queue.jsonl.drop.*` |
+| ignore | `.claude/board-wip.lock.stale.*` |
 | ignore | `.claude/board-cache.json.tmp` |
 | ignore | `.claude/.setup-assistant.lock` |
 | ignore | `.neural-network/identities/.brain.lock` |
@@ -547,10 +553,11 @@ Fake-`gh` test stubs answer the `api graphql` read through `tests/fixtures/gh-gr
 (exported as `GH_GQL_ADAPTER` by `run-tests.sh`), which serves their existing `project item-list`
 fixture data.
 
-Two outcomes an operator must treat as stops, not waits. First, `add` whose post-create board read
-fails for a reason other than a rate limit keeps the `add-finish` op in the queue (nothing is lost),
-prints GitHub's error and a `DEFERRED (board read failed, not a rate limit)` line, and exits nonzero;
-it is never reported as `QUEUED`, so a loop must not carry on. Second, the read resolves the project's
+Work never stops on a card (#561). `add` whose post-create board read fails for a reason other than a
+rate limit prints GitHub's error, queues the `add-finish` op with the read reason
+(`QUEUED (board read failed: <label>): item-add #N`) and exits 0; a flush stops its pass on a board-wide
+read failure but keeps every entry and never counts an attempt against one. One outcome stays a stop:
+the read resolves the project's
 real Status field name case-insensitively: a missing Status field, or several differing only by case
 (ambiguous), makes strict reads (WIP admission) fail closed with `WIP BLOCKED`, while other reads warn
 on stderr and return items without a status (for an ambiguous Status they use the exact-case `Status`
@@ -567,9 +574,9 @@ treated as the end of the board.
 
 The picker reports capacity before work begins; mutation admission makes the final decision. The Claude hook understands `--over-wip "<reason>"` (such a move passes the hook; `board.sh` enforces and records it) and, under `wipLimits`, counts only In progress against `inProgress`; it is additional offline defense in depth; `SERIAL_DELIVERY_OVERRIDE=1` overrides only that hook, never command admission. There is no slot ledger or distributed reservation: other clones, raw API writes and eventual consistency of GitHub reads can still exceed the limit. See the plugin README's WIP admission recovery instructions for a busy or interrupted local mutex.
 
-Admission uses the gitignored primary-checkout directory `.claude/board-wip.lock/` as a portable mutex, registered in the local-state manifest. It is not a slot ledger. Direct calls acquire only this lock; replay acquires the existing flush lock first, then this admission lock. The critical section covers the fresh complete read, target validation, capacity check and mutation. The checkpoint is checked again after any lock wait. Malformed/incomplete responses, pagination hard-cap truncation, missing or ambiguous targets, and invalid policy fail before mutation or transition telemetry. A fresh validated already-target replay may skip without another mutation. Counted status labels must each resolve to one normalized option label and a nonempty option ID; no other label may share that counted ID, including labels elsewhere in `statusFlow`. Ambiguous counted option mappings fail closed before choosing either the admitted or ordinary mutation path, so an alias cannot bypass capacity checks.
+Admission uses the gitignored primary-checkout directory `.claude/board-wip.lock/` as a portable mutex, registered in the local-state manifest. It is not a slot ledger. Direct calls acquire only this lock; replay acquires the existing flush lock first, then this admission lock. The critical section covers the complete board read, target validation, capacity check and mutation. A replay takes this mutex first when its queue holds any WIP-counted move, then reads the snapshot once under it and holds the mutex until the pass ends, so a live start cannot slip in between the snapshot and an admission. The checkpoint is checked again after any lock wait. Malformed/incomplete responses, pagination hard-cap truncation, missing or ambiguous targets, and invalid policy fail before mutation or transition telemetry. A fresh validated already-target replay may skip without another mutation. Counted status labels must each resolve to one normalized option label and a nonempty option ID; no other label may share that counted ID, including labels elsewhere in `statusFlow`. Ambiguous counted option mappings fail closed before choosing either the admitted or ordinary mutation path, so an alias cannot bypass capacity checks.
 
-Admission waits at most approximately ten seconds for another holder, then reports busy/stuck state without mutation. Ordinary success, failure and handled signals release ownership after any surviving foreground child finishes. A hard crash can leave the directory behind; it is never stolen based on age or a PID check. For recovery, inspect the reported lock path and its `pid` file (the invoking board process), and verify **all** board/flush holders and their child commands are idle before removing `pid` and the empty lock directory. If a remote write may have happened before interruption, inspect the actual board before retrying; absence of a success message does not prove the write failed. Do not remove a live or uncertain lock. The separate historical flush-lock recovery policy is unchanged.
+Admission waits at most approximately ten seconds for another holder, then reports busy/stuck state without mutation. Ordinary success, failure and handled signals release ownership after any surviving foreground child finishes. A hard crash can leave the directory behind. It is never stolen based on age, but a holder whose recorded `pid` is no longer running is broken automatically (the directory is renamed aside and the pid re-checked, so two waiters cannot both take it); a live holder is never broken. A lock directory with no `pid` file needs manual recovery: inspect the reported lock path and its `pid` file (the invoking board process), and verify **all** board/flush holders and their child commands are idle before removing `pid` and the empty lock directory. If a remote write may have happened before interruption, inspect the actual board before retrying; absence of a success message does not prove the write failed. Do not remove a live or uncertain lock. The separate historical flush-lock recovery policy is unchanged.
 
 ### Bounded autonomous reviewer rounds
 

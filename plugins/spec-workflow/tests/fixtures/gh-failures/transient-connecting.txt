@@ -1,0 +1,8 @@
+# provenance: RECONSTRUCTED (not a live capture) from the documented wording gh emits for an unreachable host.
+# gh api failures print "HTTP <code>: <status text> (<url>)" (go-gh api client); transport
+# failures print the Go net/http error text, and "error connecting to api.github.com" is gh's
+# own wrapper for an unreachable host. Written 2026-11-09 for issue #561. If a live transient
+# failure is ever observed, replace this payload with the captured bytes (see README practice).
+
+error connecting to api.github.com
+check your internet connection or https://githubstatus.com
