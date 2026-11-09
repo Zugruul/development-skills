@@ -9,6 +9,13 @@
   > 1. Release the board-truth set: #560, #561, #562, #563, #564, #565, #566, #567.
   > 
   > Claude-Session: https://claude.ai/code/session_01CizsS8ZzU6YyJpeoZA9boF
+- **560-567:** record post-merge retrospective and note outcomes (`4fed422`)
+  > 1. Mint notes on unsetting internal environment variables, GraphQL-backed gh commands, and merge order by file overlap.
+  > 2. Record outcomes for the recalled dev notes.
+  > 
+  > Claude-Session: https://claude.ai/code/session_01CizsS8ZzU6YyJpeoZA9boF
+- **560-567:** archive routed workflow feedback (`e0272d6`)
+  > Claude-Session: https://claude.ai/code/session_01CizsS8ZzU6YyJpeoZA9boF
 
 ## v0.76.0 — 2026-11-09
 
