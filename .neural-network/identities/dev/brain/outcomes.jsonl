@@ -190,3 +190,7 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "capture-dont-transcribe", "task": "551", "ts": "2026-11-06T00:26:22+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "batch-red-across-surfaces", "task": "552", "ts": "2026-11-06T17:02:38+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "capture-dont-transcribe", "task": "552", "ts": "2026-11-06T17:02:38+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "batch-red-across-surfaces", "task": "560", "ts": "2026-11-09T11:33:54+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "stderr-suppression-hides-evidence", "task": "560", "ts": "2026-11-09T11:33:54+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "acceptance-criterion-outranks-test-spec-paraphrase", "task": "560", "ts": "2026-11-09T11:33:55+00:00"}
+{"note": "devs still reconstructed gh error wording; reviewers accepted it only when labelled as reconstructed", "outcome": "corrected", "schemaVersion": 1, "slug": "capture-dont-transcribe", "task": "561", "ts": "2026-11-09T11:33:55+00:00"}
