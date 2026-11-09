@@ -260,7 +260,7 @@ s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 s.bind(("127.0.0.1", int(os.environ["NVBIND_PORT"])))
 s.listen(1)
-time.sleep(20)
+time.sleep(180)   # the test kills it; a short life lets it exit early under load (#546)
 PY
 _zpid3=$!
 sleep 0.3   # let it actually bind before racing neural-view for the port
@@ -282,6 +282,7 @@ check "SIGTERM-ignoring zombie: stop --force actually freed the port" "1" "$_fre
 # nothing-to-do path.
 out2="$(python3 "$NV" stop --force 2>&1)"
 check_absent "SIGTERM-ignoring zombie: a second stop --force does not re-claim killing the dead PID" "killed zombie PID $_zpid3" "$out2"
+kill -9 "$_zpid3" 2>/dev/null || true  # reap even if stop --force failed, so wait never blocks 180 s
 wait "$_zpid3" 2>/dev/null || true
 unset NEURAL_VIEW_STATE NEURAL_VIEW_PORT
 rm -rf "$_zstate3"
@@ -320,7 +321,7 @@ s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 s.bind(("127.0.0.1", int(os.environ["NVBIND_PORT"])))
 s.listen(1)
-time.sleep(6)
+time.sleep(180)   # the test kills it; a short life lets it exit early under load (#546)
 PY
 _blocker=$!
 sleep 0.3   # let the scratch listener actually bind before racing neural-view for the port
@@ -349,7 +350,7 @@ s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 s.bind(("127.0.0.1", int(os.environ["NVBIND_PORT"])))
 s.listen(1)
-time.sleep(8)
+time.sleep(180)   # the test kills it; a short life lets it exit early under load (#546)
 PY
 _zblocker=$!
 sleep 0.3

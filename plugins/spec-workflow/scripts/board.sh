@@ -11,6 +11,7 @@
 #   board.sh add  [--type bug|feature|inbound] "<title>" [<prio>] [<origin-issue#>]  # file work into Backlog
 #   board.sh bug  "<title>" <prio> [<origin-issue#>]   # alias for: add --type bug
 #   board.sh adopt <issue#>           # add an EXISTING issue to the board (idempotent; #84)
+#   board.sh agent <issue#> <name>|--clear  # label the card `agent: <name>` (REST only, replaces any other agent label; never fails the caller; #566)
 #   board.sh flush                    # replay the local rate-limit queue now (also runs automatically before next/list/show)
 #   board.sh ensure-labels            # idempotent: create any configured label (bug/feature/inbound) missing on the repo
 #   board.sh list [status]            # tab-separated: status, priority, #, title
@@ -495,6 +496,9 @@ issues = [{"number": it["number"], "title": it.get("title") or "",
 print(json.dumps({"issues": issues}))
 ' <<<"$out" || { echo "ERROR: failed to transform gh issue list output" >&2; exit 1; }
         ;;
+    agent)
+        bash "$HERE/board-agent-label.sh" "$REPO" "${2:-}" "${3:-}"; exit $?  # #566: REST-only label; invalid args exit 2
+        ;;
     comment)
         gh issue comment "$2" -R "$REPO" --body-file - && echo "commented on #$2"
         ;;
@@ -550,7 +554,7 @@ for f in json.load(sys.stdin)["fields"]:
         exit "$rc"
         ;;
     *)
-        echo "usage: board.sh {next|show|move|prio|est|add|bug|adopt|flush|ensure-labels|list|issues|comment|edit-body|fields|config|metrics|audit} ..." >&2
+        echo "usage: board.sh {next|show|move|prio|est|add|bug|adopt|agent|flush|ensure-labels|list|issues|comment|edit-body|fields|config|metrics|audit} ..." >&2
         exit 1
         ;;
 esac

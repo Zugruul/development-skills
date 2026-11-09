@@ -414,12 +414,20 @@ def on_compile(root_, index):
         calls.append((root_, index))
 
 stop = threading.Event()
-t = threading.Thread(target=ci.run_worker,
+t = threading.Thread(target=ci.run_worker, daemon=True,
                       args=(lambda: [("echo", root)], stop),
                       kwargs={"on_compile": on_compile, "poll_interval": 0.05,
                               "embed_fn": lambda texts: None})
+def wait_until(pred, timeout=10.0):
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        with lock:
+            if pred():
+                return
+        time.sleep(0.02)
+
 t.start()
-time.sleep(0.3)  # generous watchdog -- worker must have compiled at least once by now
+wait_until(lambda: len(calls) >= 1)  # waits for the compile, not a fixed time: fixed sleeps flake under load
 stop.set()
 t.join(timeout=3)
 
@@ -481,12 +489,20 @@ def on_compile(root_, index):
         calls.append(sorted(e.name for e in index.entries))
 
 stop = threading.Event()
-t = threading.Thread(target=ci.run_worker,
+t = threading.Thread(target=ci.run_worker, daemon=True,
                       args=(lambda: [("echo", root)], stop),
                       kwargs={"on_compile": on_compile, "poll_interval": 0.05,
                               "embed_fn": lambda texts: None})
+def wait_until(pred, timeout=10.0):
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        with lock:
+            if pred():
+                return
+        time.sleep(0.02)
+
 t.start()
-time.sleep(0.2)
+wait_until(lambda: len(calls) >= 1)  # waits for the compile, not a fixed time: fixed sleeps flake under load
 with lock:
     n_before = len(calls)
 
@@ -497,7 +513,7 @@ with lock:
 
 # now flip enabled -> false: a real config CHANGE, must trigger exactly one more compile
 write_cfg(False)
-time.sleep(0.3)
+wait_until(lambda: len(calls) > n_unchanged)
 with lock:
     n_after_change = len(calls)
     last = calls[-1]

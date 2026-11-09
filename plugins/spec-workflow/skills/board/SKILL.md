@@ -20,6 +20,7 @@ prio <issue#> <P0|P1|...>   # priority option name
 est  <issue#> <points>
 bug  "<title>" <prio> [<origin-issue#>]   # post-release bug -> first status (Backlog)
 list ["<status>"]
+agent <issue#> <name>|--clear   # label the card `agent: <name>` so the board shows who is on it (replaces any other agent label; REST only; never fails the caller)
 comment <issue#>            # body on stdin: printf '%s' "text" | board.sh comment N
 edit-body <issue#> <file>   # replace issue body (e.g. updated acceptance criteria)
 fields                      # discover field/option ids (setup only)

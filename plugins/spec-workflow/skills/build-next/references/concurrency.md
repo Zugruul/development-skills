@@ -65,6 +65,8 @@ Never the reverse, never a bare counter.
 Examples: `dev-cp012` (dev lane for task CP-012), `pr-reviewer-pr5` (PR reviewer for PR #5),
 `dev-cp012-b` (second dev spawn on the same task after a re-brief).
 
+Label the card with the agent name: `board.sh agent N <agent-name>` at spawn and re-brief (replaces the old label), `board.sh agent N --clear` at merge or abandon (#566). Use the same name for task-state `--agent`.
+
 ## The merge dance (`serialDelivery: true` + `maxInProgress: N>1`, #423)
 
 Plain `maxInProgress: N` alone lets N lanes run AND merge independently — fine

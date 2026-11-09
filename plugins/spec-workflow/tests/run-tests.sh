@@ -60,7 +60,15 @@ mktemp() {
 }
 export -f mktemp
 
-_cleanup_run_tmp() { rm -rf "$_RUN_TMP" 2>/dev/null || true; }
+# Also reap background fixtures (port holders etc.) that a failing or
+# interrupted section left behind; they can live for minutes (#546).
+_cleanup_run_tmp() {
+    local _jobs
+    _jobs="$(jobs -p)"
+    # shellcheck disable=SC2086  # one PID per word
+    [[ -n "$_jobs" ]] && kill -9 $_jobs 2>/dev/null
+    rm -rf "$_RUN_TMP" 2>/dev/null || true
+}
 trap _cleanup_run_tmp EXIT
 trap '_cleanup_run_tmp; exit 130' INT
 trap '_cleanup_run_tmp; exit 143' TERM
@@ -239,6 +247,7 @@ section-semver.sh
     section-guard-pr-create.sh
     section-board-audit.sh
     section-board-labels.sh
+    section-board-agent-label.sh
     section-diff-symbols.sh
     section-gh-failures-corpus.sh
     section-runner-filter.sh
