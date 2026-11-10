@@ -49,6 +49,7 @@ not a mandate.
   work; each finishes to a safe boundary (or parks) and the loop writes one handoff covering
   every lane. The gate/`guard-board-move` hook still applies per lane.
 - **Task state** — every lane keeps its own task current with `task-state.sh`, which all worktrees share; the rules for several agents are in `skills/task-state/SKILL.md`. Every lane's brief carries the required `## TODO UPKEEP (required)` section (template: `skills/implement-task/SKILL.md`), so each lane ticks, adds, drops and reopens its TODOs as the work changes. A lane updates only its own task id.
+- **Brief preflight** — the hook `guard-brief-preflight.sh` blocks a dev-* or reviewer-* spawn whose brief lacks the TODO UPKEEP section (or a task id in it); pr-reviewer-* spawns are checked too. Start each Agent description with the agent name, for example "dev-571 task-state move": the name comes from `tool_input.name`, else the first word of the description. Codex users run `brief-preflight.sh` by hand before delegating.
 - Clean up a lane's worktree after its PR merges (`bash <resolved-plugin-root>/scripts/herdr-worktree.sh remove --path <path>`, which also clears its herdr workspace).
 
 ## Naming (role-prefix FIRST, always)

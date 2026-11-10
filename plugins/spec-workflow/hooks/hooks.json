@@ -46,6 +46,15 @@
                 ]
             },
             {
+                "matcher": "Agent|Task",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/guard-brief-preflight.sh\""
+                    }
+                ]
+            },
+            {
                 "matcher": "Read",
                 "hooks": [
                     {

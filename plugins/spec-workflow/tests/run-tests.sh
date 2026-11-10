@@ -252,6 +252,7 @@ section-semver.sh
     section-board-labels.sh
     section-board-agent-label.sh
     section-board-ensure-issue.sh
+    section-brief-preflight.sh
     section-diff-symbols.sh
     section-gh-failures-corpus.sh
     section-runner-filter.sh

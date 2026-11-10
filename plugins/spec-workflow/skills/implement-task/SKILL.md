@@ -139,6 +139,8 @@ Task id N; your role is <role>. The human watches this record live. Run `bash <r
 - Always pass `--agent <role>` and task id N.
 ```
 
+**Brief preflight (#573).** A PreToolUse hook (`guard-brief-preflight.sh`, matcher `Agent|Task`) blocks a dev-* or reviewer-* spawn whose brief lacks the TODO UPKEEP section, or whose section does not name a task id (`Task id N`), by running `scripts/brief-preflight.sh`. It reads the agent name from `tool_input.name` when present, else the first word of the Agent description, so start every description with the agent name ("dev-571 task-state move", "reviewer-571-spec spec pass"); pr-reviewer-* briefs are checked too; other agents are not checked. It is active only in repos with spec-workflow config and allows on any internal error. Codex users run `brief-preflight.sh` by hand before delegating: `printf '%s' "$BRIEF" | bash <resolved-plugin-root>/scripts/brief-preflight.sh dev-571` (exit 1 and one line on a missing section; SPEC-CODEX-COMPAT §9 parity).
+
 The orchestrator follows these rules itself: a failed review or red gate reopens the TODOs it makes untrue (`--undo`) before the fix is briefed, and a scope change from a comment is added or dropped when it is folded in.
 
 Review in **two passes**, each by a review agent (`model:` a suitable id from the reviewer identity's allowed set — `bash "../../scripts/identity.sh" reviewer` prints its `models:` line): (1) **spec compliance** — does the diff satisfy each acceptance criterion and cited spec §, nothing more, nothing less; (2) **code quality** — correctness, style, tests. Relay findings to a dev agent; re-gate. A single combined pass reliably misses "passes tests but isn't what the spec said."
