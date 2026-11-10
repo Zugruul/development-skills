@@ -393,6 +393,8 @@ try:
 except OSError:
     pass
 ' "$ROOT/.claude/board-comments-seen.json" "$2" 2>/dev/null || true
+            # #571: keep the title and body so `move` can create the task record with no API call.
+            printf '%s' "$_out" | python3 "$HERE/task_state.py" --root "$ROOT" remember --id "$2" >/dev/null 2>&1 || true
             printf '%s\n' "$_out"
         elif _rate_limited "$_out"; then
             echo "RATE-LIMITED until $(_rate_limit_reset_human) — work continues; mutations queue; retry reads after reset." >&2
@@ -470,7 +472,9 @@ except OSError:
         fi
         # Keep the local task record honest; this never fails the move.
         if [[ $rc -eq 0 || $rc -eq 2 || $rc -eq 5 ]]; then
-            python3 "$HERE/task_state.py" --root "$ROOT" sync --id "$2" --status "$3" >/dev/null 2>&1 || true
+            # An audit --fix move or a queued (rate-limited) move adds no API call: it creates a record only from a saved issue copy (#571).
+            _ts_nofetch=""; [[ $_audit_snap -eq 1 || $rc -eq 2 ]] && _ts_nofetch="--no-fetch"
+            python3 "$HERE/task_state.py" --root "$ROOT" sync --id "$2" --status "$3" --repo "$REPO" $_ts_nofetch >/dev/null || true
         fi
         if [[ $rc -eq 0 ]]; then
             _queue_drop_moves "$2" "${_APPLIED_NS:-}"  # this move supersedes any older queued one for the issue

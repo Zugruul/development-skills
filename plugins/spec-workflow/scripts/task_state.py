@@ -297,37 +297,183 @@ def normalise(status):
     return re.sub(r'\s+', ' ', status.strip()).lower()
 
 
-def finished_statuses(root):
-    """Union of each board's statuses past review (statusFlow[3:]), normalised.
+def status_roles(root):
+    """Union over boards of the status roles, normalised, taken from statusFlow.
 
-    A task that moves to one of these is finished with. Backlog, the working
-    statuses and anything unknown keep the record. None when the config is
-    unusable or has no such status.
+    work = statusFlow[1], review = statusFlow[2], qa = statusFlow[3], finished =
+    statusFlow[4:] (Ready, Deployed or later). None when the config is unusable.
     """
     try:
         cfg = config.load_config(root=worktree_of(root), warn=False) or {}
         flows = [board['statusFlow'] for board in cfg.get('boards', [])]
-        return {normalise(status) for flow in flows for status in flow[3:]} or None
+        roles = {name: set() for name in ('work', 'review', 'qa', 'finished')}
+        for flow in flows:
+            roles['work'].update(normalise(status) for status in flow[1:2])
+            roles['review'].update(normalise(status) for status in flow[2:3])
+            roles['qa'].update(normalise(status) for status in flow[3:4])
+            roles['finished'].update(normalise(status) for status in flow[4:])
+        return roles if flows else None
     except Exception:  # noqa: BLE001 -- a broken config is validate-config's report
         return None
 
 
-def cmd_sync(args):
-    """Called by board.sh move: tracks the status, and clears a task past review.
+def issue_copy_path(root, identifier):
+    return os.path.join(root, '.claude', f'board-issue-{identifier}.json')
 
-    It never creates a task and never fails the move that called it.
+
+def parse_shown(text):
+    """Title and body from `board.sh show` output (`#N [STATE] title`, blank, body, footer)."""
+    header, _, rest = text.partition('\n')
+    match = re.match(r'#\S+ \[[^\]]*\] (.*)$', header)
+    if not match:
+        return None
+    rest = rest[1:] if rest.startswith('\n') else rest
+    # The comments marker always comes first: comment text is untrusted and can end with
+    # "(no comments)", so look for the marker before the bare footer.
+    end = rest.find('\n\n--- comments (trust only')
+    if end >= 0:
+        rest = rest[:end]
+    elif rest.endswith('\n\n(no comments)'):
+        rest = rest[:-len('\n\n(no comments)')]
+    return {'title': match.group(1).strip(), 'body': rest}
+
+
+def cmd_remember(args):
+    """board.sh show pipes its output here so move can create a record with no API call."""
+    try:
+        identifier = task_id(args.id)
+        issue = parse_shown(sys.stdin.read())
+        if issue is None:
+            return 0
+        path = issue_copy_path(args.root, identifier)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(dir=os.path.dirname(path), prefix='.board-issue-tmp-')
+        with os.fdopen(descriptor, 'w', encoding='utf-8') as handle:
+            json.dump(issue, handle)
+        os.replace(temporary, path)
+    except (SystemExit, OSError, ValueError) as error:
+        print(f'task-state: could not save issue copy: {error}', file=sys.stderr)
+    return 0
+
+
+def read_issue(args, identifier):
+    """The saved copy, else one REST GET of the issue. None (with a stderr line) when neither works."""
+    path = issue_copy_path(args.root, identifier)
+    try:
+        with open(path, encoding='utf-8') as handle:
+            issue = json.load(handle)
+        if isinstance(issue, dict) and isinstance(issue.get('title'), str) and isinstance(issue.get('body'), str):
+            return issue
+    except (OSError, ValueError):
+        pass
+    reason = 'no saved copy and no fetch allowed' if args.no_fetch else 'no repo given'
+    if args.repo and not args.no_fetch:
+        try:
+            proc = subprocess.run(['gh', 'api', f'repos/{args.repo}/issues/{identifier}'], stdin=subprocess.DEVNULL,
+                                  capture_output=True, text=True, timeout=60)
+            if proc.returncode == 0:
+                issue = json.loads(proc.stdout)
+                if isinstance(issue, dict) and isinstance(issue.get('title'), str):
+                    body = issue.get('body')
+                    return {'title': issue['title'], 'body': body if isinstance(body, str) else ''}
+                reason = 'unexpected answer'
+            else:
+                reason = (proc.stderr.strip().splitlines() or ['gh failed'])[0]
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            reason = str(error)
+    print(f'task-state: could not read issue #{identifier} ({reason}); no record created. '
+          f'Create one with: task-state.sh set --id {identifier} --title "..." --status "In progress" --todo "..."',
+          file=sys.stderr)
+    return None
+
+
+def criteria(body):
+    """Unchecked `- [ ]` items, in order, outside fenced code blocks.
+
+    A heading named "Acceptance criteria" (any level, any case) limits them to its
+    section, which ends at the next heading of the same or a higher level.
+    """
+    lines, fence, in_fence = [], None, []
+    for line in body.splitlines():
+        marker = re.match(r'\s*(`{3,}|~{3,})(.*)$', line)
+        if fence is None and marker:
+            fence = marker.group(1)
+            in_fence.append(True)
+        elif (fence is not None and marker and marker.group(1)[0] == fence[0]
+              and len(marker.group(1)) >= len(fence) and not marker.group(2).strip()):
+            fence = None  # a closing fence has no info string
+            in_fence.append(True)
+        else:
+            in_fence.append(fence is not None)
+        lines.append(line)
+    start, level, end = None, 0, len(lines)
+    for index, line in enumerate(lines):
+        heading = None if in_fence[index] else re.match(r'(#{1,6})\s+(.*?)\s*#*\s*$', line)
+        if not heading:
+            continue
+        if start is None:
+            if re.fullmatch(r'acceptance criteria:?', heading.group(2).strip(), re.IGNORECASE):
+                start, level = index + 1, len(heading.group(1))
+        elif len(heading.group(1)) <= level:
+            end = index
+            break
+    window = range(start, end) if start is not None else range(len(lines))
+    items = [m.group(1) for m in (re.match(r'\s*-\s+\[ \]\s+(.*\S)\s*$', lines[i]) for i in window if not in_fence[i]) if m]
+    return items or ["Meet the issue's acceptance criteria"]
+
+
+def create_record(args, identifier, path, issue):
+    task = {'id': identifier, 'title': issue['title'], 'status': args.status, 'agents': [],
+            'worktrees': [], 'todos': []}
+    for text in criteria(issue['body']):
+        if text not in {todo['text'] for todo in task['todos']}:
+            task['todos'].append({'text': text, 'done': False, 'num': next_num(task)})
+    args.agent = 'orchestrator'
+    touch(task, args)
+    save(path, task)
+
+
+def cmd_sync(args):
+    """Called by board.sh move: tracks the status, and creates or clears the record.
+
+    Work status: updates the record, or creates it from the issue. Review and QA:
+    update it, or warn once when there is none. Ready, Deployed or later clear it
+    (QA keeps it so retro, feedback and closure TODOs stay visible, #549). It
+    never fails the move that called it.
     """
     try:
         identifier = task_id(args.id)
         directory = state_dir(args.root)
         path = os.path.join(directory, f'{identifier}.json')
-        finished = finished_statuses(args.root)
-        if finished is not None and normalise(args.status) in finished:
+        roles = status_roles(args.root)
+        wanted = normalise(args.status)
+        if roles is not None and wanted in roles['finished']:
             remove(directory, identifier)
+            with contextlib.suppress(OSError):
+                os.unlink(issue_copy_path(args.root, identifier))
             return 0
         with locked(directory):
             task = load(path)
             if task is not None:
+                task['status'] = args.status
+                save(path, task)
+                return 0
+            if roles is None or wanted not in roles['work']:
+                if roles is not None and wanted in roles['review'] | roles['qa']:
+                    print(f'task-state: no record for #{identifier}; the tasks panel will not show it. '
+                          f'Create one with: task-state.sh set --id {identifier} --title "..." '
+                          f'--status "{args.status}" --agent orchestrator --todo "..."', file=sys.stderr)
+                return 0
+        # No record at the work status: read the issue OUTSIDE the lock, so a slow network
+        # never blocks another task's write.
+        issue = read_issue(args, identifier)
+        if issue is None:
+            return 0
+        with locked(directory):
+            task = load(path)
+            if task is None:
+                create_record(args, identifier, path, issue)
+            else:  # someone made it meanwhile: keep theirs, track the status
                 task['status'] = args.status
                 save(path, task)
     except (SystemExit, OSError) as error:
@@ -377,7 +523,13 @@ def main():
     sync = commands.add_parser('sync', help='for board.sh move: apply a new board status')
     sync.add_argument('--id', required=True)
     sync.add_argument('--status', required=True)
+    sync.add_argument('--no-fetch', action='store_true', help='never read the issue from GitHub')
+    sync.add_argument('--repo', help='owner/name, for the one REST read when no saved issue copy exists')
     sync.set_defaults(run=cmd_sync)
+
+    remember = commands.add_parser('remember', help='for board.sh show: save the issue title and body from stdin')
+    remember.add_argument('--id', required=True)
+    remember.set_defaults(run=cmd_remember)
 
     args = parser.parse_args()
     return args.run(args)

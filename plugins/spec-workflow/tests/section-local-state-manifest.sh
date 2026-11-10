@@ -40,6 +40,7 @@ LS_EXP_IGNORE="$(printf '%s\n' \
     '.claude/over-wip.json.tmp*' \
     '.claude/over-wip.json.corrupt-*' \
     '.claude/board-comments-seen.json' \
+    '.claude/board-issue-*' \
     '.claude/neural-view/' \
     '.claude/merge-requirements.json' \
     '.claude/merge-dance.lock/' \

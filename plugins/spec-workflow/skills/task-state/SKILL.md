@@ -6,7 +6,9 @@ allowed-tools: Bash
 
 # Task state
 
-This is the live record of work in progress. The herdr tasks panel draws it directly, so what you record here is what the human sees. It makes no network calls.
+This is the live record of work in progress. The herdr tasks panel draws it directly, so what you record here is what the human sees. It makes no network calls. The panel shows only task-state records: it does not read a repo's TODO.md.
+
+`board.sh move` creates the record when a task moves to the working status (In progress) and none exists: the issue title, status, agent `orchestrator`, and one TODO per unchecked `- [ ]` acceptance criterion in the issue body (or "Meet the issue's acceptance criteria" when there are none). It uses the title and body that `board.sh show` saved, so it costs no API call; only when that copy is missing does it make one REST read of the issue. An existing record keeps its TODOs and only gets the new status. A move to In review or QA with no record prints one warning naming the `task-state.sh set` command to run. The move never fails because of task-state. The saved copy is a snapshot from the last `board.sh show`, so run `show` right before moving to In progress (implement-task already does). Copies for issues that never finish stay until cleared; they are small and gitignored. Only unchecked criteria outside code fences count, and when the body has an Acceptance criteria heading, only that section's.
 
 The board stays the source of truth for a task's status. This record adds what the board cannot show: the TODOs and how far along they are.
 
@@ -42,7 +44,7 @@ task-state.sh clear --id 12                            # stop tracking
    - **Regression or rework**: when a check fails or a finding sends the work back to an earlier step, reopen every TODO that is no longer true with `--undo`, before starting the fix. A failed review reopens "implementation" and "gate green". Re-tick only after the redo is finished.
 
    The panel must never claim something a regression has undone.
-4. **On finish**, run `clear` when the task is closed or abandoned. `board.sh move` also updates the status and clears a task that moves past review, as a safety net. Do not rely on it for abandoned work.
+4. **On finish**, run `clear` when the task is closed or abandoned. `board.sh move` also updates the status. QA keeps the record, so retro, feedback and closure TODOs stay visible after the merge; it is cleared when the task moves to Ready, Deployed or later (the end of the status flow), as a safety net. Do not rely on it for abandoned work.
 
 Write a real TODO for each piece of work, and tick only what is true. A panel that claims progress that did not happen is worse than no panel.
 

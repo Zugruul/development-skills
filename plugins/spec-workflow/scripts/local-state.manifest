@@ -32,6 +32,7 @@ ignore	.claude/over-wip.lock
 ignore	.claude/over-wip.json.tmp*
 ignore	.claude/over-wip.json.corrupt-*
 ignore	.claude/board-comments-seen.json
+ignore	.claude/board-issue-*
 ignore	.claude/neural-view/
 ignore	.claude/merge-requirements.json
 ignore	.claude/merge-dance.lock/
