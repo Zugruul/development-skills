@@ -839,3 +839,28 @@
 {"event": "inject", "note": "brief-report-on-commit", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
 {"event": "inject", "note": "cheap-ab-before-10min-runs", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
 {"event": "inject", "note": "discriminator-over-hypothesis", "activation": 1.1, "ts": "2026-10-19T20:11:37+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "dont-respawn-into-live-agents-worktree", "activation": 0.0, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "gate-fingerprint-one-checkout", "activation": 0.0137, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "guard-board-move-worktree-cwd-bug", "activation": 0.0, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "merge-via-temp-worktree-when-main-held", "activation": 0.0005, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "shared-checkout-hazard", "activation": 0.0, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "subagent-pin-verification", "activation": 0.867, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "worktree-isolation-when-multitasking", "activation": 0.0, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "worktree-lane-default", "activation": 0.867, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "worktree-lanes-when-tree-is-shared", "activation": 0.0, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "seed", "note": "worktree-root-vs-hook-root", "activation": 0.0071, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "hop", "note": "dev-idle-recovery-ladder", "activation": 0.2167, "link": "subagent-pin-verification->dev-idle-recovery-ladder", "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "hop", "note": "worktree-lane-default", "activation": 0.2167, "link": "subagent-pin-verification->worktree-lane-default", "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "hop", "note": "retroactive-records-honesty", "activation": 0.0542, "link": "dev-idle-recovery-ladder->retroactive-records-honesty", "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "subagent-pin-verification", "activation": 0.867, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "worktree-lane-default", "activation": 0.867, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "dev-idle-recovery-ladder", "activation": 0.2167, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "retroactive-records-honesty", "activation": 0.0542, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "gate-fingerprint-one-checkout", "activation": 0.0137, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "worktree-root-vs-hook-root", "activation": 0.0071, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "merge-via-temp-worktree-when-main-held", "activation": 0.0005, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "worktree-isolation-when-multitasking", "activation": 0.0, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "dont-respawn-into-live-agents-worktree", "activation": 0.0, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "guard-board-move-worktree-cwd-bug", "activation": 0.0, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "worktree-lanes-when-tree-is-shared", "activation": 0.0, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}
+{"event": "inject", "note": "shared-checkout-hazard", "activation": 0.0, "ts": "2026-11-10T15:11:45+00:00", "role": "orchestrator"}

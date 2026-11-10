@@ -30,8 +30,8 @@
     "weight": 0.5
   },
   "dev-idle-recovery-ladder->retroactive-records-honesty": {
-    "fires": 1,
-    "last": "2026-10-19",
+    "fires": 2,
+    "last": "2026-11-10",
     "weight": 0.5
   },
   "discriminator-over-hypothesis->cheap-ab-before-10min-runs": {
@@ -95,13 +95,13 @@
     "weight": 0.5
   },
   "subagent-pin-verification->dev-idle-recovery-ladder": {
-    "fires": 1,
-    "last": "2026-10-19",
+    "fires": 2,
+    "last": "2026-11-10",
     "weight": 0.5
   },
   "subagent-pin-verification->worktree-lane-default": {
-    "fires": 1,
-    "last": "2026-10-19",
+    "fires": 2,
+    "last": "2026-11-10",
     "weight": 0.5
   },
   "verify-state-before-assuming-stalled->self-authored-code-needs-adversarial-review": {

@@ -151,3 +151,7 @@
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "551", "ts": "2026-11-06T00:26:23+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "confirm-named-scope-exclusions-respected", "task": "551", "ts": "2026-11-06T00:26:23+00:00"}
 {"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "552", "ts": "2026-11-06T17:02:38+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reproduce-before-verdict", "task": "571", "ts": "2026-11-10T15:12:22+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "reports-are-not-the-code", "task": "571", "ts": "2026-11-10T15:12:22+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "confirm-named-scope-exclusions-respected", "task": "571", "ts": "2026-11-10T15:12:23+00:00"}
+{"note": null, "outcome": "useful", "schemaVersion": 1, "slug": "unset-internal-env-at-entry", "task": "571", "ts": "2026-11-10T15:12:24+00:00"}
