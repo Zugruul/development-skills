@@ -89,6 +89,7 @@ rm -rf "$PWB"
 RFB="$(_pwb_real "$(mktemp -d)")"
 git init -q --bare -b main "$RFB/origin.git"
 git clone -q "$RFB/origin.git" "$RFB/main" 2>/dev/null
+git -C "$RFB/main" symbolic-ref HEAD refs/heads/main  # an empty clone takes the runner's init.defaultBranch (master on CI)
 _pwb_config "$RFB/main"
 git -C "$RFB/main" add -A && _pwb_git -C "$RFB/main" commit -q -m "fixture config" && git -C "$RFB/main" push -q origin main 2>/dev/null
 # someone else lands an implementation commit on origin/main; this clone's local main stays behind
