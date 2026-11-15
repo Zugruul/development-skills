@@ -40,6 +40,10 @@ board.sh/gate.sh stamp real wall-clock time when they record):
                   `quote` is their words. Satisfies two-pass-review-preflight.sh
                   and review-approval-check for that task. Written by
                   user-acceptance.sh (board.sh move N QA --accepted-by-user).
+    red-first-override {"kind": "red-first-override", "task": <issue or branch>, "branch": <name>, "commit": <sha>,
+                   "reason": <nonblank string>, "ts": <iso8601>}
+                  #581: red proved without a separate test-only commit; written by
+                  red-first-preflight.sh when RED_FIRST_OVERRIDE is set.
     task-close    {"kind": "task-close", "task": <id>, "estimate": <number>,
                    "ts": <iso8601>}
 
@@ -60,7 +64,8 @@ import review_rounds as R
 from telemetry_lock import locked, append
 
 CLOSURE_KINDS = {"retro-complete", "feedback-complete", "retro-skip"}
-KINDS = {"transition", "gate", "review-round", "review-round-start", "task-close", "user-acceptance"} | CLOSURE_KINDS
+KINDS = {"transition", "gate", "review-round", "review-round-start", "task-close", "user-acceptance",
+         "red-first-override"} | CLOSURE_KINDS
 TELEMETRY_REL = os.path.join(".claude", "telemetry.jsonl")
 
 
@@ -106,6 +111,10 @@ def validate_event(rec):
         q = rec.get("quote")
         if not isinstance(q, str) or not q.strip():
             errs.append("user-acceptance.quote is required (nonblank string)")
+    elif kind == "red-first-override":
+        r = rec.get("reason")
+        if not isinstance(r, str) or not r.strip():
+            errs.append("red-first-override.reason is required (nonblank string)")
     elif kind == "task-close":
         est = rec.get("estimate")
         if not isinstance(est, (int, float)) or isinstance(est, bool):

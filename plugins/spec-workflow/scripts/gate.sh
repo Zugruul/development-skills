@@ -30,13 +30,16 @@ source "$HERE/lib/repo-root.sh"
 #     which worktree they are invoked from.
 # The marker's CONTENT is still the tree-state fingerprint of TREE_ROOT (the
 # tree that was actually tested) -- only its FILE LOCATION moves to
-# STATE_ROOT. gate-preflight.sh mirrors this: it looks the marker up at
+# STATE_ROOT. #581: one marker PER WORKTREE (spec_workflow_gate_marker): the
+# primary checkout keeps .claude/gate-pass, a linked worktree gets
+# .claude/gate-pass.d/<hash of its toplevel>, so lanes never overwrite each
+# other's pass. gate-preflight.sh mirrors this: it looks the marker up at
 # STATE_ROOT but compares it against a fresh fingerprint of ITS OWN current
 # tree, so the pass is only "valid" from the exact tree it was recorded for.
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
 STATE_ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 1; }
-MARKER="$STATE_ROOT/.claude/gate-pass"
+MARKER="$(spec_workflow_gate_marker "$STATE_ROOT" "$ROOT")" || { echo "ERROR: could not resolve the gate-pass marker path" >&2; exit 1; }
 # SPEC §8.1: on a red gate, the failing command's tail output + a timestamp
 # is appended here (as JSONL) before the pass marker is cleared, so the next
 # retro has the richest failure signal the loop produces. Distinct from

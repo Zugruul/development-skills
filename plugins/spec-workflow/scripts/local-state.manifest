@@ -14,6 +14,7 @@ ignore	.neural-network/project.local.yaml
 ignore	.claude/ITERATIVE_UI_OFF
 ignore	.claude/ui-hub/
 ignore	.claude/gate-pass
+ignore	.claude/gate-pass.d/
 ignore	.claude/telemetry.jsonl
 ignore	.claude/telemetry.lock/
 ignore	.claude/lessons.jsonl

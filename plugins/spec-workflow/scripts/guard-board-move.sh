@@ -76,6 +76,7 @@
 # outright (documented escape hatch for an intentional manual override).
 set -uo pipefail
 
+HOOK_INPUT="$(cat)"  # read once: the parser below and the #581 cwd lookup both need it
 # shellcheck disable=SC2016  # this is Python source in single quotes, not a
 # shell expansion.
 RESULT="$(python3 -c '
@@ -461,7 +462,7 @@ elif matches:
         print(m)
 else:
     print("allow")
-' 2>/dev/null)" || exit 0
+' 2>/dev/null <<<"$HOOK_INPUT")" || exit 0
 
 if [[ -z "$RESULT" || "$RESULT" == "allow" ]]; then
     exit 0
@@ -477,6 +478,21 @@ source "$HERE/lib/repo-root.sh"
 # #463: PRIMARY repo root -- board-cache.json (serial-delivery slot check)
 # and project.yaml are shared loop state; this hook fires with whatever cwd
 # the PreToolUse Bash command happened to run from, worktree or main.
+# #581: judge the tree the session is really in. Claude Code sends the session's cwd in
+# the payload; the hook process itself may run from another directory (the main checkout,
+# say, holding another session's uncommitted files). An absolute payload cwd that is an
+# existing directory inside a git checkout becomes the ambient cwd for everything below
+# (root resolution, relative cd targets, the gate preflight); anything else is ignored and
+# the process cwd is kept, as before. An explicit leading `cd` still wins (#151).
+HOOK_CWD="$(python3 -c 'import json,sys
+try:
+    c = json.load(sys.stdin).get("cwd", "")
+except Exception:
+    c = ""
+print(c if isinstance(c, str) and "\n" not in c else "")' 2>/dev/null <<<"$HOOK_INPUT")"  # stdin, not argv: a long command must not hit the argv size limit
+if [[ "$HOOK_CWD" == /* && -d "$HOOK_CWD" ]] && git -C "$HOOK_CWD" rev-parse --show-toplevel >/dev/null 2>&1; then
+    cd "$HOOK_CWD" || exit 0
+fi
 ROOT="$(spec_workflow_repo_root)" || exit 0
 
 # #151: a literal `cd <path> &&` (or `;`) directly before the board.sh segment

@@ -148,11 +148,12 @@ out="$(cd "$RR_WT" && bash "$PLUGIN/scripts/gate.sh" 2>&1)"
 check "gate.sh from a worktree: pass recorded" "GATE PASS recorded" "$out"
 
 # The marker must land in the MAIN checkout's .claude/, not the worktree's
-# own (nonexistent, gitignored) .claude/.
-if [[ -f "$RR_MAIN/.claude/gate-pass" ]]; then
-    echo "ok   gate.sh from a worktree: marker written to the main checkout's .claude/gate-pass"
+# own (nonexistent, gitignored) .claude/. #581: one marker per worktree, under
+# .claude/gate-pass.d/, so it never replaces the main checkout's own pass.
+if [[ -n "$(find "$RR_MAIN/.claude/gate-pass.d" -type f 2>/dev/null)" && ! -f "$RR_MAIN/.claude/gate-pass" ]]; then
+    echo "ok   gate.sh from a worktree: marker written under the main checkout's .claude/gate-pass.d/"
 else
-    echo "FAIL gate.sh from a worktree: marker written to the main checkout's .claude/gate-pass"
+    echo "FAIL gate.sh from a worktree: marker written under the main checkout's .claude/gate-pass.d/"
     fails=$((fails + 1))
 fi
 if [[ -f "$RR_WT/.claude/gate-pass" ]]; then

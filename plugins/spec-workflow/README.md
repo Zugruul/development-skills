@@ -379,6 +379,7 @@ custom path overrides; there is no blanket temp/log/hidden-directory ignore.
 | ignore | `.claude/ITERATIVE_UI_OFF` |
 | ignore | `.claude/ui-hub/` |
 | ignore | `.claude/gate-pass` |
+| ignore | `.claude/gate-pass.d/` |
 | ignore | `.claude/telemetry.jsonl` |
 | ignore | `.claude/telemetry.lock/` |
 | ignore | `.claude/lessons.jsonl` |

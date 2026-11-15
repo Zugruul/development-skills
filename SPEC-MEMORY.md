@@ -117,7 +117,7 @@ Named follow-up specs — deferred, not dropped:
   in the plugin (`scripts/local-state.manifest`, shell-and-python readable) listing
   every path the plugin writes at runtime with a policy: `ignore` (local state) or
   `track` (shared memory). Initial policies: ignore `.claude/CHECKPOINT`,
-  `.claude/ITERATIVE_UI_OFF`, `.claude/ui-hub/`, `.claude/gate-pass`,
+  `.claude/ITERATIVE_UI_OFF`, `.claude/ui-hub/`, `.claude/gate-pass`, `.claude/gate-pass.d/`,
   `.claude/telemetry.jsonl`, `.claude/lessons.jsonl`, `.claude/board-queue.jsonl`,
   `.claude/board-cache.json`, `.claude/neural-view/`, `.claude/merge-requirements.json`,
   `.claude/.flush*`, `.claude/worktrees/`; track `.neural-network/feedbacks/`,

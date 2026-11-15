@@ -194,6 +194,7 @@ SECTIONS=(
     section-guard-board-move-cd.sh
     section-comment-steering.sh
     section-red-first-preflight.sh
+    section-preflight-worktree-base.sh
     section-gate-lessons.sh
     section-session-init.sh
     section-board-bug-add.sh

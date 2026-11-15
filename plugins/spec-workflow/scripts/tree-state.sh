@@ -81,7 +81,9 @@ else:
     for e in sorted(kept):
         h.update(e)
         h.update(b"\0")
-# .claude/gate-pass is the fingerprint marker itself: it does not exist yet
+# .claude/gate-pass (and #581's per-worktree .claude/gate-pass.d/*, written into the
+# primary checkout by a gate run in any linked worktree) is the fingerprint marker
+# itself: it does not exist yet
 # when gate.sh records a pass, but does exist on every check afterward. It is
 # excluded from both the porcelain status and the untracked-file listing
 # below via an explicit pathspec, independent of .gitignore (a repo that
@@ -122,7 +124,7 @@ else:
 # with the HEAD-tree exclusion rather than only papering over the CI race.
 h.update(run([
     "git", "status", "--porcelain", "--", ".",
-    ":(exclude).claude/gate-pass", ":(exclude).claude/telemetry.jsonl",
+    ":(exclude).claude/gate-pass", ":(exclude).claude/gate-pass.d", ":(exclude).claude/telemetry.jsonl",
     ":(exclude).claude/lessons.jsonl", ":(exclude).claude/board-cache.json",
     ":(exclude).claude/board-issue-*", ":(exclude).claude/board-queue.*", ":(exclude).claude/board-wip.lock*",
     ":(exclude).claude/audit-*", ":(exclude).claude/rate-limit-reset*", ":(exclude).claude/board-read-backoff*",
@@ -142,7 +144,7 @@ _EXCLUDED = (b".claude/gate-pass", b".claude/telemetry.jsonl", b".claude/lessons
 # #561: board.sh's queue, supersede markers, spool and lock directories are runtime state
 # a routine move writes (a supersede marker on EVERY applied move), so a repo that does not
 # gitignore them must not see its gate pass invalidated either.
-_EXCLUDED_PREFIXES = (b".claude/board-queue.", b".claude/board-wip.lock", b".claude/audit-",
+_EXCLUDED_PREFIXES = (b".claude/gate-pass.d/", b".claude/board-queue.", b".claude/board-wip.lock", b".claude/audit-",
                       b".claude/rate-limit-reset", b".claude/board-read-backoff", b".claude/board-issue-")
 paths = sorted(p for p in listing.split(b"\0")
                if p and p not in _EXCLUDED and not p.startswith(_EXCLUDED_PREFIXES))
