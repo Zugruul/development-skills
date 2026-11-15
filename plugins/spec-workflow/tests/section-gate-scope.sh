@@ -37,6 +37,10 @@ check        "r2 changed script selects every section naming it" "section-prefli
 check        "r2 always-run lint section included" "section-syntax.sh" "$out"
 check_absent "r2 unrelated section skipped" "section-neural-view-lifecycle.sh" "$out"
 
+out="$(gs_list "$GS_PFX/scripts/telemetry.py")"
+check "r2b a changed module also selects sections driving its direct callers (board.sh)" "section-serial-delivery.sh" "$out"
+check_rc "r2c caller expansion stops at one level (not the full suite)" 1 "$([[ "$(printf '%s\n' "$out" | grep -c '^section-')" -lt "$GS_ALL_N" ]] && echo 1 || echo 0)"
+
 out="$(gs_list "$GS_PFX/tests/section-repo-root.sh")"
 check "r3 changed section file selects itself" "section-repo-root.sh" "$out"
 
@@ -83,6 +87,7 @@ mkdir -p "$GS/w/.neural-network"
 printf 'base\n' > "$GS/w/tracked.txt"
 printf '.claude/\n' > "$GS/w/.gitignore"
 gs_cfg() { # $1 = python snippet mutating c
+    # shellcheck disable=SC2016 # $GATE_* expand inside the gate command, not here
     python3 -c 'import json,sys
 c=json.load(open(sys.argv[1]))
 c["project"]["mainBranch"]="main"

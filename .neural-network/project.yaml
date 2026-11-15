@@ -45,6 +45,11 @@ boards:
         feature: type:feature
 commands:
     gate: bash plugins/spec-workflow/tests/run-tests.sh && bash plugins/remote-compute/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/scripts/lib/*.sh plugins/spec-workflow/tests/*.sh plugins/remote-compute/tests/*.sh && claude plugin validate plugins/spec-workflow && claude plugin validate plugins/remote-compute
+    gateAffected: >-
+        bash plugins/spec-workflow/tests/run-tests.sh --changed &&
+        { ! grep -q '^plugins/remote-compute/' <<<"$GATE_CHANGED_FILES" || bash plugins/remote-compute/tests/run-tests.sh; } &&
+        shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/scripts/lib/*.sh plugins/spec-workflow/tests/*.sh plugins/remote-compute/tests/*.sh &&
+        claude plugin validate plugins/spec-workflow && claude plugin validate plugins/remote-compute
 commit:
     convention: conventional-commits
     systemPrompt: "Simple titles. Enumerated bullet-point lists of the changes. Simple human language."
@@ -111,6 +116,7 @@ paths:
 methodology:
     tdd: true
     serialDelivery: true
+    gateScope: affected
     maxInProgress: 4
     autoMerge: true
     mergeMethod: squash

@@ -553,9 +553,29 @@ a **substring** — so `--section board` runs every `board-*` section. The flag 
 and comma-separated (`--section a,b`, `--section a --section b`), the union runs in the
 registered order (preserving the ui-hub → neural-view-lifecycle pairing when both are
 selected), and an argument matching nothing errors with the list of available sections. The
-`SPEC_TESTS_SECTION` env var is an equivalent filter source. **Filtering is for local
-iteration only**: the recorded gate pass must always be a full-suite run, so `gate.sh`
-refuses to run at all when `SPEC_TESTS_SECTION` is set.
+`SPEC_TESTS_SECTION` env var is an equivalent filter source. **Hand-picked filtering is for
+local iteration only**: `gate.sh` refuses to run at all when `SPEC_TESTS_SECTION` is set.
+
+### Gate scope: affected files (default) or full
+
+`methodology.gateScope` (`affected` | `full`, default `affected`) decides what `gate.sh`
+runs. Under `affected` it runs `commands.gateAffected` instead of `commands.gate`, exporting
+`GATE_CHANGED_FILES` (newline-separated repo-relative paths: commits since the merge base with
+`project.mainBranch` — `origin/<main>` first, then local — plus uncommitted edits and
+untracked, non-ignored files) and `GATE_BASE` (that merge base). With no `gateAffected`, or
+no merge base, it runs the full gate and prints why. `gate.sh --full` / `--affected` (or
+`SPEC_GATE_SCOPE`) force a scope for one run; telemetry's `gate` event carries `scope`.
+Either scope's pass unlocks In review; CI runs the full gate. `setup-project` asks for the
+scope and helps derive `gateAffected` from the repo's tooling.
+
+This repo's own `gateAffected` uses `run-tests.sh --changed`, which maps
+`GATE_CHANGED_FILES` to sections: a changed `section-*.sh` runs itself; any other file runs
+every section whose text names its basename (`<parent>/<basename>` for generic names such as
+`SKILL.md`); a change to the runner (`run-tests.sh`, `_lib.sh`, `tests/lib/`) or to a
+non-markdown plugin file that no section names runs the full suite; sections marked
+`# gate-scope: always` (whole-tree lints) always run. `--list` prints the selection without
+running it. The remote-compute suite runs only when a path under `plugins/remote-compute/`
+changed.
 
 ## Board reads: slim GraphQL query and honest rate limits (#544)
 

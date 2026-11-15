@@ -12,6 +12,7 @@
 # command substitution before the model ever sees the prompt; a Codex-side
 # agent would see the literal, un-evaluated text instead). Both are rewritten
 # into host-neutral prose usable by either host.
+# gate-scope: always -- lints the whole tree, so it runs under --changed too
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 
 echo "== argument-semantics audit (CDX-013, #183, SPEC-CODEX-COMPAT.md §7.4/§7.5) =="

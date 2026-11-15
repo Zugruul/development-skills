@@ -12,6 +12,7 @@
 # repo (in the skill-creator system skill), so when it is unavailable we SKIP
 # with a visible note rather than crashing the suite or spuriously failing an
 # environment that simply can't run the external check.
+# gate-scope: always -- lints the whole tree, so it runs under --changed too
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== codex-skill-lint =="
 

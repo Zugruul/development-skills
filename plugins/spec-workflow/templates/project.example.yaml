@@ -37,6 +37,9 @@ boards:
 commands:
     gate: pnpm gate
     gateFast: pnpm --filter <pkg> test
+    # gateAffected: the fast subset gate.sh runs under methodology.gateScope: affected.
+    # It gets GATE_CHANGED_FILES (changed paths) and GATE_BASE (merge-base sha).
+    gateAffected: pnpm turbo run lint typecheck test --filter="...[$GATE_BASE]"
     devUp: ./dev.sh
     test: pnpm test
 docs:
@@ -71,6 +74,7 @@ methodology:
     tdd: true
     isolationSuite: ""
     serialDelivery: true
+    gateScope: affected      # affected (changed files only, via commands.gateAffected) | full
     maxInProgress: 1
     autoMerge: false
     feedback: true

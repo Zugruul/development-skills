@@ -4,14 +4,29 @@
 # the guard-board-move hook refuses 'move ... "In review"' unless a matching
 # pass exists, so a red/unrun gate cannot be bypassed by prose.
 set -uo pipefail
-# dev#96: the recorded gate pass MUST be a full-suite run. run-tests.sh honors
-# SPEC_TESTS_SECTION as a section filter, so if it is set here a gate run would
-# record a pass covering only a subset of the suite. Refuse up front — before
-# reading config or running anything — so a filtered pass can never be recorded.
+# dev#96: run-tests.sh honors SPEC_TESTS_SECTION as a hand-picked section
+# filter; a pass recorded under one would cover whatever the caller chose.
+# Refuse up front. The only subset a pass may cover is the gate-scope one
+# below (methodology.gateScope: affected), chosen from the changed files.
 if [[ -n "${SPEC_TESTS_SECTION:-}" ]]; then
     echo "gate.sh: refusing to run with SPEC_TESTS_SECTION set (=${SPEC_TESTS_SECTION}) — the recorded gate pass must be a full-suite run, never a filtered subset. Unset SPEC_TESTS_SECTION and re-run." >&2
     exit 2
 fi
+# Gate scope: `affected` (default) runs commands.gateAffected with the
+# branch's changed files exported; `full` runs commands.gate. Precedence:
+# --full/--affected > $SPEC_GATE_SCOPE > methodology.gateScope > affected.
+SCOPE_ARG=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --full) SCOPE_ARG=full; shift ;;
+        --affected) SCOPE_ARG=affected; shift ;;
+        -h|--help)
+            echo "usage: gate.sh [--full | --affected]"
+            echo "  default scope: methodology.gateScope (affected|full), else affected"
+            exit 0 ;;
+        *) echo "gate.sh: unknown argument: $1 (try --help)" >&2; exit 2 ;;
+    esac
+done
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
 # shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
@@ -49,8 +64,50 @@ MARKER="$(spec_workflow_gate_marker "$STATE_ROOT" "$ROOT")" || { echo "ERROR: co
 LESSONS="$STATE_ROOT/.claude/lessons.jsonl"
 GATE_OUT_LINES=40
 
-GATE="$(python3 -c 'import sys; import config as C; print(C.load_config(path=sys.argv[1], warn=False)["commands"]["gate"])' "$CONFIG")" ||
-    { echo "ERROR: cannot read commands.gate from $CONFIG" >&2; exit 1; }
+# One config read -> four lines: gate, gateAffected, gateScope, mainBranch
+# (newlines inside a command are flattened so the line split stays exact).
+_CFG_LINES="$(python3 -c '
+import sys; import config as C
+c = C.load_config(path=sys.argv[1], warn=False)
+cmds = c.get("commands") or {}
+meth = c.get("methodology") or {}
+proj = c.get("project") or {}
+for v in (cmds["gate"], cmds.get("gateAffected") or "", meth.get("gateScope") or "", proj.get("mainBranch") or ""):
+    print(str(v).replace("\n", " "))
+' "$CONFIG")" || { echo "ERROR: cannot read commands.gate from $CONFIG" >&2; exit 1; }
+{ IFS= read -r GATE; IFS= read -r GATE_AFFECTED; IFS= read -r CFG_SCOPE; IFS= read -r MAIN_BRANCH; } <<<"$_CFG_LINES"
+
+SCOPE="${SCOPE_ARG:-${SPEC_GATE_SCOPE:-${CFG_SCOPE:-affected}}}"
+case "$SCOPE" in
+    affected|full) ;;
+    *) echo "gate.sh: invalid gate scope '$SCOPE' (methodology.gateScope / SPEC_GATE_SCOPE must be affected|full)" >&2; exit 2 ;;
+esac
+
+if [[ "$SCOPE" == affected ]]; then
+    if [[ -z "$GATE_AFFECTED" ]]; then
+        echo "gate scope: affected requested, but no commands.gateAffected is configured -- running the full gate"
+        SCOPE=full
+    else
+        GATE_BASE=""
+        for _ref in "origin/$MAIN_BRANCH" "$MAIN_BRANCH"; do
+            [[ -n "$MAIN_BRANCH" ]] || break
+            if GATE_BASE="$(git -C "$ROOT" merge-base HEAD "$_ref" 2>/dev/null)" && [[ -n "$GATE_BASE" ]]; then break; fi
+            GATE_BASE=""
+        done
+        if [[ -z "$GATE_BASE" ]]; then
+            echo "gate scope: affected requested, but could not resolve a merge base with project.mainBranch '${MAIN_BRANCH}' -- running the full gate"
+            SCOPE=full
+        else
+            # Committed branch changes + uncommitted tracked edits (diff vs the
+            # base reads the working tree) + untracked, non-ignored files.
+            GATE_CHANGED_FILES="$( { git -C "$ROOT" diff --name-only "$GATE_BASE" --; git -C "$ROOT" ls-files --others --exclude-standard; } 2>/dev/null | sort -u)"
+            export GATE_BASE GATE_CHANGED_FILES
+            GATE="$GATE_AFFECTED"
+            echo "gate scope: affected ($(grep -c . <<<"$GATE_CHANGED_FILES") changed file(s) vs ${GATE_BASE:0:12}; 'gate.sh --full' runs everything)"
+        fi
+    fi
+fi
+[[ "$SCOPE" == full ]] && echo "gate scope: full"
 
 echo "gate: $GATE"
 # gate.sh has no task id in scope; the current branch name stands in for it in telemetry
@@ -58,7 +115,7 @@ echo "gate: $GATE"
 TASK="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
 record_gate() { # $1=ok (true|false) — best-effort, must never affect gate.sh's own exit status
     python3 "$HERE/telemetry.py" "$STATE_ROOT" record \
-        "{\"kind\":\"gate\",\"task\":\"$TASK\",\"ok\":$1,\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+        "{\"kind\":\"gate\",\"task\":\"$TASK\",\"ok\":$1,\"scope\":\"$SCOPE\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
         >/dev/null 2>&1 || true
 }
 record_lesson() { # $1=exit-code, tail text on stdin — best-effort, appends before the marker is cleared
@@ -102,7 +159,7 @@ if [[ "$rc" -eq 0 ]]; then
         echo "ERROR: could not fingerprint the tree (tree-state.sh failed) -- no pass recorded. See its stderr above." >&2
         exit 1
     fi
-    echo "GATE PASS recorded ($MARKER) for the current tree — 'In review' moves are unlocked until the tree changes."
+    echo "GATE PASS recorded ($SCOPE scope; $MARKER) for the current tree — 'In review' moves are unlocked until the tree changes."
 else
     # Persist the failure signal (SPEC §8.1) before clearing the marker: a
     # process killed between the two steps should still leave the tail
