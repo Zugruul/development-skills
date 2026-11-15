@@ -185,6 +185,7 @@ SECTIONS=(
     section-changelog-ui.sh
     section-lifecycle-retry.sh
     section-gate-core.sh
+    section-gate-scope.sh
     section-guard-brain-access.sh
     section-gate-fingerprint.sh
     section-gate-changelog-race.sh
