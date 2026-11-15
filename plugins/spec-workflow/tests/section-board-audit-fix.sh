@@ -8,6 +8,12 @@ declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tes
 source "$HERE/_audit-fix-lib.sh"
 echo "== board.sh audit --fix (#564) =="
 
+# The fake gh is symlinked onto PATH as `gh`. If git does not record it executable, Linux PATH
+# lookup skips it and the REAL gh runs (CI fails with "set the GH_TOKEN environment variable");
+# filesystems that report every file executable (WSL on NTFS) hide this locally.
+_fgh_mode="$(git -C "$PLUGIN" ls-files -s tests/fixtures/fake-gh-audit.py 2>/dev/null | cut -d' ' -f1)"
+check "fake-gh-audit.py is executable in git (mode 100755)" "100755" "${_fgh_mode:-not tracked}"
+
 # --- A. report-only lists what --fix would change and mutates nothing ---
 af_setup pr; af_items "10:Backlog"; af_worktree 10 fx/10-widget; af_seen 10
 out="$(af_run audit)"
