@@ -129,6 +129,10 @@ While the merge queue is non-empty and you hold the lock:
    matches; never re-apply a change main already carries.
 3. Re-run the recorded gate on the rebased tree (`gate.sh`) — a rebase
    invalidates the previous recorded pass; never merge on a stale recording.
+   Under `methodology.gateScope: affected` this pass covers only the
+   branch's files, so also wait for the PR's CI checks to pass
+   (`gh pr checks <n> --watch --fail-fast`); with no CI (`work.type: local`),
+   run `gate.sh --full` here instead.
 4. Squash-merge with role attribution (`identity.sh on-behalf ...` recipe,
    `auto-review.md` §Commit identities) and apply the semver bump
    (`semver.sh apply-head`) into the same squash commit — same mechanics as

@@ -345,7 +345,13 @@ MERGE FRESHNESS + SEMVER (both routes, #400): before the squash-merge,
 verify the branch's merge-base equals the CURRENT `origin/<mainBranch>` tip
 — if main moved since the branch's last gate, rebase the branch onto
 `origin/<mainBranch>` and re-run the recorded gate before merging; never
-squash-merge code that has not seen the main it lands on. After the squash
+squash-merge code that has not seen the main it lands on. Under
+`methodology.gateScope: affected` that re-gate only covers the branch's own
+files, so it cannot see a break that comes from this branch and newly landed
+main together: before merging, wait for the PR's CI checks to pass
+(`gh pr checks <n> --watch --fail-fast`); with no CI on the PR
+(`work.type: local`, or a repo without CI), re-gate with `gate.sh --full`
+instead. After the squash
 commit and BEFORE the push, run
 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/semver.sh" apply-head <root> spec-workflow`
 and, when it prints a version (i.e. the commit classifies as

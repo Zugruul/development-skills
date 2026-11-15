@@ -166,6 +166,8 @@ def main(path):
 
     cmds = need(cfg, "commands", dict, "$") or {}
     need(cmds, "gate", str, "commands")
+    if "gateAffected" in cmds and not isinstance(cmds["gateAffected"], str):
+        errs.append(f"commands.gateAffected: must be a string command (got {cmds['gateAffected']!r})")
 
     # delegation.identities: each role is null | dict | list-of-dicts; models are string lists.
     deleg = cfg.get("delegation")
@@ -256,6 +258,9 @@ def main(path):
                 errs.append(f"methodology.{key}: must be an integer >= 1 (got {val!r})")
             elif val < 1:
                 errs.append(f"methodology.{key}: must be >= 1 (got {val})")
+        # methodology.gateScope: what gate.sh runs (schema enum affected|full).
+        if "gateScope" in methodology and methodology["gateScope"] not in ("affected", "full"):
+            errs.append(f"methodology.gateScope: must be 'affected' or 'full' (got {methodology['gateScope']!r})")
         # #564: how often `board.sh audit --fix --if-due` may run (minutes).
         if "auditIntervalMinutes" in methodology:
             val = methodology["auditIntervalMinutes"]

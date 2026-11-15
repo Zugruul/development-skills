@@ -12,6 +12,7 @@
 # §12: plugin-root resolution never reads CWD).
 # shellcheck disable=SC2016  # the bash -c '...' probe bodies below are single-quoted on
 # purpose -- they're expanded inside the spawned bash -c, not at this call site.
+# gate-scope: always -- lints the whole tree, so it runs under --changed too
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== plugin-root resolver (CDX-001) =="
 

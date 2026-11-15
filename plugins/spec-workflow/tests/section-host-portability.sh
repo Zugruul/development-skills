@@ -5,6 +5,7 @@
 # OpenCode (.opencode/skills). install-skills.sh is the client-neutral
 # installer (symlinks, never copies); every SKILL.md follows the portable
 # contract (frontmatter name == dir, description present, lowercase-hyphenated).
+# gate-scope: always -- lints the whole tree, so it runs under --changed too
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== host portability: portable SKILL.md contract (claude + codex + opencode) =="
 REPO_ROOT="$PLUGIN/../.."

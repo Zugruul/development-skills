@@ -497,6 +497,10 @@
                     "type": "string",
                     "description": "Single command that must be green before a task advances to review."
                 },
+                "gateAffected": {
+                    "type": "string",
+                    "description": "Optional fast variant of `gate` that checks only what a branch changed. gate.sh runs it instead of `gate` when methodology.gateScope is `affected` (the default), exporting GATE_CHANGED_FILES (newline-separated repo-relative paths: committed branch changes vs the merge base with project.mainBranch, uncommitted edits, untracked non-ignored files) and GATE_BASE (that merge-base sha). The command maps those paths to the checks that cover them, e.g. `pnpm turbo run test --filter=...[$GATE_BASE]` or a runner flag such as `run-tests.sh --changed`. When it is absent, or no merge base resolves, gate.sh runs the full `gate` and says why. The recorded pass unlocks In review either way; CI should still run the full `gate`."
+                },
                 "gateFast": {
                     "type": "string",
                     "description": "Optional fast inner-loop test command template."
@@ -671,6 +675,19 @@
                     "type": "boolean",
                     "default": false,
                     "description": "When true, build-next skips human PR approval: an autonomous reviewer agent (a suitable model from delegation.identities.reviewer.models) reviews the PR, dialogues fixes with the orchestrator until it approves, then the orchestrator merges and announces the merge. Protocol: build-next skill, references/auto-review.md."
+                },
+                "gateScope": {
+                    "type": "string",
+                    "enum": [
+                        "affected",
+                        "full"
+                    ],
+                    "enumDescriptions": [
+                        "gate.sh runs commands.gateAffected over the branch's changed files (falls back to commands.gate when it is unset or no merge base resolves).",
+                        "gate.sh always runs commands.gate."
+                    ],
+                    "default": "affected",
+                    "description": "What gate.sh runs. `affected` (default): commands.gateAffected over the files the branch changed, falling back to the full commands.gate when gateAffected is absent or no merge base with project.mainBranch resolves. `full`: always commands.gate. Overridable per run with `gate.sh --full` / `--affected` or SPEC_GATE_SCOPE=affected|full. setup-project asks for it."
                 },
                 "serialDelivery": {
                     "type": "boolean",

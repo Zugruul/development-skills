@@ -14,7 +14,8 @@ board.sh/gate.sh stamp real wall-clock time when they record):
                   `from` may be "" (board.sh does not track the prior status;
                   metrics only uses `to` + `ts` pairs, so an empty `from`
                   does not affect any computed number).
-    gate          {"kind": "gate", "task": <id>, "ok": <bool>, "ts": <iso8601>}
+    gate          {"kind": "gate", "task": <id>, "ok": <bool>, "ts": <iso8601>,
+                   "scope": <"affected"|"full">?}
     review-round-start {"kind": "review-round-start", "task": <id>,
                         "round": <1..3>, "ts": <iso8601>}
                   Durable reservation before autonomous reviewer invocation.

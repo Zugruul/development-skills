@@ -115,6 +115,8 @@ source "$HERE/_lib.sh"
 # falls through to the no-match error below, never a crash.
 _filters=()
 _filter_requested=0
+_changed_mode=0
+_list_only=0
 # _add_filters SPLITS $1 on commas and appends each NON-EMPTY term to
 # _filters. Empty terms are ignored (an empty substring would match every
 # section); skipping them here — rather than expanding a possibly-empty array
@@ -138,10 +140,18 @@ while [[ $# -gt 0 ]]; do
             _add_filters "$1"; _filter_requested=1; shift ;;
         --section=*)
             _add_filters "${1#--section=}"; _filter_requested=1; shift ;;
+        --changed)
+            _changed_mode=1; shift ;;
+        --list)
+            _list_only=1; shift ;;
         -h|--help)
-            echo "usage: run-tests.sh [--section <name>[,<name>...]]..."
+            echo "usage: run-tests.sh [--section <name>[,<name>...]]... | --changed  [--list]"
             echo "  --section <name>  run only sections whose base-name contains <name>"
             echo "                    (repeatable and/or comma-separated; substring match)"
+            echo "  --changed         run only the sections covering \$GATE_CHANGED_FILES"
+            echo "                    (newline-separated repo-relative paths; set by gate.sh"
+            echo "                    under methodology.gateScope: affected)"
+            echo "  --list            print the selected sections instead of running them"
             echo "  no --section      run the full suite (also honors \$SPEC_TESTS_SECTION)"
             exit 0 ;;
         *)
@@ -185,6 +195,7 @@ SECTIONS=(
     section-changelog-ui.sh
     section-lifecycle-retry.sh
     section-gate-core.sh
+    section-gate-scope.sh
     section-guard-brain-access.sh
     section-gate-fingerprint.sh
     section-gate-changelog-race.sh
@@ -314,11 +325,119 @@ if [[ ${#SECTIONS[@]} -eq 0 ]]; then
     exit 1
 fi
 
+# --- --changed: affected-section selection (gate scope) ---------------------
+# Maps each path in $GATE_CHANGED_FILES (repo-relative, newline-separated; gate.sh
+# exports it under methodology.gateScope: affected) to the registered sections
+# that cover it. Biased toward running MORE, never less:
+#   * runner infra (run-tests.sh, _lib.sh, tests/lib/) -> the full suite;
+#   * a changed section-*.sh -> that section;
+#   * any other file -> a match key: its basename, or <parent>/<basename> for
+#     generic names (SKILL.md, README.md, ...). For a file under the plugin's
+#     scripts/ or hooks/, the basenames of its DIRECT callers there (scripts that
+#     name it or, for a .py file, import its module) are keys too, so a change
+#     to telemetry.py also selects sections that only drive board.sh. One level
+#     only: deeper chains are left to CI's full run;
+#   * every section whose text contains a key is selected;
+#   * a plugin file (under this plugin, not markdown) that NO section covers ->
+#     the full suite, since its coverage is unknown;
+#   * sections marked `# gate-scope: always` (whole-tree lints) always run.
+# Selection keeps the registered SECTIONS order (ui-hub before
+# neural-view-lifecycle). CI still runs the full suite on every PR.
+_select_changed() {
+    local _top _pfx _out _plugin_p
+    if [[ -z "${GATE_CHANGED_FILES+set}" ]]; then
+        echo "run-tests.sh: --changed but GATE_CHANGED_FILES is not set -- running the full suite (gate.sh sets it)" >&2
+        SELECTED=("${SECTIONS[@]}")
+        return 0
+    fi
+    # Physical paths on both sides: show-toplevel is physical, $PLUGIN may be
+    # a symlinked path. If the prefix still can't be derived, run everything.
+    _plugin_p="$(cd "$PLUGIN" && pwd -P)"
+    _top="$(git -C "$_plugin_p" rev-parse --show-toplevel 2>/dev/null)" || _top=""
+    _pfx="${_plugin_p#"$_top"/}"
+    if [[ -z "$_top" || "$_pfx" == "$_plugin_p" ]]; then
+        echo "run-tests.sh: --changed could not place the plugin inside its git checkout -- running the full suite" >&2
+        SELECTED=("${SECTIONS[@]}")
+        return 0
+    fi
+    _out="$(GATE_CHANGED_FILES="${GATE_CHANGED_FILES:-}" python3 - "$_plugin_p" "$HERE" "$_pfx" "${SECTIONS[@]}" <<'PYSEL'
+import os, re, sys
+plugin, tests, pfx, sections = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
+changed = [l.strip() for l in os.environ.get("GATE_CHANGED_FILES", "").splitlines() if l.strip()]
+GENERIC = {"SKILL.md", "README.md", "__init__.py", "index.html", "index.js", "package.json", "Makefile"}
+
+def read(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+text = {s: read(os.path.join(tests, s)) for s in sections}
+srcs = {}
+for sub in ("scripts", "hooks"):
+    for d, _, files in os.walk(os.path.join(plugin, sub)):
+        if "__pycache__" in d or "node_modules" in d:
+            continue
+        for n in files:
+            if n.endswith((".sh", ".py", ".json", ".js", ".html")):
+                fp = os.path.join(d, n)
+                srcs[fp] = read(fp)
+
+def names(content, key):
+    if key in content:
+        return True
+    if key.endswith(".py") and "/" not in key:
+        stem = re.escape(key[:-3])
+        return re.search(r"(?m)^\s*(from\s+%s\b|import\s+(\w+\s*,\s*)*%s\b)" % (stem, stem), content) is not None
+    return False
+
+def callers(key):
+    # ONE level only: a full transitive closure snowballs (comments that merely
+    # mention a script count as edges) until nearly every section is selected.
+    return {key} | {os.path.basename(fp) for fp, c in srcs.items() if names(c, key)}
+
+picked = {s for s in sections if re.search(r"(?m)^# gate-scope: always", text[s])}
+inplug = lambda f: bool(pfx) and f.startswith(pfx + "/")
+rel = lambda f: f[len(pfx) + 1:] if inplug(f) else None
+for f in changed:
+    r = rel(f)
+    if r in ("tests/run-tests.sh", "tests/_lib.sh") or (r or "").startswith("tests/lib/"):
+        print("FULL"); sys.exit(0)
+    base = os.path.basename(f)
+    if r and r.startswith("tests/section-") and base in text:
+        picked.add(base); continue
+    key = (os.path.basename(os.path.dirname(f)) + "/" + base) if (base in GENERIC or ".example." in base) else base
+    keys = callers(key) if r and r.split("/")[0] in ("scripts", "hooks") else {key}
+    hit = {s for s in sections if any(names(text[s], k) for k in keys)}
+    if not hit and inplug(f) and not f.endswith(".md"):
+        print("FULL"); sys.exit(0)
+    picked |= hit
+for s in sections:
+    if s in picked:
+        print(s)
+PYSEL
+)" || { echo "run-tests.sh: --changed could not compute a selection -- running the full suite" >&2; _out="FULL"; }
+    if [[ "$_out" == FULL ]]; then
+        SELECTED=("${SECTIONS[@]}")
+    else
+        SELECTED=()
+        while IFS= read -r _s; do [[ -n "$_s" ]] && SELECTED+=("$_s"); done <<<"$_out"
+    fi
+    echo "run-tests.sh: --changed selected ${#SELECTED[@]} of ${#SECTIONS[@]} sections" >&2
+}
+
 # Apply the --section filter (dev#96). No filter requested -> run every
 # section, in the registered order, exactly as before. A requested filter
 # that resolves to no non-empty terms (e.g. `--section=`) matches nothing and
 # lands in the no-match error below rather than silently running the suite.
-if [[ "$_filter_requested" -eq 0 ]]; then
+if [[ "$_changed_mode" -eq 1 && "$_filter_requested" -eq 1 ]]; then
+    echo "run-tests.sh: --changed cannot be combined with --section / \$SPEC_TESTS_SECTION" >&2
+    exit 2
+fi
+if [[ "$_changed_mode" -eq 1 ]]; then
+    _select_changed
+elif [[ "$_filter_requested" -eq 0 ]]; then
     SELECTED=("${SECTIONS[@]}")
 else
     SELECTED=()
@@ -338,6 +457,11 @@ else
         for s in "${SECTIONS[@]}"; do _n="${s#section-}"; echo "  ${_n%.sh}" >&2; done
         exit 2
     fi
+fi
+
+if [[ "$_list_only" -eq 1 ]]; then
+    printf '%s\n' "${SELECTED[@]}"
+    exit 0
 fi
 
 for s in "${SELECTED[@]}"; do
