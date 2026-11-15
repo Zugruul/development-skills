@@ -48,6 +48,8 @@ check "6b the pass line names the worktree's marker" ".claude/gate-pass.d/" "$ou
 # when .claude/ is not gitignored)
 git -C "$PM" rm -q --cached .gitignore && rm -f "$PM/.gitignore" && _pwb_git -C "$PM" commit -q -m "drop ignore"
 check "6c fixture: main checkout gates green" "GATE PASS recorded" "$(pwb_gate "$PM")"
+out="$( (cd "$PM" && env -u SPEC_WORKFLOW_REPO_ROOT bash "$PLUGIN/scripts/gate-preflight.sh" --root "$PWB/wt-a" 2>&1); echo "rc=$?")"
+check "6f gate-preflight --root <worktree> finds that worktree's own marker" "rc=0" "$out"
 pwb_gate "$PWB/wt-b" >/dev/null
 check "6c main's pass survives a worktree gate writing into main/.claude/gate-pass.d" "rc=0" "$(pwb_pre "$PM")"
 check "6c main checkout still uses .claude/gate-pass" "x" "$([[ -f "$PM/.claude/gate-pass" ]] && echo x)"
@@ -115,7 +117,8 @@ check "7b stale origin/main is fetched before measuring: passes" "rc=0" "$out"
 # no remote at all: falls back to the local main branch, as before
 git -C "$RFB/main" remote remove origin
 out="$(rfb "$RFB/lane")"
-check "7c no origin remote: falls back to local main (still measured, no crash)" "rc=" "$out"
+check "7c no origin remote: falls back to the stale local main (measured as before: blocked)" "rc=2" "$out"
+check "7c ... blaming the commit local main lacks (the pre-#581 behaviour, without a remote)" "$UP" "$out"
 
 # 7d. red proved by reverting the fix: test and code in ONE commit -> blocked, with the override named
 git -C "$RFB/main" worktree add -q -b sc/49-one "$RFB/one" main 2>/dev/null
@@ -132,6 +135,18 @@ check "7d a real reason is accepted" "rc=0" "$out"
 check "7d the override is printed" "red-first overridden" "$out"
 check "7d the reason is recorded in telemetry" "proved red by reverting fix2.sh" "$(cat "$RFB/main/.claude/telemetry.jsonl" 2>/dev/null)"
 check "7d the record kind" '"kind": "red-first-override"' "$(cat "$RFB/main/.claude/telemetry.jsonl" 2>/dev/null)"
+out="$(rfb "$RFB/one")"
+check "7e a recorded override for the same commit is honoured without the env var (flush replay)" "rc=0" "$out"
+check "7e ... and says it reuses the recorded override" "recorded override" "$out"
+out="$( (cd "$RFB/one" && env -u SPEC_WORKFLOW_REPO_ROOT RED_FIRST_OVERRIDE="proved red by reverting fix2.sh again, issue form" bash "$RF" --issue 49 2>&1); echo "rc=$?")"
+check "7f --issue: passes" "rc=0" "$out"
+check "7f --issue: the record's task is the issue number, with the branch kept" '"task": 49' "$(tail -1 "$RFB/main/.claude/telemetry.jsonl" 2>/dev/null)"
+check "7f --issue: ... branch field" '"branch": "sc/49-one"' "$(tail -1 "$RFB/main/.claude/telemetry.jsonl" 2>/dev/null)"
+echo f2 >"$RFB/one/fix3.sh" && git -C "$RFB/one" add -A && _pwb_git -C "$RFB/one" commit -q -m "fix: later impl"
+git -C "$RFB/one" reset -q --hard HEAD~2 && mkdir -p "$RFB/one/tests" && echo t >"$RFB/one/tests/v.sh" && echo g >"$RFB/one/fix4.sh" \
+    && git -C "$RFB/one" add -A && _pwb_git -C "$RFB/one" commit -q -m "fix: a different combined commit"
+out="$(rfb "$RFB/one")"
+check "7e an override recorded for ANOTHER commit is not reused" "rc=2" "$out"
 rm -rf "$RFB"
 
 # ---------------------------------------------------------------- docs
