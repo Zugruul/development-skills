@@ -177,19 +177,20 @@ check_rc "g8 unknown gate.sh argument refused" 2 "$rc"
 gs_cfg 'c["commands"]["gate"]="echo LINE-ONE\necho LINE-TWO"; c.setdefault("methodology",{})["gateScope"]="full"'
 out="$(gs_gate)"
 check "g9 multi-line gate: first line runs" "LINE-ONE" "$out"
-check "g9 multi-line gate: second line runs as its own command" $'\nLINE-TWO' "$out"
+check "g9 multi-line gate: second line runs" "LINE-TWO" "$out"
 check_absent "g9 multi-line gate is not flattened into one command" "LINE-ONE echo" "$out"
 gs_cfg 'c["commands"]["gateAffected"]="echo AFF-ONE\necho AFF-TWO"'
 out="$(gs_gate)"
-check "g9b multi-line gateAffected keeps its newlines" $'\nAFF-TWO' "$out"
+check "g9b multi-line gateAffected: second line runs" "AFF-TWO" "$out"
+check_absent "g9b multi-line gateAffected is not flattened" "AFF-ONE echo" "$out"
 
 # g10: a rename lists the OLD path too (sections naming it must still run)
 gs_cfg ''
 git -C "$GS/w" checkout -q -- tracked.txt 2>/dev/null; rm -f "$GS/w/untracked.txt"
-( cd "$GS/w" && git mv committed.txt renamed.txt && git -c user.name=t -c user.email=t@t commit -qm mv )
+( cd "$GS/w" && git mv tracked.txt renamed.txt && git -c user.name=t -c user.email=t@t commit -qm mv )
 out="$(gs_gate)"
-check "g10 rename: new path listed" "renamed.txt" "$out"
-check "g10 rename: old path listed" "committed.txt" "$out"
+check "g10 rename of a base file: new path listed" "renamed.txt" "$out"
+check "g10 rename of a base file: old path listed" "tracked.txt" "$out"
 
 # g11: non-ASCII names arrive unquoted
 printf 'x\n' > "$GS/w/café.txt"
@@ -208,7 +209,7 @@ check "s1 schema: methodology.gateScope enum" "enum ['affected', 'full'] default
 check "s2 schema: commands.gateAffected declared" "cmd True" "$out"
 check "s3 template writes gateScope" "gateScope: affected" "$(cat "$PLUGIN/templates/project.example.yaml")"
 check "s4 template shows gateAffected commented out (no foreign placeholder runs)" "# gateAffected:" "$(cat "$PLUGIN/templates/project.example.yaml")"
-check_absent "s4b template has no live gateAffected" $'\n    gateAffected:' "$(cat "$PLUGIN/templates/project.example.yaml")"
+check_rc "s4b template has no live gateAffected" 0 "$(grep -c '^[[:space:]]*gateAffected:' "$PLUGIN/templates/project.example.yaml")"
 GSV="$(mktemp -d)"
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c.setdefault("methodology",{})["gateScope"]="subset"; c["commands"]["gateAffected"]=["x"]; json.dump(c,open(sys.argv[2],"w"))' "$FIX/valid.project.json" "$GSV/project.json"
 out="$(python3 "$PLUGIN/scripts/validate-config.py" "$GSV/project.json" 2>&1)"

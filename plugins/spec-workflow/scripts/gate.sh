@@ -9,7 +9,7 @@ set -uo pipefail
 # Refuse up front. The only subset a pass may cover is the gate-scope one
 # below (methodology.gateScope: affected), chosen from the changed files.
 if [[ -n "${SPEC_TESTS_SECTION:-}" ]]; then
-    echo "gate.sh: refusing to run with SPEC_TESTS_SECTION set (=${SPEC_TESTS_SECTION}) — the recorded gate pass must be a full-suite run, never a filtered subset. Unset SPEC_TESTS_SECTION and re-run." >&2
+    echo "gate.sh: refusing to run with SPEC_TESTS_SECTION set (=${SPEC_TESTS_SECTION}) — a recorded pass never covers a hand-picked section filter (the affected scope picks its own subset from the changed files). Unset SPEC_TESTS_SECTION and re-run." >&2
     exit 2
 fi
 # Gate scope: `affected` (default) runs commands.gateAffected with the
@@ -64,18 +64,21 @@ MARKER="$(spec_workflow_gate_marker "$STATE_ROOT" "$ROOT")" || { echo "ERROR: co
 LESSONS="$STATE_ROOT/.claude/lessons.jsonl"
 GATE_OUT_LINES=40
 
-# One config read -> four lines: gate, gateAffected, gateScope, mainBranch
-# (newlines inside a command are flattened so the line split stays exact).
-_CFG_LINES="$(python3 -c '
+# One config read -> four NUL-terminated values: gate, gateAffected,
+# gateScope, mainBranch. NUL, not newline: a YAML block-scalar gate command
+# is several lines, and each line must still run as its own command.
+_cfg_tmp="$(mktemp)"
+python3 -c '
 import sys; import config as C
 c = C.load_config(path=sys.argv[1], warn=False)
 cmds = c.get("commands") or {}
 meth = c.get("methodology") or {}
 proj = c.get("project") or {}
 for v in (cmds["gate"], cmds.get("gateAffected") or "", meth.get("gateScope") or "", proj.get("mainBranch") or ""):
-    print(str(v).replace("\n", " "))
-' "$CONFIG")" || { echo "ERROR: cannot read commands.gate from $CONFIG" >&2; exit 1; }
-{ IFS= read -r GATE; IFS= read -r GATE_AFFECTED; IFS= read -r CFG_SCOPE; IFS= read -r MAIN_BRANCH; } <<<"$_CFG_LINES"
+    sys.stdout.write(str(v) + "\0")
+' "$CONFIG" >"$_cfg_tmp" || { rm -f "$_cfg_tmp"; echo "ERROR: cannot read commands.gate from $CONFIG" >&2; exit 1; }
+{ IFS= read -r -d '' GATE; IFS= read -r -d '' GATE_AFFECTED; IFS= read -r -d '' CFG_SCOPE; IFS= read -r -d '' MAIN_BRANCH; } <"$_cfg_tmp"
+rm -f "$_cfg_tmp"
 
 SCOPE="${SCOPE_ARG:-${SPEC_GATE_SCOPE:-${CFG_SCOPE:-affected}}}"
 case "$SCOPE" in
@@ -100,10 +103,18 @@ if [[ "$SCOPE" == affected ]]; then
         else
             # Committed branch changes + uncommitted tracked edits (diff vs the
             # base reads the working tree) + untracked, non-ignored files.
-            GATE_CHANGED_FILES="$( { git -C "$ROOT" diff --name-only "$GATE_BASE" --; git -C "$ROOT" ls-files --others --exclude-standard; } 2>/dev/null | sort -u)"
-            export GATE_BASE GATE_CHANGED_FILES
-            GATE="$GATE_AFFECTED"
-            echo "gate scope: affected ($(grep -c . <<<"$GATE_CHANGED_FILES") changed file(s) vs ${GATE_BASE:0:12}; 'gate.sh --full' runs everything)"
+            # --no-renames: a rename lists its OLD path too, so sections still
+            # naming it run. quotePath=false: non-ASCII names stay verbatim.
+            if _diff="$(git -C "$ROOT" -c core.quotePath=false diff --no-renames --name-only "$GATE_BASE" --)" \
+                && _untracked="$(git -C "$ROOT" -c core.quotePath=false ls-files --others --exclude-standard)"; then
+                GATE_CHANGED_FILES="$(printf '%s\n%s\n' "$_diff" "$_untracked" | grep -v '^$' | sort -u)"
+                export GATE_BASE GATE_CHANGED_FILES
+                GATE="$GATE_AFFECTED"
+                echo "gate scope: affected ($(grep -c . <<<"$GATE_CHANGED_FILES") changed file(s) vs ${GATE_BASE:0:12}; 'gate.sh --full' runs everything)"
+            else
+                echo "gate scope: affected requested, but listing the changed files failed -- running the full gate"
+                SCOPE=full
+            fi
         fi
     fi
 fi

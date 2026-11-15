@@ -565,16 +565,21 @@ runs. Under `affected` it runs `commands.gateAffected` instead of `commands.gate
 untracked, non-ignored files) and `GATE_BASE` (that merge base). With no `gateAffected`, or
 no merge base, it runs the full gate and prints why. `gate.sh --full` / `--affected` (or
 `SPEC_GATE_SCOPE`) force a scope for one run; telemetry's `gate` event carries `scope`.
-Either scope's pass unlocks In review; CI runs the full gate. `setup-project` asks for the
-scope and helps derive `gateAffected` from the repo's tooling.
+Renames list both the old and the new path. Either scope's pass unlocks In review; CI runs the
+full gate, and the merge step waits for the PR's CI checks (or runs `gate.sh --full` where
+there is no CI), since an affected pass cannot see a break that comes from the branch and newly
+landed main together. `setup-project` asks for the scope and helps derive `gateAffected` from
+the repo's tooling.
 
 This repo's own `gateAffected` uses `run-tests.sh --changed`, which maps
 `GATE_CHANGED_FILES` to sections: a changed `section-*.sh` runs itself; any other file runs
 every section whose text names its basename (`<parent>/<basename>` for generic names such as
 `SKILL.md`); a change to the runner (`run-tests.sh`, `_lib.sh`, `tests/lib/`) or to a
 non-markdown plugin file that no section names runs the full suite; sections marked
-`# gate-scope: always` (whole-tree lints) always run. `--list` prints the selection without
-running it. The remote-compute suite runs only when a path under `plugins/remote-compute/`
+`# gate-scope: always` (whole-tree lints) always run. Only direct callers count, so a
+two-level chain (a lib sourced by a script that another script calls) is left to CI. With
+`GATE_CHANGED_FILES` unset (a manual `--changed` run) it runs the full suite. `--list` prints
+the selection without running it. The remote-compute suite runs only when a path under `plugins/remote-compute/`
 changed.
 
 ## Board reads: slim GraphQL query and honest rate limits (#544)

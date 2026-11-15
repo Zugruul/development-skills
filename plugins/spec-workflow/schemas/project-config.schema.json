@@ -682,6 +682,10 @@
                         "affected",
                         "full"
                     ],
+                    "enumDescriptions": [
+                        "gate.sh runs commands.gateAffected over the branch's changed files (falls back to commands.gate when it is unset or no merge base resolves).",
+                        "gate.sh always runs commands.gate."
+                    ],
                     "default": "affected",
                     "description": "What gate.sh runs. `affected` (default): commands.gateAffected over the files the branch changed, falling back to the full commands.gate when gateAffected is absent or no merge base with project.mainBranch resolves. `full`: always commands.gate. Overridable per run with `gate.sh --full` / `--affected` or SPEC_GATE_SCOPE=affected|full. setup-project asks for it."
                 },

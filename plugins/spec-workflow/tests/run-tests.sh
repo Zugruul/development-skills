@@ -344,11 +344,23 @@ fi
 # Selection keeps the registered SECTIONS order (ui-hub before
 # neural-view-lifecycle). CI still runs the full suite on every PR.
 _select_changed() {
-    local _top _pfx _out
-    _top="$(git -C "$PLUGIN" rev-parse --show-toplevel 2>/dev/null)" || _top=""
-    _pfx="${PLUGIN#"$_top"/}"
-    [[ -n "$_top" && "$_pfx" != "$PLUGIN" ]] || _pfx=""
-    _out="$(GATE_CHANGED_FILES="${GATE_CHANGED_FILES:-}" python3 - "$PLUGIN" "$HERE" "$_pfx" "${SECTIONS[@]}" <<'PYSEL'
+    local _top _pfx _out _plugin_p
+    if [[ -z "${GATE_CHANGED_FILES+set}" ]]; then
+        echo "run-tests.sh: --changed but GATE_CHANGED_FILES is not set -- running the full suite (gate.sh sets it)" >&2
+        SELECTED=("${SECTIONS[@]}")
+        return 0
+    fi
+    # Physical paths on both sides: show-toplevel is physical, $PLUGIN may be
+    # a symlinked path. If the prefix still can't be derived, run everything.
+    _plugin_p="$(cd "$PLUGIN" && pwd -P)"
+    _top="$(git -C "$_plugin_p" rev-parse --show-toplevel 2>/dev/null)" || _top=""
+    _pfx="${_plugin_p#"$_top"/}"
+    if [[ -z "$_top" || "$_pfx" == "$_plugin_p" ]]; then
+        echo "run-tests.sh: --changed could not place the plugin inside its git checkout -- running the full suite" >&2
+        SELECTED=("${SECTIONS[@]}")
+        return 0
+    fi
+    _out="$(GATE_CHANGED_FILES="${GATE_CHANGED_FILES:-}" python3 - "$_plugin_p" "$HERE" "$_pfx" "${SECTIONS[@]}" <<'PYSEL'
 import os, re, sys
 plugin, tests, pfx, sections = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
 changed = [l.strip() for l in os.environ.get("GATE_CHANGED_FILES", "").splitlines() if l.strip()]
