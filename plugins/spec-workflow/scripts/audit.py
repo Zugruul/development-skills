@@ -25,8 +25,9 @@ was found, 0 otherwise (a clean report).
 #564 reconciliation (the board must show the work that is running):
   (e) a live worktree (under <root>/.claude/worktrees/ or on a branchPattern
       branch) or an open PR for a task whose card is still before In progress
-      -> In progress (--over-wip "audit: work is running": the work is already
-      happening, the board must show it, so the WIP limit never blocks it).
+      -> In progress, through normal WIP admission: the audit NEVER moves a card
+      over the WIP limit (rpg incident 2026-11-14: "OVER WIP 25/5"); a full
+      limit is a NOTE and the card stays where it is.
   (f) In review: pr mode, an open PR that is not a draft; both modes, a live
       worktree or open PR whose task has review-round / review-round-start
       telemetry or a green `gate` telemetry event. The move itself still runs
@@ -36,10 +37,19 @@ was found, 0 otherwise (a clean report).
       main branch whose subject ends with "(#N)" (a squash merge) for a card in
       In progress / In review. Only if the two-pass review guard allows it,
       else "NOTE #N: merged but review evidence missing ...".
-  (h) a live worktree or open PR with no linked issue -> board.sh ensure-issue;
-      the printed issue is recorded in <root>/.claude/audit-links.json (branch ->
-      issue) so the next run reuses it. A link is only ever: that record, the
-      branch's own <id>, or a Closes/Fixes/Resolves #N in the PR body.
+  (h) a live worktree or open PR with no linked issue -> a
+      "NOTE: DISCREPANCY: ... has no issue" line. The audit NEVER creates an
+      issue (rpg incident: 29 issues in 9 minutes); filing one is the
+      orchestrator's deliberate `board.sh ensure-issue` call. worktree-agent-*
+      and batch/* lanes (scratch worktrees of subagents, local batch branches)
+      are never adopted, only counted in one NOTE. A link is only ever: the
+      <root>/.claude/audit-links.json record (branch -> issue), a unique board
+      card whose title carries the task id in the branch name (sc/226-x ->
+      "SC-226: ..."), the branch's own <id> when that issue is on the board, or
+      a Closes/Fixes/Resolves #N in the PR body.
+Progress lines ("audit: ...") go to stderr. The fix pass stops making moves once
+BOARD_AUDIT_BUDGET_SECONDS (default 90, counted from --started, the epoch the
+board.sh audit began) is spent, with one NOTE; the next tick carries on.
 Every move goes through `board.sh move`; a failed move is a NOTE, the audit
 continues. Without --fix the same plan is printed as WOULD FIX lines and the
 exit is 1; with --fix the exit is 0 unless a fix failed.
@@ -55,11 +65,36 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from wip import normalized
 
-OVER_WIP_REASON = "audit: work is running"
+IGNORED_LANE_RE = re.compile(r"^(?:worktree-agent-|batch/)")
+TASK_ID_BRANCH_RE = re.compile(r"(?:^|/)([A-Za-z]{1,10})[/-]?(\d+)(?=$|[^0-9])")
+TASK_ID_TITLE_RE = re.compile(r"(?<![A-Za-z0-9])([A-Za-z]{1,10})-(\d+)(?![0-9])")
+DEFAULT_BUDGET_SECONDS = 90
+
+
+def progress(msg):
+    print("audit: " + msg, file=sys.stderr, flush=True)
+
+
+def ignored_lane(branch, path=None):
+    """Scratch lanes the audit never adopts: subagent worktrees and local batch branches."""
+    if branch and IGNORED_LANE_RE.match(branch):
+        return True
+    return bool(path) and os.path.basename(path.rstrip(os.sep)).startswith("worktree-agent-")
+
+
+def branch_task_id(branch):
+    """("SC", 226) for sc/226-inventory, or None. The id is the first <letters><digits> unit."""
+    m = TASK_ID_BRANCH_RE.search(branch or "")
+    return (m.group(1).upper(), int(m.group(2))) if m else None
+
+
+def title_task_ids(title):
+    return {(p.upper(), int(n)) for p, n in TASK_ID_TITLE_RE.findall(title or "")}
 CLOSING_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)", re.I)
 TRAILING_REFS_RE = re.compile(r"\(((?:#\d+(?:,\s*)?)+)\)\s*$")
 
@@ -159,59 +194,6 @@ def load_links(root):
         return {}
 
 
-def save_link(root, branch, number):
-    data = load_links(root)
-    data[branch] = number
-    try:
-        tmp = os.path.join(root, ".claude", "audit-links.json.tmp")
-        with open(tmp, "w") as fh:
-            json.dump(data, fh, sort_keys=True)
-        os.replace(tmp, os.path.join(root, ".claude", "audit-links.json"))
-    except OSError:
-        print("WARN: could not record the link " + branch + " -> #" + str(number), file=sys.stderr)
-
-
-def mark_comments_seen(root, number):
-    """An issue this audit just filed has no human comments to read first."""
-    path = os.path.join(root, ".claude", "board-comments-seen.json")
-    try:
-        try:
-            with open(path) as fh:
-                data = json.load(fh)
-        except (OSError, ValueError):
-            data = {}
-        data[str(number)] = True
-        with open(path + ".tmp", "w") as fh:
-            json.dump(data, fh)
-        os.replace(path + ".tmp", path)
-    except OSError:
-        pass
-
-
-def add_to_snapshot(snap_file, root, number):
-    """Put a card this audit just filed into the shared snapshot, from the item-id cache that
-    ensure-issue's own visibility poll refreshed (no extra board read)."""
-    if not snap_file:
-        return
-    cache = os.environ.get("BOARD_CACHE_FILE") or os.path.join(root, ".claude", "board-cache.json")
-    try:
-        with open(cache) as fh:
-            entry = (json.load(fh) or {}).get(str(number)) or {}
-        with open(snap_file) as fh:
-            snap = json.load(fh)
-        if not entry.get("itemId"):
-            return
-        snap.setdefault("items", []).append({"id": entry["itemId"], "status": entry.get("status") or None,
-                                             "content": {"number": number, "type": "Issue"}})
-        if "totalCount" in snap:
-            snap["totalCount"] = len(snap["items"])
-        with open(snap_file + ".tmp", "w") as fh:
-            json.dump(snap, fh)
-        os.replace(snap_file + ".tmp", snap_file)
-    except (OSError, ValueError):
-        pass
-
-
 def load_prs(path):
     try:
         with open(path) as fh:
@@ -239,11 +221,14 @@ def merged_commit_tasks(root, main_branch):
 
 
 class Fixer:
-    def __init__(self, root, board_sh, apply, snap_file="", snap_token=""):
+    def __init__(self, root, board_sh, apply, snap_file="", snap_token="", deadline=None, budget=None):
         self.root, self.board_sh, self.apply, self.snap_file = root, board_sh, apply, snap_file
         self.snap_token = snap_token
         self.changes = 0
         self.failures = 0
+        self.deadline, self.budget = deadline, budget
+        self.out_of_time = False
+        self.skipped = 0
 
     def board(self, args, cwd=None, share_snapshot=False):
         """Run board.sh. Only `move` shares the audit's board snapshot (BOARD_AUDIT_SNAP_FILE), held
@@ -258,17 +243,28 @@ class Fixer:
                            capture_output=True, text=True, env=env)
         return r.returncode, r.stdout, r.stderr
 
-    def move(self, num, frm, to, why, counted, cwd=None):
+    def move(self, num, frm, to, why, cwd=None):
+        """One board.sh move with normal WIP admission (never --over-wip)."""
         if not self.apply:
             print(f"WOULD FIX #{num}: {frm} -> {to} ({why})")
             self.changes += 1
             return True
-        args = ["move", str(num), to]
-        if counted:
-            args += ["--over-wip", OVER_WIP_REASON, "--over-wip-by", "audit"]
-        rc, out, err = self.board(args, cwd, share_snapshot=True)
+        if self.deadline is not None and time.time() >= self.deadline:
+            if not self.out_of_time:
+                print(f"NOTE: audit time budget ({self.budget}s) reached; the remaining moves wait for the next tick")
+                self.out_of_time = True
+            self.skipped += 1
+            return False
+        progress(f"moving #{num}: {frm} -> {to}")
+        rc, out, err = self.board(["move", str(num), to], cwd, share_snapshot=True)
         if rc != 0:
-            first = next((l for l in (err + out).splitlines() if l.strip()), "no output")
+            text = err + out
+            wip = re.search(r"WIP BLOCKED: capacity (\d+/\d+)", text)
+            if wip:
+                print(f"NOTE #{num}: not moved {frm} -> {to} ({why}): WIP limit full ({wip.group(1)}); "
+                      "the audit never moves a card over the WIP limit")
+                return False
+            first = next((l for l in text.splitlines() if l.strip()), "no output")
             print(f"NOTE #{num}: could not move {frm} -> {to} ({why}): {first}")
             self.failures += 1
             return False
@@ -289,6 +285,15 @@ def main():
     board_sh = rest[rest.index("--board-sh") + 1] if "--board-sh" in rest else ""
     snap_file = rest[rest.index("--snap-file") + 1] if "--snap-file" in rest else ""
     snap_token = rest[rest.index("--token") + 1] if "--token" in rest else ""
+    try:
+        started = float(rest[rest.index("--started") + 1]) if "--started" in rest else time.time()
+    except ValueError:
+        started = time.time()
+    try:
+        budget = int(os.environ.get("BOARD_AUDIT_BUDGET_SECONDS", DEFAULT_BUDGET_SECONDS))
+    except ValueError:
+        budget = DEFAULT_BUDGET_SECONDS
+    budget = max(budget, 0)
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import config as C
     
@@ -302,11 +307,16 @@ def main():
     fidx = {normalized(n): i for i, n in enumerate(flow)}
 
     items = (json.load(sys.stdin) or {}).get("items", [])
+    progress(f"board read: {len(items)} item(s)")
     status_of = {}
+    cards_by_task_id = {}  # ("SC", 226) -> [issue numbers whose card title carries SC-226]
     for it in items:
-        num = (it.get("content") or {}).get("number")
+        content = it.get("content") or {}
+        num = content.get("number")
         if num is not None:
             status_of[num] = it.get("status") or ""
+            for tid in title_task_ids(content.get("title") or it.get("title") or ""):
+                cards_by_task_id.setdefault(tid, []).append(num)
 
     prs = load_prs(prs_path)
     closed_prs = load_prs(closed_path) if closed_path else []
@@ -327,6 +337,10 @@ def main():
         """The task a branch/PR belongs to, or None. Never guessed."""
         if branch in links:
             return links[branch]
+        tid = branch_task_id(branch)
+        hits = sorted(set(cards_by_task_id.get(tid, []))) if tid else []
+        if len(hits) == 1:
+            return hits[0]
         bid = branch_id(branch)
         if bid is not None and bid in status_of:
             return bid
@@ -337,7 +351,7 @@ def main():
 
     print("== board audit ==")
     problems = []
-    fixer = Fixer(root, board_sh, fix, snap_file, snap_token)
+    fixer = Fixer(root, board_sh, fix, snap_file, snap_token, started + budget, budget)
     fixing = bool(len(flow) > 3 and board_sh)
     if board_sh and len(flow) <= 3:
         print("NOTE: statusFlow has fewer than 4 statuses; the audit's reconciliation rules are skipped")
@@ -346,11 +360,21 @@ def main():
     signals = {}  # task -> dict(worktree=(branch, path), pr=pr, merged=("pr", n, branch) | ("commit",))
     unlinked = []  # (description, branch, title, worktree-path or None)
     if fixing:
+        progress(f"reconciling {len(prs)} open PR(s), worktrees and merges")
         tel = telemetry_signals(root, normalized(flow[1]))
-        wts = live_worktrees(root, pattern_rx, main_branch)
+        ignored = set()
+        wts = []
+        for b, p in live_worktrees(root, pattern_rx, main_branch):
+            if ignored_lane(b, p):
+                ignored.add(b)
+            else:
+                wts.append((b, p))
         seen_branches = set()
         for pr in prs:
             br = ((pr.get("head") or {}).get("ref")) or ""
+            if ignored_lane(br):
+                ignored.add(br)
+                continue
             n = link_of(br, pr.get("body") or "")
             wt = next((p for b, p in wts if b == br), None)
             if n is None:
@@ -385,34 +409,13 @@ def main():
             for n, ct in merged_commit_tasks(root, main_branch).items():
                 if n in status_of and fidx.get(normalized(status_of[n]), -1) in (1, 2):
                     signals.setdefault(n, {}).setdefault("merged", ("merged: commit on main references #" + str(n), ct))
-        # (h) work with no linked issue
+        # (h) work with no linked issue: reported, never filed (the orchestrator runs ensure-issue on purpose)
+        if ignored:
+            print(f"NOTE: ignored {len(ignored)} agent/batch lane(s) (worktree-agent-*, batch/*); the audit never adopts them")
         for desc, br, title, wt in unlinked:
-            if not fix:
-                print(f"WOULD FIX: {desc} has no issue -> board.sh ensure-issue")
-                fixer.changes += 1
-                continue
-            rc, out, err = fixer.board(["ensure-issue", "--title", title, "--for-branch", br])
-            num = out.strip().splitlines()[-1].strip() if out.strip() else ""
-            if not num.isdigit():
-                first = next((l for l in err.splitlines() if l.strip()), "no output")
-                print(f"NOTE: {desc} has no issue and ensure-issue filed none: {first}")
-                continue
-            n = int(num)
-            save_link(root, br, n)
-            if re.search(r"created issue #" + num + r"\b", err):
-                mark_comments_seen(root, n)
-            print(f"FIX: {desc} had no issue -> #{n} (board.sh ensure-issue)")
-            fixer.changes += 1
-            if n not in status_of:
-                status_of[n] = flow[0]  # just filed: the board puts it in the first status
-                add_to_snapshot(snap_file, root, n)
-            sig = signals.setdefault(n, {})
-            if wt:
-                sig["worktree"] = (br, wt)
-            else:
-                sig["pr"] = next(((pr, br) for pr in prs if ((pr.get("head") or {}).get("ref")) == br), None)
-                if sig["pr"] is None:
-                    del sig["pr"]
+            safe_title = title.replace('"', "'")
+            print(f"NOTE: DISCREPANCY: {desc} has no issue; if it is real work, run "
+                  f"board.sh ensure-issue --title \"{safe_title}\" --for-branch {br}")
         # (e)/(f)/(g) status per task
         for n in sorted(signals):
             sig = signals[n]
@@ -436,7 +439,7 @@ def main():
                 if rc != 0:
                     print(f"NOTE #{n}: merged but review evidence missing — record it or use --accepted-by-user")
                     continue
-                if fixer.move(n, cur, flow[3], merged, False) and fix:
+                if fixer.move(n, cur, flow[3], merged) and fix:
                     status_of[n] = flow[3]
                 continue
             if not (wt or pr):
@@ -448,7 +451,7 @@ def main():
                     why = f"open PR #{pr[0].get('number')} marked ready, branch {pr[1]}"
                 else:
                     why = f"live worktree {os.path.relpath(wt[1], root)}, branch {wt[0]}; review started"
-                if fixer.move(n, cur, flow[2], why, True, wt[1] if wt else None) and fix:
+                if fixer.move(n, cur, flow[2], why, wt[1] if wt else None) and fix:
                     status_of[n] = flow[2]
                 continue
             if ci < 1:
@@ -456,7 +459,7 @@ def main():
                     why = f"live worktree {os.path.relpath(wt[1], root)}, branch {wt[0]}"
                 else:
                     why = f"open PR #{pr[0].get('number')}, branch {pr[1]}"
-                if fixer.move(n, cur, flow[1], why, True) and fix:
+                if fixer.move(n, cur, flow[1], why) and fix:
                     status_of[n] = flow[1]
 
     in_progress = [n for n, st in status_of.items() if st == (flow[1] if len(flow) > 1 else "In progress")]

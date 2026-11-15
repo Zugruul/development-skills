@@ -249,6 +249,7 @@ section-semver.sh
     section-board-audit.sh
     section-board-audit-fix.sh
     section-board-truth-sim.sh
+    section-board-audit-safety.sh
     section-board-labels.sh
     section-board-agent-label.sh
     section-board-ensure-issue.sh

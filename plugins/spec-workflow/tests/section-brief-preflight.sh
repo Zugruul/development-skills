@@ -52,14 +52,39 @@ check "(a3) template text 'Task id N' passes" "rc=0" "$out"
 out="$(printf '%s\n' "$NOSEC_BRIEF" | bash "$BP" dev-573 2>&1; echo "rc=$?")"
 check "(b) dev brief without the section: exit 1" "rc=1" "$out"
 check "(b) message names the missing section" "TODO UPKEEP" "$out"
-out="$(printf '%s\n' "$NOSEC_BRIEF" | bash "$BP" dev-573 2>&1 >/dev/null | wc -l | tr -d ' ')"
-check "(b) message is one line" "1" "$out"
+# --- one pass, every failure, and the block to paste (rpg friction 2026-11-14) ---
+out="$(printf '%s\n' "$NOSEC_BRIEF" | bash "$BP" dev-573 2>&1 >/dev/null)"
+check "(b) one refusal names the missing section" "lacks the '## TODO UPKEEP (required)' section" "$out"
+check "(b) the same refusal names the missing task id too" "does not name a task id" "$out"
+check "(b) the refusal counts its problems" "2 problems" "$out"
+check "(b) the refusal prints the block heading to paste" "## TODO UPKEEP (required)" "$out"
+check "(b) the block carries the rule lines, filled" "- Always pass \`--agent dev\` and task id 573." "$out"
+check "(b) role filled from the agent name; id from a numeric name" "Task id 573; your role is dev." "$out"
+SC_BRIEF='## WHAT
+- Task: SC-236: combat log (GitHub issue #442)
+
+## DELIVERABLE
+Report.'
+out="$(printf '%s\n' "$SC_BRIEF" | bash "$BP" dev-SC-236 2>&1; echo "rc=$?")"
+check "(b3) still exit 1" "rc=1" "$out"
+check "(b3) task id taken from the brief's issue number" "Task id 442; your role is dev." "$out"
+check "(b3) the filled id is used in the rule lines" "task-state.sh show --id 442" "$out"
+out="$(printf '%s\n' "$NOSEC_BRIEF" | bash "$BP" dev-SC-236 2>&1)"
+check "(b4) unknown id stays N and says to replace it" "Task id N; your role is dev." "$out"
+check "(b4) and says what N is" "replace N with the issue number" "$out"
+out="$(printf '%s\n' "$NOSEC_BRIEF" | bash "$BP" reviewer-573-spec 2>&1)"
+check "(b5) reviewer-* gets role reviewer" "Task id 573; your role is reviewer." "$out"
+out="$(printf '%s\n' "$NOSEC_BRIEF" | bash "$BP" pr-reviewer-pr5 2>&1)"
+check "(b5) pr-reviewer-* gets role reviewer" "your role is reviewer." "$out"
 out="$(printf '%s\n' "$NOSEC_BRIEF" | bash "$BP" Reviewer-573 2>&1; echo "rc=$?")"
 check "(b2) reviewer brief without the section (name case-insensitive): exit 1" "rc=1" "$out"
 
 out="$(printf '%s\n' "$NOID_BRIEF" | bash "$BP" dev-573 2>&1; echo "rc=$?")"
 check "(c) section without a task id: exit 1" "rc=1" "$out"
 check "(c) message names the missing task id" "task id" "$out"
+check "(c) only the one real problem is listed" "1 problem:" "$out"
+check_absent "(c) the present section is not reported missing" "lacks the" "$out"
+check "(c) the block to paste is printed, id from the brief" "Task id 573; your role is dev." "$out"
 
 out="$(printf '%s\n' "$NOSEC_BRIEF" | bash "$BP" main 2>&1; echo "rc=$?")"
 check "(d) non dev/reviewer agent is not checked" "rc=0" "$out"
@@ -99,6 +124,8 @@ hook() { (cd "$BP_TMP/$1" && SPEC_WORKFLOW_REPO_ROOT="$BP_TMP/$1" PATH="$BP_TMP/
 out="$(hook_json '' 'dev-573 implement the thing' "$NOSEC_BRIEF" | hook with)"
 check "(e) hook blocks a dev spawn without the section (rc 0 + deny JSON)" '"permissionDecision": "deny"' "$out"
 check "(e) deny reason names the section" "TODO UPKEEP" "$out"
+check "(e) deny reason lists the task-id problem in the same refusal" "does not name a task id" "$out"
+check "(e) deny reason carries the filled block" "Task id 573; your role is dev." "$out"
 check_absent "(e) hook never crashes" "Traceback" "$out"
 out="$(hook_json 'reviewer-573-spec' 'review it' "$NOID_BRIEF" | hook with)"
 check "(e2) name from tool_input.name wins; blocks reviewer without task id" "task id" "$out"
@@ -153,6 +180,14 @@ check "(n) delta names the script" "brief-preflight.sh" "$DL"
 check "(n) delta carries the Codex parity note" "Codex" "$DL"
 
 check "(r1) implement-task: pr-reviewer named" "pr-reviewer-*" "$IT"
+# The script's block and the skill's block are the same text (one source the human reads, one the hook prints).
+blk="$(printf 'x\n' | bash "$BP" dev-1 2>&1 | sed -n '/^## TODO UPKEEP (required)$/,$p' | sed '1d' | sed 's/Task id 1; your role is dev\./Task id N; your role is <role>./; s/--id 1 /--id N /g; s/--id 1`/--id N`/g; s/--agent dev/--agent <role>/g; s/task id 1\.$/task id N./')"
+while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    check "(o) implement-task shows the printed block line verbatim: ${line:0:40}" "$line" "$IT"
+done <<<"$blk"
+check "(o) implement-task: the required block is called out where the brief is described" "copy it verbatim, including its first line \`Task id N; your role is <role>.\`" "$IT"
+check "(o) implement-task: the hook lists every problem at once" "lists every problem in one refusal" "$IT"
 check "(r1) auto-review: pr-reviewer named" "pr-reviewer-*" "$AR"
 check "(r1) README: pr-reviewer named" "pr-reviewer-*" "$RD"
 check "(r1) delta: pr-reviewer in the name pattern" "pr-reviewer" "$DL"

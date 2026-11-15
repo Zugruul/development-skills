@@ -11,6 +11,7 @@
 #   board.sh add  [--type bug|feature|inbound] "<title>" [<prio>] [<origin-issue#>]  # file work into Backlog
 #   board.sh bug  "<title>" <prio> [<origin-issue#>]   # alias for: add --type bug
 #   board.sh adopt <issue#>           # add an EXISTING issue to the board (idempotent; #84)
+#   board.sh remove <issue#>          # delete the issue's card from the board (the issue itself is unchanged; close it with gh if needed)
 #   board.sh agent <issue#> <name>|--clear  # label the card `agent: <name>` (REST only, replaces any other agent label; never fails the caller; #566)
 #   board.sh ensure-issue --title T [--for-branch B] [--body-file F] [--prio P]  # print the issue # a PR must close: existing, else a new inbound (REST lookup; #565)
 #   board.sh pending                  # list queued (not yet applied) moves; reads the local queue only, no gh call
@@ -556,6 +557,31 @@ except OSError:
         fi
         exit "$rc"
         ;;
+    remove)
+        # Deletes the board item (card) of an issue; the issue stays open/closed as it is.
+        # Clean-up of stray cards used to need `gh project item-delete` by hand (rpg 2026-11-14).
+        [[ "${2:-}" =~ ^[1-9][0-9]*$ && $# -eq 2 ]] || { echo "usage: board.sh remove <issue#>" >&2; exit 2; }
+        _rm_id=""; _rm_cached=0
+        if _rm_hit="$(_cache_get "$2")"; then _rm_id="${_rm_hit%%$'\t'*}"; _rm_cached=1; fi
+        if [[ -z "$_rm_id" ]]; then
+            _rm_id="$(item_id "$2")" || exit 1
+        fi
+        [[ -n "$_rm_id" ]] || { echo "ERROR: #$2 is not on the board; nothing to remove" >&2; exit 1; }
+        if ! _rm_err="$(gh project item-delete "$PN" --owner "$OWNER" --id "$_rm_id" 2>&1 >/dev/null)"; then
+            _cache_drop "$2"
+            if [[ $_rm_cached -eq 1 ]]; then  # the cached item id may be stale: resolve it once from the board
+                _rm_id="$(item_id "$2")" || exit 1
+                [[ -n "$_rm_id" ]] || { echo "ERROR: #$2 is not on the board; nothing to remove" >&2; exit 1; }
+                _rm_err="$(gh project item-delete "$PN" --owner "$OWNER" --id "$_rm_id" 2>&1 >/dev/null)" && _rm_err=""
+            fi
+            if [[ -n "$_rm_err" ]]; then
+                echo "ERROR: could not remove #$2 from the board: $(head -c 300 <<<"$_rm_err")" >&2
+                exit 1
+            fi
+        fi
+        _cache_drop "$2"
+        echo "removed #$2 from the board (the issue itself is unchanged)"
+        ;;
     ensure-labels)
         # Read the existing labels ONCE; a failed read (rate limit, auth, 404)
         # must fail the step, not be swallowed -- an empty $_EXISTING_LABELS
@@ -692,12 +718,13 @@ for f in json.load(sys.stdin)["fields"]:
         # reference, branches vs In-progress items (both directions), and
         # (work.type: local only) merged main commits missing a #N
         # reference. #564: --fix also corrects the board from live work (see
-        # audit.py); --if-due makes it a no-op unless the last run is older than
+        # audit.py), never creating an issue and never moving over the WIP limit,
+        # within BOARD_AUDIT_BUDGET_SECONDS (default 90); --if-due makes it a no-op unless the last run is older than
         # methodology.auditIntervalMinutes (default 10) and skips while rate-limited
         # (queued board operations pending). Exit 1 on any discrepancy
         # (report mode); with --fix, 1 only if a fix failed.
         shift
-        _fix=0; _due=0
+        _fix=0; _due=0; _audit_t0="$(date +%s)"
         for _a in "$@"; do
             case "$_a" in
                 --fix) _fix=1 ;;
@@ -738,6 +765,7 @@ for f in json.load(sys.stdin)["fields"]:
                 exit 0
             fi
         fi
+        echo "audit: reading the board" >&2
         _errf="$(mktemp)"
         _strict=(); [[ $_fix -eq 1 ]] && _strict=(--strict)
         _items="$(gh_project_items_json "$PN" "$OWNER" ${_strict[@]+"${_strict[@]}"} 2>"$_errf")"; _rc=$?
@@ -790,14 +818,14 @@ print(len(page) if isinstance(page, list) else 0)
         fi
         _fixflag=(); [[ $_fix -eq 1 ]] && _fixflag=(--fix)
         printf '%s' "$_items" | python3 "$HERE/audit.py" "$CONFIG" "${BOARD:-}" "$ROOT" "$WORK_TYPE" "$_prs_file" \
-            --closed-file "$_closed_file" --board-sh "$HERE/board.sh" ${_snapf:+--snap-file "$_snapf" --token "$_token"} ${_fixflag[@]+"${_fixflag[@]}"}
+            --closed-file "$_closed_file" --board-sh "$HERE/board.sh" --started "$_audit_t0" ${_snapf:+--snap-file "$_snapf" --token "$_token"} ${_fixflag[@]+"${_fixflag[@]}"}
         rc=$?
         _flush_wip_release
         rm -f "$_prs_file" "$_closed_file"
         exit "$rc"
         ;;
     *)
-        echo "usage: board.sh {next|show|move|prio|est|add|bug|adopt|pending|agent|flush|ensure-labels|list|issues|comment|edit-body|fields|config|metrics|audit} ..." >&2
+        echo "usage: board.sh {next|show|move|prio|est|add|bug|adopt|remove|pending|agent|flush|ensure-labels|list|issues|comment|edit-body|fields|config|metrics|audit} ..." >&2
         exit 1
         ;;
 esac
