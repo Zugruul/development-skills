@@ -40,7 +40,11 @@ while [[ $# -gt 0 ]]; do
 done
 if [[ -n "$ROOT" ]]; then
     TREE_ROOT="$ROOT"
-    STATE_ROOT="$ROOT"
+    # #581: the marker of a linked worktree lives in its PRIMARY checkout, so --root on a
+    # worktree resolves the primary from git; a plain repo is its own primary (as before).
+    _common="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+    STATE_ROOT="${_common:+$(dirname "$_common")}"
+    STATE_ROOT="${STATE_ROOT:-$ROOT}"
 else
     TREE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
     STATE_ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 2; }

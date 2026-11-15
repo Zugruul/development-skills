@@ -14,7 +14,8 @@
 # "red-first"). Full historical test execution was explicitly ruled out as
 # disproportionate -- see docs/design/cdx-E3.md, "Follow-up: #235".
 #
-# Usage: red-first-preflight.sh [--root <path>] [--branch <name>]
+# Usage: red-first-preflight.sh [--root <path>] [--branch <name>] [--issue <N>]
+#   --issue  the task id an override record is filed under (board.sh passes it; else the branch)
 #   --root   default: git toplevel (or cwd if not in a git repo) -- exists
 #            for tests that want to check a fixture repo without cd'ing in.
 #   --branch default: current branch (git rev-parse --abbrev-ref HEAD)
@@ -67,6 +68,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT=""
 BRANCH=""
+ISSUE=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --root)
@@ -75,6 +77,9 @@ while [[ $# -gt 0 ]]; do
         --branch)
             [[ $# -ge 2 ]] || { echo "usage: red-first-preflight.sh [--root <path>] [--branch <name>]" >&2; exit 2; }
             BRANCH="$2"; shift 2 ;;
+        --issue)  # #581: the task id an override record is filed under (else the branch)
+            [[ $# -ge 2 && "$2" =~ ^[0-9]+$ ]] || { echo "usage: red-first-preflight.sh [--root <path>] [--branch <name>] [--issue <N>]" >&2; exit 2; }
+            ISSUE="$2"; shift 2 ;;
         *) echo "usage: red-first-preflight.sh [--root <path>] [--branch <name>]" >&2; exit 2 ;;
     esac
 done
@@ -95,10 +100,23 @@ fi
 BASES=()
 if (cd "$ROOT" && git remote get-url origin >/dev/null 2>&1); then
     if [[ "${RED_FIRST_NO_FETCH:-}" != "1" ]]; then
-        _fetch=(git fetch -q --no-tags origin "+refs/heads/$MAIN:refs/remotes/origin/$MAIN")
-        command -v timeout >/dev/null 2>&1 && _fetch=(timeout 30 "${_fetch[@]}")
-        (cd "$ROOT" && GIT_TERMINAL_PROMPT=0 "${_fetch[@]}" >/dev/null 2>&1) \
-            || echo "NOTE: red-first preflight could not fetch origin/$MAIN; measuring from the refs on hand" >&2
+        # Never prompt, never hang: no terminal/ssh/credential-manager prompts, a 10 s ssh
+        # connect limit, an http stall limit, and a 30 s overall bound where `timeout` exists.
+        # A fetch in the last 120 s is reused (flush replay runs this per queued entry).
+        _gitdir="$(cd "$ROOT" && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+        _fresh=0
+        if [[ -n "$_gitdir" && -f "$_gitdir/FETCH_HEAD" ]]; then
+            _age=$(( $(date +%s) - $(python3 -c 'import os,sys; print(int(os.path.getmtime(sys.argv[1])))' "$_gitdir/FETCH_HEAD" 2>/dev/null || echo 0) ))
+            [[ $_age -ge 0 && $_age -lt 120 ]] && _fresh=1
+        fi
+        if [[ $_fresh -eq 0 ]]; then
+            _fetch=(git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q --no-tags origin "+refs/heads/$MAIN:refs/remotes/origin/$MAIN")
+            command -v timeout >/dev/null 2>&1 && _fetch=(timeout 30 "${_fetch[@]}")
+            (cd "$ROOT" && GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never GIT_ASKPASS=true SSH_ASKPASS=true \
+                GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes -o ConnectTimeout=10" \
+                "${_fetch[@]}" </dev/null >/dev/null 2>&1) \
+                || echo "NOTE: red-first preflight could not fetch origin/$MAIN; measuring from the refs on hand" >&2
+        fi
     fi
     (cd "$ROOT" && git rev-parse -q --verify "refs/remotes/origin/$MAIN^{commit}" >/dev/null 2>&1) \
         && BASES+=("refs/remotes/origin/$MAIN")
@@ -169,18 +187,34 @@ done <<< "$COMMITS"
 # the fix reverted, then test and fix were committed together). That is an accepted
 # OVERRIDE, never silent: RED_FIRST_OVERRIDE="<how red was proved>" (20+ characters) passes
 # only once the reason is recorded in telemetry (kind red-first-override).
+# shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+source "$HERE/lib/repo-root.sh"
+_state="$(cd "$ROOT" && spec_workflow_repo_root)"
+# An override already recorded for THIS commit is honoured without the env var, so a move
+# queued while rate-limited and replayed later by flush is not refused again.
+_prior="$(python3 -c 'import json,sys
+for line in open(sys.argv[1]):
+    try:
+        r = json.loads(line)
+    except ValueError:
+        continue
+    if r.get("kind") == "red-first-override" and r.get("commit") == sys.argv[2] and str(r.get("reason", "")).strip():
+        print(r["reason"]); break' "$_state/.claude/telemetry.jsonl" "$FIRST_IMPL" 2>/dev/null)"
+if [[ -z "${RED_FIRST_OVERRIDE:-}" && -n "$_prior" ]]; then
+    echo "WARNING: red-first overridden for $BRANCH (commit $FIRST_IMPL) by the recorded override: $_prior" >&2
+    exit 0
+fi
 if [[ -n "${RED_FIRST_OVERRIDE:-}" ]]; then
     if [[ ${#RED_FIRST_OVERRIDE} -lt 20 ]]; then
         echo "BLOCKED: RED_FIRST_OVERRIDE needs a real reason (at least 20 characters) saying how red was proved, e.g. RED_FIRST_OVERRIDE=\"ran tests/x.sh with the fix reverted: 3 failures\"." >&2
         exit 2
     fi
-    # shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
-    source "$HERE/lib/repo-root.sh"
-    _state="$(cd "$ROOT" && spec_workflow_repo_root)"
     _rec="$(python3 -c 'import json,sys,datetime
-print(json.dumps({"kind": "red-first-override", "task": sys.argv[1], "commit": sys.argv[2], "reason": sys.argv[3],
+task = int(sys.argv[4]) if sys.argv[4] else sys.argv[1]
+print(json.dumps({"kind": "red-first-override", "task": task, "branch": sys.argv[1], "commit": sys.argv[2],
+                  "reason": sys.argv[3],
                   "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}))' \
-        "$BRANCH" "$FIRST_IMPL" "$RED_FIRST_OVERRIDE")"
+        "$BRANCH" "$FIRST_IMPL" "$RED_FIRST_OVERRIDE" "$ISSUE")"
     if ! PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}" python3 "$HERE/telemetry.py" "$_state" record "$_rec" >/dev/null 2>&1; then
         echo "BLOCKED: RED_FIRST_OVERRIDE given but the reason could not be recorded in $_state/.claude/telemetry.jsonl; an override is accepted only once recorded." >&2
         exit 2

@@ -40,7 +40,7 @@ board.sh/gate.sh stamp real wall-clock time when they record):
                   `quote` is their words. Satisfies two-pass-review-preflight.sh
                   and review-approval-check for that task. Written by
                   user-acceptance.sh (board.sh move N QA --accepted-by-user).
-    red-first-override {"kind": "red-first-override", "task": <branch>, "commit": <sha>,
+    red-first-override {"kind": "red-first-override", "task": <issue or branch>, "branch": <name>, "commit": <sha>,
                    "reason": <nonblank string>, "ts": <iso8601>}
                   #581: red proved without a separate test-only commit; written by
                   red-first-preflight.sh when RED_FIRST_OVERRIDE is set.
