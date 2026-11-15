@@ -6,7 +6,7 @@ a call log in $AF_LOG (one normalized line per TOP-LEVEL call; the graphql adapt
 `project item-list` is not logged), REST pull lists in $AF_PULLS_OPEN / $AF_PULLS_CLOSED.
 
 Logged tokens: graphql:fields, graphql:items, rest:pulls-open, rest:pulls-closed, rest:pulls-head,
-rest:issue-get, rest:comment, rest:patch, issue-create, item-add, item-edit <id> <status>,
+rest:issue-get, rest:comment, rest:patch, issue-create, item-add, item-delete <id>, item-edit <id> <status>,
 and the raw argv for anything unexpected (which also exits 1).
 Anything that looks like `pr list` / `issue comment` / `issue view` (GraphQL commands) is logged
 as GRAPHQL-CMD so a test can assert there are none.
@@ -81,6 +81,17 @@ if argv[:2] == ["project", "item-edit"]:
     save(st)
     log(f"item-edit {item_id} {status}")
     print("edited")
+    sys.exit(0)
+if argv[:2] == ["project", "item-delete"]:
+    st = load()
+    item_id = arg_after("--id")
+    if os.environ.get("AF_DELETE_FAIL"):
+        log(f"item-delete-fail {item_id}")
+        sys.stderr.write("gh: Could not resolve to a node with the global id (HTTP 404)\n")
+        sys.exit(1)
+    st["items"] = [i for i in st["items"] if i["id"] != item_id]
+    save(st)
+    log(f"item-delete {item_id}")
     sys.exit(0)
 if argv[:2] == ["project", "item-add"]:
     st = load()

@@ -21,13 +21,14 @@ af_setup() { # [work-type] -> AQ (repo), FGH (fake gh dir); resets the call log 
     echo '{"items":[],"issues":[],"next":900}' >"$AF_STATE"
 }
 af_cfg() { python3 "$PLUGIN/scripts/config.py" "$AQ" set "$1" "$2" >/dev/null; } # key json-value
-af_items() { # "N:Status" ... -> board cards
+af_items() { # "N:Status[:Title]" ... -> board cards
     python3 - "$AF_STATE" "$@" <<'PY'
 import json, sys
 st = json.load(open(sys.argv[1]))
 for spec in sys.argv[2:]:
-    n, _, status = spec.partition(":")
-    st["items"].append({"id": f"ITEM_{n}", "number": int(n), "status": status, "title": f"task {n}"})
+    n, _, rest = spec.partition(":")
+    status, _, title = rest.partition(":")
+    st["items"].append({"id": f"ITEM_{n}", "number": int(n), "status": status, "title": title or f"task {n}"})
 json.dump(st, open(sys.argv[1], "w"))
 PY
 }
@@ -35,6 +36,7 @@ af_status() { # N -> current status on the fake board
     python3 -c 'import json,sys; print(next((i["status"] for i in json.load(open(sys.argv[1]))["items"] if i["number"]==int(sys.argv[2])), "MISSING"))' "$AF_STATE" "$1"
 }
 af_worktree() { ( cd "$AQ" && git worktree add -q ".claude/worktrees/$1" -b "$2" ); } # dir-name branch
+af_branch() { ( cd "$AQ" && git branch -q "$1" ); } # a local branch with no worktree
 af_seen() { # N... -> comments-read markers (board.sh show), required before an In progress move
     python3 - "$AQ/.claude/board-comments-seen.json" "$@" <<'PY'
 import json, sys
