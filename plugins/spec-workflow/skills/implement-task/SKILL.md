@@ -71,6 +71,11 @@ Task id N; your role is <role>. The human watches this record live. Run `bash <r
 ## HOW (non-negotiable)
 1. TDD: write FAILING tests first, commit them ("test(<id>): ... (red)"), then minimal
    implementation, then refactor. No production code without a failing test.
+   If you proved red by reverting the fix instead (ran the test against the code with the
+   fix reverted, then committed test and fix together), the red-first check on the move
+   to In review refuses the branch. That is not a dead end: retry the move with
+   `RED_FIRST_OVERRIDE="<how red was proved: test, revert, failures seen>"` (20+
+   characters). The reason is recorded in telemetry and the orchestrator reviews it.
 2. Project invariants (hard rules): <paste cfg:specs[].invariants verbatim>.
    Architecture: follow the epic design doc at <paths.designDir>/<spec-epic>.md —
    <paste its Components/Interfaces/Decisions sections>. If your implementation would
@@ -117,7 +122,7 @@ Large task? Split into sequential briefs (e.g. tests+core, then edge cases), eac
 
 ## 2. Verify (trust but verify)
 - Re-run `<cfg:commands.gate>` yourself.
-- Check: red commit precedes implementation in `git log`; invariants respected; isolation cases present if applicable; design doc followed; a spec delta exists **iff** the diff changed a contract (missing delta on a contract change = send the agent back); docs updated.
+- Check: red commit precedes implementation in `git log` (the red-first check measures from `origin/<mainBranch>`, fetched first, so a stale local main never counts; a `red-first-override` telemetry record means red was proved by reverting the fix: read its reason); invariants respected; isolation cases present if applicable; design doc followed; a spec delta exists **iff** the diff changed a contract (missing delta on a contract change = send the agent back); docs updated.
 - Red gate or blocker → keep *In progress*; re-brief the agent with the specific fix, or escalate (human blocker → `handoff` + `board.sh comment N` explaining what's needed).
 - Prefer letting the dev agent commit its own fix (author == committer). When YOU must record a fix the dev agent (or reviewer findings) produced, commit **on behalf**: `identity.sh on-behalf dev --co reviewer` prints a `flags:` line (committer `-c` options, go before `commit`), a `commit-flags:` line (`--author=`, goes after `commit`), and Co-authored-by trailers so the record credits every participating role — never commit another role's work under a bare `identity.sh orchestrator` (auto-review.md §Commit identities, rules a–e).
 

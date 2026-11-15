@@ -22,6 +22,7 @@ LS_EXP_IGNORE="$(printf '%s\n' \
     '.claude/ITERATIVE_UI_OFF' \
     '.claude/ui-hub/' \
     '.claude/gate-pass' \
+    '.claude/gate-pass.d/' \
     '.claude/telemetry.jsonl' \
     '.claude/telemetry.lock/' \
     '.claude/lessons.jsonl' \

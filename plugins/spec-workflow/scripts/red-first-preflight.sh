@@ -19,8 +19,8 @@
 #            for tests that want to check a fixture repo without cd'ing in.
 #   --branch default: current branch (git rev-parse --abbrev-ref HEAD)
 #
-# Algorithm: `git log --reverse <mainBranch>..<branch>` gives the branch's
-# commits unique to it, oldest-to-newest. Each commit's changed files
+# Algorithm: `git log --reverse <branch> --not origin/<mainBranch> <mainBranch>` (origin
+# fetched first, #581) gives the branch's commits unique to it, oldest-to-newest. Each commit's changed files
 # (`git diff-tree -r --root --cc --name-only`: merge commits stay visible, and a
 # rename is a delete plus an add, so BOTH paths are classified) classify the
 # commit as:
@@ -87,7 +87,26 @@ if [[ -z "$MAIN" ]]; then
     exit 2
 fi
 
-COMMITS="$(cd "$ROOT" && git log --reverse "$MAIN..$BRANCH" --format=%H 2>/dev/null)"
+# #581: measure the branch from main AS IT IS UPSTREAM, not from a possibly stale local
+# branch. A local main behind origin/main put main's own commits in `<main>..HEAD` and
+# blamed one of them. So: fetch origin/<main> first (best effort, bounded; RED_FIRST_NO_FETCH=1
+# skips it), then take the commits reachable from the branch but from NEITHER the local main
+# NOR origin/main. With no origin remote, or a failed fetch, the refs that exist are used.
+BASES=()
+if (cd "$ROOT" && git remote get-url origin >/dev/null 2>&1); then
+    if [[ "${RED_FIRST_NO_FETCH:-}" != "1" ]]; then
+        _fetch=(git fetch -q --no-tags origin "+refs/heads/$MAIN:refs/remotes/origin/$MAIN")
+        command -v timeout >/dev/null 2>&1 && _fetch=(timeout 30 "${_fetch[@]}")
+        (cd "$ROOT" && GIT_TERMINAL_PROMPT=0 "${_fetch[@]}" >/dev/null 2>&1) \
+            || echo "NOTE: red-first preflight could not fetch origin/$MAIN; measuring from the refs on hand" >&2
+    fi
+    (cd "$ROOT" && git rev-parse -q --verify "refs/remotes/origin/$MAIN^{commit}" >/dev/null 2>&1) \
+        && BASES+=("refs/remotes/origin/$MAIN")
+fi
+(cd "$ROOT" && git rev-parse -q --verify "refs/heads/$MAIN^{commit}" >/dev/null 2>&1) && BASES+=("refs/heads/$MAIN")
+[[ ${#BASES[@]} -eq 0 ]] && exit 0  # no main to measure from (as before: nothing to sequence)
+
+COMMITS="$(cd "$ROOT" && git log --reverse --format=%H "$BRANCH" --not "${BASES[@]}" 2>/dev/null)"
 [[ -z "$COMMITS" ]] && exit 0
 
 FIRST_IMPL=""
@@ -146,5 +165,29 @@ done <<< "$COMMITS"
 [[ -z "$FIRST_IMPL" ]] && exit 0
 [[ "$FOUND_TEST_ONLY_BEFORE" -eq 1 ]] && exit 0
 
-echo "BLOCKED: red-first TDD not followed -- commit $FIRST_IMPL touches implementation files with no earlier test-only commit on this branch. Expected pattern: a commit touching ONLY test files (a red commit) before any commit that touches implementation files. This checks commit ORDERING only, not that the tests actually failed when run." >&2
+# #581: red can be proved without a separate commit (the test was run against the code with
+# the fix reverted, then test and fix were committed together). That is an accepted
+# OVERRIDE, never silent: RED_FIRST_OVERRIDE="<how red was proved>" (20+ characters) passes
+# only once the reason is recorded in telemetry (kind red-first-override).
+if [[ -n "${RED_FIRST_OVERRIDE:-}" ]]; then
+    if [[ ${#RED_FIRST_OVERRIDE} -lt 20 ]]; then
+        echo "BLOCKED: RED_FIRST_OVERRIDE needs a real reason (at least 20 characters) saying how red was proved, e.g. RED_FIRST_OVERRIDE=\"ran tests/x.sh with the fix reverted: 3 failures\"." >&2
+        exit 2
+    fi
+    # shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+    source "$HERE/lib/repo-root.sh"
+    _state="$(cd "$ROOT" && spec_workflow_repo_root)"
+    _rec="$(python3 -c 'import json,sys,datetime
+print(json.dumps({"kind": "red-first-override", "task": sys.argv[1], "commit": sys.argv[2], "reason": sys.argv[3],
+                  "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}))' \
+        "$BRANCH" "$FIRST_IMPL" "$RED_FIRST_OVERRIDE")"
+    if ! PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}" python3 "$HERE/telemetry.py" "$_state" record "$_rec" >/dev/null 2>&1; then
+        echo "BLOCKED: RED_FIRST_OVERRIDE given but the reason could not be recorded in $_state/.claude/telemetry.jsonl; an override is accepted only once recorded." >&2
+        exit 2
+    fi
+    echo "WARNING: red-first overridden for $BRANCH (commit $FIRST_IMPL): $RED_FIRST_OVERRIDE -- recorded in telemetry." >&2
+    exit 0
+fi
+
+echo "BLOCKED: red-first TDD not followed -- commit $FIRST_IMPL touches implementation files with no earlier test-only commit on this branch. Expected pattern: a commit touching ONLY test files (a red commit) before any commit that touches implementation files. This checks commit ORDERING only, not that the tests actually failed when run. If you proved red another way (ran the test with the fix reverted, then committed test and fix together), retry with RED_FIRST_OVERRIDE=\"<how red was proved>\" (recorded in telemetry)." >&2
 exit 2

@@ -34,7 +34,12 @@ echo "lane b work, never gated" >"$GBCD_WB/b.txt"
 # WA is the ONLY tree the recorded pass belongs to; WC is a clean sibling.
 out="$(cd "$GBCD_WA" && bash "$PLUGIN/scripts/gate.sh" 2>&1)"
 check "fixture: gate pass recorded from worktree A" "GATE PASS recorded" "$out"
-GBCD_MARKER="$GBCD_MAIN/.claude/gate-pass"
+GBCD_MARKER="$GBCD_MAIN/.claude/gate-pass"   # the primary checkout's own marker
+# #581: each linked worktree has its own marker under the primary's .claude/gate-pass.d/
+# shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+GBCD_MARKER_A="$(source "$PLUGIN/scripts/lib/repo-root.sh"; spec_workflow_gate_marker "$GBCD_MAIN" "$GBCD_WA")"
+# shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+GBCD_MARKER_B="$(source "$PLUGIN/scripts/lib/repo-root.sh"; spec_workflow_gate_marker "$GBCD_MAIN" "$GBCD_WB")"
 mkdir -p "$GBCD/plain"          # ambient cwd that is no git checkout at all
 # Decoys that make the relative-path fallback cases non-vacuous: from ambient
 # $GBCD the relative name wt-a is the GATED tree, while a shell that changed
@@ -82,7 +87,7 @@ check "cd into a SUBDIRECTORY of the worktree resolves to its root: allowed" "rc
 # --- does not widen what passes: fingerprint still compared -----------------
 out="$(gbcd_run "$GBCD_WA" "cd $GBCD_WB && $MV")"
 check "cd to ungated tree B from the gated tree A: blocked" "rc=2" "$out"
-check "cd to tree B: names the tree changed" "tree changed since the last recorded gate pass" "$out"
+check "cd to tree B: names B's own (missing) pass, never A's (#581: per-worktree markers)" "no recorded gate pass at $GBCD_MARKER_B" "$out"
 out="$(gbcd_run "$GBCD_MAIN" "cd $GBCD_WC && $MV")"
 check "cd to a CLEAN sibling does not pass with another tree's fingerprint" "rc=2" "$out"
 out="$(gbcd_run "$GBCD_MAIN" "bash -c 'cd $GBCD_WB && $MV'")"
@@ -129,11 +134,11 @@ check "no-cd block names the resolved tree root" "$GBCD_MAIN" "$out"
 check "no-cd block names the marker path checked" "$GBCD_MARKER" "$out"
 out="$(gbcd_run "$GBCD_MAIN" "cd $GBCD_WB && $MV")"
 check "cd block names the resolved (cd) tree root" "$GBCD_WB" "$out"
-check "cd block names the marker path (primary checkout)" "$GBCD_MARKER" "$out"
-rm -f "$GBCD_MARKER"
+check "cd block names the marker path (B's own, under the primary's gate-pass.d)" "$GBCD_MARKER_B" "$out"
+rm -f "$GBCD_MARKER_A"
 out="$(gbcd_run "$GBCD_WA" "$MV")"
 check "missing-marker block names the tree root" "$GBCD_WA" "$out"
-check "missing-marker block names the marker path" "$GBCD_MARKER" "$out"
+check "missing-marker block names the marker path" "$GBCD_MARKER_A" "$out"
 out="$(cd "$GBCD_WA" && bash "$PLUGIN/scripts/gate.sh" 2>&1)"
 
 

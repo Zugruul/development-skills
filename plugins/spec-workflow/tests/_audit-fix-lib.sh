@@ -52,7 +52,13 @@ af_review_evidence() { # N -> both review passes recorded
 af_accept() { # N -> a recorded user acceptance: lets the QA guard pass without being a review-in-progress signal
     python3 "$PLUGIN/scripts/telemetry.py" "$AQ" record "{\"kind\":\"user-acceptance\",\"task\":\"$1\",\"quote\":\"ok\",\"ts\":\"2026-01-01T00:00:00Z\"}" >/dev/null
 }
-af_gate_pass() { ( cd "$AQ/.claude/worktrees/$1" && bash "$PLUGIN/scripts/tree-state.sh" ) >"$AQ/.claude/gate-pass"; } # dir-name
+af_gate_pass() { # dir-name: record a pass for that worktree in its own marker (#581)
+    local m
+    # shellcheck source=plugins/spec-workflow/scripts/lib/repo-root.sh
+    m="$(source "$PLUGIN/scripts/lib/repo-root.sh"; spec_workflow_gate_marker "$AQ" "$AQ/.claude/worktrees/$1")"
+    mkdir -p "$(dirname "$m")"
+    ( cd "$AQ/.claude/worktrees/$1" && bash "$PLUGIN/scripts/tree-state.sh" ) >"$m"
+}
 af_run() { # board.sh args... -> "<combined output>\nrc=N" (run from the repo root, fake gh first on PATH)
     ( cd "$AQ" && PATH="$FGH:$PATH" bash "$PLUGIN/scripts/board.sh" "$@" 2>&1; echo "rc=$?" )
 }

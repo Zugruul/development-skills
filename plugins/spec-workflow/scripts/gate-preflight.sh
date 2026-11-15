@@ -19,6 +19,9 @@
 #   worktree, since that is where gate.sh writes it. This means: a pass
 #   gate.sh recorded FOR THIS TREE is found and matches; a pass recorded for
 #   a different tree (or no pass at all) is correctly reported missing/stale.
+#   #581: the marker is per worktree (lib/repo-root.sh spec_workflow_gate_marker):
+#   .claude/gate-pass for the primary checkout, .claude/gate-pass.d/<key> for a
+#   linked worktree, so another lane's gate never invalidates this one.
 # Exit 0, silent stdout: a valid pass exists for the current tree.
 # Exit 2, actionable message on stderr: the pass is missing or stale.
 set -uo pipefail
@@ -43,7 +46,7 @@ else
     STATE_ROOT="$(spec_workflow_repo_root)" || { echo "ERROR: could not resolve repo root" >&2; exit 2; }
 fi
 
-MARKER="$STATE_ROOT/.claude/gate-pass"
+MARKER="$(spec_workflow_gate_marker "$STATE_ROOT" "$TREE_ROOT")" || { echo "ERROR: could not resolve the gate-pass marker path" >&2; exit 2; }
 if [[ ! -f "$MARKER" ]]; then
     echo "BLOCKED: no recorded gate pass at $MARKER (checked for tree $TREE_ROOT). Run \`bash \"$HERE/gate.sh\"\` to green (it records the pass), then retry the move to 'In review'." >&2
     exit 2

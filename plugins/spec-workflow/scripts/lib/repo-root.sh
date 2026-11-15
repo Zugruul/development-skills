@@ -110,3 +110,20 @@ spec_workflow_repo_root() {
 
     pwd -P
 }
+
+# #581: the recorded gate pass is per WORKTREE. The primary checkout keeps
+# <state>/.claude/gate-pass; every other tree gets its own file under
+# <state>/.claude/gate-pass.d/, named by a hash of its canonical toplevel, so
+# one lane's gate (green or red) never replaces another lane's pass.
+# Usage: spec_workflow_gate_marker <state-root> <tree-root>
+spec_workflow_gate_marker() {
+    local state tree key
+    state="$(_spec_workflow_rr_canon "$1")"
+    tree="$(_spec_workflow_rr_canon "$2")"
+    if [[ "$tree" == "$state" ]]; then
+        printf '%s/.claude/gate-pass\n' "$state"
+        return 0
+    fi
+    key="$(printf '%s' "$tree" | python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest()[:16])')" || return 1
+    printf '%s/.claude/gate-pass.d/%s\n' "$state" "$key"
+}
