@@ -77,6 +77,19 @@ out="$(_GATE_SCOPE_META=1 _RUNNER_FILTER_META=1 GATE_CHANGED_FILES="docs/zz-$$.m
 check_rc "r12 --changed actually runs the selection green" 0 "$rc"
 check    "r12 --changed ran the always-run syntax section" "== syntax ==" "$out"
 
+GS_LINK="$(mktemp -d)"
+ln -s "$(cd "$PLUGIN/../.." && pwd -P)" "$GS_LINK/repo"
+GS_LRT="$GS_LINK/repo/$GS_PFX/tests/run-tests.sh"
+out="$(_GATE_SCOPE_META=1 _RUNNER_FILTER_META=1 GATE_CHANGED_FILES="$GS_PFX/tests/_lib.sh" bash "$GS_LRT" --changed --list 2>/dev/null)"
+check_rc "r13 symlinked checkout: runner infra change still -> full suite" "$GS_ALL_N" "$(printf '%s\n' "$out" | grep -c '^section-')"
+out="$(_GATE_SCOPE_META=1 _RUNNER_FILTER_META=1 GATE_CHANGED_FILES="$GS_PFX/scripts/zz-unreferenced-$$.py" bash "$GS_LRT" --changed --list 2>/dev/null)"
+check_rc "r13b symlinked checkout: uncovered plugin file still -> full suite" "$GS_ALL_N" "$(printf '%s\n' "$out" | grep -c '^section-')"
+rm -rf "$GS_LINK"
+
+out="$(env -u GATE_CHANGED_FILES _GATE_SCOPE_META=1 _RUNNER_FILTER_META=1 bash "$RT" --changed --list 2>&1)"
+check_rc "r14 --changed with GATE_CHANGED_FILES unset runs the full suite" "$GS_ALL_N" "$(printf '%s\n' "$out" | grep -c '^section-')"
+check    "r14 ... and says why" "GATE_CHANGED_FILES is not set" "$out"
+
 # --- gate.sh scope resolution ----------------------------------------------
 GS="$(mktemp -d)"
 git init -q --bare "$GS/origin.git"
@@ -103,9 +116,15 @@ printf 'a\n' > "$GS/w/committed.txt"
 ( cd "$GS/w" && git add committed.txt && git -c user.name=t -c user.email=t@t commit -qm feat )
 printf 'mod\n' >> "$GS/w/tracked.txt"
 printf 'u\n' > "$GS/w/untracked.txt"
-gs_gate() { (cd "$GS/w" && "$@" bash "$PLUGIN/scripts/gate.sh" 2>&1); }
+# env -u: an exported SPEC_GATE_SCOPE / GATE_* in the caller must not leak in.
+# Usage: gs_gate [VAR=value...] [gate.sh args...]
+gs_gate() {
+    local -a _envs=()
+    while [[ $# -gt 0 && "$1" == *=* ]]; do _envs+=("$1"); shift; done
+    (cd "$GS/w" && env -u SPEC_GATE_SCOPE -u GATE_CHANGED_FILES -u GATE_BASE ${_envs[@]+"${_envs[@]}"} bash "$PLUGIN/scripts/gate.sh" "$@" 2>&1)
+}
 
-out="$(gs_gate env)"; rc=$?
+out="$(gs_gate)"; rc=$?
 check_rc     "g1 default scope gate exits 0" 0 "$rc"
 check        "g1 default scope is affected" "gate scope: affected" "$out"
 check        "g1 runs commands.gateAffected" "AFFECTED-RAN" "$out"
@@ -120,39 +139,63 @@ check        "g1 telemetry records scope" '"scope": "affected"' "$(cat "$GS/w/.c
 out="$(hookjson 'bash board.sh move 7 \"In review\"' | (cd "$GS/w" && bash "$PLUGIN/scripts/guard-board-move.sh" 2>&1); echo "rc=$?")"
 check "g1 an affected-scope pass unlocks In review" "rc=0" "$out"
 
-out="$(cd "$GS/w" && bash "$PLUGIN/scripts/gate.sh" --full 2>&1)"
+out="$(gs_gate --full)"
 check        "g2 --full runs the full gate" "FULL-RAN" "$out"
 check_absent "g2 --full skips gateAffected" "AFFECTED-RAN" "$out"
 check        "g2 --full announces full scope" "gate scope: full" "$out"
 
-out="$(gs_gate env SPEC_GATE_SCOPE=full)"
+out="$(gs_gate SPEC_GATE_SCOPE=full)"
 check "g3 SPEC_GATE_SCOPE=full runs the full gate" "FULL-RAN" "$out"
 
 gs_cfg 'c.setdefault("methodology",{})["gateScope"]="full"'
-out="$(gs_gate env)"
+out="$(gs_gate)"
 check        "g4 methodology.gateScope=full runs the full gate" "FULL-RAN" "$out"
 check_absent "g4 gateScope=full skips gateAffected" "AFFECTED-RAN" "$out"
-out="$(cd "$GS/w" && bash "$PLUGIN/scripts/gate.sh" --affected 2>&1)"
+out="$(gs_gate --affected)"
 check "g4b --affected overrides config full" "AFFECTED-RAN" "$out"
 
 gs_cfg 'c.setdefault("methodology",{})["gateScope"]="sometimes"'
-out="$(gs_gate env)"; rc=$?
+out="$(gs_gate)"; rc=$?
 check_rc "g5 invalid gateScope refused" 2 "$rc"
 check    "g5 invalid gateScope names the valid values" "affected|full" "$out"
 
 gs_cfg 'del c["commands"]["gateAffected"]'
-out="$(gs_gate env)"; rc=$?
+out="$(gs_gate)"; rc=$?
 check_rc "g6 no gateAffected still gates" 0 "$rc"
 check    "g6 no gateAffected falls back to the full gate" "FULL-RAN" "$out"
 check    "g6 fallback is explained" "no commands.gateAffected" "$out"
 
 gs_cfg 'c["project"]["mainBranch"]="nope"'
-out="$(gs_gate env)"
+out="$(gs_gate)"
 check "g7 unresolvable base falls back to the full gate" "FULL-RAN" "$out"
 check "g7 fallback names the missing base" "could not resolve" "$out"
 
-out="$(cd "$GS/w" && bash "$PLUGIN/scripts/gate.sh" --bogus 2>&1)"; rc=$?
+out="$(gs_gate --bogus)"; rc=$?
 check_rc "g8 unknown gate.sh argument refused" 2 "$rc"
+
+# g9: a multi-line commands.gate keeps its newlines (each line is a command)
+gs_cfg 'c["commands"]["gate"]="echo LINE-ONE\necho LINE-TWO"; c.setdefault("methodology",{})["gateScope"]="full"'
+out="$(gs_gate)"
+check "g9 multi-line gate: first line runs" "LINE-ONE" "$out"
+check "g9 multi-line gate: second line runs as its own command" $'\nLINE-TWO' "$out"
+check_absent "g9 multi-line gate is not flattened into one command" "LINE-ONE echo" "$out"
+gs_cfg 'c["commands"]["gateAffected"]="echo AFF-ONE\necho AFF-TWO"'
+out="$(gs_gate)"
+check "g9b multi-line gateAffected keeps its newlines" $'\nAFF-TWO' "$out"
+
+# g10: a rename lists the OLD path too (sections naming it must still run)
+gs_cfg ''
+git -C "$GS/w" checkout -q -- tracked.txt 2>/dev/null; rm -f "$GS/w/untracked.txt"
+( cd "$GS/w" && git mv committed.txt renamed.txt && git -c user.name=t -c user.email=t@t commit -qm mv )
+out="$(gs_gate)"
+check "g10 rename: new path listed" "renamed.txt" "$out"
+check "g10 rename: old path listed" "committed.txt" "$out"
+
+# g11: non-ASCII names arrive unquoted
+printf 'x\n' > "$GS/w/café.txt"
+out="$(gs_gate)"
+check        "g11 non-ASCII path listed verbatim" "café.txt" "$out"
+check_absent "g11 non-ASCII path not C-quoted" '"caf' "$out"
 rm -rf "$GS"
 
 # --- schema, template, docs -------------------------------------------------
@@ -164,7 +207,18 @@ print("cmd", "gateAffected" in s["commands"]["properties"])' "$PLUGIN/schemas/pr
 check "s1 schema: methodology.gateScope enum" "enum ['affected', 'full'] default affected" "$out"
 check "s2 schema: commands.gateAffected declared" "cmd True" "$out"
 check "s3 template writes gateScope" "gateScope: affected" "$(cat "$PLUGIN/templates/project.example.yaml")"
-check "s4 template shows gateAffected" "gateAffected:" "$(cat "$PLUGIN/templates/project.example.yaml")"
+check "s4 template shows gateAffected commented out (no foreign placeholder runs)" "# gateAffected:" "$(cat "$PLUGIN/templates/project.example.yaml")"
+check_absent "s4b template has no live gateAffected" $'\n    gateAffected:' "$(cat "$PLUGIN/templates/project.example.yaml")"
+GSV="$(mktemp -d)"
+python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c.setdefault("methodology",{})["gateScope"]="subset"; c["commands"]["gateAffected"]=["x"]; json.dump(c,open(sys.argv[2],"w"))' "$FIX/valid.project.json" "$GSV/project.json"
+out="$(python3 "$PLUGIN/scripts/validate-config.py" "$GSV/project.json" 2>&1)"
+check "v1 validate-config rejects an unknown gateScope" "methodology.gateScope" "$out"
+check "v2 validate-config rejects a non-string gateAffected" "commands.gateAffected" "$out"
+rm -rf "$GSV"
+check_absent "m1 gate.sh refusal no longer claims every pass is full-suite" "must be a full-suite run" "$(cat "$PLUGIN/scripts/gate.sh")"
+check "m2 merge freshness waits for CI or runs the full gate" "gate.sh --full" "$(cat "$PLUGIN/skills/build-next/references/auto-review.md")"
+check "m3 merge dance re-gate names the full gate fallback" "gate.sh --full" "$(cat "$PLUGIN/skills/build-next/references/concurrency.md")"
+check "m4 session banner shows the gate scope" "methodology.gateScope" "$(cat "$PLUGIN/scripts/session-start.sh")"
 check "d1 setup-project asks for gate scope" 'header "Gate scope"' "$(cat "$PLUGIN/skills/setup-project/SKILL.md")"
 check "d2 gate skill documents gateScope" "methodology.gateScope" "$(cat "$PLUGIN/skills/gate/SKILL.md")"
 check "d3 README documents gateScope" "gateScope" "$(cat "$PLUGIN/README.md")"
