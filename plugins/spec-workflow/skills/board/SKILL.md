@@ -20,14 +20,16 @@ prio <issue#> <P0|P1|...>   # priority option name
 est  <issue#> <points>
 bug  "<title>" <prio> [<origin-issue#>]   # post-release bug -> first status (Backlog)
 list ["<status>"]
+remove <issue#>             # delete the issue's card from the board (the issue itself is unchanged); for stray or duplicate cards
 agent <issue#> <name>|--clear   # label the card `agent: <name>` so the board shows who is on it (replaces any other agent label; REST only; never fails the caller)
 comment <issue#>            # body on stdin: printf '%s' "text" | board.sh comment N
 edit-body <issue#> <file>   # replace issue body (e.g. updated acceptance criteria)
 fields                      # discover field/option ids (setup only)
 config                      # validate project.yaml + print summary
-audit [--fix] [--if-due]    # reconcile the board with live work (#564): --fix moves cards (worktree/open PR -> In progress, ready PR or review telemetry -> In review, merged -> QA when the review guard allows) and files an issue for work that has none; --if-due = at most once per methodology.auditIntervalMinutes, free when not due
+audit [--fix] [--if-due]    # reconcile the board with live work (#564): --fix moves cards (worktree/open PR -> In progress, ready PR or review telemetry -> In review, merged -> QA when the review guard allows) ; never files an issue (work with no card is a NOTE: DISCREPANCY line, run ensure-issue on purpose), never moves over the WIP limit, ignores worktree-agent-* and batch/* lanes, prints progress and stops moving after BOARD_AUDIT_BUDGET_SECONDS (default 90); --if-due = at most once per methodology.auditIntervalMinutes, free when not due
 ```
 Run `board.sh audit --fix --if-due` whenever you read the board in this skill: it is the backstop that keeps running work visible.
+Delete a stray or duplicate card with `board.sh remove N` (the issue itself is unchanged), never with `gh project item-delete` by hand.
 Multiple boards: set `BOARD=<boards[].id>` env var; default is the first board in config.
 
 ## Rules (STRICT)

@@ -21,27 +21,22 @@ check_rc "A one board read (fields + items)" 1 "$(af_n 'graphql:items')"
 check_rc "A board read field query" 1 "$(af_n 'graphql:fields')"
 af_teardown
 
-# --- B. worktree, Backlog card, at the WIP limit -> In progress with --over-wip, flagged ---
+# --- B. worktree, Backlog card, at the WIP limit -> NOT moved: the audit never moves over WIP (rpg incident) ---
 af_setup pr; af_items "10:Backlog" "11:In progress"; af_worktree 10 fx/10-widget; af_worktree 11 fx/11-other; af_seen 10 11
 out="$(af_run audit --fix)"
-check "B prints the change" "FIX #10: Backlog -> In progress (live worktree .claude/worktrees/10, branch fx/10-widget)" "$out"
-check "B exits 0" "rc=0" "$out"
-check "B card is In progress" "In progress" "$(af_status 10)"
-check "B over-WIP is reported by the move" "OVER WIP" "$out"
-check "B summary" "AUDIT --fix: 1 change(s)" "$out"
-check_rc "B exactly one status edit" 1 "$(af_n 'item-edit')"
-check_rc "B exactly one over-WIP REST comment" 1 "$(af_n 'rest:comment')"
-check_rc "B one board read for the whole audit (the move reuses the snapshot under the held mutex)" 1 "$(af_n 'graphql:items')"
+check "B prints a note instead of a change" "NOTE #10: not moved Backlog -> In progress (live worktree .claude/worktrees/10, branch fx/10-widget): WIP limit full (1/1)" "$out"
+check "B exits 0 (a full limit is not a failure)" "rc=0" "$out"
+check "B card stays in Backlog" "Backlog" "$(af_status 10)"
+check_absent "B nothing is flagged over WIP" "OVER WIP" "$out"
+check "B summary" "AUDIT --fix: 0 change(s)" "$out"
+check_rc "B no status edit" 0 "$(af_n 'item-edit')"
+check_rc "B no over-WIP REST comment" 0 "$(af_n 'rest:comment')"
+check_rc "B one board read for the whole audit (the refused move reuses the snapshot under the held mutex)" 1 "$(af_n 'graphql:items')"
 check_rc "B REST open list" 1 "$(af_n 'rest:pulls-open')"
 check_rc "B REST closed list" 1 "$(af_n 'rest:pulls-closed')"
 check_rc "B no GraphQL command" 0 "$(af_n 'GRAPHQL-CMD')"
-check_rc "B total calls" 6 "$(af_total)"
+check_rc "B total calls" 4 "$(af_total)"
 check_rc "B the admission mutex is released" 0 "$([[ -d "$AQ/.claude/board-wip.lock" ]] && echo 1 || echo 0)"
-: >"$AF_LOG"
-out="$(af_run audit --fix)"
-check "B second run reports no changes" "AUDIT --fix: 0 change(s)" "$out"
-check_rc "B second run: no mutation" 0 "$(( $(af_n 'item-edit') + $(af_n 'rest:comment') ))"
-check_rc "B second run: one board read" 1 "$(af_n 'graphql:items')"
 af_teardown
 
 # --- C. under the limit: no over-WIP comment ---
@@ -77,17 +72,14 @@ check_rc "E only one edit (13 was not forced)" 1 "$(af_n 'item-edit')"
 check "E exits 0 (a note is not a failure)" "rc=0" "$out"
 af_teardown
 
-# --- F. an open PR with no linked issue gets one through ensure-issue, never an invented link ---
+# --- F. an open PR with no linked issue is a DISCREPANCY note; the audit never files an issue ---
 af_setup pr; af_cfg methodology.maxInProgress 5
 printf '[%s]' "$(af_pr 8 feature/zzz false false 'Add zzz' 'no ticket here')" >"$AF_PULLS_OPEN"
 out="$(af_run audit --fix)"
-check "F prints the new issue" "FIX: open PR #8 (branch feature/zzz) had no issue -> #900 (board.sh ensure-issue)" "$out"
-check_rc "F one issue created, titled from the PR" 1 "$(af_n 'issue-create Add zzz')"
-check "F link recorded locally" "feature/zzz" "$(cat "$AQ/.claude/audit-links.json")"
-: >"$AF_LOG"
-out="$(af_run audit --fix)"
-check_rc "F second run creates nothing" 0 "$(af_n 'issue-create')"
-check "F second run: no changes" "AUDIT --fix: 0 change(s)" "$out"
+check "F prints the discrepancy" "NOTE: DISCREPANCY: open PR #8 (branch feature/zzz) has no issue; if it is real work, run board.sh ensure-issue --title \"Add zzz\" --for-branch feature/zzz" "$out"
+check_rc "F no issue created" 0 "$(af_n 'issue-create')"
+check "F no changes" "AUDIT --fix: 0 change(s)" "$out"
+check_rc "F no link invented" 0 "$([[ -e "$AQ/.claude/audit-links.json" ]] && grep -c zzz "$AQ/.claude/audit-links.json" || echo 0)"
 af_teardown
 
 # --- G. work.type: local -- no PR calls; review telemetry says In review; merged commit says QA ---

@@ -104,7 +104,7 @@ check "E remove: no number is a usage error" "usage: board.sh remove" "$out"
 check "E remove: usage exit 2" "rc=2" "$out"
 out="$(af_run remove abc)"
 check "E remove: a non-number is a usage error" "usage: board.sh remove" "$out"
-AF_DELETE_FAIL=1 out="$(AF_DELETE_FAIL=1 af_run remove 11)"
+out="$(AF_DELETE_FAIL=1 af_run remove 11)"
 check "E remove: a failed delete says so" "ERROR: could not remove #11" "$out"
 check "E remove: failed delete exit 1" "rc=1" "$out"
 af_teardown
@@ -121,8 +121,16 @@ check "F board.sh usage lists remove" "board.sh remove <issue#>" "$(cat "$PLUGIN
 
 # --- G. register-first title for scoped commit-msg hooks; review passes for every orchestrator PR ---
 IT="$(cat "$PLUGIN/skills/implement-task/SKILL.md")"
-check "G implement-task: an empty registration commit title that passes scope-checking hooks" 'git commit --allow-empty -m "chore: register <task-id> (#N)"' "$IT"
+check "G implement-task: an empty registration commit title that passes scope-checking hooks" 'git commit --allow-empty -m "chore: register work for <task-id> (#N)"' "$IT"
 check "G implement-task: why the scope is dropped" "an empty commit changes no scope" "$IT"
 check "G implement-task: follow the hook's own message when it refuses" "follow the hook's message" "$IT"
 check "G implement-task: every orchestrator PR needs both tagged passes before merge" "needs the two tagged review passes (spec-compliance, code-quality) recorded before merge" "$IT"
 check "G build-next: same rule up front" "needs the two tagged review passes (spec-compliance, code-quality) recorded before merge" "$BN"
+
+# --- H. spec delta ---
+DL="$(delta_body 577)"
+check "H delta exists for 577" "task: 577" "$DL"
+check "H delta: audit never creates an issue" "SHALL NEVER create an issue" "$DL"
+check "H delta: audit never moves over WIP" "SHALL NEVER move a card over the WIP limit" "$DL"
+check "H delta: brief preflight one pass" "check every rule in one pass" "$DL"
+check "H delta: board.sh remove" "board.sh remove <issue#>" "$DL"

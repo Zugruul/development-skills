@@ -58,7 +58,7 @@ check "(b) one refusal names the missing section" "lacks the '## TODO UPKEEP (re
 check "(b) the same refusal names the missing task id too" "does not name a task id" "$out"
 check "(b) the refusal counts its problems" "2 problems" "$out"
 check "(b) the refusal prints the block heading to paste" "## TODO UPKEEP (required)" "$out"
-check "(b) the block carries the rule lines" "- Always pass \`--agent <role>\` and task id N." "$out"
+check "(b) the block carries the rule lines, filled" "- Always pass \`--agent dev\` and task id 573." "$out"
 check "(b) role filled from the agent name; id from a numeric name" "Task id 573; your role is dev." "$out"
 SC_BRIEF='## WHAT
 - Task: SC-236: combat log (GitHub issue #442)
@@ -181,7 +181,7 @@ check "(n) delta carries the Codex parity note" "Codex" "$DL"
 
 check "(r1) implement-task: pr-reviewer named" "pr-reviewer-*" "$IT"
 # The script's block and the skill's block are the same text (one source the human reads, one the hook prints).
-blk="$(printf 'x\n' | bash "$BP" dev-1 2>&1 | sed -n '/^## TODO UPKEEP (required)$/,$p' | sed '1d' | sed 's/Task id 1;/Task id N;/; s/--id 1/--id N/g')"
+blk="$(printf 'x\n' | bash "$BP" dev-1 2>&1 | sed -n '/^## TODO UPKEEP (required)$/,$p' | sed '1d' | sed 's/Task id 1; your role is dev\./Task id N; your role is <role>./; s/--id 1 /--id N /g; s/--id 1`/--id N`/g; s/--agent dev/--agent <role>/g; s/task id 1\.$/task id N./')"
 while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     check "(o) implement-task shows the printed block line verbatim: ${line:0:40}" "$line" "$IT"
