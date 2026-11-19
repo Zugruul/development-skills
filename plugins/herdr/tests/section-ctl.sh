@@ -102,6 +102,40 @@ check "roster calls out blocked agents" "BLOCKED, waiting on a human: rev" "$out
 check "roster --json is machine readable" '"status": "blocked"' "$(ctl roster --json 2>&1)"
 check "roster --repo filters by repository" "no live agents match" "$(ctl roster --repo /elsewhere 2>&1)"
 out="$(ctl peek rev 2>&1)"
+PEEK_OUT="$out"
+
+echo "== herdr_ctl: overview =="
+ct_state "{\"root\":\"/repo\",\"workspaces\":[{\"workspace_id\":\"w1\",\"label\":\"monorepo\"},{\"workspace_id\":\"w2B\",\"label\":\"a label with spaces well over 24 characters\"},{\"workspace_id\":\"wK\",\"label\":\"fix-converge-deps\"}],\"worktrees\":[{\"branch\":\"feat/long-branch-name\",\"path\":\"/wt/b\",\"open_workspace_id\":\"w2B\"},{\"branch\":\"main\",\"path\":\"/repo\",\"open_workspace_id\":\"w1\"},{\"branch\":\"old\",\"path\":\"/wt/old\"},{\"branch\":\"older\",\"path\":\"/wt/older\",\"open_workspace_id\":null}],\"agents\":{$(ct_agent 1 idle),$(ct_agent lane-a working),$(ct_agent rev blocked),\"x\":{\"pane_id\":\"wK:p1\",\"workspace_id\":\"wK\",\"agent\":\"opencode\",\"agent_status\":\"working\",\"cwd\":\"/somewhere/long\"}}}"
+out="$(ctl overview 2>&1)"; rc=$?
+check_rc "overview succeeds" 0 "$rc"
+check "overview: plain heading counts every live agent" "Agents (4)" "$out"
+check "overview: blocked agents come first, with the workspace label" "Agents (4)
+  w1  monorepo           claude    blocked  rev" "$out"
+check "overview: this agent is marked" "  w1  monorepo           claude    idle     1  (this agent)" "$out"
+check "overview: columns are aligned and an unnamed agent has no name column" "  w1  monorepo           claude    working  lane-a
+  wK  fix-converge-deps  opencode  working" "$out"
+check_absent "overview: no word for an unnamed agent" "unnamed" "$out"
+check_absent "overview: no pane ids" "wK:p1" "$out"
+check_absent "overview: no paths" "/" "$(printf '%s' "$out" | grep -v 'feat/')"
+check "overview: worktree heading counts open of total" "Worktrees (2 open of 4)" "$out"
+check "overview: open worktrees by full label, spaces kept, with a note when no agent runs there" "Worktrees (2 open of 4)
+  monorepo                                      main
+  a label with spaces well over 24 characters  feat/long-branch-name  (no agent)" "$out"
+check_absent "overview: git-only worktrees are not listed" "old" "$out"
+printf '%s\n' "$out" | grep -q ' $' && rc=1 || rc=0
+check_rc "overview: no trailing spaces" 0 "$rc"
+out="$(ctl overview --mine lane-a wK:p1 2>&1)"
+check "overview --mine: the heading says other agents, without mine or me" "Other agents (1)
+  w1  monorepo  claude  blocked  rev
+
+Worktrees" "$out"
+check_absent "overview --mine: my agents are left out" "lane-a" "$out"
+out="$(ctl overview --mine lane-a wK:p1 rev 2>&1)"
+check_absent "overview --mine: no agents list when there are no others" "agents" "$out"
+check "overview --mine: the worktrees are still printed" "Worktrees (2 open of 4)" "$out"
+ct_state "{\"workspaces\":[{\"workspace_id\":\"w1\",\"label\":\"a label with spaces well over 24 characters\"}],\"agents\":{$(ct_agent dev working),$(ct_agent rev blocked)}}"
+check "roster no longer cuts the workspace label" "w1 a label with spaces well over 24 characters /w" "$(ctl roster 2>&1)"
+out="$PEEK_OUT"
 check "peek shows the state" "status=blocked" "$out"
 check "peek reads the visible screen first" "SCREEN[visible]" "$out"
 check_absent "peek skips history unless asked" "recent-unwrapped" "$out"

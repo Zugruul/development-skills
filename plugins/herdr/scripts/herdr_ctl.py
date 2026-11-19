@@ -12,6 +12,7 @@ this script only where a wait, a retry or a safety check is needed:
   start ...                  `agent start`, retried while the pane is still busy
   prompt TARGET ...          one guarded `agent prompt`; never resubmits
   roster                     every live agent, where it runs and its state
+  overview                   the status skill's two lists: live agents, open worktrees
   peek TARGET                state plus what is on the agent's screen
   listen TARGET...           wait until an agent blocks, finishes or disappears
 
@@ -396,15 +397,67 @@ def cmd_roster(a):
         return
     order = {"blocked": 0, "done": 1, "idle": 2, "working": 3}
     rows.sort(key=lambda r: (order.get(r["status"], 4), r["workspace"], r["pane"]))
-    print("%-8s %-20s %-9s %-9s %-24s %s" % ("STATUS", "NAME", "PANE", "KIND", "WORKSPACE", "CWD"))
+    wsw = max(24, max(len("%s %s" % (r["workspace"], r["label"])) for r in rows))
+    fmt = "%-8s %-20s %-9s %-9s %-" + str(wsw) + "s %s"
+    print(fmt % ("STATUS", "NAME", "PANE", "KIND", "WORKSPACE", "CWD"))
     for r in rows:
-        print("%-8s %-20s %-9s %-9s %-24s %s" % (
+        print(fmt % (
             r["status"], (r["name"] or "(unnamed)") + (" *" if r["self"] else ""), r["pane"], r["kind"],
-            ("%s %s" % (r["workspace"], r["label"]))[:24], r["cwd"]))
+            "%s %s" % (r["workspace"], r["label"]), r["cwd"]))
     blocked = [r for r in rows if r["status"] == "blocked"]
     if blocked:
         print("BLOCKED, waiting on a human: " + ", ".join(r["name"] or r["pane"] for r in blocked))
     print("(* = this agent. Target unnamed agents by pane id.)")
+
+
+def columns(rows):
+    """Left-aligned columns two spaces apart, indented two; empty trailing cells leave no spaces."""
+    if not rows:
+        return []
+    width = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
+    return ["  " + "  ".join(c.ljust(w) for c, w in zip(r, width)).rstrip() for r in rows]
+
+
+def cmd_overview(a):
+    """Read-only. The two lists of the status skill, ready to paste: short lines, no paths."""
+    require_herdr()
+    me = os.environ.get("HERDR_PANE_ID", "")
+    live = agents()
+    ws = workspaces()
+
+    def wlabel(wid):
+        return (ws.get(wid) or {}).get("label") or wid or "?"
+
+    mine = set(a.mine or ())
+    orchestrating = a.mine is not None
+    order = {"blocked": 0}
+    rows = []
+    for ag in sorted(live, key=lambda g: (order.get(g.get("agent_status"), 1),
+                                          g.get("workspace_id") or "", g.get("pane_id") or "")):
+        is_me = bool(me) and ag.get("pane_id") == me
+        if orchestrating and (is_me or ag.get("name") in mine or ag.get("pane_id") in mine):
+            continue
+        wid = ag.get("workspace_id") or "?"
+        tail = "  ".join(x for x in (ag.get("name") or "", "(this agent)" if is_me else "") if x)
+        rows.append((wid, wlabel(wid), ag.get("agent") or "?", ag.get("agent_status") or "unknown", tail))
+    out = []
+    if rows or not orchestrating:
+        out.append("%s (%d)" % ("Other agents" if orchestrating else "Agents", len(rows)))
+        out += columns(rows)
+    cwd = os.path.abspath(a.cwd or os.getcwd())
+    rc, data, _ = herdr("worktree", "list", "--cwd", cwd)
+    trees = [w for w in result(data).get("worktrees") or [] if isinstance(w, dict)] if rc == 0 else None
+    if out:
+        out.append("")
+    if trees is None:
+        out.append("Worktrees: %s is not in a repository Herdr can list" % cwd)
+    else:
+        busy = {g.get("workspace_id") for g in live}
+        opened = sorted((w for w in trees if w.get("open_workspace_id")), key=lambda w: w["open_workspace_id"])
+        out.append("Worktrees (%d open of %d)" % (len(opened), len(trees)))
+        out += columns([(wlabel(w["open_workspace_id"]), w.get("branch") or "(no branch)",
+                         "" if w["open_workspace_id"] in busy else "(no agent)") for w in opened])
+    print("\n".join(out))
 
 
 def cmd_peek(a):
@@ -481,6 +534,8 @@ def main():
     p = sub.add_parser("roster")
     p.add_argument("--workspace"); p.add_argument("--repo"); p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_roster)
+    p = sub.add_parser("overview")
+    p.add_argument("--cwd"); p.add_argument("--mine", nargs="*"); p.set_defaults(fn=cmd_overview)
     p = sub.add_parser("peek")
     p.add_argument("target"); p.add_argument("--lines", type=int, default=60)
     p.add_argument("--history", type=int, default=0); p.set_defaults(fn=cmd_peek)

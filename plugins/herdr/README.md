@@ -27,7 +27,7 @@ claude plugin install herdr@development-skills
 | `prompt` | Send a follow-up prompt, or relay the user's answer to a blocked agent; never submits the same text twice |
 | `listen` | Report what agents are doing, wait until one blocks, finishes or disappears, and surface a blocked agent's question to the user, asking which agent or tab when unclear |
 | `orchestrate` | Take the orchestrator role, name the agent, load the skills above and the orchestration rules |
-| `status` | The on-demand status report, read-only: the orchestrator report for an orchestrator's own agents, then other live agents and the repository's worktrees; the plain roster for any other agent |
+| `status` | The on-demand status report, read-only: the orchestrator report for an orchestrator's own agents, then a short list of the other live agents and one of the repository's open worktrees; the same two lists, for all live agents, for any other agent |
 
 ## What the skills handle for you
 
@@ -50,7 +50,7 @@ Color comes from a small fixed set of emoji, always next to the word they stand 
 
 It applies only to an agent that has taken the orchestrator role. A plain `status` or `listen` call keeps its own output.
 
-`/herdr:status` is the on-demand command for it. The role and the list of agents an orchestrator started are known only from the session's own conversation; Herdr does not record them. So when an agent cannot tell (for example after its context was summarised), `status` falls back to the plain roster, says so, and asks which agents to follow rather than guessing. The `Since last report` line compares with the most recent report in the conversation and says `unknown` when that report is no longer in context. Other plugins that make an agent the orchestrator may add their own lines inside an agent's entry.
+`/herdr:status` is the on-demand command for it. The role and the list of agents an orchestrator started are known only from the session's own conversation; Herdr does not record them. So when an agent cannot tell (for example after its context was summarised), `status` falls back to the plain lists, says so, and asks which agents to follow rather than guessing. After the report (or alone, for an agent that is not orchestrating) `status` shows two short lists printed by `herdr_ctl.py overview`: the live agents (workspace id, the workspace label as Herdr's sidebar shows it, kind, state, and the agent's name when it has one) and the repository's worktrees that have an open Herdr workspace (workspace label, branch), with the open-of-total count in the heading and no paths. Labels are printed in full. Their columns are aligned with spaces, so the skill pastes them unchanged inside a code block; the orchestrator report itself stays unfenced. The `Since last report` line compares with the most recent report in the conversation and says `unknown` when that report is no longer in context. Other plugins that make an agent the orchestrator may add their own lines inside an agent's entry.
 
 ## `scripts/herdr_ctl.py`
 
@@ -66,6 +66,7 @@ start --name N --kind K --pane ID [--timeout S] [-- AGENT ARGS]
 prompt TARGET (--text T | --file F) [--while-working] [--confirm S]
                                        one guarded submission
 roster [--workspace ID] [--repo DIR] [--json]
+overview [--cwd DIR] [--mine NAME ...]  the status skill's two lists: live agents, open worktrees
 peek TARGET [--lines N] [--history N]  state plus the visible screen
 listen TARGET... [--timeout S] [--only-blocked]
 ```

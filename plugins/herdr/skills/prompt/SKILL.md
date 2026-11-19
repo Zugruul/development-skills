@@ -25,6 +25,15 @@ python3 "../../scripts/herdr_ctl.py" prompt <target> --text "<prompt>"      # or
 
 **After `PROMPT UNCONFIRMED`, a timeout or any error: never resend the same prompt blindly.** A missing confirmation does not prove the prompt was not delivered, and a second copy makes the agent do the work twice. Read the screen first: if the text sits unsent in the input box, submit it with `herdr agent send-keys <target> enter`; if the agent is working on it, it arrived; only when the screen shows no trace of it, send it again.
 
+## Relay the user's question or request
+
+When you orchestrate and the user asks about, reports a problem with or wants a change to work an agent you follow owns, the prompt is how it reaches that agent. Do not investigate the agent's checkout to answer it yourself (the `orchestrate` skill, rule 8).
+
+- Send the user's own words, quoted, plus the context the agent needs: what the user ran, the exact error text, the file or feature meant. Do not add your own diagnosis or a proposed fix as if the user had said it.
+- Ask the agent to answer in its pane and to stop before changing anything, unless the user asked for the change.
+- On `PROMPT REFUSED` ... working: wait for it to settle and send then; `--while-working` only when the user wants to steer it now.
+- Follow it with the `listen` skill and bring the agent's answer back to the user as the agent's answer.
+
 ## Answer a blocked agent
 
 A blocked agent shows an approval or a question. That decision belongs to a human.
