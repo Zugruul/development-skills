@@ -7,6 +7,7 @@ this script only where a wait, a retry or a safety check is needed:
 
   check                      am I inside Herdr, and which pane am I
   name NAME                  is NAME a valid, unused agent name
+  label TEXT...              the hyphen-separated, no-space form of a workspace label
   worktree-plan ...          read-only checks + the exact `worktree create` line
   start ...                  `agent start`, retried while the pane is still busy
   prompt TARGET ...          one guarded `agent prompt`; never resubmits
@@ -146,6 +147,33 @@ def cmd_name(a):
     print("NAME OK %s" % a.name)
 
 
+LABEL_MAX = 80
+
+
+def label_from(text):
+    """A workspace label is one hyphen-separated word group: letters, digits and hyphens, no spaces."""
+    return re.sub(r"[^A-Za-z0-9]+", "-", text or "").strip("-")
+
+
+def label_problem(text):
+    if not re.match(r"^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$", text or ""):
+        fixed = label_from(text)
+        return ("label %r is not hyphen-separated letters and digits without spaces%s"
+                % (text, " -- use %s" % fixed if fixed else ""))
+    if len(text) > LABEL_MAX:
+        return "label %r is longer than %d characters" % (text, LABEL_MAX)
+    return ""
+
+
+def cmd_label(a):
+    """Offline. Prints the hyphen-separated, no-space form of a label."""
+    out = label_from(" ".join(a.text))
+    problem = label_problem(out)
+    if problem:
+        die(problem, 6)
+    print("LABEL %s" % out)
+
+
 def git(cwd, *args):
     p = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True)
     return p.returncode, p.stdout.strip()
@@ -188,6 +216,10 @@ def cmd_worktree_plan(a):
             problems.append("branch %s is already checked out at %s (workspace %s) -- open that one instead: "
                             "herdr worktree open --cwd %s --branch %s --no-focus"
                             % (a.branch, w.get("path"), w.get("open_workspace_id") or "none", root, a.branch))
+    wlabel = a.label if a.label is not None else label_from(a.branch)
+    problem = label_problem(wlabel)
+    if problem:
+        problems.append(problem)
     if a.path:
         path = os.path.abspath(os.path.join(root, os.path.expanduser(a.path)))
         notes.append("path: given explicitly")
@@ -215,6 +247,7 @@ def cmd_worktree_plan(a):
     print("  branch:     %s" % a.branch)
     print("  base:       %s" % (base or "(existing branch)"))
     print("  path:       %s" % path)
+    print("  label:      %s%s" % (wlabel, "" if a.label is not None else " (from the branch; no --label given)"))
     for n in notes:
         print("  note: %s" % n)
     if problems:
@@ -226,8 +259,7 @@ def cmd_worktree_plan(a):
     if base and not exists:
         line += ["--base", base]
     line += ["--path", path]
-    if a.label:
-        line += ["--label", a.label]
+    line += ["--label", wlabel]
     line.append("--no-focus")
     print("COMMAND (run only after the user approved this worktree):")
     print("  " + " ".join(shquote(x) for x in line))
@@ -434,6 +466,7 @@ def main():
     sub = ap.add_subparsers(dest="verb", required=True)
     sub.add_parser("check").set_defaults(fn=cmd_check)
     p = sub.add_parser("name"); p.add_argument("name"); p.set_defaults(fn=cmd_name)
+    p = sub.add_parser("label"); p.add_argument("text", nargs="+"); p.set_defaults(fn=cmd_label)
     p = sub.add_parser("worktree-plan")
     p.add_argument("--branch", required=True); p.add_argument("--base"); p.add_argument("--path")
     p.add_argument("--cwd"); p.add_argument("--label"); p.set_defaults(fn=cmd_worktree_plan)

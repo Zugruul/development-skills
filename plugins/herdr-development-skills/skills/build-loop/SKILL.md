@@ -43,7 +43,7 @@ No worktree is created by this skill, so there is nothing to approve beyond star
 Follow the agent with the `herdr:listen` skill, iteration after iteration.
 
 - **Blocked**: the loop asks a human several things by design (which checkout mode, consent before the first autonomous merge, UI decisions). Show each question to the user and relay their answer with `herdr:prompt`. Never answer a consent gate yourself, and never tell the loop that config or an earlier session already authorized something.
-- **Each iteration's report**: pass it on in the loop's own three groups (done, in progress, queued), with the task, gate result, PR or merge state and board status. Mark what you verified and what is the loop's claim.
+- **Each iteration's report**: first the orchestrator report format of the `herdr` plugin, the loop agent as one entry with the lane lines from `../../references/report-lines.md`; then pass the iteration on in the loop's own three groups (done, in progress, queued), with the task, gate result, PR or merge state and board status. Mark what you verified and what is the loop's claim.
 - **Stopped**: the loop ends on its own stop conditions (paused, empty or blocked backlog, a gate that will not go green, a human-only blocker). Report which one, and the exact action it needs from the user.
 
 ## 4. Pausing and stopping

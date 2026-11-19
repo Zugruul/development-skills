@@ -40,14 +40,38 @@ It reads files and cannot see a session, so the skills treat it as a hint and co
 
 For a board task (a lane without a task differs in step 1 and in what its agent is told, as described above):
 
-1. The orchestrator reads the task and works out the lane: branch from `project.branchPattern`, base a freshly fetched main, path `<primary checkout>/.claude/worktrees/<task-id>` (where spec-workflow keeps task lanes).
-2. `herdr:worktree` plans it, asks the user, and creates it with explicit `--cwd`, `--branch`, `--base` and `--path`.
+1. The orchestrator reads the task and works out the lane: its names from `scripts/lane_name.py` (see "Lane names" below), base a freshly fetched main, path `<primary checkout>/.claude/worktrees/<task-id>` (where spec-workflow keeps task lanes).
+2. `herdr:worktree` plans it, asks the user, and creates it with explicit `--cwd`, `--branch`, `--base`, `--path` and `--label`.
 3. `herdr:agent` starts the lane agent and sends one prompt: run the spec-workflow skill on the assigned task, in this checkout, which already is the lane.
 4. `herdr:listen` follows it. Anything the workflow requires a human for (checkout mode, consent before an autonomous merge, UI decisions) blocks the lane; the orchestrator shows the question to the user and relays the answer. It never answers for them.
 
 With `build-lanes` the orchestrator is the only picker: it assigns one task per lane from the queue, so two lanes cannot start the same task. spec-workflow's own board admission and merge lock still apply inside each lane.
 
 spec-workflow can also open the lanes it creates itself in Herdr (`herdr.enabled` in the project config). That setting is independent of this plugin and is what makes `build-loop`'s lanes visible as workspaces.
+
+## Reports
+
+The lane and loop skills make the agent the orchestrator, so it reports in the `herdr` plugin's fixed format (`NEEDS YOU`, `WORKING`, `DONE`). `references/report-lines.md` adds this plugin's own lines inside a lane's entry: `task:` (source and id, or `none`), `gate:`, `board:` and, for a finished lane without a task, `skipped (no task):`. It also says where a lane's pull requests come from for the format's `prs:` block: every pull request of the lane's branch, read with `gh`, one line each with number, state and full URL. The layout itself stays the `herdr` plugin's.
+
+## Lane names
+
+`scripts/lane_name.py` is the one place lane names are built; the skills call it and never assemble a name by hand.
+
+| | Branch | Herdr workspace label (the lane's title in the sidebar) | Agent name |
+| --- | --- | --- | --- |
+| ClickUp task | `feat/<taskid>-<desc>` | `CU-<taskid>-<desc>` | `<kind>-lane-<taskid>` |
+| GitHub issue | `feat/<taskid>-<desc>` | `GH-<taskid>-<desc>` | `<kind>-lane-<taskid>` |
+| Jira issue (not a supported source yet) | `feat/<taskid>-<desc>` | `J-<taskid>-<desc>` | `<kind>-lane-<taskid>` |
+| No task | `feat/<desc>` | `<desc>` | `<kind>-lane-<desc>` |
+
+- `<desc>` is a lowercase kebab-case slug of the task title or the user's description, at most 40 characters.
+- The tag comes from the `SOURCE_TAGS` mapping at the top of the script; a new source is one more line there.
+- The task id is used as the source gives it and may contain hyphens (`ABC-123`), so nothing takes a branch or label apart by splitting on hyphens. `--json` returns the id, the slug and the tag as separate fields.
+- The label has no spaces; the `herdr` plugin enforces that shape and knows nothing about tags or sources.
+- The agent name starts with the agent kind (`claude-lane-1k5a5ew4cde`, `codex-lane-123`), because Herdr shows the kind only for unnamed agents. The id is lowercased for the name (`ABC-123` gives `claude-lane-abc-123`). A lane's reviewer is `<kind>-review-<taskid or desc>`.
+- Herdr allows 32 characters of lowercase letters, digits, `-` and `_`. A longer name is shortened only after `-lane-`: the id or slug is cut and ends in four hex digits of the whole value, so `opencode-lane-fix-health-check-204` (34 characters) becomes `opencode-lane-fix-health-ch-5450`. The kind is never cut. A name already used by a live agent gets `-2`, `-3` through `--taken`.
+- A tab keeps its agent's name as its label (`codex-lane-123`), which already has no spaces. Only the workspace label carries the tag.
+- The lane branch rule is fixed and does not follow spec-workflow's `project.branchPattern`. spec-workflow's default pattern is the same rule (`feat/<id>-<slug>`); in a repository whose config says otherwise, `detect.py` prints a note, because that repository's board audit and PR guard will not recognise lane branches until its pattern is changed.
 
 ## Work without a task identifier
 

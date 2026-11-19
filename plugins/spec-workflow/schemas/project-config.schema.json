@@ -49,7 +49,7 @@
                 },
                 "branchPattern": {
                     "type": "string",
-                    "description": "Branch name template. Placeholders: <prefix> (spec taskPrefix, lowercased), <id> (task number, zero-padded as issued), <slug> (kebab-case title)."
+                    "description": "Branch name template; the default is feat/<id>-<slug>. Placeholders: <prefix> (spec taskPrefix, lowercased), <id> (task number, zero-padded as issued), <slug> (kebab-case title)."
                 }
             }
         },

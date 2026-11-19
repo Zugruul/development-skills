@@ -31,7 +31,9 @@ python3 "../../scripts/herdr_ctl.py" peek <target> [--lines 80] [--history 200]
 
 `peek` prints the state and the **visible** screen. Agents with a full-screen interface keep their transcript there, and `herdr agent read --source recent-unwrapped` misses it; `--source visible` shows it. Add `--history` only for agents that scroll plain output.
 
-Summarise per agent in a line or two: the state (`working`, `idle`, `done`, `blocked`, `unknown`) and what it is on, from the screen. Report what you read, not what you expect. `idle` and `done` usually mean ready for input, not that the task succeeded: read the last output before calling work finished. `unknown` means Herdr cannot tell; it is not completion.
+**If you are the orchestrator**, report in the format of `../../references/report.md` instead of the summary below; it also says where `idle`, `unknown` and gone agents go.
+
+Otherwise summarise per agent in a line or two: the state (`working`, `idle`, `done`, `blocked`, `unknown`) and what it is on, from the screen. Report what you read, not what you expect. `idle` and `done` usually mean ready for input, not that the task succeeded: read the last output before calling work finished. `unknown` means Herdr cannot tell; it is not completion.
 
 ## 3. Wait for something worth reporting
 
@@ -59,3 +61,5 @@ Do not answer an approval or a question yourself. If you can show a notification
 
 - `idle` / `done`: `peek` it, report the outcome in its own words (what it changed, what it says is left, any error), and say whether the result is verified or only claimed.
 - `gone`: the agent exited or its pane closed. Say so; do not restart it without being asked.
+
+As the orchestrator, each of these events is a new report in the format of `../../references/report.md`, with the detailed outcome after it in prose.

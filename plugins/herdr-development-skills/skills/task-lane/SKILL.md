@@ -22,7 +22,7 @@ Then: task source `created #N` or `given #N` runs the **task lane**, sections 1 
 
 ## 1. Know the task
 
-Read the issue with the spec-workflow `board` skill (show the issue and its comments). You need its task id and title. If the issue is already In progress or In review, another lane has it: say so and stop unless the user wants to resume it in the existing worktree.
+Read the issue with the spec-workflow `board` skill (show the issue and its comments). You need its task id and title, and its **source**: `github` for a board issue; `clickup` when the identifier is a ClickUp task id or link (spec-workflow's `implement-task` reads and works those through its ClickUp path). If the issue is already In progress or In review, another lane has it: say so and stop unless the user wants to resume it in the existing worktree.
 
 ## 2. Scope: what the lane agent runs
 
@@ -35,12 +35,18 @@ Use `iteration` only when the user asks for the task to be taken all the way, or
 
 ## 3. Lane worktree
 
-From the detect output take `mainBranch`, `branchPattern` and the primary checkout.
+From the detect output take `mainBranch` and the primary checkout. Get the lane's names from the helper, never by hand:
 
-- **Branch**: `branchPattern` filled with the task id and a short slug of the title (for example `sw/123-add-parser`).
+```bash
+python3 "../../scripts/lane_name.py" --source <github|clickup> --id <task id> --desc "<task title>" --kind <agent kind>
+```
+
+It prints `BRANCH`, `LABEL` and `AGENT`. `--kind` is the lane agent's kind (`claude`, `codex`, `opencode`, ...): the one the user asked for, otherwise ask before running the helper. The task id goes in as the source gives it and may contain hyphens, so never take a branch or label apart to get the id back: keep the id you passed in.
+
+- **Branch**: the `BRANCH` line, `feat/<taskid>-<desc>` (for example `feat/123-add-parser`). If the detect output carries a note that the repository's `branchPattern` does not match lane branches, say so in the approval question; do not switch to the configured pattern.
 - **Base**: fetch first, then `origin/<mainBranch>` (the local `<mainBranch>` when the repository has no remote).
 - **Path**: `<primary checkout>/.claude/worktrees/<task-id>`, where spec-workflow keeps task lanes, unless the repository's own instructions name another location.
-- **Label**: the task id.
+- **Label**: the `LABEL` line, `<TAG>-<taskid>-<desc>`, where the tag says where the task lives (`GH-123-add-parser`, `CU-1k5a5ew4cde-decision-api-image-input`). It is the title of the lane's entry in Herdr's sidebar. Pass it to `herdr:worktree` unchanged.
 
 Create it with the `herdr:worktree` skill, which plans, asks the user and creates. Its approval question must also name the task and the agent kind. The user approving this lane is what authorizes worktree checkout mode for the lane's session; no approval, no lane.
 
@@ -49,7 +55,7 @@ Create it with the `herdr:worktree` skill, which plans, asks the user and create
 Start one agent on the worktree with the `herdr:agent` skill.
 
 - **Kind**: the one the user asked for; otherwise ask.
-- **Name**: role first, then the task, as spec-workflow names agents: `lane-<task-id>` (for example `lane-sw-123`), lowercase, at most 32 characters.
+- **Name**: the `AGENT` line, `<kind>-lane-<task id, lowercased>` (for example `claude-lane-1k5a5ew4cde`, `codex-lane-123`, `claude-lane-abc-123` for the id `ABC-123`). The name starts with the agent kind so Herdr's sidebar still shows it. Herdr allows 32 characters: when the name would be longer the helper shortens only the part after `-lane-` (cut, ending in four hex digits of the whole id or slug) and never the kind. Then check it with the `herdr:agent` skill's name check; if a live agent already has it, run the helper again with `--taken <the live names in use>` and it adds `-2`, `-3`. Never build or shorten the name by hand.
 - **First prompt**: the template below, every placeholder filled, sent once.
 
 ```text
@@ -71,7 +77,7 @@ When you stop, report: what was done, the gate result, the branch and PR link if
 
 ## 5. Listen
 
-Follow the lane with the `herdr:listen` skill until it settles.
+Follow the lane with the `herdr:listen` skill until it settles. Every report on the lane's state uses the orchestrator report format of the `herdr` plugin, with the lane lines from `../../references/report-lines.md` (`task:`, `gate:`, `board:`) inside its entry.
 
 - **Blocked**: show the user the lane's question and relay their answer with `herdr:prompt`. Consent gates and approvals are never yours to answer.
 - **Settled**: read its report from its screen. Check what you can yourself (the board status through the `board` skill, the branch's commits), and label the rest as the agent's claim. Report task, gate result, PR or merge state and board status.
@@ -91,16 +97,18 @@ Check the five parts in `../../references/task-source.md` (goal, checkout, scope
 
 ### 7.2 Lane worktree
 
-- **Branch**: the repository's own branch convention, with a short slug of the description (for example `fix/health-check-204`). When spec-workflow is configured its `branchPattern` expects a task id, which this work does not have: use a plain descriptive branch and say so.
+Get the names from `python3 "../../scripts/lane_name.py" --desc "<the user's description, a few words>" --kind <agent kind>` (no `--source`, no `--id`).
+
+- **Branch**: the `BRANCH` line, `feat/<desc>` (for example `feat/health-check-204`). There is no task id and no source tag in it.
 - **Base**: fetch first, then the repository's main branch on the remote (`origin/<mainBranch>` from the detect output when it is there), unless the user named another base.
 - **Path**: the repository's own worktree location rule when it has one; otherwise leave it to the `herdr:worktree` skill's default.
-- **Label**: the slug.
+- **Label**: the `LABEL` line, the `<desc>` slug alone.
 
 Create it with the `herdr:worktree` skill, which plans, asks the user and creates. Its approval question must say this lane runs **without a task**.
 
 ### 7.3 Lane agent
 
-Start one agent with the `herdr:agent` skill. Kind: the one the user asked for, otherwise ask. Name: `lane-<slug>`, lowercase, at most 32 characters. First prompt: the template below, every placeholder filled from the user's words, sent once.
+Start one agent with the `herdr:agent` skill. Kind: the one the user asked for, otherwise ask. Name: the `AGENT` line, `<kind>-lane-<desc>` (for example `codex-lane-health-check-204`), shortened and made unique by the helper exactly as in section 4. First prompt: the template below, every placeholder filled from the user's words, sent once.
 
 ```text
 You are a lane agent, started by an orchestrator agent in Herdr on behalf of the user. This work has no board task.
@@ -120,7 +128,7 @@ When you stop, report: what changed (files and commits), the result of the check
 
 ### 7.4 Listen and report
 
-Follow the lane with the `herdr:listen` skill as in section 5; blocked questions go to the user through `herdr:prompt`. There is no board status to verify: check the branch's commits and the pull request yourself, and label the rest as the agent's claim.
+Follow the lane with the `herdr:listen` skill as in section 5; blocked questions go to the user through `herdr:prompt`. Report in the same format, with `task: none` and no `board:` line (`../../references/report-lines.md`). There is no board status to verify: check the branch's commits and the pull request yourself, and label the rest as the agent's claim.
 
 The final report states **task source: none** and lists every step that was skipped because there is no task, each marked `skipped (no task)`, from `../../references/task-source.md` section 5. If the agent reports that the repository refused the work for lacking a task, tell the user and offer options 2 and 3 again for this piece.
 

@@ -26,7 +26,7 @@ You (the orchestrator) do **not** write the implementation. You brief a subagent
    - **`worktree` (default)** — register the work BEFORE implementation: the branch, its worktree, and the draft PR all exist before any code is written, so in-flight work is always visible even if it dies early. The `--allow-empty` registration commit is what makes an effectively-empty draft PR possible (GitHub refuses a PR with zero commits).
      ```bash
      # Uses herdr when cfg:herdr enables it, plain git otherwise. Resolve the installed script path before changing directories.
-     bash <resolved-plugin-root>/scripts/herdr-worktree.sh add --path .claude/worktrees/<task-id> --branch <branch from cfg:project.branchPattern, e.g. cp/012-error-model> --base <verified base from isolated startup, otherwise cfg:project.mainBranch> --label "<task-id>"
+     bash <resolved-plugin-root>/scripts/herdr-worktree.sh add --path .claude/worktrees/<task-id> --branch <branch from cfg:project.branchPattern, e.g. feat/012-error-model> --base <verified base from isolated startup, otherwise cfg:project.mainBranch> --label "<task-id>"
      cd .claude/worktrees/<task-id>
      # Require action=proceed.
      bash <resolved-plugin-root>/scripts/checkout-preflight.sh --checkout worktree

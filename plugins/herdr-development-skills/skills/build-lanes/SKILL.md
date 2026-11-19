@@ -47,7 +47,7 @@ For each approved lane, follow the `task-lane` skill, one after the other (each 
 
 ## 5. Listen to all of them
 
-Follow every lane with the `herdr:listen` skill, all targets at once, and keep a roster in every report: lane agent, issue, branch, state, and what changed since the last report.
+Follow every lane with the `herdr:listen` skill, all targets at once, and report in the orchestrator report format of the `herdr` plugin every time: one entry per lane, with the lane lines from `../../references/report-lines.md` (`task:`, `gate:`, `board:`) inside it.
 
 - **Blocked lane**: show its question to the user, labelled with the lane and its tab; relay the answer with `herdr:prompt`. One question per lane, never a merged "approve all". A lane blocked on a human does not hold up the others.
 - **A lane merged**: main moved. When another lane next settles or asks something, tell it to rebase onto the main branch before its next push. Do not interrupt a lane that is working; with `serialDelivery=true` each lane rebases at its own merge turn, and the lanes' own merge lock keeps merges one at a time.
@@ -56,4 +56,4 @@ Follow every lane with the `herdr:listen` skill, all targets at once, and keep a
 
 ## 6. When to stop
 
-Stop when the requested tasks are done, the queue has nothing eligible, the loop is paused, or the user says so. End with the roster: per lane its task source, the outcome and anything left for the user, with the exact action each open item needs. Leave worktrees and workspaces in place; spec-workflow removes a lane once its work has landed.
+Stop when the requested tasks are done, the queue has nothing eligible, the loop is paused, or the user says so. End with a last report in that format, then in prose: per lane its task source, the outcome and anything left for the user, with the exact action each open item needs. Leave worktrees and workspaces in place; spec-workflow removes a lane once its work has landed.

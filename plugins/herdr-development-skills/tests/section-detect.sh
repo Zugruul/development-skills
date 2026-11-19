@@ -106,6 +106,10 @@ else
     check "a single lane is explained" "methodology.maxInProgress is 1" "$out"
     check "settings are read through spec-workflow's own loader" "mainBranch=main" "$out"
     check "the pause flag is clear" "checkpoint: clear" "$out"
+    check "a branchPattern other than the lane rule is noted" "note: lane branches are feat/<taskid>-<desc>" "$out"
+    sed -i.bak 's|branchPattern: .*|branchPattern: feat/<id>-<slug>|' "$DT_TMP/cfg/.neural-network/project.yaml"
+    check_absent "the default branchPattern raises no note" "note: lane branches" "$(dt -- --root "$DT_TMP/cfg" 2>&1)"
+    mv "$DT_TMP/cfg/.neural-network/project.yaml.bak" "$DT_TMP/cfg/.neural-network/project.yaml"
     for opt in "1 run without a task           possible" "2 create a task for it         possible" "3 provide the task identifier  possible"; do
         check "configured: task source '$opt'" "$opt" "$out"
     done

@@ -33,6 +33,9 @@ MARKERS = {  # one skill that proves the plugin's skills are linked into a skill
 SKILL_DIRS = (".claude/skills", ".agents/skills", ".opencode/skills")
 
 
+# The lane branch rule (scripts/lane_name.py) written as a spec-workflow project.branchPattern.
+LANE_BRANCH_PATTERN = "feat/<id>-<slug>"
+
 def load_json(path):
     try:
         with open(path, encoding="utf-8") as f:
@@ -139,6 +142,7 @@ def spec_workflow_config(root, primary, plugin_path):
         readable=True,
         mainBranch=get("project.mainBranch", "main"),
         branchPattern=get("project.branchPattern", ""),
+        branchPatternMatchesLanes=get("project.branchPattern", "") in ("", LANE_BRANCH_PATTERN),
         maxInProgress=lanes if isinstance(lanes, int) and not isinstance(lanes, bool) and lanes > 0 else 1,
         serialDelivery=bool(get("methodology.serialDelivery", False)),
         autoMerge=bool(get("methodology.autoMerge", False)),
@@ -257,6 +261,10 @@ def render(d):
     else:
         lines.append("  config: %s" % c["file"])
         lines.append("  mainBranch=%s branchPattern=%s" % (c["mainBranch"], c["branchPattern"] or "(none)"))
+        if not c["branchPatternMatchesLanes"]:
+            lines.append("  note: lane branches are feat/<taskid>-<desc>, which this branchPattern does not match; "
+                         "spec-workflow's board audit and PR guard will not recognise a lane branch until "
+                         "project.branchPattern is %s" % LANE_BRANCH_PATTERN)
         lines.append("  maxInProgress=%s serialDelivery=%s autoMerge=%s" % (
             c["maxInProgress"], str(c["serialDelivery"]).lower(), str(c["autoMerge"]).lower()))
         lines.append("  work.type=%s work.checkout=%s" % (c["workType"], c["workCheckout"]))

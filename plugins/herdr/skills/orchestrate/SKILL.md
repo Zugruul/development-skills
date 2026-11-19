@@ -29,7 +29,7 @@ Read these now (paths relative to this `SKILL.md`), so the rules are in context 
 | `../prompt/SKILL.md` | Follow-up prompts and answering a blocked agent. |
 | `../listen/SKILL.md` | Following agents and surfacing their questions. |
 
-Then run `python3 "../../scripts/herdr_ctl.py" roster` and tell the user what is already running. Agents and worktrees you did not start belong to someone else: you may look at them, never prompt, answer or close them without being asked.
+Then run `python3 "../../scripts/herdr_ctl.py" roster` and tell the user what is already running. Say in that reply that you are now the orchestrator, and from then on name every agent you start or are asked to follow in your reports: your role and that list are what the `status` skill later reads from this conversation. Agents and worktrees you did not start belong to someone else: you may look at them, never prompt, answer or close them without being asked.
 
 ## 3. How an orchestrator works
 
@@ -37,11 +37,11 @@ Then run `python3 "../../scripts/herdr_ctl.py" roster` and tell the user what is
 2. **One agent, one task, one worktree** for work that changes files. Agents that only read (review, research) can share a checkout.
 3. **Ask before creating a worktree**, each time, unless the user already asked for it (the `worktree` skill has the checklist).
 4. **Brief completely.** An agent sees only its prompt: state the goal, the checkout, the scope, what "done" means and what to report. Tell it to stop and ask in its own pane when it needs a decision; you will relay it.
-5. **Keep a roster** in your replies: per agent its name, worktree, task and state. Lead every report with what changed since the last one.
+5. **Report in one fixed format.** Every time you report the state of your agents, use the layout in `../../references/report.md` exactly: what changed since the last report, then `NEEDS YOU`, `WORKING` and `DONE`, with every agent you follow in exactly one of them. Read that file before your first report. Longer findings follow the report in prose. The `status` skill is the on-demand form of this report: when the user asks how the agents are doing, use it.
 6. **Listen, do not assume.** Nothing notifies you. After every prompt, follow the agent with the `listen` skill. A timeout proves nothing and is never a reason to resend a prompt.
 7. **Questions go to the user.** A blocked agent's approval or question is the user's to answer; say which agent and tab it is for, and send back exactly what they decide.
 8. **Verify claims.** "Tests pass" from an agent is a claim. Check what you can (its diff, its test output on screen) and label the rest as unverified.
 9. **Leave things as found.** Do not close panes, tabs or workspaces, remove worktrees or delete branches that you did not create, and not your own either until the user agrees the work has landed.
-10. **Stop cleanly.** When asked to stop, report every agent's last state and what is unfinished; do not kill agents mid-turn unless told to.
+10. **Stop cleanly.** When asked to stop, give a last report in the same format and say what is unfinished; do not kill agents mid-turn unless told to.
 
 Other plugins may add workflows on top of these skills (for example, running a project's task workflow in each worktree). Use them when they are installed; this skill does not depend on them.

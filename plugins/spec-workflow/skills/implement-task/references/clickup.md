@@ -69,7 +69,7 @@ Every `board.sh` step in the skill maps as follows (the GitHub board is NOT used
 
 Identifier plumbing:
 
-- **Branch**: use `<cfg:project.branchPattern>` with `<prefix>` = `cu`, `<id>` = the ClickUp task id (custom id if the task has one), `<slug>` = kebab-case task name — e.g. `cu/86b4nyq2p-error-model`.
+- **Branch**: use `<cfg:project.branchPattern>` with `<id>` = the ClickUp task id as ClickUp gives it (custom id if the task has one; it may contain a hyphen, so never split a branch on hyphens to get it back) and `<slug>` = kebab-case task name — e.g. `feat/86b4nyq2p-error-model` under the default `feat/<id>-<slug>`. A pattern that still has `<prefix>` takes `cu` there.
 - **Registration commit / PR**: same worktree-and-draft-PR registration as the GitHub path, but the PR body links the task instead of `Closes #N`: `ClickUp task: https://app.clickup.com/t/<task_id>` (GitHub auto-close doesn't apply — closing the ClickUp task is a `move`, gated like any other).
 - **Commit scope**: the task id (custom id preferred) — e.g. `feat(ABC-123): …`.
 

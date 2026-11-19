@@ -36,7 +36,7 @@ Each spec is a design document plus a backlog of numbered tasks. One repo can ha
    ```
    Review its output: reorder `statusFlow` / priority options if the board returned them in a different order than the intended pipeline/rank.
 2. Fill every field. The full schema with descriptions is `../../schemas/project-config.schema.json`; keep the template's first-line `# yaml-language-server: $schema=...` modeline — the Red Hat YAML extension downloads modeline schemas without the JSON-language-server trust wall, so hover + autocomplete work. Key decisions:
-   - `project.branchPattern` — e.g. `<prefix>/<id>-<slug>` → branches like `cp/012-error-model`.
+   - `project.branchPattern` — default `feat/<id>-<slug>` → branches like `feat/012-error-model`. An existing pattern (for example `<prefix>/<id>-<slug>`) keeps working; leave it unless the human wants the default.
    - `boards[]` — ids from Phase 3. `statusFlow` order **is** the pipeline; priority `options` order **is** the priority order (highest first).
    - **specs — per-spec files, NOT in project.yaml**: write each spec's work-plan to `.neural-network/specs/<id>.yaml` (template: `../../templates/spec.example.yaml`; the file's basename is the spec id): unique `taskPrefix`, `epics` in build order with `taskRanges`, and `blockedBy` guards for hard dependencies (e.g. nothing from E1 until E0 is fully Deployed). project.yaml holds configuration only — an inline `specs:` section is deprecated (still read when no specs/ dir exists; the dir wins otherwise).
    - spec `invariants` (in the spec file) — the project's hard rules, stated imperatively; they are pasted verbatim into every implementation brief, so make them self-contained.

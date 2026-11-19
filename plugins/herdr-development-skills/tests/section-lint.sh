@@ -136,3 +136,50 @@ v2="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"]
 check "claude and codex manifests carry the same version" "$v1" "$v2"
 bad="$(grep -rnE '(^|[^a-zA-Z0-9_])bash +"[^"]*\.py"' "$PLUGIN/skills/" 2>/dev/null || true)"
 check_absent "no skill invokes a .py via bash" ".py" "$bad"
+
+echo "== lint: lane names =="
+tl="$(cat "$PLUGIN/skills/task-lane/SKILL.md")"
+check "task-lane: names come from the helper" "python3 \"../../scripts/lane_name.py\" --source" "$tl"
+check "task-lane: the no-task lane uses the helper without a source" "lane_name.py\" --desc" "$tl"
+check "task-lane: task branch rule" "feat/<taskid>-<desc>" "$tl"
+check "task-lane: no-task branch rule" "feat/<desc>" "$tl"
+check "task-lane: the label carries the source tag" "<TAG>-<taskid>-<desc>" "$tl"
+check "task-lane: nothing splits a name on hyphens" "never take a branch or label apart" "$tl"
+check_absent "task-lane: the branch no longer comes from branchPattern" "\`branchPattern\` filled with" "$tl"
+# The tags live in one mapping, and the standalone herdr plugin knows label shape, not task sources.
+check_rc "the source tags are defined in one place" 1 "$(grep -rl 'SOURCE_TAGS = ' "$PLUGIN/scripts" | wc -l | tr -d ' ')"
+check_rc "herdr does not know task sources or tags" 0 "$(grep -rlE 'clickup|ClickUp|SOURCE_TAGS|GH-[0-9]|CU-[a-z0-9]' "$PLUGINS/herdr/scripts" "$PLUGINS/herdr/skills" 2>/dev/null | wc -l | tr -d ' ')"
+
+echo "== lint: orchestrator report lines =="
+rl="$(cat "$PLUGIN/references/report-lines.md" 2>/dev/null)"
+for line in "task:" "gate:" "board:" "skipped (no task):"; do
+    check "report lines: defines '$line'" "| \`$line\`" "$rl"
+done
+check "report lines: lanes supply the prs block" "gh pr list --head <lane branch> --state all --json number,url,state,isDraft" "$rl"
+check "report lines: every pull request of a lane is listed" "all of them are listed" "$rl"
+check "report lines: the example is not the report's fence" "never inside a code fence" "$rl"
+check "report lines: a pull request is a line with number, state and bare URL" "  - prs:
+      ⚪ #812 draft   https://github.com/<owner>/<repo>/pull/812" "$rl"
+check "report lines: the added lines carry no emoji" "The lines this plugin adds carry no emoji" "$rl"
+check_rc "report lines: no markdown link syntax" 0 "$(grep -c '](http' "$PLUGIN/references/report-lines.md" || true)"
+check "report lines: the layout stays the herdr plugin's" "fixed format of the \`herdr\` plugin" "$rl"
+check "report lines: a lane without a task says so" "\`none\` for a lane without a task" "$rl"
+check "report lines: the id is not parsed from a name" "never by splitting its branch or label on hyphens" "$rl"
+for skill in task-lane build-lanes build-loop review-lane; do
+    sk="$(cat "$PLUGIN/skills/$skill/SKILL.md")"
+    check "$skill: reports in the herdr plugin's format" "orchestrator report format of the \`herdr\` plugin" "$sk"
+    check "$skill: says which lines it adds" "../../references/report-lines.md" "$sk"
+done
+check_absent "build-lanes: no layout of its own" "keep a roster in every report" "$(cat "$PLUGIN/skills/build-lanes/SKILL.md")"
+# The herdr plugin's template knows nothing about tasks, gates or boards.
+check_rc "the herdr report template has no lane lines" 0 "$(grep -cE '^ *(task|gate|board):' "$PLUGINS/herdr/references/report.md" || true)"
+check "task-lane: the agent name starts with the kind" "<kind>-lane-<task id, lowercased>" "$tl"
+check "task-lane: the no-task agent name starts with the kind" "<kind>-lane-<desc>" "$tl"
+check "task-lane: the kind is never cut" "never the kind" "$tl"
+check "task-lane: uniqueness goes through the helper" "--taken" "$tl"
+check "review-lane: the reviewer's name comes from the helper" "lane_name.py\" --role review --kind" "$(cat "$PLUGIN/skills/review-lane/SKILL.md")"
+# shellcheck disable=SC2016  # literal backticks: markdown code spans
+old_names="$(grep -rnE '`lane-|`review-<' "$PLUGIN/skills" "$PLUGIN/references" "$PLUGIN/README.md" || true)"
+check_rc "no skill or reference still names an agent lane-<id> without its kind" 0 "${#old_names}"
+[[ -n "$old_names" ]] && echo "     $old_names"
+

@@ -1,6 +1,6 @@
 {
     "name": "herdr",
-    "version": "0.1.0",
+    "version": "0.6.0",
     "description": "Teaches an agent to use Herdr, the terminal workspace manager for coding agents: start worktrees and agents, prompt them safely, listen to their work and act as an orchestrator. Standalone and thin over the herdr CLI.",
     "author": {
         "name": "event-sorcerer",

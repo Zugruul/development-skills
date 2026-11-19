@@ -136,6 +136,19 @@ check_absent "the plan never grants repository trust" "--trust-repository" "$out
 check_rc "the plan creates nothing" 0 "$(ct_calls 'worktree create')"
 out="$(ctl worktree-plan --cwd "$CT_REPO" --branch feat/x --base main 2>&1)"
 check "without --path the default is Herdr's worktree directory" "/.herdr/worktrees/repo/feat-x" "$out"
+check "without --label the label comes from the branch, hyphenated" "--label feat-x --no-focus" "$out"
+out="$(ctl worktree-plan --cwd "$CT_REPO" --branch feat/x --base main --path .worktrees/x --label CU-1k5a5ew4cde-image-input 2>&1)"; rc=$?
+check_rc "a tagged hyphenated label passes" 0 "$rc"
+check "the label is passed through unchanged, case kept" "--label CU-1k5a5ew4cde-image-input --no-focus" "$out"
+out="$(ctl worktree-plan --cwd "$CT_REPO" --branch feat/x --base main --path .worktrees/x --label "1k5a5ew4cde image input" 2>&1)"; rc=$?
+check_rc "a label with spaces is refused" 6 "$rc"
+check "the refusal names the hyphenated form" "use 1k5a5ew4cde-image-input" "$out"
+check_absent "a refused label prints no command" "herdr worktree create" "$out"
+out="$(ctl worktree-plan --cwd "$CT_REPO" --branch feat/x --base main --path .worktrees/x --label "a_b/c" 2>&1)"; rc=$?
+check_rc "a label with other separators is refused" 6 "$rc"
+check "label turns free text into the hyphenated form" "LABEL 1k5a5ew4cde-image-input" "$(ctl label 1k5a5ew4cde image input 2>&1)"
+check "label keeps case and collapses separators" "LABEL J-ABC-123-add-parser" "$(ctl label "J-ABC-123  add_parser" 2>&1)"
+ctl label "  --  " >/dev/null 2>&1; check_rc "label refuses text with nothing usable" 6 "$?"
 out="$(ctl worktree-plan --cwd "$CT_REPO" --branch main --base main --path .worktrees/m 2>&1)"; rc=$?
 check_rc "a branch already checked out is refused" 6 "$rc"
 check "the refusal points at the existing worktree" "already checked out at $CT_REPO" "$out"

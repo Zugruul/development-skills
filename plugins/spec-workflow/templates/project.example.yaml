@@ -4,7 +4,7 @@ project:
     name: my-platform
     description: One-line project description used in agent briefs
     mainBranch: main
-    branchPattern: <prefix>/<id>-<slug>
+    branchPattern: feat/<id>-<slug>
 boards:
   - id: main
     provider: github-project

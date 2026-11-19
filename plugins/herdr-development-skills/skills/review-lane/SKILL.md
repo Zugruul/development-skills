@@ -22,7 +22,7 @@ Use the `herdr:agent` skill.
 
 - **Pane**: a new tab in the lane's workspace, working directory the lane's worktree, so both agents sit together.
 - **Kind**: the one the user asked for; otherwise ask. A different kind from the lane's agent gives a more independent read.
-- **Name**: `review-<task id>` for a task lane, `review-<lane slug>` for a lane without a task.
+- **Name**: from the same helper as lane names, with the reviewer's kind first: `python3 "../../scripts/lane_name.py" --role review --kind <reviewer kind> --source <source> --id <task id> --desc "<title>"` for a task lane (`codex-review-123`), or with `--desc "<the lane's label>"` alone for a lane without a task (`codex-review-health-check-204`). Use its `AGENT` line; it keeps the name within Herdr's 32 characters without cutting the kind, and `--taken <live names>` makes it unique. Take the task id from what the user said or from the board, never by splitting a branch, label or agent name on hyphens: an id may contain hyphens, and a long agent name is shortened.
 - **First prompt**, sent once:
 
 ```text
@@ -35,4 +35,4 @@ Do not edit files, commit, push or touch the project board. Report the findings 
 
 Follow the reviewer with the `herdr:listen` skill. Its provider question and its disclosure about sending code to an external provider go to the user word for word; relay the answer with `herdr:prompt`. Sending code outside is the user's decision, never yours.
 
-When it settles, report the findings as the reviewer gave them, labelled with their source. Do not apply them, and do not post them to an issue: for a lane without a task there is none, and for a task lane that is the lane's own workflow's job. If the user wants them fixed, pass them to the lane's own agent with `herdr:prompt` once it is idle.
+Report the reviewer's state in the orchestrator report format of the `herdr` plugin, with `task:` from `../../references/report-lines.md`. When it settles, follow that with the findings as the reviewer gave them, labelled with their source. Do not apply them, and do not post them to an issue: for a lane without a task there is none, and for a task lane that is the lane's own workflow's job. If the user wants them fixed, pass them to the lane's own agent with `herdr:prompt` once it is idle.

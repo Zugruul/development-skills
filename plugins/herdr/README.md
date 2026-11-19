@@ -27,7 +27,7 @@ claude plugin install herdr@development-skills
 | `prompt` | Send a follow-up prompt, or relay the user's answer to a blocked agent; never submits the same text twice |
 | `listen` | Report what agents are doing, wait until one blocks, finishes or disappears, and surface a blocked agent's question to the user, asking which agent or tab when unclear |
 | `orchestrate` | Take the orchestrator role, name the agent, load the skills above and the orchestration rules |
-| `status` | Read-only roster of live agents and the repository's worktrees |
+| `status` | The on-demand status report, read-only: the orchestrator report for an orchestrator's own agents, then other live agents and the repository's worktrees; the plain roster for any other agent |
 
 ## What the skills handle for you
 
@@ -42,13 +42,25 @@ These come from driving Herdr by hand; each is covered by a test.
 - **Agent names** must match `[a-z][a-z0-9_-]{0,31}` and be unique among live agents; checked before `agent start`.
 - **Blocked agents wait on a human.** An approval or question is shown to the user and answered only as they decide.
 
+## Orchestrator report
+
+`references/report.md` is the one layout an orchestrator uses to report the state of its agents; `orchestrate`, `listen`, `status` and `worktree` point to it. It is Markdown grouped by state, never inside a code fence: a first line with what changed since the last report, then `NEEDS YOU`, `WORKING` and `DONE` with their counts and one list item per agent. An agent's pull requests are a `prs:` block with one line each, in the order opened: number, state (`draft`, `open`, `merged`, `closed`) and the full bare URL, aligned in columns, with no Markdown link syntax. The URL is bare so a terminal can detect it and it can be copied; whether a click opens it depends on the terminal. Observed in Claude Code inside Herdr 0.9.5 with default configuration: a click does not open it, because Herdr's default `ui.mouse_capture = true` takes the mouse clicks; with mouse capture off, and on other hosts, it is unverified. The plugin adds no workaround.
+
+Color comes from a small fixed set of emoji, always next to the word they stand for: `🔴 NEEDS YOU`, `🟡 WORKING`, `🟢 DONE` on the section lines; `⚪ draft`, `🔵 open`, `🟣 merged`, `🔴 closed` at the start of a pull request line; `⚠` at the start of what is only claimed; and `⚫` on the `idle:`, `state: unknown` or `gone:` line of an agent placed by those rules. No other emoji appears in a report. A blocked agent's question is quoted exactly; a done agent lists what the orchestrator verified apart from what the agent only claims. The file also fixes where `idle`, `unknown` and gone agents go, so no agent is missing and none that Herdr cannot classify is shown as done.
+
+It applies only to an agent that has taken the orchestrator role. A plain `status` or `listen` call keeps its own output.
+
+`/herdr:status` is the on-demand command for it. The role and the list of agents an orchestrator started are known only from the session's own conversation; Herdr does not record them. So when an agent cannot tell (for example after its context was summarised), `status` falls back to the plain roster, says so, and asks which agents to follow rather than guessing. The `Since last report` line compares with the most recent report in the conversation and says `unknown` when that report is no longer in context. Other plugins that make an agent the orchestrator may add their own lines inside an agent's entry.
+
 ## `scripts/herdr_ctl.py`
 
 ```text
 check                                  inside Herdr? prints version, workspace, tab, pane, own name
 name NAME                              valid and unused agent name? (exit 6 when not)
+label TEXT...                          the hyphen-separated, no-space form of a workspace label
 worktree-plan --branch B [--base REF] [--path P] [--label T] [--cwd DIR]
-                                       read-only checks, then the exact `herdr worktree create` line
+                                       read-only checks, then the exact `herdr worktree create` line;
+                                       refuses a label with spaces, always passes --label
 start --name N --kind K --pane ID [--timeout S] [-- AGENT ARGS]
                                        agent start with retry on a busy pane, then wait for idle
 prompt TARGET (--text T | --file F) [--while-working] [--confirm S]
