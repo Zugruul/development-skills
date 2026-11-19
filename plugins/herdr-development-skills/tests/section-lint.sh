@@ -33,7 +33,7 @@ check_rc "every skill directory is covered above" 5 "$(find "$PLUGIN/skills" -na
 
 for skill in task-lane build-loop build-lanes review-lane; do
     body="$(cat "$PLUGIN/skills/$skill/SKILL.md")"
-    check "$skill: stops unless its feature is READY" "is \`READY\`" "$body"
+    check "$skill: gates on its feature's state" "is \`READY\`" "$body"
     check "$skill: listens through the herdr plugin" "herdr:listen" "$body"
     # build-lanes starts its agents through task-lane, which uses herdr:agent.
     [[ "$skill" == build-lanes ]] || check "$skill: starts agents through the herdr plugin" "herdr:agent" "$body"
@@ -51,10 +51,80 @@ check "build-lanes: builds on task-lane" "task-lane" "$bl"
 check "build-loop: uses the loop for Claude Code agents" "/loop /spec-workflow:build-next" "$(cat "$PLUGIN/skills/build-loop/SKILL.md")"
 check "review-lane: sending code outside is the user's decision" "the user's decision" "$(cat "$PLUGIN/skills/review-lane/SKILL.md")"
 
+# --- work without a task identifier: one shared procedure, three paths ---
+ref="$(cat "$PLUGIN/references/task-source.md" 2>/dev/null)"
+check "task-source: option 1 is named exactly" "**Run the workflow without a task**" "$ref"
+check "task-source: option 2 is named exactly" "**Create a task for it**" "$ref"
+check "task-source: option 3 is named exactly" "**Provide the task identifier**" "$ref"
+check_rc "task-source: the question has exactly three options" 3 "$(grep -cE '^\| [0-9]+ \| \*\*' <<<"$ref")"
+check "task-source: forbids extra or missing options" "Add nothing to the list and remove nothing from it" "$ref"
+check "task-source: never guess, refuse or bypass" "Do not guess a task, do not refuse, and do not quietly drop to plain Herdr skills" "$ref"
+check "task-source: once per piece, not per skill hop" "never once per skill hop" "$ref"
+check "task-source: several pieces get one labelled question each" "each labelled with its piece" "$ref"
+check "task-source: answers may differ per piece" "The answers may differ" "$ref"
+check "task-source: skipped when an identifier was given" "The user gave its identifier" "$ref"
+check "task-source: a standing answer covers the request" "A standing answer covers it" "$ref"
+check "task-source: availability comes from detection" 'python3 "../../scripts/detect.py"' "$ref"
+check "task-source: reads the TASK SOURCE block" "TASK SOURCE" "$ref"
+check "task-source: no question with dead options" "do not ask a question with dead options" "$ref"
+check "task-source: says why and continues with option 1" "continue with option 1" "$ref"
+check "task-source: option 1 needs a complete brief" "the brief must come entirely from the user" "$ref"
+for part in "**Goal**" "**Checkout**" "**Scope**" "**Done**" "**Report**"; do
+    check "task-source: the no-task brief covers $part" "$part" "$ref"
+done
+check "task-source: a thin description is asked about, not invented" "ask the user for that one missing piece" "$ref"
+check "task-source: option 2 goes through spec-workflow's intake" "spec-workflow \`create-inbound\` skill" "$ref"
+check "task-source: option 2 never searches or creates issues itself" "Do not search or create issues yourself" "$ref"
+check "task-source: option 2 shows the identifier" "tell the user the identifier" "$ref"
+check "task-source: option 2 never falls back silently" "Do not fall back to option 1 silently" "$ref"
+check "task-source: option 3 reads the task through the board skill" "spec-workflow \`board\` skill" "$ref"
+check "task-source: option 3 never guesses a near match" "rather than guessing a near match" "$ref"
+for skipped in "board status moves" "issue comments" "task-state record" "gate record tied to a task" "linking the pull request to an issue"; do
+    check "task-source: the report names '$skipped' as skipped" "$skipped" "$ref"
+done
+check "task-source: skipped steps carry a fixed marker" "skipped (no task)" "$ref"
+# Duplicated spec-workflow logic would show up as its scripts being called from here.
+dup="$(grep -rnE 'board\.sh|similar\.py|gh issue|gh api' "$PLUGIN/skills" "$PLUGIN/references" || true)"
+check_rc "no spec-workflow task logic is duplicated in this plugin" 0 "${#dup}"
+
+for skill in task-lane build-lanes build-loop; do
+    body="$(cat "$PLUGIN/skills/$skill/SKILL.md")"
+    check "$skill: uses the shared task-source procedure" "../../references/task-source.md" "$body"
+    check "$skill: handles a description instead of an identifier" "description" "$body"
+done
+check "task-lane: a given identifier is never questioned" "Do not ask." "$tl"
+check "task-lane: runs on LIMITED too" "\`READY\` or \`LIMITED\`" "$tl"
+check "task-lane: has a no-task lane" "## 7. The no-task lane" "$tl"
+check "task-lane: the no-task lane touches no board skill" "Do not use the spec-workflow \`board\`, \`implement-task\` or \`build-next\` skills for this piece" "$tl"
+check "task-lane: the no-task agent is told there is no task" "This work has no board task." "$tl"
+check "task-lane: the no-task agent must not touch the board" "do not read, create, move or comment on any board item or issue" "$tl"
+for part in "Goal:" "Checkout:" "In scope:" "Done means:" "When you stop, report:"; do
+    check "task-lane: the no-task brief template has '$part'" "$part" "$tl"
+done
+check "task-lane: the no-task lane still goes through herdr:worktree" "### 7.2 Lane worktree" "$tl"
+check "task-lane: the no-task report names the skipped steps" "skipped (no task)" "$tl"
+check "task-lane: a refusal for lacking a task returns to options 2 and 3" "offer options 2 and 3 again" "$tl"
+check "build-lanes: asks per piece, answers may differ" "one question per piece" "$bl"
+check "build-lanes: a standing answer covers the request" "standing answer" "$bl"
+check "build-lanes: hands the task source on so nobody is asked twice" "so the user is not asked again" "$bl"
+check "build-lanes: no-task lanes use no board slot" "do not occupy a \`maxInProgress\` slot" "$bl"
+check "build-lanes: runs on LIMITED too" "\`READY\` or \`LIMITED\`" "$bl"
+bo="$(cat "$PLUGIN/skills/build-loop/SKILL.md")"
+check "build-loop: a bare loop request asks nothing" "needs no task and no question" "$bo"
+check "build-loop: described work goes to a single lane" "hand the piece with its task source to the \`task-lane\` skill" "$bo"
+check "build-loop: never starts the loop instead of described work" "Do not start the loop as a substitute" "$bo"
+rv="$(cat "$PLUGIN/skills/review-lane/SKILL.md")"
+check "review-lane: needs a lane, not a task" "A review needs a lane, not a task" "$rv"
+check "review-lane: finds a lane that has no task" "for a lane without a task, by branch, worktree, workspace label or agent name" "$rv"
+check_absent "review-lane: does not ask the task-source question" "task-source.md" "$rv"
+ig="$(cat "$PLUGIN/skills/integrations/SKILL.md")"
+check "integrations: explains the LIMITED state" "\`LIMITED\`" "$ig"
+check "integrations: explains the TASK SOURCE block" "TASK SOURCE" "$ig"
+
 # The skills this plugin names must exist in the plugins it integrates.
 for ref in herdr/worktree herdr/agent herdr/prompt herdr/listen herdr/orchestrate herdr/status \
            spec-workflow/implement-task spec-workflow/build-next spec-workflow/queue spec-workflow/board \
-           spec-workflow/checkpoint spec-workflow/concurrency spec-workflow/setup-project peer-review/peer-review; do
+           spec-workflow/checkpoint spec-workflow/concurrency spec-workflow/setup-project spec-workflow/create-inbound peer-review/peer-review; do
     [[ -f "$PLUGINS/${ref%%/*}/skills/${ref##*/}/SKILL.md" ]] && r=present || r=missing
     check "referenced skill exists: $ref" "present" "$r"
 done

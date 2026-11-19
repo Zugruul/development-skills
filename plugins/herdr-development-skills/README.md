@@ -11,16 +11,16 @@ claude plugin marketplace add Zugruul/development-skills
 claude plugin install herdr-development-skills@development-skills   # installs herdr too
 ```
 
-Install the specialized plugins you want wired in (`spec-workflow`, `peer-review`) the same way. None is required: an integration whose plugin is missing reports `UNAVAILABLE` with the reason, and the rest keep working.
+Install the specialized plugins you want wired in (`spec-workflow`, `peer-review`) the same way. None is required: an integration whose plugin is missing reports `UNAVAILABLE` or `LIMITED` with the reason, and the rest keep working. Without spec-workflow, a lane can still run work that has no task.
 
 ## Skills
 
 | Skill | Purpose | Needs |
 |---|---|---|
-| `integrations` | Read-only report of which plugins are enabled, how spec-workflow is configured here, and which integrations are `READY`, `PAUSED` or `UNAVAILABLE` | - |
-| `task-lane` | One board task in its own Herdr worktree agent, running `implement-task` (or one whole `build-next` iteration for that task) | spec-workflow, configured |
-| `build-loop` | The build loop (`/loop` + `build-next`) in a separate Herdr agent while this one orchestrates | spec-workflow, configured |
-| `build-lanes` | Several board tasks in parallel, one `build-next` lane per Herdr worktree agent, within `methodology.maxInProgress` | spec-workflow, configured |
+| `integrations` | Read-only report of which plugins are enabled, how spec-workflow is configured here, which integrations are `READY`, `LIMITED`, `PAUSED` or `UNAVAILABLE`, and how work without a task can be handled | - |
+| `task-lane` | One piece of work in its own Herdr worktree agent: a board task (running `implement-task`, or one whole `build-next` iteration for it) or work described in plain words with no task | board tasks: spec-workflow, configured |
+| `build-loop` | The build loop (`/loop` + `build-next`) in a separate Herdr agent while this one orchestrates; described work is handed to a single lane instead | spec-workflow, configured |
+| `build-lanes` | Several pieces of work in parallel, one lane per Herdr worktree agent: board tasks within `methodology.maxInProgress`, plus described work with no task | board tasks: spec-workflow, configured |
 | `review-lane` | A second agent next to a lane running `peer-review` on its diff; findings come back unapplied | peer-review |
 
 Every skill also needs Herdr itself (the binary, and the agent running inside a Herdr pane) and the `herdr` plugin.
@@ -31,11 +31,14 @@ Every skill also needs Herdr itself (the binary, and the agent running inside a 
 
 - **Plugins.** `enabled` when the host's `enabledPlugins` says so (user, project and local settings, later files winning) or the plugin's skills are linked into a project skills directory (`.claude/skills`, `.agents/skills`, `.opencode/skills`). `available` when the plugin is installed or sits next to this one but enablement could not be confirmed (Codex keeps that state where this script cannot read it). `absent` otherwise.
 - **spec-workflow in this repository.** Looks for the project config and reads it through spec-workflow's own loader, so defaults and overlays match what the workflow itself sees: main branch, branch pattern, `maxInProgress`, `serialDelivery`, `autoMerge`, `work.type`, `work.checkout`, the `herdr` object, and the checkpoint flag in the primary checkout.
-- **Features.** `READY`, `PAUSED` (the build loop's checkpoint flag is set) or `UNAVAILABLE`, each with its reasons.
+- **Features.** `READY`, `LIMITED` (the skill runs, but only for work without a task), `PAUSED` (the build loop's checkpoint flag is set) or `UNAVAILABLE`, each with its reasons.
+- **Task source.** Which of the three ways to handle work without a task identifier are possible here (see below).
 
 It reads files and cannot see a session, so the skills treat it as a hint and confirm the needed skills are listed before offering a feature.
 
 ## How a lane runs
+
+For a board task (a lane without a task differs in step 1 and in what its agent is told, as described above):
 
 1. The orchestrator reads the task and works out the lane: branch from `project.branchPattern`, base a freshly fetched main, path `<primary checkout>/.claude/worktrees/<task-id>` (where spec-workflow keeps task lanes).
 2. `herdr:worktree` plans it, asks the user, and creates it with explicit `--cwd`, `--branch`, `--base` and `--path`.
@@ -45,6 +48,26 @@ It reads files and cannot see a session, so the skills treat it as a hint and co
 With `build-lanes` the orchestrator is the only picker: it assigns one task per lane from the queue, so two lanes cannot start the same task. spec-workflow's own board admission and merge lock still apply inside each lane.
 
 spec-workflow can also open the lanes it creates itself in Herdr (`herdr.enabled` in the project config). That setting is independent of this plugin and is what makes `build-loop`'s lanes visible as workspaces.
+
+## Work without a task identifier
+
+Not every request is a board task. "Change the health check to 204 and open a draft PR" has no issue behind it. When `task-lane`, `build-lanes` or `build-loop` is asked for a specific piece of work with no task identifier, or with a description instead of one, it neither guesses nor refuses. It asks one question with exactly three options (`references/task-source.md`):
+
+| # | Option | What happens |
+|---|---|---|
+| 1 | Run the workflow without a task | The same lane (worktree, agent, brief, listen) runs from the description alone. Nothing is read from or written to the board; every step that needs a task is skipped and named as skipped in the final report |
+| 2 | Create a task for it | spec-workflow's `create-inbound` skill searches for duplicates and files the task; the user sees the identifier, then the normal task lane runs on it |
+| 3 | Provide the task identifier | The user names an existing task and the normal task lane runs on it |
+
+- **Once per piece of work**, never once per skill hop: the answer travels with the piece (`build-lanes` hands it to `task-lane`). Several pieces in one request get one labelled question each, and the answers may differ.
+- **No question when the answer is known**: an identifier was given, or the user already said which option they want. A standing answer ("no tasks for these, just run them") covers the rest of that request.
+- **Only options that can work.** Options 2 and 3 need spec-workflow enabled, a board configured and the loop not paused. Where they cannot work, the skill says why and runs option 1 instead of showing dead options. `detect.py` prints this as the `TASK SOURCE` block.
+- **A no-task brief is complete on its own**: goal, checkout, scope, what done means, what to report. With no issue body to fall back on, a description too thin for one of these gets a question to the user, not invented scope.
+- **Skipped without a task**: reading the task, board status moves, issue comments, the task-state record, the gate record tied to a task's move to review, and linking the pull request to an issue. The project's checks still run and their result is reported.
+
+A bare `build-loop` or `build-lanes` picks its own work from the board and asks nothing. `review-lane` needs a lane, not a task, so it never asks either; it reviews a no-task lane like any other.
+
+If a repository refuses work that has no task (spec-workflow's optional pull-request guard does, for example), the lane agent stops and reports it, and the user is offered options 2 and 3 again.
 
 ## Proposed integrations (not implemented)
 

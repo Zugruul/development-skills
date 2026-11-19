@@ -1,12 +1,23 @@
 ---
 name: build-loop
-description: Runs the spec-workflow build loop (loop + build-next) in a separate Herdr agent while the current agent orchestrates - listening to it, reporting each iteration and bringing its questions to the user. Use for '/herdr-development-skills:build-loop', 'run the build loop in a herdr agent', 'work the backlog in another pane and tell me when it needs me'. Requires Herdr, the herdr plugin and spec-workflow configured in the repository.
+description: Runs the spec-workflow build loop (loop + build-next) in a separate Herdr agent while the current agent orchestrates - listening to it, reporting each iteration and bringing its questions to the user. Use for '/herdr-development-skills:build-loop', 'run the build loop in a herdr agent', 'work the backlog in another pane and tell me when it needs me'. The loop works board tasks only: asked for specific work that has no task identifier, it asks whether to run it without a task, create a task, or use an existing one, and hands it to a single lane. Requires Herdr, the herdr plugin and spec-workflow configured in the repository.
 allowed-tools: Bash, AskUserQuestion
 ---
 
 # The build loop in a Herdr agent
 
-Run `python3 "../../scripts/detect.py"` first (path relative to this `SKILL.md`). Continue only when `build-loop` is `READY`; on `PAUSED` or `UNAVAILABLE` relay the reasons and stop. Then follow the `herdr:orchestrate` skill if you have not taken the orchestrator role yet.
+Run `python3 "../../scripts/detect.py"` first (path relative to this `SKILL.md`). For the loop itself, continue only when `build-loop` is `READY`; on `PAUSED` or `UNAVAILABLE` relay the reasons and stop (section 0 covers a described piece of work). Then follow the `herdr:orchestrate` skill if you have not taken the orchestrator role yet.
+
+## 0. Is this the loop at all
+
+The loop picks its own work from the board, so a bare request ("run the build loop", "work the backlog") needs no task and no question: go to section 1.
+
+If the user asked for a **specific piece of work** and gave no task identifier, or a description instead of one, that is not the loop. Follow `../../references/task-source.md`, then hand the piece with its task source to the `task-lane` skill:
+
+- task source `none`: its no-task lane. The loop cannot run this; there is no board item to iterate on.
+- task source `created #N` or `given #N`: its task lane with scope `iteration`, which is one loop iteration for exactly that task.
+
+This applies even when `build-loop` itself is `PAUSED` or `UNAVAILABLE`: work without a task needs only Herdr, and the reference says what to tell the user about the rest. Do not start the loop as a substitute for a described piece of work.
 
 One agent runs the loop; you watch it. Use this when the user wants the backlog worked without tying up this session. For several tasks at once in separate Herdr worktrees, use `build-lanes` instead. Never run both on one repository at the same time: two pickers can start the same task.
 

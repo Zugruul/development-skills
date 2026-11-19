@@ -22,6 +22,7 @@ Resolve the path relative to this `SKILL.md`. The script is read-only and offlin
 | State | Meaning | Do |
 | --- | --- | --- |
 | `READY` | Everything it needs is present. | Offer the skill. Read its notes to the user. |
+| `LIMITED` | The skill can run, but only for work without a task. | Offer it for described work; say why board tasks are out. |
 | `PAUSED` | The build loop is paused by its checkpoint flag. | Start no build work. Say what is paused and that the spec-workflow `checkpoint` skill resumes it. |
 | `UNAVAILABLE` | Something is missing. | Give the listed reasons and the one step that fixes each. Do not work around it. |
 
@@ -31,9 +32,13 @@ The script reads files; it cannot see your session. Before offering a `READY` fe
 
 | Feature | Skill | Needs |
 | --- | --- | --- |
-| `task-lane` | `task-lane` - one board task in a Herdr worktree agent | herdr, spec-workflow, a configured repository |
-| `build-loop` | `build-loop` - the build loop in one Herdr agent | the same |
-| `build-lanes` | `build-lanes` - several board tasks in parallel Herdr worktree agents | the same; lane count from `methodology.maxInProgress` |
+| `task-lane` | `task-lane` - one piece of work in a Herdr worktree agent | herdr; for a board task also spec-workflow and a configured repository |
+| `build-loop` | `build-loop` - the build loop in one Herdr agent | herdr, spec-workflow, a configured repository |
+| `build-lanes` | `build-lanes` - several pieces of work in parallel Herdr worktree agents | as `task-lane`; lane count for board tasks from `methodology.maxInProgress` |
 | `review-lane` | `review-lane` - an independent review next to a lane | herdr, peer-review |
+
+## Work without a task identifier
+
+The `TASK SOURCE` block says which of the three ways to handle described work are possible here: run it without a task (needs only Herdr), create a task for it, or use an existing task's identifier (both need spec-workflow enabled, a board configured, and the loop not paused). The lane skills use it to decide whether to ask the user or to say why only the first is on offer; the procedure is in `../../references/task-source.md`.
 
 When a specialized plugin is absent, only its features are unavailable; the `herdr` plugin's own skills (`herdr:worktree`, `herdr:listen`, `herdr:orchestrate`) keep working without any of them.

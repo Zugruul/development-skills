@@ -1,18 +1,30 @@
 ---
 name: build-lanes
-description: Runs several spec-workflow board tasks in parallel, each as a build-next lane in its own Herdr worktree agent, with the current agent as orchestrator - picks non-overlapping tasks within the project's lane limit, starts one worktree and agent per task, listens to all of them and relays their questions and results. Use for '/herdr-development-skills:build-lanes', 'run three build lanes in herdr', 'work the backlog in parallel worktrees'. Requires Herdr, the herdr plugin and spec-workflow configured in the repository.
+description: Runs several spec-workflow board tasks in parallel, each as a build-next lane in its own Herdr worktree agent, with the current agent as orchestrator - picks non-overlapping tasks within the project's lane limit, starts one worktree and agent per task, listens to all of them and relays their questions and results. Use for '/herdr-development-skills:build-lanes', 'run three build lanes in herdr', 'work the backlog in parallel worktrees'. When the user names work that has no task identifier it asks, per piece, whether to run it without a task, create a task, or use an existing one. Requires Herdr and the herdr plugin; board tasks also need spec-workflow configured in the repository.
 allowed-tools: Bash, AskUserQuestion
 ---
 
 # Parallel build lanes in Herdr worktree agents
 
-Run `python3 "../../scripts/detect.py"` first (path relative to this `SKILL.md`). Continue only when `build-lanes` is `READY`; on `PAUSED` or `UNAVAILABLE` relay the reasons and stop. Then follow the `herdr:orchestrate` skill if you have not taken the orchestrator role yet.
+Run `python3 "../../scripts/detect.py"` first (path relative to this `SKILL.md`). Continue when `build-lanes` is `READY` or `LIMITED`; on `UNAVAILABLE` relay the reasons and stop. `LIMITED` means only lanes without a task can run here, and nothing is picked from the board; the reasons say why. Then follow the `herdr:orchestrate` skill if you have not taken the orchestrator role yet.
 
 You are the one picker. Each lane agent gets exactly one task that you assigned, so two lanes never start the same task. Do not run this next to `build-loop` on the same repository.
 
-Treat the rest of the request as: how many lanes, optionally specific issue numbers, and the agent kind.
+Treat the rest of the request as: how many lanes, optionally specific issue numbers or descriptions of work, and the agent kind.
+
+## 0. Task source for work the user described
+
+Tasks you pick from the board, and issues the user named by identifier, already have their task. For every piece of work the user **described without an identifier**, follow `../../references/task-source.md` first:
+
+- one question per piece, each labelled with its piece, asked together; the answers may differ;
+- a standing answer ("no tasks for these, just run them") covers the rest of the request;
+- when a task cannot be created or looked up here, say why and run those pieces without a task instead of asking.
+
+Carry each piece's task source (`none`, `created #N`, `given #N`) into the steps below and hand it to `task-lane`, so the user is not asked again.
 
 ## 1. How many lanes
+
+Lanes with task source `none` are not board tasks: they do not occupy a `maxInProgress` slot and are not refused by the limit. They still take your attention and can still collide, so the overlap gate in section 2 applies to them, and say how many lanes in total you are about to run.
 
 `maxInProgress` in the detect output is the project's limit: the board's WIP limit and the number of lanes at once. Open at most `maxInProgress` minus the tasks already occupying a slot. With `serialDelivery=true`, tasks In review occupy a slot too.
 
@@ -27,11 +39,11 @@ Apply spec-workflow's overlap gate before adding each lane: a task that touches 
 
 ## 3. One approval for the set
 
-Work out every lane first (the `task-lane` skill, section 3: branch, base, path, label). Then ask the user once, listing per lane: issue, task id and title, branch, base, path, agent kind. This approval covers exactly the listed worktrees; a lane added later needs its own.
+Work out every lane first (the `task-lane` skill: section 3 for a task, section 7.2 for work without one). Then ask the user once, listing per lane: its task source and issue or description, branch, base, path, agent kind. This approval covers exactly the listed worktrees; a lane added later needs its own.
 
 ## 4. Start the lanes
 
-For each approved task, follow the `task-lane` skill with scope `iteration`, one after the other (each start waits for its pane and its agent). Skip its approval question for lanes the user just approved in step 3. If one lane fails to start, report it and carry on with the others.
+For each approved lane, follow the `task-lane` skill, one after the other (each start waits for its pane and its agent): scope `iteration` for a task, the no-task lane (its section 7) for task source `none`. Skip its approval question for lanes the user just approved in step 3. If one lane fails to start, report it and carry on with the others.
 
 ## 5. Listen to all of them
 
@@ -39,9 +51,9 @@ Follow every lane with the `herdr:listen` skill, all targets at once, and keep a
 
 - **Blocked lane**: show its question to the user, labelled with the lane and its tab; relay the answer with `herdr:prompt`. One question per lane, never a merged "approve all". A lane blocked on a human does not hold up the others.
 - **A lane merged**: main moved. When another lane next settles or asks something, tell it to rebase onto the main branch before its next push. Do not interrupt a lane that is working; with `serialDelivery=true` each lane rebases at its own merge turn, and the lanes' own merge lock keeps merges one at a time.
-- **A lane finished**: report its task, gate result, merge or PR state and board status; verify the board status with the `board` skill. Then, if the user asked to keep going and no pause flag appeared, go back to step 1 for the freed slot.
+- **A lane finished**: report its task, gate result, merge or PR state and board status; verify the board status with the `board` skill. For a no-task lane report what changed, its checks and its branch or pull request, and the steps skipped for lack of a task; there is no board status to verify. Then, if the user asked to keep going and no pause flag appeared, go back to step 1 for the freed slot.
 - **Paused meanwhile** (re-run the detect script when unsure): start no new lane. Running lanes stop at a safe boundary by themselves.
 
 ## 6. When to stop
 
-Stop when the requested tasks are done, the queue has nothing eligible, the loop is paused, or the user says so. End with the roster: per lane the outcome and anything left for the user, with the exact action each open item needs. Leave worktrees and workspaces in place; spec-workflow removes a lane once its work has landed.
+Stop when the requested tasks are done, the queue has nothing eligible, the loop is paused, or the user says so. End with the roster: per lane its task source, the outcome and anything left for the user, with the exact action each open item needs. Leave worktrees and workspaces in place; spec-workflow removes a lane once its work has landed.

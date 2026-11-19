@@ -8,11 +8,13 @@ allowed-tools: Bash, AskUserQuestion
 
 Run `python3 "../../scripts/detect.py"` first (path relative to this `SKILL.md`). Continue only when `review-lane` is `READY`; otherwise relay the reasons and stop. This skill needs only Herdr and peer-review; it works without spec-workflow.
 
+A review needs a lane, not a task. It never asks which task the work belongs to and reads nothing from the board: a lane that was run without a task is reviewed exactly like one with a task, and is identified by its worktree, branch or agent name.
+
 Treat the rest of the request as: which lane (a worktree, branch, workspace or lane agent) and optionally the reviewing agent's kind.
 
 ## 1. Find the lane
 
-Use the `herdr:status` skill. If the request could mean more than one worktree, ask which. A lane whose agent is still `working` has a moving diff: say so and ask whether to review now or when it settles.
+Use the `herdr:status` skill. The user may name the lane by task ("the lane for issue 123") or, for a lane without a task, by branch, worktree, workspace label or agent name ("the health-check lane"); match on any of them. If the request could mean more than one worktree, ask which. A lane whose agent is still `working` has a moving diff: say so and ask whether to review now or when it settles.
 
 ## 2. Start the reviewer
 
@@ -20,7 +22,7 @@ Use the `herdr:agent` skill.
 
 - **Pane**: a new tab in the lane's workspace, working directory the lane's worktree, so both agents sit together.
 - **Kind**: the one the user asked for; otherwise ask. A different kind from the lane's agent gives a more independent read.
-- **Name**: `review-<lane or task id>`.
+- **Name**: `review-<task id>` for a task lane, `review-<lane slug>` for a lane without a task.
 - **First prompt**, sent once:
 
 ```text
@@ -33,4 +35,4 @@ Do not edit files, commit, push or touch the project board. Report the findings 
 
 Follow the reviewer with the `herdr:listen` skill. Its provider question and its disclosure about sending code to an external provider go to the user word for word; relay the answer with `herdr:prompt`. Sending code outside is the user's decision, never yours.
 
-When it settles, report the findings as the reviewer gave them, labelled with their source. Do not apply them. If the user wants them fixed, pass them to the lane's own agent with `herdr:prompt` once it is idle.
+When it settles, report the findings as the reviewer gave them, labelled with their source. Do not apply them, and do not post them to an issue: for a lane without a task there is none, and for a task lane that is the lane's own workflow's job. If the user wants them fixed, pass them to the lane's own agent with `herdr:prompt` once it is idle.

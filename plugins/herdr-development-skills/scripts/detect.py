@@ -9,7 +9,8 @@ Read-only and offline. Answers three questions for the current repository:
      (spec-workflow, peer-review, remote-compute)?
   3. Is each one configured for THIS repository, and with which settings?
 
-From that it derives which integration skills are READY. Everything this
+From that it derives which integration skills are READY, and which of the
+three ways to handle work that has no task identifier are possible. Everything this
 marketplace knows about the specialized plugins and Herdr together lives in
 this plugin; the `herdr` plugin stays unaware of them.
 
@@ -155,6 +156,8 @@ def spec_workflow_config(root, primary, plugin_path):
 def detect(root):
     root = os.path.abspath(root)
     primary = primary_checkout(root)
+    if os.path.realpath(primary) == os.path.realpath(root):
+        primary = root  # same checkout reached through a symlinked path (macOS /var -> /private/var)
     inside = os.environ.get("HERDR_ENV") == "1"
     binary = shutil.which("herdr") or ""
     herdr = {"inside": inside, "binary": binary, "ok": inside and bool(binary)}
@@ -173,26 +176,45 @@ def detect(root):
     if plugins["herdr"]["state"] == "absent":
         base.append("the herdr plugin is not available (%s) -- install herdr@development-skills" % plugins["herdr"]["why"])
 
-    def build(extra_ok=True):
-        why = list(base)
+    def board_blockers():
+        """Why work cannot be tied to a board task here (empty list: it can)."""
+        why = []
         if sw["state"] == "absent":
             why.append("the spec-workflow plugin is not available (%s)" % sw["why"])
         elif not cfg["configured"]:
             why.append("spec-workflow is not configured here: " + cfg["note"])
         elif cfg["readable"] and not cfg["hasBoard"]:
             why.append("spec-workflow's project config declares no board")
-        if why:
-            return {"state": "UNAVAILABLE", "why": why}
-        if cfg.get("paused"):
-            return {"state": "PAUSED", "why": ["the build loop is paused: %s exists (the spec-workflow checkpoint skill resumes it)" % cfg["checkpointFile"]]}
-        notes = []
+        return why
+
+    paused = ("the build loop is paused: %s exists (the spec-workflow checkpoint skill resumes it)"
+              % cfg.get("checkpointFile")) if cfg.get("paused") else ""
+    notes = []
+    if not board_blockers():
         if sw["state"] == "available":
             notes.append("spec-workflow is installed but not confirmed enabled: check its skills are listed in your session")
         if not cfg["readable"]:
             notes.append(cfg["note"])
-        return {"state": "READY", "why": notes}
 
-    features = {"task-lane": build(), "build-loop": build(), "build-lanes": build()}
+    def lane():
+        """Skills that can also run a piece of work that has no board task."""
+        if base:
+            return {"state": "UNAVAILABLE", "why": list(base)}
+        limits = board_blockers() or ([paused] if paused else [])
+        if limits:
+            return {"state": "LIMITED", "why": ["without a task only"] + limits}
+        return {"state": "READY", "why": list(notes)}
+
+    def loop():
+        """The build loop always works board tasks."""
+        why = base + board_blockers()
+        if why:
+            return {"state": "UNAVAILABLE", "why": why}
+        if paused:
+            return {"state": "PAUSED", "why": [paused]}
+        return {"state": "READY", "why": list(notes)}
+
+    features = {"task-lane": lane(), "build-loop": loop(), "build-lanes": lane()}
     lanes = cfg.get("maxInProgress", 1) if cfg.get("readable") else None
     features["build-lanes"]["lanes"] = lanes
     if features["build-lanes"]["state"] == "READY" and lanes == 1:
@@ -205,8 +227,17 @@ def detect(root):
     features["review-lane"] = {"state": "UNAVAILABLE" if why else "READY", "why": why or (
         ["peer-review is installed but not confirmed enabled: check its skill is listed in your session"]
         if pr["state"] == "available" else [])}
+
+    # Where a piece of work with no task identifier can go. Option 1 needs only
+    # Herdr; options 2 and 3 need a board to create the task on or find it in.
+    board_why = base + board_blockers() + ([paused] if paused and not base and not board_blockers() else [])
+    task_source = {
+        "without-task": {"ok": not base, "why": list(base)},
+        "create-task": {"ok": not board_why, "why": list(board_why)},
+        "task-id": {"ok": not board_why, "why": list(board_why)},
+    }
     return {"root": root, "primaryCheckout": primary, "herdr": herdr, "plugins": plugins,
-            "specWorkflow": cfg, "features": features}
+            "specWorkflow": cfg, "features": features, "taskSource": task_source}
 
 
 def render(d):
@@ -239,6 +270,13 @@ def render(d):
             head += " (up to %d lane%s)" % (f["lanes"], "" if f["lanes"] == 1 else "s")
         lines.append(head)
         for w in f["why"]:
+            lines.append("      - %s" % w)
+    lines.append("TASK SOURCE (for work that comes without a task identifier)")
+    names = {"without-task": "1 run without a task", "create-task": "2 create a task for it",
+             "task-id": "3 provide the task identifier"}
+    for key, t in d["taskSource"].items():
+        lines.append("  %-30s %s" % (names[key], "possible" if t["ok"] else "NOT POSSIBLE"))
+        for w in ([] if t["ok"] else t["why"]):
             lines.append("      - %s" % w)
     lines.append("remote-compute has no Herdr integration; it is listed for completeness.")
     lines.append("This is a hint, not proof: a plugin counts only if its skills are listed in your session.")

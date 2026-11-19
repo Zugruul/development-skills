@@ -250,13 +250,16 @@ The integration layer between Herdr and the other plugins. All knowledge of the
 specialized plugins and Herdr together belongs here, never in `herdr`. It
 requires the `herdr` plugin, uses that plugin's skills for every Herdr step, and
 offers an integration only when `scripts/detect.py` finds its specialized plugin
-enabled and configured. See
+enabled and configured. Work that arrives without a task identifier goes
+through `references/task-source.md`: one question with three options (run
+without a task, create one, provide the identifier), limited to what can work in
+the repository. See
 [plugins/herdr-development-skills/README.md](plugins/herdr-development-skills/README.md).
 
 | Skill | Purpose |
 | --- | --- |
 | [integrations](plugins/herdr-development-skills/skills/integrations/SKILL.md) | Report which integrations are ready, paused or unavailable in this repository. |
-| [task-lane](plugins/herdr-development-skills/skills/task-lane/SKILL.md) | Run one spec-workflow board task in a Herdr worktree agent. |
+| [task-lane](plugins/herdr-development-skills/skills/task-lane/SKILL.md) | Run one piece of work in a Herdr worktree agent: a spec-workflow board task, or described work with no task. |
 | [build-loop](plugins/herdr-development-skills/skills/build-loop/SKILL.md) | Run the build loop in a separate Herdr agent and listen to it. |
 | [build-lanes](plugins/herdr-development-skills/skills/build-lanes/SKILL.md) | Run several build-next lanes in parallel Herdr worktree agents. |
 | [review-lane](plugins/herdr-development-skills/skills/review-lane/SKILL.md) | Run a peer review next to an existing lane. |

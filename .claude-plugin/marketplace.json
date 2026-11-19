@@ -89,7 +89,7 @@
             "name": "herdr-development-skills",
             "source": "./plugins/herdr-development-skills",
             "description": "Integration layer between Herdr and the development-skills plugins: checks which plugins and features are enabled and configured, then runs spec-workflow tasks and build-loop lanes in Herdr worktree agents an orchestrator listens to. Requires the herdr plugin; degrades cleanly when a specialized plugin is absent.",
-            "version": "0.1.0",
+            "version": "0.2.0",
             "author": {
                 "name": "event-sorcerer"
             },
