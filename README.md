@@ -152,7 +152,7 @@ for source/profile checks, standalone and target updates, and custom-state recov
 
 ## Codex desktop install
 
-All four plugins are available through the repository's Codex marketplace at `.agents/plugins/marketplace.json`. From a terminal with Codex CLI installed, add the marketplace:
+All six plugins are available through the repository's Codex marketplace at `.agents/plugins/marketplace.json`. From a terminal with Codex CLI installed, add the marketplace:
 
 ```bash
 codex plugin marketplace add Zugruul/development-skills
@@ -226,6 +226,8 @@ linked worktree is checked independently of a dirty primary checkout. See the
 
 ```bash
 bash plugins/spec-workflow/tests/run-tests.sh    # hermetic: validator fixtures + preflight (CI runs this + shellcheck + manifest validation)
+bash plugins/herdr/tests/run-tests.sh            # hermetic: runs against a stub herdr, no Herdr install needed
+bash plugins/herdr-development-skills/tests/run-tests.sh
 claude plugin eval plugins/spec-workflow         # skill evals (early access; needs API credits)
 ```
 
@@ -352,6 +354,49 @@ Scaffolds a new greenfield project's minikube dev-workflow scripts
 
 ```bash
 claude plugin install scaffold-project@development-skills
+```
+
+
+### herdr
+
+Skills for agents running inside [Herdr](https://herdr.dev), the terminal
+workspace manager for AI coding agents: start worktrees and agents, prompt them
+without duplicates, listen to their work, and act as an orchestrator. Standalone
+and thin over the `herdr` CLI: it knows Herdr and no other plugin. See
+[herdr](plugins/herdr/README.md) for the helper script and the proposed skills.
+
+| Skill | Purpose |
+|---|---|
+| `worktree` | Start a Herdr worktree after a read-only plan and the user's approval, optionally with agents on it, each with a first prompt |
+| `agent` | Start an agent in an existing pane, retrying while the pane is busy, then send its first prompt |
+| `prompt` | Send a follow-up prompt or relay the user's answer to a blocked agent; never submits the same text twice |
+| `listen` | Report what agents are doing, wait until one blocks or finishes, and surface its question, asking which agent or tab when unclear |
+| `orchestrate` | Take the orchestrator role and load the skills above |
+| `status` | Read-only roster of live agents and the repository's worktrees |
+
+```bash
+claude plugin install herdr@development-skills
+```
+
+### herdr-development-skills
+
+The integration layer between Herdr and the plugins above. It checks which
+plugins and features are enabled and configured in the current repository, then
+runs board tasks and build-loop lanes in Herdr worktree agents an orchestrator
+listens to. **Requires the herdr plugin**; an integration whose specialized
+plugin is missing reports why and the rest keep working. See
+[herdr-development-skills](plugins/herdr-development-skills/README.md).
+
+| Skill | Purpose |
+|---|---|
+| `integrations` | Read-only report of which integrations are ready, paused or unavailable here, and why |
+| `task-lane` | One spec-workflow board task (`implement-task`) in its own Herdr worktree agent |
+| `build-loop` | `/loop /spec-workflow:build-next` in a separate Herdr agent while this one orchestrates |
+| `build-lanes` | Several `build-next` lanes in parallel Herdr worktree agents, within `methodology.maxInProgress` |
+| `review-lane` | A `peer-review` agent next to an existing lane; findings come back unapplied |
+
+```bash
+claude plugin install herdr-development-skills@development-skills
 ```
 
 

@@ -6,8 +6,8 @@
 #
 # Asserts the repo-local Codex marketplace manifest at
 # .agents/plugins/marketplace.json matches the plugin-creator reference shape
-# and lists EXACTLY the two Codex-covered plugins (spec-workflow,
-# scaffold-project) AND peer-review -- originally excluded pending its own
+# and lists EXACTLY the shipped plugins: spec-workflow, scaffold-project,
+# remote-compute, herdr, herdr-development-skills AND peer-review -- originally excluded pending its own
 # Codex-compat sweep, peer-review is provider-pluggable now (codex + claude
 # backends, mandatory ask-which-provider step per its SKILL.md), so the
 # cross-vendor premise holds under a Codex host and it ships in this
@@ -65,10 +65,10 @@ PY
     check "manifest is valid JSON" "JSON_VALID" "$report"
     check "top-level name present" "TOP_NAME present" "$report"
     check "interface.displayName present" "DISPLAY_NAME present" "$report"
-    check "lists exactly four plugins" "PLUGIN_COUNT 4" "$report"
-    check "lists spec-workflow, scaffold-project, peer-review and remote-compute" "PLUGIN_NAMES spec-workflow,scaffold-project,peer-review,remote-compute" "$report"
+    check "lists exactly six plugins" "PLUGIN_COUNT 6" "$report"
+    check "lists every shipped plugin, in order" "PLUGIN_NAMES spec-workflow,scaffold-project,peer-review,remote-compute,herdr,herdr-development-skills" "$report"
 
-    for plug in spec-workflow scaffold-project peer-review remote-compute; do
+    for plug in spec-workflow scaffold-project peer-review remote-compute herdr herdr-development-skills; do
         check "$plug: source.source=local" "ENTRY $plug source.source=local" "$report"
         check "$plug: source.path=./plugins/$plug" "ENTRY $plug source.path=./plugins/$plug" "$report"
         check "$plug: policy.installation=AVAILABLE" "ENTRY $plug policy.installation=AVAILABLE" "$report"
@@ -78,7 +78,7 @@ PY
 fi
 
 # The Codex manifest must be a DISTINCT file from Claude's own marketplace,
-# which still carries all four plugins (incl. peer-review and remote-compute) untouched. This
+# which carries the same plugins (incl. peer-review and remote-compute). This
 # guards against accidentally pointing the new file at, or editing, the wrong
 # marketplace.
 claude_mp="$(cat "$CLAUDE_MP" 2>/dev/null)"

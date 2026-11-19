@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repo is [Zugruul/development-skills](https://github.com/Zugruul/development-skills), a Claude Code and Codex plugin marketplace: `spec-workflow`, `scaffold-project`, `peer-review`, and `remote-compute` ship from `plugins/`. `spec-workflow` — the autonomous build-loop plugin — develops *this very repo*, dogfood-style.
+This repo is [Zugruul/development-skills](https://github.com/Zugruul/development-skills), a Claude Code and Codex plugin marketplace: `spec-workflow`, `scaffold-project`, `peer-review`, `remote-compute`, `herdr`, and `herdr-development-skills` ship from `plugins/`. `spec-workflow` — the autonomous build-loop plugin — develops *this very repo*, dogfood-style.
 
 ## You may be the loop itself
 
@@ -40,7 +40,7 @@ See [`README.md`](README.md) for marketplace install/update instructions and the
 
 ## What this marketplace provides
 
-This repository ships four plugins. Each skill's `SKILL.md` is the operational
+This repository ships six plugins. Each skill's `SKILL.md` is the operational
 source of truth; the index below describes when to use it and links directly to
 its instructions. Keep these summaries and the README's plugin tables in sync
 when skills are added, removed, or renamed.
@@ -226,3 +226,37 @@ The [scaffold-project skill](plugins/scaffold-project/skills/scaffold-project/SK
 creates a greenfield minikube development workflow: start, stop, dev, build,
 port-forward, and bootstrap scripts, with explicit minikube profiles and
 `package.json` commands. See the linked skill for its templates and invocation.
+
+### herdr
+
+Skills for agents running inside [Herdr](https://herdr.dev). The plugin is
+standalone: it teaches Herdr and must not know or reference any other plugin
+here (its test suite enforces that). Skills call the `herdr` CLI directly; the
+helper `scripts/herdr_ctl.py` covers only waits, retries and safety checks. See
+[plugins/herdr/README.md](plugins/herdr/README.md).
+
+| Skill | Purpose |
+| --- | --- |
+| [worktree](plugins/herdr/skills/worktree/SKILL.md) | Plan, get approval for, and start a Herdr worktree, optionally with agents on it. |
+| [agent](plugins/herdr/skills/agent/SKILL.md) | Start an agent in an existing pane and send its first prompt. |
+| [prompt](plugins/herdr/skills/prompt/SKILL.md) | Send a follow-up prompt or relay the user's answer to a blocked agent, at most once. |
+| [listen](plugins/herdr/skills/listen/SKILL.md) | Follow agents and surface the questions they are blocked on. |
+| [orchestrate](plugins/herdr/skills/orchestrate/SKILL.md) | Take the orchestrator role and load the orchestration skills. |
+| [status](plugins/herdr/skills/status/SKILL.md) | Show live agents and the repository's worktrees, read-only. |
+
+### herdr-development-skills
+
+The integration layer between Herdr and the other plugins. All knowledge of the
+specialized plugins and Herdr together belongs here, never in `herdr`. It
+requires the `herdr` plugin, uses that plugin's skills for every Herdr step, and
+offers an integration only when `scripts/detect.py` finds its specialized plugin
+enabled and configured. See
+[plugins/herdr-development-skills/README.md](plugins/herdr-development-skills/README.md).
+
+| Skill | Purpose |
+| --- | --- |
+| [integrations](plugins/herdr-development-skills/skills/integrations/SKILL.md) | Report which integrations are ready, paused or unavailable in this repository. |
+| [task-lane](plugins/herdr-development-skills/skills/task-lane/SKILL.md) | Run one spec-workflow board task in a Herdr worktree agent. |
+| [build-loop](plugins/herdr-development-skills/skills/build-loop/SKILL.md) | Run the build loop in a separate Herdr agent and listen to it. |
+| [build-lanes](plugins/herdr-development-skills/skills/build-lanes/SKILL.md) | Run several build-next lanes in parallel Herdr worktree agents. |
+| [review-lane](plugins/herdr-development-skills/skills/review-lane/SKILL.md) | Run a peer review next to an existing lane. |

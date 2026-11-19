@@ -16,7 +16,7 @@ echo "== codex-plugin-json =="
 CODEX_VALIDATOR="$HOME/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py"
 PLUGINS_DIR="$(dirname "$PLUGIN")"
 
-for plug in spec-workflow scaffold-project peer-review remote-compute; do
+for plug in spec-workflow scaffold-project peer-review remote-compute herdr herdr-development-skills; do
     skill_path="$(python3 - "$PLUGINS_DIR/$plug/.codex-plugin/plugin.json" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as f:
@@ -29,7 +29,7 @@ done
 if [[ ! -f "$CODEX_VALIDATOR" ]] || ! python3 -c 'import yaml' >/dev/null 2>&1; then
     echo "SKIP codex plugin.json validation — validator ($CODEX_VALIDATOR) or python 'yaml' package unavailable"
 else
-    for plug in spec-workflow scaffold-project peer-review remote-compute; do
+    for plug in spec-workflow scaffold-project peer-review remote-compute herdr herdr-development-skills; do
         out="$(python3 "$CODEX_VALIDATOR" "$PLUGINS_DIR/$plug" 2>&1)"; rc=$?
         check_rc "$plug: validator exits 0" 0 "$rc"
         check "$plug: validator reports pass" "Plugin validation passed" "$out"

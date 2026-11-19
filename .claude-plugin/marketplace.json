@@ -68,6 +68,38 @@
                 "gpu",
                 "dispatch"
             ]
+        },
+        {
+            "name": "herdr",
+            "source": "./plugins/herdr",
+            "description": "Teaches an agent to use Herdr, the terminal workspace manager for coding agents: start worktrees and agents, prompt them safely, listen to their work and act as an orchestrator. Standalone and thin over the herdr CLI.",
+            "version": "0.1.0",
+            "author": {
+                "name": "event-sorcerer"
+            },
+            "keywords": [
+                "herdr",
+                "worktree",
+                "agents",
+                "orchestration",
+                "terminal"
+            ]
+        },
+        {
+            "name": "herdr-development-skills",
+            "source": "./plugins/herdr-development-skills",
+            "description": "Integration layer between Herdr and the development-skills plugins: checks which plugins and features are enabled and configured, then runs spec-workflow tasks and build-loop lanes in Herdr worktree agents an orchestrator listens to. Requires the herdr plugin; degrades cleanly when a specialized plugin is absent.",
+            "version": "0.1.0",
+            "author": {
+                "name": "event-sorcerer"
+            },
+            "keywords": [
+                "herdr",
+                "spec-workflow",
+                "build-loop",
+                "worktree",
+                "orchestration"
+            ]
         }
     ]
 }

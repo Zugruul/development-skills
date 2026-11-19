@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""Hermetic stand-in for the herdr CLI. State lives in $HERDR_STUB_DIR/state.json:
+  {"agents": {name: {...agent fields...}}, "busy": N, "start": "ok|not_ready",
+   "prompt": "ok|silent|stalled|blocked", "worktrees": [...], "root": "/repo"}
+Every call is appended to $HERDR_STUB_DIR/calls.log."""
+import json, os, sys
+
+d = os.environ["HERDR_STUB_DIR"]
+path = os.path.join(d, "state.json")
+st = json.load(open(path)) if os.path.exists(path) else {}
+st.setdefault("agents", {})
+args = sys.argv[1:]
+with open(os.path.join(d, "calls.log"), "a") as f:
+    f.write(" ".join(args) + "\n")
+
+
+def save():
+    json.dump(st, open(path, "w"))
+
+
+def ok(result):
+    print(json.dumps({"id": "stub", "result": result}))
+    save()
+    sys.exit(0)
+
+
+def fail(code, msg="stub"):
+    print(json.dumps({"id": "stub", "error": {"code": code, "message": msg}}), file=sys.stderr)
+    save()
+    sys.exit(1)
+
+
+def find(target):
+    for a in st["agents"].values():
+        if target in (a.get("name"), a.get("pane_id")):
+            return a
+    return None
+
+
+def opt(name):
+    return args[args.index(name) + 1] if name in args else None
+
+
+if args == ["--version"]:
+    print("herdr 0.0.0-stub")
+    sys.exit(0)
+cmd = " ".join(args[:2])
+if cmd == "agent list":
+    ok({"agents": list(st["agents"].values())})
+if cmd == "workspace list":
+    ok({"workspaces": st.get("workspaces", [])})
+if cmd == "worktree list":
+    root = st.get("root", "")
+    ok({"type": "worktree_list", "worktrees": st.get("worktrees", []),
+        "source": {"repo_root": root, "repo_name": os.path.basename(root), "source_checkout_path": root}})
+if cmd == "agent get":
+    a = find(args[2])
+    if not a:
+        fail("agent_not_found")
+    # A scripted sequence of states, one per `get`, lets a test move an agent along.
+    seq = a.get("script") or []
+    if seq:
+        a["agent_status"] = seq.pop(0)
+        a["state_change_seq"] = a.get("state_change_seq", 0) + 1
+    ok({"type": "agent", "agent": a})
+if cmd == "agent read":
+    a = find(args[2])
+    print("SCREEN[%s] %s" % (opt("--source"), (a or {}).get("screen", "")))
+    sys.exit(0)
+if cmd == "agent start":
+    if st.get("busy", 0) > 0:
+        st["busy"] -= 1
+        fail("agent_pane_busy")
+    name, pane = args[2], opt("--pane")
+    blocked = st.get("start") == "not_ready"
+    st["agents"][name] = {"name": name, "pane_id": pane, "tab_id": pane.split(":")[0] + ":t1",
+                          "workspace_id": pane.split(":")[0], "agent": opt("--kind"),
+                          "agent_status": "blocked" if blocked else "idle", "state_change_seq": 1,
+                          "cwd": "/w", "screen": "Do you trust this folder?" if blocked else ""}
+    if blocked:
+        fail("agent_not_ready")
+    ok({"type": "agent_started", "agent": st["agents"][name]})
+if cmd == "agent prompt":
+    a = find(args[2])
+    mode = st.get("prompt", "ok")
+    if mode == "blocked":
+        fail("agent_blocked")
+    if mode == "stalled":
+        fail("agent_prompt_stalled")
+    if mode == "ok":
+        a["agent_status"] = "working"
+        a["state_change_seq"] = a.get("state_change_seq", 0) + 1
+    a["last_prompt"] = args[3]
+    ok({"type": "prompt_submitted"})
+fail("stub_unsupported", cmd)
