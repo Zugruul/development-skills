@@ -13,6 +13,7 @@ This skill only reads. It never prompts, focuses, renames or closes anything.
 ```bash
 python3 "../../scripts/herdr_ctl.py" overview                      # plain case: every live agent, then this repository's open worktrees
 python3 "../../scripts/herdr_ctl.py" overview --mine <name> ...    # orchestrator case: the same, without you and the agents you follow
+python3 "../../scripts/herdr_ctl.py" landed --cwd <agent's checkout>   # orchestrator case: is that agent's work on the main branch (see the report reference)
 python3 "../../scripts/herdr_ctl.py" roster                        # the long form (pane, tab, directory), only when you need to place an agent
 ```
 
@@ -58,7 +59,7 @@ Everything else is the **plain case**. In particular:
 
 Print, in this order:
 
-1. **The orchestrator report** for your agents, in the format of `../../references/report.md` exactly: grouped by state, with the `prs:` block and the color marks. Place every one of your agents by its state now (`roster`, then a look at its screen with the `listen` skill's `peek` for anything that is not plainly `working`). One of your agents that `roster` no longer lists is gone; the reference says where it goes.
+1. **The orchestrator report** for your agents, in the format of `../../references/report.md` exactly: grouped by state, with the `prs:` block (pull requests, and a `direct` row from `landed` for work merged without one) and the color marks. Place every one of your agents by its state now (`roster`, then a look at its screen with the `listen` skill's `peek` for anything that is not plainly `working`). One of your agents that `roster` no longer lists is gone; the reference says where it goes.
 2. **`Since last report`** works the same for an on-demand call as for any other report. Compare each agent's state now with your most recent orchestrator report in this conversation, whichever skill produced it:
    - there is one: one line per change, or `Since last report: nothing changed`;
    - this is your first report in this session: leave the line out;

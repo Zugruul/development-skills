@@ -44,7 +44,7 @@ These come from driving Herdr by hand; each is covered by a test.
 
 ## Orchestrator report
 
-`references/report.md` is the one layout an orchestrator uses to report the state of its agents; `orchestrate`, `listen`, `status` and `worktree` point to it. It is Markdown grouped by state, never inside a code fence: a first line with what changed since the last report, then `NEEDS YOU`, `WORKING` and `DONE` with their counts and one list item per agent. An agent's pull requests are a `prs:` block with one line each, in the order opened: number, state (`draft`, `open`, `merged`, `closed`) and the full bare URL, aligned in columns, with no Markdown link syntax. The URL is bare so a terminal can detect it and it can be copied; whether a click opens it depends on the terminal. Observed in Claude Code inside Herdr 0.9.5 with default configuration: a click does not open it, because Herdr's default `ui.mouse_capture = true` takes the mouse clicks; with mouse capture off, and on other hosts, it is unverified. The plugin adds no workaround.
+`references/report.md` is the one layout an orchestrator uses to report the state of its agents; `orchestrate`, `listen`, `status` and `worktree` point to it. It is Markdown grouped by state, never inside a code fence: a first line with what changed since the last report, then `NEEDS YOU`, `WORKING` and `DONE` with their counts and one list item per agent. An agent's pull requests are a `prs:` block with one line each, in the order opened: number, state (`draft`, `open`, `merged`, `closed`) and the full bare URL, aligned in columns, with no Markdown link syntax. Work that reached the main branch without a pull request is one more row of that block, `🟣 direct  merged  main @ <commit>` (or `⚪ direct  local` while it is only on the local main branch); the orchestrator gets the row from `herdr_ctl.py landed`, which reads git and also recognises a squash or cherry-pick with a different hash, never from what the agent says. The URL is bare so a terminal can detect it and it can be copied; whether a click opens it depends on the terminal. Observed in Claude Code inside Herdr 0.9.5 with default configuration: a click does not open it, because Herdr's default `ui.mouse_capture = true` takes the mouse clicks; with mouse capture off, and on other hosts, it is unverified. The plugin adds no workaround.
 
 Color comes from a small fixed set of emoji, always next to the word they stand for: `🔴 NEEDS YOU`, `🟡 WORKING`, `🟢 DONE` on the section lines; `⚪ draft`, `🔵 open`, `🟣 merged`, `🔴 closed` at the start of a pull request line; `⚠` at the start of what is only claimed; and `⚫` on the `idle:`, `state: unknown` or `gone:` line of an agent placed by those rules. No other emoji appears in a report. A blocked agent's question is quoted exactly; a done agent lists what the orchestrator verified apart from what the agent only claims. The file also fixes where `idle`, `unknown` and gone agents go, so no agent is missing and none that Herdr cannot classify is shown as done.
 
@@ -67,6 +67,9 @@ prompt TARGET (--text T | --file F) [--while-working] [--confirm S]
                                        one guarded submission
 roster [--workspace ID] [--repo DIR] [--json]
 overview [--cwd DIR] [--mine NAME ...]  the status skill's two lists: live agents, open worktrees
+landed [--cwd DIR] [--branch B] [--target B] [--remote R]
+                                       is the branch's work on the main branch (same commits, or the
+                                       same content after a squash or cherry-pick); prints the report row
 peek TARGET [--lines N] [--history N]  state plus the visible screen
 listen TARGET... [--timeout S] [--only-blocked]
 ```

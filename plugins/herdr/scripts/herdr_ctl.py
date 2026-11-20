@@ -13,6 +13,7 @@ this script only where a wait, a retry or a safety check is needed:
   prompt TARGET ...          one guarded `agent prompt`; never resubmits
   roster                     every live agent, where it runs and its state
   overview                   the status skill's two lists: live agents, open worktrees
+  landed                     is a checkout's branch on the main branch, with or without a pull request
   peek TARGET                state plus what is on the agent's screen
   listen TARGET...           wait until an agent blocks, finishes or disappears
 
@@ -149,6 +150,7 @@ def cmd_name(a):
 
 
 LABEL_MAX = 80
+LANDED_SCAN = 200  # commits on the target looked at to name the one where the work landed
 
 
 def label_from(text):
@@ -460,6 +462,88 @@ def cmd_overview(a):
     print("\n".join(out))
 
 
+def brings_nothing(cwd, tip, commit):
+    """True when merging `tip` into `commit` would change nothing: all of tip's work is already there."""
+    rc, out = git(cwd, "merge-tree", "--write-tree", commit, tip)
+    if rc != 0 or not out:
+        return False  # a conflict, or a git without `merge-tree --write-tree` (before 2.38)
+    return out.split()[0] == git(cwd, "rev-parse", commit + "^{tree}")[1]
+
+
+def landed_on(cwd, tip, ref):
+    """Is the work at `tip` in `ref`? Returns (how, short commit on ref) or None.
+
+    'same commits': tip is an ancestor of ref. 'same content': the commits differ
+    (squash, cherry-pick, rebase) but merging the branch into ref would change
+    nothing; the commit named is the first one on ref where that became true.
+    """
+    if git(cwd, "merge-base", "--is-ancestor", tip, ref)[0] == 0:
+        return "same commits", git(cwd, "rev-parse", "--short", tip)[1]
+    rc, base = git(cwd, "merge-base", tip, ref)
+    if rc != 0 or not base or not brings_nothing(cwd, tip, ref):
+        return None
+    line = git(cwd, "rev-list", "--first-parent", "--reverse", "%s..%s" % (base, ref))[1].split()
+    for c in line[-LANDED_SCAN:]:
+        if brings_nothing(cwd, tip, c):
+            return "same content", git(cwd, "rev-parse", "--short", c)[1]
+    return "same content", git(cwd, "rev-parse", "--short", ref)[1]
+
+
+def cmd_landed(a):
+    """Git only: no fetch, no ref or file changed. Prints whether a branch's work is on the target branch."""
+    require_herdr()
+    cwd = os.path.abspath(a.cwd or os.getcwd())
+    if git(cwd, "rev-parse", "--git-dir")[0] != 0:
+        die("%s is not in a git repository" % cwd)
+    branch = a.branch or git(cwd, "rev-parse", "--abbrev-ref", "HEAD")[1]
+    rc, tip = git(cwd, "rev-parse", "--verify", "--quiet", branch + "^{commit}")
+    if rc != 0:
+        die("branch %r does not resolve to a commit in %s" % (branch, cwd))
+    target = a.target
+    if not target:
+        head = git(cwd, "symbolic-ref", "--quiet", "--short", "refs/remotes/%s/HEAD" % a.remote)[1]
+        target = head.split("/", 1)[1] if "/" in head else "main"
+    remote_ref = "refs/remotes/%s/%s" % (a.remote, target)
+    local_ref = "refs/heads/" + target
+    has_remote = git(cwd, "rev-parse", "--verify", "--quiet", remote_ref)[0] == 0
+    has_local = git(cwd, "rev-parse", "--verify", "--quiet", local_ref)[0] == 0
+    if not has_remote and not has_local:
+        die("no branch %s here, locally or on %s (give --target)" % (target, a.remote))
+    print("LANDED CHECK branch=%s tip=%s target=%s" % (branch, git(cwd, "rev-parse", "--short", tip)[1], target))
+    if has_remote:
+        print("  note: %s/%s is as of this checkout's last fetch; nothing was fetched now" % (a.remote, target))
+    else:
+        print("  note: no %s/%s here, so only the local %s can be checked" % (a.remote, target, target))
+    if not a.branch and git(cwd, "status", "--porcelain")[1]:
+        print("  note: %s has uncommitted changes; they are on no branch and not part of this check" % cwd)
+    if branch == target:
+        ahead = git(cwd, "rev-list", "--count", "%s..%s" % (remote_ref, tip))[1] if has_remote else ""
+        if ahead and ahead != "0":
+            print("LOCAL %s @ %s: %s commit(s) on %s are not on %s/%s" % (
+                target, git(cwd, "rev-parse", "--short", tip)[1], ahead, target, a.remote, target))
+            print("ROW  \u26aa direct  local   %s @ %s" % (target, git(cwd, "rev-parse", "--short", tip)[1]))
+        else:
+            print("ON TARGET: the checkout is on %s itself with nothing unpushed. Git cannot tell which of its "
+                  "commits are this agent's: take the commit from the agent and check it with "
+                  "`git merge-base --is-ancestor <commit> %s`." % (target, remote_ref if has_remote else local_ref))
+        return
+    found = landed_on(cwd, tip, remote_ref) if has_remote else None
+    if found:
+        print("MERGED %s/%s @ %s (%s)" % (a.remote, target, found[1], found[0]))
+        if found[0] == "same commits":
+            print("  note: a branch with no commits of its own also reads as merged. Use the row only for "
+                  "an agent that made commits.")
+        print("ROW  \U0001f7e3 direct  merged  %s @ %s" % (target, found[1]))
+        return
+    found = landed_on(cwd, tip, local_ref) if has_local else None
+    if found:
+        print("LOCAL %s @ %s (%s): on the local %s only, not on %s/%s" % (
+            target, found[1], found[0], target, a.remote, target))
+        print("ROW  \u26aa direct  local   %s @ %s" % (target, found[1]))
+        return
+    print("NOT MERGED: %s is not on %s, as the same commits or as the same content. No row." % (branch, target))
+
+
 def cmd_peek(a):
     require_herdr()
     cur = agent_get(a.target)
@@ -536,6 +620,9 @@ def main():
     p.set_defaults(fn=cmd_roster)
     p = sub.add_parser("overview")
     p.add_argument("--cwd"); p.add_argument("--mine", nargs="*"); p.set_defaults(fn=cmd_overview)
+    p = sub.add_parser("landed")
+    p.add_argument("--cwd"); p.add_argument("--branch"); p.add_argument("--target")
+    p.add_argument("--remote", default="origin"); p.set_defaults(fn=cmd_landed)
     p = sub.add_parser("peek")
     p.add_argument("target"); p.add_argument("--lines", type=int, default=60)
     p.add_argument("--history", type=int, default=0); p.set_defaults(fn=cmd_peek)

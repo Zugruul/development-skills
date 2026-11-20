@@ -141,6 +141,53 @@ check "peek reads the visible screen first" "SCREEN[visible]" "$out"
 check_absent "peek skips history unless asked" "recent-unwrapped" "$out"
 check "peek --history adds the unwrapped history" "SCREEN[recent-unwrapped]" "$(ctl peek rev --history 50 2>&1)"
 
+echo "== herdr_ctl: landed =="
+LD="$CT_TMP/landed"; mkdir -p "$LD"
+lg() { git -C "$LD/work" -c user.name=t -c user.email=t@t "$@"; }
+git init -q --bare -b main "$LD/remote.git"
+git init -q -b main "$LD/work"
+lg remote add origin "$LD/remote.git"
+printf 'a\n' >"$LD/work/a.txt"; lg add -A; lg commit -q -m init; lg push -q origin main
+lg checkout -q -b feat/x
+printf 'x1\n' >"$LD/work/x.txt"; lg add -A; lg commit -q -m x1
+printf 'x2\n' >>"$LD/work/x.txt"; lg add -A; lg commit -q -m x2
+out="$(ctl landed --cwd "$LD/work" 2>&1)"; rc=$?
+check_rc "landed succeeds on unmerged work" 0 "$rc"
+check "landed: unmerged work gets no row" "NOT MERGED" "$out"
+check_absent "landed: unmerged work prints no ROW" "ROW" "$out"
+printf 'wip\n' >"$LD/work/wip.txt"
+check "landed: uncommitted changes are noted" "has uncommitted changes" "$(ctl landed --cwd "$LD/work" 2>&1)"
+rm "$LD/work/wip.txt"
+# squash onto local main, with an unrelated later commit on main
+lg checkout -q main; lg merge -q --squash feat/x; lg commit -q -m "squash x"
+LD_SQ="$(lg rev-parse --short HEAD)"
+out="$(ctl landed --cwd "$LD/work" --branch feat/x 2>&1)"
+check "landed: a squash on the local main only is local, not merged" "ROW  ⚪ direct  local   main @ $LD_SQ" "$out"
+check_absent "landed: local-only work is never purple" "🟣" "$out"
+printf 'b\n' >"$LD/work/b.txt"; lg add -A; lg commit -q -m "later, unrelated"
+lg push -q origin main
+out="$(ctl landed --cwd "$LD/work" --branch feat/x 2>&1)"
+check "landed: a pushed squash is merged, by content" "MERGED origin/main @ $LD_SQ (same content)" "$out"
+check "landed: the row names the commit where the work landed" "ROW  🟣 direct  merged  main @ $LD_SQ" "$out"
+check "landed: says it did not fetch" "nothing was fetched now" "$out"
+# a branch whose own commits are on the remote main
+lg checkout -q -b feat/y; printf 'y\n' >"$LD/work/y.txt"; lg add -A; lg commit -q -m y
+LD_Y="$(lg rev-parse --short HEAD)"
+lg push -q origin feat/y:main
+out="$(ctl landed --cwd "$LD/work" 2>&1)"
+check "landed: the same commits on the remote main are merged" "ROW  🟣 direct  merged  main @ $LD_Y" "$out"
+check "landed: warns that an empty branch reads the same" "Use the row only for an agent that made commits" "$out"
+# main changed the same lines afterwards: no claim of a merge
+lg checkout -q -b feat/z; printf 'z\n' >"$LD/work/x.txt"; lg add -A; lg commit -q -m z
+lg checkout -q main; lg merge -q --ff-only feat/y; printf 'other\n' >"$LD/work/x.txt"; lg add -A; lg commit -q -m other
+check "landed: a conflicting main is not called merged" "NOT MERGED" "$(ctl landed --cwd "$LD/work" --branch feat/z 2>&1)"
+out="$(ctl landed --cwd "$LD/work" 2>&1)"
+check "landed: unpushed commits on main itself are local" "ROW  ⚪ direct  local   main @ $(lg rev-parse --short HEAD)" "$out"
+lg push -q origin main
+check "landed: on a pushed main it cannot tell whose commits they are" "ON TARGET" "$(ctl landed --cwd "$LD/work" 2>&1)"
+out="$(ctl landed --cwd "$CT_TMP" 2>&1)"; rc=$?
+check_rc "landed outside a repository fails" 1 "$rc"
+
 echo "== herdr_ctl: listen =="
 ct_state "{\"agents\":{$(ct_agent dev working ',"script":["working","working","blocked"],"screen":"Proceed? y/n"'),$(ct_agent rev working)}}"
 out="$(ctl listen dev rev --timeout 20 2>&1)"; rc=$?

@@ -54,7 +54,7 @@ Since last report: claude-lane-1k5a5ew4cde working -> done
 6. **Per agent, line 2** (first nested line): what it was asked to do, in a few words. Then:
    - a working agent: how long it has been on this turn and what it is on right now, in parentheses, from its screen;
    - a done agent: `->` and the result (commits, files). Pull requests go in the `prs:` block, not here.
-7. **Pull requests: a `prs:` block**, in any section, for an agent that has opened any. The nested line is `prs:` alone; under it, indented four more spaces, comes one line per pull request in the order they were opened: the dot of its state, `#N`, the state in words, then the URL. The state is one of `draft`, `open`, `merged`, `closed`, with the dots `⚪ draft`, `🔵 open`, `🟣 merged`, `🔴 closed`. Pad the number and the state with spaces so the URLs start in the same column. The URL is written in full and bare, with no Markdown link syntax, no angle brackets and nothing after it, so a terminal can detect it and it can be copied. An agent with one pull request uses the same block. An agent with none has no `prs:` line. Use the URL exactly as the hosting service or the agent gave it; never guess an address, and when you have a number but no URL, write the number and state alone.
+7. **Pull requests: a `prs:` block**, in any section, for an agent that has opened any. The nested line is `prs:` alone; under it, indented four more spaces, comes one line per pull request in the order they were opened: the dot of its state, `#N`, the state in words, then the URL. The state is one of `draft`, `open`, `merged`, `closed`, with the dots `⚪ draft`, `🔵 open`, `🟣 merged`, `🔴 closed`. Pad the number and the state with spaces so the URLs start in the same column. The URL is written in full and bare, with no Markdown link syntax, no angle brackets and nothing after it, so a terminal can detect it and it can be copied. An agent with one pull request uses the same block. An agent with none has no `prs:` line. Use the URL exactly as the hosting service or the agent gave it; never guess an address, and when you have a number but no URL, write the number and state alone. Work that reached the main branch without a pull request is a `direct` row of this same block (see "Work merged without a pull request"), and an agent with only that row still has the block.
 8. **A done agent then has two more lines:** `verified:` for what you checked yourself (the diff, the commits, a pull request's state, test output you read on its screen) and `claimed:` for what only the agent says. The content of `claimed:` starts with `⚠`; `verified:` has no marker. Leave a line out when it would be empty; never move a claim to `verified:` because it is probably true.
 9. **A blocked agent's question is quoted exactly**, after `asks:`, with its options as its screen shows them. Do not summarise, reorder or pre-answer it.
 10. **Other lines inside an entry** are allowed when the skill that made you the orchestrator defines them. They are nested lines like the rest, one fact per line, as `<word>: <value>`, placed after the `prs:` block and before `verified:`.
@@ -70,11 +70,55 @@ A reply cannot set text colors, so the report's color comes from a fixed, small 
 | 🟢 | section line | DONE |
 | ⚪ 🔵 🟣 🔴 | start of a pull request line | draft, open, merged, closed |
 | ⚠ | start of the content of `claimed:` | not checked by the orchestrator |
+| 🟣 ⚪ | start of a `direct` line | `merged`: on the remote's main branch; `local`: on the local main branch only, not pushed |
 | ⚫ | start of an `idle:`, `state: unknown` or `gone:` line | an agent that is idle, unclassified by Herdr or gone (see the table below) |
 
 - **Never color alone.** The word always stays next to its dot (`🔴 NEEDS YOU`, `⚪ #2795 draft`, `⚫ state: unknown`), so the report reads the same on a host or font without emoji.
 - Green means DONE and nothing else: an open pull request is blue. Red appears twice, for NEEDS YOU and for a closed pull request; the word next to it says which.
 - No other emoji, no per-agent dots, no decoration. Do not add a dot to an agent's first line or to `verified:`.
+
+## Work merged without a pull request
+
+An agent's work can reach the main branch with no pull request: pushed straight to it, or squashed or cherry-picked onto it by someone else. The report shows that as one more row of the `prs:` block, after the pull requests, with the word `direct` where the number would be and the target branch and commit where the URL would be:
+
+```markdown
+- **herdr-dev** · w2A · feat/herdr
+  - relay rule + labels -> 2 commits
+  - prs:
+      ⚪ #2795   draft   https://github.com/<owner>/<repo>/pull/2795
+      🟣 direct  merged  main @ 4e843cc
+  - verified: commits on origin/main
+```
+
+An agent with no pull request has the block with the `direct` row alone. Pad `#N` to the width of `direct` so the columns stay aligned.
+
+**Never write this row from what the agent says or from memory.** Get it from git, for the agent's checkout:
+
+```bash
+git -C <agent's checkout> fetch origin          # so the answer is about the remote as it is now
+python3 "../scripts/herdr_ctl.py" landed --cwd <agent's checkout>    # path relative to this file
+```
+
+`landed` changes no ref and no file. It prints a `ROW` line to copy as is, or says there is none:
+
+| `landed` prints | Meaning | Row |
+| --- | --- | --- |
+| `MERGED origin/main @ <commit> (same commits)` | the branch's own commits are on the remote's main branch | `🟣 direct  merged  main @ <commit>` |
+| `MERGED origin/main @ <commit> (same content)` | the commits differ (a squash, a cherry-pick, a rebase) but merging the branch into the remote's main branch would change nothing; `<commit>` is the first commit on main where that became true | `🟣 direct  merged  main @ <commit>` |
+| `LOCAL main @ <commit>` | the work is on the local main branch only | `⚪ direct  local   main @ <commit>` |
+| `NOT MERGED` | neither | no row |
+| `ON TARGET` | the agent works on the main branch itself and nothing is unpushed | no row from `landed`: take the commit from the agent and check it with the `git merge-base --is-ancestor` line `landed` prints; write the row only when that succeeds |
+
+Rules:
+
+- **`merged` means on the remote's main branch**, the same as a merged pull request. Work that is only on the local main branch is `⚪ direct  local`, never purple: nobody else has it yet.
+- **States before that get no row.** Uncommitted or committed-but-unmerged work is what line 2 already says (`-> 2 commits`); `landed` notes uncommitted changes so you can say so there.
+- **The main branch** is the remote's default branch; `--target <branch>` when the work was meant for another one. The name printed in the row is that branch.
+- **A row from `landed` is verified.** Say so under `verified:` (for example `commits on origin/main`). If you could not fetch, the answer is as of the last fetch: say that too.
+- **When `landed` says `NOT MERGED` but the agent says it landed**, there is no row; the agent's statement goes under `claimed:`. The same-content check gives up when merging would conflict, for example when main changed the same lines afterwards.
+- **A branch with no commits of its own also reads as `same commits`.** Use the row only for an agent whose result includes commits.
+- **A pull request that was merged is its own `🟣 #N merged` row.** Do not add a `direct` row for the same work.
+- Run it again for each report: a `local` row becomes `merged` once the main branch is pushed.
 
 ## Opening a pull request: what is and is not guaranteed
 

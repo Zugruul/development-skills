@@ -83,6 +83,17 @@ done
 # shellcheck disable=SC2016  # literal backticks: a sed address for the fenced block
 check_rc "report: no emoji outside the fixed set in the example" 0 "$(sed -n '/^```markdown/,/^```$/p' "$PLUGIN/references/report.md" | python3 -c 'import sys; print(sum(1 for c in sys.stdin.read() if ord(c) > 0x2000 and c not in "🔴🟡🟢🔵⚪🟣⚠⚫"))')"
 check "report: one pull request uses the same block" "An agent with one pull request uses the same block" "$rp"
+check "report: a direct merge is a row of the prs block" "      ⚪ #2795   draft   https://github.com/<owner>/<repo>/pull/2795
+      🟣 direct  merged  main @ 4e843cc" "$rp"
+check "report: the direct row comes from git, not from the agent" "**Never write this row from what the agent says or from memory.**" "$rp"
+check "report: merged means the remote's main branch" "**\`merged\` means on the remote's main branch**" "$rp"
+check "report: local-only work is not purple" "\`⚪ direct  local   main @ <commit>\`" "$rp"
+check "report: a squash or cherry-pick is recognised" "(same content)" "$rp"
+check "report: earlier states get no row" "**States before that get no row.**" "$rp"
+check "report: an unconfirmed landing is a claim" "there is no row; the agent's statement goes under \`claimed:\`" "$rp"
+check "report: no double row for a merged pull request" "Do not add a \`direct\` row for the same work." "$rp"
+check "report: the color table has the direct marks" "| 🟣 ⚪ | start of a \`direct\` line |" "$rp"
+check "status: the report includes direct rows" "a \`direct\` row from \`landed\`" "$(cat "$PLUGIN/skills/status/SKILL.md")"
 check "report: no pull requests, no prs line" "An agent with none has no \`prs:\` line" "$rp"
 check "report: pull requests in opening order" "in the order they were opened" "$rp"
 check "report: the four pull request states" "\`draft\`, \`open\`, \`merged\`, \`closed\`" "$rp"

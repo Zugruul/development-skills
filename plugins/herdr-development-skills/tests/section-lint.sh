@@ -155,6 +155,7 @@ rl="$(cat "$PLUGIN/references/report-lines.md" 2>/dev/null)"
 for line in "task:" "gate:" "board:" "skipped (no task):"; do
     check "report lines: defines '$line'" "| \`$line\`" "$rl"
 done
+check "report lines: a directly merged lane uses the herdr direct row" "gets the format's \`direct\` row" "$rl"
 check "report lines: lanes supply the prs block" "gh pr list --head <lane branch> --state all --json number,url,state,isDraft" "$rl"
 check "report lines: every pull request of a lane is listed" "all of them are listed" "$rl"
 check "report lines: the example is not the report's fence" "never inside a code fence" "$rl"
