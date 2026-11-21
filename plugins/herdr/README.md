@@ -26,7 +26,7 @@ claude plugin install herdr@development-skills
 | `agent` | Start an agent in an existing pane (retrying while the pane is busy), wait until it is idle, send its first prompt |
 | `prompt` | Send a follow-up prompt, or relay the user's answer to a blocked agent; never submits the same text twice |
 | `listen` | Report what agents are doing, wait until one blocks, finishes or disappears, and surface a blocked agent's question to the user, asking which agent or tab when unclear |
-| `orchestrate` | Take the orchestrator role, name the agent, load the skills above and the orchestration rules |
+| `orchestrate` | Take the orchestrator role, name the agent, load the skills above and the orchestration rules, including how to keep lanes landing: find waits, give shared resources slots, order the landing queue |
 | `status` | The on-demand status report, read-only: the orchestrator report for an orchestrator's own agents, then a short list of the other live agents and one of the repository's open worktrees; the same two lists, for all live agents, for any other agent |
 
 ## What the skills handle for you
