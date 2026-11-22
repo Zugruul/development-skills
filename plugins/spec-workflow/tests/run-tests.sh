@@ -70,8 +70,9 @@ export PATH="$HERE/lib/git-guard:$PATH"
 #
 # A FAILED mktemp stops the whole run (incident 2026-11-21): the 760 call sites
 # use `d="$(mktemp -d)"` unguarded, so an empty answer would flow straight into
-# `git -C "$d" ...` / `cd "$d"`. The wrapper prints a FATAL line, signals the
-# run ($SW_SUITE_PID, whose TERM trap cleans up and exits 143) and returns 1;
+# `git -C "$d" ...` / `cd "$d"`. In the suite's own shell the wrapper prints a
+# FATAL line, signals the run ($SW_SUITE_PID, whose TERM trap cleans up and
+# exits 143) and returns 1;
 # bash runs that trap right after the failing command, before the next one.
 mktemp() {
     local _tdir="${TMPDIR:-/tmp}" _out _rc
@@ -83,8 +84,13 @@ mktemp() {
         _out="$(command mktemp "$@")"; _rc=$?
     fi
     if [[ $_rc -ne 0 || -z "$_out" ]]; then
-        echo "FATAL: mktemp $* failed under TMPDIR=$_tdir -- stopping the suite run so no empty path reaches a fixture (incident 2026-11-21)" >&2
-        [[ -n "${SW_SUITE_PID:-}" ]] && kill -TERM "$SW_SUITE_PID" 2>/dev/null
+        # Only the suite's own shell (and its subshells, where $$ stays the run's
+        # PID) is stopped. A script under test (`bash board.sh`, its own $$) gets
+        # plain mktemp semantics: some tests make its mktemp fail on purpose.
+        if [[ -n "${SW_SUITE_PID:-}" && "$$" == "$SW_SUITE_PID" ]]; then
+            echo "FATAL: mktemp $* failed under TMPDIR=$_tdir -- stopping the suite run so no empty path reaches a fixture (incident 2026-11-21)" >&2
+            kill -TERM "$SW_SUITE_PID" 2>/dev/null
+        fi
         return 1
     fi
     printf '%s\n' "$_out"
