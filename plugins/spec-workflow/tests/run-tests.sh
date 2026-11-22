@@ -270,6 +270,7 @@ section-semver.sh
     section-gh-failures-corpus.sh
     section-runner-filter.sh
     section-tmpdir-isolation.sh
+    section-suite-temp-guard.sh
     section-section-guard.sh
     section-local-state-manifest.sh
     section-gitignore-sync.sh
