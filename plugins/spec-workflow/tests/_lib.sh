@@ -183,5 +183,5 @@ cd() {
         [[ -n "${SW_SUITE_PID:-}" ]] && kill -TERM "$SW_SUITE_PID" 2>/dev/null
         return 1
     fi
-    builtin cd "$@"
+    builtin cd "$@" || return
 }
