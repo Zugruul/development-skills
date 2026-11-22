@@ -150,6 +150,32 @@ out="$(rfb "$RFB/one")"
 check "7e an override recorded for ANOTHER commit is not reused" "rc=2" "$out"
 rm -rf "$RFB"
 
+# 7g. commits are measured in ANCESTRY order, never commit-date order. 7c's lane holds a
+# merge whose upstream side was committed a second later than the lane's own commits; a
+# date-ordered walk then lists the lane's test commit BEFORE its own parent (the upstream
+# impl) and red-first wrongly passes. That made 7c fail whenever the fixture's commits
+# straddled a second boundary (ci on main, 2026-11-20 and 2026-11-21). Fixed dates force it.
+RFO="$(mktemp -d)" && [[ -d "$RFO" ]] || { echo "FATAL: mktemp -d failed (7g)" >&2; exit 1; }
+RFO="$(_pwb_real "$RFO")"
+_rfo_at() { GIT_AUTHOR_DATE="@$1 +0000" GIT_COMMITTER_DATE="@$1 +0000" _pwb_git -C "$RFO/r" "${@:2}"; }
+git init -q -b main "$RFO/r"
+_pwb_config "$RFO/r"
+git -C "$RFO/r" add -A && _rfo_at 1000 commit -q -m "fixture config"
+git -C "$RFO/r" checkout -q -b sc/50-lane
+echo impl >"$RFO/r/upstream.sh" && git -C "$RFO/r" add -A && _rfo_at 1000 commit -q -m "feat: upstream impl"
+RFO_UP="$(git -C "$RFO/r" rev-parse HEAD)"
+git -C "$RFO/r" branch upstream
+mkdir -p "$RFO/r/tests" && echo t >"$RFO/r/tests/t.sh" && git -C "$RFO/r" add -A && _rfo_at 1000 commit -q -m "test: red"
+echo f >"$RFO/r/fix.sh" && git -C "$RFO/r" add -A && _rfo_at 1000 commit -q -m "fix: green"
+git -C "$RFO/r" checkout -q upstream
+echo more >"$RFO/r/upstream2.sh" && git -C "$RFO/r" add -A && _rfo_at 2000 commit -q -m "feat: more upstream"
+git -C "$RFO/r" checkout -q sc/50-lane
+_rfo_at 3000 merge -q --no-edit upstream
+out="$(rfb "$RFO/r")"
+check "7g a later-dated merge side does not reorder a commit before its parent: blocked" "rc=2" "$out"
+check "7g ... blaming the upstream impl, the lane's first commit by ancestry" "$RFO_UP" "$out"
+rm -rf "$RFO"
+
 # ---------------------------------------------------------------- docs
 IT="$PLUGIN/skills/implement-task/SKILL.md"
 check "docs: implement-task names RED_FIRST_OVERRIDE" "RED_FIRST_OVERRIDE" "$(cat "$IT")"
