@@ -20,8 +20,10 @@
 #            for tests that want to check a fixture repo without cd'ing in.
 #   --branch default: current branch (git rev-parse --abbrev-ref HEAD)
 #
-# Algorithm: `git log --reverse <branch> --not origin/<mainBranch> <mainBranch>` (origin
-# fetched first, #581) gives the branch's commits unique to it, oldest-to-newest. Each commit's changed files
+# Algorithm: `git log --topo-order --reverse <branch> --not origin/<mainBranch> <mainBranch>`
+# (origin fetched first, #581) gives the branch's commits unique to it, parents before
+# children (--topo-order: without it git orders by commit date, and a later-dated merge side
+# can list a commit ahead of its own parent, so a test commit hid the impl it sits on). Each commit's changed files
 # (`git diff-tree -r --root --cc --name-only`: merge commits stay visible, and a
 # rename is a delete plus an add, so BOTH paths are classified) classify the
 # commit as:
@@ -124,7 +126,7 @@ fi
 (cd "$ROOT" && git rev-parse -q --verify "refs/heads/$MAIN^{commit}" >/dev/null 2>&1) && BASES+=("refs/heads/$MAIN")
 [[ ${#BASES[@]} -eq 0 ]] && exit 0  # no main to measure from (as before: nothing to sequence)
 
-COMMITS="$(cd "$ROOT" && git log --reverse --format=%H "$BRANCH" --not "${BASES[@]}" 2>/dev/null)"
+COMMITS="$(cd "$ROOT" && git log --topo-order --reverse --format=%H "$BRANCH" --not "${BASES[@]}" 2>/dev/null)"
 [[ -z "$COMMITS" ]] && exit 0
 
 FIRST_IMPL=""
