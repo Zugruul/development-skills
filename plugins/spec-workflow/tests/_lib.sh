@@ -169,3 +169,19 @@ lifecycle_start() {
 # (<...>/brain-events/test.jsonl, feed/<ts>-test.yaml). Individual tests
 # override per-call where multi-writer behavior is under test.
 export SPEC_WORKFLOW_WRITER="${SPEC_WORKFLOW_WRITER:-test}"
+
+# --- cd never turns an empty path into the current directory -------------
+# `cd ""` is a silent no-op in bash, so `( cd "$dir" && git commit ... )` with
+# an empty $dir commits in whatever directory the suite runs from -- the real
+# checkout (incident 2026-11-21). Every section is sourced into this shell, so
+# this shadow covers every helper (_pwb_real, rfb, pwb_gate, ...). An empty
+# target prints a FATAL line, stops the run (SW_SUITE_PID's TERM trap) and
+# fails. Not exported: scripts under test keep bash's own cd.
+cd() {
+    if [[ $# -gt 0 && -z "${!#}" ]]; then
+        echo "FATAL: cd to an empty path refused -- it would stay in $PWD (incident 2026-11-21); stopping the suite run" >&2
+        [[ -n "${SW_SUITE_PID:-}" ]] && kill -TERM "$SW_SUITE_PID" 2>/dev/null
+        return 1
+    fi
+    builtin cd "$@"
+}

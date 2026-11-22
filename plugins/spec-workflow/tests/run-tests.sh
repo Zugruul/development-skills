@@ -31,11 +31,30 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # runs exactly once either way; rm -rf on an already-removed dir is a
 # harmless no-op if it somehow ran twice. mktemp -d's XXXXXX template and the
 # trap/signal handling below are both bash-3.2-safe (macOS's shipped bash).
-_RUN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/sw-suite-XXXXXX")" || {
-    echo "FATAL: could not create a private TMPDIR root" >&2
+#
+# Incident 2026-11-21 (fixture commits pushed to GitHub main): a nested run
+# (section-runner-filter.sh / section-tmpdir-isolation.sh spawn this runner)
+# minted its root INSIDE the outer run's root, so the outer run's exit removed
+# it mid-run; every later mktemp failed and returned "", and fixture git ran in
+# the real checkout. So: every run, nested or not, mints its root under the
+# FIRST run's ambient TMPDIR (SW_SUITE_TMP_BASE, inherited by nested runs),
+# never under another run's root; a failed or empty mint stops here.
+export SW_SUITE_TMP_BASE="${SW_SUITE_TMP_BASE:-${TMPDIR:-/tmp}}"
+_RUN_TMP="$(command mktemp -d "${SW_SUITE_TMP_BASE%/}/sw-suite-XXXXXX")" || _RUN_TMP=""
+_RUN_TMP="$( [[ -n "$_RUN_TMP" && -d "$_RUN_TMP" ]] && builtin cd -P "$_RUN_TMP" && pwd -P)" || _RUN_TMP=""
+if [[ -z "$_RUN_TMP" ]]; then
+    echo "FATAL: could not create a private TMPDIR root under ${SW_SUITE_TMP_BASE}" >&2
     exit 1
-}
-export TMPDIR="$_RUN_TMP"
+fi
+# SW_SUITE_TMP_ROOT: what lib/git-guard/git measures writes against.
+# SW_SUITE_PID: the run a failed mktemp / an empty cd stops (see below, _lib.sh).
+export TMPDIR="$_RUN_TMP" SW_SUITE_TMP_ROOT="$_RUN_TMP" SW_SUITE_PID=$$
+
+# Fixture git may only WRITE under this run's root: lib/git-guard/git is first
+# on PATH for this shell and every child (scripts under test, python), and
+# refuses a write anywhere else -- including everywhere once the root is gone.
+export SW_SUITE_REAL_GIT="${SW_SUITE_REAL_GIT:-$(command -v git)}"
+export PATH="$HERE/lib/git-guard:$PATH"
 
 # macOS/BSD's mktemp(1), called bare ("mktemp" / "mktemp -d" / "mktemp -u",
 # the only forms used anywhere in this suite), prefers the platform's
@@ -48,15 +67,27 @@ export TMPDIR="$_RUN_TMP"
 # (sourced into this same shell) AND into any `bash somescript.sh` child
 # process this suite spawns (board.sh, gate.sh, etc. also call bare
 # mktemp), since bash re-imports exported functions from its environment.
+#
+# A FAILED mktemp stops the whole run (incident 2026-11-21): the 760 call sites
+# use `d="$(mktemp -d)"` unguarded, so an empty answer would flow straight into
+# `git -C "$d" ...` / `cd "$d"`. The wrapper prints a FATAL line, signals the
+# run ($SW_SUITE_PID, whose TERM trap cleans up and exits 143) and returns 1;
+# bash runs that trap right after the failing command, before the next one.
 mktemp() {
-    local _tdir="${TMPDIR:-/tmp}"
+    local _tdir="${TMPDIR:-/tmp}" _out _rc
     if [[ $# -eq 0 ]]; then
-        command mktemp "${_tdir%/}/tmp.XXXXXXXXXX"
+        _out="$(command mktemp "${_tdir%/}/tmp.XXXXXXXXXX")"; _rc=$?
     elif [[ $# -eq 1 && ( "$1" == "-d" || "$1" == "-u" ) ]]; then
-        command mktemp "$1" "${_tdir%/}/tmp.XXXXXXXXXX"
+        _out="$(command mktemp "$1" "${_tdir%/}/tmp.XXXXXXXXXX")"; _rc=$?
     else
-        command mktemp "$@"
+        _out="$(command mktemp "$@")"; _rc=$?
     fi
+    if [[ $_rc -ne 0 || -z "$_out" ]]; then
+        echo "FATAL: mktemp $* failed under TMPDIR=$_tdir -- stopping the suite run so no empty path reaches a fixture (incident 2026-11-21)" >&2
+        [[ -n "${SW_SUITE_PID:-}" ]] && kill -TERM "$SW_SUITE_PID" 2>/dev/null
+        return 1
+    fi
+    printf '%s\n' "$_out"
 }
 export -f mktemp
 

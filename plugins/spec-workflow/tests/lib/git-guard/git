@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# git-guard -- the spec-workflow suite's PATH shim for git (incident 2026-11-21).
+#
+# run-tests.sh puts this directory first on PATH, so every git call the suite
+# makes -- from section files, from scripts under test, from python children --
+# passes through here. Read-only commands always run. A command that WRITES
+# runs only when its repository (git dir and work tree), or for init/clone its
+# destination, lies under the run's temp root ($SW_SUITE_TMP_ROOT); a push
+# also needs its destination there. Anything else is refused with exit 128,
+# so a fixture handed an empty or vanished path can never commit, rename a
+# branch, drop a remote or push in the real checkout. When the root itself is
+# gone, every write is refused. Outside a suite run ($SW_SUITE_TMP_ROOT unset)
+# the shim just runs git.
+set -u
+
+_self="$(builtin cd -P "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)"
+real="${SW_SUITE_REAL_GIT:-}"
+if [[ -z "$real" || ! -x "$real" || "$(dirname "$real")" == "$_self" ]]; then
+    real=""
+    IFS=: read -ra _path <<<"${PATH:-}"
+    for _d in "${_path[@]}"; do
+        [[ -n "$_d" && -x "$_d/git" && ! -d "$_d/git" ]] || continue
+        [[ "$(builtin cd -P "$_d" 2>/dev/null && pwd -P)" == "$_self" ]] && continue
+        real="$_d/git"; break
+    done
+    [[ -n "$real" ]] || { echo "git-guard: no real git found on PATH" >&2; exit 127; }
+fi
+
+root="${SW_SUITE_TMP_ROOT:-}"
+[[ -n "$root" ]] || exec "$real" "$@"
+
+refuse() { # <what>
+    echo "git-guard: refusing 'git $sub' on $1: outside the suite's temp root ${root} (incident 2026-11-21)" >&2
+    exit 128
+}
+
+# --- global options: -C dirs, -c values, --git-dir/--work-tree
+C="$PWD"; gopts=(); args=("$@"); n=$#; i=0
+while (( i < n )); do
+    a="${args[i]}"
+    case "$a" in
+        -C) d="${args[i+1]-}"
+            if [[ -n "$d" ]]; then [[ "$d" == /* ]] && C="$d" || C="$C/$d"; fi
+            gopts+=(-C "$d"); i=$((i + 2)) ;;
+        -c|--git-dir|--work-tree|--namespace|--config-env|--exec-path)
+            gopts+=("$a" "${args[i+1]-}"); i=$((i + 2)) ;;
+        -*) gopts+=("$a"); i=$((i + 1)) ;;
+        *) break ;;
+    esac
+done
+sub="${args[i]-}"
+rest=("${args[@]:i+1}")
+
+has() { local x w; for w in "$@"; do for x in "${rest[@]}"; do [[ "$x" == "$w" ]] && return 0; done; done; return 1; }
+positionals() { # prints rest's non-option words, skipping the values of the given options
+    local skip=" $* " x take=0
+    for x in "${rest[@]}"; do
+        if (( take )); then take=0; continue; fi
+        case "$x" in
+            --) continue ;;
+            -*) [[ "$skip" == *" $x "* ]] && take=1 ;;
+            *) printf '%s\n' "$x" ;;
+        esac
+    done
+}
+
+is_read() {
+    case "$sub" in
+        ""|rev-parse|log|show|status|diff|diff-tree|diff-index|diff-files|ls-files|ls-tree|ls-remote|\
+        cat-file|rev-list|for-each-ref|show-ref|merge-base|describe|name-rev|var|version|help|grep|\
+        blame|annotate|shortlog|check-ignore|check-attr|check-ref-format|count-objects|whatchanged|\
+        cherry|range-diff|show-branch|verify-commit|verify-tag|fsck|archive|get-tar-commit-id|\
+        format-patch|request-pull|merge-tree|patch-id|column|stripspace|interpret-trailers)
+            return 0 ;;
+        hash-object) ! has -w ;;
+        config)
+            has --get --get-all --get-regexp --get-urlmatch --get-color --get-colorbool -l --list && return 0
+            [[ "${rest[0]-}" == get || "${rest[0]-}" == list ]] && return 0
+            has --add --unset --unset-all --replace-all --rename-section --remove-section -e --edit && return 1
+            [[ "${rest[0]-}" == set || "${rest[0]-}" == unset ]] && return 1
+            [[ "$(positionals -f --file --blob --type --default --comment | grep -c .)" -le 1 ]] ;;
+        remote) [[ ${#rest[@]} -eq 0 ]] || [[ "${rest[0]}" == -v || "${rest[0]}" == --verbose || "${rest[0]}" == get-url || "${rest[0]}" == show ]] ;;
+        branch)
+            has -d -D --delete -m -M --move -c -C --copy -f --force -u --unset-upstream --edit-description \
+                --track --no-track --set-upstream && return 1
+            local x; for x in "${rest[@]}"; do [[ "$x" == --set-upstream-to* || "$x" == --track=* ]] && return 1; done
+            has -l --list -a --all -r --remotes --show-current -v -vv --verbose --contains --no-contains \
+                --merged --no-merged --points-at && return 0
+            [[ -z "$(positionals --format --sort --column --color)" ]] ;;
+        tag)
+            has -d --delete -f --force -a --annotate -s --sign -m --message -F --file && return 1
+            has -l --list -n --contains --no-contains --points-at --merged --no-merged -v --verify && return 0
+            [[ -z "$(positionals --format --sort --column --color)" ]] ;;
+        worktree) [[ "${rest[0]-}" == list ]] ;;
+        stash) [[ "${rest[0]-}" == list || "${rest[0]-}" == show ]] ;;
+        notes) [[ "${rest[0]-}" == list || "${rest[0]-}" == show ]] ;;
+        reflog) [[ "${rest[0]-}" != expire && "${rest[0]-}" != delete ]] ;;
+        symbolic-ref) ! has -d --delete && [[ "$(positionals -m | grep -c .)" -le 1 ]] ;;
+        submodule) [[ "${rest[0]-}" == status || "${rest[0]-}" == summary ]] ;;
+        *) return 1 ;;
+    esac
+}
+is_read && exec "$real" "$@"
+
+# --- a write: everything it touches must lie under an existing temp root
+[[ -d "$root" ]] || refuse "anything (the temp root is gone)"
+root_c="$(builtin cd -P "$root" && pwd -P)"
+canon() { # <path, absolute or relative to C>: physical path; a not-yet-existing tail is kept as written
+    local p="$1" tail=""
+    [[ "$p" == /* ]] || p="$C/$p"
+    while [[ ! -d "$p" ]]; do
+        tail="/$(basename "$p")$tail"; p="$(dirname "$p")"
+    done
+    [[ "$tail" == */..* || "$tail" == */. || "$tail" == */./* ]] && { echo "/nonexistent-dotted$tail"; return; }
+    printf '%s%s\n' "$(builtin cd -P "$p" && pwd -P)" "$tail"
+}
+inside() { local c; c="$(canon "$1")"; [[ "$c" == "$root_c" || "$c" == "$root_c"/* ]]; }
+need() { inside "$1" || refuse "$1"; }
+
+case "$sub" in
+    init)
+        dir="$(positionals --template --separate-git-dir -b --initial-branch --object-format --ref-format | head -1)"
+        need "${dir:-$C}"
+        for ((j = 0; j < ${#rest[@]}; j++)); do
+            case "${rest[j]}" in
+                --separate-git-dir) need "${rest[j+1]-}" ;;
+                --separate-git-dir=*) need "${rest[j]#*=}" ;;
+            esac
+        done ;;
+    clone)
+        dir="$(positionals -o --origin -b --branch -u --upload-pack --reference --reference-if-able \
+            --separate-git-dir --depth --shallow-since --shallow-exclude -c --config --server-option \
+            -j --jobs --filter --template --bundle-uri --ref-format | sed -n 2p)"
+        need "${dir:-$C}" ;;
+    *)
+        if [[ "$sub" == config ]] && has --global --system; then
+            refuse "the ${rest[*]} config (not a fixture repository)"
+        fi
+        gd="$("$real" "${gopts[@]}" rev-parse --absolute-git-dir 2>/dev/null)"
+        if [[ -z "$gd" ]]; then
+            # no repository here: the command has nothing local to change, unless it is
+            # meant to act on the directory (-C/cwd) itself
+            need "$C"
+        else
+            need "$gd"
+            wt="$("$real" "${gopts[@]}" rev-parse --show-toplevel 2>/dev/null)"
+            [[ -z "$wt" ]] || need "$wt"
+        fi
+        if [[ "$sub" == push ]]; then
+            dest="$(positionals --repo -o --push-option --receive-pack --exec | head -1)"
+            if [[ -z "$dest" ]]; then
+                cur="$("$real" "${gopts[@]}" symbolic-ref --short -q HEAD 2>/dev/null)"
+                dest="$("$real" "${gopts[@]}" config --get "branch.$cur.pushRemote" 2>/dev/null \
+                    || "$real" "${gopts[@]}" config --get remote.pushDefault 2>/dev/null \
+                    || "$real" "${gopts[@]}" config --get "branch.$cur.remote" 2>/dev/null \
+                    || echo origin)"
+            fi
+            if [[ "$dest" != */* && "$dest" != *:* && "$dest" != . ]]; then
+                url="$("$real" "${gopts[@]}" remote get-url --push "$dest" 2>/dev/null)"
+                [[ -n "$url" ]] || exec "$real" "$@"  # no such remote: git itself refuses
+                dest="$url"
+            fi
+            [[ "$dest" == . ]] && dest="$gd"
+            dest="${dest#file://}"
+            [[ "$dest" == /* || "$dest" != *:* ]] || refuse "push destination $dest"
+            need "$dest"
+        fi ;;
+esac
+exec "$real" "$@"
