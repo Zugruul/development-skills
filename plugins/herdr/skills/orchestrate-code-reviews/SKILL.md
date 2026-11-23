@@ -1,6 +1,6 @@
 ---
 name: orchestrate-code-reviews
-description: Makes the current agent the orchestrator of a code review of a group of related pull requests inside Herdr - takes the orchestrator role, maps how the pull requests fit together (stacked, or pairs across repositories), puts one reviewer agent on a Herdr worktree per open pull request plus one cross-PR checker, has them check the existing review comments and look for new problems as drafts only, then has one agent per pull request post the replies and a single COMMENT review, verifies what was posted and writes a summary. Use for '/herdr:orchestrate-code-reviews' followed by the pull request URLs and optional notes, 'review these PRs together', 'run a code review of this stack with reviewer agents'. Never approves, requests changes, merges or pushes. Requires running inside Herdr and a command-line client for the hosting service (gh for GitHub).
+description: Makes the current agent the orchestrator of a code review of a group of related pull requests inside Herdr - takes the orchestrator role, maps how the pull requests fit together (stacked, or pairs across repositories), puts one reviewer agent on a Herdr worktree per open pull request plus one cross-PR checker, has them check the existing review comments and look for new problems as drafts only, then has one agent per pull request post the replies and a single COMMENT review, verifies what was posted, and writes and posts a summary comment on each pull request. Use for '/herdr:orchestrate-code-reviews' followed by the pull request URLs and optional notes, 'review these PRs together', 'run a code review of this stack with reviewer agents'. Never approves, requests changes, merges or pushes. Requires running inside Herdr and a command-line client for the hosting service (gh for GitHub).
 allowed-tools: Bash, AskUserQuestion
 ---
 
@@ -156,11 +156,11 @@ Report each agent as DONE before you close it; the report format then names it o
 
 Write one summary per reviewed pull request **in the format of `../../references/review-summary.md` exactly**, to a file in your scratch directory, and show it to the user. It holds: the commit checked, who covered what, how findings were verified, whether tests ran; the count line by severity; the numbered table with each finding linked to its inline comment; then the collapsed sections for unconfirmed items, what was checked and found correct, and every fix prompt in one block. The fix prompts name that repository's own rule files from section 3 and nothing from another repository.
 
-**Post a summary as a pull request comment only when the user asks.** Otherwise it stays a file whose full path you give.
+**Always post the summary as a pull request comment**, on every reviewed pull request, also when it has no findings, once section 8 passed for it: the table links the inline comments, so it goes up after they are posted and verified. Post it yourself from the file (for GitHub: `gh pr comment <url> --body-file <summary file>`) and then check through the API, read-only, that the summary comment by the posting account is there, once, with the file's content, and take its URL from the API. A merged pull request gets no summary, and neither does one closed during the review. Post nothing for a pull request whose posting or check in section 8 failed: say so instead. Give the summary file's full path as well.
 
 End with a last orchestrator report (it may list no agent any more), then in prose:
 
-- per pull request: the replies made and why, the findings posted with their verified links, the poster's deviations, the leads that turned out not to be real with their evidence, and the unconfirmed items;
+- per pull request: the replies made and why, the findings posted with their verified links, the verified link of the summary comment, the poster's deviations, the leads that turned out not to be real with their evidence, and the unconfirmed items;
 - per merged pull request: the proposed follow-ups (file, line, change);
 - the cross-PR findings and a suggested merge order;
 - what you verified in section 8 and what is only claimed, such as an agent's statement that it ran tests;

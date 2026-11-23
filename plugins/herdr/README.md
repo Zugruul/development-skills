@@ -28,7 +28,7 @@ claude plugin install herdr@development-skills
 | `listen` | Report what agents are doing, wait until one blocks, finishes or disappears, and surface a blocked agent's question to the user, asking which agent or tab when unclear |
 | `orchestrate` | Take the orchestrator role, name the agent, load the skills above and the orchestration rules |
 | `status` | The on-demand status report, read-only: the orchestrator report for an orchestrator's own agents, then a short list of the other live agents and one of the repository's open worktrees; the same two lists, for all live agents, for any other agent |
-| `orchestrate-code-reviews` | Take the orchestrator role for a code review of a group of related pull requests (stacked, or across repositories): map the group, one reviewer agent per open pull request in its worktree plus a cross-PR checker, drafts only, then one agent per pull request posts the replies and a single `COMMENT` review; the orchestrator verifies what was posted and writes a summary |
+| `orchestrate-code-reviews` | Take the orchestrator role for a code review of a group of related pull requests (stacked, or across repositories): map the group, one reviewer agent per open pull request in its worktree plus a cross-PR checker, drafts only, then one agent per pull request posts the replies and a single `COMMENT` review; the orchestrator verifies what was posted, then writes and posts a summary comment |
 
 ## What the skills handle for you
 
@@ -63,7 +63,7 @@ It applies only to an agent that has taken the orchestrator role. A plain `statu
 - Reviewers only draft, to files in the orchestrator's scratch directory. The orchestrator merges the drafts (a finding two agents found is posted once) and one agent per pull request posts, after re-checking what it posts on another agent's behalf.
 - Never marks ready, approves, requests changes, merges or pushes. After posting, the orchestrator verifies the reviews, the pull request's state and the worktree through the hosting service before it reports links.
 - Closes down after itself: once a pull request's comments are posted and verified, its reviewer writes a result file back to the orchestrator, and the worktree, workspace and tabs this review created are removed (never forced, never anything reused or unverified). Only the files in the orchestrator's scratch directory remain.
-- `references/review-brief.md` holds the reviewer brief, the proof standard, the rules for shared checkouts and the draft and comment formats. `references/review-summary.md` holds the format of the final summary, which is written to a file and posted as a pull request comment only when the user asks.
+- `references/review-brief.md` holds the reviewer brief, the proof standard, the rules for shared checkouts and the draft and comment formats. `references/review-summary.md` holds the format of the final summary, which is written to a file and always posted as a pull request comment once the review is posted and verified.
 
 ## `scripts/herdr_ctl.py`
 

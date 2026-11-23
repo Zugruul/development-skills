@@ -1,6 +1,6 @@
 # Review summary
 
-The one format for the final summary of a reviewed pull request. The `orchestrate-code-reviews` skill writes one per pull request to a file, shows it to the user, and posts it as a pull request comment only when the user asks.
+The one format for the final summary of a reviewed pull request. The `orchestrate-code-reviews` skill writes one per pull request to a file, shows it to the user, and always posts it as a pull request comment once the review's inline comments are posted and verified.
 
 This is not the orchestrator report (`report.md`): that one shows the state of the agents; this one is the outcome of the review, written so it can stand alone as a pull request comment.
 
