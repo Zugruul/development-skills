@@ -43,7 +43,7 @@ Make a scratch directory of your own outside every repository (your host's sessi
 
 ## 3. Read the group
 
-For each pull request, read its metadata with the hosting service's client, read-only (for GitHub, `gh pr view <url> --json number,url,state,isDraft,headRefName,headRefOid,baseRefName,headRepository,baseRepository,body`): repository, head branch, base branch, head commit, state, draft or not, and the pull requests its description links.
+For each pull request, read its metadata with the hosting service's client, read-only (for GitHub, `gh pr view <url> --json number,url,title,author,state,isDraft,headRefName,headRefOid,baseRefName,headRepository,baseRepository,body`): repository, number, title, author, head branch, base branch, head commit, state, draft or not, and the pull requests its description links.
 
 Then work out how the group fits together, before any review:
 
@@ -51,7 +51,7 @@ Then work out how the group fits together, before any review:
 - which are pairs across repositories (for example a producer and its consumer);
 - which are already merged or closed.
 
-**State this map in your first report**, with the head commit of each open pull request. It is the commit the review is made at.
+**State this map in your first report**, with each pull request's number, owner, title and, for an open one, its head commit. It is the commit the review is made at.
 
 - **A merged pull request is reference behaviour only.** It gets no worktree and no reviewer of its own: agents read it from the freshly fetched default branch (`git fetch origin <default branch>`, then read from `origin/<default branch>`). Read it, never comment on it, and open nothing for it. A fix that belongs in it goes into your final report as a proposed follow-up (file, line, change).
 - **A pull request closed without merging:** say so and ask the user whether it is part of the review.
@@ -68,14 +68,16 @@ One Herdr worktree per open pull request, on its head branch, based on the fresh
 - In a workspace you did not create alone, **leave every pane you did not create alone**: start no agent in it, send it no keys, never close it. Your agents get tabs of their own there.
 - A reused checkout may not be at the pull request's head commit, and may hold someone's local work. Never pull, reset, stash or switch branches in it. Say what you found and ask the user; reviewers can read the head commit with `git show` without changing the checkout.
 - For a new worktree: fetch the head branch first, then plan with `--branch <head branch> --base origin/<head branch>`. A pull request from a fork has its head in another repository: fetch the pull request's head ref the way the hosting service offers it, and say in the plan which ref you used.
+- **Label every workspace you create so its sidebar entry says what it holds**: the pull request's number, who owns it, and a short description, in that order: `pr-<number>-<owner>-<short description>`, for example `pr-2609-<owner>-connection-pool-timeout`. `<owner>` is the login of the pull request's author; the description is two to four words from its title. Build it with `python3 "../../scripts/herdr_ctl.py" label <text>` and pass it as `--label` to the plan; never leave the label to be derived from the branch. Keep it under about 40 characters, since the sidebar cuts long titles and the number and owner must survive. When the group spans repositories, put the repository before the number (`pr-<repo>-<number>-<owner>-...`). The owner's login is for this label only: it does not go into comments, drafts or summaries.
+- A workspace you reuse keeps the label it has: it is not yours to rename. Say in your first report which pull request it holds, and offer the rename (`herdr workspace rename <workspace id> <label>`) when its label does not show the number.
 - Invoking this skill asks for these worktrees, so show the planned set (branch, base commit, path each) in your first report and create them. Ask first for anything the plan does not show as a plain creation (`DO NOT CREATE`, a dirty primary checkout, a repository Herdr does not trust).
 
 ## 5. Reviewers
 
 Start the agents with `../agent/SKILL.md`, the kind from section 1:
 
-- **One reviewer per open pull request**, in that pull request's worktree. Name it for what it reviews (`review-<repo>-<number>`).
-- **One cross-PR checker** when the group has more than one pull request (`review-cross-pr`), in a tab of its own in the workspace of the pull request the others build on. It reads every worktree and the merged pull requests on the default branch.
+- **One reviewer per open pull request**, in that pull request's worktree. Its name carries the role, the number, then the same short description as the label: `review-<number>-<short description>`, for example `review-2609-connection-pool`. The number comes second so it is still readable when the sidebar cuts the name. A name has at most 32 characters: shorten the description, never the number, and check it with `python3 "../../scripts/herdr_ctl.py" name <name>`.
+- **One cross-PR checker** when the group has more than one pull request, named for the pull requests it spans (`review-cross-2609-2611`, or `review-cross-pr` when the numbers do not fit), in a tab of its own in the workspace of the pull request the others build on. It reads every worktree and the merged pull requests on the default branch.
 
 Build each first prompt from `../../references/review-brief.md`: the template there, filled in for that agent, written to a file in your scratch directory and sent once with the `prompt` skill (`../prompt/SKILL.md`). Every brief carries:
 
