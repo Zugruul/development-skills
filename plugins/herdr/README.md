@@ -62,6 +62,7 @@ It applies only to an agent that has taken the orchestrator role. A plain `statu
 - A merged pull request is reference behaviour only: no worktree, read from the freshly fetched default branch, never commented on; a fix that belongs there is a proposed follow-up in the report.
 - Reviewers only draft, to files in the orchestrator's scratch directory. The orchestrator merges the drafts (a finding two agents found is posted once) and one agent per pull request posts, after re-checking what it posts on another agent's behalf.
 - Never marks ready, approves, requests changes, merges or pushes. After posting, the orchestrator verifies the reviews, the pull request's state and the worktree through the hosting service before it reports links.
+- Closes down after itself: once a pull request's comments are posted and verified, its reviewer writes a result file back to the orchestrator, and the worktree, workspace and tabs this review created are removed (never forced, never anything reused or unverified). Only the files in the orchestrator's scratch directory remain.
 - `references/review-brief.md` holds the reviewer brief, the proof standard, the rules for shared checkouts and the draft and comment formats. `references/review-summary.md` holds the format of the final summary, which is written to a file and posted as a pull request comment only when the user asks.
 
 ## `scripts/herdr_ctl.py`

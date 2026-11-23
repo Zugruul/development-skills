@@ -100,6 +100,7 @@ Follow all of them with `../listen/SKILL.md`, and report every time in the forma
 | `reviews:` | the pull request it reviews (`<owner>/<repo>#<number>`), or `cross-PR` |
 | `draft:` | its draft file and what it holds (`3 findings, 1 reply, 2 unconfirmed`), once written |
 | `posted:` | the URL of the review it submitted, once you have verified it (section 8) |
+| `result:` | its result file, once written (section 9) |
 
 The `prs:` block stays for pull requests an agent opened; reviewers open none. A reviewer's question goes to the user as the `orchestrate` skill says.
 
@@ -134,17 +135,33 @@ Links in your report come from the hosting service, not from an agent's message.
 
 Report what does not match as it is. Do not delete or edit a posted comment on your own; ask the user.
 
-## 9. Summary and final report
+## 9. Close down what you created
+
+A finished review leaves nothing open: no worktree, no workspace and no agent window that exists only because of it. What stays is each agent's report back to you, as a file. The `orchestrate` skill says to leave your own panes and worktrees until the user agrees the work has landed; invoking this skill is that agreement for what this review created, once its comments are posted and verified. Say in your first report that the worktrees you create are removed at the end, so the user can ask to keep them; if they do, keep them.
+
+Per pull request, after section 8 passed for it:
+
+1. **Get the reviewer's report back.** Ask it (the `prompt` skill) to write its result file in your scratch directory and stop: what it posted, with the URLs; its deviations; whether tests ran; anything it left unfinished. Wait until the file is there and read it. After this the agent is no longer needed: questions about its work are answered from its draft and result files.
+2. **Check the checkout is as it was found:** `git -C <worktree> status --porcelain` prints nothing, its commit is the one reviewed, and nothing is unpushed. Otherwise do not remove it: say what is there and ask the user.
+3. **Close only what you created for this review:**
+   - a worktree you created: `herdr worktree remove --workspace <workspace id>`, never with `--force` and never with `--trust-repository`. Then read `herdr worktree list --cwd <primary checkout>` and `herdr workspace list`: the worktree and its workspace must both be gone. Close a workspace that is still open with `herdr workspace close <workspace id>`, and delete the local branch the worktree made with `git branch -d` (never `-D`). A refusal is reported, not forced.
+   - a tab you created in a workspace you reused: `herdr tab close <tab id>`. The workspace, its worktree and every other pane stay.
+   - the cross-PR checker's tab last, when every pull request it drafted for is posted and verified.
+
+**What is never closed here:** a worktree, workspace or pane you reused or did not create; a checkout with changes you cannot account for; an agent that is working, blocked or has an unanswered question; and everything belonging to a pull request whose posting failed or whose check in section 8 did not match, which stays open for the user to look at. If the review stops before posting, nothing closes without asking.
+
+Report each agent as DONE before you close it; the report format then names it once as `done -> gone` and drops it. Your scratch directory stays: the drafts, the result files and the summaries are the record of the review. Give its full path in the final report.
+
+## 10. Summary and final report
 
 Write one summary per reviewed pull request **in the format of `../../references/review-summary.md` exactly**, to a file in your scratch directory, and show it to the user. It holds: the commit checked, who covered what, how findings were verified, whether tests ran; the count line by severity; the numbered table with each finding linked to its inline comment; then the collapsed sections for unconfirmed items, what was checked and found correct, and every fix prompt in one block. The fix prompts name that repository's own rule files from section 3 and nothing from another repository.
 
 **Post a summary as a pull request comment only when the user asks.** Otherwise it stays a file whose full path you give.
 
-End with a last orchestrator report, then in prose:
+End with a last orchestrator report (it may list no agent any more), then in prose:
 
 - per pull request: the replies made and why, the findings posted with their verified links, the poster's deviations, the leads that turned out not to be real with their evidence, and the unconfirmed items;
 - per merged pull request: the proposed follow-ups (file, line, change);
 - the cross-PR findings and a suggested merge order;
-- what you verified in section 8 and what is only claimed, such as an agent's statement that it ran tests.
-
-Leave worktrees, workspaces and agents in place, as the `orchestrate` skill says.
+- what you verified in section 8 and what is only claimed, such as an agent's statement that it ran tests;
+- what you closed in section 9, and what you left open and why, each with its path or workspace.
