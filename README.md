@@ -373,6 +373,7 @@ and thin over the `herdr` CLI: it knows Herdr and no other plugin. See
 | `listen` | Report what agents are doing, wait until one blocks or finishes, and surface its question, asking which agent or tab when unclear |
 | `orchestrate` | Take the orchestrator role and load the skills above |
 | `status` | Read-only roster of live agents and the repository's worktrees |
+| `orchestrate-code-reviews` | Orchestrate a code review of a group of related pull requests: one reviewer agent per worktree plus a cross-PR checker draft, one agent per pull request posts a single COMMENT review, then a verified summary |
 
 ```bash
 claude plugin install herdr@development-skills
