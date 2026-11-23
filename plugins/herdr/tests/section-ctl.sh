@@ -7,6 +7,7 @@ declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tes
 CT_TMP="$(mktemp -d)"
 CT_CTL="$PLUGIN/scripts/herdr_ctl.py"
 ctl() { PATH="$FIX/stub-herdr:$PATH" HERDR_ENV=1 HERDR_PANE_ID=w1:p1 HERDR_STUB_DIR="$CT_TMP" HERDR_CTL_INTERVAL=0.05 HERDR_CONFIG_PATH="$CT_TMP/none.toml" python3 "$CT_CTL" "$@"; }
+codex_ctl() { PATH="$FIX/stub-herdr:$PATH" HERDR_ENV=0 CODEX_SESSION_ID=codex-test HERDR_STUB_DIR="$CT_TMP" HERDR_CTL_INTERVAL=0.05 HERDR_CONFIG_PATH="$CT_TMP/none.toml" python3 "$CT_CTL" "$@"; }
 ct_state() { printf '%s' "$1" >"$CT_TMP/state.json"; : >"$CT_TMP/calls.log"; }
 ct_calls() { grep -c -- "$1" "$CT_TMP/calls.log" || true; }
 ct_agent() { # name status [extra json fields]
@@ -14,11 +15,20 @@ ct_agent() { # name status [extra json fields]
 }
 
 echo "== herdr_ctl: outside Herdr =="
-out="$(HERDR_ENV=0 python3 "$CT_CTL" check 2>&1)"; rc=$?
+out="$(HERDR_ENV=0 env -u CODEX_SESSION_ID python3 "$CT_CTL" check 2>&1)"; rc=$?
 check_rc "check outside Herdr exits 2" 2 "$rc"
 check "check outside Herdr says why" "not running inside a Herdr pane" "$out"
-out="$(HERDR_ENV=0 python3 "$CT_CTL" roster 2>&1)"; rc=$?
+out="$(HERDR_ENV=0 env -u CODEX_SESSION_ID python3 "$CT_CTL" roster 2>&1)"; rc=$?
 check_rc "every verb refuses outside Herdr" 2 "$rc"
+CT_CWD="$(pwd)"
+ct_state "{\"agents\":{\"codex\":{\"name\":\"codex-herdr-fix\",\"pane_id\":\"w1:p1\",\"tab_id\":\"w1:t1\",\"workspace_id\":\"w1\",\"agent\":\"codex\",\"agent_status\":\"blocked\",\"cwd\":\"$CT_CWD\",\"foreground_cwd\":\"$CT_CWD\"}}}"
+out="$(codex_ctl check 2>&1)"; rc=$?
+check_rc "Codex session with a matching live agent is accepted" 0 "$rc"
+check "Codex attachment uses the matched pane" "pane=w1:p1" "$out"
+ct_state "{\"agents\":{\"codex\":{\"agent\":\"codex\",\"cwd\":\"$CT_CWD\"}}}"
+out="$(codex_ctl check 2>&1)"; rc=$?
+check_rc "Codex session without a safe foreground match is refused" 2 "$rc"
+check "Codex refusal explains the missing unique match" "no unique live Herdr Codex agent matches" "$out"
 
 echo "== herdr_ctl: names =="
 ct_state "{\"agents\":{$(ct_agent dev idle)}}"

@@ -14,7 +14,7 @@ dt() {
     local envs=(HDS_NOOP=1)
     while [[ "$1" != "--" ]]; do envs+=("$1"); shift; done
     shift
-    env HOME="$DT_TMP/home" CLAUDE_CONFIG_DIR="$DT_TMP/home/.claude" PATH="$DT_BIN:$PATH" HERDR_ENV=1 "${envs[@]}" python3 "$DT_DETECT" "$@"
+    env -u CODEX_SESSION_ID HOME="$DT_TMP/home" CLAUDE_CONFIG_DIR="$DT_TMP/home/.claude" PATH="$DT_BIN:$PATH" HERDR_ENV=1 "${envs[@]}" python3 "$DT_DETECT" "$@"
 }
 dt_repo() { # dir [with-config]
     git init -q -b main "$1"

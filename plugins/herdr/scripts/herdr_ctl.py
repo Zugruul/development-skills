@@ -71,12 +71,51 @@ def die(msg, code=1):
     sys.exit(code)
 
 
+def codex_agent_for_cwd():
+    """Return the Herdr-recognized Codex agent for this process, if unambiguous.
+
+    Codex does not inherit Herdr's caller-context variables.  Its own session
+    marker is required before consulting Herdr, and both directory fields are
+    checked so a reachable server or a coincidentally focused pane is not
+    enough to authorize control commands.
+    """
+    if not os.environ.get("CODEX_SESSION_ID"):
+        return None
+    rc, data, _raw = herdr("agent", "list")
+    if rc != 0:
+        return None
+    cwd = os.path.realpath(os.getcwd())
+    matches = []
+    for agent in (result(data).get("agents") if data else []) or []:
+        if not isinstance(agent, dict) or agent.get("agent") != "codex":
+            continue
+        if os.path.realpath(agent.get("cwd") or "") != cwd:
+            continue
+        # foreground_cwd is present in current Herdr versions.  Requiring it
+        # avoids accepting a retained agent whose process moved elsewhere.
+        foreground = agent.get("foreground_cwd")
+        if not isinstance(foreground, str) or not foreground or os.path.realpath(foreground) != cwd:
+            continue
+        matches.append(agent)
+    return matches[0] if len(matches) == 1 else None
+
+
 def require_herdr():
-    if os.environ.get("HERDR_ENV") != "1":
-        die("HERDR UNAVAILABLE: this agent is not running inside a Herdr pane (HERDR_ENV is not 1). "
-            "Do not control Herdr from outside it.", 2)
     if not shutil.which("herdr"):
         die("HERDR UNAVAILABLE: the herdr binary is not on PATH.", 2)
+    if os.environ.get("HERDR_ENV") == "1":
+        return None
+    agent = codex_agent_for_cwd()
+    if agent:
+        for key in ("pane_id", "tab_id", "workspace_id"):
+            if agent.get(key):
+                os.environ.setdefault("HERDR_" + key.upper(), agent[key])
+        return agent
+    if os.environ.get("CODEX_SESSION_ID"):
+        reason = "no unique live Herdr Codex agent matches this checkout"
+    else:
+        reason = "this agent is not running inside a Herdr pane (HERDR_ENV is not 1)"
+    die("HERDR UNAVAILABLE: %s. Do not control Herdr from outside it." % reason, 2)
 
 
 def agents():

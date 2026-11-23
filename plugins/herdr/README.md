@@ -15,7 +15,7 @@ claude plugin install herdr@development-skills
 
 ## Requirements
 
-- The `herdr` binary on `PATH`, and the agent running inside a Herdr pane (`HERDR_ENV=1`). Every skill checks this first and stops outside Herdr.
+- The `herdr` binary on `PATH`, and the agent running inside a Herdr pane. Claude and other hosts use Herdr's injected `HERDR_ENV=1` caller context. Codex does not currently inherit that variable, so the helper accepts Codex only when `CODEX_SESSION_ID` is set and Herdr reports one live Codex agent whose `cwd` and `foreground_cwd` both exactly match the current checkout. A reachable server or an ordinary shell never passes this fallback. Every skill checks this first and stops outside Herdr.
 - `python3` (3.9+, standard library only) and `git`.
 
 ## Skills

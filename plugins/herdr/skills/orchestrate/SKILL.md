@@ -6,7 +6,7 @@ allowed-tools: Bash, AskUserQuestion
 
 # Become the Herdr orchestrator
 
-`ctl` = `python3 "../../scripts/herdr_ctl.py"` (resolve the path relative to this `SKILL.md`). Run `python3 "../../scripts/herdr_ctl.py" check` first; if it prints `HERDR UNAVAILABLE`, say so and stop: there is nothing to orchestrate from outside Herdr.
+`ctl` = `python3 "../../scripts/herdr_ctl.py"` (resolve the path relative to this `SKILL.md`). Run `python3 "../../scripts/herdr_ctl.py" check` first; if it prints `HERDR UNAVAILABLE`, say so and stop: there is nothing to orchestrate from outside Herdr. In Codex, `HERDR_ENV` may be absent even inside a Herdr pane; the check accepts that case only when Codex's session marker and Herdr's live agent registry identify one matching Codex agent in the current checkout.
 
 ## 1. Take the role
 

@@ -53,6 +53,30 @@ def git(root, *args):
     return p.stdout.strip() if p.returncode == 0 else ""
 
 
+def codex_herdr_attachment(root):
+    """Use Herdr's live agent registry only for a Codex session without HERDR_ENV."""
+    if not os.environ.get("CODEX_SESSION_ID") or not shutil.which("herdr"):
+        return None
+    try:
+        p = subprocess.run(["herdr", "agent", "list"], capture_output=True, text=True, timeout=10)
+        data = json.loads(p.stdout) if p.returncode == 0 else {}
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+    cwd = os.path.realpath(os.path.abspath(root))
+    matches = []
+    agents = ((data.get("result") or {}).get("agents") if isinstance(data, dict) else []) or []
+    for agent in agents:
+        if not isinstance(agent, dict) or agent.get("agent") != "codex":
+            continue
+        if os.path.realpath(agent.get("cwd") or "") != cwd:
+            continue
+        foreground = agent.get("foreground_cwd")
+        if not isinstance(foreground, str) or not foreground or os.path.realpath(foreground) != cwd:
+            continue
+        matches.append(agent)
+    return matches[0] if len(matches) == 1 else None
+
+
 def primary_checkout(root):
     """The main worktree of root's repository (local state such as a pause flag lives there)."""
     common = git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")
@@ -164,10 +188,13 @@ def detect(root):
         primary = root  # same checkout reached through a symlinked path (macOS /var -> /private/var)
     inside = os.environ.get("HERDR_ENV") == "1"
     binary = shutil.which("herdr") or ""
-    herdr = {"inside": inside, "binary": binary, "ok": inside and bool(binary)}
+    codex_attachment = None if inside else codex_herdr_attachment(root)
+    herdr = {"inside": inside, "binary": binary, "ok": bool(binary) and (inside or bool(codex_attachment)),
+             "codex": bool(codex_attachment)}
     herdr["why"] = ("ok" if herdr["ok"] else
-                    "not running inside a Herdr pane (HERDR_ENV is not 1)" if not inside else
-                    "the herdr binary is not on PATH")
+                    "the herdr binary is not on PATH" if not binary else
+                    "no unique live Herdr Codex agent matches this checkout" if os.environ.get("CODEX_SESSION_ID") else
+                    "not running inside a Herdr pane (HERDR_ENV is not 1)")
     plugins = {n: plugin_state(n, root, primary) for n in MARKERS}
     sw = plugins["spec-workflow"]
     cfg = spec_workflow_config(root, primary, sw["path"]) if sw["state"] != "absent" else {
