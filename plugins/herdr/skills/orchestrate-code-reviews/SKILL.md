@@ -127,7 +127,7 @@ If the pull request's head moved since the review started, do not post against t
 
 ## 8. Verify what was posted
 
-Links in your report come from the hosting service, not from an agent's message. After each poster settles, check through the API, read-only (for GitHub: `gh api repos/<owner>/<repo>/pulls/<number>/reviews` and `.../pulls/<number>/comments`, filtered to the posting account, and `gh pr view`):
+Links in your report come from the hosting service, not from an agent's message. After each poster settles, check through the API, read-only (for GitHub: `gh api repos/<owner>/<repo>/pulls/<number>/reviews` and the same path ending in `/comments`, filtered to the posting account, and `gh pr view`):
 
 - the reviews and review comments by the posting account are the ones the posting file called for: one `COMMENT` review with the new findings, the replies, nothing else, no approval and no change request;
 - the pull request's state and draft flag are what they were at the start;
