@@ -128,5 +128,5 @@ Verified by: <how>.
 Only the agent the orchestrator names posts, and only from the merged file the orchestrator gives it.
 
 - Re-check every item that came from another agent's draft against the code and against that draft's "Unconfirmed" section before posting it. Drop or reword what does not hold, and report each deviation.
-- Replies go to their threads. All new findings go into one review with the event `COMMENT`, at the reviewed head commit. The installed client is the authority for the syntax (for GitHub, `gh api` on the pull request's `reviews`, `comments` and comment `replies` endpoints).
+- Replies go to their threads. All new findings go into one review with the event `COMMENT`, at the reviewed head commit, with the placeholder body the orchestrator gives you (it puts the summary there later). With no new findings, post no review: only the replies. A finding the hosting service will not take as an inline comment is not posted; report it back with its file and line. The installed client is the authority for the syntax (for GitHub, `gh api` on the pull request's `reviews`, `comments` and comment `replies` endpoints).
 - Report the URL of the review, of each inline comment and of each reply, as the hosting service returned them.

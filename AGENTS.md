@@ -243,7 +243,7 @@ helper `scripts/herdr_ctl.py` covers only waits, retries and safety checks. See
 | [listen](plugins/herdr/skills/listen/SKILL.md) | Follow agents and surface the questions they are blocked on. |
 | [orchestrate](plugins/herdr/skills/orchestrate/SKILL.md) | Take the orchestrator role and load the orchestration skills. |
 | [status](plugins/herdr/skills/status/SKILL.md) | Show live agents and the repository's worktrees, read-only. |
-| [orchestrate-code-reviews](plugins/herdr/skills/orchestrate-code-reviews/SKILL.md) | Orchestrate a code review of related pull requests: reviewer agents in worktrees draft, one agent per pull request posts a single COMMENT review. |
+| [orchestrate-code-reviews](plugins/herdr/skills/orchestrate-code-reviews/SKILL.md) | Orchestrate a code review of related pull requests: reviewer agents in worktrees draft, one agent per pull request posts a single COMMENT review, whose body the orchestrator fills with the summary. |
 
 ### herdr-development-skills
 

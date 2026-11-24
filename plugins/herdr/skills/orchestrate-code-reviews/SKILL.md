@@ -1,6 +1,6 @@
 ---
 name: orchestrate-code-reviews
-description: Makes the current agent the orchestrator of a code review of a group of related pull requests inside Herdr - takes the orchestrator role, maps how the pull requests fit together (stacked, or pairs across repositories), puts one reviewer agent on a Herdr worktree per open pull request plus one cross-PR checker, has them check the existing review comments and look for new problems as drafts only, then has one agent per pull request post the replies and a single COMMENT review, verifies what was posted, and writes and posts a summary comment on each pull request. Use for '/herdr:orchestrate-code-reviews' followed by the pull request URLs and optional notes, 'review these PRs together', 'run a code review of this stack with reviewer agents'. Never approves, requests changes, merges or pushes. Requires running inside Herdr and a command-line client for the hosting service (gh for GitHub).
+description: Makes the current agent the orchestrator of a code review of a group of related pull requests inside Herdr - takes the orchestrator role, maps how the pull requests fit together (stacked, or pairs across repositories), puts one reviewer agent on a Herdr worktree per open pull request plus one cross-PR checker, has them check the existing review comments and look for new problems as drafts only, then has one agent per pull request post the replies and a single COMMENT review, verifies what was posted, then writes a summary of each pull request's review and puts it into the body of that single COMMENT review. Use for '/herdr:orchestrate-code-reviews' followed by the pull request URLs and optional notes, 'review these PRs together', 'run a code review of this stack with reviewer agents'. Never approves, requests changes, merges or pushes. Requires running inside Herdr and a command-line client for the hosting service (gh for GitHub).
 allowed-tools: Bash, AskUserQuestion
 ---
 
@@ -118,10 +118,12 @@ Then have **one agent per pull request**, its own reviewer, post from that file 
 
 1. **Re-checks every claim it posts on another agent's behalf** against the code at the head commit and against that draft's own unconfirmed section, and drops or rewords what does not hold. It reports each such deviation: which item, what it found, what it posted instead.
 2. Posts the replies to existing review threads.
-3. Submits **one `COMMENT` review** at the reviewed head commit holding every new finding as an inline comment, in the comment format of the brief reference. A finding on a line the hosting service will not accept an inline comment for goes in the review body with its file and line.
+3. Submits **one `COMMENT` review** at the reviewed head commit holding every new finding as an inline comment, in the comment format of the brief reference, with a placeholder body: one line saying the summary follows (`Review summary to follow.`). The summary is not written yet, because its table links the inline comments; you put it into this body in section 10. A finding on a line the hosting service will not accept an inline comment for is not posted: the poster reports it back with its file and line, and you write it out in the summary.
 4. Reports the URL of the review and of each inline comment and reply.
 
-On GitHub every reply in an existing review thread shows up in the timeline as a `COMMENTED` review entry of its own. So "one review per pull request" means one review for the **new** inline findings; the extra entries from replies are expected, not a mistake. Say so in your report.
+A pull request with **no new findings** gets no review from its poster, only the replies. Its one `COMMENT` review is posted by you in section 10, with the summary as its body.
+
+On GitHub every reply in an existing review thread shows up in the timeline as a `COMMENTED` review entry of its own. So "one review per pull request" means one review for the **new** inline findings, which also carries the summary; the extra entries from replies are expected, not a mistake. Say so in your report.
 
 If the pull request's head moved since the review started, do not post against the old commit silently: tell the user what changed and ask whether to re-check the affected findings first.
 
@@ -129,11 +131,11 @@ If the pull request's head moved since the review started, do not post against t
 
 Links in your report come from the hosting service, not from an agent's message. After each poster settles, check through the API, read-only (for GitHub: `gh api repos/<owner>/<repo>/pulls/<number>/reviews` and the same path ending in `/comments`, filtered to the posting account, and `gh pr view`):
 
-- the reviews and review comments by the posting account are the ones the posting file called for: one `COMMENT` review with the new findings, the replies, nothing else, no approval and no change request;
+- the reviews and review comments by the posting account are the ones the posting file called for: one `COMMENT` review with the new findings and the placeholder body (none when there are no new findings), the replies, nothing else, no approval and no change request. Take that review's id from this response: section 10 needs it;
 - the pull request's state and draft flag are what they were at the start;
 - the worktree is clean and at the same commit: no temporary test file left, nothing committed, nothing pushed.
 
-Report what does not match as it is. Do not delete or edit a posted comment on your own; ask the user.
+Report what does not match as it is. Do not delete or edit a posted comment on your own; ask the user. Putting the summary into the body of the review this skill just posted (section 10) is the one edit that is part of the flow; nothing else is edited without the user's approval.
 
 ## 9. Close down what you created
 
@@ -156,11 +158,16 @@ Report each agent as DONE before you close it; the report format then names it o
 
 Write one summary per reviewed pull request **in the format of `../../references/review-summary.md` exactly**, to a file in your scratch directory, and show it to the user. It holds: the commit checked, who covered what, how findings were verified, whether tests ran; the count line by severity; the numbered table with each finding linked to its inline comment; then the collapsed sections for unconfirmed items, what was checked and found correct, and every fix prompt in one block. The fix prompts name that repository's own rule files from section 3 and nothing from another repository.
 
-**Always post the summary as a pull request comment**, on every reviewed pull request, also when it has no findings, once section 8 passed for it: the table links the inline comments, so it goes up after they are posted and verified. Post it yourself from the file (for GitHub: `gh pr comment <url> --body-file <summary file>`) and then check through the API, read-only, that the summary comment by the posting account is there, once, with the file's content, and take its URL from the API. A merged pull request gets no summary, and neither does one closed during the review. Post nothing for a pull request whose posting or check in section 8 failed: say so instead. Give the summary file's full path as well.
+**Put the summary into the body of that same `COMMENT` review**, on every reviewed pull request, once section 8 passed for it: the table links the inline comments, so it goes in after they are posted and verified. On GitHub the summary and every inline comment then sit together in one review in the timeline. There is no separate pull request comment.
+
+- **With new findings:** replace the placeholder body of the review section 8 verified, yourself, from the file. For GitHub, build the request body with `jq -n --rawfile body <summary file> '{body: $body}' > <body file>` in your scratch directory and send it with `gh api -X PUT repos/<owner>/<repo>/pulls/<number>/reviews/<review id> --input <body file>`. This updates the body only; the review's event and inline comments stay as they are.
+- **With no new findings:** post one `COMMENT` review whose body is the summary, with no inline comments, at the reviewed head commit, after the replies are verified. For GitHub: `jq -n --rawfile body <summary file> --arg sha <head commit> '{event: "COMMENT", commit_id: $sha, body: $body}' > <body file>`, then `gh api -X POST repos/<owner>/<repo>/pulls/<number>/reviews --input <body file>`.
+
+Then check through the API, read-only (for GitHub: `gh api repos/<owner>/<repo>/pulls/<number>/reviews/<review id>`), that the review's body equals the summary file (a trailing newline aside) and its state is still `COMMENTED`, that the posting account has no other new review besides the reply entries, and take the review's URL from the API. A merged pull request gets no summary, and neither does one closed during the review: its placeholder body stays, and you say so. Put nothing into a pull request whose posting or check in section 8 failed: say so instead. Give the summary file's full path as well.
 
 End with a last orchestrator report (it may list no agent any more), then in prose:
 
-- per pull request: the replies made and why, the findings posted with their verified links, the verified link of the summary comment, the poster's deviations, the leads that turned out not to be real with their evidence, and the unconfirmed items;
+- per pull request: the replies made and why, the findings posted with their verified links, the verified link of the review that carries the summary in its body, the poster's deviations, the leads that turned out not to be real with their evidence, and the unconfirmed items;
 - per merged pull request: the proposed follow-ups (file, line, change);
 - the cross-PR findings and a suggested merge order;
 - what you verified in section 8 and what is only claimed, such as an agent's statement that it ran tests;

@@ -1,8 +1,8 @@
 # Review summary
 
-The one format for the final summary of a reviewed pull request. The `orchestrate-code-reviews` skill writes one per pull request to a file, shows it to the user, and always posts it as a pull request comment once the review's inline comments are posted and verified.
+The one format for the final summary of a reviewed pull request. The `orchestrate-code-reviews` skill writes one per pull request to a file, shows it to the user, and always puts it into the body of the pull request's single `COMMENT` review once that review's inline comments are posted and verified, so the summary and the inline comments show as one review. A pull request with no new findings gets one `COMMENT` review whose body is the summary.
 
-This is not the orchestrator report (`report.md`): that one shows the state of the agents; this one is the outcome of the review, written so it can stand alone as a pull request comment.
+This is not the orchestrator report (`report.md`): that one shows the state of the agents; this one is the outcome of the review, written so it can stand alone as the body of that review.
 
 ## Template
 
@@ -66,7 +66,7 @@ Findings:
 1. **One summary per reviewed pull request**, with the findings posted on that pull request. A cross-PR finding is listed on the pull request that should change. A merged pull request has no summary; its proposed follow-ups are in the orchestrator's final report.
 2. **The first paragraph answers four things**, in this order: the commit checked, who covered what, how findings were verified, whether tests ran. A check that did not happen is stated as not done, with the reason.
 3. **The count line** gives the total and the three severities, zeros included, and matches the table.
-4. **The table is numbered**, most severe first. Each finding's title is a link to its inline comment, with the URL as the hosting service returned it and as the orchestrator verified it; never a guessed address. `Where` is the file name and line. A finding that went into the review body instead of an inline comment links to the review.
+4. **The table is numbered**, most severe first. Each finding's title is a link to its inline comment, with the URL as the hosting service returned it and as the orchestrator verified it; never a guessed address. `Where` is the file name and line. A finding the hosting service would not take as an inline comment is written out in full below the table, under `### <n>. <title>` with its file and line and the comment as the brief formats it, and its row links to that heading.
 5. **Three collapsed sections, always in this order:** what is worth a look but not confirmed, what was checked and found correct, and every fix prompt in one block. A section with nothing to say keeps its heading and says `None.`
 6. **The fix prompts are the ones posted inline**, in the table's order and with its numbers, so the block can be handed to one agent as is. Step 2 of its preamble names the rule files of the repository under review, by path. Leave that clause out when the repository has none; never fill it with another repository's files or rules.
 7. **Only the marks shown** (`🔴 Critical`, `🟠 Major`, `🟡 Minor`, and the three section marks), always next to their word.
