@@ -19,10 +19,11 @@
 #   lane.sh retry --lane L --node N               N failed: rerun its retry target; exit 7 at the limit
 #   lane.sh ask --lane L --text Q [--node N]      record an open question for the user
 #   lane.sh answer --lane L --text A              record the user's answer and clear the question
-#   lane.sh set --lane L --key owner|workspace|branch|gate|status|pr|cleanup --value V
+#   lane.sh set --lane L --key owner|workspace|branch|gate|status|pr|cleanup|forwarded --value V
 #                                                 pr: the lane's pull request; cleanup: ready or blocked: REASON
 #                                                 (written by cleanup.sh), confirmed or declined (the user's
-#                                                 answer; confirmed only after ready)
+#                                                 answer; confirmed only after ready); forwarded (a review
+#                                                 lane): OWNER-LANE/AGENT its findings were sent to, or declined
 #   lane.sh close --lane L                        move the file to closed/
 #   lane.sh clear --lane L                        a closed lane: move its file to closed/cleared/ (kept, off the panel)
 # Exit codes: 0 ok, 1 error, 2 usage, 6 invalid pattern or lane, 7 retry limit reached.
@@ -200,7 +201,8 @@ answer)
     update '.question = "" | .nodes |= map_values(if .status == "blocked" then .status = "waiting" else . end)' "answer: $text" ;;
 set)
     need_lane
-    case "$key" in owner | workspace | branch | gate | status | pr | cleanup) ;; *) die "--key must be owner, workspace, branch, gate, status, pr or cleanup" 2 ;; esac
+    case "$key" in owner | workspace | branch | gate | status | pr | cleanup | forwarded) ;; *) die "--key must be owner, workspace, branch, gate, status, pr, cleanup or forwarded" 2 ;; esac
+    [ "$key" != forwarded ] || case "$value" in declined | ?*/?*) ;; *) die "forwarded must be LANE/AGENT or declined" 2 ;; esac
     [ "$key" != cleanup ] || case "$value" in '' | ready | confirmed | declined | "blocked: "?*) ;; *) die "cleanup must be ready, confirmed, declined or blocked: REASON" 2 ;; esac
     # a yes only answers a cleanup question that was asked
     if [ "$key" = cleanup ] && [ "$value" = confirmed ]; then

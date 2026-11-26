@@ -38,6 +38,7 @@ Scripts (all `bash "../../scripts/<name>"`):
 | `status.sh --text` | the picture of every lane, for reports |
 | `check-pattern.sh --name P --repo R` | validate a pattern |
 | `make-review-stack.sh --pr URL --pr URL ... --out FILE` | the graph for reviewing related pull requests together |
+| `review-owner.sh --pr URL` | which open lane (any repository with lanes) owns a reviewed pull request, and its live implementer |
 
 For every Herdr step use the `herdr` plugin's skills: `herdr:worktree`, `herdr:agent`, `herdr:prompt`, `herdr:listen`. Do not repeat what they do.
 
@@ -132,6 +133,11 @@ The output keeps one shape: per pull request, the replies, then **one `COMMENT` 
 5. **Verify** through the API, read-only (`gh api repos/<owner>/<repo>/pulls/<n>/reviews` and `.../comments`, `gh pr view`): exactly the posting file's replies and one `COMMENT` review, no approval and no change request; the pull request's state and draft flag unchanged; the checkout clean.
 6. **Summary.** Write it in the format of `../../references/review-summary.md` exactly (commit checked, who covered what, how verified, whether tests ran; the count line; the numbered table linking each inline comment; "Worth a look", "Checked and found correct", one "Prompt for AI Agents" block). Put it into the review's body: `jq -n --rawfile body <summary> '{body: $body}' > <body.json>` then `gh api -X PUT repos/<owner>/<repo>/pulls/<n>/reviews/<review id> --input <body.json>`. With no new findings, post one `COMMENT` review whose body is the summary instead. Then check the review's body equals the summary file and its state is still `COMMENTED`.
 7. Report the verified links, the poster's deviations, the leads that were not real, and the proposed follow-ups.
+8. **Close, and forward.** A review lane does not wait for the reviewed pull request to merge, nor sit in DONE: it is ready to close as soon as every `post` node is done (or the user said no at `approve`, so nothing is posted) or its findings were forwarded. Run the cleanup check (section 6) right after recording the posts or the `approve` no; it puts the lane under NEEDS YOU with the close question. When it also prints `FORWARD <lane> <pr url> <owner repo> <owner lane> <agent|-> <node|->` (from `review-owner.sh --pr <url>`: the open lane whose branch is the pull request's head branch, in any repository with lanes, and its implementer when live), ask the user first, once per line: "Send the N findings of review <lane> to <owner lane>/<agent>?" (N from the summary's count line).
+   - **Yes**: send that agent, with the `herdr:prompt` skill, the summary's "Prompt for AI Agents" block exactly as the summary holds it (with the link to the posted review, if any). Then reopen the owner's node in the owner's repository: `lane.sh node --lane <owner lane> --node <node> --status running --agent <agent> --note "findings of review <lane> forwarded" --repo <owner repo>` (and `lane.sh set --key status --value open` there if that lane was done), and record it on the review lane: `lane.sh set --lane <lane> --key forwarded --value <owner lane>/<agent>`. Follow the owner's agent as any running node (section 4).
+   - **No**: `lane.sh set --lane <lane> --key forwarded --value declined`.
+   - Agent `-` (the owner's implementer is not running): say so, and ask whether to start one on that node with the block as its brief, or not to forward.
+   A lane with `forwarded` set is never offered again; a forwarded lane is ready to close even before it posted. Then ask the close question as for any `CLEANUP` lane.
 
 ## Custom graphs (`plan` lanes)
 
@@ -139,10 +145,11 @@ When the planner's lane is done, validate its file: `check-pattern.sh <file> --r
 
 ## 6. After a lane
 
-Never leave noticing a merge to the user. Run `bash "../../scripts/cleanup.sh" check --repo R` before every report (section "Reports") and after recording a lane done. For each lane whose status is `done` it prints:
+Never leave noticing a merge to the user. Run `bash "../../scripts/cleanup.sh" check --repo R` before every report (section "Reports") and after recording a lane done. For each lane whose status is `done`, and each review lane that is finished while still open (Reviews, step 8), it prints:
 
-- `CLEANUP <lane> (<why>)`: ready. Its pull request is `MERGED` (the recorded `pr`, else the one for its branch), its checkout is clean and has no commit beyond the pull request's head. A review lane (branch `look/pr-<n>`) is ready once it is done, with no merge; a report lane once nothing in it is unpushed. The script has already put the lane under NEEDS YOU with a cleanup question (`lane.sh ask`) and a Herdr notification. It never removes anything itself.
+- `CLEANUP <lane> (<why>)`: ready. Its pull request is `MERGED` (the recorded `pr`, else the one for its branch), its checkout is clean and has no commit beyond the pull request's head. A review lane (pattern `review`, a review stack, or branch `look/pr-<n>`) is ready once it posted, the user decided not to post, or it was forwarded, with no merge; a report lane once nothing in it is unpushed. The script has already put the lane under NEEDS YOU with a cleanup question (`lane.sh ask`) and a Herdr notification. It never removes anything itself.
 - `BLOCKED <lane> (<reason>)`: merged, but the checkout is dirty or has unpushed commits (or no checkout was found). It is never removed; the lane is under NEEDS YOU with that reason, asked once per reason.
+- `FORWARD <lane> <pr url> <owner repo> <owner lane> <agent|-> <node|->`: before a review lane's `CLEANUP` or `PENDING` line, while its findings were neither forwarded nor declined: ask to forward them first (Reviews, step 8).
 - `PENDING`, `WAIT` (not merged yet), `DECLINED`: nothing to do.
 
 Ask the user to confirm each `CLEANUP` lane, with the question and the worktree path. The question being asked is not a yes. Only on the user's yes: record it, `lane.sh answer --lane L --text "<their answer>"` and `lane.sh set --lane L --key cleanup --value confirmed`, then run `bash "../../scripts/cleanup.sh" run --lane L --repo R`. It refuses without that recorded yes (`NOT CONFIRMED`); otherwise it checks again, closes the lane's agent and gate tabs (`close-done.sh`), removes the worktree with `herdr worktree remove --workspace <id>` (never `--force`) and closes the lane (`lane.sh close`). The branch is kept. If it refuses or the removal fails, show the user its message; never retry with `--force`. On a no: `lane.sh answer --lane L --text "<answer>"` and `lane.sh set --lane L --key cleanup --value declined`; the lane is not asked again. For a `BLOCKED` lane, relay the user's decision; the next check asks again only when the reason changes.
