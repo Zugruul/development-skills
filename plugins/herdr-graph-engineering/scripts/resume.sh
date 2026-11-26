@@ -98,7 +98,7 @@ while IFS="$(printf '\t')" read -r root lane; do
     [ -n "$lane" ] || continue
     f="$(lane_file "$root" "$lane")"
     extra='{}'
-    [ -f "$f" ] && extra="$(read_json "$f" | jq -c '{done: (.done // []), done_extra: (.done_extra // []), notes: (.notes // [])}')"
+    [ -f "$f" ] && extra="$(read_json "$f" | jq -c '{cleanup: (.cleanup // ""), done: (.done // []), done_extra: (.done_extra // []), notes: (.notes // [])}')"
     lanes="$(jq -c --argjson v "$view" --argjson e "$extra" --arg r "$root" --arg l "$lane" \
         '. + [($v[] | select(.root == $r and .lane == $l)) + $e]' <<<"$lanes")"
 done < <(jq -r '.[] | select(.section != "closed") | [.root, .lane] | @tsv' <<<"$view")
@@ -133,8 +133,11 @@ def next:
       elif .section == "done" then
         if (openprs | length) > 0 then "ask the user to merge #\(openprs[0].number)" + (if openprs[0].isDraft then " (it is a draft: ask before marking it ready)" else "" end)
         elif ($unmet | length) > 0 then "finish extra done: \($unmet | join("; "))"
-        elif ((.done | index("draft-pr")) != null) and (.prs | length) == 0 then "no pull request known: run resume.sh --fetch, then ask the user"
-        else "offer cleanup" end
+        elif (.cleanup // "") == "confirmed" then "cleanup.sh run --lane \(.lane) --repo \(.root) (the user said yes)"
+        elif (.cleanup // "") == "declined" then "nothing: the user declined cleanup"
+        elif (.cleanup // "") == "ready" then "ask the user to confirm cleanup (cleanup.sh check already asked; their yes or no is not recorded yet)"
+        elif (.cleanup // "") | startswith("blocked") then "cleanup \(.cleanup): relay it to the user"
+        else "cleanup.sh check --lane \(.lane) --repo \(.root) (offer cleanup)" end
       else "READY" end;
 def block:
     "lane \(.lane)  [\(.section)]  \(.pattern)  repo \(.root)" + (if .branch != "" then "  branch \(.branch)" else "" end)
