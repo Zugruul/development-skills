@@ -20,8 +20,9 @@
 #   lane.sh ask --lane L --text Q [--node N]      record an open question for the user
 #   lane.sh answer --lane L --text A              record the user's answer and clear the question
 #   lane.sh set --lane L --key owner|workspace|branch|gate|status|pr|cleanup --value V
-#                                                 pr: the lane's pull request; cleanup: ready, declined or
-#                                                 blocked: REASON (written by cleanup.sh; declined by the user)
+#                                                 pr: the lane's pull request; cleanup: ready or blocked: REASON
+#                                                 (written by cleanup.sh), confirmed or declined (the user's
+#                                                 answer; confirmed only after ready)
 #   lane.sh close --lane L                        move the file to closed/
 #   lane.sh clear --lane L                        a closed lane: move its file to closed/cleared/ (kept, off the panel)
 # Exit codes: 0 ok, 1 error, 2 usage, 6 invalid pattern or lane, 7 retry limit reached.
@@ -200,7 +201,12 @@ answer)
 set)
     need_lane
     case "$key" in owner | workspace | branch | gate | status | pr | cleanup) ;; *) die "--key must be owner, workspace, branch, gate, status, pr or cleanup" 2 ;; esac
-    [ "$key" != cleanup ] || case "$value" in '' | ready | declined | "blocked: "?*) ;; *) die "cleanup must be ready, declined or blocked: REASON" 2 ;; esac
+    [ "$key" != cleanup ] || case "$value" in '' | ready | confirmed | declined | "blocked: "?*) ;; *) die "cleanup must be ready, confirmed, declined or blocked: REASON" 2 ;; esac
+    # a yes only answers a cleanup question that was asked
+    if [ "$key" = cleanup ] && [ "$value" = confirmed ]; then
+        was="$(yq -r '.cleanup // ""' "$file")"
+        [ "$was" = ready ] || [ "$was" = confirmed ] || die "NOT ASKED: lane $lane has no cleanup question to confirm (cleanup is '$was')" 6
+    fi
     [ "$key" != status ] || case "$value" in open | done) ;; *) die "status must be open or done (use close to close)" 2 ;; esac
     update '.[$k] = $v' "$key = $value" --arg k "$key" --arg v "$value" ;;
 close)

@@ -3,7 +3,7 @@
 # cleanup.sh -- find lanes ready for cleanup and ask the user; clean one up after they said yes.
 # Usage:
 #   cleanup.sh check [--lane L] [--repo DIR]   every done lane (or one): never removes anything
-#   cleanup.sh run --lane L [--repo DIR]       after the user confirmed: close the lane's tabs,
+#   cleanup.sh run --lane L [--repo DIR]       after the user's yes is recorded (cleanup=confirmed): close the lane's tabs,
 #                                              herdr worktree remove (never --force), lane.sh close
 # Why a script: whether a lane may go depends on its pull request, its checkout and its graph,
 # and the user must be asked exactly once per reason; that is decided here and tested.
@@ -15,9 +15,11 @@
 #   report lane (anything else): no commit that is on no other branch or remote.
 # check prints per done lane: CLEANUP <lane> (<why>) when it becomes ready (records cleanup=ready,
 # asks the cleanup question, notifies), PENDING <lane> when that question was already asked,
+# CONFIRMED <lane> when the user said yes (cleanup=confirmed, recorded with lane.sh set),
 # BLOCKED <lane> (<reason>) for a merged lane that must not be removed (asks once per reason),
 # WAIT <lane> (<why>) for a pull request not merged yet, DECLINED <lane> when the user said no.
-# run re-checks the lane and refuses (exit 6) unless it is ready and the question was asked.
+# run refuses (exit 6) unless the user's yes is recorded (cleanup=confirmed) and a fresh check
+# still finds the lane ready; only then does it close tabs or remove anything.
 # GRAPH_GH names the gh binary (default gh), as for prs.sh.
 # Prints CLEANED <lane> (...). Exit codes: 0 ok, 1 error, 2 usage, 6 not ready.
 set -uo pipefail
@@ -111,6 +113,7 @@ check_lane() { # file
         WAIT) printf 'WAIT %s (%s)\n' "$l" "$WHY" ;;
         READY)
             if [ "$was" = ready ]; then printf 'PENDING %s (cleanup question asked)\n' "$l"; return 0; fi
+            if [ "$was" = confirmed ]; then printf 'CONFIRMED %s (the user said yes; cleanup.sh run)\n' "$l"; return 0; fi
             q="Cleanup $l: $WHY. Remove the worktree $WT (workspace ${ws:-?}) and close the lane? Its tabs close; the branch $br is kept."
             lane_sh set --lane "$l" --key cleanup --value ready || exit 1
             lane_sh ask --lane "$l" --text "$q" || exit 1
@@ -142,7 +145,7 @@ run)
     f="$dir/$lane.yaml"
     [ -f "$f" ] || die "NO LANE: $lane" 6
     [ "$(yq -r '.status' "$f")" = "done" ] || die "NOT READY: lane $lane is not done" 6
-    [ "$(yq -r '.cleanup // ""' "$f")" = ready ] || die "NOT ASKED: run cleanup.sh check and ask the user first (cleanup is '$(yq -r '.cleanup // ""' "$f")')" 6
+    [ "$(yq -r '.cleanup // ""' "$f")" = confirmed ] || die "NOT CONFIRMED: lane $lane: the user has not said yes to the cleanup (cleanup is '$(yq -r '.cleanup // ""' "$f")'). Ask, then record the yes: lane.sh set --key cleanup --value confirmed" 6
     judge "$f"
     [ "$VERDICT" = READY ] || die "NOT READY: $lane: $WHY" 6
     ws="$(yq -r '.workspace // ""' "$f")" br="$(yq -r '.branch // ""' "$f")"
@@ -154,7 +157,6 @@ $(printf '%s\n' "$tabs" | grep -E '^KEEP [^ ]+ \((running|blocked|agent is )')" 
     fi
     out="$(herdr worktree remove --workspace "$ws" 2>&1)" || die "WORKTREE NOT REMOVED: herdr worktree remove --workspace $ws failed: $out
 The lane stays open; tell the user."
-    lane_sh answer --lane "$lane" --text "cleanup confirmed" || exit 1
     lane_sh close --lane "$lane" || exit 1
     printf '%s\n' "$tabs" | grep -E '^(CLOSE|GONE) ' || true
     printf 'CLEANED %s (worktree %s removed, lane closed, branch %s kept)\n' "$lane" "$WT" "$br" ;;
