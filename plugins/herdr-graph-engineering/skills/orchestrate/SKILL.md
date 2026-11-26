@@ -40,6 +40,7 @@ Scripts (all `bash "../../scripts/<name>"`):
 | `check-pattern.sh --name P --repo R` | validate a pattern |
 | `make-review-stack.sh --pr URL --pr URL ... --out FILE` | the graph for reviewing related pull requests together |
 | `review-owner.sh --pr URL` | which open lane (any repository with lanes) owns a reviewed pull request, and its live implementer |
+| `feedback.sh state / add / due / lesson / lessons / used / show / sanitize` | the feedback loop (section "Feedback loop"): raw notes outside every repository, and the sanitiser that refuses task details in anything bound for a repository |
 
 For every Herdr step use the `herdr` plugin's skills: `herdr:worktree`, `herdr:agent`, `herdr:prompt`, `herdr:listen`. Do not repeat what they do.
 
@@ -54,6 +55,8 @@ For every Herdr step use the `herdr` plugin's skills: `herdr:worktree`, `herdr:a
 
 At the start of every orchestrator session, record where it lives (session name `graph`, or your agent name when that is taken):
 `bash "../../scripts/session.sh" set --key pane --value "$HERDR_PANE_ID"`, then `--key orchestrator --value <your name>` and `--key scratch --value <your scratch directory>` (add `--session <name>` to each when it is not `graph`). The hooks find the session by this pane. Keep the session and lane files current as section "Keep state outside the chat" says.
+
+Then ask once whether to turn the **feedback loop** on for this session, as the `herdr-graph-engineering:feedback-loop` skill does: **off by default** (Off is the first option; no answer is off), recorded with `bash "../../scripts/session.sh" set --key feedback --value on|off`. Do not ask when `bash "../../scripts/feedback.sh" state` already shows `on` (the user turned it on with that skill), nor after a compaction: the `RESUME` block's `FEEDBACK LOOP:` line holds the answer.
 
 Check the graph panel: `herdr plugin list --json | jq -r '.result.plugins[] | select(.plugin_id == "herdr-graph-engineering.graph") | .enabled'`. Not installed: offer once, with the command `herdr plugin install Zugruul/development-skills/plugins/herdr-graph-engineering`; run it only if the user says yes (it shows its own preview). Installed and enabled: open it with `herdr plugin action invoke herdr-graph-engineering.graph.toggle`, unless a panel is already open in this tab.
 
@@ -173,10 +176,28 @@ Never leave noticing a merge to the user. Run `bash "../../scripts/cleanup.sh" c
 - `BLOCKED <lane> (<reason>)`: merged, but the checkout is dirty or has unpushed commits (or no checkout was found). It is never removed; the lane is under NEEDS YOU with that reason, asked once per reason.
 - `FORWARD <lane> <pr url> <owner repo> <owner lane> <agent|-> <node|->`: before a review lane's `CLEANUP` or `PENDING` line, while its findings were neither forwarded nor declined: ask to forward them first (Reviews, step 8).
 - `PENDING`, `WAIT` (not merged yet), `DECLINED`: nothing to do.
+- `FEEDBACK <lane> (...)`: the feedback loop is on and you have not written your feedback note for that lane. Collect it before `cleanup.sh run` (section "Feedback loop"); `run` refuses with `FEEDBACK DUE` until then.
 
 Ask the user to confirm each `CLEANUP` lane, with the question and the worktree path. The question being asked is not a yes. Only on the user's yes: record it, `lane.sh answer --lane L --text "<their answer>"` and `lane.sh set --lane L --key cleanup --value confirmed`, then run `bash "../../scripts/cleanup.sh" run --lane L --repo R`. It refuses without that recorded yes (`NOT CONFIRMED`); otherwise it checks again, closes the lane's agent and gate tabs (`close-done.sh`), removes the worktree with `herdr worktree remove --workspace <id>` (never `--force`) and closes the lane (`lane.sh close`). The branch is kept. If it refuses or the removal fails, show the user its message; never retry with `--force`. On a no: `lane.sh answer --lane L --text "<answer>"` and `lane.sh set --lane L --key cleanup --value declined`; the lane is not asked again. For a `BLOCKED` lane, relay the user's decision; the next check asks again only when the reason changes.
 
 The graph panel's `[x]` on a DONE lane sends you "Clean up lane L": treat it as the user asking for this cleanup: run `cleanup.sh check --lane L --repo R` and still confirm before `cleanup.sh run`. `lane.sh clear --lane L` only moves a closed lane's file to `closed/cleared/` (the panel's `[x]` on a CLOSED lane, `[clear all reviews]` and `[clear all]`). `lane.sh restore --lane L` moves a closed lane's file back with its last status (the panel's `[restore]`); it brings back the record only, so if the user wants to work on it again, recreate the worktree and agents as for a new lane.
+
+## Feedback loop (only when it is on)
+
+The loop is off unless the user turned it on (section 1, or the `herdr-graph-engineering:feedback-loop` skill at any time). While it is off, skip this section: `feedback.sh add` refuses and `cleanup.sh` prints no `FEEDBACK` line.
+
+**Collect, before a lane is cleaned up.** When `cleanup.sh check` prints `FEEDBACK <lane>`, before `cleanup.sh run`:
+
+1. Ask each agent of the lane that is still live, once, with the `herdr:prompt` skill: "Before this lane closes: how could the whole flow have been better: the pattern, your role and brief, the gates, the reviews, the panel, the scripts and how the orchestrator ran you? Name what cost time, retries or questions, and what you would change, in a few lines. Do not change any file." Record each answer as it is: `bash "../../scripts/feedback.sh" add --from <agent name> --lane L --node N --repo R --text "<answer>"`. A gone agent gives nothing; do not start one for this.
+2. Write your own note on the same question (the lane file's retries, questions and failures, what you had to fix by hand): `bash "../../scripts/feedback.sh" add --from orchestrator --lane L --repo R --text "..."`. "Nothing to add" is a valid note. This clears the `FEEDBACK` line.
+
+Raw notes may name the task. They stay in the user's state folder (`feedback.sh path`) and never go into a brief, a commit, a pull request or any repository.
+
+**Notes become lessons.** After writing notes, read `feedback.sh show` and write each new general lesson: `bash "../../scripts/feedback.sh" lesson --text "<lesson>"`. A lesson states the general problem and the change to the flow ("a gate's result was lost when the caller died; gate.sh should record it itself"), never a detail of a task: no repository, service, product or people names, paths or file names, branches, pull request, issue or ticket numbers, links, commit ids, code, emails, secrets or the user's own words. The sanitiser refuses a lesson holding any of them (`LEAK <kind> line N`, exit 3). Rewrite it more generally; never work around the check (a name spelled differently, a quote paraphrased closely).
+
+**Improvement lane.** When 3 or more lessons are open (the `FEEDBACK LOOP:` line of the resume block, `feedback.sh lessons`), when the session ends, or when the user asks, offer an improvement lane, and start it only on their yes, as any new lane (section 2). It runs in the plugin's own source repository (ask for its checkout once and keep it as a standing answer; the installed plugin folder is not a repository), with the `solo` pattern and that repository's own gate. Its brief is the output of `feedback.sh lessons` plus this rule, and nothing else: change only the plugin's instructions, skills, roles, patterns, references and scripts (with their tests), each change traced to a lesson, and describe only the general lesson in commits and the pull request. Never paste notes, lane files, reports or other lanes' briefs into it.
+
+Before its pull request opens (or its draft is updated), write the body to a file and run `bash "../../scripts/feedback.sh" sanitize --file <body>` and `git -C <worktree> log --format=%B <base>..HEAD | bash "../../scripts/feedback.sh" sanitize`; both must pass (the repositories and lanes in the session's notes are denied words already; add `--repo` or `--deny` for any other). Read the diff yourself for task details as well: the sanitiser checks text, not judgement. On a leak, send the `LEAK` lines back to the agent. Once the pull request is open: `feedback.sh used --all --ref <its url>`.
 
 ## Reports
 
@@ -213,3 +234,4 @@ When the user asks how the lanes went overall, run `bash "../../scripts/measure.
 5. Every lane-file write goes through `lane.sh`. Never edit a lane file by hand, never let a lane's agent touch it.
 6. One writer per lane: never start two agents with write access in the same lane checkout.
 7. A lane never starts another lane.
+8. With the feedback loop on, nothing bound for a repository carries a detail of a task: an improvement lane gets only lessons that passed `feedback.sh`, and its commits and pull request pass `feedback.sh sanitize`.

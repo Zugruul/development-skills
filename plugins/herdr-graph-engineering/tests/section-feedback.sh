@@ -107,6 +107,7 @@ out="$(printf 'Line one is general.\nThe agent edited src/x/y.ts.\nLine three is
 check_rc "--strip keeps the clean lines" 0 "$rc"
 check "--strip prints the clean lines" "Line three is general too." "$out"
 check_absent "--strip drops the leaking line" "src/x" "$out"
+# shellcheck disable=SC2016 # literal backticks
 out="$(printf 'General.\n```\nsecret code\n```\nAfter.\n' | f feedback sanitize --strip 2>/dev/null)"
 check_absent "--strip drops every line of a fenced block" "secret code" "$out"
 check "--strip keeps lines after the block" "After." "$out"
