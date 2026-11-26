@@ -91,6 +91,7 @@ A new agent often stops before its brief: folder trust, imports of instruction f
 lane.sh new|show|list|node|retry|ask|answer|note|done-extra|set|close|clear|restore   the only writer of lane files
 session.sh set|add|del|show|find                       the only writer of the orchestrator's session file
 resume.sh [--fetch] [--out FILE]                        everything the orchestrator needs after a compaction, one block
+autocompact.sh [print|check] [--pct N] [--write]          compact the orchestrator at 40% of its context: how, per client; is it on
 ready.sh --lane L                                       which nodes can start now
 kind.sh --role R [--not K] [--without K] --list|--kind K|--remember K   the installed kinds (recommended first), the chosen one's arguments, standing choices
 gate.sh --lane L --node N --pane P                      run a gate in a visible tab, record its exit code
@@ -217,6 +218,18 @@ The orchestrator is one long chat. When the client compacts it, the conversation
 ```
 
 **Codex and OpenCode** have no such hook here: after a compaction or in a new session, run `bash <plugin>/scripts/resume.sh` (or start the orchestrate skill again, which runs it first).
+
+### Compacting at 40%
+
+The orchestrator compacts by itself at 40% of its context: early and often, so the chat stays fast and the files carry the state. A plugin cannot set this (Claude Code reads it only from its environment or a settings file's `env`, and plugins ship neither), so `autocompact.sh` prints how and checks it, and writes only with `--write`:
+
+| Client | Setting | Scope it to the orchestrator |
+| --- | --- | --- |
+| Claude Code | `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=40` (documented: the percentage of the auto-compact window at which auto-compaction triggers; it only lowers the threshold) | start only the orchestrator with it, or `autocompact.sh --write` puts it in `<folder>/.claude/settings.local.json` of the folder the orchestrator starts in (backup first; the home folder, which would be the global settings, is refused) |
+| Codex | `model_auto_compact_token_limit` (a token count: 40% of the model's window, `--window`) | `codex -c model_auto_compact_token_limit=N` for the orchestrator only |
+| OpenCode | `compaction.buffer` (the share kept free before automatic compaction: `"60%"`) | the `opencode.json` of the folder the orchestrator starts in |
+
+The orchestrate skill runs `autocompact.sh check` at the start and offers the user the step once when it is off. Lane agents keep the default. In Claude Code the `PreCompact` hook has no matcher, so it runs on an automatic compaction as on `/compact`, and `SessionStart` with `compact` brings the block back either way.
 
 ## Tests
 

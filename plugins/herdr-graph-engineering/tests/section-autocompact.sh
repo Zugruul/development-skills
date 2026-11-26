@@ -78,7 +78,7 @@ check "it keeps the other settings" '["Bash(ls)"]' "$(jq -c '.permissions.allow'
 check "it keeps the other env" "1" "$(jq -r '.env.FOO' "$SL")"
 check "it adds the variable" "40" "$(jq -r '.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' "$SL")"
 check "it backs the file up first" "backup" "$out"
-check "the backup is the old file" "1" "$(ls "$SL".bak.* 2>/dev/null | wc -l | tr -d ' ')"
+check "the backup is the old file" "1" "$(find "$A_DIR/.claude" -name 'settings.local.json.bak.*' | wc -l | tr -d ' ')"
 printf 'not json' >"$SL"
 out="$(ac bash "$AC" print --write 2>&1)"; rc=$?
 check_rc "a broken settings file is refused" 1 "$rc"
