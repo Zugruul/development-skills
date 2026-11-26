@@ -13,8 +13,10 @@
 #
 # KNOWN LIMITATION, stated plainly: this can only enforce what a design
 # record actually declares via its issue field (design-registry.py's
-# for-issue verb). That field is populated by the ui-options skill at
-# generation time (it already knows the issue number in context); every
+# for-issue verb). That field is populated at generation time by the build
+# loop's UI step (it passes "issue" into the ui-design plugin's design-meta
+# block, see skills/build-next/references/ui-design.md -- it already knows the
+# issue number in context); every
 # design backfilled before this field existed (AST-021/022/044/069/083,
 # the voice-visualizer rounds) has no issue set and is therefore invisible
 # to this check. There is no reliable, offline way to derive a board issue

@@ -69,7 +69,7 @@ contracts.
 | [next-task](skills/next-task/SKILL.md) | Select the next eligible board task, honoring priority, dependencies, and comments. |
 | [pr-review-model](skills/pr-review-model/SKILL.md) | Inspect or set the allowed models for the autonomous reviewer identity. |
 | [queue](skills/queue/SKILL.md) | Show upcoming build-loop picks and why tasks may be blocked. |
-| [refine-task-ui](skills/refine-task-ui/SKILL.md) | Turn a selected UI direction into screenshots and actionable issue criteria. |
+| [refine-task-ui](skills/refine-task-ui/SKILL.md) | Turn a UI direction picked through the ui-design plugin into screenshots and actionable issue criteria. |
 | [retrospective](skills/retrospective/SKILL.md) | Triage workflow feedback and maintain identity-brain notes. |
 | [seed-board](skills/seed-board/SKILL.md) | Create board issues from a backlog after complexity scoring and splitting. |
 | [setup-assistant](skills/setup-assistant/SKILL.md) | Scaffold or configure a persistent assistant repo, its persona, and memory. |
@@ -78,6 +78,6 @@ contracts.
 | [setup-project](skills/setup-project/SKILL.md) | Initialize a repo's project config, GitHub Project board, and local-state ignores. |
 | [sync-project-configs](skills/sync-project-configs/SKILL.md) | Dry-run or apply versioned config updates across discovered project repos. |
 | [task-state](skills/task-state/SKILL.md) | Keep the local record of tasks in progress and their TODOs, shared across agents and worktrees. |
-| [ui-mode](skills/ui-mode/SKILL.md) | Inspect or toggle human-directed iterative UI decisions. |
-| [ui-options](skills/ui-options/SKILL.md) | Present UI alternatives in the local decision hub and capture the user's choice. |
 | [whisper-sidecar](skills/whisper-sidecar/SKILL.md) | Install, run, stop, or health-check the private local whisper.cpp speech sidecar. |
+
+Mocking UI options and the human's pick live in the standalone `ui-design` plugin (`ui-design:ui-mode`, `ui-design:ui-options`). The build loop calls those skills by name when ui-design is installed and decides UI itself otherwise; the workflow side (`methodology.iterativeUI`, the issue channel, `design-registry.py` and its move-to-review guard, `refine-task-ui`) stays here — see [`skills/build-next/references/ui-design.md`](skills/build-next/references/ui-design.md).

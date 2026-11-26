@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Stub socat for the hermetic hub tests. Called as
+#   socat TCP-LISTEN:<port>,<options> SYSTEM:<command>
+# It records its arguments in $STUB_SOCAT_DIR/args, "binds" the port by
+# creating $STUB_SOCAT_DIR/held-<port> (a second listener on the same port
+# fails like a real bind does), and stays alive until SIGTERM. When
+# $STUB_SOCAT_REQUEST names a file, it runs the SYSTEM command once with that
+# file as the connection's input, exactly as socat would for one connection,
+# and saves what the command wrote in $STUB_SOCAT_DIR/response.
+set -u
+dir="${STUB_SOCAT_DIR:?STUB_SOCAT_DIR must be set}"
+listen="${1:-}"; system="${2:-}"
+port="${listen#TCP-LISTEN:}"; port="${port%%,*}"
+printf '%s\n' "$@" >"$dir/args"
+held="$dir/held-$port"
+if ! mkdir "$held" 2>/dev/null; then
+    echo "socat E bind(5, {AF=2 127.0.0.1:$port}, 16): Address already in use" >&2
+    exit 1
+fi
+trap 'rmdir "$held" 2>/dev/null; exit 143' TERM INT
+if [[ -n "${STUB_SOCAT_REQUEST:-}" ]]; then
+    /bin/sh -c "${system#SYSTEM:}" <"$STUB_SOCAT_REQUEST" >"$dir/response" 2>"$dir/response.err"
+fi
+while :; do sleep 1 & wait $!; done

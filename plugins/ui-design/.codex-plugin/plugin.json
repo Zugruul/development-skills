@@ -1,0 +1,20 @@
+{
+    "name": "ui-design",
+    "version": "0.1.0",
+    "description": "Mock a UI before it is built and let the human decide: 2-4 real options per decision, served on a local decision hub, audited for contrast and accessibility in both themes, with test ids and optional i18n, and the pick recorded in the page. Standalone; other skills may call it.",
+    "author": {
+        "name": "event-sorcerer",
+        "url": "https://github.com/event-sorcerer"
+    },
+    "skills": "./skills/",
+    "keywords": ["ui", "design", "mockup", "accessibility", "i18n", "testability"],
+    "interface": {
+        "displayName": "UI Design",
+        "shortDescription": "Mock UI options and let the human pick, with accessibility, i18n and test ids built in.",
+        "longDescription": "UI Design mocks a screen or component before implementation as 2-4 genuinely different options at the target's real size, on one page with tabs, a light and dark theme and an optional language toggle. A built-in audit (WCAG contrast, real semantics, target size, input purpose, data-testid on every control, i18n coverage, and axe-core) must pass in every theme and language before the page is shown. The human picks, favorites or annotates on a local decision hub and the answer comes straight back to the agent; the final pick is recorded in the page so later work can find it by tag. Requires bash, jq, git and socat.",
+        "developerName": "event-sorcerer",
+        "category": "Developer Tools",
+        "capabilities": ["Interactive", "Read files", "Write files", "Run shell scripts"],
+        "defaultPrompt": ["Mock three options for the settings screen and let me pick.", "Is iterative UI mode on?", "Turn off UI questions, I'm going AFK."]
+    }
+}

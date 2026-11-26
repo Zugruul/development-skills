@@ -1,0 +1,72 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Decision hub</title>
+<style>
+:root{color-scheme:light dark;--accent:#4f6ef7;--border:#8884;--muted:#888}
+body{font:15px/1.5 system-ui,sans-serif;margin:0 auto;padding:.5rem 1rem 2rem}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}
+.sub{color:var(--muted);font-size:.78rem}
+.sub b{color:inherit;font-weight:600}
+#answered-box{position:relative;font-size:.78rem;color:var(--muted);flex-shrink:0}
+#answered-box summary{cursor:pointer;list-style-position:inside}
+#answered-box[open]>div{position:absolute;right:0;top:calc(100% + .3rem);z-index:90;width:min(480px,90vw);
+  max-height:60vh;overflow:auto;background:Canvas;border:1px solid var(--border);border-radius:10px;padding:.6rem .8rem;box-shadow:0 8px 24px #0004}
+.card{margin:1rem 0}
+.card.blocking iframe{outline:2px solid var(--accent);outline-offset:-2px;border-radius:12px}
+iframe{width:100%;height:88vh;border:0;display:block}
+.done{border:1px solid var(--border);border-radius:12px;padding:.7rem 1rem;font-size:.88rem}
+.done b{display:block;margin-bottom:.3rem}
+.done pre{white-space:pre-wrap;background:#8881;border-radius:8px;padding:.6rem .8rem;font-size:.82rem}
+.empty{color:var(--muted);text-align:center;padding:3rem 0}
+details{margin-top:1.5rem}summary{cursor:pointer;color:var(--muted)}
+</style></head><body>
+<div class="top">
+<div class="sub"><b>Decision hub</b> · keep this tab open — answers reach the agent automatically</div>
+<details id="answered-box"><summary>Answered (<span id="ans-n">0</span>)</summary><div id="answered"></div></details>
+</div>
+<div id="pending"></div>
+<script>
+const seen = new Set(); let notifOk = false; let hubRev = null;
+document.addEventListener('click', () => { if (!notifOk && 'Notification' in window) { Notification.requestPermission(); notifOk = true; } }, {once: true});
+async function tick(){
+  let st; try { st = await (await fetch('/api/state')).json(); } catch { return; }
+  if (hubRev === null) hubRev = st.hubRev;
+  else if (st.hubRev !== hubRev) { location.reload(); return; }   // hub itself was upgraded
+  const p = document.getElementById('pending');
+  document.title = (st.pending.length ? '('+st.pending.length+') ' : '') + 'Decision hub';
+  const have = new Set([...p.querySelectorAll('.card')].map(c => c.dataset.id));
+  for (const d of st.pending) {
+    if (have.has(d.id)) continue;
+    const c = document.createElement('div');
+    c.className = 'card' + (d.blocking ? ' blocking' : ''); c.dataset.id = d.id;
+    c.innerHTML = '<iframe src="/decision/' + encodeURIComponent(d.id) + '?rev=' + d.rev + '"></iframe>';
+    c.dataset.rev = d.rev;
+    p.prepend(c);
+    if (!seen.has(d.id) && seen.size && 'Notification' in window && Notification.permission === 'granted')
+      new Notification('Decision needed: ' + d.title);
+  }
+  for (const d of st.pending) {   // hot-reload a card whose page was regenerated
+    const c = p.querySelector('.card[data-id="' + CSS.escape(d.id) + '"]');
+    if (c && c.dataset.rev !== String(d.rev)) {
+      c.dataset.rev = d.rev;
+      c.querySelector('iframe').src = '/decision/' + encodeURIComponent(d.id) + '?rev=' + d.rev;
+    }
+  }
+  st.pending.forEach(d => seen.add(d.id));
+  for (const c of [...p.querySelectorAll('.card')])
+    if (!st.pending.some(d => d.id === c.dataset.id)) c.remove();
+  const a = document.getElementById('answered');
+  document.getElementById('ans-n').textContent = st.answered.length;
+  a.innerHTML = '';
+  for (const d of st.answered.slice().reverse()) {
+    const e = document.createElement('div'); e.className = 'card';
+    e.innerHTML = '<div class="done"><b></b><pre></pre></div>';
+    e.querySelector('b').textContent = d.title || d.id;
+    e.querySelector('pre').textContent = d.selection;
+    a.appendChild(e);
+  }
+  if (!st.pending.length) {
+    if (!p.querySelector('.empty')) p.innerHTML = '<div class="empty">No decisions waiting — the agent is building. New cards appear here automatically.</div>';
+  } else { const e = p.querySelector('.empty'); if (e) e.remove(); }
+}
+tick(); setInterval(tick, 2500);
+</script></body></html>

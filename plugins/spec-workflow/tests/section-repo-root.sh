@@ -225,56 +225,14 @@ else
     echo "ok   board.sh from a worktree: no stray board-cache.json under the worktree's own .claude/"
 fi
 
-# --- ui-hub.py, invoked with a worktree cwd and NO $UI_HUB_STATE override,
-# writes its state dir into the MAIN checkout, not the worktree -- the
-# reported live instance: a design page asked from inside a worktree landed
-# in THAT worktree, invisible to the main checkout / design registry. --------
-out="$(cd "$RR_WT" && env -u UI_HUB_STATE python3 "$PLUGIN/scripts/ui-hub.py" status 2>&1)"
-if [[ -d "$RR_MAIN/.claude/ui-hub" ]]; then
-    echo "ok   ui-hub.py from a worktree: state dir created in the main checkout"
-else
-    echo "FAIL ui-hub.py from a worktree: state dir created in the main checkout (out: $out)"
-    fails=$((fails + 1))
-fi
-if [[ -d "$RR_WT/.claude/ui-hub" ]]; then
-    echo "FAIL ui-hub.py from a worktree: must NOT also create a state dir under the worktree's own .claude/"
-    fails=$((fails + 1))
-else
-    echo "ok   ui-hub.py from a worktree: no stray state dir under the worktree's own .claude/"
-fi
-
-# A real card, asked (no server needed -- `ask` just writes files) from
-# worktree A, must be VISIBLE (same inbox dir, filesystem-level -- what the
-# hub server and any other consumer actually reads) to a genuinely separate
-# ui-hub.py invocation made with worktree B's cwd, not just "the directory
-# exists somewhere". This is the design-registry lane's exact failure mode:
-# a page asked from one worktree was invisible to everything else.
-echo '<h1>card from worktree A</h1>' > "$RR_WT/card-a.html"
-out="$(cd "$RR_WT" && env -u UI_HUB_STATE python3 "$PLUGIN/scripts/ui-hub.py" ask card-a "Card A" "$RR_WT/card-a.html" 2>&1)"
-check "ui-hub.py ask from worktree A: card accepted" "asked 'card-a'" "$out"
-
-echo '<h1>card from worktree B</h1>' > "$RR_WT2/card-b.html"
-out="$(cd "$RR_WT2" && env -u UI_HUB_STATE python3 "$PLUGIN/scripts/ui-hub.py" ask card-b "Card B" "$RR_WT2/card-b.html" 2>&1)"
-check "ui-hub.py ask from sibling worktree B: card accepted" "asked 'card-b'" "$out"
-
-if [[ -f "$RR_MAIN/.claude/ui-hub/inbox/card-a.json" && -f "$RR_MAIN/.claude/ui-hub/inbox/card-b.json" ]]; then
-    echo "ok   ui-hub.py: cards asked from TWO DIFFERENT worktrees both land in the SAME primary-root inbox (cross-worktree visibility)"
-else
-    echo "FAIL ui-hub.py: cards asked from TWO DIFFERENT worktrees both land in the SAME primary-root inbox (cross-worktree visibility)"
-    fails=$((fails + 1))
-fi
-if [[ -f "$RR_WT/.claude/ui-hub/inbox/card-a.json" || -f "$RR_WT2/.claude/ui-hub/inbox/card-b.json" ]]; then
-    echo "FAIL ui-hub.py: no card must be siloed under either worktree's own .claude/ui-hub/"
-    fails=$((fails + 1))
-else
-    echo "ok   ui-hub.py: no card siloed under either worktree's own .claude/ui-hub/"
-fi
+# (ui-hub's main-checkout state dir is tested in the ui-design plugin, which
+# owns the hub now.)
 
 # --- neural-view.py, invoked with a worktree cwd and NO $NEURAL_VIEW_STATE
 # override, writes its state dir (pid/port/repos.json, and the assistant
 # machine-local default it stores on default_store's behalf) into the MAIN
-# checkout, not the worktree -- same silent-invisibility bug class as
-# ui-hub.py above, exercised via `assistant default NAME`, which writes
+# checkout, not the worktree -- same silent-invisibility bug class the
+# ui-hub had, exercised via `assistant default NAME`, which writes
 # through default_store.write_default(state_dir=str(S)) with no server
 # needed. ------------------------------------------------------------------
 out="$(cd "$RR_WT" && env -u NEURAL_VIEW_STATE python3 "$PLUGIN/scripts/neural-view.py" assistant default rr-nv-assistant 2>&1)"

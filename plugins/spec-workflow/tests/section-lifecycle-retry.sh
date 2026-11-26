@@ -8,7 +8,7 @@ declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tes
 echo "== server-lifecycle retry-once (SW-014, SPEC 7.5) =="
 # Meta-test: a deliberately-flaky command (fails once, then succeeds) proves
 # lifecycle_start()'s 3-state logic -- ok / FLAKY (passed on retry) / FAIL --
-# ahead of wiring it into the real neural-view/ui-hub sections below.
+# ahead of wiring it into the real neural-view sections below.
 _lcflag="$(mktemp)"; : >"$_lcflag"   # empty = not yet attempted
 _lc_flaky_cmd() {
     if [[ -s "$_lcflag" ]]; then
@@ -29,11 +29,8 @@ check "meta: a command that fails twice still reports a real FAIL" "FAIL meta: a
 
 rm -f "$_lcflag"
 
-# Anti-pattern check: the ui-hub lifecycle section must no longer hard-code
-# its port (the fixed-port + no-retry combination is exactly what produced
-# the collisions in issue #8 under concurrent lanes). Lives in its own
-# section-ui-hub.sh file post-split; that's the file to inspect now.
-check_absent "ui-hub lifecycle section no longer hard-codes UI_HUB_PORT=4799" "UI_HUB_PORT=4799" "$(cat "$HERE/section-ui-hub.sh")"
+# The ui-hub lifecycle section (and its no-hard-coded-port check, issue #8)
+# moved to the ui-design plugin with the hub itself.
 
 echo "== _rand_port cross-suite port isolation (development-skills#97) =="
 # development-skills#97: under CONCURRENT full-suite runs, one suite's

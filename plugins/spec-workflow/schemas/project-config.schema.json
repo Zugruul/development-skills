@@ -669,7 +669,7 @@
                 "iterativeUI": {
                     "type": "boolean",
                     "default": true,
-                    "description": "When true (default), UI-affecting decisions are delegated to the human via the ui-options skill; a local .claude/ITERATIVE_UI_OFF flag also disables it per-clone."
+                    "description": "When true (default), UI-affecting decisions are delegated to the human via the ui-design plugin's ui-options skill when it is installed; a local .claude/ITERATIVE_UI_OFF flag also disables it per-clone."
                 },
                 "autoMerge": {
                     "type": "boolean",

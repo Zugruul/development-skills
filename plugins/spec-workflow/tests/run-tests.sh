@@ -103,10 +103,7 @@ source "$HERE/_lib.sh"
 # name minus the `section-` prefix and `.sh` suffix) CONTAINS <name> as a
 # substring. Repeatable and comma-separated: `--section board-queue`,
 # `--section a,b`, and `--section a --section b` all work; the union runs in
-# the registered SECTIONS order below (so the load-bearing ui-hub ->
-# neural-view-lifecycle teardown pairing is preserved whenever both halves
-# are selected — filtering to only ONE half is allowed but then that pair's
-# create/teardown is a harmless no-op, not a failure). The SPEC_TESTS_SECTION
+# the registered SECTIONS order below. The SPEC_TESTS_SECTION
 # env var is an equivalent filter source (comma-separated); it exists so
 # gate.sh can DETECT a filtered invocation and refuse to record a pass for it
 # — the recorded gate pass must always be a full-suite run (see gate.sh).
@@ -159,12 +156,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Sections are mostly independent (each mints/tears down its own temp dirs
-# and ports), EXCEPT one documented pair: section-ui-hub.sh creates the
-# _hubtmp temp dir and section-neural-view-lifecycle.sh tears it down (see
-# the rm -rf there), so ui-hub MUST precede neural-view-lifecycle below.
-# This array's order is otherwise just the original file's top-to-bottom
-# order, but that one pair is load-bearing -- don't reorder it blindly.
+# Sections are independent (each mints/tears down its own temp dirs and
+# ports). This array's order is the original file's top-to-bottom order.
 SECTIONS=(
     section-plugin-root.sh
     section-syntax.sh
@@ -184,7 +177,6 @@ SECTIONS=(
     section-task-state.sh
     section-checkpoint.sh
     section-wip-admission.sh
-    section-ui-hub.sh
     section-neural-view-template.sh
     section-neural-view-search-shortcut.sh
     section-neural-view-lifecycle.sh
@@ -318,6 +310,7 @@ section-semver.sh
     section-assistant-artifacts.sh
     section-assistant-artifact-panel.sh
     section-design-registry.sh
+    section-ui-design-split.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then
@@ -341,8 +334,8 @@ fi
 #   * a plugin file (under this plugin, not markdown) that NO section covers ->
 #     the full suite, since its coverage is unknown;
 #   * sections marked `# gate-scope: always` (whole-tree lints) always run.
-# Selection keeps the registered SECTIONS order (ui-hub before
-# neural-view-lifecycle). CI still runs the full suite on every PR.
+# Selection keeps the registered SECTIONS order. CI still runs the full
+# suite on every PR.
 _select_changed() {
     local _top _pfx _out _plugin_p
     if [[ -z "${GATE_CHANGED_FILES+set}" ]]; then

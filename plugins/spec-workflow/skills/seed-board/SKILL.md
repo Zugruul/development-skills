@@ -33,7 +33,7 @@ Idempotent: existing issues (matched by exact `"<task-id>: <title>"`) are skippe
 
 Issue bodies are thorough by construction: the seeder embeds each task's FULL backlog block
 (description, dependency notes, acceptance criteria, spec-§ citations) plus an artifacts &
-references section (spec path, per-epic design doc when one exists, where ui-mode/PR
+references section (spec path, per-epic design doc when one exists, where ui-design/PR
 artifacts attach), with the backlog marked authoritative on drift. A `! <id>: task block not
 found` warning means the backlog bullet doesn't start with `- **<task-id>**` — fix the
 backlog formatting (or accept a title-only body) before considering the seed complete.

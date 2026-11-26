@@ -1,28 +1,30 @@
 ---
 name: refine-task-ui
-description: Refines an existing board task's UI through the iterative-UI decision hub, then captures the finalized design as real screenshots and folds them — plus the resolved acceptance criteria — back into the task's issue body. Use for the /refine-task-ui command with a task id — when a task's UI direction is still being iterated (or hasn't started) and the human wants concrete visual artifacts attached to the task, not just a hub link.
+description: Refines an existing board task's UI through the ui-design plugin's decision hub, then captures the finalized design as real screenshots and folds them — plus the resolved acceptance criteria — back into the task's issue body. Use for the /refine-task-ui command with a task id — when a task's UI direction is still being iterated (or hasn't started) and the human wants concrete visual artifacts attached to the task, not just a hub link.
 ---
 
 # Refine a task's UI, then attach the finalized design to the task
 
-`ui-options` gets a human to a decision inside the hub. This skill is the step after: once that decision lands, turn it into something a future implementer (a dev agent or a human) can build against without reopening the hub — real screenshots, embedded in the task issue, next to a description that says exactly what to build.
+The ui-design plugin's `ui-design:ui-options` skill gets a human to a decision inside its hub. This skill is the spec-workflow step after: once that decision lands, turn it into something a future implementer (a dev agent or a human) can build against without reopening the hub — real screenshots, embedded in the task issue, next to a description that says exactly what to build.
 
 Two things this is NOT:
-- It does not replace `ui-options` — it calls it (or resumes an already-running round) rather than duplicating the mockup-building/serving logic.
+- It does not replace `ui-design:ui-options` — it calls it by skill name (or resumes an already-running round) rather than duplicating the mockup-building/serving logic. The board side (design id = task id, the `"issue": <N>` key in `design-meta`, issue comments, `design-registry.py`) follows `references/ui-design.md` in the build-next skill (`../../skills/build-next/references/ui-design.md`).
 - It does not implement the UI — it stops once the task's issue is refined; implementation is a normal build-loop task afterward.
 
-## 0. Mode check
+## 0. Plugin and mode check
+
+This skill needs the ui-design plugin: its skills (`ui-design:ui-options`, `ui-design:ui-mode`) must be available in this session. If the ui-design plugin is not installed, stop and tell the human: refining a task's UI needs it (`claude plugin install ui-design@development-skills`); otherwise the UI is decided in the normal build loop.
 
 ```bash
-bash "../../scripts/ui-mode.sh" status
+bash "../../scripts/iterative-ui.sh"
 ```
-OFF → tell the human iterative UI is off and ask whether to turn it on for this refinement (`ui-mode.sh on`) or decide the UI yourself instead (skip this skill). Don't silently proceed either way.
+OFF → tell the human iterative UI is off and ask whether to turn it on for this refinement (the `ui-design:ui-mode` skill with `on`; a project-wide `methodology.iterativeUI=false` is a repo change, confirm first) or decide the UI yourself instead (skip this skill). Don't silently proceed either way.
 
 ## 1. Resolve the task and its round state
 
-Take the task id/issue number from the argument. `board.sh show <issue#>` to read its body and comments — a task already run through `ui-options` will have `### UI selection` comments on it (round recaps, favorite/aspect picks, or a final `Use:`). Check `python3 "../../scripts/ui-hub.py` status`` for any open card matching this task.
+Take the task id/issue number from the argument. `board.sh show <issue#>` to read its body and comments — a task already run through `ui-options` will have `### UI selection` comments on it (round recaps, favorite/aspect picks, or a final `Use:`). Check the hub's status through `ui-design:ui-options` for any open card matching this task.
 
-- **No round has run yet** → invoke the `ui-options` skill to build round 1 from the task's spec/acceptance criteria — including its step 2 instruction to arm the Send-watcher immediately after `$HUB ask` (see step 2 below, same requirement, not optional here either). Then go to step 2 and wait.
+- **No round has run yet** → invoke the `ui-design:ui-options` skill (design id = task id, `"issue": <N>` in its `design-meta` block) to build round 1 from the task's spec/acceptance criteria — including its step 2 instruction to arm the Send-watcher immediately after `$HUB ask` (see step 2 below, same requirement, not optional here either). Then go to step 2 and wait.
 - **A round is mid-exploration** (favorite/aspects/notes on file, no `Use:` yet) → synthesize the next round per `ui-options`'s own step-4 protocol (favorite + liked aspects → one refined variant + 1-2 alternatives; element notes → apply verbatim to the elements they target) and re-ask. Then go to step 2 and wait.
 - **A round already ended in `Use: Option X (as-is, final)`** → skip straight to step 3, no new round needed.
 
@@ -30,12 +32,12 @@ Take the task id/issue number from the argument. `board.sh show <issue#>` to rea
 
 This is the same loop `ui-options` runs — you are not inventing new protocol, just staying in it until it reaches a stopping point. That includes its watcher requirement: **every `ask`/re-`ask` you issue in this loop (initial round in step 1, or a re-ask from 2.2/2.3) must immediately get its own armed background watcher**, exactly as `ui-options` step 2 specifies — a Bash `run_in_background` loop polling for `outbox/<task-id>-r<N>.json` to appear. Reuse that mechanism rather than re-deriving it: this skill has no separate "wait" logic of its own, it defers to `ui-options`'s.
 
-1. `python3 "../../scripts/ui-hub.py" answers --consume --id <task-id>-r<N>` — **always scope `--id` to your own round**, never a bare `--consume`: the hub is shared across concurrent agents/tasks, and an unscoped consume drains and archives every other pending task's answer too, stranding it where its real owner won't find it. (Also check the issue's `### UI selection`/`### A11y fixes requested` comments — either channel can carry the answer.) The armed watcher is what actually catches the answer as it arrives; this poll is the fallback for a resumed session or a missed watcher, not the primary mechanism.
+1. Collect the round's answer through `ui-design:ui-options` (its answers step, scoped to `<task-id>-r<N>`) — **always scope it to your own round**, never a bare `--consume`: the hub is shared across concurrent agents/tasks, and an unscoped consume drains and archives every other pending task's answer too, stranding it where its real owner won't find it. (Also check the issue's `### UI selection`/`### A11y fixes requested` comments — either channel can carry the answer.) The armed watcher is what actually catches the answer as it arrives; this poll is the fallback for a resumed session or a missed watcher, not the primary mechanism.
 2. An `### A11y fixes requested` answer is partial feedback, not a decision — fix exactly the ticked issues (re-run the a11y gate from `ui-options` step 1's headless-Chrome check before re-serving), re-`ask` the same round id, keep waiting.
 3. Any other real UI feedback (favorite, liked aspects, element notes, no `Use:` yet) → apply it to a new round (mirroring the note-application discipline you'd use inside `ui-options` — an element note is scoped to the exact element it names, never generalized to the whole design) and re-serve. Before re-serving, re-run the a11y gate — a fix for one note can regress a different element or theme (a CSS rule scoped too broadly, a color reused in a context it wasn't tuned for); catch that now, not after the human re-opens the hub. **If a screenshot/computed-style check would resolve an ambiguous bug report faster than guessing from a static file read, use it** — an "icon looks blank" or "misaligned" note is a rendering claim, not just a spec change; verify what's actually on screen (browser automation / devtools, computed styles, `getBoundingClientRect`) before deciding whether it's a real bug or a legibility tweak, the same way you'd verify any other claim before fixing it.
 4. `Use: Option X (as-is, final)` → the loop ends, go to step 3.
 
-Acknowledge each round on the issue exactly like `ui-options` does (`board.sh comment N`: "Round K in the hub — <what changed>").
+Acknowledge each round on the issue as `references/ui-design.md` says (`board.sh comment N`: "Round K in the hub — <what changed>").
 
 ## 3. Capture the finalized design as real screenshots
 
@@ -58,13 +60,13 @@ Once a final `Use:` has landed, don't hand the human a static export of the raw 
 - **Every captured screenshot, linked correctly for this repo's visibility** — check first: `gh repo view <owner>/<repo> --json isPrivate`.
   - **Public repo**: embed inline via `![alt](https://raw.githubusercontent.com/<owner>/<repo>/<default-branch>/docs/ui-options/screenshots/<path>.png)` — a plain relative path does NOT render on a GitHub issue (issues aren't repo-relative the way READMEs are), but the raw-content URL renders fine for anyone.
   - **Private repo**: `raw.githubusercontent.com` 404s on an unauthenticated `<img>` fetch (a private repo's raw CDN needs a token the browser's `<img>` tag never sends) — do NOT use the raw-content URL, it will look fine to you in the API response and then 404 for every actual viewer. Link instead via the plain `https://github.com/<owner>/<repo>/blob/<default-branch>/<path>` blob URL (a normal authenticated github.com page any repo-access viewer can open) and say plainly in the issue that it's a private repo so it won't preview inline, only link out. There is no CLI/API path to the drag-and-drop `user-attachments` upload flow that DOES preview inline on private repos — that requires the human to attach the file through the web UI themselves if true inline preview matters more than a working link.
-- **REQUIRED, not optional — link the interactive mockup source file itself, not just its static screenshots.** Screenshots are a frozen rendering of one moment; the mockup HTML is the actual artifact (every option, every round, live theme toggle, the real markup/CSS an implementer can diff their build against). Every refined issue MUST include a direct blob link to the mockup file (`https://github.com/<owner>/<repo>/blob/<default-branch>/docs/ui-options/<file>.html`) alongside the screenshots — never screenshots alone. Since GitHub's blob view only shows HTML source (it does not execute the page), also tell the reader how to run it live: clone + open the file directly, or re-serve it locally the same way it was iterated on (`ui-hub.py start` + `ui-hub.py ask <id> "<title>" <path>`, then open the printed `http://127.0.0.1:<port>` URL). If earlier rounds exist as separate files (a round-1 exploration superseded by round 2), link those too for history — don't leave them orphaned once a later round supersedes them.
+- **REQUIRED, not optional — link the interactive mockup source file itself, not just its static screenshots.** Screenshots are a frozen rendering of one moment; the mockup HTML is the actual artifact (every option, every round, live theme toggle, the real markup/CSS an implementer can diff their build against). Every refined issue MUST include a direct blob link to the mockup file (`https://github.com/<owner>/<repo>/blob/<default-branch>/docs/ui-options/<file>.html`) alongside the screenshots — never screenshots alone. Since GitHub's blob view only shows HTML source (it does not execute the page), also tell the reader how to run it live: clone + open the file directly, or re-serve it locally the same way it was iterated on (ask it again through `ui-design:ui-options`, then open the printed `http://127.0.0.1:<port>` URL). If earlier rounds exist as separate files (a round-1 exploration superseded by round 2), link those too for history — don't leave them orphaned once a later round supersedes them.
 - **A concrete "key decisions to build against" list** — translate what's visually obvious in the screenshot into words a future implementer (who may never open the mockup HTML) needs: layout structure, which actions live where, state-dependent visuals (e.g. an auth-failed tile's desaturated avatar), persistence behavior for any toggle, anything the mockup's own annotations/element-notes captured that isn't visually self-evident from a screenshot alone.
 - **Refined/expanded acceptance criteria** — concrete, checkable items a dev agent or human can build against directly, not just "matches the mockup." Preserve any AC the issue already had that's still valid; add what the finalized UI decision makes concrete (the specific component/page path if known, the specific actions/routes it wires to, explicit test/gate requirements per this repo's own standing rules).
 
 Before posting, verify the refined body actually contains BOTH a screenshot link and a mockup-source-file link — a body with only screenshots is an incomplete refinement, not a smaller-but-valid one.
 
-Post a closing comment on the issue (`board.sh comment <issue#>`) summarizing what was locked in and pointing at the refined body — the same way `ui-options` acknowledges each round, but this is the final acknowledgment: decision made, artifacts attached, ready to build.
+Post a closing comment on the issue (`board.sh comment <issue#>`) summarizing what was locked in and pointing at the refined body — the same way each round was acknowledged, but this is the final acknowledgment: decision made, artifacts attached, ready to build.
 
 ## 5. Report
 
