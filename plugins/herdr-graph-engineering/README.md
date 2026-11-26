@@ -102,22 +102,29 @@ herdr plugin install Zugruul/development-skills/plugins/herdr-graph-engineering 
 ```
 
 ```text
- NEEDS YOU (1)
- ▸ why-slow  investigate
-     investigate ?
-     ? Staging or production?
+ NEEDS YOU (1)                                   (bold red)
+ ▎▸ why-slow investigate                         (selected: bar, subtle background)
+    investigate ?                                (? and its question red)
+    ? Staging or production?
+    investigate: /repo/.lanes/why-slow.md        (references and last: grey)
 
- WORKING (1)
-   task-x  solo
-     impl ✓ → tests ⟳ 1/3
+ WORKING (1)                                     (bold yellow)
+    task-x solo                                  (name bold, pattern grey)
+    impl ✓ → tests ⟳ 1/3                         (✓ green, ⟳ and retries yellow, · grey)
+    last: tests failed, retry 1
 
- updated 10:42:07 · every 5s · ⏎ go · a answer · d detail · ? keys
-                             [◷ 5s] [↻]
+ Since last look: why-slow → needs you
+────────────────────────────────────────────────
+ updated 10:42:07 · every 5s · ↵ fold · g go · a answer
+ d detail · ? keys                     [◷ 5s] [↻]
 ```
 
 - `/herdr-graph-engineering:display` opens or closes it. Without the Herdr plugin, `display` prints the same picture as text.
-- Refresh: automatic, every 5s by default (`refresh=10s` in `$(herdr plugin config-dir herdr-graph-engineering.graph)/config` changes the start); `[◷ 5s]` or `t` cycles 5s, 10s, 15s, 30s, 1m, 5m; `[↻]` or `r` refreshes now. The footer says when it last read; the two buttons sit on the bottom line, and the panel draws no title of its own (Herdr's pane border shows "Graph").
-- Keys: ↑↓ select a lane; enter jumps to its agent (the blocked one first); `a` answers its question in a popup (the answer goes to the orchestrator chat, which relays it); `d` lane detail; `f` only this lane's agents in Herdr's sidebar, `n` only the agents that need you, `F` all again; `q` closes it.
+- Refresh: automatic, every 5s by default (`refresh=10s` in `$(herdr plugin config-dir herdr-graph-engineering.graph)/config` changes the start); `[◷ 5s]` or `t` cycles 5s, 10s, 15s, 30s, 1m, 5m; `[↻]` or `r` refreshes now. No title of its own (Herdr's pane border shows "Graph"): the lanes start on the first line, and a thin divider and the dim footer sit on the pane's bottom rows, the footer saying when it last read and ending with the two buttons.
+- Colour: plain ANSI, the same in the panel and its popups: section headers bold red / yellow / green, lane names bold, patterns, references, `last:` lines and the footer grey, node marks coloured by state. `NO_COLOR` turns it off.
+- Mouse: click a lane to select it and fold it to its first line (`…` marks a folded lane) or unfold it again; click a button to press it. Herdr passes mouse reports to the panel because the panel asks for them.
+- "Since last look" lists the lanes that moved section since your last key or click.
+- Keys: ↑↓ select a lane; enter or space folds or unfolds it; `g` jumps to its agent (the blocked one first); `a` answers its question in a popup (the answer goes to the orchestrator chat, which relays it); `d` lane detail; `f` only this lane's agents in Herdr's sidebar, `n` only the agents that need you, `F` all again; `q` closes it.
 - Actions to bind in your Herdr config (`[[keys.command]] type = "plugin_action"`): `herdr-graph-engineering.graph.toggle`, `.refresh`, `.next-needs-me`.
 - Ctrl-click a `.md` report path or a GitHub pull request URL to open it in a popup.
 - After a Herdr restart it reopens next to the orchestrator and rewrites the sidebar tokens; a lane whose worktree you remove by hand is closed.
