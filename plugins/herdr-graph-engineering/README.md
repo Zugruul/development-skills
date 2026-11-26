@@ -91,13 +91,30 @@ lane.sh new|show|list|node|retry|ask|answer|set|close|clear   the only writer of
 ready.sh --lane L                                       which nodes can start now
 kind.sh --role R [--not K] [--without K] --list|--kind K|--remember K   the installed kinds (recommended first), the chosen one's arguments, standing choices
 gate.sh --lane L --node N --pane P                      run a gate in a visible tab, record its exit code
+close-done.sh --lane L [--dry-run]                      close the tabs of finished agent and gate nodes (CLOSE/KEEP per node)
+cleanup.sh check | run --lane L                          find lanes ready for cleanup and ask; clean one up after your yes
 status.sh [--text|--line|--json]                        the picture of every lane (display, tab bar)
 check-pattern.sh (FILE | --name P)                      validate a pattern
 make-review-stack.sh --pr URL --pr URL ... --out FILE    the graph for reviewing related pull requests
 check.sh                                                inside Herdr?
 panel.sh / panel-action.sh / popup.sh                   the Herdr panel, its actions and popups
+install-keys.sh [--write]                               the Herdr shortcut for the panel: PREFIX then Alt+G
 measure.sh [--json]                                     how the lanes went: outcome, minutes, retries, questions
 ```
+
+## When a node's tab closes
+
+Every agent and gate node runs in its own tab, recorded in the lane file (`lane.sh node --tab`). After each node record and at lane done the orchestrator runs `close-done.sh`, which decides from the lane's graph:
+
+- an agent tab closes once its node is `done` and passed, no `retry` edge that has not passed can still send work back to it (an implementer stays until its gate and reviewer pass), and no `human` node after it is still undecided (a reviewer stays until `approve`, so it can be asked about its draft);
+- a gate tab closes once its result is recorded as passed; a failed gate stays visible until the retry runs;
+- at lane done or close, every agent and gate tab of the lane closes.
+
+Never closed: a tab not recorded for a node, a running or blocked node, an agent Herdr shows working or blocked, the first tab of the lane's workspace, a tab outside it. The worktree stays until you agree to cleanup.
+
+## Cleanup after a lane
+
+The orchestrator does not wait for you to notice a merge. Before every report and after a lane is done it runs `cleanup.sh check`. A done lane is ready for cleanup when its pull request is merged (the recorded one, else the one for its branch), its checkout is clean and nothing in it is unpushed; a review lane (branch `look/pr-<n>`) is ready once it is done, and a report lane once nothing is unpushed. A ready lane goes under NEEDS YOU with a cleanup question and a Herdr notification, and `status.sh --text` (and the panel) shows `cleanup: ready`. Nothing is removed until you say yes and the orchestrator records it (`cleanup: confirmed`; `cleanup.sh run` refuses without it); then `cleanup.sh run` closes the lane's tabs, removes the worktree with `herdr worktree remove` (never `--force`) and closes the lane. The branch is kept. A merged lane with a dirty checkout or unpushed commits is never removed: it goes under NEEDS YOU with the reason. A no is remembered (`cleanup: declined`).
 
 ## What the orchestrator may do alone
 
@@ -110,6 +127,16 @@ The folder is also a Herdr plugin (`herdr-plugin.toml`): a graph panel next to t
 ```bash
 herdr plugin install Zugruul/development-skills/plugins/herdr-graph-engineering   # or: herdr plugin link <this folder>
 ```
+
+Shortcut: PREFIX then Alt+G opens or closes the panel. Herdr plugins cannot declare keys, so the binding goes in your Herdr `config.toml` (`$HERDR_CONFIG_PATH`, else `~/.config/herdr/config.toml`):
+
+```bash
+bash scripts/install-keys.sh           # prints the binding and where it goes; changes nothing
+bash scripts/install-keys.sh --write   # appends it (backup first), checks it with herdr config check, rolls back if the check fails
+herdr server reload-config             # load it without restarting
+```
+
+It binds `prefix+alt+g` to the `plugin_action` `herdr-graph-engineering.graph.toggle`. Running it again changes nothing when the toggle is already bound (to any key); it refuses when `prefix+alt+g` is taken by something else. Alt chords depend on your terminal (it must send Alt as Meta). The panel itself takes no keys: it is click only.
 
 ```text
  NEEDS YOU (1)
@@ -148,10 +175,11 @@ herdr plugin install Zugruul/development-skills/plugins/herdr-graph-engineering 
 - "Since last look" lists the lanes that moved section since your last key or click.
 - CLOSED: the closed lanes of every repository the panel shows, newest first, folded (unfold one to see its pull requests in their final state); five, then `… n more` (click it to show all). A DONE or CLOSED lane ends with `[x]`, the CLOSED header with `[clear all]`. The first click turns the button into `[confirm]`, a second click on it acts, a click anywhere else puts it back (keys: `x` on the selected lane, `X` for clear all, pressed twice). `[x]` on a DONE lane asks the lane's orchestrator to clean it up, which confirms with you before it removes the worktree; the panel removes nothing itself. On a CLOSED lane, and `[clear all]`, it runs `lane.sh clear`, which moves the lane file from `closed/` to `closed/cleared/` (kept, no longer shown). A closed lane's pull requests are fetched until they are merged or closed.
 - Keys: ↑↓ select a lane; enter or space folds or unfolds it; `g` jumps to its agent (the blocked one first); `a` answers its question in a popup (the answer goes to the orchestrator chat, which relays it); `d` lane detail; `x` close or clear it, `X` clear every closed lane; `f` only this lane's agents in Herdr's sidebar, `n` only the agents that need you, `F` all again; `q` closes it.
-- Actions to bind in your Herdr config (`[[keys.command]] type = "plugin_action"`): `herdr-graph-engineering.graph.toggle`, `.refresh`, `.next-needs-me`.
+- Actions to bind in your Herdr config (`[[keys.command]] type = "plugin_action"`): `herdr-graph-engineering.graph.toggle` (`install-keys.sh` binds it to PREFIX then Alt+G), `.refresh`, `.next-needs-me`.
+- Toggle finds the panel by the pane it opened (kept in the plugin state folder, `$HERDR_PLUGIN_STATE_DIR`), as well as by its terminal title, so a panel that is still starting or lost its title is closed rather than doubled; a panel closed by hand is forgotten and the next toggle opens a new one. Toggles run one at a time, so two quick presses never open two panels in a tab. When the panel does not open, Herdr shows a notification.
 - Ctrl-click a `.md` report path or a GitHub pull request URL to open it in a popup.
 - After a Herdr restart it reopens next to the orchestrator and rewrites the sidebar tokens; a lane whose worktree you remove by hand is closed.
-- It only reads, except `[x]` and `[clear all]` on closed lanes, which go through `lane.sh clear`. Lane files are still written only by `lane.sh`, answers still go through the orchestrator, and it stores nothing: it finds its own pane by its terminal title.
+- It only reads, except `[x]` and `[clear all]` on closed lanes, which go through `lane.sh clear`. Lane files are still written only by `lane.sh`, answers still go through the orchestrator, and the only thing it stores is the pane id of the panel it opened.
 - Clicking the buttons depends on Herdr passing mouse clicks to the pane (`ui.mouse_capture`); the keys always work. The sidebar filters (`f`, `n`, `F`) need `nc` with Unix-socket support.
 
 ## Tests
