@@ -122,7 +122,12 @@ cat >"$D1/prs.json" <<'EOF'
  "task-g": [{"number": 13, "url": "https://github.com/o/r/pull/13", "state": "MERGED", "isDraft": false, "reviewDecision": ""}],
  "task-h": [{"number": 14, "url": "https://github.com/o/r/pull/14", "state": "MERGED", "isDraft": false, "reviewDecision": ""}]}}
 EOF
-printf 'reviewer codex\npr-reviewer codex\n' >"$R_SCRATCH/graph-kinds"
+# standing kind choices in kind.sh's own format, written by kind.sh itself (main's ask-agent-kind)
+R_BIN="$R_TMP/bin"; mkdir -p "$R_BIN"; printf '#!/bin/sh\n' >"$R_BIN/codex"; chmod +x "$R_BIN/codex"
+for role in reviewer pr-reviewer; do
+    PATH="$R_BIN:$FIX/stub-herdr:$PATH" HERDR_STUB_DIR="$R_TMP" XDG_CONFIG_HOME="$R_TMP/config" \
+        bash "$RSC/kind.sh" --role "$role" --session "$R_SCRATCH/graph-kinds" --remember codex >/dev/null
+done
 printf 'folder trust for lane worktrees of this repository: yes\n' >"$R_SCRATCH/graph-dialogs"
 rst "$(jq -cn --arg r2 "$R_REPO2" '{agents: {
     a: {name: "claude-task-a-impl", agent_status: "working", pane_id: "w2:p2"},
@@ -160,6 +165,7 @@ check "queued lanes with their brief" "panel-shortcut" "$(sed -n '/^QUEUED/,/^[A
 check "the queued brief path" "$R_SCRATCH/panel-shortcut-brief.md" "$out"
 check "standing answers" "opencode folder access: Allow always" "$(sed -n '/^STANDING ANSWERS/,/^[A-Z]/p' <<<"$out")"
 check "standing kind choices from the scratch folder" "reviewer codex" "$(sed -n '/^STANDING KINDS/,/^[A-Z]/p' <<<"$out")"
+check "standing kind choices name every remembered role" "pr-reviewer codex" "$(sed -n '/^STANDING KINDS/,/^[A-Z]/p' <<<"$out")"
 check "standing dialog answers from the scratch folder" "folder trust for lane worktrees" "$out"
 check "renames" "lane kinds renamed to ask-agent-kind" "$(sed -n '/^RENAMES/,/^[A-Z]/p' <<<"$out")"
 check "notes" "keep the 3-agent limit" "$(sed -n '/^NOTES/,/^[A-Z]/p' <<<"$out")"
@@ -170,6 +176,10 @@ out="$(r resume --repo "$R_REPO" --out "$R_TMP/snap.md" 2>&1)"; rc=$?
 check_rc "resume --out runs" 0 "$rc"
 check "--out writes the block to the file" "RESUME graph" "$(cat "$R_TMP/snap.md")"
 
+r session --session nosc set --key pane --value w6:p6 >/dev/null
+out="$(R_PANE=w6:p6 r resume --repo "$R_REPO" 2>&1)"
+check "without a recorded scratch folder it says the kind and dialog choices cannot be read" "scratch folder not recorded" "$out"
+rm -f "$R_STATE/herdr-graph/sessions/nosc.yaml"
 out="$(R_PANE=w5:p5 r resume --repo "$R_REPO" 2>&1)"; rc=$?
 check_rc "resume works without a session for this pane" 0 "$rc"
 check "without a session it says so" "no session file" "$out"
@@ -216,6 +226,8 @@ check "orchestrate: queued lanes go in the session file" "add --list queued" "$o
 check "orchestrate: extra done criteria go in the lane file" "lane.sh done-extra" "$orch"
 check "orchestrate: follow-ups go in the lane file" "lane.sh note" "$orch"
 check "orchestrate: never stores secrets" "Never store a token" "$orch"
+check "orchestrate: standing kind choices stay with kind.sh" "standing kind choice stays with \`kind.sh --remember\`" "$orch"
+check "orchestrate: standing dialog answers stay in graph-dialogs" "<scratch>/graph-dialogs" "$(sed -n '/^## Keep state outside the chat/,/^## Measuring/p' <<<"$orch")"
 rd="$(cat "$PLUGIN/README.md")"
 check "README: the /compact focus text" "/compact" "$rd"
 check "README: the plain resume command for other clients" "resume.sh" "$rd"
