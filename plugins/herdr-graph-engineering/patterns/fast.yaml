@@ -1,0 +1,17 @@
+when: "An urgent fix: the user says fast, urgent or hotfix, or wants the pull request as soon as possible. The smallest fix with a focused test; the draft pull request opens before the gate runs."
+inputs: [idea]
+nodes:
+  impl:
+    agent: fast-implementer
+    access: write
+    brief: "{idea}"
+  pr:
+    pr: draft
+    needs: [impl]
+  tests:
+    gate: "{gate}"
+    needs: [pr]
+    retry: { to: impl, max: 3, on: fail }
+done:
+  - gate: tests
+  - draft-pr
