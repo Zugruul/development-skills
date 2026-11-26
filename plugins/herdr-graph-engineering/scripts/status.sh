@@ -6,13 +6,15 @@
 # Without --repo: every repository with a workspace open in Herdr, plus the current one.
 #   --text   NEEDS YOU / WORKING / DONE, one line per lane with its node chain (default)
 #   --line   one short line for Herdr's tab bar
-#   --json   the same facts for a program
+#   --json   the same facts for a program, with each lane's pull requests from prs.sh's cache
 #   --tokens write each live node agent's step into Herdr's sidebar (pane tokens $lane, $node,
 #            $step), so a sidebar row layout can show it; display only, lost on a Herdr restart
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/common.sh
 . "$HERE/src/common.sh"
+# shellcheck source=src/style.sh
+. "$HERE/src/style.sh"
 
 mode="text" repos=""
 while [ $# -gt 0 ]; do
@@ -46,9 +48,12 @@ while IFS= read -r r; do
     d="$(lane_dir "$r" 2>/dev/null)" || continue
     case "$seen" in *"|$d|"*) continue ;; esac
     seen="$seen|$d|"
+    # each lane's pull requests, from prs.sh's cache (read only; never asks gh)
+    prs="$(jq -c '.lanes // {}' "$d/prs.json" 2>/dev/null)" || prs="{}"
+    [ -n "$prs" ] || prs="{}"
     for f in "$d"/*.yaml; do
         [ -f "$f" ] || continue
-        lanes="$(jq -c --argjson l "$(read_json "$f")" '. + [$l]' <<<"$lanes")"
+        lanes="$(jq -c --argjson l "$(read_json "$f")" --argjson p "$prs" '. + [$l + {prs: ($p[$l.lane] // [])}]' <<<"$lanes")"
     done
 done <<EOF2
 $repos
@@ -67,6 +72,7 @@ view="$(jq -c --argjson agents "$agents" '
              human: ($g.human // null), ref: ($s.ref // "")} ] as $nodes
       | {lane: $l.lane, pattern: $l.pattern, repo: $l.repo, question: ($l.question // ""),
          workspace: ($l.workspace // ""), owner: ($l.owner // ""), idea: ($l.idea // ""),
+         branch: ($l.branch // ""), prs: ($l.prs // []),
          nodes: $nodes, last: ($l.history[-1] // ""),
          section: (if ($l.question // "") != "" or any($nodes[]; .status == "blocked") then "needs"
                    elif $l.status == "done" then "done" else "working" end)})' <<<"$lanes")"
@@ -91,7 +97,7 @@ line)
           else [ (if ($n | length) > 0 then "🔴 \($n | length) \($n[0].lane)" else empty end),
                  (if $w > 0 then "🟡 \($w)" else empty end), (if $d > 0 then "🟢 \($d)" else empty end) ] | join("  ") end' <<<"$view" ;;
 text)
-    jq -r '
+    jq -r "$STYLE_JQ_PR"'
         def mark: if .status == "done" and .result == "changes" then "✗" elif .status == "done" then "✓"
                   elif .status == "running" then "⟳" elif .status == "failed" then "✗"
                   elif .status == "blocked" then "?" elif .status == "skipped" then "–" else "·" end;
@@ -99,7 +105,8 @@ text)
         def row: "  \(.lane)  \(.pattern)  \(chain)"
                  + (if .question != "" then "\n    ? \(.question)" else "" end)
                  + ([.nodes[] | select(.ref != "" and (.ref | test("/")))] | map("\n    \(.node): \(.ref)") | join(""))
-                 + "\n    last: \(.last)";
+                 + "\n    last: \(.last)"
+                 + (.prs | map("\n    pr: #\(.number) \(prword) \(.url)") | join(""));
         if length == 0 then "No lanes. Give the orchestrator an idea to start one." else
         ([["needs", "NEEDS YOU"], ["working", "WORKING"], ["done", "DONE"]][] as [$k, $t]
          | [.[] | select(.section == $k)] | select(length > 0)

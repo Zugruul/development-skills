@@ -9,7 +9,7 @@ SC="$PLUGIN/scripts"
 REPO="$G_TMP/repo"
 git init -q -b main "$REPO" && git -C "$REPO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 export XDG_CONFIG_HOME="$G_TMP/config"   # no user patterns or roles leak in
-g() { local s="$1"; shift; PATH="$FIX/stub-herdr:$PATH" HERDR_STUB_DIR="$G_TMP" HERDR_ENV=1 HERDR_PANE_ID=w1:p1 bash "$SC/$s.sh" "$@"; }
+g() { local s="$1"; shift; (cd "$G_TMP" && PATH="$FIX/stub-herdr:$PATH" HERDR_STUB_DIR="$G_TMP" HERDR_ENV=1 HERDR_PANE_ID=w1:p1 bash "$SC/$s.sh" "$@"); }
 st() { printf '%s' "$1" >"$G_TMP/state.json"; : >"$G_TMP/calls.log"; }
 lf() { yq -r "$1" "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)/herdr-graph/$2.yaml"; }
 st '{}'
