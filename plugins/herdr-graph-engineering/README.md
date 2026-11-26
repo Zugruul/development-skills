@@ -81,6 +81,7 @@ lane.sh new|show|list|node|retry|ask|answer|set|close   the only writer of lane 
 ready.sh --lane L                                       which nodes can start now
 kind.sh --role R [--not KIND]                           the kind and arguments for a role here
 gate.sh --lane L --node N --pane P                      run a gate in a visible tab, record its exit code
+close-done.sh --lane L [--dry-run]                      close the tabs of finished agent and gate nodes (CLOSE/KEEP per node)
 status.sh [--text|--line|--json]                        the picture of every lane (display, tab bar)
 check-pattern.sh (FILE | --name P)                      validate a pattern
 make-review-stack.sh --pr URL --pr URL ... --out FILE    the graph for reviewing related pull requests
@@ -88,6 +89,16 @@ check.sh                                                inside Herdr?
 panel.sh / panel-action.sh / popup.sh                   the Herdr panel, its actions and popups
 measure.sh [--json]                                     how the lanes went: outcome, minutes, retries, questions
 ```
+
+## When a node's tab closes
+
+Every agent and gate node runs in its own tab, recorded in the lane file (`lane.sh node --tab`). After each node record and at lane done the orchestrator runs `close-done.sh`, which decides from the lane's graph:
+
+- an agent tab closes once its node is `done` and passed, no `retry` edge that has not passed can still send work back to it (an implementer stays until its gate and reviewer pass), and no `human` node after it is still undecided (a reviewer stays until `approve`, so it can be asked about its draft);
+- a gate tab closes once its result is recorded as passed; a failed gate stays visible until the retry runs;
+- at lane done or close, every agent and gate tab of the lane closes.
+
+Never closed: a tab not recorded for a node, a running or blocked node, an agent Herdr shows working or blocked, the first tab of the lane's workspace, a tab outside it. The worktree stays until you agree to cleanup.
 
 ## What the orchestrator may do alone
 

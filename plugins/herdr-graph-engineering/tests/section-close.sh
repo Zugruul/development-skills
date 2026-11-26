@@ -66,7 +66,7 @@ out="$(cd_ --lane solo-1)"
 check "a closed tab is not closed twice" "CLOSED impl" "$out"
 check_absent "no second close call" "tab close" "$(cat "$C_TMP/calls.log")"
 cnode --lane solo-1 --node tests --status running --tab w2:t4
-check "a new tab clears the closed mark" "w2:t4 null" "$(clf '[.nodes.tests.tab, .nodes.tests.tab_closed] | join(" ")' solo-1)"
+check "a new tab clears the closed mark" "w2:t4 null" "$(clf '[.nodes.tests.tab, (.nodes.tests.tab_closed // "null")] | join(" ")' solo-1)"
 
 echo "== close: pair, the implementer waits for the reviewer =="
 c lane new --repo "$C_REPO" --lane pair-1 --pattern pair --idea x --gate "npm test" --workspace w2 >/dev/null

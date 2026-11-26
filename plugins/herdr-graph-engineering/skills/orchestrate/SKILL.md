@@ -63,14 +63,14 @@ For each lane, `ready.sh --lane L --repo R` prints `READY <node> <agent|gate|hum
 
 - **agent node**
   1. `kind.sh --role <role> --repo <repo>`; for a reviewing role add `--not <the implementer's kind>`. On `SAME-KIND`, note in the lane that the review is same-model.
-  2. Open a tab in the lane's workspace labelled with the node name: `herdr tab create --workspace <id> --cwd <worktree> --label <node> --no-focus`.
+  2. Open a tab in the lane's workspace labelled with the node name: `herdr tab create --workspace <id> --cwd <worktree> --label <node> --no-focus`. Keep its tab id: it is how the tab is closed later.
   3. Start the agent with the `herdr:agent` skill: name `<kind>-<lane>-<node>` cut to 32 characters, the kind from `kind.sh`, and the `ARGS` line after `--`.
   4. Brief it once: the role file's body with `{node}` and `{output_path}` filled (`output_path` = a file in your scratch directory named `<lane>-<node>.md`), then the node's `brief` from the lane file, then the references from the nodes it needs (paths and commit ids, never pasted transcripts), the checkout and the branch.
      - `pr-reviewer`: also paste `../../references/review-brief.md` (the template filled in, the three steps, the proof standard, the shared-checkout rules, the draft and comment formats), and the repository's rule files by path.
      - `reviewer` (a second opinion): also give the base ref, so it reviews exactly the lane's change.
      - `planner`: also paste two shipped patterns as examples.
-  5. `lane.sh node --lane L --node N --status running --agent <agent name> --repo R`.
-- **gate node**: a tab labelled with the node name, then run `gate.sh --lane L --node N --pane <its pane> --repo R` in the background. It records `pass` or `fail` itself.
+  5. `lane.sh node --lane L --node N --status running --agent <agent name> --tab <its tab id> --repo R`.
+- **gate node**: a tab labelled with the node name (a gate that runs again after a retry reuses its tab while it is open, else gets a new one), record it with `lane.sh node --lane L --node N --status running --tab <its tab id> --repo R`, then run `gate.sh --lane L --node N --pane <its pane> --repo R` in the background. It records `pass` or `fail` itself.
 - **human node**: `lane.sh ask --lane L --node N --text "<question>"`, notify (`herdr notification show "<lane> needs you" --body "<question>" --sound request`), and ask the user with what they need to decide (for a review: the counts by severity, the findings' titles, the draft paths). Then `lane.sh answer --lane L --text "<answer>"` and record the node: yes is `--status done --result pass`, no is `--status done --result fail` (the nodes that need a yes are then skipped).
 
 ## 4. Listen and check
@@ -87,6 +87,16 @@ Follow every running agent with the `herdr:listen` skill.
   - `RETRY <lane> <target> n/max`: prompt the target's agent again (it keeps its context) with what failed (the gate's last output lines, the exact error, or the reviewer's findings file), and mark it running.
   - `RETRY LIMIT` (exit 7) or no retry edge: the lane needs the user; the question is already in the lane file. Notify and ask.
 
+### Closing finished tabs
+
+After every record of a node (`lane.sh node`, `lane.sh retry`, a gate's result) run `close-done.sh --lane L --repo R`. It reads the lane file and its graph, prints `CLOSE`, `KEEP`, `GONE` or `CLOSED` per agent and gate node with the reason, and closes with `herdr tab close` the tabs whose node is finished:
+
+- an agent node once it is `done` with a passing result, no `retry` edge that has not passed yet can still send work back to it (an implementer stays until its gate, and its reviewer, pass), and no `human` node after it is still undecided (a reviewer stays until `approve` is decided, so you can still ask it about its draft);
+- a gate node once its result is recorded as passed; a failed gate keeps its output visible until the retry runs;
+- every agent and gate tab of the lane at lane done (section 5) or when it is closed.
+
+It never closes a tab that was not recorded with `--tab`, a `running` or `blocked` node, an agent Herdr shows `working` or `blocked`, the first tab of the lane's workspace, or a tab outside that workspace. The worktree and its workspace stay until the user agrees to cleanup (section 6). Do not close a lane's tabs any other way; name the closed ones in your next report. `--dry-run` shows the decision without closing anything.
+
 ## 5. Done
 
 When `ready.sh` prints `ALL NODES DONE`, run the lane's `done` checks from its lane file:
@@ -96,6 +106,8 @@ When `ready.sh` prints `ALL NODES DONE`, run the lane's `done` checks from its l
 - `report`: show the user the report file's answer in a few lines, with its path. Then `lane.sh set --key status --value done`.
 - `{human: <question>}`: ask the user.
 - `posted-review`: section "Reviews" below passed for every pull request of the lane. Then `lane.sh set --key status --value done`.
+
+Then, at lane done, run `close-done.sh --lane L --repo R`: every agent and gate tab of the lane closes (except one still `working` or `blocked`: run it again when that agent settles).
 
 Notify once: `herdr notification show "<lane> done" --body "<one line>"`.
 
