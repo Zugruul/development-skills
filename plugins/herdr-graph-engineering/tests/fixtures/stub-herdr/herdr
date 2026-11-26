@@ -116,7 +116,12 @@ case "$cmd" in
         case "${3:-}" in
             open)
                 ep="$(opt --entrypoint "$@")" target="$(opt --target-pane "$@")"
-                save "$(st | jq -c --arg e "$ep" --arg t "$target" '.opened += [{entrypoint: $e, target: $t}]')"
+                [ "$(st | jq -r '.plugin_open // "ok"')" = "fail" ] && fail plugin_pane_open_failed
+                # The new pane joins pane_list in the target's tab, untitled (its title comes later).
+                save "$(st | jq -c --arg e "$ep" --arg t "$target" '
+                    ([(.pane_list // [])[] | select(.pane_id == $t)][0].tab_id // ([(.agents // {})[] | select(.pane_id == $t)][0].tab_id) // "w1:t1") as $tab
+                    | .opened += [{entrypoint: $e, target: $t}]
+                    | if $e == "panel" then .pane_list = ((.pane_list // []) + [{pane_id: "w9:p9", tab_id: $tab}]) else . end')"
                 ok "$(jq -cn --arg e "$ep" '{type: "plugin_pane_opened", plugin_pane: {entrypoint: $e, pane: {pane_id: "w9:p9"}}}')" ;;
             close)
                 save "$(st | jq -c --arg p "${4:-}" '.closed += [$p] | .pane_list |= map(select(.pane_id != $p))')"
@@ -135,6 +140,12 @@ case "$cmd" in
     "pane report-metadata")
         save "$(st | jq -c --arg p "$3" --arg all "$*" '.tokens += [{pane: $p, args: $all}]')"
         ok '{"type":"pane_metadata_reported"}' ;;
-    "notification show") ok '{"type":"notification_show","shown":true}' ;;
+    "config check")
+        if [ "$(st | jq -r '.config_check // "ok"')" = "fail" ]; then echo "config: issues found"; exit 1; fi
+        echo "config: ok"
+        exit 0 ;;
+    "notification show")
+        save "$(st | jq -c --arg t "${3:-}" '.notified += [$t]')"
+        ok '{"type":"notification_show","shown":true}' ;;
 esac
 fail stub_unsupported "$cmd"
