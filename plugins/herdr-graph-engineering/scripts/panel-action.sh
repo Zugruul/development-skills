@@ -3,7 +3,8 @@
 # panel-action.sh -- the Herdr plugin's actions and hooks (see herdr-plugin.toml).
 # Usage: panel-action.sh toggle | refresh | next-needs-me | open-link | restore | worktree-removed
 #   toggle           close the graph panel in this tab, or open it to the right of the orchestrator
-#   refresh          make every open panel redraw now
+#   refresh          make every open panel redraw now (it sends ESC [ 99 ~, which no key sends:
+#                    the panel ignores keystrokes)
 #   next-needs-me    focus the next agent that waits on the user
 #   open-link        (a link handler) open a clicked report path or pull request in a popup
 #   restore          (startup hook) reopen the panel next to the orchestrator, rewrite the sidebar tokens
@@ -109,7 +110,7 @@ toggle)
         echo "PANEL OPEN"
     fi ;;
 refresh)
-    for p in $(panels ""); do herdr pane send-text "$p" r >/dev/null 2>&1; done ;;
+    for p in $(panels ""); do herdr pane send-text "$p" "$(printf '\033[99~')" >/dev/null 2>&1; done ;;
 next-needs-me)
     agent="$(bash "$HERE/status.sh" --json | jq -r '[.[] | select(.section == "needs") | .nodes[] | select(.live == "blocked") | .agent][0] // empty')"
     if [ -n "$agent" ]; then
