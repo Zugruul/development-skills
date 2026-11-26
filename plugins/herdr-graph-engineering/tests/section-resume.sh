@@ -158,7 +158,7 @@ check "all nodes done without a pull request: open the draft" "next: open draft 
 check "a done lane with an open pull request: ask the user to merge" "next: ask the user to merge #12" "$(lane_block task-f)"
 check "the pull request and its state" "#12 OPEN draft https://github.com/o/r/pull/12" "$(lane_block task-f)"
 check "merged but an extra criterion is unmet: finish it" "next: finish extra done: plugin reinstalled and panel restarted" "$(lane_block task-g)"
-check "merged and nothing left: offer cleanup" "next: offer cleanup" "$(lane_block task-h)"
+check "merged and nothing left: offer cleanup" "next: cleanup.sh check --lane task-h" "$(lane_block task-h)"
 check "a failed gate: retry it" "next: lane.sh retry --lane task-i --node tests" "$(lane_block task-i)"
 check "running agents are counted against the limit" "2 of 3 agents running" "$out"
 check "queued lanes with their brief" "panel-shortcut" "$(sed -n '/^QUEUED/,/^[A-Z]/p' <<<"$out")"
@@ -172,6 +172,22 @@ check "notes" "keep the 3-agent limit" "$(sed -n '/^NOTES/,/^[A-Z]/p' <<<"$out")
 check "files" "$R_SCRATCH/rev-1-posting.md" "$(sed -n '/^FILES/,/^[A-Z]/p' <<<"$out")"
 check "the per-lane next action ends the block" "END RESUME" "$(tail -1 <<<"$out")"
 
+# the cleanup state that cleanup.sh and the user record (lane.sh set --key cleanup)
+for l in task-j task-k task-l; do
+    r lane new --repo "$R_REPO" --lane "$l" --pattern solo --idea "idea $l" --gate t --branch "feat/$l" --owner graph >/dev/null
+    r lane node --repo "$R_REPO" --lane "$l" --node impl --status "done" --result pass >/dev/null
+    r lane node --repo "$R_REPO" --lane "$l" --node tests --status "done" --result pass >/dev/null
+    r lane set --repo "$R_REPO" --lane "$l" --key status --value "done" >/dev/null
+    r lane set --repo "$R_REPO" --lane "$l" --key pr --value "https://github.com/o/r/pull/14" >/dev/null
+done
+r lane set --repo "$R_REPO" --lane task-j --key cleanup --value ready >/dev/null
+r lane set --repo "$R_REPO" --lane task-j --key cleanup --value confirmed >/dev/null
+r lane set --repo "$R_REPO" --lane task-k --key cleanup --value declined >/dev/null
+r lane set --repo "$R_REPO" --lane task-l --key cleanup --value ready >/dev/null
+out="$(r resume --repo "$R_REPO" 2>&1)"
+check "cleanup confirmed by the user: run it" "next: cleanup.sh run --lane task-j" "$(lane_block task-j)"
+check "cleanup declined: leave the lane" "next: nothing: the user declined cleanup" "$(lane_block task-k)"
+check "cleanup question pending: ask the user again" "next: ask the user to confirm cleanup" "$(lane_block task-l)"
 out="$(r resume --repo "$R_REPO" --out "$R_TMP/snap.md" 2>&1)"; rc=$?
 check_rc "resume --out runs" 0 "$rc"
 check "--out writes the block to the file" "RESUME graph" "$(cat "$R_TMP/snap.md")"
