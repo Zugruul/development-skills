@@ -117,6 +117,9 @@ case "$cmd" in
                 save "$(st | jq -c --arg p "${4:-}" '.closed += [$p] | .pane_list |= map(select(.pane_id != $p))')"
                 ok '{"type":"plugin_pane_closed"}' ;;
         esac ;;
+    "tab create")
+        save "$(st | jq -c --arg all "$*" '.tabs += [$all]')"
+        ok '{"type":"tab_created","tab":{"tab_id":"w1:t9"},"root_pane":{"pane_id":"w1:p9"}}' ;;
     "pane list") ok "$(st | jq -c '{panes: (.pane_list // [])}')" ;;
     "pane get")
         p="$(st | jq -c --arg p "$3" '[(.pane_list // [])[] | select(.pane_id == $p)][0] // {pane_id: $p, tab_id: "w1:t1"}')"
