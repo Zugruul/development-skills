@@ -25,6 +25,10 @@ while [ $# -gt 0 ]; do
 done
 [ "${#targets[@]}" -gt 0 ] || usage "$USAGE"
 case "$timeout" in '' | *[!0-9]*) usage "$USAGE" ;; esac
+case "$lines" in '' | *[!0-9]*) usage "$USAGE" ;; esac
+# Events are split on the unit separator, not on tabs: bash collapses runs of a whitespace
+# IFS character, so an unnamed agent's empty name would shift pane and tab.
+US="$(printf '\037')"
 require_herdr
 
 deadline=$((SECONDS + timeout))
@@ -32,7 +36,7 @@ while :; do
     events="" still="" seen=""
     for t in "${targets[@]}"; do
         if ! agent_get "$t"; then
-            events="${events}${t}	gone	-	-	-
+            events="${events}${t}${US}gone${US}-${US}-${US}-
 "
             seen="$seen $t=gone"
             continue
@@ -41,11 +45,11 @@ while :; do
         status="${status:-unknown}"
         seen="$seen $t=$status"
         case "$status" in
-            blocked) events="${events}${t}	blocked	$(af name)	$(af pane_id)	$(af tab_id)
+            blocked) events="${events}${t}${US}blocked${US}$(af name)${US}$(af pane_id)${US}$(af tab_id)
 " ;;
             idle | done)
                 if [ "$only_blocked" -eq 0 ]; then
-                    events="${events}${t}	${status}	$(af name)	$(af pane_id)	$(af tab_id)
+                    events="${events}${t}${US}${status}${US}$(af name)${US}$(af pane_id)${US}$(af tab_id)
 "
                 else
                     still="$still, $t=$status"
@@ -54,7 +58,7 @@ while :; do
         esac
     done
     if [ -n "$events" ]; then
-        while IFS="$(printf '\t')" read -r t status n p tab; do
+        while IFS="$US" read -r t status n p tab; do
             [ -n "$t" ] || continue
             printf 'EVENT target=%s name=%s pane=%s tab=%s status=%s\n' "$t" "${n:--}" "${p:--}" "${tab:--}" "$status"
             if [ "$status" = "blocked" ]; then

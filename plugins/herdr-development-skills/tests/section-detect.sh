@@ -51,7 +51,7 @@ out="$(env HOME="$DT_TMP/home" PATH="/usr/bin:/bin" HERDR_ENV=1 "$(command -v py
 check "a missing herdr binary is reported" "the herdr binary is not on PATH" "$out"
 
 echo "== detect: plugin states =="
-dt_settings '{"enabledPlugins":{"spec-workflow@development-skills":true,"herdr@development-skills":true}}'
+dt_settings '{"enabledPlugins":{"spec-workflow@development-skills":true,"herdr@development-skills":true,"herdr-simple-orchestrate@development-skills":true}}'
 out="$(dt HDS_PLUGINS_DIR="$DT_TMP/empty-plugins" -- --root "$DT_TMP/bare" 2>&1)"
 check "user settings enable a plugin" "spec-workflow   enabled" "$out"
 mkdir -p "$DT_TMP/bare/.claude"
@@ -69,7 +69,7 @@ out="$(dt HDS_PLUGINS_DIR="$DT_TMP/empty-plugins" -- --root "$DT_TMP/bare" 2>&1)
 check "skills linked into a skills directory count as enabled" "peer-review     enabled" "$out"
 
 echo "== detect: spec-workflow not configured =="
-dt_settings '{"enabledPlugins":{"spec-workflow@development-skills":true,"herdr@development-skills":true,"peer-review@development-skills":true}}'
+dt_settings '{"enabledPlugins":{"spec-workflow@development-skills":true,"herdr@development-skills":true,"herdr-simple-orchestrate@development-skills":true,"peer-review@development-skills":true}}'
 out="$(dt -- --root "$DT_TMP/bare" 2>&1)"
 check "an unconfigured repository is reported" "not configured" "$out"
 check "task-lane runs only without a task when there is no project config" "task-lane    LIMITED" "$out"
@@ -84,12 +84,16 @@ check "not configured: the dead options say why" "spec-workflow is not configure
 js="$(dt -- --root "$DT_TMP/bare" --json 2>&1)"
 check "json carries the task-source verdicts" '"without-task"' "$js"
 check "json marks the possible option" "True False False" "$(python3 -c 'import json,sys; t=json.load(sys.stdin)["taskSource"]; print(t["without-task"]["ok"], t["create-task"]["ok"], t["task-id"]["ok"])' <<<"$js")"
-dt_settings '{"enabledPlugins":{"herdr@development-skills":true}}'
+dt_settings '{"enabledPlugins":{"herdr@development-skills":true,"herdr-simple-orchestrate@development-skills":true}}'
 out="$(dt HDS_PLUGINS_DIR="$DT_TMP/empty-plugins" -- --root "$DT_TMP/bare" 2>&1)"
 check "spec-workflow not enabled: only the no-task option is possible" "2 create a task for it         NOT POSSIBLE" "$out"
 check "spec-workflow not enabled: the reason names the plugin" "the spec-workflow plugin is not available" "$(sed -n '/^TASK SOURCE/,/^remote-compute/p' <<<"$out")"
 check "spec-workflow not enabled: the no-task lane still runs" "task-lane    LIMITED" "$out"
-dt_settings '{"enabledPlugins":{"spec-workflow@development-skills":true,"herdr@development-skills":true,"peer-review@development-skills":true}}'
+dt_settings '{"enabledPlugins":{"herdr@development-skills":true}}'
+out="$(dt HDS_PLUGINS_DIR="$DT_TMP/empty-plugins" -- --root "$DT_TMP/bare" 2>&1)"
+check "without herdr-simple-orchestrate the lanes cannot run" "task-lane    UNAVAILABLE" "$out"
+check "the reason names the missing orchestrate plugin" "install herdr-simple-orchestrate@development-skills" "$out"
+dt_settings '{"enabledPlugins":{"spec-workflow@development-skills":true,"herdr@development-skills":true,"herdr-simple-orchestrate@development-skills":true,"peer-review@development-skills":true}}'
 out="$(dt -- --root "$DT_TMP/bare" 2>&1)"
 check "the reason points at setup" "setup-project" "$out"
 check "review-lane does not need spec-workflow" "review-lane  READY" "$out"
@@ -139,7 +143,7 @@ else
     check "a paused loop does not stop a review" "review-lane  READY" "$out"
 
     echo "== detect: configured repository, plugin missing =="
-    dt_settings '{"enabledPlugins":{"herdr@development-skills":true}}'
+    dt_settings '{"enabledPlugins":{"herdr@development-skills":true,"herdr-simple-orchestrate@development-skills":true}}'
     out="$(dt HDS_PLUGINS_DIR="$DT_TMP/empty-plugins" -- --root "$DT_TMP/cfg" 2>&1)"
     check "config without the plugin: the loop is unavailable" "build-loop   UNAVAILABLE" "$out"
     check "config without the plugin: lanes run only without a task" "task-lane    LIMITED" "$out"

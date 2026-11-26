@@ -1,7 +1,7 @@
 {
     "name": "herdr-development-skills",
-    "version": "0.7.2",
-    "description": "Integration layer between Herdr and the development-skills plugins: checks which plugins and features are enabled and configured, then runs spec-workflow tasks and build-loop lanes in Herdr worktree agents an orchestrator listens to, and peer reviews next to a lane. Requires the herdr plugin.",
+    "version": "0.7.3",
+    "description": "Integration layer between Herdr and the development-skills plugins: checks which plugins and features are enabled and configured, then runs spec-workflow tasks and build-loop lanes in Herdr worktree agents an orchestrator listens to, and peer reviews next to a lane. Requires the herdr and herdr-simple-orchestrate plugins.",
     "author": {
         "name": "event-sorcerer",
         "url": "https://github.com/event-sorcerer"
@@ -11,7 +11,7 @@
     "interface": {
         "displayName": "Herdr Development Skills",
         "shortDescription": "Run board tasks and build-loop lanes in Herdr worktree agents.",
-        "longDescription": "Connects Herdr to the development-skills plugins. It detects which plugins and features are enabled and configured in the current repository, then runs a spec-workflow task, the build loop, or several parallel build lanes in Herdr worktree agents while an orchestrator listens and relays their questions. Requires the herdr plugin; each integration is offered only when its specialized plugin is present and configured.",
+        "longDescription": "Connects Herdr to the development-skills plugins. It detects which plugins and features are enabled and configured in the current repository, then runs a spec-workflow task, the build loop, or several parallel build lanes in Herdr worktree agents while an orchestrator listens and relays their questions. Requires the herdr and herdr-simple-orchestrate plugins; each integration is offered only when its specialized plugin is present and configured.",
         "developerName": "event-sorcerer",
         "category": "Developer Tools",
         "capabilities": ["Interactive", "Read files", "Run shell scripts"],

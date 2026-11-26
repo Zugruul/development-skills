@@ -9,6 +9,8 @@ real_dir() { # path -> physical path, or the path itself when it cannot be enter
     (cd "$1" 2>/dev/null && pwd -P) || printf '%s\n' "$1"
 }
 
+US="$(printf '\037')" # unit separator: a field delimiter that is never whitespace
+
 require_herdr() {
     local here matches reason pane tab ws
     command -v jq >/dev/null 2>&1 || die "HERDR UNAVAILABLE: jq is not on PATH. These scripts need jq." 2
@@ -19,16 +21,18 @@ require_herdr() {
         if [ "$HC_RC" -eq 0 ] && [ "$HC_JSON" -eq 1 ]; then
             here="$(pwd -P)"
             matches=""
-            while IFS="$(printf '\t')" read -r cwd fg pane tab ws; do
+            # Fields are split on the unit separator, not on tabs: bash collapses runs of a
+            # whitespace IFS character, so an empty field would shift the ones after it.
+            while IFS="$US" read -r cwd fg pane tab ws; do
                 [ -n "$cwd" ] && [ -n "$fg" ] || continue
                 [ "$(real_dir "$cwd")" = "$here" ] && [ "$(real_dir "$fg")" = "$here" ] || continue
-                matches="${matches}${pane}	${tab}	${ws}
+                matches="${matches}${pane}${US}${tab}${US}${ws}
 "
             done <<EOT
-$(hj -r '.result | objects | .agents | arrays | .[] | objects | select(.agent == "codex") | [(.cwd | strings) // "", (.foreground_cwd | strings) // "", .pane_id // "", .tab_id // "", .workspace_id // ""] | @tsv')
+$(hj -r '.result | objects | .agents | arrays | .[] | objects | select(.agent == "codex") | [(.cwd | strings) // "", (.foreground_cwd | strings) // "", .pane_id // "", .tab_id // "", .workspace_id // ""] | join("\u001f")')
 EOT
             if [ "$(printf '%s' "$matches" | grep -c .)" -eq 1 ]; then
-                IFS="$(printf '\t')" read -r pane tab ws <<EOT
+                IFS="$US" read -r pane tab ws <<EOT
 $matches
 EOT
                 [ -n "$pane" ] && export HERDR_PANE_ID="${HERDR_PANE_ID:-$pane}"

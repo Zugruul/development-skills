@@ -2,7 +2,7 @@
 
 The integration layer between [Herdr](https://herdr.dev) and the other development skills in this marketplace. It checks which plugins and features are actually enabled and configured in the current environment and repository, and wires those into the [`herdr`](../herdr/README.md) plugin: board tasks and build-loop lanes run in Herdr worktree agents that an orchestrator listens to.
 
-All knowledge of the specialized plugins lives here. The `herdr` plugin knows only Herdr; this plugin **requires it** and builds on its skills (`herdr:worktree`, `herdr:agent`, `herdr:prompt`, `herdr:listen`, `herdr-simple-orchestrate:orchestrate`, `herdr:status`) instead of repeating Herdr commands.
+All knowledge of the specialized plugins lives here. The `herdr` plugin knows only Herdr; this plugin **requires it and `herdr-simple-orchestrate`** and builds on their skills (`herdr:worktree`, `herdr:agent`, `herdr:prompt`, `herdr:listen`, `herdr-simple-orchestrate:orchestrate`, `herdr:status`) instead of repeating Herdr commands.
 
 ## Install
 

@@ -4,10 +4,11 @@
 # _lib.sh (check/check_rc/check_absent) and set HERE/PLUGIN/FIX/fails/flaky
 # before sourcing this file. This file assumes those are already in scope.
 #
-# Asserts the repo-root AGENTS.md/CLAUDE.md pointer pair required by
-# SPEC-CODEX-COMPAT.md §6.5 (CDX-006): a canonical AGENTS.md orienting a
-# Codex-side agent, and a CLAUDE.md reduced to a one-line pointer at it
-# (§15 OQ-2: hand-maintained, no CI generation step this release).
+# Asserts the AGENTS.md/CLAUDE.md pointer chain required by SPEC-CODEX-COMPAT.md
+# §6.5 (CDX-006): the repo-root AGENTS.md is the canonical file for both hosts and
+# links to plugins/spec-workflow/AGENTS.md, which carries spec-workflow's own rules
+# (the contract, dogfooding, the gate quoted verbatim); the root CLAUDE.md is a
+# short pointer at the root AGENTS.md (§15 OQ-2: hand-maintained, no CI step).
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/spec-workflow/tests/run-tests.sh" >&2; exit 2; }
 echo "== agents-claude =="
 
@@ -29,6 +30,14 @@ else
     check "AGENTS.md points at SPEC-CODEX-COMPAT.md" "SPEC-CODEX-COMPAT.md" "$agents_content"
     check "AGENTS.md mentions dogfooding" "dogfood" "$(tr '[:upper:]' '[:lower:]' <<<"$agents_content")"
     check "AGENTS.md quotes the gate command verbatim" "$gate_cmd" "$agents_content"
+fi
+
+ROOT_AGENTS_MD="$REPO/AGENTS.md"
+if [[ ! -f "$ROOT_AGENTS_MD" ]]; then
+    check "AGENTS.md exists at repo root" "EXISTS" "MISSING"
+else
+    check "AGENTS.md exists at repo root" "EXISTS" "EXISTS"
+    check "root AGENTS.md links to spec-workflow's AGENTS.md" "](plugins/spec-workflow/AGENTS.md)" "$(cat "$ROOT_AGENTS_MD")"
 fi
 
 if [[ ! -f "$CLAUDE_MD" ]]; then

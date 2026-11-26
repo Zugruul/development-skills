@@ -51,7 +51,11 @@ deadline=$((SECONDS + timeout))
 tries=0
 while :; do
     tries=$((tries + 1))
-    herdr_call agent start "$name" --kind "$kind" --pane "$pane" ${1+--} "$@"
+    # Give each attempt only the time that is left, so one attempt cannot outlast --timeout
+    # (Herdr's own start timeout is 30 s and must be more than 3000 ms).
+    left=$(((deadline - SECONDS) * 1000))
+    [ "$left" -gt 3000 ] || left=3001
+    herdr_call agent start "$name" --kind "$kind" --pane "$pane" --timeout "$left" ${1+--} "$@"
     [ "$HC_RC" -eq 0 ] && break
     code="$(err_code)"
     [ "$code" = "agent_not_ready" ] && blocked_at_startup

@@ -73,7 +73,7 @@
             "name": "herdr",
             "source": "./plugins/herdr",
             "description": "Teaches an agent to use Herdr, the terminal workspace manager for coding agents: start worktrees and agents, prompt them safely, listen to their work and see what is running. Standalone and thin over the herdr CLI; no workflow of its own.",
-            "version": "0.10.0",
+            "version": "0.10.1",
             "author": {
                 "name": "event-sorcerer"
             },
@@ -105,7 +105,7 @@
             "name": "herdr-simple-orchestrate",
             "source": "./plugins/herdr-simple-orchestrate",
             "description": "DEPRECATED - the old way of orchestrating agents in Herdr: take the orchestrator role, and orchestrate a code review of related pull requests with reviewer agents in worktrees. Kept so existing setups keep working. Requires the herdr plugin.",
-            "version": "0.1.0",
+            "version": "0.1.1",
             "author": {
                 "name": "event-sorcerer"
             },
@@ -120,7 +120,7 @@
             "name": "herdr-development-skills",
             "source": "./plugins/herdr-development-skills",
             "description": "Integration layer between Herdr and the development-skills plugins: checks which plugins and features are enabled and configured, then runs spec-workflow tasks and build-loop lanes in Herdr worktree agents an orchestrator listens to. Requires the herdr plugin; degrades cleanly when a specialized plugin is absent.",
-            "version": "0.7.2",
+            "version": "0.7.3",
             "author": {
                 "name": "event-sorcerer"
             },

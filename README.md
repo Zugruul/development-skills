@@ -421,7 +421,7 @@ claude plugin install herdr-simple-orchestrate@development-skills
 The integration layer between Herdr and the plugins above. It checks which
 plugins and features are enabled and configured in the current repository, then
 runs board tasks and build-loop lanes in Herdr worktree agents an orchestrator
-listens to. **Requires the herdr plugin**; an integration whose specialized
+listens to. **Requires the herdr and herdr-simple-orchestrate plugins**; an integration whose specialized
 plugin is missing reports why and the rest keep working. Asked for work that
 has no task identifier, the lane skills ask once whether to run it without a
 task, create one through spec-workflow's intake, or use an existing one. See
