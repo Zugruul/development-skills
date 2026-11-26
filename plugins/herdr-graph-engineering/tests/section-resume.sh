@@ -185,7 +185,7 @@ rm -f "$SNAP"
 out="$(printf '{}' | R_PANE=w5:p5 r resume --hook pre-compact 2>&1)"; rc=$?
 check_rc "the hook in a chat that is not the orchestrator succeeds" 0 "$rc"
 check_rc "and prints nothing" 0 "${#out}"
-check_rc "and writes no snapshot" 1 "$([ -f "$SNAP" ]; echo $?)"
+check_absent "and writes no snapshot" "resume.md" "$(ls "$R_STATE/herdr-graph/sessions")"
 out="$(printf '{"hook_event_name":"SessionStart","source":"compact"}' | r resume --hook session-start 2>&1)"; rc=$?
 check_rc "the session-start hook succeeds" 0 "$rc"
 check "it injects the picture as context" "SessionStart" "$(jq -r '.hookSpecificOutput.hookEventName' <<<"$out" 2>&1)"
@@ -202,6 +202,7 @@ check "the plugin ships Claude Code hooks" "PreCompact" "$(jq -r '.hooks | keys 
 check "the session-start hook fires after a compaction only" "compact" "$(jq -r '.hooks.SessionStart[0].matcher' "$HJ" 2>&1)"
 check "the pre-compact hook runs resume.sh" 'resume.sh" --hook pre-compact' "$(jq -r '.hooks.PreCompact[0].hooks[0].command' "$HJ" 2>&1)"
 check "the session-start hook runs resume.sh" 'resume.sh" --hook session-start' "$(jq -r '.hooks.SessionStart[0].hooks[0].command' "$HJ" 2>&1)"
+# shellcheck disable=SC2016  # the literal variable name
 check "the hooks use the plugin root" '${CLAUDE_PLUGIN_ROOT}' "$(cat "$HJ" 2>&1)"
 
 echo "== resume: the skill and the docs =="

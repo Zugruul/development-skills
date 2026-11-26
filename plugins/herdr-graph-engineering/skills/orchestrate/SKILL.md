@@ -43,6 +43,16 @@ For every Herdr step use the `herdr` plugin's skills: `herdr:worktree`, `herdr:a
 
 ## 1. Pick up where things are
 
+**After a compaction (or a new session)**, before anything else: run `bash "../../scripts/resume.sh"`. It prints one block, `RESUME` to `END RESUME`: every open lane of every repository with lanes (nodes, agents live or gone, open question, pull requests, done checks and the extra ones, notes) with its `next:` action, then the queued lanes, standing answers, renames, notes and files of your session file. In Claude Code a hook puts the same block into the chat after a compaction; if you see a summary of earlier conversation and no block, run it yourself. Then:
+
+1. Trust the block over your summary: the files are the record. Use the standing answers in it as given by the user.
+2. re-start `herdr:listen` for every agent the block shows live (working, blocked, idle); an agent shown `gone` is not running: follow that lane's `next:`.
+3. Take each lane's `next:` action, start queued lanes while fewer than 3 agents run, and do not send again a brief or follow-up that a lane note says was sent.
+4. Then continue below (panel, owners, report).
+
+At the start of every orchestrator session, record where it lives (session name `graph`, or your agent name when that is taken):
+`bash "../../scripts/session.sh" set --key pane --value "$HERDR_PANE_ID"`, then `--key orchestrator --value <your name>` and `--key scratch --value <your scratch directory>` (add `--session <name>` to each when it is not `graph`). The hooks find the session by this pane. Keep the session and lane files current as section "Keep state outside the chat" says.
+
 Check the graph panel: `herdr plugin list --json | jq -r '.result.plugins[] | select(.plugin_id == "herdr-graph-engineering.graph") | .enabled'`. Not installed: offer once, with the command `herdr plugin install Zugruul/development-skills/plugins/herdr-graph-engineering`; run it only if the user says yes (it shows its own preview). Installed and enabled: open it with `herdr plugin action invoke herdr-graph-engineering.graph.toggle`, unless a panel is already open in this tab.
 
 Run `bash "../../scripts/status.sh" --text`. For every open lane whose `owner` is not a live agent (`herdr agent list`), take it over: `lane.sh set --lane L --repo R --key owner --value <your name>`. A lane whose owner is a live agent other than you belongs to that agent: leave it alone and tell the user. Report what you found (format: `../../references/report.md`), then say you are ready for ideas.
@@ -127,6 +137,21 @@ When the user has merged a lane's pull request (`gh pr view <n> --json state` sa
 Report in the format of `../../references/report.md` after any lane changes section, when the user asks, and when you stop. The `display` skill opens the panel, or prints the same picture as text. After every lane change also run `bash "../../scripts/status.sh" --tokens` (it writes each lane agent's step into Herdr's sidebar), and `herdr plugin action invoke herdr-graph-engineering.graph.refresh` when the panel is installed.
 
 Answers the user types in the panel's answer popup arrive here as a message starting `Answer for lane <lane>`: treat them exactly like an answer typed in this chat.
+
+## Keep state outside the chat
+
+This chat will be compacted. Anything you would need afterwards that Herdr, git and the lane files do not already show is written down **when it happens**, not later:
+
+| Fact | Write it with |
+| --- | --- |
+| A standing answer or approval (new worktrees, folder trust, monorepo imports for lane worktrees, opencode folder access "Allow always", a kind for a role) | `bash "../../scripts/session.sh" add --list standing --text "<the answer, in the user's words>"` |
+| A lane queued at the agent limit, with its prepared brief | `session.sh add --list queued --lane <lane> --repo <repo> --ref <brief file> --text "<idea>"`; when it starts: `session.sh del --list queued --lane <lane>` |
+| A lane renamed | `session.sh add --list renames --lane <new> --text "<old> renamed to <new>"` |
+| A user decision about the whole session; a scratch file or pull request not tied to a lane | `session.sh add --list notes --text ...` / `session.sh add --list files --ref <path or url> --text ...` |
+| A done criterion beyond the pattern's ("done = merged to main and this window runs the new plugin version": reinstall, restart the panel, confirm) | `lane.sh done-extra --lane L --text "<criterion>"`; once checked: `lane.sh done-extra --lane L --met <n>`. A lane is done only when these are met too |
+| A follow-up prompt sent to a node, scope added to a running lane, its brief or report path | `lane.sh note --lane L [--node N] [--ref <path>] --text "<what was sent or added>"` |
+
+Remove what no longer holds (`session.sh del --list <list> --id <n>`). Never store a token, password or key: the scripts refuse text that looks like one; write where it lives (an environment variable's name, a file path) instead. `session.sh show` prints the file.
 
 ## Measuring
 

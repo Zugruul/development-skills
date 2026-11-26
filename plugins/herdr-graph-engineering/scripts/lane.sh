@@ -17,6 +17,11 @@
 #   lane.sh retry --lane L --node N               N failed: rerun its retry target; exit 7 at the limit
 #   lane.sh ask --lane L --text Q [--node N]      record an open question for the user
 #   lane.sh answer --lane L --text A              record the user's answer and clear the question
+#   lane.sh note --lane L --text T [--node N] [--ref X]   a lane fact the chat would lose: a follow-up sent to
+#                                                 a node, scope the user added, the brief or a file path
+#   lane.sh done-extra --lane L (--text T | --met N)   a done criterion the user added beyond the pattern's
+#                                                 (for example "merged and the new plugin version runs");
+#                                                 --met N marks the Nth one met
 #   lane.sh set --lane L --key owner|workspace|branch|gate|status --value V
 #   lane.sh close --lane L                        move the file to closed/
 #   lane.sh clear --lane L                        a closed lane: move its file to closed/cleared/ (kept, off the panel)
@@ -30,12 +35,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/pattern.sh
 . "$HERE/src/pattern.sh"
 
-USAGE="lane.sh new|show|list|node|retry|ask|answer|set|close|clear [options] (see the header of lane.sh)"
+USAGE="lane.sh new|show|list|node|retry|ask|answer|note|done-extra|set|close|clear [options] (see the header of lane.sh)"
 cmd="${1:-}"
 [ -n "$cmd" ] || usage "$USAGE"
 shift
 repo="$(pwd)" lane="" pattern="" pattern_file="" idea="" gate="" branch="" workspace="" owner="" node="" status=""
-result="" ref="" exitc="" agent="" note="" text="" key="" value="" as_json=0 all=0 inputs="{}"
+result="" ref="" exitc="" agent="" note="" text="" key="" value="" as_json=0 all=0 inputs="{}" met=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo) need_value "$1" $#; repo="$2"; shift 2 ;;
@@ -60,6 +65,7 @@ while [ $# -gt 0 ]; do
         --text) need_value "$1" $#; text="$2"; shift 2 ;;
         --key) need_value "$1" $#; key="$2"; shift 2 ;;
         --value) need_value "$1" $#; value="$2"; shift 2 ;;
+        --met) need_value "$1" $#; met="$2"; shift 2 ;;
         --json) as_json=1; shift ;;
         --all) all=1; shift ;;
         *) usage "$USAGE" ;;
@@ -185,6 +191,24 @@ answer)
     need_lane
     [ -n "$text" ] || usage "lane.sh answer --lane L --text A"
     update '.question = "" | .nodes |= map_values(if .status == "blocked" then .status = "waiting" else . end)' "answer: $text" ;;
+note)
+    need_lane
+    [ -n "$text" ] || usage "lane.sh note --lane L --text T [--node N] [--ref X]"
+    { ! looks_secret "$text" && ! looks_secret "$ref"; } || die "SECRET: that looks like a token, key or password; it is never stored" 2
+    [ -z "$node" ] || yq -e ".graph | has(\"$node\")" "$file" >/dev/null 2>&1 || die "NO NODE: $node in lane $lane" 6
+    update '.notes = ((.notes // []) + [{at: $now, text: $t} + (if $n != "" then {node: $n} else {} end) + (if $ref != "" then {ref: $ref} else {} end)])' \
+        "note: $text${node:+ ($node)}${ref:+ $ref}" --arg t "$text" --arg n "$node" --arg ref "$ref" ;;
+done-extra)
+    need_lane
+    if [ -n "$met" ]; then
+        case "$met" in *[!0-9]* | 0) die "--met must be a number from 1" 2 ;; esac
+        [ "$(yq -r ".done_extra // [] | length" "$file")" -ge "$met" ] || die "NO CRITERION $met in lane $lane" 6
+        update '.done_extra[($m | tonumber) - 1].met = true' "extra done $met met" --arg m "$met"
+    else
+        [ -n "$text" ] || usage "lane.sh done-extra --lane L (--text T | --met N)"
+        ! looks_secret "$text" || die "SECRET: that looks like a token, key or password; it is never stored" 2
+        update '.done_extra = ((.done_extra // []) + [{text: $t, met: false, at: $now}])' "extra done: $text" --arg t "$text"
+    fi ;;
 set)
     need_lane
     case "$key" in owner | workspace | branch | gate | status) ;; *) die "--key must be owner, workspace, branch, gate or status" 2 ;; esac
