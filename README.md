@@ -228,6 +228,7 @@ linked worktree is checked independently of a dirty primary checkout. See the
 bash plugins/spec-workflow/tests/run-tests.sh    # hermetic: validator fixtures + preflight (CI runs this + shellcheck + manifest validation)
 bash plugins/herdr/tests/run-tests.sh            # hermetic: runs against a stub herdr, no Herdr install needed
 bash plugins/herdr-simple-orchestrate/tests/run-tests.sh
+bash plugins/herdr-graph-engineering/tests/run-tests.sh
 bash plugins/herdr-development-skills/tests/run-tests.sh
 claude plugin eval plugins/spec-workflow         # skill evals (early access; needs API credits)
 ```
@@ -377,6 +378,26 @@ call. See [herdr](plugins/herdr/README.md).
 
 ```bash
 claude plugin install herdr@development-skills
+```
+
+### herdr-graph-engineering
+
+Graph engineering on Herdr, kept thin. One orchestrator chat takes your ideas;
+each becomes a lane (its own worktree) running a small graph from a pattern
+(`solo`: implementer then a tests gate with bounded retries; `investigate`: a
+read-only report). Scripts decide what is ready and record results in one lane
+file per lane; the orchestrator checks evidence, opens a draft pull request when
+a lane is done, and asks you only when a lane needs you. **Requires the herdr
+plugin**, `jq`, `yq` and `git`. See
+[herdr-graph-engineering](plugins/herdr-graph-engineering/README.md).
+
+| Skill | Purpose |
+|---|---|
+| `orchestrate` | The one chat: route ideas into lanes and run them until their definition of done |
+| `display` | Read-only picture of every lane: NEEDS YOU, WORKING, DONE |
+
+```bash
+claude plugin install herdr-graph-engineering@development-skills
 ```
 
 ### herdr-simple-orchestrate (deprecated)
