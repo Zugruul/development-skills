@@ -1,97 +1,58 @@
 # AGENTS.md
 
-This repo is [Zugruul/development-skills](https://github.com/Zugruul/development-skills), a Claude Code and Codex plugin marketplace: `spec-workflow`, `scaffold-project`, `peer-review`, `remote-compute`, `herdr`, and `herdr-development-skills` ship from `plugins/`. `spec-workflow` — the autonomous build-loop plugin — develops *this very repo*, dogfood-style.
+This repo is [Zugruul/development-skills](https://github.com/Zugruul/development-skills), a Claude Code and Codex plugin marketplace. Each plugin lives in `plugins/<name>/`. This file is the canonical instruction file for both hosts; `CLAUDE.md` only points here.
 
-## You may be the loop itself
+## Active plugins
 
-That dogfooding isn't incidental: this repo is built by the `spec-workflow` plugin it ships, autonomously, one board task at a time, via `/spec-workflow:build-next`. If you were invoked to implement a task here, there is a real chance you *are* an instance of that same loop — a dev/reviewer/orchestrator identity working a spec-driven task off the GitHub Project board. Behave accordingly: strict TDD (a failing test commits before the implementation that turns it green), and don't hand-wave the gate below.
+| Plugin | What it is | Needs |
+| --- | --- | --- |
+| [`herdr`](plugins/herdr/README.md) | Teaches an agent to use [Herdr](https://herdr.dev): worktrees, agents, prompts, listening, status. Only Herdr, no workflow of its own, no knowledge of other plugins. | `herdr`, `bash`, `jq`, `git` |
+| [`remote-compute`](plugins/remote-compute/README.md) | Registers remote machines over SSH and dispatches jobs to them (details below). | still needs `spec-workflow` for project enablement and role dispatch |
 
-## Where the contract lives
+`herdr-graph-engineering` (graph engineering on top of `herdr`: one chat, ideas become lanes, small graphs of agents run until their definition of done) is being planned and is not in the marketplace yet.
 
-- [`SPEC.md`](SPEC.md) — spec-workflow's own contract (the plugin most of this repo's work targets).
-- [`SPEC-CODEX-COMPAT.md`](SPEC-CODEX-COMPAT.md) — the dual-host (Claude Code + Codex) compatibility spec that this file itself exists to satisfy (§6.5).
-- [`docs/BACKLOG-CODEX-COMPAT.md`](docs/BACKLOG-CODEX-COMPAT.md) — the task backlog for that compatibility work.
-- [`.neural-network/project.yaml`](.neural-network/project.yaml) — machine-readable config: boards, specs, epics, invariants, and the gate command below.
+## Deprecated plugins
+
+Kept so existing setups keep working. They are not developed further. Change them only to keep them working (for example when something they reference moves), never to add behaviour.
+
+| Plugin | Note |
+| --- | --- |
+| [`spec-workflow`](plugins/spec-workflow/README.md) | Its own rules (the build loop, the board, the gate, schema versioning) are in [`plugins/spec-workflow/AGENTS.md`](plugins/spec-workflow/AGENTS.md). |
+| [`herdr-simple-orchestrate`](plugins/herdr-simple-orchestrate/README.md) | The old orchestrator role and multi-PR code review, moved out of `herdr`. |
+| [`herdr-development-skills`](plugins/herdr-development-skills/README.md) | The bridge between Herdr and spec-workflow. |
+| [`peer-review`](plugins/peer-review/README.md) | Independent review through another vendor's CLI. |
+| [`scaffold-project`](plugins/scaffold-project/README.md) | Greenfield minikube workflow scaffold. |
+
+## Rules for every plugin
+
+- **One plugin, one job.** A plugin carries the scripts it needs and nothing else. It never reaches into another plugin's folder: installed plugins live in versioned folders, so a path into another plugin breaks. It uses another plugin through that plugin's skills, by name (`herdr:worktree`), and declares the dependency in `.claude-plugin/plugin.json` (`"dependencies"`).
+- **No Python in active plugins.** Scripts are `bash` (3.2 or later, so the macOS default works; WSL on Windows) with `jq` for JSON. Shared helpers sit in a flat `scripts/src/` folder, one level deep.
+- **Only scripts that are really needed.** When the tool's own CLI does a step in one call, the skill calls the CLI directly. A script exists for a wait, a retry or a safety check the CLI cannot do.
+- **Tests are hermetic.** Each plugin has `tests/run-tests.sh`, sourcing `section-*.sh` files, with stubs for external binaries. No live session, no network.
+- **Two manifests, same version.** `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`, with the same version, and an entry in both `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`. Bump the version when behaviour changes.
+- **Skill descriptions** have no angle brackets (Codex rejects them) and name the triggers a user would type.
+- No AI attribution or `Co-Authored-By` lines in commits, pull requests or files.
 
 ## Validating a change
 
-The single command that proves a change is correct in this repo (`.neural-network/project.yaml`'s `commands.gate`, quoted verbatim):
+Run the checks of every plugin you touched, green, before calling the work done. For the active plugins:
 
+```bash
+bash plugins/herdr/tests/run-tests.sh
+bash plugins/remote-compute/tests/run-tests.sh
+shellcheck -x plugins/herdr/scripts/*.sh plugins/herdr/scripts/src/*.sh plugins/herdr/tests/*.sh plugins/herdr/tests/fixtures/stub-herdr/herdr
+claude plugin validate plugins/herdr && claude plugin validate plugins/remote-compute
 ```
-bash plugins/spec-workflow/tests/run-tests.sh && bash plugins/remote-compute/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/scripts/lib/*.sh plugins/spec-workflow/tests/*.sh plugins/remote-compute/tests/*.sh && claude plugin validate plugins/spec-workflow && claude plugin validate plugins/remote-compute
-```
 
-Run it green before considering any task done.
+A change to a deprecated plugin also runs that plugin's own `tests/run-tests.sh` and `claude plugin validate`; `spec-workflow`'s full gate is in its `AGENTS.md`.
 
-## Schema versioning
+## Adding a plugin
 
-Every schema'd file this repo owns (a consumer repo's `.neural-network/project.yaml`, its `specs/<id>.yaml` files, and any future config-family file) carries a `schemaVersion` as a **semver string** — current: `"2.0.0"`. A missing field, or the legacy integers (`1` json era, `2` pre-cutover yaml era), all read as **`1.0.0`** (`config.py schema_semver()` / the `schema-version` CLI verb are the one detection path).
+1. `plugins/<name>/` with `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, `README.md`, `skills/<skill>/SKILL.md`, `tests/run-tests.sh`, and `scripts/` only if needed.
+2. Register it in both marketplace files.
+3. Add it to the tables in this file and in the root `README.md`.
 
-Maintaining it — any schema-breaking change MUST, in the same PR:
-
-1. Bump `SCHEMA_SEMVER` in `plugins/spec-workflow/scripts/config.py` (major bump for breaking changes).
-2. Add a `## <old> → <new>` chapter to `plugins/spec-workflow/skills/migrate-version/references/migrations.md` with **idempotent** steps a consumer repo follows to migrate (the `migrate-version` skill applies chapters in order and verifies after each).
-3. Update `validate-config.py`'s accepted versions and `schemas/project-config.schema.json`'s `schemaVersion` description, plus any deprecation note text.
-4. Never break reading of the previous version silently: old versions stay detectable and the registry says how to leave them.
-
-## Install and usage
-
-See [`README.md`](README.md) for marketplace install/update instructions and the per-plugin skills tables.
-
-## What this marketplace provides
-
-This repository ships six plugins. Each skill's `SKILL.md` is the operational
-source of truth; the index below describes when to use it and links directly to
-its instructions. Keep these summaries and the README's plugin tables in sync
-when skills are added, removed, or renamed.
-
-### spec-workflow
-
-Spec-driven project setup and delivery, configured per consumer repository in
-`.neural-network/project.yaml`. The workflow covers specs, GitHub Project
-boards, TDD implementation, gates, reviews, identity brains, and project
-operations. The repo's `SPEC.md` and `SPEC-ASSISTANT.md` define the detailed
-contracts.
-
-| Skill | Purpose |
-| --- | --- |
-| [agent-identities](plugins/spec-workflow/skills/agent-identities/SKILL.md) | Configure per-role Git author names and emails. |
-| [ask-brain](plugins/spec-workflow/skills/ask-brain/SKILL.md) | Ask all identity brains collectively, grounded in their recorded knowledge. |
-| [ask-identity](plugins/spec-workflow/skills/ask-identity/SKILL.md) | Ask one role's identity brain without starting a build iteration. |
-| [auto-merge](plugins/spec-workflow/skills/auto-merge/SKILL.md) | Inspect or toggle autonomous PR review, approval, and merge. |
-| [board](plugins/spec-workflow/skills/board/SKILL.md) | Read or update the configured GitHub Project board and issues. |
-| [brain](plugins/spec-workflow/skills/brain/SKILL.md) | Inspect, recall, maintain, and explain per-role zettel brains. |
-| [build-next](plugins/spec-workflow/skills/build-next/SKILL.md) | Run one complete autonomous board-to-PR build iteration. |
-| [changelog-generate](plugins/spec-workflow/skills/changelog-generate/SKILL.md) | Regenerate a versioned changelog from Git history. |
-| [checkpoint](plugins/spec-workflow/skills/checkpoint/SKILL.md) | Pause or resume the build loop at a safe task boundary. |
-| [concurrency](plugins/spec-workflow/skills/concurrency/SKILL.md) | Inspect or set the board WIP limit and parallel implementation lanes. |
-| [craft-spec](plugins/spec-workflow/skills/craft-spec/SKILL.md) | Interview, draft, and review a spec and derive its task backlog. |
-| [create-inbound](plugins/spec-workflow/skills/create-inbound/SKILL.md) | Search for duplicates, then capture an ad-hoc request on the board. |
-| [dev-up](plugins/spec-workflow/skills/dev-up/SKILL.md) | Start the project's configured development stack for QA or debugging. |
-| [feedback](plugins/spec-workflow/skills/feedback/SKILL.md) | Record structured feedback about the workflow for later triage. |
-| [find-task](plugins/spec-workflow/skills/find-task/SKILL.md) | Search existing board issues by title and body similarity. |
-| [gate](plugins/spec-workflow/skills/gate/SKILL.md) | Run and record the project's required quality gate. |
-| [handoff](plugins/spec-workflow/skills/handoff/SKILL.md) | Write a resumable session handoff with board and runtime state. |
-| [implement-task](plugins/spec-workflow/skills/implement-task/SKILL.md) | Orchestrate one board task through delegated TDD, review, and board updates. |
-| [knowledge-base-seed](plugins/spec-workflow/skills/knowledge-base-seed/SKILL.md) | Seed or refresh the repository knowledge identity brain from project sources. |
-| [migrate-version](plugins/spec-workflow/skills/migrate-version/SKILL.md) | Migrate project config and related data through the versioned migration registry. |
-| [neural-network-projects-list](plugins/spec-workflow/skills/neural-network-projects-list/SKILL.md) | List anchored local repos with config toggles, configured boards and validation errors, without writes or network. |
-| [neural-view](plugins/spec-workflow/skills/neural-view/SKILL.md) | Start, stop, or inspect the live identity-brain and project visualization. |
-| [next-task](plugins/spec-workflow/skills/next-task/SKILL.md) | Select the next eligible board task, honoring priority, dependencies, and comments. |
-| [pr-review-model](plugins/spec-workflow/skills/pr-review-model/SKILL.md) | Inspect or set the allowed models for the autonomous reviewer identity. |
-| [queue](plugins/spec-workflow/skills/queue/SKILL.md) | Show upcoming build-loop picks and why tasks may be blocked. |
-| [refine-task-ui](plugins/spec-workflow/skills/refine-task-ui/SKILL.md) | Turn a selected UI direction into screenshots and actionable issue criteria. |
-| [retrospective](plugins/spec-workflow/skills/retrospective/SKILL.md) | Triage workflow feedback and maintain identity-brain notes. |
-| [seed-board](plugins/spec-workflow/skills/seed-board/SKILL.md) | Create board issues from a backlog after complexity scoring and splitting. |
-| [setup-assistant](plugins/spec-workflow/skills/setup-assistant/SKILL.md) | Scaffold or configure a persistent assistant repo, its persona, and memory. |
-| [remote-compute-control](plugins/spec-workflow/skills/remote-compute-control/SKILL.md) | Use data-only assistant provisioning for audited WSL inventory, status, redacted bounded logs and cancellation through dedicated per-class forced-command SSH keys. |
-| [comfyui-render](plugins/spec-workflow/skills/comfyui-render/SKILL.md) | Queue pinned ComfyUI image workflows over a dedicated SSH tunnel, recover owned requests, and publish audited artifacts. |
-| [setup-project](plugins/spec-workflow/skills/setup-project/SKILL.md) | Initialize a repo's project config, GitHub Project board, and local-state ignores. |
-| [sync-project-configs](plugins/spec-workflow/skills/sync-project-configs/SKILL.md) | Dry-run or apply versioned config updates across discovered project repos. |
-| [task-state](plugins/spec-workflow/skills/task-state/SKILL.md) | Keep the local record of tasks in progress and their TODOs, shared across agents and worktrees. |
-| [ui-mode](plugins/spec-workflow/skills/ui-mode/SKILL.md) | Inspect or toggle human-directed iterative UI decisions. |
-| [ui-options](plugins/spec-workflow/skills/ui-options/SKILL.md) | Present UI alternatives in the local decision hub and capture the user's choice. |
-| [whisper-sidecar](plugins/spec-workflow/skills/whisper-sidecar/SKILL.md) | Install, run, stop, or health-check the private local whisper.cpp speech sidecar. |
+## Plugin notes
 
 ### remote-compute
 
@@ -208,7 +169,7 @@ For an existing installation, follow the [installed-update guide](docs/remote-co
 verify source/cache/host separately from controller, target tools and catalog
 readiness, and back up reviewed custom bundles before any replacement.
 
-### peer-review
+### peer-review (deprecated)
 
 The [peer-review skill](plugins/peer-review/skills/peer-review/SKILL.md) obtains
 an independent code review from OpenAI Codex or Anthropic Claude through trusted
@@ -220,47 +181,9 @@ allowlist; SSH-machine registration grants no peer HTTP authority. See
 [plugins/peer-review/README.md](plugins/peer-review/README.md) for provider and
 script details.
 
-### scaffold-project
+### scaffold-project (deprecated)
 
 The [scaffold-project skill](plugins/scaffold-project/skills/scaffold-project/SKILL.md)
 creates a greenfield minikube development workflow: start, stop, dev, build,
 port-forward, and bootstrap scripts, with explicit minikube profiles and
 `package.json` commands. See the linked skill for its templates and invocation.
-
-### herdr
-
-Skills for agents running inside [Herdr](https://herdr.dev). The plugin is
-standalone: it teaches Herdr and must not know or reference any other plugin
-here (its test suite enforces that). Skills call the `herdr` CLI directly; the
-helper `scripts/herdr_ctl.py` covers only waits, retries and safety checks. See
-[plugins/herdr/README.md](plugins/herdr/README.md).
-
-| Skill | Purpose |
-| --- | --- |
-| [worktree](plugins/herdr/skills/worktree/SKILL.md) | Plan, get approval for, and start a Herdr worktree, optionally with agents on it. |
-| [agent](plugins/herdr/skills/agent/SKILL.md) | Start an agent in an existing pane and send its first prompt. |
-| [prompt](plugins/herdr/skills/prompt/SKILL.md) | Send a follow-up prompt or relay the user's answer to a blocked agent, at most once. |
-| [listen](plugins/herdr/skills/listen/SKILL.md) | Follow agents and surface the questions they are blocked on. |
-| [orchestrate](plugins/herdr/skills/orchestrate/SKILL.md) | Take the orchestrator role and load the orchestration skills. |
-| [status](plugins/herdr/skills/status/SKILL.md) | Show live agents and the repository's worktrees, read-only. |
-| [orchestrate-code-reviews](plugins/herdr/skills/orchestrate-code-reviews/SKILL.md) | Orchestrate a code review of related pull requests: reviewer agents in worktrees draft, one agent per pull request posts a single COMMENT review, whose body the orchestrator fills with the summary. |
-
-### herdr-development-skills
-
-The integration layer between Herdr and the other plugins. All knowledge of the
-specialized plugins and Herdr together belongs here, never in `herdr`. It
-requires the `herdr` plugin, uses that plugin's skills for every Herdr step, and
-offers an integration only when `scripts/detect.py` finds its specialized plugin
-enabled and configured. Work that arrives without a task identifier goes
-through `references/task-source.md`: one question with three options (run
-without a task, create one, provide the identifier), limited to what can work in
-the repository. See
-[plugins/herdr-development-skills/README.md](plugins/herdr-development-skills/README.md).
-
-| Skill | Purpose |
-| --- | --- |
-| [integrations](plugins/herdr-development-skills/skills/integrations/SKILL.md) | Report which integrations are ready, paused or unavailable in this repository. |
-| [task-lane](plugins/herdr-development-skills/skills/task-lane/SKILL.md) | Run one piece of work in a Herdr worktree agent: a spec-workflow board task, or described work with no task. |
-| [build-loop](plugins/herdr-development-skills/skills/build-loop/SKILL.md) | Run the build loop in a separate Herdr agent and listen to it. |
-| [build-lanes](plugins/herdr-development-skills/skills/build-lanes/SKILL.md) | Run several build-next lanes in parallel Herdr worktree agents. |
-| [review-lane](plugins/herdr-development-skills/skills/review-lane/SKILL.md) | Run a peer review next to an existing lane. |

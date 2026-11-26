@@ -227,6 +227,7 @@ linked worktree is checked independently of a dirty primary checkout. See the
 ```bash
 bash plugins/spec-workflow/tests/run-tests.sh    # hermetic: validator fixtures + preflight (CI runs this + shellcheck + manifest validation)
 bash plugins/herdr/tests/run-tests.sh            # hermetic: runs against a stub herdr, no Herdr install needed
+bash plugins/herdr-simple-orchestrate/tests/run-tests.sh
 bash plugins/herdr-development-skills/tests/run-tests.sh
 claude plugin eval plugins/spec-workflow         # skill evals (early access; needs API credits)
 ```
@@ -359,24 +360,39 @@ claude plugin install scaffold-project@development-skills
 
 ### herdr
 
-Skills for agents running inside [Herdr](https://herdr.dev), the terminal
+Skills that teach an agent to use [Herdr](https://herdr.dev), the terminal
 workspace manager for AI coding agents: start worktrees and agents, prompt them
-without duplicates, listen to their work, and act as an orchestrator. Standalone
-and thin over the `herdr` CLI: it knows Herdr and no other plugin. See
-[herdr](plugins/herdr/README.md) for the helper script and the proposed skills.
+without duplicates, listen to their work, and see what is running. It only
+teaches Herdr: no workflow of its own and no knowledge of other plugins. Thin
+over the `herdr` CLI, with three bash scripts for what the CLI cannot do in one
+call. See [herdr](plugins/herdr/README.md).
 
 | Skill | Purpose |
 |---|---|
-| `worktree` | Start a Herdr worktree after a read-only plan and the user's approval, optionally with agents on it, each with a first prompt |
+| `worktree` | Start a Herdr worktree after read-only checks and the user's approval, optionally with agents on it, each with a first prompt |
 | `agent` | Start an agent in an existing pane, retrying while the pane is busy, then send its first prompt |
-| `prompt` | Send a follow-up prompt or relay the user's answer to a blocked agent; never submits the same text twice |
+| `prompt` | Send a follow-up prompt with `herdr agent prompt --wait`, or relay the user's answer to a blocked agent; never submits the same text twice |
 | `listen` | Report what agents are doing, wait until one blocks or finishes, and surface its question, asking which agent or tab when unclear |
-| `orchestrate` | Take the orchestrator role and load the skills above |
-| `status` | Read-only roster of live agents and the repository's worktrees |
-| `orchestrate-code-reviews` | Orchestrate a code review of a group of related pull requests: one reviewer agent per worktree plus a cross-PR checker draft, one agent per pull request posts a single COMMENT review, then the orchestrator puts a verified summary into that review's body |
+| `status` | Read-only lists of live agents and the repository's open worktrees |
 
 ```bash
 claude plugin install herdr@development-skills
+```
+
+### herdr-simple-orchestrate (deprecated)
+
+The old way of orchestrating agents in Herdr, moved out of `herdr`: the
+orchestrator role and an orchestrated code review of related pull requests.
+Kept so existing setups keep working. **Requires the herdr plugin.** See
+[herdr-simple-orchestrate](plugins/herdr-simple-orchestrate/README.md).
+
+| Skill | Purpose |
+|---|---|
+| `orchestrate` | Take the orchestrator role, load the herdr skills, and report on demand (`NEEDS YOU`, `WORKING`, `DONE`) |
+| `orchestrate-code-reviews` | Orchestrate a code review of a group of related pull requests: one reviewer agent per worktree plus a cross-PR checker draft, one agent per pull request posts a single COMMENT review, then the orchestrator puts a verified summary into that review's body |
+
+```bash
+claude plugin install herdr-simple-orchestrate@development-skills
 ```
 
 ### herdr-development-skills
