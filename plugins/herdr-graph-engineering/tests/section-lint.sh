@@ -55,6 +55,13 @@ check "orchestrate: offers the panel install and asks first" "run it only if the
 check "orchestrate: keeps the sidebar tokens current" 'status.sh" --tokens' "$orch"
 check "orchestrate: panel answers count as chat answers" "Answer for lane <lane>" "$orch"
 
+echo "== lint: the worktree path follows the target repository =="
+rt="$(cat "$PLUGIN/references/router.md")"
+check "router: the target repository is the git toplevel of the checkout being changed" "git -C <target> rev-parse --show-toplevel" "$rt"
+check "router: only the target's own instructions set the location" "only from that repository's own instructions" "$rt"
+check "router: an enclosing repository's rule never applies to a nested clone" "never applies to a nested standalone clone" "$rt"
+check "router: not inside another repository's working tree" "inside another repository's working tree" "$rt"
+
 echo "== lint: reviews keep the grouped format =="
 rb="$(cat "$PLUGIN/references/review-brief.md")"
 rs="$(cat "$PLUGIN/references/review-summary.md")"
