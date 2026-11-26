@@ -45,7 +45,7 @@ For every Herdr step use the `herdr` plugin's skills: `herdr:worktree`, `herdr:a
 
 ## 1. Pick up where things are
 
-**After a compaction (or a new session)**, before anything else: run `bash "../../scripts/resume.sh"`. It prints one block, `RESUME` to `END RESUME`: every open lane of every repository with lanes (nodes, agents live or gone, open question, pull requests, done checks and the extra ones, notes) with its `next:` action, then the queued lanes, standing answers, renames, notes and files of your session file. In Claude Code a hook puts the same block into the chat after a compaction; if you see a summary of earlier conversation and no block, run it yourself. Then:
+**After a compaction (or a new session)**, before anything else: run `bash "../../scripts/resume.sh"`. It prints one block, `RESUME` to `END RESUME`: every open lane of every repository with lanes (nodes, agents live or gone, what a finished agent printed as its RESULT line, open question, pull requests, done checks and the extra ones, notes) with its `next:` action (for a finished agent: check it, then the `lane.sh` command to record), then the queued lanes, standing answers, renames, notes and files of your session file. In Claude Code a hook puts the same block into the chat after a compaction; if you see a summary of earlier conversation and no block, run it yourself. Then:
 
 1. Trust the block over your summary: the files are the record. Use the standing answers in it as given by the user.
 2. re-start `herdr:listen` for every agent the block shows live (working, blocked, idle); an agent shown `gone` is not running: follow that lane's `next:`.
