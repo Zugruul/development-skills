@@ -8,7 +8,7 @@
 # A waiting node whose needs are done but whose `when` does not hold is printed as
 # SKIP <node> (record it with lane.sh node --status skipped). A done node whose result is
 # `changes` counts like a failed one until it is retried.
-# Prints one line per ready node: READY <node> <agent|gate|human> <role, command or question>
+# Prints one line per ready node: READY <node> <agent|gate|human|pr> <role, command, question or draft>
 # or NOTHING READY (<why>), or ALL NODES DONE.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,6 +44,7 @@ read_json "$file" | jq -r '
             elif ($g.when // null) != null and any(($g.needs // [])[]; $l.nodes[.].result != $g.when) then "SKIP \($n) (when \($g.when) does not hold)"
             elif $g.agent then "READY \($n) agent \($g.agent)"
             elif $g.gate then "READY \($n) gate \($g.gate)"
+            elif $g.pr then "READY \($n) pr \($g.pr)"
             else "READY \($n) human \($g.human)" end ]
         | if length > 0 then .[]
           elif ($running | length) > 0 then "NOTHING READY (running: \($running | join(", ")))"

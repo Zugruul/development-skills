@@ -4,7 +4,7 @@ Skills that teach a coding agent to use [Herdr](https://herdr.dev), the terminal
 
 The plugin only teaches Herdr. It has no workflow of its own and knows no other plugin. Workflows that coordinate several agents are built on top of it in separate plugins.
 
-It is also thin. Skills call the `herdr` CLI directly, and the installed binary stays the authority for syntax (`herdr --help`, `herdr agent`, `herdr --skill`). There are three small bash scripts, each for something the CLI cannot do in one call.
+It is also thin. Skills call the `herdr` CLI directly, and the installed binary stays the authority for syntax (`herdr --help`, `herdr agent`, `herdr --skill`). There are four small bash scripts, each for something the CLI cannot do in one call.
 
 ## Install
 
@@ -37,7 +37,7 @@ These come from driving Herdr by hand; each is covered by a test.
 - **A full-screen agent's transcript is on the visible screen.** `herdr agent read --source recent-unwrapped` misses it; the skills read `--source visible`.
 - **Nothing notifies a listener.** One agent: `herdr agent wait`. Several at once: `listen.sh`, which returns at the first that blocks, finishes or disappears.
 - **A timeout does not prove a prompt was not delivered.** `herdr agent prompt --wait` sends at most once; on a stall or timeout the skills read the screen before anything else and never resend blindly.
-- **Worktrees are explicit and approved.** `--cwd`, `--branch`, `--base`, `--path` and `--label` are always passed; the path follows the repository's own location rule when it has one; the user is asked before creation unless they already asked for the worktree. `--trust-repository` is never added.
+- **Worktrees are explicit and approved.** `--cwd`, `--branch`, `--base`, `--path` and `--label` are always passed; the path follows the target repository's own location rule when it has one, where the target is the git toplevel of the checkout being changed, so a rule from an enclosing repository never applies to a standalone clone nested inside it; `check-path.sh` refuses a path inside another repository's working tree; the user is asked before creation unless they already asked for the worktree. `--trust-repository` is never added.
 - **Agent names** must match `[a-z][a-z0-9_-]{0,31}` and be unique among live agents; `start.sh` checks before `agent start`.
 - **Blocked agents wait on a human.** An approval or question is shown to the user and answered only as they decide.
 
@@ -49,9 +49,11 @@ start.sh --name N --kind K --pane ID [--timeout S] [-- AGENT ARGS]
                                         agent start with retry on a busy pane, then wait for idle
 listen.sh TARGET... [--timeout S] [--lines N] [--only-blocked]
                                         the first of several agents to block, finish or disappear
+check-path.sh --target CHECKOUT --path P [--target-rule]
+                                        refuses a worktree path inside a repository other than the target
 ```
 
-Exit codes: `0` ok, `1` herdr error, `2` usage or not inside Herdr, `3` agent started but blocked, `6` invalid or taken name.
+Exit codes: `0` ok, `1` herdr error or refused path, `2` usage or not inside Herdr, `3` agent started but blocked, `6` invalid or taken name.
 
 ## Tests
 

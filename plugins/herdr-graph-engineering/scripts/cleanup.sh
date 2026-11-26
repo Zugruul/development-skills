@@ -10,14 +10,15 @@
 #
 # A done lane is ready when its checkout is clean and:
 #   review lane (branch look/pr-N, pattern review, or a posted-review check): nothing else.
-#   pull request lane (a recorded pr, or a draft-pr check): the pull request (the recorded one,
-#     else the one for the branch) is MERGED and the checkout has no commit beyond its head.
+#   pull request lane (a recorded pr, a pr node, or a draft-pr check): the pull request (the
+#     recorded one, else the one a pr node opened, else the one for the branch) is MERGED and the checkout has no commit beyond its head.
 #   report lane (anything else): no commit that is on no other branch or remote.
 # check prints per done lane: CLEANUP <lane> (<why>) when it becomes ready (records cleanup=ready,
 # asks the cleanup question, notifies), PENDING <lane> when that question was already asked,
 # BLOCKED <lane> (<reason>) for a merged lane that must not be removed (asks once per reason),
 # WAIT <lane> (<why>) for a pull request not merged yet, DECLINED <lane> when the user said no.
 # run re-checks the lane and refuses (exit 6) unless it is ready and the question was asked.
+# GRAPH_GH names the gh binary (default gh), as for prs.sh.
 # Prints CLEANED <lane> (...). Exit codes: 0 ok, 1 error, 2 usage, 6 not ready.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,6 +40,7 @@ done
 require_tools jq yq git
 repo="$(cd "$repo" 2>/dev/null && pwd)" || die "no such directory: $repo" 2
 dir="$(lane_dir "$repo")"
+GH="${GRAPH_GH:-gh}"
 
 lane_sh() { bash "$HERE/lane.sh" "$@" --repo "$repo" >/dev/null; }
 
@@ -54,7 +56,10 @@ plural() { # n word
 # Sets VERDICT (READY|BLOCKED|WAIT), WHY and WT for the lane in file $1.
 judge() {
     local f="$1" br pr pattern checks kind ref pj state url head n
-    br="$(yq -r '.branch // ""' "$f")" pr="$(yq -r '.pr // ""' "$f")" pattern="$(yq -r '.pattern // ""' "$f")"
+    br="$(yq -r '.branch // ""' "$f")"
+    # the recorded pull request, else the one a pr node opened (its ref is the url)
+    # shellcheck disable=SC2016  # $p and $k are jq variables
+    pr="$(yq -r '.pr // ([.graph | to_entries[] | select(.value.pr) | .key] as $p | [.nodes | to_entries[] | select(.key as $k | $p | contains([$k])) | .value.ref // "" | select(test("^https?://"))] | .[0]) // ""' "$f")" pattern="$(yq -r '.pattern // ""' "$f")"
     checks="$(yq -o=json '.done // []' "$f")"
     kind="report"
     if [ -n "$pr" ] || jq -e 'index("draft-pr")' <<<"$checks" >/dev/null; then kind="pr"; fi
@@ -64,8 +69,8 @@ judge() {
     if [ "$kind" = pr ]; then
         ref="${pr:-$br}"
         [ -n "$ref" ] || { VERDICT=WAIT WHY="no pull request or branch recorded"; return; }
-        command -v gh >/dev/null 2>&1 || { VERDICT=WAIT WHY="gh is not installed, cannot see the pull request"; return; }
-        pj="$(cd "$repo" && gh pr view "$ref" --json state,url,number,headRefOid 2>/dev/null)" || { VERDICT=WAIT WHY="no pull request found for $ref"; return; }
+        command -v "$GH" >/dev/null 2>&1 || { VERDICT=WAIT WHY="gh is not installed, cannot see the pull request"; return; }
+        pj="$(cd "$repo" && "$GH" pr view "$ref" --json state,url,number,headRefOid 2>/dev/null)" || { VERDICT=WAIT WHY="no pull request found for $ref"; return; }
         state="$(jq -r '.state // ""' <<<"$pj")" url="$(jq -r '.url // ""' <<<"$pj")" head="$(jq -r '.headRefOid // ""' <<<"$pj")"
         [ "$state" = MERGED ] || { VERDICT=WAIT WHY="pull request $url is $state"; return; }
     fi

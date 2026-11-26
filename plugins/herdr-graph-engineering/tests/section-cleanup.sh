@@ -8,7 +8,7 @@ K_REPO="$K_TMP/repo"
 git init -q -b main "$K_REPO" && git -C "$K_REPO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 export XDG_CONFIG_HOME="$K_TMP/config"
 k() { local s="$1"; shift; PATH="$FIX/stub-herdr:$FIX/stub-gh:$PATH" HERDR_STUB_DIR="$K_TMP" GH_STUB_DIR="$K_TMP" HERDR_ENV=1 HERDR_PANE_ID=w1:p1 bash "$PLUGIN/scripts/$s.sh" "$@"; }
-kst() { printf '%s' "${1:-}" >"$K_TMP/state.json"; : >"$K_TMP/calls.log"; : >"$K_TMP/gh-calls.log"; }
+kst() { printf '%s' "${1:-}" >"$K_TMP/state.json"; : >"$K_TMP/calls.log"; : >"$K_TMP/gh.log"; }
 kgh() { printf '%s' "$1" >"$K_TMP/gh.json"; }
 klf() { local f; f="$(git -C "$K_REPO" rev-parse --path-format=absolute --git-common-dir)/herdr-graph"
     if [ -f "$f/$2.yaml" ]; then yq -r "$1" "$f/$2.yaml"; else yq -r "$1" "$f/closed/$2.yaml"; fi; }
@@ -33,7 +33,7 @@ head_a="$(git -C "$K_TMP/wt-merged-1" rev-parse HEAD)"
 kgh "{\"feat/merged-1\": {\"state\": \"OPEN\", \"number\": 11, \"url\": \"https://github.com/o/r/pull/11\", \"headRefOid\": \"$head_a\"}}"
 out="$(k cleanup check --repo "$K_REPO" 2>&1)"
 check "a lane whose pull request is open waits" "WAIT merged-1 (pull request https://github.com/o/r/pull/11 is OPEN)" "$out"
-check "a lane without a recorded pull request is looked up by branch" "pr view feat/merged-1" "$(cat "$K_TMP/gh-calls.log")"
+check "a lane without a recorded pull request is looked up by branch" "pr view feat/merged-1" "$(cat "$K_TMP/gh.log")"
 check "a waiting lane asks nothing" "" "$(klf '.question' merged-1)"
 k lane new --repo "$K_REPO" --lane open-1 --pattern investigate --idea x >/dev/null
 check_absent "an open lane is not a cleanup candidate" "open-1" "$out"
@@ -62,7 +62,7 @@ kgh "{\"https://github.com/o/r/pull/12\": {\"state\": \"MERGED\", \"number\": 12
 echo scratch >"$K_TMP/wt-dirty-1/notes.txt"
 kst '{}'
 out="$(k cleanup check --repo "$K_REPO" --lane dirty-1 2>&1)"
-check "the recorded pull request is used" "pr view https://github.com/o/r/pull/12" "$(cat "$K_TMP/gh-calls.log")"
+check "the recorded pull request is used" "pr view https://github.com/o/r/pull/12" "$(cat "$K_TMP/gh.log")"
 check "a merged lane with a dirty checkout is not ready" "BLOCKED dirty-1 (the checkout has uncommitted changes" "$out"
 check "it goes to the user with the reason" "uncommitted changes" "$(klf '.question' dirty-1)"
 check "the user is notified about it" "notification show dirty-1 needs you" "$(cat "$K_TMP/calls.log")"
@@ -82,13 +82,24 @@ check_rc "cleanup refuses a lane that is not ready" 6 "$rc"
 check "the refusal says why" "not in the pull request" "$out"
 check_absent "nothing is removed" "worktree remove" "$(cat "$K_TMP/calls.log")"
 
+echo "== cleanup: a pr node's pull request is used =="
+klane fast-1 fix/fast-1 fast --gate t
+head_f="$(git -C "$K_TMP/wt-fast-1" rev-parse HEAD)"
+k lane node --repo "$K_REPO" --lane fast-1 --node pr --status "done" --result pass --ref https://github.com/o/r/pull/13 >/dev/null
+kgh "{\"https://github.com/o/r/pull/13\": {\"state\": \"MERGED\", \"number\": 13, \"url\": \"https://github.com/o/r/pull/13\", \"headRefOid\": \"$head_f\"}}"
+kst '{}'
+: >"$K_TMP/gh.log"
+out="$(k cleanup check --repo "$K_REPO" --lane fast-1 2>&1)"
+check "the pull request a pr node opened is looked up" "pr view https://github.com/o/r/pull/13" "$(cat "$K_TMP/gh.log")"
+check "a merged fast lane is ready" "CLEANUP fast-1 (pull request https://github.com/o/r/pull/13 is merged" "$out"
+
 echo "== cleanup: review and report lanes need no merge =="
 klane rev-7 look/pr-7 review --input pr=https://github.com/o/r/pull/7
 kst '{}'
-: >"$K_TMP/gh-calls.log"
+: >"$K_TMP/gh.log"
 out="$(k cleanup check --repo "$K_REPO" --lane rev-7 2>&1)"
 check "a done review lane is ready without a merge" "CLEANUP rev-7 (review lane is done" "$out"
-check_absent "no pull request is looked up for it" "pr view" "$(cat "$K_TMP/gh-calls.log")"
+check_absent "no pull request is looked up for it" "pr view" "$(cat "$K_TMP/gh.log")"
 git -C "$K_REPO" worktree add -q -b inv/why "$K_TMP/wt-inv-1" main
 k lane new --repo "$K_REPO" --lane inv-1 --pattern investigate --idea x --branch inv/why --workspace w-inv-1 >/dev/null
 k lane set --repo "$K_REPO" --lane inv-1 --key status --value "done" >/dev/null
