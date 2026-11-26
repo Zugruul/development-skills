@@ -318,6 +318,7 @@ section-semver.sh
     section-assistant-artifacts.sh
     section-assistant-artifact-panel.sh
     section-design-registry.sh
+    section-ui-design-split.sh
 )
 
 if [[ ${#SECTIONS[@]} -eq 0 ]]; then
