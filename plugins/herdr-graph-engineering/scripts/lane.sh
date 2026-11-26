@@ -13,11 +13,16 @@
 #   lane.sh show --lane L [--json]
 #   lane.sh list [--all]                          open lanes (--all: closed ones too)
 #   lane.sh node --lane L --node N --status waiting|running|done|failed|blocked|skipped
-#               [--result pass|changes|fail|question] [--ref X] [--exit N] [--agent NAME] [--note TEXT]
+#               [--result pass|changes|fail|question] [--ref X] [--exit N] [--agent NAME] [--tab TAB] [--note TEXT]
+#                                                 --tab: the Herdr tab the node runs in (a new tab clears tab_closed)
+#   lane.sh tab-closed --lane L --node N          record that the node's tab was closed (by close-done.sh)
 #   lane.sh retry --lane L --node N               N failed: rerun its retry target; exit 7 at the limit
 #   lane.sh ask --lane L --text Q [--node N]      record an open question for the user
 #   lane.sh answer --lane L --text A              record the user's answer and clear the question
-#   lane.sh set --lane L --key owner|workspace|branch|gate|status --value V
+#   lane.sh set --lane L --key owner|workspace|branch|gate|status|pr|cleanup --value V
+#                                                 pr: the lane's pull request; cleanup: ready or blocked: REASON
+#                                                 (written by cleanup.sh), confirmed or declined (the user's
+#                                                 answer; confirmed only after ready)
 #   lane.sh close --lane L                        move the file to closed/
 #   lane.sh clear --lane L                        a closed lane: move its file to closed/cleared/ (kept, off the panel)
 # Exit codes: 0 ok, 1 error, 2 usage, 6 invalid pattern or lane, 7 retry limit reached.
@@ -30,12 +35,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/pattern.sh
 . "$HERE/src/pattern.sh"
 
-USAGE="lane.sh new|show|list|node|retry|ask|answer|set|close|clear [options] (see the header of lane.sh)"
+USAGE="lane.sh new|show|list|node|tab-closed|retry|ask|answer|set|close|clear [options] (see the header of lane.sh)"
 cmd="${1:-}"
 [ -n "$cmd" ] || usage "$USAGE"
 shift
 repo="$(pwd)" lane="" pattern="" pattern_file="" idea="" gate="" branch="" workspace="" owner="" node="" status=""
-result="" ref="" exitc="" agent="" note="" text="" key="" value="" as_json=0 all=0 inputs="{}"
+result="" ref="" exitc="" agent="" tab="" note="" text="" key="" value="" as_json=0 all=0 inputs="{}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo) need_value "$1" $#; repo="$2"; shift 2 ;;
@@ -56,6 +61,7 @@ while [ $# -gt 0 ]; do
         --ref) need_value "$1" $#; ref="$2"; shift 2 ;;
         --exit) need_value "$1" $#; exitc="$2"; shift 2 ;;
         --agent) need_value "$1" $#; agent="$2"; shift 2 ;;
+        --tab) need_value "$1" $#; tab="$2"; shift 2 ;;
         --note) need_value "$1" $#; note="$2"; shift 2 ;;
         --text) need_value "$1" $#; text="$2"; shift 2 ;;
         --key) need_value "$1" $#; key="$2"; shift 2 ;;
@@ -146,13 +152,20 @@ node)
     case "$result" in '' | pass | changes | fail | question) ;; *) die "--result must be pass, changes, fail or question" 2 ;; esac
     case "$exitc" in '' | *[!0-9]*) [ -z "$exitc" ] || die "--exit must be a number" 2 ;; esac
     yq -e ".graph | has(\"$node\")" "$file" >/dev/null 2>&1 || die "NO NODE: $node in lane $lane" 6
-    msg="$node $status${result:+ $result}${exitc:+ EXIT=$exitc}${ref:+ $ref}${note:+ - $note}"
+    msg="$node $status${result:+ $result}${exitc:+ EXIT=$exitc}${ref:+ $ref}${tab:+ tab $tab}${note:+ - $note}"
     update '.nodes[$n] |= (. + {status: $s}
             + (if $r != "" then {result: $r} else {} end)
             + (if $ref != "" then {ref: $ref} else {} end)
             + (if $x != "" then {exit: ($x | tonumber)} else {} end)
-            + (if $a != "" then {agent: $a} else {} end))' "$msg" \
-        --arg n "$node" --arg s "$status" --arg r "$result" --arg ref "$ref" --arg x "$exitc" --arg a "$agent" ;;
+            + (if $a != "" then {agent: $a} else {} end))
+        | if $t != "" then .nodes[$n] |= (.tab = $t | del(.tab_closed)) else . end' "$msg" \
+        --arg n "$node" --arg s "$status" --arg r "$result" --arg ref "$ref" --arg x "$exitc" --arg a "$agent" --arg t "$tab" ;;
+tab-closed)
+    need_lane
+    [ -n "$node" ] || usage "lane.sh tab-closed --lane L --node N"
+    t="$(yq -r ".nodes[\"$node\"].tab // \"\"" "$file")"
+    [ -n "$t" ] || die "NO TAB: node $node in lane $lane has no tab recorded" 6
+    update '.nodes[$n].tab_closed = true' "$node tab $t closed" --arg n "$node" ;;
 retry)
     need_lane
     [ -n "$node" ] || usage "lane.sh retry --lane L --node N"
@@ -187,7 +200,13 @@ answer)
     update '.question = "" | .nodes |= map_values(if .status == "blocked" then .status = "waiting" else . end)' "answer: $text" ;;
 set)
     need_lane
-    case "$key" in owner | workspace | branch | gate | status) ;; *) die "--key must be owner, workspace, branch, gate or status" 2 ;; esac
+    case "$key" in owner | workspace | branch | gate | status | pr | cleanup) ;; *) die "--key must be owner, workspace, branch, gate, status, pr or cleanup" 2 ;; esac
+    [ "$key" != cleanup ] || case "$value" in '' | ready | confirmed | declined | "blocked: "?*) ;; *) die "cleanup must be ready, confirmed, declined or blocked: REASON" 2 ;; esac
+    # a yes only answers a cleanup question that was asked
+    if [ "$key" = cleanup ] && [ "$value" = confirmed ]; then
+        was="$(yq -r '.cleanup // ""' "$file")"
+        [ "$was" = ready ] || [ "$was" = confirmed ] || die "NOT ASKED: lane $lane has no cleanup question to confirm (cleanup is '$was')" 6
+    fi
     [ "$key" != status ] || case "$value" in open | done) ;; *) die "status must be open or done (use close to close)" 2 ;; esac
     update '.[$k] = $v' "$key = $value" --arg k "$key" --arg v "$value" ;;
 close)

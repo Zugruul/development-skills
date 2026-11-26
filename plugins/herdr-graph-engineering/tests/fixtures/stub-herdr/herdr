@@ -140,6 +140,32 @@ case "$cmd" in
     "pane report-metadata")
         save "$(st | jq -c --arg p "$3" --arg all "$*" '.tokens += [{pane: $p, args: $all}]')"
         ok '{"type":"pane_metadata_reported"}' ;;
+    "worktree remove")
+        # state.worktree_remove = "fail" makes the removal fail, as for a dirty checkout.
+        [ "$(st | jq -r '.worktree_remove // "ok"')" = ok ] || fail worktree_dirty "the checkout has changes"
+        save "$(st | jq -c --arg w "$(opt --workspace "$@")" '.worktrees_removed += [$w]')"
+        ok '{"type":"worktree_removed"}' ;;
+    # Tabs live in state.tabs, keyed by tab id; `tab close` removes one and records it in
+    # state.tabs_closed (the call is in calls.log too).
+    "tab create")
+        # A new tab gets tab id <ws>:t<n> and a root pane <ws>:p<n+10>, so the two ids differ.
+        w="$(opt --workspace "$@")"
+        new="$(st | jq -c --arg w "$w" '
+            ([(.tabs // {})[] | select(.workspace_id == $w)] | length + 2) as $n
+            | {tab_id: "\($w):t\($n)", workspace_id: $w, number: $n, agent_status: "unknown", label: "x"} as $t
+            | .tabs[$t.tab_id] = $t
+            | .pane_list += [{pane_id: "\($w):p\($n + 10)", tab_id: $t.tab_id, workspace_id: $w}]
+            | .last_tab = $t | .last_pane = "\($w):p\($n + 10)"')"
+        save "$new"
+        ok "$(printf '%s' "$new" | jq -c '{type: "tab_created", tab: .last_tab, root_pane: {pane_id: .last_pane}}')" ;;
+    "tab get")
+        t="$(st | jq -c --arg t "${3:-}" '(.tabs // {})[$t] // empty')"
+        [ -n "$t" ] || fail tab_not_found "tab ${3:-} not found"
+        ok "$(jq -cn --argjson t "$t" '{type: "tab_info", tab: $t}')" ;;
+    "tab close")
+        st | jq -e --arg t "${3:-}" '(.tabs // {}) | has($t)' >/dev/null || fail tab_not_found "tab ${3:-} not found"
+        save "$(st | jq -c --arg t "${3:-}" 'del(.tabs[$t]) | .tabs_closed += [$t]')"
+        ok '{"type":"tab_closed"}' ;;
     "config check")
         if [ "$(st | jq -r '.config_check // "ok"')" = "fail" ]; then echo "config: issues found"; exit 1; fi
         echo "config: ok"
