@@ -11,7 +11,7 @@
             "name": "spec-workflow",
             "source": "./plugins/spec-workflow",
             "description": "Spec-driven autonomous build workflow: GitHub Project board as source of truth, TDD via delegated dev agents, quality gate, checkpoint/handoff loop. Configured per-repo via .claude/project.yaml (versioned schema; legacy project.json still read).",
-            "version": "0.86.0",
+            "version": "0.86.1",
             "author": {
                 "name": "event-sorcerer"
             },
@@ -73,7 +73,7 @@
             "name": "herdr",
             "source": "./plugins/herdr",
             "description": "Teaches an agent to use Herdr, the terminal workspace manager for coding agents: start worktrees and agents, prompt them safely, listen to their work and see what is running. Standalone and thin over the herdr CLI; no workflow of its own.",
-            "version": "0.10.1",
+            "version": "0.11.0",
             "author": {
                 "name": "event-sorcerer"
             },
