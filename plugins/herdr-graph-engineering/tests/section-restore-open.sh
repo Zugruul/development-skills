@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # section-restore-open.sh -- sourced by run-tests.sh; do not run standalone.
 # lane.sh restore and the panel's [restore] on the selected closed lane (green [confirm],
-# key o); a click on a file reference opens it (.html and URLs in the browser, other files
-# in $VISUAL / $EDITOR / the system opener, a terminal editor in a new Herdr tab); a double
-# click on a lane jumps to its agent, like g.
+# click only); a click on a file reference opens it (.html and URLs in the browser, other
+# files in $VISUAL / $EDITOR / the system opener, a terminal editor in a new Herdr tab); a
+# double click on a lane jumps to its agent.
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/herdr-graph-engineering/tests/run-tests.sh" >&2; exit 2; }
 
 O_TMP="$(mktemp -d)"
@@ -25,7 +25,7 @@ ro() {
     local s="$1"; shift
     (cd "$OR" && env -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID -u HERDR_PLUGIN_ID -u VISUAL -u EDITOR \
         PATH="$FIX/stub-herdr:$PATH" HERDR_STUB_DIR="$O_TMP" HERDR_ENV=1 NO_COLOR=1 XDG_CONFIG_HOME="$O_TMP/config" \
-        GRAPH_BROWSER="$OBIN/browser" GRAPH_OPENER="$OBIN/opener" "${vars[@]}" bash "$OSC/$s.sh" "$@")
+        GRAPH_BROWSER="$OBIN/browser" GRAPH_OPENER="$OBIN/opener" ${vars[@]+"${vars[@]}"} bash "$OSC/$s.sh" "$@")
 }
 ost() { printf '%s' "$1" >"$O_TMP/state.json"; : >"$O_TMP/calls.log"; : >"$O_TMP/opened.log"; }
 oclick() { printf '\033[<0;%s;%sM\033[<0;%s;%sm' "$1" "$2" "$1" "$2"; }
@@ -71,8 +71,8 @@ idx="$(head -n "$sel" <<<"$out" | grep -cE "^ [▸▾] ")"; idx=$((idx - 1))
 out="$(ro panel --frame --width 48 --selected "$idx")"
 check "the selected closed lane shows [restore] left of its [x]" "1" "$(grep -cE "^ ▸ was-done  investigate ◂ +\[restore\] \[x\]$" <<<"$out")"
 check "the line ends one column short of the right edge" "47" "$(grep "was-done" <<<"$out" | jq -Rr 'length')"
-out="$(ro panel --frame --width 30 --selected "$idx")"
-check "when [restore] does not fit, only [x] shows" "1" "$(grep -cE "^ ▸ was-done  investigate ◂ +\[x\]$" <<<"$out")"
+out="$(ro panel --frame --width 36 --selected "$idx")"
+check "when they do not all fit, the buttons drop from the left: only [x]" "1" "$(grep -cE "^ ▸ was-done  investigate ◂ +\[x\]$" <<<"$out")"
 r="$(orow "was-done  investigate")"
 # width 48: [x] on columns 45-47, [restore] on 35-43
 out="$( { oclick 10 "$r"; oclick 38 "$r"; } | ro panel --frame --width 48 --feed)"
@@ -91,14 +91,13 @@ check "the panel says it brings back the record only" "restored was-done (the re
 check_absent "no worktree or branch is made" "worktree" "$(cat "$O_TMP/calls.log")"
 check_absent "nor a tab" "tab create" "$(cat "$O_TMP/calls.log")"
 r="$(orow "other-gone  investigate")"
-out="$( { oclick 10 "$r"; printf 'o'; } | ro panel --frame --width 48 --feed)"
-check "o arms [restore] on the selected closed lane" "1" "$(grep -cE "^ ▸ other-gone  investigate ◂ +\[confirm\] \[x\]$" <<<"$out")"
 out="$( { oclick 10 "$r"; printf 'oo'; } | ro panel --frame --width 48 --feed)"
-check "o pressed twice restores it" "1" "$(ohas "$OD/other-gone.yaml")"
-out="$(printf 'o' | ro panel --frame --width 48 --feed)"
-check "o on a lane that is not closed says so" "only a closed lane can be restored" "$out"
-out="$(printf '?' | ro panel --frame --width 48 --feed)"
-check "? lists o" "o restore" "$out"
+check "click only: a key neither arms nor restores" "0" "$(ohas "$OD/other-gone.yaml")"
+check_absent "nothing armed" "[confirm]" "$out"
+out="$( { oclick 10 "$r"; oclick 38 "$r"; oclick 40 "$r"; } | ro panel --frame --width 48 --feed)"
+check "[restore] then [confirm] restores another closed lane" "1" "$(ohas "$OD/other-gone.yaml")"
+check "a lane closed while open comes back WORKING" "1" "$(grep -cE "^ WORKING \(2\)" <<<"$out")"
+check_absent "an open lane has no [restore]" "[restore]" "$(ro panel --frame --width 48 --selected 0)"
 
 echo "== open: file references =="
 for l in was-done other-gone was-open; do ro lane close --repo "$OR" --lane "$l" >/dev/null; ro lane clear --repo "$OR" --lane "$l" >/dev/null; done

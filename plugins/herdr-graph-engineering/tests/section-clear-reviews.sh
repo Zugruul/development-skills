@@ -3,7 +3,7 @@
 # The panel's [clear all reviews] on the CLOSED header, left of [clear all]: shown only while a
 # closed review lane exists (pattern review or review-stack; with no pattern or a custom one,
 # a look/pr-<n> branch), the same two-click [confirm], and it clears only closed review lanes
-# through lane.sh clear. Key: R.
+# through lane.sh clear. Click only: no key arms or presses it.
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/herdr-graph-engineering/tests/run-tests.sh" >&2; exit 2; }
 
 R_TMP="$(mktemp -d)"
@@ -30,7 +30,7 @@ out="$(rg_ panel --frame --width 48)"
 check "with no closed review lane the header has only [clear all]" "1" "$(grep -cE "^ CLOSED \(1\) +\[clear all\]$" <<<"$out")"
 check_absent "and no [clear all reviews]" "[clear all reviews]" "$out"
 out="$(printf 'R' | rg_ panel --frame --width 48 --feed)"
-check "R with no closed review lane says so" "no closed review lanes" "$out"
+check_absent "a key does not arm anything" "[confirm]" "$out"
 
 echo "== clear reviews: the button =="
 # closed review lanes: by pattern (review), by a custom pattern with a look/pr-<n> branch,
@@ -50,8 +50,6 @@ check "the header still ends one column short of the right edge" "47" "$(grep "C
 out="$(rg_ panel --frame --width 40)"
 check "when both do not fit, only [clear all] shows" "1" "$(grep -cE "^ CLOSED \(5\) +\[clear all\]$" <<<"$out")"
 check "and the header still fits" "39" "$(grep "CLOSED" <<<"$out" | jq -Rr 'length')"
-out="$(printf '?'| rg_ panel --frame --width 48 --feed)"
-check "? lists R" "R clear reviews" "$out"
 
 echo "== clear reviews: confirm and cancel =="
 r="$(rrow "CLOSED (5)")"
@@ -62,13 +60,13 @@ check "the armed header still ends one column short of the right edge" "47" "$(g
 check "nothing is cleared yet" "1" "$(rhas "$RDA/closed/rv-a.yaml")"
 out="$( { rclick 20 "$r"; rclick 5 1; } | rg_ panel --frame --width 48 --feed)"
 check "a click anywhere else puts it back" "1" "$(grep -cE "^ CLOSED \(5\) +\[clear all reviews\] \[clear all\]$" <<<"$out")"
-out="$( { rclick 20 "$r"; printf 'j'; } | rg_ panel --frame --width 48 --feed)"
-check "so does any key" "1" "$(grep -cE "^ CLOSED \(5\) +\[clear all reviews\] \[clear all\]$" <<<"$out")"
+out="$( { rclick 20 "$r"; printf 'jR'; } | rg_ panel --frame --width 48 --feed)"
+check "a key changes nothing: it stays armed" "1" "$(grep -cE "^ CLOSED \(5\) +\[confirm\] \[clear all\]$" <<<"$out")"
 out="$( { rclick 20 "$r"; rclick 42 "$r"; } | rg_ panel --frame --width 48 --feed)"
 check "a click on [clear all] while reviews is armed only arms [clear all]" "1" "$(grep -cE "^ CLOSED \(5\) +\[clear all reviews\] \[confirm\]$" <<<"$out")"
 check "and clears nothing" "1" "$(rhas "$RDA/closed/rv-a.yaml")"
-out="$(printf 'R' | rgc panel --frame --width 48 --feed)"
-check "R arms it, in red" $'\033[38;2;248;81;73m[confirm]' "$out"
+out="$(rclick 20 "$r" | rgc panel --frame --width 48 --feed)"
+check "the [confirm] is red" $'\033[38;2;248;81;73m[confirm]' "$out"
 check "nothing cleared by arming" "1" "$(rhas "$RDB/closed/rv-stack.yaml")"
 
 echo "== clear reviews: the second click =="
@@ -84,6 +82,9 @@ check_absent "the panel touches no worktree or branch" "worktree" "$(cat "$R_TMP
 rg_ lane new --repo "$RA" --lane rv-c --pattern review --idea "review 3" --input pr="$PR/3" >/dev/null
 rg_ lane close --repo "$RA" --lane rv-c >/dev/null
 out="$(printf 'RR' | rg_ panel --frame --width 48 --feed)"
-check "R pressed twice clears the closed review lanes" "1" "$(rhas "$RDA/closed/cleared/rv-c.yaml")"
+check "the old key R clears nothing" "1" "$(rhas "$RDA/closed/rv-c.yaml")"
+r="$(rrow "CLOSED (4)")"
+out="$( { rclick 20 "$r"; rclick 30 "$r"; } | rg_ panel --frame --width 48 --feed)"
+check "the button clears a closed review lane that came later" "1" "$(rhas "$RDA/closed/cleared/rv-c.yaml")"
 check "and only them" "3" "$(find "$RDA/closed" -maxdepth 1 -name '*.yaml' | wc -l | tr -d ' ')"
 rm -rf "$R_TMP"
