@@ -86,7 +86,9 @@ update() { # jq program, history text, extra jq args...
 
 case "$cmd" in
 new)
-    [ -n "$lane" ] && [ -n "$idea" ] && { [ -n "$pattern" ] || [ -n "$pattern_file" ]; } || usage "lane.sh new --lane L (--pattern P | --pattern-file FILE) --idea TEXT ..."
+    if [ -z "$lane" ] || [ -z "$idea" ] || { [ -z "$pattern" ] && [ -z "$pattern_file" ]; }; then
+        usage "lane.sh new --lane L (--pattern P | --pattern-file FILE) --idea TEXT ..."
+    fi
     [ "$(slug "$lane")" = "$lane" ] || die "LANE NAME: '$lane' must be a lowercase slug of at most 24 characters, for example $(slug "$lane")" 2
     if [ -n "$pattern_file" ]; then
         [ -f "$pattern_file" ] || die "NO PATTERN FILE: $pattern_file" 6

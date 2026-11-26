@@ -41,7 +41,16 @@ Needs the `herdr` plugin, the `herdr` binary (the agent runs inside a Herdr pane
 
 Patterns and roles are looked up in the repository's `.herdr-graph/patterns|roles/`, then `~/.config/herdr-graph/patterns|roles/`, then this plugin. To add a kind of work, add a pattern; to add an agent, add a role. No skill changes.
 
-Shipped patterns: `solo` (implementer → tests gate, retry up to 3, then a draft pull request) and `investigate` (a read-only investigator writes a report).
+Shipped patterns:
+
+| Pattern | Graph |
+|---|---|
+| `solo` | implementer → tests gate (retry up to 3) → draft pull request |
+| `pair` | the same, then a read-only reviewer of another kind; `changes` sends the work back to the implementer (up to 2) |
+| `investigate` | a read-only investigator writes a report |
+| `review` | a pull request reviewer drafts → you approve → a poster posts one grouped `COMMENT` review whose body is the summary, verified |
+| review stack | `make-review-stack.sh` writes the graph for related pull requests: one reviewer each in parallel → a cross-PR check → you approve → one poster each |
+| `plan` | a planner drafts a custom graph; you approve it before it runs |
 
 ```yaml
 # patterns/solo.yaml
@@ -74,6 +83,7 @@ kind.sh --role R [--not KIND]                           the kind and arguments f
 gate.sh --lane L --node N --pane P                      run a gate in a visible tab, record its exit code
 status.sh [--text|--line|--json]                        the picture of every lane (display, tab bar)
 check-pattern.sh (FILE | --name P)                      validate a pattern
+make-review-stack.sh --pr URL --pr URL ... --out FILE    the graph for reviewing related pull requests
 check.sh                                                inside Herdr?
 ```
 
@@ -91,4 +101,4 @@ Hermetic: throwaway repositories and a stub `herdr`; no live session.
 
 ## Next
 
-Planned, not built yet: the `pair` pattern (a read-only reviewer of another kind), the `review` and `review-stack` patterns (posting one grouped `COMMENT` review per pull request, with the summary as its body), `human` approval nodes in the shipped patterns, and a Herdr side panel for `display`, with refresh and an interval toggle.
+Planned, not built yet: a Herdr side panel for `display`, with refresh and an interval toggle.
