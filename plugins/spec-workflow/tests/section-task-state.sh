@@ -363,7 +363,7 @@ check "implement-task seeds the state on pickup" "task-state.sh set" "$(cat "$PL
 check "implement-task briefs the dev agent to tick TODOs" "task-state.sh todo" "$(cat "$PLUGIN/skills/implement-task/SKILL.md")"
 check "implement-task clears the state at the end" "task-state.sh clear" "$(cat "$PLUGIN/skills/implement-task/SKILL.md")"
 check "parallel lanes get the rules" "task-state" "$(cat "$PLUGIN/skills/build-next/references/concurrency.md")"
-check "skill is indexed in AGENTS.md" "skills/task-state/SKILL.md" "$(cat "$PLUGIN/../../AGENTS.md")"
+check "skill is indexed in AGENTS.md" "skills/task-state/SKILL.md" "$(cat "$PLUGIN/AGENTS.md")"
 check "skill is listed in the marketplace README" '`task-state`' "$(cat "$PLUGIN/../../README.md")"
 check "skill is listed in the plugin README" '`task-state`' "$(cat "$PLUGIN/README.md")"
 

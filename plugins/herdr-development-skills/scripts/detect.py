@@ -27,7 +27,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLUGINS_DIR = os.environ.get("HDS_PLUGINS_DIR") or os.path.dirname(os.path.dirname(HERE))
 MARKERS = {  # one skill that proves the plugin's skills are linked into a skills directory
-    "herdr": "orchestrate", "spec-workflow": "build-next",
+    "herdr": "worktree", "spec-workflow": "build-next",
     "peer-review": "peer-review", "remote-compute": "remote-compute",
 }
 SKILL_DIRS = (".claude/skills", ".agents/skills", ".opencode/skills")

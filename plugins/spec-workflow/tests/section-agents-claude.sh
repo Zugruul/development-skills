@@ -12,7 +12,7 @@ declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tes
 echo "== agents-claude =="
 
 REPO="$(cd "$PLUGIN/../.." && pwd)"
-AGENTS_MD="$REPO/AGENTS.md"
+AGENTS_MD="$PLUGIN/AGENTS.md"   # spec-workflow's own rules moved out of the root AGENTS.md
 CLAUDE_MD="$REPO/CLAUDE.md"
 
 # The gate command is read live from .neural-network/project.yaml (commands.gate)
@@ -21,10 +21,10 @@ gate_cmd="$(python3 "$PLUGIN/scripts/config.py" "$REPO" get commands.gate 2>/dev
 check "commands.gate resolved from project.yaml" "run-tests.sh" "$gate_cmd"
 
 if [[ ! -f "$AGENTS_MD" ]]; then
-    check "AGENTS.md exists at repo root" "EXISTS" "MISSING"
+    check "spec-workflow AGENTS.md exists" "EXISTS" "MISSING"
 else
     agents_content="$(cat "$AGENTS_MD")"
-    check "AGENTS.md exists at repo root" "EXISTS" "EXISTS"
+    check "spec-workflow AGENTS.md exists" "EXISTS" "EXISTS"
     check "AGENTS.md points at SPEC.md" "SPEC.md" "$agents_content"
     check "AGENTS.md points at SPEC-CODEX-COMPAT.md" "SPEC-CODEX-COMPAT.md" "$agents_content"
     check "AGENTS.md mentions dogfooding" "dogfood" "$(tr '[:upper:]' '[:lower:]' <<<"$agents_content")"

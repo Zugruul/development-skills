@@ -2,7 +2,7 @@
 
 The integration layer between [Herdr](https://herdr.dev) and the other development skills in this marketplace. It checks which plugins and features are actually enabled and configured in the current environment and repository, and wires those into the [`herdr`](../herdr/README.md) plugin: board tasks and build-loop lanes run in Herdr worktree agents that an orchestrator listens to.
 
-All knowledge of the specialized plugins lives here. The `herdr` plugin knows only Herdr; this plugin **requires it** and builds on its skills (`herdr:worktree`, `herdr:agent`, `herdr:prompt`, `herdr:listen`, `herdr:orchestrate`, `herdr:status`) instead of repeating Herdr commands.
+All knowledge of the specialized plugins lives here. The `herdr` plugin knows only Herdr; this plugin **requires it** and builds on its skills (`herdr:worktree`, `herdr:agent`, `herdr:prompt`, `herdr:listen`, `herdr-simple-orchestrate:orchestrate`, `herdr:status`) instead of repeating Herdr commands.
 
 ## Install
 
@@ -51,7 +51,7 @@ spec-workflow can also open the lanes it creates itself in Herdr (`herdr.enabled
 
 ## Reports
 
-The lane and loop skills make the agent the orchestrator, so it reports in the `herdr` plugin's fixed format (`NEEDS YOU`, `WORKING`, `DONE`). `references/report-lines.md` adds this plugin's own lines inside a lane's entry: `task:` (source and id, or `none`), `gate:`, `board:` and, for a finished lane without a task, `skipped (no task):`. It also says where a lane's pull requests come from for the format's `prs:` block: every pull request of the lane's branch, read with `gh`, one line each with number, state and full URL. The layout itself stays the `herdr` plugin's.
+The lane and loop skills make the agent the orchestrator, so it reports in the `herdr-simple-orchestrate` plugin's fixed format (`NEEDS YOU`, `WORKING`, `DONE`). `references/report-lines.md` adds this plugin's own lines inside a lane's entry: `task:` (source and id, or `none`), `gate:`, `board:` and, for a finished lane without a task, `skipped (no task):`. It also says where a lane's pull requests come from for the format's `prs:` block: every pull request of the lane's branch, read with `gh`, one line each with number, state and full URL. The layout itself stays the `herdr` plugin's.
 
 ## Lane names
 

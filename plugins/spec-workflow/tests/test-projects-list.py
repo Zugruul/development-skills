@@ -346,7 +346,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
         manifest = json.loads((PLUGIN / '.codex-plugin/plugin.json').read_text())
         self.assertTrue((PLUGIN / manifest['skills'] / name / 'SKILL.md').is_file())
         self.assertIn('projects-list.py', text)
-        for path in ('README.md', 'AGENTS.md', 'docs/compatibility-matrix.md', 'plugins/spec-workflow/README.md'):
+        for path in ('README.md', 'plugins/spec-workflow/AGENTS.md', 'docs/compatibility-matrix.md', 'plugins/spec-workflow/README.md'):
             self.assertIn(name, (PLUGIN.parents[1] / path).read_text())
 
 

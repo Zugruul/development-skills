@@ -1,7 +1,7 @@
 {
     "name": "herdr",
-    "version": "0.9.0",
-    "description": "Teaches an agent to use Herdr, the terminal workspace manager for coding agents: start worktrees and agents, prompt them safely, listen to their work and act as an orchestrator. Standalone and thin over the herdr CLI.",
+    "version": "0.10.0",
+    "description": "Teaches an agent to use Herdr, the terminal workspace manager for coding agents: start worktrees and agents, prompt them safely, listen to their work and see what is running. Standalone and thin over the herdr CLI; no workflow of its own.",
     "author": {
         "name": "event-sorcerer",
         "url": "https://github.com/event-sorcerer"
@@ -11,10 +11,10 @@
     "interface": {
         "displayName": "Herdr",
         "shortDescription": "Start, prompt and listen to agents in Herdr worktrees.",
-        "longDescription": "Herdr skills for coding agents running inside Herdr: start a worktree with agents on it, start an agent in a pane, send prompts without duplicates, listen to agents and surface the questions they are blocked on, take the orchestrator role, and orchestrate a code review of related pull requests with reviewer agents. Requires the herdr CLI and a Herdr-managed pane.",
+        "longDescription": "Herdr skills for coding agents running inside Herdr: start a worktree with agents on it, start an agent in a pane, send prompts without duplicates, listen to agents and surface the questions they are blocked on, and see which agents and worktrees are running. Requires the herdr CLI, bash, jq and a Herdr-managed pane.",
         "developerName": "event-sorcerer",
         "category": "Developer Tools",
         "capabilities": ["Interactive", "Read files", "Run shell scripts"],
-        "defaultPrompt": ["Start a Herdr worktree with an agent on it.", "Listen to the agents in this worktree.", "Become the Herdr orchestrator."]
+        "defaultPrompt": ["Start a Herdr worktree with an agent on it.", "Listen to the agents in this worktree.", "Which agents are running in Herdr?"]
     }
 }

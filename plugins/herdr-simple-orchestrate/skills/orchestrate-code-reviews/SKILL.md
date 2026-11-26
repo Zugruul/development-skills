@@ -1,14 +1,14 @@
 ---
 name: orchestrate-code-reviews
-description: Makes the current agent the orchestrator of a code review of a group of related pull requests inside Herdr - takes the orchestrator role, maps how the pull requests fit together (stacked, or pairs across repositories), puts one reviewer agent on a Herdr worktree per open pull request plus one cross-PR checker, has them check the existing review comments and look for new problems as drafts only, then has one agent per pull request post the replies and a single COMMENT review, verifies what was posted, then writes a summary of each pull request's review and puts it into the body of that single COMMENT review. Use for '/herdr:orchestrate-code-reviews' followed by the pull request URLs and optional notes, 'review these PRs together', 'run a code review of this stack with reviewer agents'. Never approves, requests changes, merges or pushes. Requires running inside Herdr and a command-line client for the hosting service (gh for GitHub).
+description: Makes the current agent the orchestrator of a code review of a group of related pull requests inside Herdr - takes the orchestrator role, maps how the pull requests fit together (stacked, or pairs across repositories), puts one reviewer agent on a Herdr worktree per open pull request plus one cross-PR checker, has them check the existing review comments and look for new problems as drafts only, then has one agent per pull request post the replies and a single COMMENT review, verifies what was posted, then writes a summary of each pull request's review and puts it into the body of that single COMMENT review. Use for '/herdr-simple-orchestrate:orchestrate-code-reviews' followed by the pull request URLs and optional notes, 'review these PRs together', 'run a code review of this stack with reviewer agents'. Never approves, requests changes, merges or pushes. Requires running inside Herdr and a command-line client for the hosting service (gh for GitHub).
 allowed-tools: Bash, AskUserQuestion
 ---
 
 # Orchestrate a code review of related pull requests
 
-`ctl` = `python3 "../../scripts/herdr_ctl.py"` (resolve the path relative to this `SKILL.md`). Run `python3 "../../scripts/herdr_ctl.py" check` first; if it prints `HERDR UNAVAILABLE`, say so and stop.
+Scripts are in `../../scripts/` (resolve the path relative to this `SKILL.md`). Run `bash "../../scripts/check.sh"` first; if it prints `HERDR UNAVAILABLE`, say so and stop.
 
-When you script several calls, define `ctl` as a shell function with the absolute path: `ctl() { python3 "<absolute path>/scripts/herdr_ctl.py" "$@"; }`. A variable holding `python3 <path>` is not split into words by zsh, so `$ctl check` fails there.
+When you script several calls, call the scripts by their absolute path (`bash "<absolute path>/scripts/roster.sh"`).
 
 Treat the rest of the request as: the pull request URLs, and optional notes. The notes may carry the reviewer agent kind, a worktree, workspace or pane to use, **facts already confirmed** and **leads to verify**.
 
@@ -29,7 +29,7 @@ They hold for you and for every agent you start, and go into every brief:
 Before anything else, check what you were given.
 
 - **No URLs, or placeholders** (`<url>`, `PR-1`, an empty list): ask for the pull request URLs. Do not look for "the obvious ones" yourself.
-- **Reviewer agent kind** not given: ask, and state the default in the question: your own kind (the `kind` of your row in `python3 "../../scripts/herdr_ctl.py" roster`). A different kind from the authors' gives a more independent read; that is the user's choice.
+- **Reviewer agent kind** not given: ask, and state the default in the question: your own kind (the `kind` of your row in `bash "../../scripts/roster.sh"`). A different kind from the authors' gives a more independent read; that is the user's choice.
 
 Ask both in one question when both are missing. Start nothing until the URLs are real.
 
@@ -37,7 +37,7 @@ Ask both in one question when both are missing. Start nothing until the URLs are
 
 Follow `../orchestrate/SKILL.md` now, exactly as written: the role, the name, the skills it loads, the roster, and its rules for how an orchestrator works. This skill adds to it and repeats none of it.
 
-One addition on the name: `orchestrator` is often already taken by a live agent. On `NAME TAKEN`, take `orchestrator-<what you coordinate>`, here `orchestrator-pr-review`, check it with `python3 "../../scripts/herdr_ctl.py" name orchestrator-pr-review`, and tell the user.
+One addition on the name: `orchestrator` is often already taken by a live agent. On `NAME TAKEN`, take `orchestrator-<what you coordinate>`, here `orchestrator-pr-review`, check it with `bash "../../scripts/name.sh" orchestrator-pr-review`, and tell the user.
 
 Make a scratch directory of your own outside every repository (your host's session scratch directory when it has one, otherwise `mktemp -d`). Briefs, drafts, the merged posting files and the summaries live there, never in a checkout.
 
@@ -61,25 +61,25 @@ Then work out how the group fits together, before any review:
 
 ## 4. Worktrees
 
-One Herdr worktree per open pull request, on its head branch, based on the freshly fetched remote branch. Follow `../worktree/SKILL.md` for every step (location rule, read-only plan, creation); what follows only says which worktrees.
+One Herdr worktree per open pull request, on its head branch, based on the freshly fetched remote branch. Follow the `herdr:worktree` skill for every step (location rule, read-only plan, creation); what follows only says which worktrees.
 
 - **Reuse what the request names.** A worktree, workspace or pane the user named already exists: use it and create nothing in its place.
 - **Reuse a worktree that already has the branch checked out.** Check `herdr worktree list --cwd <primary checkout>` first, and open it with `herdr worktree open` when it has no workspace.
 - In a workspace you did not create alone, **leave every pane you did not create alone**: start no agent in it, send it no keys, never close it. Your agents get tabs of their own there.
 - A reused checkout may not be at the pull request's head commit, and may hold someone's local work. Never pull, reset, stash or switch branches in it. Say what you found and ask the user; reviewers can read the head commit with `git show` without changing the checkout.
 - For a new worktree: fetch the head branch first, then plan with `--branch <head branch> --base origin/<head branch>`. A pull request from a fork has its head in another repository: fetch the pull request's head ref the way the hosting service offers it, and say in the plan which ref you used.
-- **Label every workspace you create so its sidebar entry says what it holds**: the pull request's number, who owns it, and a short description, in that order: `pr-<number>-<owner>-<short description>`, for example `pr-2609-<owner>-connection-pool-timeout`. `<owner>` is the login of the pull request's author; the description is two to four words from its title. Build it with `python3 "../../scripts/herdr_ctl.py" label <text>` and pass it as `--label` to the plan; never leave the label to be derived from the branch. Keep it under about 40 characters, since the sidebar cuts long titles and the number and owner must survive. When the group spans repositories, put the repository before the number (`pr-<repo>-<number>-<owner>-...`). The owner's login is for this label only: it does not go into comments, drafts or summaries.
+- **Label every workspace you create so its sidebar entry says what it holds**: the pull request's number, who owns it, and a short description, in that order: `pr-<number>-<owner>-<short description>`, for example `pr-2609-<owner>-connection-pool-timeout`. `<owner>` is the login of the pull request's author; the description is two to four words from its title. Build it with `bash "../../scripts/label.sh" <text>` and pass it as `--label` to the plan; never leave the label to be derived from the branch. Keep it under about 40 characters, since the sidebar cuts long titles and the number and owner must survive. When the group spans repositories, put the repository before the number (`pr-<repo>-<number>-<owner>-...`). The owner's login is for this label only: it does not go into comments, drafts or summaries.
 - A workspace you reuse keeps the label it has: it is not yours to rename. Say in your first report which pull request it holds, and offer the rename (`herdr workspace rename <workspace id> <label>`) when its label does not show the number.
 - Invoking this skill asks for these worktrees, so show the planned set (branch, base commit, path each) in your first report and create them. Ask first for anything the plan does not show as a plain creation (`DO NOT CREATE`, a dirty primary checkout, a repository Herdr does not trust).
 
 ## 5. Reviewers
 
-Start the agents with `../agent/SKILL.md`, the kind from section 1:
+Start the agents with the `herdr:agent` skill, the kind from section 1:
 
-- **One reviewer per open pull request**, in that pull request's worktree. Its name carries the role, the number, then the same short description as the label: `review-<number>-<short description>`, for example `review-2609-connection-pool`. The number comes second so it is still readable when the sidebar cuts the name. A name has at most 32 characters: shorten the description, never the number, and check it with `python3 "../../scripts/herdr_ctl.py" name <name>`.
+- **One reviewer per open pull request**, in that pull request's worktree. Its name carries the role, the number, then the same short description as the label: `review-<number>-<short description>`, for example `review-2609-connection-pool`. The number comes second so it is still readable when the sidebar cuts the name. A name has at most 32 characters: shorten the description, never the number, and check it with `bash "../../scripts/name.sh" <name>`.
 - **One cross-PR checker** when the group has more than one pull request, named for the pull requests it spans (`review-cross-2609-2611`, or `review-cross-pr` when the numbers do not fit), in a tab of its own in the workspace of the pull request the others build on. It reads every worktree and the merged pull requests on the default branch.
 
-Build each first prompt from `../../references/review-brief.md`: the template there, filled in for that agent, written to a file in your scratch directory and sent once with the `prompt` skill (`../prompt/SKILL.md`). Every brief carries:
+Build each first prompt from `../../references/review-brief.md`: the template there, filled in for that agent, written to a file in your scratch directory and sent once with the `herdr:prompt` skill (the `herdr:prompt` skill). Every brief carries:
 
 - the hard rules above, word for word;
 - the rule files of each repository the agent works in, by path, with the instruction to read them first and follow them;
@@ -93,7 +93,7 @@ Build each first prompt from `../../references/review-brief.md`: the template th
 
 ## 6. Listen
 
-Follow all of them with `../listen/SKILL.md`, and report every time in the format of `../../references/report.md`. This skill adds these lines inside an agent's entry, after `prs:` and before `verified:`, leaving out what does not apply:
+Follow all of them with the `herdr:listen` skill, and report every time in the format of `../../references/report.md`. This skill adds these lines inside an agent's entry, after `prs:` and before `verified:`, leaving out what does not apply:
 
 | Line | Value |
 | --- | --- |
@@ -114,7 +114,7 @@ When every draft is in, build one posting file per open pull request in your scr
 - A finding against a merged pull request is not posted anywhere; it becomes a proposed follow-up in your report.
 - You merge and deduplicate. You do not add findings of your own or rewrite an agent's claim; a draft that looks wrong goes back to its agent as a question.
 
-Then have **one agent per pull request**, its own reviewer, post from that file (the `prompt` skill, with the file's path). It:
+Then have **one agent per pull request**, its own reviewer, post from that file (the `herdr:prompt` skill, with the file's path). It:
 
 1. **Re-checks every claim it posts on another agent's behalf** against the code at the head commit and against that draft's own unconfirmed section, and drops or rewords what does not hold. It reports each such deviation: which item, what it found, what it posted instead.
 2. Posts the replies to existing review threads.
@@ -143,7 +143,7 @@ A finished review leaves nothing open: no worktree, no workspace and no agent wi
 
 Per pull request, after section 8 passed for it:
 
-1. **Get the reviewer's report back.** Ask it (the `prompt` skill) to write its result file in your scratch directory and stop: what it posted, with the URLs; its deviations; whether tests ran; anything it left unfinished. Wait until the file is there and read it. After this the agent is no longer needed: questions about its work are answered from its draft and result files.
+1. **Get the reviewer's report back.** Ask it (the `herdr:prompt` skill) to write its result file in your scratch directory and stop: what it posted, with the URLs; its deviations; whether tests ran; anything it left unfinished. Wait until the file is there and read it. After this the agent is no longer needed: questions about its work are answered from its draft and result files.
 2. **Check the checkout is as it was found:** `git -C <worktree> status --porcelain` prints nothing, its commit is the one reviewed, and nothing is unpushed. Otherwise do not remove it: say what is there and ask the user.
 3. **Close only what you created for this review:**
    - a worktree you created: `herdr worktree remove --workspace <workspace id>`, never with `--force` and never with `--trust-repository`. Then read `herdr worktree list --cwd <primary checkout>` and `herdr workspace list`: the worktree and its workspace must both be gone. Close a workspace that is still open with `herdr workspace close <workspace id>`, and delete the local branch the worktree made with `git branch -d` (never `-D`). A refusal is reported, not forced.

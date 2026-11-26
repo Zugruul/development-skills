@@ -65,6 +65,18 @@
       "category": "Productivity"
     },
     {
+      "name": "herdr-simple-orchestrate",
+      "source": {
+        "source": "local",
+        "path": "./plugins/herdr-simple-orchestrate"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
       "name": "herdr-development-skills",
       "source": {
         "source": "local",

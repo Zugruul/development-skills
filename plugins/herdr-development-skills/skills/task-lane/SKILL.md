@@ -6,7 +6,7 @@ allowed-tools: Bash, AskUserQuestion
 
 # One piece of work in a Herdr worktree agent
 
-Run `python3 "../../scripts/detect.py"` first (path relative to this `SKILL.md`). Continue when `task-lane` is `READY` or `LIMITED`; on `UNAVAILABLE` relay the reasons and stop. `LIMITED` means only work without a task can run here; the reasons say why. Then follow the `herdr:orchestrate` skill if you have not taken the orchestrator role yet.
+Run `python3 "../../scripts/detect.py"` first (path relative to this `SKILL.md`). Continue when `task-lane` is `READY` or `LIMITED`; on `UNAVAILABLE` relay the reasons and stop. `LIMITED` means only work without a task can run here; the reasons say why. Then follow the `herdr-simple-orchestrate:orchestrate` skill if you have not taken the orchestrator role yet.
 
 You stay the orchestrator. The lane agent does the work; this skill only places it in Herdr and keeps the user in the loop. Use the `herdr` plugin's skills for every Herdr step; do not call the herdr CLI yourself for anything they cover.
 
@@ -77,7 +77,7 @@ When you stop, report: what was done, the gate result, the branch and PR link if
 
 ## 5. Listen
 
-Follow the lane with the `herdr:listen` skill until it settles. Every report on the lane's state uses the orchestrator report format of the `herdr` plugin, with the lane lines from `../../references/report-lines.md` (`task:`, `gate:`, `board:`) inside its entry.
+Follow the lane with the `herdr:listen` skill until it settles. Every report on the lane's state uses the orchestrator report format of the `herdr-simple-orchestrate` plugin, with the lane lines from `../../references/report-lines.md` (`task:`, `gate:`, `board:`) inside its entry.
 
 - **Blocked**: show the user the lane's question and relay their answer with `herdr:prompt`. Consent gates and approvals are never yours to answer.
 - **Settled**: read its report from its screen. Check what you can yourself (the board status through the `board` skill, the branch's commits), and label the rest as the agent's claim. Report task, gate result, PR or merge state and board status.

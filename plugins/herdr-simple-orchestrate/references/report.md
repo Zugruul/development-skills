@@ -7,7 +7,7 @@ The one layout an orchestrator uses whenever it reports the state of its agents.
 - You have taken the orchestrator role, through the `orchestrate` skill or through another skill that makes you the orchestrator.
 - You are reporting the state of the agents you follow: after an agent blocks, settles or disappears, when the user asks how things stand, and when you stop.
 
-It does not apply to an agent that is not orchestrating. A plain `status` or `listen` call keeps that skill's own output. The `status` skill says how an agent tells which case it is in, and what it does when it cannot tell.
+It does not apply to an agent that is not orchestrating. A plain `herdr:status` or `herdr:listen` call keeps that skill's own output. The `orchestrate` skill (section 4) says how an agent tells which case it is in, and what it does when it cannot tell.
 
 The report covers the agents you started or were asked to follow. Other agents on the Herdr server are not yours and are not listed.
 
@@ -47,7 +47,7 @@ Since last report: claude-lane-1k5a5ew4cde working -> done
 ## Rules
 
 1. **Markdown, not a code block.** Bold section lines and nested lists only. No table, no code fence around the report, nothing that needs a wide pane. It must keep its shape in a narrow pane and on every host.
-2. **First line: what changed.** `Since last report: <agent> <old state> -> <new state>`, one line per change. `Since last report: nothing changed` when nothing did. Leave the line out of your first report. The comparison is with your most recent report in this conversation, whether you sent it after an event or on demand through the `status` skill. If you sent one earlier but it is no longer in your context, write `Since last report: unknown (the earlier report is no longer in my context)` and do not reconstruct old states from memory.
+2. **First line: what changed.** `Since last report: <agent> <old state> -> <new state>`, one line per change. `Since last report: nothing changed` when nothing did. Leave the line out of your first report. The comparison is with your most recent report in this conversation, whether you sent it after an event or on demand (the `orchestrate` skill, section 4). If you sent one earlier but it is no longer in your context, write `Since last report: unknown (the earlier report is no longer in my context)` and do not reconstruct old states from memory.
 3. **Three sections, always in this order:** `NEEDS YOU`, `WORKING`, `DONE`, each a bold line of its own that starts with its state dot and ends with its count in parentheses: `🔴 NEEDS YOU (n)`, `🟡 WORKING (n)`, `🟢 DONE (n)`. Leave out a section that has no agents. Never add a fourth section.
 4. **Every agent you follow is in exactly one section,** as one list item with its lines nested under it. Check the counts against your list of agents before sending.
 5. **Per agent, line 1** (the list item): its name in bold, its workspace id, its branch, separated by ` · `. An unnamed agent is shown by its pane id.
@@ -96,7 +96,7 @@ An agent with no pull request has the block with the `direct` row alone. Pad `#N
 
 ```bash
 git -C <agent's checkout> fetch origin          # so the answer is about the remote as it is now
-python3 "../scripts/herdr_ctl.py" landed --cwd <agent's checkout>    # path relative to this file
+bash "../scripts/landed.sh" --cwd <agent's checkout>    # path relative to this file
 ```
 
 `landed` changes no ref and no file. It prints a `ROW` line to copy as is, or says there is none:
