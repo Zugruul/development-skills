@@ -66,7 +66,7 @@ view="$(jq -c --argjson agents "$agents" '
              max: ([$l.graph[] | select(.retry.to == $n) | .retry.max] | max // 0),
              human: ($g.human // null), ref: ($s.ref // "")} ] as $nodes
       | {lane: $l.lane, pattern: $l.pattern, repo: $l.repo, question: ($l.question // ""),
-         workspace: ($l.workspace // ""), owner: ($l.owner // ""), idea: ($l.idea // ""),
+         workspace: ($l.workspace // ""), owner: ($l.owner // ""), idea: ($l.idea // ""), cleanup: ($l.cleanup // ""),
          nodes: $nodes, last: ($l.history[-1] // ""),
          section: (if ($l.question // "") != "" or any($nodes[]; .status == "blocked") then "needs"
                    elif $l.status == "done" then "done" else "working" end)})' <<<"$lanes")"
@@ -98,6 +98,7 @@ text)
         def chain: [.nodes[] | "\(.node) \(mark)" + (if .max > 0 and .retries > 0 then " retry \(.retries)/\(.max)" else "" end)] | join(" → ");
         def row: "  \(.lane)  \(.pattern)  \(chain)"
                  + (if .question != "" then "\n    ? \(.question)" else "" end)
+                 + (if .cleanup != "" and .cleanup != "declined" then "\n    cleanup: \(.cleanup)" else "" end)
                  + ([.nodes[] | select(.ref != "" and (.ref | test("/")))] | map("\n    \(.node): \(.ref)") | join(""))
                  + "\n    last: \(.last)";
         if length == 0 then "No lanes. Give the orchestrator an idea to start one." else

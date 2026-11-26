@@ -19,7 +19,9 @@
 #   lane.sh retry --lane L --node N               N failed: rerun its retry target; exit 7 at the limit
 #   lane.sh ask --lane L --text Q [--node N]      record an open question for the user
 #   lane.sh answer --lane L --text A              record the user's answer and clear the question
-#   lane.sh set --lane L --key owner|workspace|branch|gate|status --value V
+#   lane.sh set --lane L --key owner|workspace|branch|gate|status|pr|cleanup --value V
+#                                                 pr: the lane's pull request; cleanup: ready, declined or
+#                                                 blocked: REASON (written by cleanup.sh; declined by the user)
 #   lane.sh close --lane L                        move the file to closed/
 # Exit codes: 0 ok, 1 error, 2 usage, 6 invalid pattern or lane, 7 retry limit reached.
 # jq programs are single-quoted on purpose: $names in them are jq variables.
@@ -196,7 +198,8 @@ answer)
     update '.question = "" | .nodes |= map_values(if .status == "blocked" then .status = "waiting" else . end)' "answer: $text" ;;
 set)
     need_lane
-    case "$key" in owner | workspace | branch | gate | status) ;; *) die "--key must be owner, workspace, branch, gate or status" 2 ;; esac
+    case "$key" in owner | workspace | branch | gate | status | pr | cleanup) ;; *) die "--key must be owner, workspace, branch, gate, status, pr or cleanup" 2 ;; esac
+    [ "$key" != cleanup ] || case "$value" in '' | ready | declined | "blocked: "?*) ;; *) die "cleanup must be ready, declined or blocked: REASON" 2 ;; esac
     [ "$key" != status ] || case "$value" in open | done) ;; *) die "status must be open or done (use close to close)" 2 ;; esac
     update '.[$k] = $v' "$key = $value" --arg k "$key" --arg v "$value" ;;
 close)

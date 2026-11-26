@@ -106,17 +106,18 @@ out="$(k lane set --repo "$K_REPO" --lane inv-1 --key cleanup --value maybe 2>&1
 check_rc "cleanup takes only known values" 2 "$rc"
 
 echo "== cleanup: the user says yes =="
+kgh "{\"feat/merged-1\": {\"state\": \"MERGED\", \"number\": 11, \"url\": \"https://github.com/o/r/pull/11\", \"headRefOid\": \"$head_a\"}}"
 kst '{"tabs": {"w-merged-1:t2": {"tab_id": "w-merged-1:t2", "workspace_id": "w-merged-1", "number": 2, "agent_status": "idle"}, "w-merged-1:t3": {"tab_id": "w-merged-1:t3", "workspace_id": "w-merged-1", "number": 2, "agent_status": "idle"}}, "worktree_remove": "fail"}'
 out="$(k cleanup run --repo "$K_REPO" --lane merged-1 2>&1)"; rc=$?
 check_rc "a failed worktree removal stops the cleanup" 1 "$rc"
+check "the lane's agent tabs are closed first" "tab close w-merged-1:t2" "$(cat "$K_TMP/calls.log")"
+check "the lane's gate tabs are closed first" "tab close w-merged-1:t3" "$(cat "$K_TMP/calls.log")"
 check "the lane stays open after a failed removal" "done" "$(klf '.status' merged-1)"
 check_absent "removal is never forced" "--force" "$(cat "$K_TMP/calls.log")"
 kst '{"tabs": {"w-merged-1:t2": {"tab_id": "w-merged-1:t2", "workspace_id": "w-merged-1", "number": 2, "agent_status": "idle"}, "w-merged-1:t3": {"tab_id": "w-merged-1:t3", "workspace_id": "w-merged-1", "number": 2, "agent_status": "idle"}}}'
 out="$(k cleanup run --repo "$K_REPO" --lane merged-1 2>&1)"; rc=$?
 check_rc "cleanup succeeds" 0 "$rc"
 calls="$(cat "$K_TMP/calls.log")"
-check "the lane's agent tabs are closed" "tab close w-merged-1:t2" "$calls"
-check "the lane's gate tabs are closed" "tab close w-merged-1:t3" "$calls"
 check "the worktree is removed through herdr" "worktree remove --workspace w-merged-1" "$calls"
 check_absent "never with --force" "--force" "$calls"
 check "the lane is closed" "merged-1	closed" "$(k lane list --all --repo "$K_REPO")"
@@ -127,7 +128,7 @@ check "the confirmation is in the history" "answer: cleanup confirmed" "$(klf '.
 echo "== cleanup: the skill runs the check and asks first =="
 orch="$(cat "$PLUGIN/skills/orchestrate/SKILL.md")"
 check "orchestrate: checks for cleanup on every report" 'cleanup.sh" check' "$orch"
-check "orchestrate: cleans up only after the user confirms" "cleanup.sh run --lane L --repo R" "$orch"
+check "orchestrate: cleans up only after the user confirms" 'cleanup.sh" run --lane L --repo R' "$orch"
 check "orchestrate: a no is recorded" "--key cleanup --value declined" "$orch"
 
 git -C "$K_REPO" worktree prune 2>/dev/null

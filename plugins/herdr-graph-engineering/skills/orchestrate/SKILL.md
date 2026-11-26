@@ -102,13 +102,14 @@ It never closes a tab that was not recorded with `--tab`, a `running` or `blocke
 When `ready.sh` prints `ALL NODES DONE`, run the lane's `done` checks from its lane file:
 
 - `{gate: <node>}`: that node's result is `pass`.
-- `draft-pr`: push the branch and open a **draft** pull request whose body is the lane report (idea, what changed, the checks and their results, what is left). Then `lane.sh set --key status --value done`.
+- `draft-pr`: push the branch and open a **draft** pull request whose body is the lane report (idea, what changed, the checks and their results, what is left). Record it: `lane.sh set --key pr --value <its url>`. Then `lane.sh set --key status --value done`.
 - `report`: show the user the report file's answer in a few lines, with its path. Then `lane.sh set --key status --value done`.
 - `{human: <question>}`: ask the user.
 - `posted-review`: section "Reviews" below passed for every pull request of the lane. Then `lane.sh set --key status --value done`.
 
 Then, at lane done, run `close-done.sh --lane L --repo R`: every agent and gate tab of the lane closes (except one still `working` or `blocked`: run it again when that agent settles).
 
+After recording a lane done, also run the cleanup check of section 6.
 Notify once: `herdr notification show "<lane> done" --body "<one line>"`.
 
 You may commit, push the lane branch and open a draft pull request without asking. **Ask before** marking a pull request ready, posting to a pull request or issue, or anything outside the lane's checkout. **Never** merge, approve, force-push or delete a branch.
@@ -131,11 +132,17 @@ When the planner's lane is done, validate its file: `check-pattern.sh <file> --r
 
 ## 6. After a lane
 
-When the user has merged a lane's pull request (`gh pr view <n> --json state` says `MERGED`), or has read a report lane's answer, offer cleanup: remove the worktree with `herdr worktree remove --workspace <id>` (never `--force`; a dirty checkout is the user's to decide), then `lane.sh close --lane L`. Branches are kept.
+Never leave noticing a merge to the user. Run `bash "../../scripts/cleanup.sh" check --repo R` before every report (section "Reports") and after recording a lane done. For each lane whose status is `done` it prints:
+
+- `CLEANUP <lane> (<why>)`: ready. Its pull request is `MERGED` (the recorded `pr`, else the one for its branch), its checkout is clean and has no commit beyond the pull request's head. A review lane (branch `look/pr-<n>`) is ready once it is done, with no merge; a report lane once nothing in it is unpushed. The script has already put the lane under NEEDS YOU with a cleanup question (`lane.sh ask`) and a Herdr notification. It never removes anything itself.
+- `BLOCKED <lane> (<reason>)`: merged, but the checkout is dirty or has unpushed commits (or no checkout was found). It is never removed; the lane is under NEEDS YOU with that reason, asked once per reason.
+- `PENDING`, `WAIT` (not merged yet), `DECLINED`: nothing to do.
+
+Ask the user to confirm each `CLEANUP` lane, with the question and the worktree path. Only on a yes run `bash "../../scripts/cleanup.sh" run --lane L --repo R`: it checks again, closes the lane's agent and gate tabs (`close-done.sh`), removes the worktree with `herdr worktree remove --workspace <id>` (never `--force`) and closes the lane (`lane.sh close`). The branch is kept. If it refuses or the removal fails, show the user its message; never retry with `--force`. On a no: `lane.sh answer --lane L --text "<answer>"` and `lane.sh set --lane L --key cleanup --value declined`; the lane is not asked again. For a `BLOCKED` lane, relay the user's decision; the next check asks again only when the reason changes.
 
 ## Reports
 
-Report in the format of `../../references/report.md` after any lane changes section, when the user asks, and when you stop. The `display` skill opens the panel, or prints the same picture as text. After every lane change also run `bash "../../scripts/status.sh" --tokens` (it writes each lane agent's step into Herdr's sidebar), and `herdr plugin action invoke herdr-graph-engineering.graph.refresh` when the panel is installed.
+Report in the format of `../../references/report.md` after any lane changes section, when the user asks, and when you stop. Run the cleanup check (section 6) before each report, so a lane ready for cleanup shows under NEEDS YOU. The `display` skill opens the panel, or prints the same picture as text. After every lane change also run `bash "../../scripts/status.sh" --tokens` (it writes each lane agent's step into Herdr's sidebar), and `herdr plugin action invoke herdr-graph-engineering.graph.refresh` when the panel is installed.
 
 Answers the user types in the panel's answer popup arrive here as a message starting `Answer for lane <lane>`: treat them exactly like an answer typed in this chat.
 

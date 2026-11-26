@@ -82,6 +82,7 @@ ready.sh --lane L                                       which nodes can start no
 kind.sh --role R [--not KIND]                           the kind and arguments for a role here
 gate.sh --lane L --node N --pane P                      run a gate in a visible tab, record its exit code
 close-done.sh --lane L [--dry-run]                      close the tabs of finished agent and gate nodes (CLOSE/KEEP per node)
+cleanup.sh check | run --lane L                          find lanes ready for cleanup and ask; clean one up after your yes
 status.sh [--text|--line|--json]                        the picture of every lane (display, tab bar)
 check-pattern.sh (FILE | --name P)                      validate a pattern
 make-review-stack.sh --pr URL --pr URL ... --out FILE    the graph for reviewing related pull requests
@@ -99,6 +100,10 @@ Every agent and gate node runs in its own tab, recorded in the lane file (`lane.
 - at lane done or close, every agent and gate tab of the lane closes.
 
 Never closed: a tab not recorded for a node, a running or blocked node, an agent Herdr shows working or blocked, the first tab of the lane's workspace, a tab outside it. The worktree stays until you agree to cleanup.
+
+## Cleanup after a lane
+
+The orchestrator does not wait for you to notice a merge. Before every report and after a lane is done it runs `cleanup.sh check`. A done lane is ready for cleanup when its pull request is merged (the recorded one, else the one for its branch), its checkout is clean and nothing in it is unpushed; a review lane (branch `look/pr-<n>`) is ready once it is done, and a report lane once nothing is unpushed. A ready lane goes under NEEDS YOU with a cleanup question and a Herdr notification, and `status.sh --text` (and the panel) shows `cleanup: ready`. Nothing is removed until you say yes; then `cleanup.sh run` closes the lane's tabs, removes the worktree with `herdr worktree remove` (never `--force`) and closes the lane. The branch is kept. A merged lane with a dirty checkout or unpushed commits is never removed: it goes under NEEDS YOU with the reason. A no is remembered (`cleanup: declined`).
 
 ## What the orchestrator may do alone
 
