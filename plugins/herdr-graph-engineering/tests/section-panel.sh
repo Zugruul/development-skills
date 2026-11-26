@@ -66,7 +66,7 @@ check "a thin divider above the footer, inside the padding" " $(printf '─%.0s'
 check "the divider is exactly as wide as the pane minus padding" "39" "$(widest "$(grep "─" <<<"$out")")"
 check "the footer says when it read" " updated " "$out"
 check "the footer shows the interval" "every 5s" "$out"
-check "the footer names the keys" "↵ fold · g go · a answer · d detail · ? keys" "$(pg panel --frame --width 120)"
+check "the footer names the keys" "↵ fold · g go · a answer · d detail · x close · ? keys" "$(pg panel --frame --width 120)"
 last="$(tail -1 <<<"$out")"
 check "the buttons end the bottom line" "[◷ 5s] [↻]" "$last"
 check "the buttons are on the bottom line only" "1" "$(grep -c "\[↻\]" <<<"$out")"
