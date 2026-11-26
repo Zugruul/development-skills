@@ -8,11 +8,11 @@
 # Every write takes the repository's lock, writes a temporary file and renames it.
 #
 # Usage (every command takes --repo DIR, default: the current directory):
-#   lane.sh new --lane L --pattern P --idea TEXT [--input K=V]... [--gate CMD] [--branch B]
+#   lane.sh new --lane L (--pattern P | --pattern-file FILE) --idea TEXT [--input K=V]... [--gate CMD] [--branch B]
 #               [--workspace ID] [--owner NAME]
 #   lane.sh show --lane L [--json]
 #   lane.sh list [--all]                          open lanes (--all: closed ones too)
-#   lane.sh node --lane L --node N --status waiting|running|done|failed|blocked
+#   lane.sh node --lane L --node N --status waiting|running|done|failed|blocked|skipped
 #               [--result pass|changes|fail|question] [--ref X] [--exit N] [--agent NAME] [--note TEXT]
 #   lane.sh retry --lane L --node N               N failed: rerun its retry target; exit 7 at the limit
 #   lane.sh ask --lane L --text Q [--node N]      record an open question for the user
@@ -33,13 +33,14 @@ USAGE="lane.sh new|show|list|node|retry|ask|answer|set|close [options] (see the 
 cmd="${1:-}"
 [ -n "$cmd" ] || usage "$USAGE"
 shift
-repo="$(pwd)" lane="" pattern="" idea="" gate="" branch="" workspace="" owner="" node="" status=""
+repo="$(pwd)" lane="" pattern="" pattern_file="" idea="" gate="" branch="" workspace="" owner="" node="" status=""
 result="" ref="" exitc="" agent="" note="" text="" key="" value="" as_json=0 all=0 inputs="{}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo) need_value "$1" $#; repo="$2"; shift 2 ;;
         --lane) need_value "$1" $#; lane="$2"; shift 2 ;;
         --pattern) need_value "$1" $#; pattern="$2"; shift 2 ;;
+        --pattern-file) need_value "$1" $#; pattern_file="$2"; shift 2 ;;
         --idea) need_value "$1" $#; idea="$2"; shift 2 ;;
         --input) need_value "$1" $#
             case "$2" in *=*) ;; *) die "--input needs KEY=VALUE" 2 ;; esac
@@ -85,15 +86,21 @@ update() { # jq program, history text, extra jq args...
 
 case "$cmd" in
 new)
-    [ -n "$lane" ] && [ -n "$pattern" ] && [ -n "$idea" ] || usage "lane.sh new --lane L --pattern P --idea TEXT ..."
+    [ -n "$lane" ] && [ -n "$idea" ] && { [ -n "$pattern" ] || [ -n "$pattern_file" ]; } || usage "lane.sh new --lane L (--pattern P | --pattern-file FILE) --idea TEXT ..."
     [ "$(slug "$lane")" = "$lane" ] || die "LANE NAME: '$lane' must be a lowercase slug of at most 24 characters, for example $(slug "$lane")" 2
-    found="$(resolve patterns "$pattern" "$repo")" || die "NO PATTERN: $pattern" 6
-    pfile="${found%%	*}" pwhere="${found##*	}"
+    if [ -n "$pattern_file" ]; then
+        [ -f "$pattern_file" ] || die "NO PATTERN FILE: $pattern_file" 6
+        pfile="$pattern_file" pwhere="custom"
+        [ -n "$pattern" ] || pattern="custom"
+    else
+        found="$(resolve patterns "$pattern" "$repo")" || die "NO PATTERN: $pattern" 6
+        pfile="${found%%	*}" pwhere="${found##*	}"
+    fi
     pjson="$(yq -o=json '.' "$pfile")" || die "PROBLEM: $pfile is not valid YAML" 6
     problems="$(pattern_problems "$pjson" "$repo")"
     [ -z "$problems" ] || die "$(printf '%s\n' "$problems" | sed 's/^/PROBLEM: /')" 6
     # every declared input must be given (idea is always given)
-    missing="$(jq -rn --argjson p "$pjson" --argjson i "$inputs" '[($p.inputs // [])[] | select(. != "idea" and ($i | has(.) | not))] | join(", ")')"
+    missing="$(jq -rn --argjson p "$pjson" --argjson i "$inputs" '[($p.inputs // [])[] | . as $n | select($n != "idea" and ($i | has($n) | not))] | join(", ")')" || die "could not read the pattern's inputs"
     [ -z "$missing" ] || die "MISSING INPUT: $missing (pass --input KEY=VALUE)" 2
     if jq -en --argjson p "$pjson" 'any($p.nodes[]; (.gate // "") | test("\\{gate\\}"))' >/dev/null && [ -z "$gate" ]; then
         die "MISSING GATE: this pattern runs the approved gate command; pass --gate CMD after the user approved it" 2
@@ -132,7 +139,7 @@ list)
 node)
     need_lane
     [ -n "$node" ] && [ -n "$status" ] || usage "lane.sh node --lane L --node N --status S ..."
-    case "$status" in waiting | running | done | failed | blocked) ;; *) die "--status must be waiting, running, done, failed or blocked" 2 ;; esac
+    case "$status" in waiting | running | done | failed | blocked | skipped) ;; *) die "--status must be waiting, running, done, failed, blocked or skipped" 2 ;; esac
     case "$result" in '' | pass | changes | fail | question) ;; *) die "--result must be pass, changes, fail or question" 2 ;; esac
     case "$exitc" in '' | *[!0-9]*) [ -z "$exitc" ] || die "--exit must be a number" 2 ;; esac
     yq -e ".graph | has(\"$node\")" "$file" >/dev/null 2>&1 || die "NO NODE: $node in lane $lane" 6

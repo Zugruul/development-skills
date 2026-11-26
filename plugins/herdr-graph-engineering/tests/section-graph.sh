@@ -129,6 +129,43 @@ check_rc "a gate that does not finish times out with exit 5" 5 "$rc"
 check "the timeout says how to keep waiting" "--resume" "$out"
 check "the node stays running" "running" "$(lf '.nodes.tests.status' gated)"
 
+echo "== graph: G2 pair, human, skip, review, custom =="
+g lane new --repo "$REPO" --lane pair-x --pattern pair --idea "touch auth" --gate "npm test" >/dev/null
+g lane node --repo "$REPO" --lane pair-x --node impl --status "done" --result pass >/dev/null
+g lane node --repo "$REPO" --lane pair-x --node tests --status "done" --result pass --exit 0 >/dev/null
+check "the second opinion runs after the gate passed" "READY review agent reviewer" "$(g ready --repo "$REPO" --lane pair-x)"
+g lane node --repo "$REPO" --lane pair-x --node review --status "done" --result changes --ref /tmp/f.md >/dev/null
+check "a review asking for changes blocks like a failure" "NOTHING READY (failed, not retried: review)" "$(g ready --repo "$REPO" --lane pair-x)"
+check "it shows as not passed in the picture" "review ✗" "$(g status --text --repo "$REPO" | grep -A0 'pair-x')"
+out="$(g lane retry --repo "$REPO" --lane pair-x --node review 2>&1)"
+check "changes send the work back to the implementer" "RETRY pair-x impl 1/2" "$out"
+check "impl, tests and review all run again" "waiting waiting waiting" "$(lf '[.nodes.impl.status, .nodes.tests.status, .nodes.review.status] | join(" ")' pair-x)"
+out="$(g lane new --repo "$REPO" --lane rev-1 --pattern review --idea "look at it" 2>&1)"; rc=$?
+check_rc "a review needs the pull request as input" 2 "$rc"
+check "the refusal names the missing input" "MISSING INPUT: pr" "$out"
+g lane new --repo "$REPO" --lane rev-1 --pattern review --idea "look at it" --input pr=https://github.com/o/r/pull/7 >/dev/null
+check "the pull request is filled into the brief" "Review pull request https://github.com/o/r/pull/7" "$(lf '.graph.review.brief' rev-1)"
+g lane node --repo "$REPO" --lane rev-1 --node review --status "done" --result pass --ref /tmp/d.md >/dev/null
+check "the human approval comes next" "READY approve human Post the review of https://github.com/o/r/pull/7" "$(g ready --repo "$REPO" --lane rev-1)"
+g lane node --repo "$REPO" --lane rev-1 --node approve --status "done" --result fail >/dev/null
+check "a no skips the posting" "SKIP post (when pass does not hold)" "$(g ready --repo "$REPO" --lane rev-1)"
+g lane node --repo "$REPO" --lane rev-1 --node post --status skipped >/dev/null
+check "a skipped node counts as finished" "ALL NODES DONE" "$(g ready --repo "$REPO" --lane rev-1)"
+check "a skipped node shows a dash" "post –" "$(g status --text --repo "$REPO" | grep 'rev-1')"
+STACK="$G_TMP/stack.yaml"
+check "a review stack becomes a pattern file" "PATTERN FILE" "$(g make-review-stack --pr https://github.com/o/r/pull/1 --pr https://github.com/o/r/pull/2 --out "$STACK")"
+check "the stack pattern is valid" "PATTERN OK" "$(g check-pattern "$STACK" --repo "$REPO")"
+out="$(g make-review-stack --pr https://github.com/o/r/pull/1 2>&1)"; rc=$?
+check_rc "one pull request is not a stack" 2 "$rc"
+g lane new --repo "$REPO" --lane stack-1 --pattern-file "$STACK" --idea "together" >/dev/null
+check "a lane starts from a pattern file" "custom" "$(lf '.pattern_from' stack-1)"
+check "every reviewer is ready at once" "READY review-1 agent pr-reviewer
+READY review-2 agent pr-reviewer" "$(g ready --repo "$REPO" --lane stack-1)"
+g lane node --repo "$REPO" --lane stack-1 --node review-1 --status "done" --result pass >/dev/null
+check_absent "the cross check waits for every reviewer" "READY cross" "$(g ready --repo "$REPO" --lane stack-1)"
+g lane node --repo "$REPO" --lane stack-1 --node review-2 --status "done" --result pass >/dev/null
+check "the cross check runs when all reviewers are done" "READY cross agent pr-reviewer" "$(g ready --repo "$REPO" --lane stack-1)"
+
 echo "== graph: status =="
 g lane ask --repo "$REPO" --lane busy --node investigate --text "Staging or production?" >/dev/null
 st '{}'

@@ -39,10 +39,10 @@ PATTERN_JQ='
    | (reduce range(0; $e | length) as $_ ([]; . as $d | (. + [$e[] | select((.k | IN($d[])) | not) | select(all(.n[]; IN($d[]))) | .k]) | unique)) as $placed
    | if ($placed | length) < ($e | length) then "nodes: the needs form a cycle among \([$e[].k] - $placed | join(", "))" else empty end),
   (if has("done") and ((.done | type) != "array") then "done: must be a list" else empty end),
-  ((.done // [])[]? | if type == "string" then (if IN("draft-pr", "report") then empty else "done: unknown check \(.)" end)
+  ((.done // [])[]? | if type == "string" then (if IN("draft-pr", "report", "posted-review") then empty else "done: unknown check \(.)" end)
      elif type == "object" and has("gate") then (if (.gate | IN(names[])) then empty else "done: gate \(.gate) is not a node" end)
      elif type == "object" and has("human") then empty
-     else "done: each check is draft-pr, report, {gate: node} or {human: question}" end),
+     else "done: each check is draft-pr, report, posted-review, {gate: node} or {human: question}" end),
   (([$p | .. | strings | scan("\\{([a-z_]+)\\}") | .[0]] | unique - ((($p.inputs // []) | if type == "array" then . else [] end) + ["idea", "gate", "output_path"])) as $missing
    | if ($missing | length) > 0 then "placeholders not declared in inputs: \($missing | join(", "))" else empty end)
 ] | .[]'

@@ -14,10 +14,13 @@ Read every available pattern's `when:` line (the repository's `.herdr-graph/patt
 | The idea | Pattern |
 | --- | --- |
 | asks to implement, add, fix, change, remove, refactor, update something | `solo` |
+| the same, and the user asks for a review or a second opinion, or the change touches security, authentication, data deletion or migration, money, or a public interface | `pair` |
 | asks why, how, where, what, whether; asks to investigate, find out, explain, compare, check | `investigate` |
-| names a pull request to review | not available yet: say so and offer `investigate` on the pull request instead |
+| names one pull request to review | `review`, with `--input pr=<url>` |
+| names two or more related pull requests to review together | a stack: `make-review-stack.sh --pr <url> --pr <url> ... --out <scratch>/<lane>.yaml`, then `--pattern-file` |
 | matches the `when:` of a repository or user pattern better than the above | that pattern |
-| fits none, or fits two | ask the user, naming the candidates |
+| fits none, or would need steps no pattern has | `plan`: a planner drafts a custom graph; the user approves it before it runs |
+| fits two | ask the user, naming the candidates |
 
 Pick the **smallest** pattern that does the job. One agent is the default; more agents only when the pattern says so.
 
@@ -31,6 +34,7 @@ Read the repository's own instructions (`AGENTS.md`, `CLAUDE.md`, contributing n
 
 ## 5. Branch and worktree
 
-- Changing patterns (`solo`): branch `feat/<lane>`, base a freshly fetched `origin/<main branch>`.
-- Read-only patterns (`investigate`): branch `look/<lane>` from the same base. It exists so the checkout is the lane's alone.
+- Changing patterns (`solo`, `pair`): branch `feat/<lane>`, base a freshly fetched `origin/<main branch>`.
+- Read-only patterns (`investigate`, `plan`): branch `look/<lane>` from the same base. It exists so the checkout is the lane's alone.
+- Review patterns: one worktree per pull request at its head. Fetch the head first (`git fetch origin pull/<n>/head:look/pr-<n>` on GitHub, which also works for forks), then a worktree on `look/pr-<n>`. A merged pull request gets no worktree and no review: it is read from the default branch as reference only.
 - Path: the repository's own worktree location rule when it has one, otherwise Herdr's default.

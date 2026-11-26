@@ -77,8 +77,9 @@ line)
                  (if $w > 0 then "🟡 \($w)" else empty end), (if $d > 0 then "🟢 \($d)" else empty end) ] | join("  ") end' <<<"$view" ;;
 text)
     jq -r '
-        def mark: if .status == "done" then "✓" elif .status == "running" then "⟳" elif .status == "failed" then "✗"
-                  elif .status == "blocked" then "?" else "·" end;
+        def mark: if .status == "done" and .result == "changes" then "✗" elif .status == "done" then "✓"
+                  elif .status == "running" then "⟳" elif .status == "failed" then "✗"
+                  elif .status == "blocked" then "?" elif .status == "skipped" then "–" else "·" end;
         def chain: [.nodes[] | "\(.node) \(mark)" + (if .max > 0 and .retries > 0 then " retry \(.retries)/\(.max)" else "" end)] | join(" → ");
         def row: "  \(.lane)  \(.pattern)  \(chain)"
                  + (if .question != "" then "\n    ? \(.question)" else "" end)

@@ -5,6 +5,9 @@
 # A node is ready when it is waiting, every node it needs is done, and when it has a
 # `when`, every needed node's result equals it. Nothing is ready while the lane has an
 # open question or a failed node that was not retried.
+# A waiting node whose needs are done but whose `when` does not hold is printed as
+# SKIP <node> (record it with lane.sh node --status skipped). A done node whose result is
+# `changes` counts like a failed one until it is retried.
 # Prints one line per ready node: READY <node> <agent|gate|human> <role, command or question>
 # or NOTHING READY (<why>), or ALL NODES DONE.
 set -uo pipefail
@@ -27,18 +30,19 @@ file="$(lane_file "$repo" "$lane")"
 
 read_json "$file" | jq -r '
     . as $l
-    | ($l.nodes | to_entries | map(select(.value.status == "failed")) | map(.key)) as $failed
+    | ($l.nodes | to_entries | map(select(.value.status == "failed" or (.value.status == "done" and .value.result == "changes"))) | map(.key)) as $failed
     | ($l.nodes | to_entries | map(select(.value.status == "running")) | map(.key)) as $running
     | if $l.status != "open" then "NOTHING READY (lane is \($l.status))"
       elif ($l.question // "") != "" then "NOTHING READY (open question: \($l.question))"
       elif ($failed | length) > 0 then "NOTHING READY (failed, not retried: \($failed | join(", ")))"
-      elif all($l.nodes[]; .status == "done") then "ALL NODES DONE"
+      elif all($l.nodes[]; .status == "done" or .status == "skipped") then "ALL NODES DONE"
       else
         [ $l.graph | to_entries[] | .key as $n | .value as $g
           | select($l.nodes[$n].status == "waiting")
-          | select(all(($g.needs // [])[]; $l.nodes[.].status == "done"))
-          | select(($g.when // null) == null or all(($g.needs // [])[]; $l.nodes[.].result == $g.when))
-          | if $g.agent then "READY \($n) agent \($g.agent)"
+          | select(all(($g.needs // [])[]; $l.nodes[.].status == "done" or $l.nodes[.].status == "skipped"))
+          | if any(($g.needs // [])[]; $l.nodes[.].status == "skipped") then "SKIP \($n) (a node it needs was skipped)"
+            elif ($g.when // null) != null and any(($g.needs // [])[]; $l.nodes[.].result != $g.when) then "SKIP \($n) (when \($g.when) does not hold)"
+            elif $g.agent then "READY \($n) agent \($g.agent)"
             elif $g.gate then "READY \($n) gate \($g.gate)"
             else "READY \($n) human \($g.human)" end ]
         | if length > 0 then .[]
