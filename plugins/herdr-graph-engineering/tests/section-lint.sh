@@ -5,7 +5,7 @@
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/herdr-graph-engineering/tests/run-tests.sh" >&2; exit 2; }
 echo "== lint: frontmatter / scripts / patterns / roles / standalone =="
 
-for skill in orchestrate display; do
+for skill in orchestrate display concurrency; do
     f="$PLUGIN/skills/$skill/SKILL.md"
     head="$(sed -n '2,/^---$/p' "$f" 2>/dev/null)"
     check "$skill: frontmatter name matches its directory" "name: $skill" "$head"
@@ -14,7 +14,7 @@ for skill in orchestrate display; do
     check_absent "$skill: description has no angle brackets (Codex rejects them)" "<" "$desc"
     check_absent "$skill: description has no closing angle brackets" ">" "$desc"
 done
-check_rc "every skill directory is covered above" 2 "$(find "$PLUGIN/skills" -name SKILL.md | wc -l | tr -d ' ')"
+check_rc "every skill directory is covered above" 3 "$(find "$PLUGIN/skills" -name SKILL.md | wc -l | tr -d ' ')"
 check "orchestrate: checks it is inside Herdr first" 'bash "../../scripts/check.sh"' "$(cat "$PLUGIN/skills/orchestrate/SKILL.md")"
 
 py="$(find "$PLUGIN" -name '*.py' | sed "s#^$PLUGIN/##")"
@@ -118,3 +118,19 @@ check "README: lists fast" "| \`fast\` |" "$(cat "$PLUGIN/README.md")"
 check "README: lists the pr node" "\`pr\`" "$(cat "$PLUGIN/README.md")"
 check "orchestrate: runs a pr node" "**pr node**" "$orch"
 check "orchestrate: a pr node pushes to the open pull request" "pushes to the pull request that is already open" "$orch"
+
+echo "== lint: concurrency is a skill, not a limit =="
+check_absent "orchestrate: states no lane limit" "at most 5 open lanes" "$orch"
+check_absent "orchestrate: states no running-agent limit" "3 running agents" "$orch"
+check_absent "orchestrate: keeps no default queue" "wait in a queue" "$orch"
+check "orchestrate: no lane or agent limit by default" "no lane or agent limit by default" "$orch"
+check "orchestrate: points to the concurrency skill" "herdr-graph-engineering:concurrency" "$orch"
+conc="$(cat "$PLUGIN/skills/concurrency/SKILL.md" 2>/dev/null)"
+check "concurrency: no limit by default" "no limit by default" "$conc"
+check "concurrency: a cap only on the user's request" "keep at most N agents" "$conc"
+check "concurrency: merges origin/main with a merge commit, never a rebase" "never rebase" "$conc"
+check "concurrency: one writer per checkout" "One writer per checkout" "$conc"
+check_absent "concurrency: pure guidance, no scripts" ".sh\"" "$conc"
+check_rc "concurrency: SKILL.md is the only file in its directory" 1 "$(find "$PLUGIN/skills/concurrency" -type f 2>/dev/null | wc -l | tr -d ' ')"
+check_absent "README: no lane limit" "at most 5 open lanes" "$(cat "$PLUGIN/README.md")"
+check "README: lists the concurrency skill" "| \`concurrency\` |" "$(cat "$PLUGIN/README.md")"
