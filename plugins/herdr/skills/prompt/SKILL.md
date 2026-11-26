@@ -6,43 +6,42 @@ allowed-tools: Bash, AskUserQuestion
 
 # Prompt or answer a Herdr agent
 
-`ctl` = `python3 "../../scripts/herdr_ctl.py"` (resolve the path relative to this `SKILL.md`). Run `python3 "../../scripts/herdr_ctl.py" check` first; if it prints `HERDR UNAVAILABLE`, say so and stop.
+Run `bash "../../scripts/check.sh"` first (paths are relative to this `SKILL.md`). If it prints `HERDR UNAVAILABLE`, say so and stop.
 
-Target an agent by its unique name, or by the pane id it runs in. If the request does not say which agent and more than one could be meant, show `python3 "../../scripts/herdr_ctl.py" roster` and ask.
+Target an agent by its unique name, or by the pane id it runs in. If the request does not say which agent and more than one could be meant, list the live agents (`herdr agent list`) and ask.
 
 ## Send a prompt
 
+Look at the agent first: `herdr agent get <target>` and read `.result.agent.agent_status`.
+
+- `blocked`: it waits at a dialog. Do not prompt; go to "Answer a blocked agent".
+- `working`: it is mid-turn. Wait for it (the `listen` skill), unless the user wants to steer it now.
+- `idle`, `done`: send.
+
 ```bash
-python3 "../../scripts/herdr_ctl.py" prompt <target> --text "<prompt>"      # or --file <path> for long text
+herdr agent prompt <target> "<prompt>" --wait --timeout 600000
 ```
 
-| Output | Meaning | Do |
+Herdr submits the text once, then waits until the agent shows activity and settles. Long text: put it in a file and pass `"$(cat <file>)"`.
+
+| Answer | Meaning | Do |
 | --- | --- | --- |
-| `PROMPT DELIVERED` | The agent started working on it. | Follow it with the `listen` skill. |
-| `PROMPT REFUSED` ... blocked | It waits at a dialog; nothing was sent. | Go to "Answer a blocked agent". |
-| `PROMPT REFUSED` ... working | It is mid-turn; nothing was sent. | Wait for it, or add `--while-working` if the user wants to steer it now. |
-| `PROMPT UNCONFIRMED` (exit 5) | The text was submitted; no activity was seen. | `python3 "../../scripts/herdr_ctl.py" peek <target>` and read the screen. |
+| success, `.result.agent.agent_status` | The agent took the prompt and settled. | Read its screen (the `listen` skill). |
+| `agent_blocked` | It was blocked; **nothing was sent**. | Go to "Answer a blocked agent". |
+| `agent_prompt_stalled` | Sent, but no activity within 5 seconds. | Read the screen before anything else. |
+| `timeout` | Sent; the agent is still working. | Keep listening. |
 
-**After `PROMPT UNCONFIRMED`, a timeout or any error: never resend the same prompt blindly.** A missing confirmation does not prove the prompt was not delivered, and a second copy makes the agent do the work twice. Read the screen first: if the text sits unsent in the input box, submit it with `herdr agent send-keys <target> enter`; if the agent is working on it, it arrived; only when the screen shows no trace of it, send it again.
-
-## Relay the user's question or request
-
-When you orchestrate and the user asks about, reports a problem with or wants a change to work an agent you follow owns, the prompt is how it reaches that agent. Do not investigate the agent's checkout to answer it yourself (the `orchestrate` skill, rule 8).
-
-- Send the user's own words, quoted, plus the context the agent needs: what the user ran, the exact error text, the file or feature meant. Do not add your own diagnosis or a proposed fix as if the user had said it.
-- Ask the agent to answer in its pane and to stop before changing anything, unless the user asked for the change.
-- On `PROMPT REFUSED` ... working: wait for it to settle and send then; `--while-working` only when the user wants to steer it now.
-- Follow it with the `listen` skill and bring the agent's answer back to the user as the agent's answer.
+**After `agent_prompt_stalled`, a timeout or any other error: never resend the same prompt blindly.** A missing confirmation does not prove the prompt was not delivered, and a second copy makes the agent do the work twice. Read the screen first (`herdr agent read <target> --source visible --lines 80`): if the text sits unsent in the input box, submit it with `herdr agent send-keys <target> enter`; if the agent is working on it, it arrived; only when the screen shows no trace of it, send it again.
 
 ## Answer a blocked agent
 
 A blocked agent shows an approval or a question. That decision belongs to a human.
 
-1. Read it: `python3 "../../scripts/herdr_ctl.py" peek <target>`.
+1. Read it: `herdr agent read <target> --source visible --lines 80`.
 2. **Ask the user** what to answer, quoting the agent's question and its options exactly, and naming the agent, its tab and what it was doing. Do not approve, deny or pick an option on your own, even when one looks obviously right. The one exception: the user already gave a standing answer for exactly this kind of question in this conversation.
 3. Send the answer the way the dialog expects it:
    - an options dialog: `herdr agent send-keys <target> <key> [key ...]` (for example `1`, `y`, `down enter`, `esc`);
-   - a free-text question: `herdr agent send-keys` cannot type sentences, so once the dialog accepts text, use `python3 "../../scripts/herdr_ctl.py" prompt <target> --text "<answer>"`.
-4. Look again with `peek`: confirm the dialog is gone and report what the agent did next.
+   - a free-text question: `herdr agent send-keys` cannot type sentences, so once the dialog accepts text, use `herdr agent prompt <target> "<answer>"`.
+4. Read the screen again: confirm the dialog is gone and report what the agent did next.
 
 Never send keys to a pane to "see what happens". Never answer for an agent you cannot identify.

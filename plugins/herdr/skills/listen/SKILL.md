@@ -1,12 +1,12 @@
 ---
 name: listen
-description: Listens to one or more Herdr agents and reports what each is doing; when an agent is blocked on a question or approval it shows that question and asks the user how to answer, asking which agent or tab is meant when that is unclear. Use for '/herdr:listen', 'watch the dev agent', 'what is the agent in that worktree doing', 'tell me when the lanes finish or need me'. Meant for orchestrator agents. Requires running inside Herdr.
+description: Listens to one or more Herdr agents and reports what each is doing; when an agent is blocked on a question or approval it shows that question and asks the user how to answer, asking which agent or tab is meant when that is unclear. Use for '/herdr:listen', 'watch the dev agent', 'what is the agent in that worktree doing', 'tell me when they finish or need me'. Requires running inside Herdr.
 allowed-tools: Bash, AskUserQuestion
 ---
 
 # Listen to Herdr agents
 
-`ctl` = `python3 "../../scripts/herdr_ctl.py"` (resolve the path relative to this `SKILL.md`). Run `python3 "../../scripts/herdr_ctl.py" check` first; if it prints `HERDR UNAVAILABLE`, say so and stop.
+Run `bash "../../scripts/check.sh"` first (paths are relative to this `SKILL.md`). If it prints `HERDR UNAVAILABLE`, say so and stop.
 
 Nothing notifies you when another agent finishes or blocks. Listening means waiting on Herdr's state yourself.
 
@@ -15,35 +15,42 @@ Nothing notifies you when another agent finishes or blocks. Listening means wait
 Treat the rest of the request as the agents to listen to: names, pane ids, or a worktree or workspace (then: every agent in it).
 
 ```bash
-python3 "../../scripts/herdr_ctl.py" roster [--workspace <id>] [--repo <primary checkout>]
+herdr agent list | jq -r '.result.agents[] | [.workspace_id, .pane_id, .tab_id, (.name // "-"), .agent, .agent_status, .cwd] | @tsv'
 ```
 
 - A worktree or workspace with several agents, and the user named none: listen to all of them, and say so.
 - A request that could mean several agents (`the reviewer` with two reviewers live, an unnamed agent, a bare tab number): ask which agent or tab, listing each candidate's name, pane, tab, workspace and state. Do not guess.
 - Unnamed agents are targeted by pane id.
-- Never listen to yourself (the row marked `*`).
+- Never listen to yourself (your pane is `$HERDR_PANE_ID`).
 
 ## 2. Report what each is doing now
 
 ```bash
-python3 "../../scripts/herdr_ctl.py" peek <target> [--lines 80] [--history 200]
+herdr agent get <target>                                    # .result.agent.agent_status
+herdr agent read <target> --source visible --lines 80       # the screen
 ```
 
-`peek` prints the state and the **visible** screen. Agents with a full-screen interface keep their transcript there, and `herdr agent read --source recent-unwrapped` misses it; `--source visible` shows it. Add `--history` only for agents that scroll plain output.
+Agents with a full-screen interface keep their transcript on the visible screen, and `--source recent-unwrapped` misses it; `--source visible` shows it. Use `--source recent-unwrapped --lines 200` only for agents that scroll plain output.
 
-**If you are the orchestrator**, report in the format of `../../references/report.md` instead of the summary below; it also says where `idle`, `unknown` and gone agents go.
-
-Otherwise summarise per agent in a line or two: the state (`working`, `idle`, `done`, `blocked`, `unknown`) and what it is on, from the screen. Report what you read, not what you expect. `idle` and `done` usually mean ready for input, not that the task succeeded: read the last output before calling work finished. `unknown` means Herdr cannot tell; it is not completion.
+Summarise per agent in a line or two: the state (`working`, `idle`, `done`, `blocked`, `unknown`) and what it is on, from the screen. Report what you read, not what you expect. `idle` and `done` usually mean ready for input, not that the task succeeded: read the last output before calling work finished. `unknown` means Herdr cannot tell; it is not completion.
 
 ## 3. Wait for something worth reporting
 
+One agent:
+
 ```bash
-python3 "../../scripts/herdr_ctl.py" listen <target> [<target> ...] [--timeout 540] [--only-blocked]
+herdr agent wait <target> --until blocked --until done --until idle --timeout 540000
 ```
 
-It polls and returns at the first agent that is blocked, settled (`idle`/`done`) or gone, printing one `EVENT` line each plus the screen of every blocked agent, and `STILL WORKING` for the rest. Run it in the background when your host can do that, so the user can still talk to you; otherwise keep the timeout under your host's command limit and call it again. For one agent and one state, `herdr agent wait <target> --until blocked --timeout <ms>` does the same job.
+Several agents at once:
 
-- `LISTEN TIMEOUT` means only that nothing changed. A timeout does not prove an earlier prompt was not delivered. Keep listening or `peek`; never resend a prompt because of a timeout.
+```bash
+bash "../../scripts/listen.sh" <target> [<target> ...] [--timeout 540] [--only-blocked]
+```
+
+It returns at the first agent that is blocked, settled (`idle`/`done`) or gone, printing one `EVENT` line each plus the screen of every blocked agent, and `STILL WORKING` for the rest. Run either in the background when your host can do that, so the user can still talk to you; otherwise keep the timeout under your host's command limit and call it again.
+
+- A timeout means only that nothing changed. A timeout does not prove an earlier prompt was not delivered. Keep listening or read the screen; never resend a prompt because of a timeout.
 - After an event, listen again to the agents that are still working, leaving out the ones already reported, until the user's goal is met or they tell you to stop.
 
 ## 4. When an agent is blocked
@@ -59,7 +66,5 @@ Do not answer an approval or a question yourself. If you can show a notification
 
 ## 5. When an agent settles or disappears
 
-- `idle` / `done`: `peek` it, report the outcome in its own words (what it changed, what it says is left, any error), and say whether the result is verified or only claimed.
+- `idle` / `done`: read its screen, report the outcome in its own words (what it changed, what it says is left, any error), and say whether the result is verified or only claimed.
 - `gone`: the agent exited or its pane closed. Say so; do not restart it without being asked.
-
-As the orchestrator, each of these events is a new report in the format of `../../references/report.md`, with the detailed outcome after it in prose.
