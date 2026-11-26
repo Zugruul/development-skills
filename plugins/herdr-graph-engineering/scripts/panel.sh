@@ -20,11 +20,15 @@
 # every draw, and a resize (SIGWINCH) redraws at once.
 # CLOSED: the closed lanes of every repository the panel reads, newest first, folded, the
 # first five and then "… n more" (a click shows them all). A DONE or CLOSED lane's first line
-# ends with [x], the CLOSED header with [clear all]; the first click (or x, X) turns the button
-# into [confirm], a second click on it acts, any other click or key puts it back. [x] on a
-# DONE lane asks the lane's orchestrator to clean it up (it confirms with the user again and
-# removes the worktree, never the panel); on a CLOSED lane, and [clear all] for every closed
-# lane, it runs lane.sh clear, which moves the lane file from closed/ to closed/cleared/.
+# ends with [x], the CLOSED header with [clear all reviews] (only while a closed review lane
+# exists, and only when it fits next to the other) and [clear all]; the first click (or x, R,
+# X) turns the button into [confirm], a second click on it acts, any other click or key puts it
+# back. [x] on a DONE lane asks the lane's orchestrator to clean it up (it confirms with the
+# user again and removes the worktree, never the panel); on a CLOSED lane, [clear all reviews]
+# for every closed review lane and [clear all] for every closed lane, it runs lane.sh clear,
+# which moves the lane file from closed/ to closed/cleared/. A review lane: pattern review or
+# review-stack; with no pattern or a custom one (a review stack's --pattern-file), a
+# look/pr-<n> branch.
 # It only reads: the lane files and Herdr, through status.sh. Every write still goes
 # through lane.sh and every answer through the orchestrator.
 # Refresh: automatic every interval; the interval cycles 5s, 10s, 15s, 30s, 1m, 5m with the
@@ -38,8 +42,8 @@
 # Pull requests: each lane's, from prs.sh's cache (its branch's, and those it mentions),
 # coloured by state; the live panel refreshes the cache in the background.
 # Keys: up/down select a lane, enter or space folds/unfolds it, g jumps to its agent,
-# a answers its question, d shows its detail, x closes or clears it, X clears every closed
-# lane, f shows only its agents in the sidebar,
+# a answers its question, d shows its detail, x closes or clears it, R clears every closed
+# review lane, X every closed lane, f shows only its agents in the sidebar,
 # n only the agents that need you, F all again, r refresh, t interval, q close.
 # Colour: plain ANSI SGR (src/style.sh); none when NO_COLOR is set.
 set -uo pipefail
@@ -103,7 +107,17 @@ ORDER_JQ='
         + ([.[] | select(.section == "closed")] | sort_by([.closed, .lane]) | reverse
            | if $all == 1 then . else .[:5] end);'
 
-# The armed button, shown as [confirm]: "root|lane" for a lane's [x], "all" for [clear all].
+# A review lane, for [clear all reviews]: the recorded pattern when it says (review,
+# review-stack, or another pattern: not a review); with no pattern or a custom one, its
+# branch, look/pr-<n> as the review patterns name it.
+# shellcheck disable=SC2016
+REVIEW_JQ='
+    def isreview: if .pattern == "review" or .pattern == "review-stack" then true
+        elif (.pattern // "") == "" or .pattern == "custom" then (.branch // "") | test("^look/pr-[0-9]+$")
+        else false end;'
+
+# The armed button, shown as [confirm]: "root|lane" for a lane's [x], "all" for [clear all],
+# "reviews" for [clear all reviews].
 ARMED="" PREV="" PANEL_W=48
 
 # Lanes whose fold differs from their default, by name: |lane|lane|. Open lanes start
@@ -134,7 +148,8 @@ buttons() { # width, interval, row
 
 # The lanes, one "kind|width|line" per line: kind is the lane's display index, with an h
 # on the lane's first line (the one with the fold chevron; hx when it ends with [x]) or
-# u<URL> on a pull request's line; c on the CLOSED header, m on its "… n more" line;
+# u<URL> on a pull request's line; c on the CLOSED header (cr when it shows [clear all
+# reviews] too), m on its "… n more" line;
 # or -1 for lines of no lane (other section headers, blanks, hints); width is the line's
 # length without the style codes. One column of padding on each side; a lane's lines
 # hang under it on ├ and └, and long text wraps inside that, under its own start.
@@ -142,7 +157,7 @@ buttons() { # width, interval, row
 body() { # selected index, width
     jq -r --argjson sel "$1" --argjson w "$2" --argjson c "$STYLE" --arg folded "$FOLDED" --argjson seen "$SEEN" \
         --arg armed "$ARMED" --argjson all "$ALLCLOSED" \
-        "$STYLE_JQ_MARK$STYLE_JQ_PR$STYLE_JQ_PRCOLOUR$ORDER_JQ"'
+        "$STYLE_JQ_MARK$STYLE_JQ_PR$STYLE_JQ_PRCOLOUR$ORDER_JQ$REVIEW_JQ"'
         def plain: gsub("\u001b\\[[0-9;]*[A-Za-z]"; "");
         def chain: [.nodes[] | "\(.node) \(markcolour)\(mark)"
                      + (if .max > 0 and .retries > 0 then " \(.retries)/\(.max)" else "" end) + $c.fg]
@@ -187,6 +202,7 @@ body() { # selected index, width
                  | "\($i)\($v.k)| \($c.grey)  \(if .key == 0 then $tw[0] else $tw[1] end)\($c.fg)\(.value)"
                end);
         ([.[] | select(.section == "closed")] | length) as $nclosed
+        | ([.[] | select(.section == "closed" and isreview)] | length) as $nreviews
         | ordered($all) as $l
         | ( if ($l | length) == 0 then "-1| No lanes yet.", "-1| \($c.grey)Give the orchestrator an idea.\($c.fg)"
             else
@@ -194,7 +210,13 @@ body() { # selected index, width
                 | (if $i == 0 or $l[$i - 1].section != $x.section then
                      (if $i == 0 then empty else "-1|" end),
                      (if $x.section == "closed" then
-                        "c| \("\($c.head.closed)CLOSED (\($nclosed))\($c.reset)" | withbutton(button("all"; "[clear all]")))"
+                        # [clear all reviews] [clear all], or [clear all] alone when there is no
+                        # closed review lane or the two (unarmed) do not fit with a space before
+                        "CLOSED (\($nclosed))" as $t
+                        | button("all"; "[clear all]") as $ab | button("reviews"; "[clear all reviews]") as $rb
+                        | ($nreviews > 0 and ($t | length) + 1 + 19 + 1 + 11 <= $w - 2) as $both
+                        | "\(if $both then "cr" else "c" end)| \("\($c.head.closed)\($t)\($c.reset)"
+                            | withbutton(if $both then {t: "\($rb.t) \($ab.t)", n: ($rb.n + 1 + $ab.n)} else $ab end))"
                       else
                         "-1| \($c.head[$x.section])\($x.section | title) (\([$l[] | select(.section == $x.section)] | length))\($c.reset)"
                       end)
@@ -347,27 +369,30 @@ close_lane() { # lane JSON
     esac
 }
 
-clear_closed() { # [clear all], confirmed: every closed lane, shown or not
+# [clear all] (every closed lane, shown or not) or [clear all reviews] (every closed review
+# lane), confirmed. Open lanes, worktrees and branches are never touched.
+clear_closed() { # all | reviews
     local root name
     while IFS="$(printf '\t')" read -r root name; do
         [ -n "$name" ] || continue
         bash "$HERE/lane.sh" clear --repo "$root" --lane "$name" >/dev/null 2>&1 || MSG="could not clear $name"
-    done < <(jq -r '.[] | select(.section == "closed") | [.root, .lane] | @tsv' <<<"$VIEW")
+    done < <(jq -r --arg which "$1" "$REVIEW_JQ"'
+        .[] | select(.section == "closed" and ($which == "all" or isreview)) | [.root, .lane] | @tsv' <<<"$VIEW")
     refresh_view
 }
 
-# A press of [x] (key: root|lane) or [clear all] (key: all): the first arms it, a press of
-# the armed button acts. act has already put any armed button back in PREV.
+# A press of [x] (key: root|lane), [clear all] (key: all) or [clear all reviews] (key:
+# reviews): the first arms it, a press of the armed button acts. act has already put any armed button back in PREV.
 press() { # key, lane JSON (for [x])
     if [ "$PREV" = "$1" ]; then
-        if [ "$1" = all ]; then clear_closed; else close_lane "$2"; fi
+        case "$1" in all | reviews) clear_closed "$1" ;; *) close_lane "$2" ;; esac
     else
         ARMED="$1"
     fi
 }
 
 act() { # key
-    local n lane k key bw
+    local n lane k key bw rbw
     # any key or click puts an armed button back; press arms it again
     PREV="$ARMED" ARMED=""
     n="$(lane_count)"
@@ -383,12 +408,13 @@ act() { # key
                press "$(jq -r '"\(.root)|\(.lane)"' <<<"$lane")" "$lane"
            else MSG="only a done or closed lane has [x]"; fi ;;
         X) if jq -e 'any(.[]; .section == "closed")' >/dev/null <<<"$VIEW"; then press all ""; else MSG="no closed lanes"; fi ;;
+        R) if jq -e "$REVIEW_JQ"' any(.[]; .section == "closed" and isreview)' >/dev/null <<<"$VIEW"; then press reviews ""; else MSG="no closed review lanes"; fi ;;
         f) [ -n "$lane" ] && agent_view "$(jq -c '{label: "lane \(.lane)", filter: {op: "eq", field: "workspace_id", value: .workspace}}' <<<"$lane")" ;;
         n) agent_view '{"label":"needs me","filter":{"op":"in","field":"status","values":["blocked"]}}' ;;
         F) agent_view "" ;;
         r) refresh_view ;;
         t) interval="$(next_interval "$interval")" ;;
-        "?") MSG="↑↓ select · ↵/space/click fold · g go · a answer · d detail · x close · X clear closed · f lane only · n needs me · F all · r refresh · t interval · q close" ;;
+        "?") MSG="↑↓ select · ↵/space/click fold · g go · a answer · d detail · x close · R clear reviews · X clear closed · f lane only · n needs me · F all · r refresh · t interval · q close" ;;
         q) exit 0 ;;
         click)
             if [ "$CLICK_ROW" -eq "$BTN_ROW" ] && [ "$CLICK_COL" -ge "$BTN_IV_FROM" ] && [ "$CLICK_COL" -le "$BTN_IV_TO" ]; then
@@ -415,10 +441,17 @@ act() { # key
                         elif [ "$CLICK_COL" -ge 2 ] && [ "$CLICK_COL" -le 3 ]; then
                             toggle_fold "$(jq -r '.lane' <<<"$lane")"
                         fi ;;
-                    c)
-                        bw=11
+                    c | cr)
+                        # [clear all] ends one column short of the right edge; [clear all
+                        # reviews] (cr) ends one space before it; either may be [confirm]
+                        bw=11 rbw=19
                         [ "$PREV" != all ] || bw=9
-                        if [ "$CLICK_COL" -ge $((PANEL_W - bw)) ] && [ "$CLICK_COL" -le $((PANEL_W - 1)) ]; then press all ""; fi ;;
+                        [ "$PREV" != reviews ] || rbw=9
+                        if [ "$CLICK_COL" -ge $((PANEL_W - bw)) ] && [ "$CLICK_COL" -le $((PANEL_W - 1)) ]; then
+                            press all ""
+                        elif [ "$k" = cr ] && [ "$CLICK_COL" -ge $((PANEL_W - bw - 1 - rbw)) ] && [ "$CLICK_COL" -le $((PANEL_W - bw - 2)) ]; then
+                            press reviews ""
+                        fi ;;
                     m) ALLCLOSED=1 ;;
                     *h)
                         sel="${k%h}"
