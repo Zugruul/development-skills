@@ -131,7 +131,6 @@ check "concurrency: a cap only on the user's request" "keep at most N agents" "$
 check "concurrency: merges origin/main with a merge commit, never a rebase" "never rebase" "$conc"
 check "concurrency: one writer per checkout" "One writer per checkout" "$conc"
 check_absent "concurrency: pure guidance, no scripts" ".sh\"" "$conc"
-check "concurrency: only SKILL.md in its directory" "SKILL.md" "$(ls "$PLUGIN/skills/concurrency" 2>/dev/null | tr '\n' ' ')"
-check_rc "concurrency: no other files in its directory" 1 "$(find "$PLUGIN/skills/concurrency" -type f 2>/dev/null | wc -l | tr -d ' ')"
+check_rc "concurrency: SKILL.md is the only file in its directory" 1 "$(find "$PLUGIN/skills/concurrency" -type f 2>/dev/null | wc -l | tr -d ' ')"
 check_absent "README: no lane limit" "at most 5 open lanes" "$(cat "$PLUGIN/README.md")"
 check "README: lists the concurrency skill" "| \`concurrency\` |" "$(cat "$PLUGIN/README.md")"

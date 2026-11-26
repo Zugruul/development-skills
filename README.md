@@ -396,6 +396,7 @@ plugin**, `jq`, `yq` and `git`. See
 |---|---|
 | `orchestrate` | The one chat: route ideas into lanes and run them until their definition of done |
 | `display` | Opens or closes the Herdr graph panel next to the orchestrator (refresh, interval toggle, jump, answer), or prints the picture as text |
+| `concurrency` | Guidance for running many lanes at once; no limit by default, a cap only when you ask |
 
 ```bash
 claude plugin install herdr-graph-engineering@development-skills
