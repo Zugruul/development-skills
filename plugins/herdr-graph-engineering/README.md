@@ -67,13 +67,22 @@ done:
 
 ## Agent kinds
 
-A role lists kinds in order of preference (`kind: [claude, codex, opencode]`). `kind.sh` picks the first installed one; for a second opinion it skips the implementer's kind. Read-only access is enforced by the agent CLI, then checked with `git status` after the node:
+A role lists kinds in order of preference (`kind: [claude, codex, opencode]`). The orchestrator never picks a kind silently: before each agent node it runs `kind.sh --role R --list` and asks you, offering every kind that is actually installed (the kinds `herdr agent start --help` supports whose executable is on PATH), the recommended one first with why. For a reviewing role the recommendation is a different kind from the implementer's (`--not`); the implementer's kind is still offered, marked same-model. You can make a choice **standing** for the session ("use opencode for reviews from now on"): `kind.sh --remember` records it and later lanes use it without asking, unless that kind is gone. When an agent fails to start or work (an expired provider login, a dialog it cannot pass), you are offered every other installed kind (`--without` the failed one).
 
-| Kind | Read-only |
-|---|---|
-| claude | `--disallowedTools Edit Write NotebookEdit` |
-| opencode | `--agent plan` |
-| codex | `--sandbox read-only` |
+Read roles (`investigator`, `reviewer`, `pr-reviewer`, `planner`) run in each kind's normal mode. The CLI read-only modes stop what these roles must do: write the report or draft to a file outside the checkout, and run the tests.
+
+| Kind | CLI read-only mode | Why it is not used |
+|---|---|---|
+| claude | `--disallowedTools Edit Write NotebookEdit` | blocks the Write tool, so the report could only be written through the shell. A path-scoped deny (`Edit(./**)`) needs shell quoting that the start path does not guarantee. |
+| opencode | `--agent plan` | the plan agent cannot write the draft file or run tests (a pr-reviewer ended with `RESULT: question` and no draft) |
+| codex | `--sandbox read-only` | cannot write the report or the temporary files tests create |
+| any other | none known | |
+
+The guard is the role's read-only rules in its brief and the orchestrator's check that the checkout is unchanged (`HEAD` and `git status --porcelain`, noted before the node and compared after); any change fails the node. `kind.sh` prints `GUARD brief` for a read role to say so.
+
+### Startup dialogs
+
+A new agent often stops before its brief: folder trust, imports of instruction files from outside the checkout, opencode asking to read `~/.claude` or `~`, a login. The orchestrator relays each one exactly, with lane and node, answers only as you say, and offers a **standing answer** for the session ("allow external CLAUDE.md imports for lanes in this repository") so the same dialog in later lanes does not come back to you.
 
 ## Scripts
 
@@ -82,7 +91,7 @@ lane.sh new|show|list|node|retry|ask|answer|note|done-extra|set|close|clear   th
 session.sh set|add|del|show|find                       the only writer of the orchestrator's session file
 resume.sh [--fetch] [--out FILE]                        everything the orchestrator needs after a compaction, one block
 ready.sh --lane L                                       which nodes can start now
-kind.sh --role R [--not KIND]                           the kind and arguments for a role here
+kind.sh --role R [--not K] [--without K] --list|--kind K|--remember K   the installed kinds (recommended first), the chosen one's arguments, standing choices
 gate.sh --lane L --node N --pane P                      run a gate in a visible tab, record its exit code
 status.sh [--text|--line|--json]                        the picture of every lane (display, tab bar)
 check-pattern.sh (FILE | --name P)                      validate a pattern

@@ -13,6 +13,7 @@ Run `pwd` and check the checkout is at the pull request's head commit. Read the 
 ## Boundaries
 - Draft only. Never post, approve, request changes, merge or push. Never mark a pull request ready.
 - Change no tracked file, branch or index. Temporary test files carry your agent name as a prefix and are removed before you finish.
+- Your agent runs in its normal mode, not a read-only one: these rules are the boundary, and the orchestrator checks afterwards that the checkout is unchanged. Write the draft to `{output_path}`, outside the checkout.
 - No personal data and no AI attribution in anything you write. Never read secrets or credential files.
 
 ## Tools and sources
