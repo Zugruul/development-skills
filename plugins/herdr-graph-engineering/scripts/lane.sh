@@ -24,10 +24,11 @@
 #   lane.sh done-extra --lane L (--text T | --met N)   a done criterion the user added beyond the pattern's
 #                                                 (for example "merged and the new plugin version runs");
 #                                                 --met N marks the Nth one met
-#   lane.sh set --lane L --key owner|workspace|branch|gate|status|pr|cleanup --value V
+#   lane.sh set --lane L --key owner|workspace|branch|gate|status|pr|cleanup|forwarded --value V
 #                                                 pr: the lane's pull request; cleanup: ready or blocked: REASON
 #                                                 (written by cleanup.sh), confirmed or declined (the user's
-#                                                 answer; confirmed only after ready)
+#                                                 answer; confirmed only after ready); forwarded (a review
+#                                                 lane): OWNER-LANE/AGENT its findings were sent to, or declined
 #   lane.sh close --lane L                        move the file to closed/
 #   lane.sh clear --lane L                        a closed lane: move its file to closed/cleared/ (kept, off the panel)
 # Exit codes: 0 ok, 1 error, 2 usage, 6 invalid pattern or lane, 7 retry limit reached.
@@ -224,7 +225,8 @@ done-extra)
     fi ;;
 set)
     need_lane
-    case "$key" in owner | workspace | branch | gate | status | pr | cleanup) ;; *) die "--key must be owner, workspace, branch, gate, status, pr or cleanup" 2 ;; esac
+    case "$key" in owner | workspace | branch | gate | status | pr | cleanup | forwarded) ;; *) die "--key must be owner, workspace, branch, gate, status, pr, cleanup or forwarded" 2 ;; esac
+    [ "$key" != forwarded ] || case "$value" in declined | ?*/?*) ;; *) die "forwarded must be LANE/AGENT or declined" 2 ;; esac
     [ "$key" != cleanup ] || case "$value" in '' | ready | confirmed | declined | "blocked: "?*) ;; *) die "cleanup must be ready, confirmed, declined or blocked: REASON" 2 ;; esac
     # a yes only answers a cleanup question that was asked
     if [ "$key" = cleanup ] && [ "$value" = confirmed ]; then

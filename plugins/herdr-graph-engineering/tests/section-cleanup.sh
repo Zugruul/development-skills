@@ -99,7 +99,7 @@ kst '{}'
 : >"$K_TMP/gh.log"
 out="$(k cleanup check --repo "$K_REPO" --lane rev-7 2>&1)"
 check "a done review lane is ready without a merge" "CLEANUP rev-7 (review lane is done" "$out"
-check_absent "no pull request is looked up for it" "pr view" "$(cat "$K_TMP/gh.log")"
+check_absent "its pull request is not asked for its merge state" "--json state" "$(cat "$K_TMP/gh.log")"
 git -C "$K_REPO" worktree add -q -b inv/why "$K_TMP/wt-inv-1" main
 k lane new --repo "$K_REPO" --lane inv-1 --pattern investigate --idea x --branch inv/why --workspace w-inv-1 >/dev/null
 k lane set --repo "$K_REPO" --lane inv-1 --key status --value "done" >/dev/null
