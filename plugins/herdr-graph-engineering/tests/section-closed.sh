@@ -92,12 +92,12 @@ check "the CLOSED header counts every closed lane and ends with [clear all]" "1"
 check "[clear all] ends one column short of the right edge" "47" "$(grep "CLOSED" <<<"$out" | jq -Rr 'length')"
 check "closed lanes start folded, each ending with [x]" "1" "$(grep -cE "^ ▸ old-a  investigate +\[x\]$" <<<"$out")"
 check "a DONE lane ends with [x] too" "1" "$(grep -cE "^ ▾ shipped  investigate +\[x\]$" <<<"$out")"
-check "a WORKING lane has no [x]" "1" "$(grep -cE "^ ▾ open-one  investigate( ◂)?$" <<<"$out")"
+check "a WORKING lane has no [x]" "1" "$(grep -cE "^ ▾ open-one  investigate( ◂ +\[detail\])?$" <<<"$out")"
 check "the [x] ends one column short of the right edge" "47" "$(grep "old-a" <<<"$out" | jq -Rr 'length')"
 check "the newest closed lane first, from every repository" "old-b old-a" "$(grep -oE "^ ▸ old-[ab]" <<<"$out" | sed 's/^ ▸ //' | tr '\n' ' ' | sed 's/ $//')"
-check "the footer names x" "d detail · x close · ? keys" "$(cg panel --frame --width 120)"
+check_absent "the footer names no keys" "x close" "$(cg panel --frame --width 120)"
 sel="$(cg panel --frame --width 48 --selected 3)"
-check "a selected closed lane keeps the [x] inside the edge" "1" "$(grep -cE "^ ▸ old-a  investigate ◂ +\[x\]$" <<<"$sel")"
+check "a selected closed lane keeps the [x] inside the edge" "1" "$(grep -cE "^ ▸ old-a  investigate ◂ .*\[x\]$" <<<"$sel")"
 check "with its marker before the button, inside the width" "47" "$(grep "old-a" <<<"$sel" | jq -Rr 'length')"
 click() { printf '\033[<0;%s;%sM\033[<0;%s;%sm' "$1" "$2" "$1" "$2"; }
 row_of() { grep -n -- "$1" <<<"$(cg panel --frame --width 48)" | head -1 | cut -d: -f1; }
@@ -108,10 +108,10 @@ check "and shows its pull request in its final state" "└ ● #31 merged  https
 
 echo "== closed: [x] and [clear all] =="
 out="$(click 46 "$r" | cg panel --frame --width 48 --feed)"
-check "the first click on [x] turns it into [confirm]" "1" "$(grep -cE "^ ▸ old-a  investigate ◂ +\[confirm\]$" <<<"$out")"
+check "the first click on [x] turns it into [confirm]" "1" "$(grep -cE "^ ▸ old-a  investigate ◂ .*\[confirm\]$" <<<"$out")"
 check "nothing is cleared yet" "1" "$([ -f "$DA/closed/old-a.yaml" ] && echo 1 || echo 0)"
 out="$( { click 46 "$r"; click 10 1; } | cg panel --frame --width 48 --feed)"
-check "a click anywhere else restores [x]" "1" "$(grep -cE "^ ▸ old-a  investigate ◂ +\[x\]$" <<<"$out")"
+check "a click anywhere else restores [x]" "1" "$(grep -cE "^ ▸ old-a  investigate ◂ .*\[x\]$" <<<"$out")"
 check "and clears nothing" "1" "$([ -f "$DA/closed/old-a.yaml" ] && echo 1 || echo 0)"
 out="$( { click 46 "$r"; click 40 "$r"; } | cg panel --frame --width 48 --feed)"
 check "a second click on [confirm] clears the closed lane" "1" "$([ -f "$DA/closed/cleared/old-a.yaml" ] && echo 1 || echo 0)"
@@ -129,13 +129,13 @@ check_absent "no worktree is removed by the panel" "worktree remove" "$(cat "$C_
 cg lane set --repo "$CA" --lane shipped --key owner --value "" >/dev/null 2>&1
 out="$( { click 46 "$r"; click 40 "$r"; } | cg panel --frame --width 48 --feed)"
 check "a DONE lane with no orchestrator: the panel says where to go" "no orchestrator owns shipped" "$out"
-# keys: x on the selected lane, X for clear all
+# click only: the old keys (x on the selected lane, X for clear all) do nothing
 r="$(row_of "old-b  solo")"
-out="$( { click 10 "$r"; printf 'x'; } | cg panel --frame --width 48 --feed)"
-check "x arms the selected lane's [x]" "1" "$(grep -cE "^ ▸ old-b  solo ◂ +\[confirm\]$" <<<"$out")"
-out="$(printf 'X' | cg panel --frame --width 48 --feed)"
-check "X arms [clear all]" "1" "$(grep -cE "^ CLOSED \(1\) +\[confirm\]$" <<<"$out")"
-check "nothing cleared by arming" "1" "$([ -f "$DB/closed/old-b.yaml" ] && echo 1 || echo 0)"
+out="$( { click 10 "$r"; printf 'xxXX'; } | cg panel --frame --width 48 --feed)"
+check_absent "x and X neither arm nor clear" "[confirm]" "$out"
+check "nothing cleared by keys" "1" "$([ -f "$DB/closed/old-b.yaml" ] && echo 1 || echo 0)"
+out="$( { click 46 "$r"; printf 'x'; } | cg panel --frame --width 48 --feed)"
+check "a key does not put an armed button back either" "1" "$(grep -cE "^ ▸ old-b  solo ◂ .*\[confirm\]$" <<<"$out")"
 # more than five closed lanes: five shown, then "… n more"
 for i in 1 2 3 4 5 6; do
     cg lane new --repo "$CA" --lane "c-$i" --pattern investigate --idea "c$i" >/dev/null

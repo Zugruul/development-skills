@@ -31,6 +31,8 @@
 #                                                 lane): OWNER-LANE/AGENT its findings were sent to, or declined
 #   lane.sh close --lane L                        move the file to closed/
 #   lane.sh clear --lane L                        a closed lane: move its file to closed/cleared/ (kept, off the panel)
+#   lane.sh restore --lane L                      a closed lane: move its file back to the open lanes with its last
+#                                                 status (open or done); the record only, never a worktree or branch
 # Exit codes: 0 ok, 1 error, 2 usage, 6 invalid pattern or lane, 7 retry limit reached.
 # jq programs are single-quoted on purpose: $names in them are jq variables.
 # shellcheck disable=SC2016
@@ -41,7 +43,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/pattern.sh
 . "$HERE/src/pattern.sh"
 
-USAGE="lane.sh new|show|list|node|tab-closed|retry|ask|answer|note|done-extra|set|close|clear [options] (see the header of lane.sh)"
+USAGE="lane.sh new|show|list|node|tab-closed|retry|ask|answer|note|done-extra|set|close|clear|restore [options] (see the header of lane.sh)"
 cmd="${1:-}"
 [ -n "$cmd" ] || usage "$USAGE"
 shift
@@ -256,5 +258,21 @@ clear)
     mv "$src" "$dest"
     unlock
     printf 'CLEARED %s %s\n' "$lane" "$dest" ;;
+restore)
+    # Only a closed lane, and only when no open lane has its name. Its last status comes from
+    # its history (status is only ever set by set, which records "status = open|done").
+    [ -n "$lane" ] || usage "lane.sh restore --lane L"
+    [ "$(slug "$lane")" = "$lane" ] || die "LANE NAME: '$lane' is not a lane name" 2
+    src="$dir/closed/$lane.yaml" file="$dir/$lane.yaml"
+    [ -f "$src" ] || die "NOT CLOSED: $lane (no $src); only a closed lane is restored" 6
+    lock "$repo"
+    [ ! -e "$file" ] || { unlock; die "LANE EXISTS: $lane ($file) is open; close or rename it first" 6; }
+    out="$(read_json "$src" | jq -c --arg now "$(now)" '
+        ([(.history // [])[] | capture(" status = (?<s>open|done)$") | .s][-1] // "open") as $s
+        | .status = $s | .history += ["\($now) lane restored (\($s))"]')" || { unlock; die "could not read $src"; }
+    printf '%s' "$out" | write_yaml "$file"
+    rm -f "$src"
+    unlock
+    printf 'RESTORED %s %s %s\n' "$lane" "$(jq -r .status <<<"$out")" "$file" ;;
 *) usage "$USAGE" ;;
 esac
