@@ -2,7 +2,8 @@
 # shellcheck source-path=SCRIPTDIR
 # prs.sh -- each lane's pull requests, cached for the graph panel and status.sh.
 # Usage: prs.sh fetch [--repo DIR]... [--max-age S]
-#   For every open lane: the pull requests of its branch, in every state, and every GitHub
+#   For every open lane, and every closed lane until its pull requests are final (merged or
+#   closed): the pull requests of its branch, in every state, and every GitHub
 #   pull request the lane mentions (its idea, question, references, history): what an
 #   orchestrator report lists as an agent's pull requests. Asked of gh, written to
 #   <lane folder>/prs.json: {"fetched": epoch seconds, "lanes": {lane: [{number, url, state,
@@ -61,10 +62,15 @@ fetch_repo() { # repo dir
     old="$(cat "$cache" 2>/dev/null)"
     jq -e '.lanes' >/dev/null 2>&1 <<<"$old" || old='{"lanes":{}}'
     new="$old"
-    for f in "$d"/*.yaml; do
+    for f in "$d"/*.yaml "$d"/closed/*.yaml; do
         [ -f "$f" ] || continue
         json="$(read_json "$f")" || continue
-        [ "$(jq -r '.status // ""' <<<"$json")" != closed ] || continue
+        lane="$(jq -r '.lane' <<<"$json")"
+        # a closed lane whose known pull requests are all final is not asked again
+        if [ "$(jq -r '.status // ""' <<<"$json")" = closed ] &&
+            jq -e --arg l "$lane" '.lanes | has($l) and all(.[$l][]; .state == "MERGED" or .state == "CLOSED")' >/dev/null 2>&1 <<<"$new"; then
+            continue
+        fi
         lane="$(jq -r '.lane' <<<"$json")" branch="$(jq -r '.branch // ""' <<<"$json")"
         list="[]" ok=1
         if [ -n "$branch" ]; then

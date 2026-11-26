@@ -28,7 +28,7 @@ Needs the `herdr` plugin, the `herdr` binary (the agent runs inside a Herdr pane
 | Skill | Purpose |
 |---|---|
 | `orchestrate` | The one chat: route ideas into lanes, run each lane's graph, check evidence, retry within limits, relay questions, open a draft pull request when done |
-| `display` | Read-only picture of every lane: `NEEDS YOU`, `WORKING`, `DONE`, each with its node chain, retries, open question and file references |
+| `display` | Read-only picture of every lane: `NEEDS YOU`, `WORKING`, `DONE` (the panel also lists `CLOSED`), each with its node chain, retries, open question and file references |
 
 ## Concepts
 
@@ -78,7 +78,7 @@ A role lists kinds in order of preference (`kind: [claude, codex, opencode]`). `
 ## Scripts
 
 ```text
-lane.sh new|show|list|node|retry|ask|answer|set|close   the only writer of lane files
+lane.sh new|show|list|node|retry|ask|answer|set|close|clear   the only writer of lane files
 ready.sh --lane L                                       which nodes can start now
 kind.sh --role R [--not KIND]                           the kind and arguments for a role here
 gate.sh --lane L --node N --pane P                      run a gate in a visible tab, record its exit code
@@ -117,26 +117,32 @@ herdr plugin install Zugruul/development-skills/plugins/herdr-graph-engineering 
    └ ● #818 merged           https://github.com/o/r/pull/818
 
  DONE (1)
- ▸ investigate-sync  investigate              (folded)
+ ▸ investigate-sync  investigate              [x]
+
+ CLOSED (6)                           [clear all]
+ ▸ fix-login  fast                           [x]  (folded)
+ ▸ spike-cache  investigate                  [x]
+   … 4 more
 
  Since last look: investigate-sync → done
  ──────────────────────────────────────────────────────────
  updated 10:42:07 · every 5s · ↵ fold · g go · a answer
- d detail · ? keys                           [◷ 5s] [↻]
+ d detail · x close · ? keys                 [◷ 5s] [↻]
 ```
 
 - `/herdr-graph-engineering:display` opens or closes it. Without the Herdr plugin, `display` prints the same picture as text.
 - Refresh: automatic, every 5s by default (`refresh=10s` in `$(herdr plugin config-dir herdr-graph-engineering.graph)/config` changes the start); `[◷ 5s]` or `t` cycles 5s, 10s, 15s, 30s, 1m, 5m; `[↻]` or `r` refreshes now. No title of its own (Herdr's pane border shows "Graph"), one column of padding each side; a thin divider and the grey footer sit on the pane's bottom rows, the footer saying when it last read and ending with the two buttons. The size is read from the terminal on every draw and a resize redraws at once.
 - Layout: each lane starts with its fold chevron (▾ unfolded, ▸ folded); its chain, question, references, last line and pull requests hang under it on ├ and └, and long lines wrap inside that.
 - Pull requests: each lane lists the pull requests of its branch, in every state, and every GitHub pull request it mentions (idea, question, references, history), so a review lane lists the pull request it reviews. Coloured by state: draft grey, open blue, approved green, changes requested amber, merged purple, closed red. Click one to open it in the browser. `scripts/prs.sh fetch` asks `gh` and caches the answer next to the lane files; the panel starts it in the background at most once a minute and draws from the cache, so a render never waits on the network. Without `gh` the list stays empty.
-- Colour: plain ANSI 24-bit, the same in the panel and its popups: section headers bold red / amber / green, lane names bold, patterns, references, `last:` lines and the footer grey, node marks coloured by state, the selected lane's first line on a subtle background. `NO_COLOR` turns it off (the selected lane is then marked `◂`).
+- Colour: plain ANSI 24-bit, the same in the panel and its popups: section headers bold red / amber / green / grey (CLOSED), `[confirm]` red, lane names bold, patterns, references, `last:` lines and the footer grey, node marks coloured by state, the selected lane's first line on a subtle background. `NO_COLOR` turns it off (the selected lane is then marked `◂`).
 - Mouse: a click on a lane selects it; a click on its chevron also folds or unfolds it; a click on a pull request opens it; a click on a button presses it. Herdr passes mouse reports to the panel because the panel asks for them.
 - "Since last look" lists the lanes that moved section since your last key or click.
-- Keys: ↑↓ select a lane; enter or space folds or unfolds it; `g` jumps to its agent (the blocked one first); `a` answers its question in a popup (the answer goes to the orchestrator chat, which relays it); `d` lane detail; `f` only this lane's agents in Herdr's sidebar, `n` only the agents that need you, `F` all again; `q` closes it.
+- CLOSED: the closed lanes of every repository the panel shows, newest first, folded (unfold one to see its pull requests in their final state); five, then `… n more` (click it to show all). A DONE or CLOSED lane ends with `[x]`, the CLOSED header with `[clear all]`. The first click turns the button into `[confirm]`, a second click on it acts, a click anywhere else puts it back (keys: `x` on the selected lane, `X` for clear all, pressed twice). `[x]` on a DONE lane asks the lane's orchestrator to clean it up, which confirms with you before it removes the worktree; the panel removes nothing itself. On a CLOSED lane, and `[clear all]`, it runs `lane.sh clear`, which moves the lane file from `closed/` to `closed/cleared/` (kept, no longer shown). A closed lane's pull requests are fetched until they are merged or closed.
+- Keys: ↑↓ select a lane; enter or space folds or unfolds it; `g` jumps to its agent (the blocked one first); `a` answers its question in a popup (the answer goes to the orchestrator chat, which relays it); `d` lane detail; `x` close or clear it, `X` clear every closed lane; `f` only this lane's agents in Herdr's sidebar, `n` only the agents that need you, `F` all again; `q` closes it.
 - Actions to bind in your Herdr config (`[[keys.command]] type = "plugin_action"`): `herdr-graph-engineering.graph.toggle`, `.refresh`, `.next-needs-me`.
 - Ctrl-click a `.md` report path or a GitHub pull request URL to open it in a popup.
 - After a Herdr restart it reopens next to the orchestrator and rewrites the sidebar tokens; a lane whose worktree you remove by hand is closed.
-- It only reads. Lane files are still written only by `lane.sh`, answers still go through the orchestrator, and it stores nothing: it finds its own pane by its terminal title.
+- It only reads, except `[x]` and `[clear all]` on closed lanes, which go through `lane.sh clear`. Lane files are still written only by `lane.sh`, answers still go through the orchestrator, and it stores nothing: it finds its own pane by its terminal title.
 - Clicking the buttons depends on Herdr passing mouse clicks to the pane (`ui.mouse_capture`); the keys always work. The sidebar filters (`f`, `n`, `F`) need `nc` with Unix-socket support.
 
 ## Tests

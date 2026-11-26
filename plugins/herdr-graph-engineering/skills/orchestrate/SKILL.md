@@ -31,7 +31,7 @@ Scripts (all `bash "../../scripts/<name>"`):
 
 | Script | For |
 | --- | --- |
-| `lane.sh new / node / retry / ask / answer / set / close / show / list` | every write to a lane file |
+| `lane.sh new / node / retry / ask / answer / set / close / clear / show / list` | every write to a lane file |
 | `ready.sh --lane L --repo R` | which nodes can start now |
 | `kind.sh --role R [--not KIND]` | which agent kind runs a role here, and its read-only arguments |
 | `gate.sh --lane L --node N --pane P --repo R` | run a gate command in a visible tab and record its exit code |
@@ -120,7 +120,7 @@ When the planner's lane is done, validate its file: `check-pattern.sh <file> --r
 
 ## 6. After a lane
 
-When the user has merged a lane's pull request (`gh pr view <n> --json state` says `MERGED`), or has read a report lane's answer, offer cleanup: remove the worktree with `herdr worktree remove --workspace <id>` (never `--force`; a dirty checkout is the user's to decide), then `lane.sh close --lane L`. Branches are kept.
+When the user has merged a lane's pull request (`gh pr view <n> --json state` says `MERGED`), or has read a report lane's answer, offer cleanup: remove the worktree with `herdr worktree remove --workspace <id>` (never `--force`; a dirty checkout is the user's to decide), then `lane.sh close --lane L`. Branches are kept. The graph panel's `[x]` on a DONE lane sends you "Clean up lane L": treat it as the user asking for this cleanup, and still confirm before removing the worktree. `lane.sh clear --lane L` only moves a closed lane's file to `closed/cleared/` (the panel's `[x]` on a CLOSED lane and `[clear all]`).
 
 ## Reports
 

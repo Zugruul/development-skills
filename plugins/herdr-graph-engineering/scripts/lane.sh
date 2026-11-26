@@ -19,6 +19,7 @@
 #   lane.sh answer --lane L --text A              record the user's answer and clear the question
 #   lane.sh set --lane L --key owner|workspace|branch|gate|status --value V
 #   lane.sh close --lane L                        move the file to closed/
+#   lane.sh clear --lane L                        a closed lane: move its file to closed/cleared/ (kept, off the panel)
 # Exit codes: 0 ok, 1 error, 2 usage, 6 invalid pattern or lane, 7 retry limit reached.
 # jq programs are single-quoted on purpose: $names in them are jq variables.
 # shellcheck disable=SC2016
@@ -29,7 +30,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/pattern.sh
 . "$HERE/src/pattern.sh"
 
-USAGE="lane.sh new|show|list|node|retry|ask|answer|set|close [options] (see the header of lane.sh)"
+USAGE="lane.sh new|show|list|node|retry|ask|answer|set|close|clear [options] (see the header of lane.sh)"
 cmd="${1:-}"
 [ -n "$cmd" ] || usage "$USAGE"
 shift
@@ -197,5 +198,18 @@ close)
     mv "$file" "$dir/closed/$lane.yaml"
     unlock
     printf 'CLOSED %s %s\n' "$lane" "$dir/closed/$lane.yaml" ;;
+clear)
+    # Only a closed lane, never an open one: its file leaves closed/ for closed/cleared/.
+    [ -n "$lane" ] || usage "lane.sh clear --lane L"
+    [ "$(slug "$lane")" = "$lane" ] || die "LANE NAME: '$lane' is not a lane name" 2
+    src="$dir/closed/$lane.yaml"
+    [ -f "$src" ] || die "NOT CLOSED: $lane (no $src); only a closed lane is cleared" 6
+    lock "$repo"
+    mkdir -p "$dir/closed/cleared"
+    dest="$dir/closed/cleared/$lane.yaml" n=2
+    while [ -e "$dest" ]; do dest="$dir/closed/cleared/$lane.$n.yaml" n=$((n + 1)); done
+    mv "$src" "$dest"
+    unlock
+    printf 'CLEARED %s %s\n' "$lane" "$dest" ;;
 *) usage "$USAGE" ;;
 esac

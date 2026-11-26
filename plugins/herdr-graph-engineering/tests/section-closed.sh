@@ -47,13 +47,13 @@ cg lane new --repo "$CA" --lane gone-one --pattern investigate --idea c >/dev/nu
 cg lane close --repo "$CA" --lane gone-one >/dev/null
 out="$(cg lane clear --repo "$CA" --lane gone-one)"
 check "a second lane of the same name keeps the first one's file" "$DA/closed/cleared/gone-one.2.yaml" "$out"
-check "both are kept" "b c" "$(yq -r .idea "$DA/closed/cleared/gone-one.yaml" "$DA/closed/cleared/gone-one.2.yaml" | tr '\n' ' ' | sed 's/ $//')"
+check "both are kept" "b c" "$(yq -r .idea "$DA/closed/cleared/gone-one.yaml") $(yq -r .idea "$DA/closed/cleared/gone-one.2.yaml")"
 check_rc "clear without --lane is a usage error" 2 "$(cg lane clear --repo "$CA" >/dev/null 2>&1; echo $?)"
 
 echo "== closed: status.sh =="
 # repo A: open-one (working), shipped (done, owner graph), old-a (closed); repo B: old-b (closed)
 cg lane new --repo "$CA" --lane shipped --pattern investigate --idea d >/dev/null
-cg lane set --repo "$CA" --lane shipped --key status --value done >/dev/null
+cg lane set --repo "$CA" --lane shipped --key status --value "done" >/dev/null
 cg lane set --repo "$CA" --lane shipped --key owner --value graph >/dev/null
 cg lane new --repo "$CA" --lane old-a --pattern investigate --idea e >/dev/null
 cg lane set --repo "$CA" --lane old-a --key branch --value feat/old-a >/dev/null
@@ -92,7 +92,7 @@ check "the CLOSED header counts every closed lane and ends with [clear all]" "1"
 check "[clear all] ends one column short of the right edge" "47" "$(grep "CLOSED" <<<"$out" | jq -Rr 'length')"
 check "closed lanes start folded, each ending with [x]" "1" "$(grep -cE "^ ▸ old-a  investigate +\[x\]$" <<<"$out")"
 check "a DONE lane ends with [x] too" "1" "$(grep -cE "^ ▾ shipped  investigate +\[x\]$" <<<"$out")"
-check "a WORKING lane has no [x]" "1" "$(grep -cx " ▾ open-one  investigate" <<<"$out")"
+check "a WORKING lane has no [x]" "1" "$(grep -cE "^ ▾ open-one  investigate( ◂)?$" <<<"$out")"
 check "the [x] ends one column short of the right edge" "47" "$(grep "old-a" <<<"$out" | jq -Rr 'length')"
 check "the newest closed lane first, from every repository" "old-b old-a" "$(grep -oE "^ ▸ old-[ab]" <<<"$out" | sed 's/^ ▸ //' | tr '\n' ' ' | sed 's/ $//')"
 check "the footer names x" "d detail · x close · ? keys" "$(cg panel --frame --width 120)"
@@ -108,10 +108,10 @@ check "and shows its pull request in its final state" "└ ● #31 merged  https
 
 echo "== closed: [x] and [clear all] =="
 out="$(click 46 "$r" | cg panel --frame --width 48 --feed)"
-check "the first click on [x] turns it into [confirm]" "1" "$(grep -cE "^ ▸ old-a  investigate +\[confirm\]$" <<<"$out")"
+check "the first click on [x] turns it into [confirm]" "1" "$(grep -cE "^ ▸ old-a  investigate ◂ +\[confirm\]$" <<<"$out")"
 check "nothing is cleared yet" "1" "$([ -f "$DA/closed/old-a.yaml" ] && echo 1 || echo 0)"
 out="$( { click 46 "$r"; click 10 1; } | cg panel --frame --width 48 --feed)"
-check "a click anywhere else restores [x]" "1" "$(grep -cE "^ ▸ old-a  investigate +\[x\]$" <<<"$out")"
+check "a click anywhere else restores [x]" "1" "$(grep -cE "^ ▸ old-a  investigate ◂ +\[x\]$" <<<"$out")"
 check "and clears nothing" "1" "$([ -f "$DA/closed/old-a.yaml" ] && echo 1 || echo 0)"
 out="$( { click 46 "$r"; click 40 "$r"; } | cg panel --frame --width 48 --feed)"
 check "a second click on [confirm] clears the closed lane" "1" "$([ -f "$DA/closed/cleared/old-a.yaml" ] && echo 1 || echo 0)"
