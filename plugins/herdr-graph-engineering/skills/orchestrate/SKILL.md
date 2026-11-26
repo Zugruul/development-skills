@@ -22,7 +22,7 @@ Name yourself so the user sees the role in Herdr: `herdr agent rename "$HERDR_PA
 | Piece | What it is | Where |
 | --- | --- | --- |
 | Lane | One idea. One workspace, one branch. | Herdr workspace labelled with the lane name |
-| Pattern | The graph a lane starts from: `agent`, `gate` and `human` nodes, `needs`, `when` and `retry` edges, `done` checks | `patterns/*.yaml` (repository `.herdr-graph/`, then `~/.config/herdr-graph/`, then the plugin) |
+| Pattern | The graph a lane starts from: `agent`, `gate`, `human` and `pr` nodes, `needs`, `when` and `retry` edges, `done` checks | `patterns/*.yaml` (repository `.herdr-graph/`, then `~/.config/herdr-graph/`, then the plugin) |
 | Role | The brief an agent node gets, its kinds and its access | `roles/*.md`, same lookup |
 | Node | One step of a lane: an agent in a tab, a gate command in a tab, or a question to the user | a tab labelled with the node name |
 | Lane file | The facts Herdr and git cannot show: idea, graph copy, gate command, results, retries, open question, owner, history | `<git common dir>/herdr-graph/<lane>.yaml`, written **only** by `lane.sh` |
@@ -71,6 +71,7 @@ For each lane, `ready.sh --lane L --repo R` prints `READY <node> <agent|gate|hum
      - `planner`: also paste two shipped patterns as examples.
   5. `lane.sh node --lane L --node N --status running --agent <agent name> --repo R`.
 - **gate node**: a tab labelled with the node name, then run `gate.sh --lane L --node N --pane <its pane> --repo R` in the background. It records `pass` or `fail` itself.
+- **pr node** (`pr: draft`, used by `fast` to open the pull request before the gate): push the lane branch; if it has no open pull request, open a **draft** one whose body is the lane report so far (idea, what changed, "checks still running"); otherwise the node simply pushes to the pull request that is already open. Record `lane.sh node --lane L --node N --status done --result pass --ref <pull request url>`. A retry to the implementer runs it again, so each fix reaches the same pull request.
 - **human node**: `lane.sh ask --lane L --node N --text "<question>"`, notify (`herdr notification show "<lane> needs you" --body "<question>" --sound request`), and ask the user with what they need to decide (for a review: the counts by severity, the findings' titles, the draft paths). Then `lane.sh answer --lane L --text "<answer>"` and record the node: yes is `--status done --result pass`, no is `--status done --result fail` (the nodes that need a yes are then skipped).
 
 ## 4. Listen and check
@@ -92,7 +93,7 @@ Follow every running agent with the `herdr:listen` skill.
 When `ready.sh` prints `ALL NODES DONE`, run the lane's `done` checks from its lane file:
 
 - `{gate: <node>}`: that node's result is `pass`.
-- `draft-pr`: push the branch and open a **draft** pull request whose body is the lane report (idea, what changed, the checks and their results, what is left). Then `lane.sh set --key status --value done`.
+- `draft-pr`: push the branch and open a **draft** pull request whose body is the lane report (idea, what changed, the checks and their results, what is left). When a `pr` node already opened it, push and update its body instead of opening another. Then `lane.sh set --key status --value done`.
 - `report`: show the user the report file's answer in a few lines, with its path. Then `lane.sh set --key status --value done`.
 - `{human: <question>}`: ask the user.
 - `posted-review`: section "Reviews" below passed for every pull request of the lane. Then `lane.sh set --key status --value done`.

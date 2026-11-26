@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # src/pattern.sh -- sourced after src/common.sh; not run by itself.
-# The pattern language, frozen: three node types (agent, gate, human) and three edge
+# The pattern language, frozen: four node types (agent, gate, human, pr: draft) and three edge
 # kinds (needs, when, retry with max). No expressions.
 #   pattern_problems JSON REPO -> one problem per line on stdout, nothing when valid
 
@@ -19,9 +19,11 @@ PATTERN_JQ='
   (nodes | to_entries[] | .key as $n | .value as $v |
     (if ($n | test("^[a-z][a-z0-9-]{0,15}$") | not) then "node \($n): name must match [a-z][a-z0-9-]{0,15}" else empty end),
     (if ($v | type) != "object" then "node \($n): must be a map" else
-      ([("agent", "gate", "human")] | map(select(. as $k | $v | has($k))) | length) as $types |
-      (if $types != 1 then "node \($n): needs exactly one of agent, gate, human" else empty end),
-      ($v | keys - ["agent", "gate", "human", "kind", "brief", "needs", "when", "retry", "access"] | .[] | "node \($n): unknown key \(.)"),
+      ([("agent", "gate", "human", "pr")] | map(select(. as $k | $v | has($k))) | length) as $types |
+      (if $types != 1 then "node \($n): needs exactly one of agent, gate, human, pr" else empty end),
+      (if $v | has("pr") and $v.pr != "draft" then "node \($n): pr must be draft (the orchestrator only opens draft pull requests)" else empty end),
+      (if $v | has("access") and ($v | has("agent") | not) then "node \($n): access is only for agent nodes" else empty end),
+      ($v | keys - ["agent", "gate", "human", "pr", "kind", "brief", "needs", "when", "retry", "access"] | .[] | "node \($n): unknown key \(.)"),
       (($v.needs // []) | if type != "array" then "node \($n): needs must be a list" else .[] | select(IN(names[]) | not) | "node \($n): needs unknown node \(.)" end),
       (if $v | has("when") then (if ($v.when | IN("pass", "changes", "fail")) then empty else "node \($n): when must be pass, changes or fail" end) else empty end),
       (if $v | has("when") and (($v.needs // []) | length) == 0 then "node \($n): when needs a needs list" else empty end),

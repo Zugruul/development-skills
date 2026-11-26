@@ -35,7 +35,7 @@ Needs the `herdr` plugin, the `herdr` binary (the agent runs inside a Herdr pane
 | | |
 |---|---|
 | **Lane** | One idea. One Herdr workspace (labelled with the lane name), one branch. |
-| **Pattern** | A small YAML graph: `agent`, `gate` and `human` nodes; `needs`, `when` and `retry` (with a `max`) edges; `done` checks. Frozen: no other keys, no expressions. |
+| **Pattern** | A small YAML graph: `agent`, `gate`, `human` and `pr` (`pr: draft`: the orchestrator pushes the branch and opens or updates the draft pull request at that point) nodes; `needs`, `when` and `retry` (with a `max`) edges; `done` checks. Frozen: no other keys, no expressions. |
 | **Role** | The brief an agent node gets: Markdown with frontmatter (`name`, `description`, `kind` preference list, `access`). |
 | **Lane file** | `<git common dir>/herdr-graph/<lane>.yaml`: only what Herdr and git cannot show (idea, graph copy, approved gate command, node results, retries, open question, owner, history). Written only by `lane.sh`, under a lock. |
 
@@ -47,6 +47,7 @@ Shipped patterns:
 |---|---|
 | `solo` | implementer → tests gate (retry up to 3) → draft pull request |
 | `pair` | the same, then a read-only reviewer of another kind; `changes` sends the work back to the implementer (up to 2) |
+| `fast` | urgent fixes, only when you ask (fast, urgent, hotfix, pull request ASAP): the smallest fix with a focused test → the draft pull request opens at once (`pr` node) → tests gate; a failure goes back to the implementer (up to 3) and the fix is pushed to the same pull request |
 | `investigate` | a read-only investigator writes a report |
 | `review` | a pull request reviewer drafts → you approve → a poster posts one grouped `COMMENT` review whose body is the summary, verified |
 | review stack | `make-review-stack.sh` writes the graph for related pull requests: one reviewer each in parallel → a cross-PR check → you approve → one poster each |

@@ -384,8 +384,9 @@ claude plugin install herdr@development-skills
 
 Graph engineering on Herdr, kept thin. One orchestrator chat takes your ideas;
 each becomes a lane (its own worktree) running a small graph from a pattern
-(`solo`: implementer then a tests gate with bounded retries; `investigate`: a
-read-only report). Scripts decide what is ready and record results in one lane
+(`solo`: implementer then a tests gate with bounded retries; `pair`: the same
+plus a second-opinion reviewer; `fast`: urgent fixes, on request, the draft pull
+request opens before the tests gate; `investigate`: a read-only report). Scripts decide what is ready and record results in one lane
 file per lane; the orchestrator checks evidence, opens a draft pull request when
 a lane is done, and asks you only when a lane needs you. **Requires the herdr
 plugin**, `jq`, `yq` and `git`. See
