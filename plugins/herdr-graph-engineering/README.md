@@ -87,7 +87,9 @@ A new agent often stops before its brief: folder trust, imports of instruction f
 ## Scripts
 
 ```text
-lane.sh new|show|list|node|retry|ask|answer|set|close|clear   the only writer of lane files
+lane.sh new|show|list|node|retry|ask|answer|note|done-extra|set|close|clear   the only writer of lane files
+session.sh set|add|del|show|find                       the only writer of the orchestrator's session file
+resume.sh [--fetch] [--out FILE]                        everything the orchestrator needs after a compaction, one block
 ready.sh --lane L                                       which nodes can start now
 kind.sh --role R [--not K] [--without K] --list|--kind K|--remember K   the installed kinds (recommended first), the chosen one's arguments, standing choices
 gate.sh --lane L --node N --pane P                      run a gate in a visible tab, record its exit code
@@ -182,6 +184,22 @@ It binds `prefix+alt+g` to the `plugin_action` `herdr-graph-engineering.graph.to
 - After a Herdr restart it reopens next to the orchestrator and rewrites the sidebar tokens; a lane whose worktree you remove by hand is closed.
 - It only reads, except `[x]` and `[clear all]` on closed lanes, which go through `lane.sh clear`. Lane files are still written only by `lane.sh`, answers still go through the orchestrator, and the only thing it stores is the pane id of the panel it opened.
 - Clicking the buttons depends on Herdr passing mouse clicks to the pane (`ui.mouse_capture`); the keys always work. The sidebar filters (`f`, `n`, `F`) need `nc` with Unix-socket support.
+
+## Surviving a compaction
+
+The orchestrator is one long chat. When the client compacts it, the conversation is summarised and details are lost, so nothing the orchestrator needs may live only in the chat:
+
+- **Lane facts** go in the lane file: `lane.sh note` (a follow-up sent to a node, scope you added, a brief or file path) and `lane.sh done-extra` (a done criterion beyond the pattern's, such as "merged to main and this window runs the new plugin version"; `--met N` marks it).
+- **Session facts** go in the session file, `${XDG_STATE_HOME:-~/.local/state}/herdr-graph/sessions/<name>.yaml`, written only by `session.sh`: the orchestrator's pane and scratch folder, your standing answers that have no file of their own (such as the worktree approval), lanes queued at the agent limit with their prepared brief, renames, notes and scratch files. One file per orchestrator and per user, because lanes span repositories. Text that looks like a token, key or password is refused.
+- **`resume.sh`** prints all of it in one block: every open lane of every repository with lanes (nodes, agents live or gone, open question, pull requests, done checks, notes) with its next action, then the queue, the standing answers, and the standing kind and dialog choices that `kind.sh --remember` and the orchestrator keep in `<scratch>/graph-kinds` and `<scratch>/graph-dialogs`, renames, notes and files. The orchestrate skill runs it first after a compaction or in a new session, then re-starts `herdr:listen` for every live agent.
+
+**Claude Code** does this by itself through the plugin's hooks (`hooks/hooks.json`): `PreCompact` writes a fresh block to `<session folder>/<name>.resume.md`, and `SessionStart` with the `compact` matcher puts the block back into the chat. Both do nothing outside the orchestrator's pane (the session whose `pane` is `$HERDR_PANE_ID`) and never fail the chat. To compact by hand, give the summary a focus:
+
+```text
+/compact Keep: that I am the graph orchestrator (herdr-graph-engineering:orchestrate), my session name, and every user decision not yet written with lane.sh or session.sh. Lane and session state is in the files: after compacting, run resume.sh and follow it.
+```
+
+**Codex and OpenCode** have no such hook here: after a compaction or in a new session, run `bash <plugin>/scripts/resume.sh` (or start the orchestrate skill again, which runs it first).
 
 ## Tests
 

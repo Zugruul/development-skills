@@ -1,0 +1,26 @@
+{
+    "description": "herdr-graph-engineering: the graph orchestrator survives a compaction. Before it, write a fresh resume block; after it, give it back to the chat. Both do nothing outside the orchestrator's pane.",
+    "hooks": {
+        "PreCompact": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/resume.sh\" --hook pre-compact"
+                    }
+                ]
+            }
+        ],
+        "SessionStart": [
+            {
+                "matcher": "compact",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/resume.sh\" --hook session-start"
+                    }
+                ]
+            }
+        ]
+    }
+}
