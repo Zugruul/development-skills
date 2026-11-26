@@ -8,6 +8,20 @@ allowed-tools: Bash
 
 Paths are relative to this `SKILL.md`. This skill only reads; it never changes a lane.
 
+## With the Herdr panel (preferred)
+
+If the graph panel plugin is installed in Herdr (`herdr plugin list --json | jq -r '.result.plugins[].plugin_id'` lists `herdr-graph-engineering.graph`, enabled), `/display` **opens or closes** it next to the orchestrator:
+
+```bash
+herdr plugin action invoke herdr-graph-engineering.graph.toggle
+```
+
+Say in one line that it is open (or closed). The panel refreshes itself: every 5 seconds by default (`[◷ 5s]` or `t` cycles 5s, 10s, 15s, 30s, 1m, 5m), `[↻]` or `r` refreshes at once, and its footer shows when it last read. In the panel: ↑↓ select a lane, enter jumps to its agent, `a` answers its question (the answer comes to the orchestrator chat), `d` shows its detail, `f` shows only that lane's agents in the sidebar, `n` only the agents that need you, `F` all again, `q` closes it.
+
+Not installed: say once that it can be installed with `herdr plugin install Zugruul/development-skills/plugins/herdr-graph-engineering` (it asks before installing), then show the text below.
+
+## As text
+
 ```bash
 bash "../../scripts/status.sh" --text            # every repository with a Herdr workspace open, plus this one
 bash "../../scripts/status.sh" --text --repo <dir>   # only that repository
@@ -20,13 +34,18 @@ Print the output **unchanged inside one fenced code block** (` ```text `), then,
 
 To see one lane in full, `bash "../../scripts/lane.sh" show --lane <lane> --repo <dir>` prints its lane file (graph copy, results, retries, history).
 
-## A line in Herdr's tab bar
+## Optional: Herdr's tab bar and sidebar
 
-For an always-visible summary (`🔴 1 why-sync-slow  🟡 2  🟢 1`), the user can add this once to their Herdr config (`~/.config/herdr/config.toml`), with the absolute path of this plugin's `scripts/status.sh`. Offer it; do not edit their config yourself:
+Offer these once; never edit the user's Herdr config yourself. In `~/.config/herdr/config.toml`, with the absolute path of this plugin's `scripts/status.sh`:
 
 ```toml
-[[ui.tab_bar_right]]
+[[ui.tab_bar_right]]            # always-visible summary: 🔴 1 why-sync-slow  🟡 2  🟢 1
 type = "command"
 command = "bash <absolute path>/scripts/status.sh --line"
 interval_seconds = 5
+
+[ui.sidebar.agents]             # each lane agent's row shows its lane, node and step
+rows = [["state_icon", "workspace", "tab"], ["agent", "$node", "$step"]]
 ```
+
+The sidebar tokens are written by the orchestrator (`status.sh --tokens`) and rewritten by the panel plugin after a Herdr restart.

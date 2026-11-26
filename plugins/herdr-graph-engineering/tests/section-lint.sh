@@ -47,6 +47,13 @@ check "orchestrate: asks before anything outside the lane" "**Ask before** marki
 check "orchestrate: never merges" "**Never** merge" "$orch"
 check "orchestrate: read-only nodes are checked" "Any change fails the node" "$orch"
 check "display: only reads" "This skill only reads" "$(cat "$PLUGIN/skills/display/SKILL.md")"
+dsp="$(cat "$PLUGIN/skills/display/SKILL.md")"
+check "display: toggles the Herdr panel" "herdr plugin action invoke herdr-graph-engineering.graph.toggle" "$dsp"
+check "display: falls back to text" 'bash "../../scripts/status.sh" --text' "$dsp"
+check "display: never edits the user's Herdr config" "never edit the user's Herdr config yourself" "$dsp"
+check "orchestrate: offers the panel install and asks first" "run it only if the user says yes" "$orch"
+check "orchestrate: keeps the sidebar tokens current" 'status.sh" --tokens' "$orch"
+check "orchestrate: panel answers count as chat answers" "Answer for lane <lane>" "$orch"
 
 echo "== lint: reviews keep the grouped format =="
 rb="$(cat "$PLUGIN/references/review-brief.md")"

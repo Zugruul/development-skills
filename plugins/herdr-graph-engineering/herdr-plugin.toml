@@ -1,0 +1,83 @@
+# The Herdr side of herdr-graph-engineering: the graph panel, its popups, actions and hooks.
+# Install into Herdr (separate from the Claude/Codex plugin):
+#   herdr plugin install Zugruul/development-skills/plugins/herdr-graph-engineering
+# or, from a checkout: herdr plugin link plugins/herdr-graph-engineering
+id = "herdr-graph-engineering.graph"
+name = "Graph"
+version = "0.1.0"
+min_herdr_version = "0.9.5"
+description = "The graph engineering panel: lanes that need you, are working or are done, with refresh, an interval toggle, jump, answer and detail."
+platforms = ["linux", "macos"]
+
+[[panes]]
+id = "panel"
+title = "Graph"
+placement = "split"
+command = ["bash", "scripts/panel.sh"]
+
+[[panes]]
+id = "answer"
+title = "Answer"
+placement = "popup"
+width = "70%"
+height = 14
+command = ["bash", "scripts/popup.sh", "answer"]
+
+[[panes]]
+id = "detail"
+title = "Lane detail"
+placement = "popup"
+width = "80%"
+height = "70%"
+command = ["bash", "scripts/popup.sh", "detail"]
+
+[[panes]]
+id = "viewer"
+title = "View"
+placement = "popup"
+width = "90%"
+height = "80%"
+command = ["bash", "scripts/popup.sh", "viewer"]
+
+[[actions]]
+id = "toggle"
+title = "Graph: toggle panel"
+contexts = ["pane", "workspace"]
+command = ["bash", "scripts/panel-action.sh", "toggle"]
+
+[[actions]]
+id = "refresh"
+title = "Graph: refresh"
+contexts = ["pane", "workspace"]
+command = ["bash", "scripts/panel-action.sh", "refresh"]
+
+[[actions]]
+id = "next-needs-me"
+title = "Graph: next lane that needs me"
+contexts = ["pane", "workspace"]
+command = ["bash", "scripts/panel-action.sh", "next-needs-me"]
+
+[[actions]]
+id = "open-link"
+title = "Graph: open report or pull request"
+contexts = ["pane"]
+command = ["bash", "scripts/panel-action.sh", "open-link"]
+
+[[startup]]
+command = ["bash", "scripts/panel-action.sh", "restore"]
+
+[[events]]
+on = "worktree.removed"
+command = ["bash", "scripts/panel-action.sh", "worktree-removed"]
+
+[[link_handlers]]
+id = "report"
+title = "Open a lane report"
+pattern = "^(file://)?/.+\\.md$"
+action = "open-link"
+
+[[link_handlers]]
+id = "pull-request"
+title = "Open a pull request"
+pattern = "^https://github\\.com/[^/]+/[^/]+/pull/[0-9]+$"
+action = "open-link"

@@ -43,6 +43,8 @@ For every Herdr step use the `herdr` plugin's skills: `herdr:worktree`, `herdr:a
 
 ## 1. Pick up where things are
 
+Check the graph panel: `herdr plugin list --json | jq -r '.result.plugins[] | select(.plugin_id == "herdr-graph-engineering.graph") | .enabled'`. Not installed: offer once, with the command `herdr plugin install Zugruul/development-skills/plugins/herdr-graph-engineering`; run it only if the user says yes (it shows its own preview). Installed and enabled: open it with `herdr plugin action invoke herdr-graph-engineering.graph.toggle`, unless a panel is already open in this tab.
+
 Run `bash "../../scripts/status.sh" --text`. For every open lane whose `owner` is not a live agent (`herdr agent list`), take it over: `lane.sh set --lane L --repo R --key owner --value <your name>`. A lane whose owner is a live agent other than you belongs to that agent: leave it alone and tell the user. Report what you found (format: `../../references/report.md`), then say you are ready for ideas.
 
 ## 2. An idea arrives
@@ -121,7 +123,9 @@ When the user has merged a lane's pull request (`gh pr view <n> --json state` sa
 
 ## Reports
 
-Report in the format of `../../references/report.md` after any lane changes section, when the user asks, and when you stop. The `display` skill prints the same picture on demand.
+Report in the format of `../../references/report.md` after any lane changes section, when the user asks, and when you stop. The `display` skill opens the panel, or prints the same picture as text. After every lane change also run `bash "../../scripts/status.sh" --tokens` (it writes each lane agent's step into Herdr's sidebar), and `herdr plugin action invoke herdr-graph-engineering.graph.refresh` when the panel is installed.
+
+Answers the user types in the panel's answer popup arrive here as a message starting `Answer for lane <lane>`: treat them exactly like an answer typed in this chat.
 
 ## Rules
 

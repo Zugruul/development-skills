@@ -107,5 +107,29 @@ case "$cmd" in
         hit="$(st | jq -r --arg p "$pane" '.panes[$p].lines // [] | .[]' | grep -E -- "$re" | tail -1)"
         [ -n "$hit" ] || fail timeout "no match"
         ok "$(jq -cn --arg p "$pane" --arg l "$hit" '{type: "pane_output_matched", pane_id: $p, matched_line: $l}')" ;;
+    "plugin pane")
+        case "${3:-}" in
+            open)
+                ep="$(opt --entrypoint "$@")" target="$(opt --target-pane "$@")"
+                save "$(st | jq -c --arg e "$ep" --arg t "$target" '.opened += [{entrypoint: $e, target: $t}]')"
+                ok "$(jq -cn --arg e "$ep" '{type: "plugin_pane_opened", plugin_pane: {entrypoint: $e, pane: {pane_id: "w9:p9"}}}')" ;;
+            close)
+                save "$(st | jq -c --arg p "${4:-}" '.closed += [$p] | .pane_list |= map(select(.pane_id != $p))')"
+                ok '{"type":"plugin_pane_closed"}' ;;
+        esac ;;
+    "pane list") ok "$(st | jq -c '{panes: (.pane_list // [])}')" ;;
+    "pane get")
+        p="$(st | jq -c --arg p "$3" '[(.pane_list // [])[] | select(.pane_id == $p)][0] // {pane_id: $p, tab_id: "w1:t1"}')"
+        ok "$(jq -cn --argjson p "$p" '{type: "pane", pane: $p}')" ;;
+    "pane send-text")
+        save "$(st | jq -c --arg p "$3" --arg t "${4:-}" '.sent += [{pane: $p, text: $t}]')"
+        ok '{"type":"pane_send_text"}' ;;
+    "agent focus")
+        save "$(st | jq -c --arg a "$3" '.focused += [$a]')"
+        ok '{"type":"agent_focused"}' ;;
+    "pane report-metadata")
+        save "$(st | jq -c --arg p "$3" --arg all "$*" '.tokens += [{pane: $p, args: $all}]')"
+        ok '{"type":"pane_metadata_reported"}' ;;
+    "notification show") ok '{"type":"notification_show","shown":true}' ;;
 esac
 fail stub_unsupported "$cmd"

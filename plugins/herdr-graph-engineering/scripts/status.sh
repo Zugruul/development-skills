@@ -2,11 +2,13 @@
 # shellcheck source-path=SCRIPTDIR
 # status.sh -- the picture of every lane, derived each time from the lane files and Herdr.
 # Reads only. Used by the display skill, the tab bar line and the graph panel.
-# Usage: status.sh [--text | --line | --json] [--repo DIR]...
+# Usage: status.sh [--text | --line | --json | --tokens] [--repo DIR]...
 # Without --repo: every repository with a workspace open in Herdr, plus the current one.
 #   --text   NEEDS YOU / WORKING / DONE, one line per lane with its node chain (default)
 #   --line   one short line for Herdr's tab bar
 #   --json   the same facts for a program
+#   --tokens write each live node agent's step into Herdr's sidebar (pane tokens $lane, $node,
+#            $step), so a sidebar row layout can show it; display only, lost on a Herdr restart
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/common.sh
@@ -18,16 +20,17 @@ while [ $# -gt 0 ]; do
         --text) mode=text; shift ;;
         --line) mode=line; shift ;;
         --json) mode=json; shift ;;
+        --tokens) mode=tokens; shift ;;
         --repo) need_value "$1" $#; repos="$repos
 $2"; shift 2 ;;
-        *) usage "status.sh [--text | --line | --json] [--repo DIR]..." ;;
+        *) usage "status.sh [--text | --line | --json | --tokens] [--repo DIR]..." ;;
     esac
 done
 require_tools jq yq git
 
 agents="[]"
 if command -v herdr >/dev/null 2>&1; then
-    a="$(herdr agent list 2>/dev/null)" && agents="$(printf '%s' "$a" | jq -c '[.result.agents[]? | {name: (.name // ""), status: (.agent_status // "unknown")}]' 2>/dev/null || echo '[]')"
+    a="$(herdr agent list 2>/dev/null)" && agents="$(printf '%s' "$a" | jq -c '[.result.agents[]? | {name: (.name // ""), status: (.agent_status // "unknown"), pane: (.pane_id // "")}]' 2>/dev/null || echo '[]')"
     if [ -z "$repos" ]; then
         repos="$(herdr workspace list 2>/dev/null | jq -r '.result.workspaces[]?.worktree.repo_root // empty' 2>/dev/null)"
     fi
@@ -59,15 +62,27 @@ view="$(jq -c --argjson agents "$agents" '
       | [ $order[] as $n | $l.nodes[$n] as $s | $l.graph[$n] as $g
           | (if $s.agent and $live[$s.agent] == "blocked" then "blocked" else $s.status end) as $st
           | {node: $n, status: $st, result: ($s.result // ""), retries: ($s.retries // 0),
+             agent: ($s.agent // ""), live: ($live[$s.agent // ""] // ""),
              max: ([$l.graph[] | select(.retry.to == $n) | .retry.max] | max // 0),
              human: ($g.human // null), ref: ($s.ref // "")} ] as $nodes
       | {lane: $l.lane, pattern: $l.pattern, repo: $l.repo, question: ($l.question // ""),
+         workspace: ($l.workspace // ""), owner: ($l.owner // ""), idea: ($l.idea // ""),
          nodes: $nodes, last: ($l.history[-1] // ""),
          section: (if ($l.question // "") != "" or any($nodes[]; .status == "blocked") then "needs"
                    elif $l.status == "done" then "done" else "working" end)})' <<<"$lanes")"
 
 case "$mode" in
 json) printf '%s\n' "$view" ;;
+tokens)
+    command -v herdr >/dev/null 2>&1 || exit 0
+    jq -r --argjson agents "$agents" '
+        ($agents | map({(.name): .pane}) | add // {}) as $pane
+        | .[] | .lane as $lane | (.nodes | map("\(.node) \(.status)") | join(" > ")) as $chain
+        | .nodes[] | select(.agent != "" and ($pane[.agent] // "") != "")
+        | [$pane[.agent], $lane, .node, (if .max > 0 and .retries > 0 then "\(.status) \(.retries)/\(.max)" else .status end)] | @tsv' <<<"$view" |
+        while IFS="$(printf '\t')" read -r pane lane node step; do
+            herdr pane report-metadata "$pane" --source herdr-graph --token "lane=$lane" --token "node=$node" --token "step=$step" >/dev/null 2>&1 || true
+        done ;;
 line)
     jq -r '
         (map(select(.section == "needs"))) as $n | (map(select(.section == "working")) | length) as $w

@@ -85,11 +85,44 @@ status.sh [--text|--line|--json]                        the picture of every lan
 check-pattern.sh (FILE | --name P)                      validate a pattern
 make-review-stack.sh --pr URL --pr URL ... --out FILE    the graph for reviewing related pull requests
 check.sh                                                inside Herdr?
+panel.sh / panel-action.sh / popup.sh                   the Herdr panel, its actions and popups
 ```
 
 ## What the orchestrator may do alone
 
 Start agents and gates, retry within a pattern's limit, commit, push the lane branch, open a **draft** pull request. It asks before marking a pull request ready, posting anywhere, or touching anything outside the lane. It never merges, approves, force-pushes or deletes a branch.
+
+## The Herdr panel
+
+The folder is also a Herdr plugin (`herdr-plugin.toml`): a graph panel next to the orchestrator, installed into Herdr separately:
+
+```bash
+herdr plugin install Zugruul/development-skills/plugins/herdr-graph-engineering   # or: herdr plugin link <this folder>
+```
+
+```text
+ Graph                       [◷ 5s] [↻]
+----------------------------------------
+ NEEDS YOU (1)
+ ▸ why-slow  investigate
+     investigate ?
+     ? Staging or production?
+
+ WORKING (1)
+   task-x  solo
+     impl ✓ → tests ⟳ 1/3
+
+ updated 10:42:07 · every 5s · ⏎ go · a answer · d detail · ? keys
+```
+
+- `/herdr-graph-engineering:display` opens or closes it. Without the Herdr plugin, `display` prints the same picture as text.
+- Refresh: automatic, every 5s by default (`refresh=10s` in `$(herdr plugin config-dir herdr-graph-engineering.graph)/config` changes the start); `[◷ 5s]` or `t` cycles 5s, 10s, 15s, 30s, 1m, 5m; `[↻]` or `r` refreshes now. The footer says when it last read.
+- Keys: ↑↓ select a lane; enter jumps to its agent (the blocked one first); `a` answers its question in a popup (the answer goes to the orchestrator chat, which relays it); `d` lane detail; `f` only this lane's agents in Herdr's sidebar, `n` only the agents that need you, `F` all again; `q` closes it.
+- Actions to bind in your Herdr config (`[[keys.command]] type = "plugin_action"`): `herdr-graph-engineering.graph.toggle`, `.refresh`, `.next-needs-me`.
+- Ctrl-click a `.md` report path or a GitHub pull request URL to open it in a popup.
+- After a Herdr restart it reopens next to the orchestrator and rewrites the sidebar tokens; a lane whose worktree you remove by hand is closed.
+- It only reads. Lane files are still written only by `lane.sh`, answers still go through the orchestrator, and it stores nothing: it finds its own pane by its terminal title.
+- Clicking the buttons depends on Herdr passing mouse clicks to the pane (`ui.mouse_capture`); the keys always work. The sidebar filters (`f`, `n`, `F`) need `nc` with Unix-socket support.
 
 ## Tests
 
@@ -101,4 +134,4 @@ Hermetic: throwaway repositories and a stub `herdr`; no live session.
 
 ## Next
 
-Planned, not built yet: a Herdr side panel for `display`, with refresh and an interval toggle.
+Next: measure the setup on real ideas and remove what does not help.
