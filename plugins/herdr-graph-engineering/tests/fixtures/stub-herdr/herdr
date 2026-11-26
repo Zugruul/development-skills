@@ -131,5 +131,15 @@ case "$cmd" in
         save "$(st | jq -c --arg p "$3" --arg all "$*" '.tokens += [{pane: $p, args: $all}]')"
         ok '{"type":"pane_metadata_reported"}' ;;
     "notification show") ok '{"type":"notification_show","shown":true}' ;;
+    # Tabs live in state.tabs, keyed by tab id; `tab close` removes one and records it in
+    # state.tabs_closed (the call is in calls.log too).
+    "tab get")
+        t="$(st | jq -c --arg t "${3:-}" '(.tabs // {})[$t] // empty')"
+        [ -n "$t" ] || fail tab_not_found "tab ${3:-} not found"
+        ok "$(jq -cn --argjson t "$t" '{type: "tab_info", tab: $t}')" ;;
+    "tab close")
+        st | jq -e --arg t "${3:-}" '(.tabs // {}) | has($t)' >/dev/null || fail tab_not_found "tab ${3:-} not found"
+        save "$(st | jq -c --arg t "${3:-}" 'del(.tabs[$t]) | .tabs_closed += [$t]')"
+        ok '{"type":"tab_closed"}' ;;
 esac
 fail stub_unsupported "$cmd"
