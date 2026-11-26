@@ -125,7 +125,7 @@ PRS
 
 # Sets VERDICT (READY|BLOCKED|WAIT), WHY and WT for the lane in file $1.
 judge() {
-    local f="$1" br pr kind ref pj state url head n fin
+    local f="$1" br pr kind ref pj state url head n fin gch
     br="$(yq -r '.branch // ""' "$f")"
     lane_kind "$f"
     kind="$KIND" pr="$PR"
@@ -143,6 +143,11 @@ judge() {
     [ -n "$WT" ] || { VERDICT=BLOCKED WHY="no checkout found for branch $br"; return; }
     if [ -n "$(git -C "$WT" status --porcelain 2>/dev/null)" ]; then
         VERDICT=BLOCKED WHY="the checkout has uncommitted changes ($WT)"
+        # what a gate run changed there (its heartbeat), so it can be restored rather than guessed at
+        gch="$(jq -r '(.changed // []) as $c | select($c | length > 0)
+            | "changed by gate \(.node): \($c | map(sub("^\\s+"; "")) | join(", "))"' \
+            "$(lane_dir "$repo")/gates/$(basename "$f" .yaml)"/*.json 2>/dev/null | paste -sd ';' - | sed 's/;/; /g')"
+        [ -z "$gch" ] || WHY="$WHY; $gch"
         return
     fi
     case "$kind" in

@@ -179,8 +179,9 @@ out="$(HERDR_GRAPH_INTERVAL=0.2 g gate --repo "$REPO" --lane gated --node tests 
 check_rc "a gate that does not finish times out with exit 5" 5 "$rc"
 check "the timeout says how to keep waiting" "--wait" "$out"
 check "the node stays running" "running" "$(lf '.nodes.tests.status' gated)"
-# stop it without a result: the lane keeps showing the gate as running
+# stop it and drop its heartbeat: the lane keeps showing the gate as running, as before gate liveness
 kill -9 "$(jq -r '.pid' "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)/herdr-graph/gates/gated/tests.json")" 2>/dev/null
+rm -rf "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)/herdr-graph/gates/gated"
 
 echo "== graph: G2 pair, human, skip, review, custom =="
 g lane new --repo "$REPO" --lane pair-x --pattern pair --idea "touch auth" --gate "npm test" >/dev/null
