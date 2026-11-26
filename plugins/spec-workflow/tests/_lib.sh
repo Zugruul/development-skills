@@ -64,7 +64,7 @@ hookjsonpy() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"com
 hookjson_named() { python3 -c 'import json,sys; print(json.dumps({"tool_name":sys.argv[1], "tool_input":{sys.argv[2]:sys.argv[3]}}))' "$1" "$2" "$3"; }
 
 # --- server-lifecycle helpers (SPEC 7.5) ---------------------------------
-# Server-lifecycle sections (neural-view, ui-hub) bind a real TCP port. Under
+# Server-lifecycle sections (neural-view) bind a real TCP port. Under
 # concurrent build-loop lanes, two runs picking the same fixed port race and
 # whichever loses gets a spurious lifecycle failure blamed on its own diff.
 # _rand_port() gives each lifecycle section its own per-run random port;

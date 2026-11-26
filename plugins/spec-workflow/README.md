@@ -47,7 +47,7 @@ Ephemeral local state (board cache/queue, telemetry, gate-pass, CHECKPOINT, work
 | `find-task` | Ranked search of existing board issues (open + closed) by title/body similarity — the read side of dedup |
 | `create-inbound` | Search-first, dedup-gated capture of ad-hoc ideas/bugs/requests — the write side of dedup |
 | `implement-task` | One task: brief a dev subagent (what/how/why), verify, drive the board — accepts a GitHub issue `#N`, or a ClickUp task URL/id when `integrations.clickup` is configured (see "ClickUp task source" below) |
-| `ui-options` | Iterative UI mode: options page with favorite + aspect selection for the human |
+| `refine-task-ui` | Run a task's UI through the ui-design plugin, then fold screenshots and acceptance criteria into the issue |
 | `refine-task-ui` | Run/resume a task's UI decision to completion, then capture the finalized design as real screenshots folded into the task's issue body with resolved acceptance criteria |
 | `gate` | The single green-before-advance quality command |
 | `auto-merge` | Status/on/off for autonomous PR review+merge (`methodology.autoMerge`); asks with flow previews when called bare |
@@ -290,7 +290,7 @@ The key toggles the panel in the current tab and leaves focus where it was. Focu
 ## Human steering
 
 - **Issue comments** — read before every task; scope changes are folded into the issue body and acknowledged.
-- **Iterative UI mode** (default ON) — UI decisions go to the human via `docs/ui-options/<task-id>.html` (favorite selector + likeable aspect keywords + notes; "Copy selection" produces the comment to paste). Disable per-clone with `touch .claude/ITERATIVE_UI_OFF` or permanently with `methodology.iterativeUI: false`.
+- **Iterative UI mode** (default ON, needs the separate `ui-design` plugin) — UI decisions go to the human via `docs/ui-options/<task-id>.html` on ui-design's local decision hub (favorite selector + likeable aspect keywords + notes; "Copy selection" produces the comment to paste on the issue). The build loop calls `ui-design:ui-options` by skill name when ui-design is installed and decides UI itself otherwise ([how](skills/build-next/references/ui-design.md)). Disable per-clone with `touch .claude/ITERATIVE_UI_OFF` (or the `ui-design:ui-mode` skill) or permanently with `methodology.iterativeUI: false`; `scripts/iterative-ui.sh` reports which applies.
 - **Checkpoint flag** — `paths.checkpointFile` (default `.claude/CHECKPOINT`) pauses selection and starts. Relative paths use the primary checkout across linked worktrees; absolute paths and empty flags are supported. Resolve the effective path using the [checkpoint skill](skills/checkpoint/SKILL.md), finish existing work to a safe boundary, keep the board truthful, and write a handoff.
 
 `bash "$CLAUDE_PLUGIN_ROOT/scripts/checkpoint-preflight.sh" [--root DIR]` is the shared read-only check. Missing flags succeed silently; present flags or invalid/uninspectable configuration/state refuse admission. It honors `PROJECT_CONFIG` and the shared effective loader; explicit `--root` takes precedence over `SPEC_WORKFLOW_REPO_ROOT` and primary-root discovery. `board.sh next` checks before network/replay, and direct `next.py` checks the configured repository even from another cwd. Neither emits PICK/RESUME while paused. Direct and queued mutations to the active board's normalized work status (`statusFlow[1]`, or the sole status in a single-status flow) check before comments-marker lookup, mutation, queue append or telemetry, including repeated status requests. BOARD selection retains the picker's first-board fallback for unknown ids; structurally unusable selection/status-flow data fails closed. Queued starts remain pending for retry after flag removal. Other transitions retain their guards, and gate execution remains available; preflight/session-start remain advisory and bootstrap-safe.
@@ -551,8 +551,7 @@ To verify a single-area change without paying the whole suite's minutes, filter 
 base-name (file name minus the `section-` prefix and `.sh` suffix) contains the argument as
 a **substring** — so `--section board` runs every `board-*` section. The flag is repeatable
 and comma-separated (`--section a,b`, `--section a --section b`), the union runs in the
-registered order (preserving the ui-hub → neural-view-lifecycle pairing when both are
-selected), and an argument matching nothing errors with the list of available sections. The
+registered order, and an argument matching nothing errors with the list of available sections. The
 `SPEC_TESTS_SECTION` env var is an equivalent filter source. **Hand-picked filtering is for
 local iteration only**: `gate.sh` refuses to run at all when `SPEC_TESTS_SECTION` is set.
 

@@ -81,9 +81,9 @@ check_rc     "gate-fingerprint runs standalone (shared helpers in _lib.sh)" 0 "$
 out="$(_RUNNER_FILTER_META=1 bash "$RT" --section guard-pr-create 2>&1)"; rc=$?
 check_rc     "guard-pr-create runs standalone (self-contained helper)"  0 "$rc"
 
-# F2: filtering to only ONE half of the ui-hub -> neural-view-lifecycle
-# teardown pair must be a harmless no-op (as the run-tests.sh comment
-# claims), not a set -u crash on the unbound cross-section _hubtmp var.
+# F2: neural-view-lifecycle runs on its own (it once tore down a temp dir
+# the ui-hub section created; the hub moved to ui-design), never a set -u
+# crash on an unbound cross-section variable.
 out="$(_RUNNER_FILTER_META=1 bash "$RT" --section neural-view-lifecycle 2>&1)"; rc=$?
 check_rc     "neural-view-lifecycle runs standalone (no unbound _hubtmp)" 0 "$rc"
 check_absent "no unbound _hubtmp crash"          "_hubtmp: unbound variable" "$out"

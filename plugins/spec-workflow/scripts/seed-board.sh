@@ -10,7 +10,7 @@
 # The task-id prefix must match a spec's taskPrefix in project.yaml. The issue body embeds
 # the task's FULL backlog block (description, dependencies, acceptance criteria, spec-section
 # citations) extracted from that spec's backlogPath, plus an artifacts/references section
-# (spec path, per-epic design doc when present, ui-mode note); the backlog stays authoritative
+# (spec path, per-epic design doc when present, ui-design note); the backlog stays authoritative
 # on drift. If the block can't be found (title-only seeding), the body falls back to the title
 # with a warning.
 #
@@ -134,7 +134,7 @@ $block
 **Artifacts & references**
 - Spec: \`$sp_path\` (the §s cited above define the requirements this task implements)
 - Backlog: \`$bp\` (task \`$id\`) — **authoritative**: if this issue body ever drifts from the backlog/spec, the repo files win$design_line
-- UI-affecting tasks: iterative-UI decisions and final screenshots are folded into this issue by \`/refine-task-ui\` (ui-mode); implementation artifacts (PRs, spec deltas) link back here
+- UI-affecting tasks: iterative-UI decisions and final screenshots are folded into this issue by \`/refine-task-ui\` (ui-design plugin); implementation artifacts (PRs, spec deltas) link back here
 
 - [ ] Tests written first (TDD red -> green -> refactor)
 - [ ] \`$GATE_CMD\` green

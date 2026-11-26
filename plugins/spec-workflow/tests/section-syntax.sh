@@ -12,7 +12,7 @@ echo "== syntax =="
 for f in "$PLUGIN"/scripts/*.sh "$HERE"/*.sh; do
     if bash -n "$f"; then echo "ok   bash -n $(basename "$f")"; else echo "FAIL bash -n $f"; fails=$((fails + 1)); fi
 done
-for p in config.py identity_lib.py validate-config.py next.py similar.py ui-hub.py brain.py neural-view.py feedback.py telemetry.py; do
+for p in config.py identity_lib.py validate-config.py next.py similar.py brain.py neural-view.py feedback.py telemetry.py; do
     if python3 -m py_compile "$PLUGIN/scripts/$p"; then
         echo "ok   py_compile $p"
     else

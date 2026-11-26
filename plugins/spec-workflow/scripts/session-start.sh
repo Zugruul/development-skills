@@ -37,7 +37,7 @@ else:
 ' "$CONFIG" 2>/dev/null || echo "?")"
 echo "- Gate: \`$GATE\` — run it via \`bash \"\$CLAUDE_PLUGIN_ROOT/scripts/gate.sh\"\` so the pass is RECORDED; moving a task to 'In review' is blocked by a hook unless the recorded pass matches the current tree."
 echo "- Gate scope (methodology.gateScope): $GATE_SCOPE_LINE."
-if [[ -x "$HERE/ui-mode.sh" ]]; then
-    echo "- Iterative UI mode: $(bash "$HERE/ui-mode.sh" status 2>/dev/null | head -1)"
+if [[ -x "$HERE/iterative-ui.sh" ]]; then
+    echo "- Iterative UI mode: $(bash "$HERE/iterative-ui.sh" 2>/dev/null | head -1)"
 fi
 exit 0
