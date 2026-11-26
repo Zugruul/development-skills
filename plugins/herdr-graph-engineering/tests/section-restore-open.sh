@@ -127,7 +127,7 @@ check "else the system opener" "opener $MD" "$(cat "$O_TMP/opened.log")"
 ost '{}'
 oclick 30 "$r" | ro VISUAL=nvim HERDR_WORKSPACE_ID=w1 panel --frame --width 48 --feed >/dev/null
 check "a terminal editor opens in a new Herdr tab" "tab create --workspace w1" "$(cat "$O_TMP/calls.log")"
-check "which runs the editor on the file" "nvim $MD" "$(jq -r '.panes["w1:p9"].typed[0]' "$O_TMP/state.json")"
+check "which runs the editor on the file" "nvim $MD" "$(jq -r '.panes[.last_pane].typed[0]' "$O_TMP/state.json")"
 check "nothing else is opened" "" "$(cat "$O_TMP/opened.log")"
 ost '{}'
 oclick 30 "$(refrows "$HT" | head -1)" | ro VISUAL="$OBIN/gui-ed" panel --frame --width 48 --feed >/dev/null

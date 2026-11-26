@@ -51,8 +51,11 @@ lane_file() { # repo dir, lane
 # A lock whose process is gone is stale and is taken over.
 LOCK_DIR=""
 lock() { # repo dir
-    local dir tries=0 pid
-    dir="$(lane_dir "$1")"
+    lock_in "$(lane_dir "$1")"
+}
+
+lock_in() { # folder: take the lock folder inside it
+    local dir="$1" tries=0 pid
     mkdir -p "$dir"
     LOCK_DIR="$dir/.lock"
     while ! mkdir "$LOCK_DIR" 2>/dev/null; do
@@ -103,4 +106,15 @@ resolve() {
         [ -f "${p%|*}" ] && { printf '%s\t%s\n' "${p%|*}" "${p##*|}"; return 0; }
     done
     return 1
+}
+
+# The folder of the orchestrator's session files, per user (they span repositories):
+# ${XDG_STATE_HOME:-~/.local/state}/herdr-graph/sessions. Never inside a repository.
+session_dir() {
+    printf '%s/herdr-graph/sessions\n' "${XDG_STATE_HOME:-$HOME/.local/state}"
+}
+
+# Text that looks like a credential is never written to a session or lane file.
+looks_secret() { # text -> 0 when it looks like a token, key or password
+    printf '%s' "$1" | grep -qiE 'gh[pousr]_[A-Za-z0-9]{16,}|github_pat_|(^|[^a-z])sk-[A-Za-z0-9_-]{16,}|xox[abprs]-|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|bearer [A-Za-z0-9._~+/=-]{16,}|(password|passwd|secret|token|api[_-]?key)[[:space:]]*[=:][[:space:]]*[^[:space:]]+'
 }

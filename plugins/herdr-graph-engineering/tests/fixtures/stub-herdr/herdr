@@ -37,6 +37,11 @@ find_key() {
 }
 
 [ "$*" = "--version" ] && { echo "herdr 0.0.0-stub"; exit 0; }
+# `agent start --help` lists the supported kinds, as the real CLI does; HERDR_STUB_KINDS overrides them.
+if [ "${1:-} ${2:-} ${3:-}" = "agent start --help" ]; then
+    printf "      --kind <KIND>\n          Supported agent kind and canonical executable\n\n          [possible values: %s]\n" "${HERDR_STUB_KINDS:-pi, claude, codex, gemini, opencode}"
+    exit 0
+fi
 cmd="${1:-} ${2:-}"
 case "$cmd" in
     "agent list") ok "$(st | jq -c '{agents: [.agents[]]}')" ;;
@@ -111,15 +116,17 @@ case "$cmd" in
         case "${3:-}" in
             open)
                 ep="$(opt --entrypoint "$@")" target="$(opt --target-pane "$@")"
-                save "$(st | jq -c --arg e "$ep" --arg t "$target" '.opened += [{entrypoint: $e, target: $t}]')"
+                [ "$(st | jq -r '.plugin_open // "ok"')" = "fail" ] && fail plugin_pane_open_failed
+                # The new pane joins pane_list in the target's tab, untitled (its title comes later).
+                save "$(st | jq -c --arg e "$ep" --arg t "$target" '
+                    ([(.pane_list // [])[] | select(.pane_id == $t)][0].tab_id // ([(.agents // {})[] | select(.pane_id == $t)][0].tab_id) // "w1:t1") as $tab
+                    | .opened += [{entrypoint: $e, target: $t}]
+                    | if $e == "panel" then .pane_list = ((.pane_list // []) + [{pane_id: "w9:p9", tab_id: $tab}]) else . end')"
                 ok "$(jq -cn --arg e "$ep" '{type: "plugin_pane_opened", plugin_pane: {entrypoint: $e, pane: {pane_id: "w9:p9"}}}')" ;;
             close)
                 save "$(st | jq -c --arg p "${4:-}" '.closed += [$p] | .pane_list |= map(select(.pane_id != $p))')"
                 ok '{"type":"plugin_pane_closed"}' ;;
         esac ;;
-    "tab create")
-        save "$(st | jq -c --arg all "$*" '.tabs += [$all]')"
-        ok '{"type":"tab_created","tab":{"tab_id":"w1:t9"},"root_pane":{"pane_id":"w1:p9"}}' ;;
     "pane list") ok "$(st | jq -c '{panes: (.pane_list // [])}')" ;;
     "pane get")
         p="$(st | jq -c --arg p "$3" '[(.pane_list // [])[] | select(.pane_id == $p)][0] // {pane_id: $p, tab_id: "w1:t1"}')"
@@ -133,6 +140,38 @@ case "$cmd" in
     "pane report-metadata")
         save "$(st | jq -c --arg p "$3" --arg all "$*" '.tokens += [{pane: $p, args: $all}]')"
         ok '{"type":"pane_metadata_reported"}' ;;
-    "notification show") ok '{"type":"notification_show","shown":true}' ;;
+    "worktree remove")
+        # state.worktree_remove = "fail" makes the removal fail, as for a dirty checkout.
+        [ "$(st | jq -r '.worktree_remove // "ok"')" = ok ] || fail worktree_dirty "the checkout has changes"
+        save "$(st | jq -c --arg w "$(opt --workspace "$@")" '.worktrees_removed += [$w]')"
+        ok '{"type":"worktree_removed"}' ;;
+    # Tabs live in state.tabs, keyed by tab id; `tab close` removes one and records it in
+    # state.tabs_closed (the call is in calls.log too).
+    "tab create")
+        # A new tab gets tab id <ws>:t<n> and a root pane <ws>:p<n+10>, so the two ids differ.
+        w="$(opt --workspace "$@")"
+        new="$(st | jq -c --arg w "$w" '
+            ([(.tabs // {})[] | select(.workspace_id == $w)] | length + 2) as $n
+            | {tab_id: "\($w):t\($n)", workspace_id: $w, number: $n, agent_status: "unknown", label: "x"} as $t
+            | .tabs[$t.tab_id] = $t
+            | .pane_list += [{pane_id: "\($w):p\($n + 10)", tab_id: $t.tab_id, workspace_id: $w}]
+            | .last_tab = $t | .last_pane = "\($w):p\($n + 10)"')"
+        save "$new"
+        ok "$(printf '%s' "$new" | jq -c '{type: "tab_created", tab: .last_tab, root_pane: {pane_id: .last_pane}}')" ;;
+    "tab get")
+        t="$(st | jq -c --arg t "${3:-}" '(.tabs // {})[$t] // empty')"
+        [ -n "$t" ] || fail tab_not_found "tab ${3:-} not found"
+        ok "$(jq -cn --argjson t "$t" '{type: "tab_info", tab: $t}')" ;;
+    "tab close")
+        st | jq -e --arg t "${3:-}" '(.tabs // {}) | has($t)' >/dev/null || fail tab_not_found "tab ${3:-} not found"
+        save "$(st | jq -c --arg t "${3:-}" 'del(.tabs[$t]) | .tabs_closed += [$t]')"
+        ok '{"type":"tab_closed"}' ;;
+    "config check")
+        if [ "$(st | jq -r '.config_check // "ok"')" = "fail" ]; then echo "config: issues found"; exit 1; fi
+        echo "config: ok"
+        exit 0 ;;
+    "notification show")
+        save "$(st | jq -c --arg t "${3:-}" '.notified += [$t]')"
+        ok '{"type":"notification_show","shown":true}' ;;
 esac
 fail stub_unsupported "$cmd"

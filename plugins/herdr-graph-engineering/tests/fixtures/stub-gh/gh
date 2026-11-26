@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Hermetic stand-in for gh: answers `pr list --head B` from $GH_STUB_DIR/head-<B, / as _>.json
-# (else []) and `pr view URL` from $GH_STUB_DIR/pr-<number>.json (else it fails). Every call
-# is appended to $GH_STUB_DIR/gh.log; a file $GH_STUB_DIR/gh-fail makes every call fail.
+# Hermetic stand-in for gh. Every call is appended to $GH_STUB_DIR/gh.log; a file
+# $GH_STUB_DIR/gh-fail makes every call fail.
+#   pr list --head B   answers from $GH_STUB_DIR/head-<B, / as _>.json (else [])
+#   pr view REF        answers from $GH_STUB_DIR/gh.json {"<number, url or branch>": {...}} when it
+#                      has REF, else from $GH_STUB_DIR/pr-<number>.json (else it fails)
 set -u
 d="${GH_STUB_DIR:?GH_STUB_DIR is not set}"
 printf '%s\n' "$*" >>"$d/gh.log"
@@ -16,8 +18,11 @@ case "${1:-} ${2:-}" in
     f="$d/head-$(printf '%s' "$b" | tr / _).json"
     if [ -f "$f" ]; then cat "$f"; else echo '[]'; fi ;;
 "pr view")
+    pr=""
+    [ -f "$d/gh.json" ] && pr="$(jq -c --arg r "${3:-}" '.[$r] // empty' "$d/gh.json" 2>/dev/null)"
+    if [ -n "$pr" ]; then printf '%s\n' "$pr"; exit 0; fi
     f="$d/pr-${3##*/}.json"
-    [ -f "$f" ] || exit 1
+    [ -f "$f" ] || { echo "no pull requests found for ${3:-}" >&2; exit 1; }
     cat "$f" ;;
 *) exit 1 ;;
 esac
