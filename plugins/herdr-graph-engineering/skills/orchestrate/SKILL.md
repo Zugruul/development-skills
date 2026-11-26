@@ -77,15 +77,15 @@ For each lane, `ready.sh --lane L --repo R` prints `READY <node> <agent|gate|hum
      - Otherwise ask the user with AskUserQuestion: every candidate as an option, the recommended one first with its reason, plus an option "use it for every `<role>` from now on" (a **standing choice**). Never pick silently, and never offer fewer kinds than the list holds. `STANDING-UNAVAILABLE` means the standing kind is gone or is the implementer's kind: say so and ask.
      - On a standing choice: `kind.sh --role <role> --session <scratch>/graph-kinds --remember <kind>`. "For reviews" covers both `reviewer` and `pr-reviewer`: remember it for each.
      - Then `kind.sh --role <role> --repo <repo> --kind <kind>` (with the same `--not`) for the `ARGS` line. On `SAME-KIND`, note in the lane that the review is same-model. On `GUARD brief` (every `read` role), note the checkout's `git rev-parse HEAD` and `git status --porcelain` before starting: no kind runs in a CLI read-only mode, because those modes stop the role writing its report outside the checkout or running tests; the role's read-only rules and your check in section 4 are the guard.
-  2. Open a tab in the lane's workspace labelled with the node name: `herdr tab create --workspace <id> --cwd <worktree> --label <node> --no-focus`.
+  2. Open a tab in the lane's workspace labelled with the node name: `herdr tab create --workspace <id> --cwd <worktree> --label <node> --no-focus`. From its output take the root pane id (`.result.root_pane.pane_id`): the agent starts there. Then read the tab id, which differs from the pane id: `herdr pane get <its root pane id>` at `.result.pane.tab_id`. The tab id is what step 5 records and how the tab is closed later.
   3. Start the agent with the `herdr:agent` skill: name `<kind>-<lane>-<node>` cut to 32 characters, the kind chosen in step 1, and the `ARGS` line after `--`. Expect a startup dialog (section 4).
   4. Brief it once: the role file's body with `{node}` and `{output_path}` filled (`output_path` = a file in your scratch directory named `<lane>-<node>.md`), then the node's `brief` from the lane file, then the references from the nodes it needs (paths and commit ids, never pasted transcripts), the checkout and the branch.
      - `pr-reviewer`: also paste `../../references/review-brief.md` (the template filled in, the three steps, the proof standard, the shared-checkout rules, the draft and comment formats), and the repository's rule files by path.
      - `reviewer` (a second opinion): also give the base ref, so it reviews exactly the lane's change.
      - `planner`: also paste two shipped patterns as examples.
-  5. `lane.sh node --lane L --node N --status running --agent <agent name> --repo R`.
-- **gate node**: a tab labelled with the node name, then run `gate.sh --lane L --node N --pane <its pane> --repo R` in the background. It records `pass` or `fail` itself.
-- **pr node** (`pr: draft`, used by `fast` to open the pull request before the gate): push the lane branch; if it has no open pull request, open a **draft** one whose body is the lane report so far (idea, what changed, "checks still running"); otherwise the node simply pushes to the pull request that is already open. Record `lane.sh node --lane L --node N --status done --result pass --ref <pull request url>`. A retry to the implementer runs it again, so each fix reaches the same pull request.
+  5. `lane.sh node --lane L --node N --status running --agent <agent name> --tab <its tab id> --repo R`.
+- **gate node**: a tab labelled with the node name (a gate that runs again after a retry reuses its tab while it is open, else gets a new one); its tab id is read the same way (`herdr pane get <its root pane id>`, `.result.pane.tab_id`). Record it with `lane.sh node --lane L --node N --status running --tab <its tab id> --repo R`, then run `gate.sh --lane L --node N --pane <its pane> --repo R` in the background. It records `pass` or `fail` itself.
+- **pr node** (`pr: draft`, used by `fast` to open the pull request before the gate): push the lane branch; if it has no open pull request, open a **draft** one whose body is the lane report so far (idea, what changed, "checks still running"); otherwise the node simply pushes to the pull request that is already open. Record `lane.sh node --lane L --node N --status done --result pass --ref <pull request url>`. A retry to the implementer runs it again, so each fix reaches the same pull request. A pr node runs in no tab of its own, so it has no tab to close.
 - **human node**: `lane.sh ask --lane L --node N --text "<question>"`, notify (`herdr notification show "<lane> needs you" --body "<question>" --sound request`), and ask the user with what they need to decide (for a review: the counts by severity, the findings' titles, the draft paths). Then `lane.sh answer --lane L --text "<answer>"` and record the node: yes is `--status done --result pass`, no is `--status done --result fail` (the nodes that need a yes are then skipped).
 
 ## 4. Listen and check
@@ -104,16 +104,29 @@ Follow every running agent with the `herdr:listen` skill.
   - `RETRY <lane> <target> n/max`: prompt the target's agent again (it keeps its context) with what failed (the gate's last output lines, the exact error, or the reviewer's findings file), and mark it running.
   - `RETRY LIMIT` (exit 7) or no retry edge: the lane needs the user; the question is already in the lane file. Notify and ask.
 
+### Closing finished tabs
+
+After every record of a node (`lane.sh node`, `lane.sh retry`, a gate's result) run `close-done.sh --lane L --repo R`. It reads the lane file and its graph, prints `CLOSE`, `KEEP`, `GONE` or `CLOSED` per agent and gate node with the reason, and closes with `herdr tab close` the tabs whose node is finished:
+
+- an agent node once it is `done` with a passing result, no `retry` edge that has not passed yet can still send work back to it (an implementer stays until its gate, and its reviewer, pass), and no `human` node after it is still undecided (a reviewer stays until `approve` is decided, so you can still ask it about its draft);
+- a gate node once its result is recorded as passed; a failed gate keeps its output visible until the retry runs;
+- every agent and gate tab of the lane at lane done (section 5) or when it is closed.
+
+It never closes a tab that was not recorded with `--tab`, a `running` or `blocked` node, an agent Herdr shows `working` or `blocked`, the first tab of the lane's workspace, or a tab outside that workspace. The worktree and its workspace stay until the user agrees to cleanup (section 6). Do not close a lane's tabs any other way; name the closed ones in your next report. `--dry-run` shows the decision without closing anything.
+
 ## 5. Done
 
 When `ready.sh` prints `ALL NODES DONE`, run the lane's `done` checks from its lane file:
 
 - `{gate: <node>}`: that node's result is `pass`.
-- `draft-pr`: push the branch and open a **draft** pull request whose body is the lane report (idea, what changed, the checks and their results, what is left). When a `pr` node already opened it, push and update its body instead of opening another. Then `lane.sh set --key status --value done`.
+- `draft-pr`: push the branch and open a **draft** pull request whose body is the lane report (idea, what changed, the checks and their results, what is left). When a `pr` node already opened it, push and update its body instead of opening another. Record it: `lane.sh set --key pr --value <its url>`. Then `lane.sh set --key status --value done`.
 - `report`: show the user the report file's answer in a few lines, with its path. Then `lane.sh set --key status --value done`.
 - `{human: <question>}`: ask the user.
 - `posted-review`: section "Reviews" below passed for every pull request of the lane. Then `lane.sh set --key status --value done`.
 
+Then, at lane done, run `close-done.sh --lane L --repo R`: every agent and gate tab of the lane closes (except one still `working` or `blocked`: run it again when that agent settles).
+
+After recording a lane done, also run the cleanup check of section 6.
 Notify once: `herdr notification show "<lane> done" --body "<one line>"`.
 
 You may commit, push the lane branch and open a draft pull request without asking. **Ask before** marking a pull request ready, posting to a pull request or issue, or anything outside the lane's checkout. **Never** merge, approve, force-push or delete a branch.
@@ -136,11 +149,19 @@ When the planner's lane is done, validate its file: `check-pattern.sh <file> --r
 
 ## 6. After a lane
 
-When the user has merged a lane's pull request (`gh pr view <n> --json state` says `MERGED`), or has read a report lane's answer, offer cleanup: remove the worktree with `herdr worktree remove --workspace <id>` (never `--force`; a dirty checkout is the user's to decide), then `lane.sh close --lane L`. Branches are kept. The graph panel's `[x]` on a DONE lane sends you "Clean up lane L": treat it as the user asking for this cleanup, and still confirm before removing the worktree. `lane.sh clear --lane L` only moves a closed lane's file to `closed/cleared/` (the panel's `[x]` on a CLOSED lane and `[clear all]`).
+Never leave noticing a merge to the user. Run `bash "../../scripts/cleanup.sh" check --repo R` before every report (section "Reports") and after recording a lane done. For each lane whose status is `done` it prints:
+
+- `CLEANUP <lane> (<why>)`: ready. Its pull request is `MERGED` (the recorded `pr`, else the one for its branch), its checkout is clean and has no commit beyond the pull request's head. A review lane (branch `look/pr-<n>`) is ready once it is done, with no merge; a report lane once nothing in it is unpushed. The script has already put the lane under NEEDS YOU with a cleanup question (`lane.sh ask`) and a Herdr notification. It never removes anything itself.
+- `BLOCKED <lane> (<reason>)`: merged, but the checkout is dirty or has unpushed commits (or no checkout was found). It is never removed; the lane is under NEEDS YOU with that reason, asked once per reason.
+- `PENDING`, `WAIT` (not merged yet), `DECLINED`: nothing to do.
+
+Ask the user to confirm each `CLEANUP` lane, with the question and the worktree path. The question being asked is not a yes. Only on the user's yes: record it, `lane.sh answer --lane L --text "<their answer>"` and `lane.sh set --lane L --key cleanup --value confirmed`, then run `bash "../../scripts/cleanup.sh" run --lane L --repo R`. It refuses without that recorded yes (`NOT CONFIRMED`); otherwise it checks again, closes the lane's agent and gate tabs (`close-done.sh`), removes the worktree with `herdr worktree remove --workspace <id>` (never `--force`) and closes the lane (`lane.sh close`). The branch is kept. If it refuses or the removal fails, show the user its message; never retry with `--force`. On a no: `lane.sh answer --lane L --text "<answer>"` and `lane.sh set --lane L --key cleanup --value declined`; the lane is not asked again. For a `BLOCKED` lane, relay the user's decision; the next check asks again only when the reason changes.
+
+The graph panel's `[x]` on a DONE lane sends you "Clean up lane L": treat it as the user asking for this cleanup: run `cleanup.sh check --lane L --repo R` and still confirm before `cleanup.sh run`. `lane.sh clear --lane L` only moves a closed lane's file to `closed/cleared/` (the panel's `[x]` on a CLOSED lane and `[clear all]`).
 
 ## Reports
 
-Report in the format of `../../references/report.md` after any lane changes section, when the user asks, and when you stop. The `display` skill opens the panel, or prints the same picture as text. After every lane change also run `bash "../../scripts/status.sh" --tokens` (it writes each lane agent's step into Herdr's sidebar), and `herdr plugin action invoke herdr-graph-engineering.graph.refresh` when the panel is installed.
+Report in the format of `../../references/report.md` after any lane changes section, when the user asks, and when you stop. Run the cleanup check (section 6) before each report, so a lane ready for cleanup shows under NEEDS YOU. The `display` skill opens the panel, or prints the same picture as text. After every lane change also run `bash "../../scripts/status.sh" --tokens` (it writes each lane agent's step into Herdr's sidebar), and `herdr plugin action invoke herdr-graph-engineering.graph.refresh` when the panel is installed.
 
 Answers the user types in the panel's answer popup arrive here as a message starting `Answer for lane <lane>`: treat them exactly like an answer typed in this chat.
 
