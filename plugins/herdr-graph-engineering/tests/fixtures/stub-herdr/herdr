@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Hermetic stand-in for the herdr CLI, in bash + jq. State lives in $HERDR_STUB_DIR/state.json:
+#   {"agents": {key: {...agent fields, "script": [states], "screen": "..."}}, "busy": N,
+#    "start": "ok|not_ready", "prompt": "ok|silent|stalled|blocked",
+#    "workspaces": [...], "worktrees": [...], "root": "/repo"}
+# Every call is appended to $HERDR_STUB_DIR/calls.log.
+set -uo pipefail
+d="${HERDR_STUB_DIR:?HERDR_STUB_DIR is not set}"
+state="$d/state.json"
+[ -s "$state" ] || printf '{}' >"$state"
+printf '%s\n' "$*" >>"$d/calls.log"
+
+st() { jq -c '.agents //= {}' "$state"; }
+save() { # json
+    printf '%s' "$1" >"$state.tmp" && mv "$state.tmp" "$state"
+}
+ok() { # result json
+    jq -cn --argjson r "$1" '{id: "stub", result: $r}'
+    exit 0
+}
+fail() { # code [message]
+    jq -cn --arg c "$1" --arg m "${2:-stub}" '{id: "stub", error: {code: $c, message: $m}}' >&2
+    exit 1
+}
+opt() { # name args... -> value after name
+    local want="$1"
+    shift
+    while [ $# -gt 0 ]; do
+        [ "$1" = "$want" ] && { printf '%s' "${2:-}"; return 0; }
+        shift
+    done
+    return 1
+}
+# The key of the agent whose name or pane id is $1, or nothing.
+find_key() {
+    st | jq -r --arg t "$1" '.agents | to_entries[] | select(.value.name == $t or .value.pane_id == $t) | .key' | head -1
+}
+
+[ "$*" = "--version" ] && { echo "herdr 0.0.0-stub"; exit 0; }
+cmd="${1:-} ${2:-}"
+case "$cmd" in
+    "agent list") ok "$(st | jq -c '{agents: [.agents[]]}')" ;;
+    "workspace list") ok "$(st | jq -c '{workspaces: (.workspaces // [])}')" ;;
+    "worktree list")
+        root="$(st | jq -r '.root // ""')"
+        ok "$(st | jq -c --arg r "$root" --arg n "$(basename "$root")" \
+            '{type: "worktree_list", worktrees: (.worktrees // []), source: {repo_root: $r, repo_name: $n, source_checkout_path: $r}}')" ;;
+    "agent get")
+        k="$(find_key "$3")"
+        [ -n "$k" ] || fail agent_not_found
+        # A scripted sequence of states, one per `get`, lets a test move an agent along.
+        new="$(st | jq -c --arg k "$k" '
+            if ((.agents[$k].script // []) | length) > 0 then
+                .agents[$k].agent_status = .agents[$k].script[0]
+                | .agents[$k].script |= .[1:]
+                | .agents[$k].state_change_seq = ((.agents[$k].state_change_seq // 0) + 1)
+            else . end')"
+        save "$new"
+        ok "$(printf '%s' "$new" | jq -c --arg k "$k" '{type: "agent", agent: .agents[$k]}')" ;;
+    "agent read")
+        k="$(find_key "$3")"
+        scr=""
+        [ -n "$k" ] && scr="$(st | jq -r --arg k "$k" '.agents[$k].screen // ""')"
+        printf 'SCREEN[%s] %s\n' "$(opt --source "$@")" "$scr"
+        exit 0 ;;
+    "agent start")
+        busy="$(st | jq -r '.busy // 0')"
+        if [ "$busy" -gt 0 ]; then
+            save "$(st | jq -c '.busy -= 1')"
+            fail agent_pane_busy
+        fi
+        name="$3" pane="$(opt --pane "$@")" kind="$(opt --kind "$@")"
+        mode="$(st | jq -r '.start // "ok"')"
+        new="$(st | jq -c --arg n "$name" --arg p "$pane" --arg k "$kind" --arg m "$mode" '
+            .agents[$n] = {name: $n, pane_id: $p, tab_id: (($p | split(":")[0]) + ":t1"),
+                           workspace_id: ($p | split(":")[0]), agent: $k,
+                           agent_status: (if $m == "not_ready" then "blocked" else "idle" end),
+                           state_change_seq: 1, cwd: "/w",
+                           screen: (if $m == "not_ready" then "Do you trust this folder?" else "" end)}')"
+        save "$new"
+        [ "$mode" = "not_ready" ] && fail agent_not_ready
+        ok "$(printf '%s' "$new" | jq -c --arg n "$name" '{type: "agent_started", agent: .agents[$n]}')" ;;
+    "agent prompt")
+        k="$(find_key "$3")"
+        mode="$(st | jq -r '.prompt // "ok"')"
+        [ "$mode" = "blocked" ] && fail agent_blocked
+        [ "$mode" = "stalled" ] && fail agent_prompt_stalled
+        new="$(st | jq -c --arg k "$k" --arg m "$mode" --arg t "${4:-}" '
+            if $m == "ok" then .agents[$k].agent_status = "working"
+                | .agents[$k].state_change_seq = ((.agents[$k].state_change_seq // 0) + 1) else . end
+            | .agents[$k].last_prompt = $t')"
+        save "$new"
+        ok '{"type":"prompt_submitted"}' ;;
+    "pane run")
+        # Pretend the shell ran the command: the gate marker line gets the exit code from
+        # state.gate_exit (default 0); state.gate_hang leaves the pane silent.
+        pane="$3" text="${4:-}"
+        hang="$(st | jq -r '.gate_hang // false')"
+        code="$(st | jq -r '.gate_exit // 0')"
+        marker="$(printf '%s' "$text" | sed -n 's/.*echo "\(GATE [^ ]* [^ ]* EXIT=\)\$?".*/\1/p')"
+        line=""
+        [ "$hang" = "true" ] || [ -z "$marker" ] || line="$marker$code"
+        save "$(st | jq -c --arg p "$pane" --arg t "$text" --arg l "$line" '.panes[$p].typed += [$t] | if $l != "" then .panes[$p].lines += [$l] else . end')"
+        ok '{"type":"pane_run"}' ;;
+    "pane wait-output")
+        pane="$3" re="$(opt --regex "$@")"
+        hit="$(st | jq -r --arg p "$pane" '.panes[$p].lines // [] | .[]' | grep -E -- "$re" | tail -1)"
+        [ -n "$hit" ] || fail timeout "no match"
+        ok "$(jq -cn --arg p "$pane" --arg l "$hit" '{type: "pane_output_matched", pane_id: $p, matched_line: $l}')" ;;
+esac
+fail stub_unsupported "$cmd"
