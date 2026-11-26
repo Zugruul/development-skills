@@ -33,7 +33,7 @@ Scripts (all `bash "../../scripts/<name>"`):
 | --- | --- |
 | `lane.sh new / node / retry / ask / answer / set / close / clear / show / list` | every write to a lane file |
 | `ready.sh --lane L --repo R` | which nodes can start now |
-| `kind.sh --role R [--not KIND]` | which agent kind runs a role here, and its read-only arguments |
+| `kind.sh --role R [--not KIND] [--without KIND] --list / --kind K / --remember K` | the installed kinds for a role (recommended first), the arguments for the chosen one, the session's standing choice |
 | `gate.sh --lane L --node N --pane P --repo R` | run a gate command in a visible tab and record its exit code |
 | `status.sh --text` | the picture of every lane, for reports |
 | `check-pattern.sh --name P --repo R` | validate a pattern |
@@ -62,9 +62,13 @@ Ideas can arrive at any time, also while lanes run. Several ideas in one message
 For each lane, `ready.sh --lane L --repo R` prints `READY <node> <agent|gate|human> ...` lines, and `SKIP <node> (...)` for a node whose `when` does not hold: record that with `lane.sh node --lane L --node N --status skipped` and run `ready.sh` again. For each ready node:
 
 - **agent node**
-  1. `kind.sh --role <role> --repo <repo>`; for a reviewing role add `--not <the implementer's kind>`. On `SAME-KIND`, note in the lane that the review is same-model.
+  1. **Ask which kind runs it.** `kind.sh --role <role> --repo <repo> --session <scratch>/graph-kinds --list`; for a reviewing role add `--not <the implementer's kind>`. It prints the kinds actually installed (herdr's supported kinds whose executable is on PATH), one `CANDIDATE <kind> [recommended|same-kind]: <why>` line each, the recommended one first.
+     - A `STANDING <kind>` line: the user already chose that kind for this role in this session; use it without asking.
+     - Otherwise ask the user with AskUserQuestion: every candidate as an option, the recommended one first with its reason, plus an option "use it for every `<role>` from now on" (a **standing choice**). Never pick silently, and never offer fewer kinds than the list holds. `STANDING-UNAVAILABLE` means the standing kind is gone or is the implementer's kind: say so and ask.
+     - On a standing choice: `kind.sh --role <role> --session <scratch>/graph-kinds --remember <kind>`. "For reviews" covers both `reviewer` and `pr-reviewer`: remember it for each.
+     - Then `kind.sh --role <role> --repo <repo> --kind <kind>` (with the same `--not`) for the `ARGS` line. On `SAME-KIND`, note in the lane that the review is same-model. On `GUARD brief` (every `read` role), note the checkout's `git rev-parse HEAD` and `git status --porcelain` before starting: no kind runs in a CLI read-only mode, because those modes stop the role writing its report outside the checkout or running tests; the role's read-only rules and your check in section 4 are the guard.
   2. Open a tab in the lane's workspace labelled with the node name: `herdr tab create --workspace <id> --cwd <worktree> --label <node> --no-focus`.
-  3. Start the agent with the `herdr:agent` skill: name `<kind>-<lane>-<node>` cut to 32 characters, the kind from `kind.sh`, and the `ARGS` line after `--`.
+  3. Start the agent with the `herdr:agent` skill: name `<kind>-<lane>-<node>` cut to 32 characters, the kind chosen in step 1, and the `ARGS` line after `--`. Expect a startup dialog (section 4).
   4. Brief it once: the role file's body with `{node}` and `{output_path}` filled (`output_path` = a file in your scratch directory named `<lane>-<node>.md`), then the node's `brief` from the lane file, then the references from the nodes it needs (paths and commit ids, never pasted transcripts), the checkout and the branch.
      - `pr-reviewer`: also paste `../../references/review-brief.md` (the template filled in, the three steps, the proof standard, the shared-checkout rules, the draft and comment formats), and the repository's rule files by path.
      - `reviewer` (a second opinion): also give the base ref, so it reviews exactly the lane's change.
@@ -78,10 +82,12 @@ For each lane, `ready.sh --lane L --repo R` prints `READY <node> <agent|gate|hum
 
 Follow every running agent with the `herdr:listen` skill.
 
+- **Startup dialogs** are normal: a new agent often stops before its brief on folder trust, imports of instruction files from outside the checkout (an external `CLAUDE.md`), access to a directory outside the checkout (opencode asks for `~/.claude` or `~`), a login or an update notice. `herdr:agent` reports `AGENT BLOCKED AT STARTUP` with the screen. Relay each dialog to the user exactly as shown, with lane and node, and answer only as they say. With the first one of a kind, offer a **standing answer** for this session (for example "trust lane worktrees of this repository", "allow external CLAUDE.md imports for lanes in this repository", "let opencode read ~/.claude"); keep the standing answers in `<scratch>/graph-dialogs`, apply them to the same dialog in later lanes, and say in the next report which you applied. A dialog with no standing answer goes to the user.
+- **An agent fails to start or to work** (the start fails, its provider's login expired, it errors on every prompt): record it, then ask the user which kind to use instead with `kind.sh --role <role> --session <scratch>/graph-kinds --list --without <the failed kind>` (plus `--not` as before): offer every kind it lists, not one. A standing choice whose kind failed is asked again. Close the failed agent's tab before starting the new kind there.
 - **An agent is blocked** on a question or approval: record it (`lane.sh ask --lane L --node N --text "<question, exactly>"`), show it to the user with the lane and node, and send back exactly what they decide with the `herdr:prompt` skill. Then `lane.sh answer --lane L --text "<answer>"`. Never answer for the user.
 - **An agent settled**: read its screen for the last `NODE <node> RESULT: ...` line. Then check, and record only what you checked:
   - `write` access: the branch has new commits and the checkout is clean (`git -C <worktree> status --porcelain`).
-  - `read` access, and the `poster` role: the checkout is unchanged. Any change fails the node: tell the user.
+  - `read` access, and the `poster` role: the checkout is unchanged (the same `HEAD` and `git status --porcelain` as noted before the start). Any change fails the node: tell the user.
   - a file reference: the file exists.
   Record it: `lane.sh node --lane L --node N --status done --result pass --ref <commit or path>`, or `--status failed --result fail`. No RESULT line: read more of the screen; if it is still missing, ask the agent with `herdr:prompt`.
 - **A node failed** (an agent or a gate), or a `reviewer` asked for `changes`: `lane.sh retry --lane L --node N`.

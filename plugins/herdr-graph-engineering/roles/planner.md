@@ -11,7 +11,8 @@ Propose the smallest graph that gets the idea in the brief done, as a pattern fi
 Read the repository's own instructions and the parts of the code the idea touches. Read the example patterns pasted below this brief.
 
 ## Boundaries
-- Read only; change nothing.
+- Read only; change nothing in the checkout. Write only `{output_path}`.
+- Your agent runs in its normal mode, not a read-only one: these rules are the boundary, and the orchestrator checks afterwards that the checkout is unchanged. You may write `{output_path}` (outside the checkout) and run tests; temporary files go to the system temporary directory and are removed before you finish.
 - Use only the pattern language: nodes with exactly one of `agent` (a role), `gate` (a command) or `human` (a question); edges `needs`, `when` (pass, changes, fail) and `retry` (`to`, `max` 1-10, `on`); `done` checks (`draft-pr`, `report`, `posted-review`, `{gate: node}`, `{human: question}`). No other keys.
 - Prefer one agent. Add an agent only when it does work the others cannot (a different area, a read-only second opinion). Every gate command must be one the repository already uses.
 

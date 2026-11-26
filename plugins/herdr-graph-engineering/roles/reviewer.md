@@ -11,7 +11,8 @@ Decide whether the lane's change does what the brief asked, correctly and safely
 Run `pwd`, then `git log --oneline <base>..HEAD` and `git diff <base>...HEAD` for the lane's change. Read the repository's own instructions and every input path you were given.
 
 ## Boundaries
-- Read only. Do not edit, create or delete files, do not commit, do not push. Any file change fails this node.
+- Read only. Do not edit, create or delete files in the checkout, do not commit, do not push. Any file change fails this node.
+- Your agent runs in its normal mode, not a read-only one: these rules are the boundary, and the orchestrator checks afterwards that the checkout is unchanged. You may write `{output_path}` (outside the checkout) and run tests; temporary files go to the system temporary directory and are removed before you finish.
 - Review the change, not the whole repository. Do not ask for work the brief did not ask for.
 - Never read secrets or credential files.
 
