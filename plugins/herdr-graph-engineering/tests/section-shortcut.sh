@@ -22,7 +22,7 @@ out="$(K_TAB=w1:t1 kg panel-action toggle)"
 check "toggle closes an untitled panel it opened" "PANEL CLOSED" "$out"
 check "the pane it opened is the one closed" '["w9:p9"]' "$(ksj .closed)"
 check "toggle opens it again after closing" "PANEL OPEN" "$(K_TAB=w1:t1 kg panel-action toggle)"
-check "one panel opened in all" "1" "$(ksj '[.opened[] | select(.entrypoint == "panel")] | length')"
+check "each opening toggle opened exactly one panel" "2" "$(ksj '[.opened[] | select(.entrypoint == "panel")] | length')"
 
 echo "== shortcut: a panel closed outside the plugin =="
 kst "{$ORCH,\"pane_list\":[{\"pane_id\":\"w1:p1\",\"tab_id\":\"w1:t1\"}]}"
