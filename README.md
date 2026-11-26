@@ -394,7 +394,7 @@ plugin**, `jq`, `yq` and `git`. See
 | Skill | Purpose |
 |---|---|
 | `orchestrate` | The one chat: route ideas into lanes and run them until their definition of done |
-| `display` | Read-only picture of every lane: NEEDS YOU, WORKING, DONE |
+| `display` | Opens or closes the Herdr graph panel next to the orchestrator (refresh, interval toggle, jump, answer), or prints the picture as text |
 
 ```bash
 claude plugin install herdr-graph-engineering@development-skills

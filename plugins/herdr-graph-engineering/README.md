@@ -86,6 +86,7 @@ check-pattern.sh (FILE | --name P)                      validate a pattern
 make-review-stack.sh --pr URL --pr URL ... --out FILE    the graph for reviewing related pull requests
 check.sh                                                inside Herdr?
 panel.sh / panel-action.sh / popup.sh                   the Herdr panel, its actions and popups
+measure.sh [--json]                                     how the lanes went: outcome, minutes, retries, questions
 ```
 
 ## What the orchestrator may do alone
@@ -134,4 +135,6 @@ Hermetic: throwaway repositories and a stub `herdr`; no live session.
 
 ## Next
 
-Next: measure the setup on real ideas and remove what does not help.
+## Measuring
+
+Run it on 10 to 20 real ideas, then `measure.sh` (or ask the orchestrator "how did the lanes go"): per lane the outcome, minutes, retries, questions to you and failures, and totals per pattern. Judge by the end state: did the lanes finish, how often were you asked, did retries run out. Remove a part (a node, a pattern, a check) that does not earn its place.

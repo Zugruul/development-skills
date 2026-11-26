@@ -127,6 +127,10 @@ Report in the format of `../../references/report.md` after any lane changes sect
 
 Answers the user types in the panel's answer popup arrive here as a message starting `Answer for lane <lane>`: treat them exactly like an answer typed in this chat.
 
+## Measuring
+
+When the user asks how the lanes went overall, run `bash "../../scripts/measure.sh" --repo <dir>` for each repository and print it in a code block: per lane the outcome, minutes, retries, questions and failures; totals per pattern. Point out what stands out (a pattern that always needs the user, retries that run out) and let the user decide what to change.
+
 ## Rules
 
 1. Patterns and roles decide the shape; scripts decide what is ready and what was recorded; you route, start, check and relay.

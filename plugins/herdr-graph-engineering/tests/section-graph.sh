@@ -181,5 +181,11 @@ check "a blocked agent puts its lane under NEEDS YOU" "gated" "$(g status --json
 g lane close --repo "$REPO" --lane busy >/dev/null
 check_absent "a closed lane leaves the picture" "busy" "$(g status --text --repo "$REPO")"
 check "a closed lane is kept in closed/" "busy	closed" "$(g lane list --all --repo "$REPO")"
+echo "== graph: measure =="
+out="$(g measure --repo "$REPO" --json)"
+check "measure lists closed lanes too" "busy" "$(jq -r '.[].lane' <<<"$out")"
+check "measure counts the questions asked" "1" "$(jq -r '.[] | select(.lane == "busy") | .questions' <<<"$out")"
+check "measure counts retries" "1" "$(jq -r '.[] | select(.lane == "gated") | .retries' <<<"$out")"
+check "measure prints totals per pattern" "PATTERN" "$(g measure --repo "$REPO")"
 rm -rf "$G_TMP"
 unset XDG_CONFIG_HOME
