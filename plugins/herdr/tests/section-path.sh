@@ -31,4 +31,24 @@ out="$(cp_path --target "$CP_TMP/plain" --path "$CP_TMP/home/x")"; rc=$?
 check_rc "a target that is not a git repository exits 2" 2 "$rc"
 out="$(cp_path --target "$CP_TMP/mono")"; rc=$?
 check_rc "a missing --path is a usage error" 2 "$rc"
+
+# A linked worktree is the same repository as its primary checkout.
+git -C "$CP_TMP/mono" add .gitignore
+git -C "$CP_TMP/mono" -c user.name=t -c user.email=t@t commit -qm init
+git -C "$CP_TMP/mono" worktree add -q "$CP_TMP/mono/.worktrees/wt1" -b wt1
+out="$(cp_path --target "$CP_TMP/mono/.worktrees/wt1" --path "$CP_TMP/mono/.worktrees/new")"; rc=$?
+check_rc "a linked worktree as target keeps its repository's own .worktrees rule" 0 "$rc"
+out="$(cp_path --target "$CP_TMP/mono/infra/k8s" --path "$CP_TMP/mono/.worktrees/wt1/sub/x")"; rc=$?
+check_rc "a nested clone's worktree inside the enclosing repository's linked worktree is refused" 1 "$rc"
+out="$(cp_path --target "$CP_TMP/mono/infra/k8s" --path "$CP_TMP/mono/.worktrees/remove-x")"; rc=$?
+check_rc "the incident path is still refused once the enclosing repository has worktrees" 1 "$rc"
+
+# The path is absolute, so it never depends on the caller's cwd.
+out="$(cd "$CP_TMP/mono" && cp_path --target "$CP_TMP/mono/infra/k8s" --path ".worktrees/remove-x")"; rc=$?
+check_rc "a relative --path is a usage error" 2 "$rc"
+check "a relative --path says it must be absolute" "absolute" "$out"
+# shellcheck disable=SC2088  # the tilde is quoted on purpose: the script expands it
+out="$(cd "$CP_TMP/mono" && HOME="$CP_TMP/home" cp_path --target "$CP_TMP/mono/infra/k8s" --path '~/.herdr/worktrees/k8s/feat-x')"; rc=$?
+check_rc "a quoted ~/ path is expanded against HOME, not the cwd" 0 "$rc"
+check "the expanded path is reported" "path=$CP_TMP/home/.herdr/worktrees/k8s/feat-x" "$out"
 rm -rf "$CP_TMP"
