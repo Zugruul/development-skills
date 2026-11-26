@@ -37,6 +37,11 @@ find_key() {
 }
 
 [ "$*" = "--version" ] && { echo "herdr 0.0.0-stub"; exit 0; }
+# `agent start --help` lists the supported kinds, as the real CLI does; HERDR_STUB_KINDS overrides them.
+if [ "${1:-} ${2:-} ${3:-}" = "agent start --help" ]; then
+    printf "      --kind <KIND>\n          Supported agent kind and canonical executable\n\n          [possible values: %s]\n" "${HERDR_STUB_KINDS:-pi, claude, codex, gemini, opencode}"
+    exit 0
+fi
 cmd="${1:-} ${2:-}"
 case "$cmd" in
     "agent list") ok "$(st | jq -c '{agents: [.agents[]]}')" ;;

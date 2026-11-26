@@ -4,7 +4,7 @@
 # or, from a checkout: herdr plugin link plugins/herdr-graph-engineering
 id = "herdr-graph-engineering.graph"
 name = "Graph"
-version = "0.3.0"
+version = "0.6.0"
 min_herdr_version = "0.9.5"
 description = "The graph engineering panel: lanes that need you, are working or are done, with refresh, an interval toggle, jump, answer and detail."
 platforms = ["linux", "macos"]

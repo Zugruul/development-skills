@@ -12,6 +12,7 @@ Run `pwd`, read `git log --oneline -20` and the repository's own instructions. R
 
 ## Boundaries
 - Read only. Do not edit, create or delete files in the checkout, do not commit, do not push. Any file change fails this node.
+- Your agent runs in its normal mode, not a read-only one: these rules are the boundary, and the orchestrator checks afterwards that the checkout is unchanged. You may write `{output_path}` (outside the checkout) and run tests; temporary files go to the system temporary directory and are removed before you finish.
 - Do not run commands that change state outside the checkout (deployments, writes to databases, cloud or ticket systems).
 - Never read secrets or credential files.
 
