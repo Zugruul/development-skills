@@ -122,7 +122,7 @@ check "integrations: explains the LIMITED state" "\`LIMITED\`" "$ig"
 check "integrations: explains the TASK SOURCE block" "TASK SOURCE" "$ig"
 
 # The skills this plugin names must exist in the plugins it integrates.
-for ref in herdr/worktree herdr/agent herdr/prompt herdr/listen herdr/orchestrate herdr/status \
+for ref in herdr/worktree herdr/agent herdr/prompt herdr/listen herdr-simple-orchestrate/orchestrate herdr/status \
            spec-workflow/implement-task spec-workflow/build-next spec-workflow/queue spec-workflow/board \
            spec-workflow/checkpoint spec-workflow/concurrency spec-workflow/setup-project spec-workflow/create-inbound peer-review/peer-review; do
     [[ -f "$PLUGINS/${ref%%/*}/skills/${ref##*/}/SKILL.md" ]] && r=present || r=missing
@@ -163,17 +163,17 @@ check "report lines: a pull request is a line with number, state and bare URL" "
       ⚪ #812 draft   https://github.com/<owner>/<repo>/pull/812" "$rl"
 check "report lines: the added lines carry no emoji" "The lines this plugin adds carry no emoji" "$rl"
 check_rc "report lines: no markdown link syntax" 0 "$(grep -c '](http' "$PLUGIN/references/report-lines.md" || true)"
-check "report lines: the layout stays the herdr plugin's" "fixed format of the \`herdr\` plugin" "$rl"
+check "report lines: the layout stays the orchestrate plugin's" "fixed format of the \`herdr-simple-orchestrate\` plugin" "$rl"
 check "report lines: a lane without a task says so" "\`none\` for a lane without a task" "$rl"
 check "report lines: the id is not parsed from a name" "never by splitting its branch or label on hyphens" "$rl"
 for skill in task-lane build-lanes build-loop review-lane; do
     sk="$(cat "$PLUGIN/skills/$skill/SKILL.md")"
-    check "$skill: reports in the herdr plugin's format" "orchestrator report format of the \`herdr\` plugin" "$sk"
+    check "$skill: reports in the orchestrate plugin's format" "orchestrator report format of the \`herdr-simple-orchestrate\` plugin" "$sk"
     check "$skill: says which lines it adds" "../../references/report-lines.md" "$sk"
 done
 check_absent "build-lanes: no layout of its own" "keep a roster in every report" "$(cat "$PLUGIN/skills/build-lanes/SKILL.md")"
-# The herdr plugin's template knows nothing about tasks, gates or boards.
-check_rc "the herdr report template has no lane lines" 0 "$(grep -cE '^ *(task|gate|board):' "$PLUGINS/herdr/references/report.md" || true)"
+# The orchestrate plugin's template knows nothing about tasks, gates or boards.
+check_rc "the orchestrate report template has no lane lines" 0 "$(grep -cE '^ *(task|gate|board):' "$PLUGINS/herdr-simple-orchestrate/references/report.md" || true)"
 check "task-lane: the agent name starts with the kind" "<kind>-lane-<task id, lowercased>" "$tl"
 check "task-lane: the no-task agent name starts with the kind" "<kind>-lane-<desc>" "$tl"
 check "task-lane: the kind is never cut" "never the kind" "$tl"

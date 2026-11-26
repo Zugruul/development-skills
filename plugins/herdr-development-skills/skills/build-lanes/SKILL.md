@@ -6,7 +6,7 @@ allowed-tools: Bash, AskUserQuestion
 
 # Parallel build lanes in Herdr worktree agents
 
-Run `python3 "../../scripts/detect.py"` first (path relative to this `SKILL.md`). Continue when `build-lanes` is `READY` or `LIMITED`; on `UNAVAILABLE` relay the reasons and stop. `LIMITED` means only lanes without a task can run here, and nothing is picked from the board; the reasons say why. Then follow the `herdr:orchestrate` skill if you have not taken the orchestrator role yet.
+Run `python3 "../../scripts/detect.py"` first (path relative to this `SKILL.md`). Continue when `build-lanes` is `READY` or `LIMITED`; on `UNAVAILABLE` relay the reasons and stop. `LIMITED` means only lanes without a task can run here, and nothing is picked from the board; the reasons say why. Then follow the `herdr-simple-orchestrate:orchestrate` skill if you have not taken the orchestrator role yet.
 
 You are the one picker. Each lane agent gets exactly one task that you assigned, so two lanes never start the same task. Do not run this next to `build-loop` on the same repository.
 
@@ -47,7 +47,7 @@ For each approved lane, follow the `task-lane` skill, one after the other (each 
 
 ## 5. Listen to all of them
 
-Follow every lane with the `herdr:listen` skill, all targets at once, and report in the orchestrator report format of the `herdr` plugin every time: one entry per lane, with the lane lines from `../../references/report-lines.md` (`task:`, `gate:`, `board:`) inside it.
+Follow every lane with the `herdr:listen` skill, all targets at once, and report in the orchestrator report format of the `herdr-simple-orchestrate` plugin every time: one entry per lane, with the lane lines from `../../references/report-lines.md` (`task:`, `gate:`, `board:`) inside it.
 
 - **Blocked lane**: show its question to the user, labelled with the lane and its tab; relay the answer with `herdr:prompt`. One question per lane, never a merged "approve all". A lane blocked on a human does not hold up the others.
 - **A lane merged**: main moved. When another lane next settles or asks something, tell it to rebase onto the main branch before its next push. Do not interrupt a lane that is working; with `serialDelivery=true` each lane rebases at its own merge turn, and the lanes' own merge lock keeps merges one at a time.

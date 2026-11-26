@@ -41,4 +41,4 @@ The script reads files; it cannot see your session. Before offering a `READY` fe
 
 The `TASK SOURCE` block says which of the three ways to handle described work are possible here: run it without a task (needs only Herdr), create a task for it, or use an existing task's identifier (both need spec-workflow enabled, a board configured, and the loop not paused). The lane skills use it to decide whether to ask the user or to say why only the first is on offer; the procedure is in `../../references/task-source.md`.
 
-When a specialized plugin is absent, only its features are unavailable; the `herdr` plugin's own skills (`herdr:worktree`, `herdr:listen`, `herdr:orchestrate`) keep working without any of them.
+When a specialized plugin is absent, only its features are unavailable; the `herdr` plugin's own skills (`herdr:worktree`, `herdr:listen`, `herdr:status`) and `herdr-simple-orchestrate:orchestrate` keep working without any of them.
