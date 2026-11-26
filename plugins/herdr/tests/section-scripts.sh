@@ -31,6 +31,9 @@ ct_state "{\"agents\":{\"codex\":{\"name\":\"codex-herdr-fix\",\"pane_id\":\"w1:
 out="$(codex_run check 2>&1)"; rc=$?
 check_rc "Codex session with a matching live agent is accepted" 0 "$rc"
 check "Codex attachment uses the matched pane" "pane=w1:p1" "$out"
+ct_state "{\"agents\":{\"codex\":{\"pane_id\":\"w1:p4\",\"workspace_id\":\"w1\",\"agent\":\"codex\",\"agent_status\":\"idle\",\"cwd\":\"$CT_CWD\",\"foreground_cwd\":\"$CT_CWD\"}}}"
+out="$(codex_run check 2>&1)"
+check "a Codex agent with no tab keeps its pane and workspace in place" "workspace=w1 tab=? pane=w1:p4" "$out"
 ct_state "{\"agents\":{\"codex\":{\"agent\":\"codex\",\"cwd\":\"$CT_CWD\"}}}"
 out="$(codex_run check 2>&1)"; rc=$?
 check_rc "Codex session without a safe foreground match is refused" 2 "$rc"
@@ -67,10 +70,14 @@ out="$(run start --name "$(printf 'a%.0s' $(seq 32))" --kind claude --pane w1:p2
 check_rc "32-character name is accepted" 0 "$rc"
 ct_state '{}'
 run start --name dev --kind codex --pane w1:p2 -- --model x >/dev/null 2>&1
-check "native agent arguments go after --" "agent start dev --kind codex --pane w1:p2 -- --model x" "$(cat "$CT_TMP/calls.log")"
+check "native agent arguments go after --" "agent start dev --kind codex --pane w1:p2 --timeout " "$(cat "$CT_TMP/calls.log")"
+check "native agent arguments come last" " -- --model x" "$(cat "$CT_TMP/calls.log")"
 ct_state '{}'
 run start --name dev --kind codex --pane w1:p2 >/dev/null 2>&1
-check_absent "no -- when there are no agent arguments" "w1:p2 --" "$(cat "$CT_TMP/calls.log")"
+check_absent "no -- when there are no agent arguments" " -- " "$(cat "$CT_TMP/calls.log")"
+ct_state '{}'
+run start --name dev --kind codex --pane w1:p2 --timeout 10 >/dev/null 2>&1
+check "each attempt gets only the time left" "--timeout 10000" "$(grep 'agent start' "$CT_TMP/calls.log")"
 
 echo "== scripts: listen =="
 ct_state "{\"agents\":{$(ct_agent dev working ',"script":["working","working","blocked"],"screen":"Proceed? y/n"'),$(ct_agent rev working)}}"
@@ -88,4 +95,8 @@ check "listen reports a finished agent" "status=done" "$(run listen dev --timeou
 check "--only-blocked ignores a finished agent" "LISTEN TIMEOUT" "$(run listen dev --only-blocked --timeout 1 2>&1)"
 ct_state '{}'
 check "listen reports an agent that is gone" "status=gone" "$(run listen dev --timeout 1 2>&1)"
+ct_state '{"agents":{"u":{"pane_id":"w1:p7","tab_id":"w1:t3","workspace_id":"w1","agent":"claude","agent_status":"blocked","screen":"Allow?"}}}'
+check "an unnamed agent keeps its pane and tab in place" "EVENT target=w1:p7 name=- pane=w1:p7 tab=w1:t3 status=blocked" "$(run listen w1:p7 --timeout 1 2>&1)"
+out="$(run listen dev --lines abc 2>&1)"; rc=$?
+check_rc "listen refuses a --lines that is not a number" 2 "$rc"
 rm -rf "$CT_TMP"

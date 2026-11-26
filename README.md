@@ -228,6 +228,7 @@ linked worktree is checked independently of a dirty primary checkout. See the
 bash plugins/spec-workflow/tests/run-tests.sh    # hermetic: validator fixtures + preflight (CI runs this + shellcheck + manifest validation)
 bash plugins/herdr/tests/run-tests.sh            # hermetic: runs against a stub herdr, no Herdr install needed
 bash plugins/herdr-simple-orchestrate/tests/run-tests.sh
+bash plugins/herdr-graph-engineering/tests/run-tests.sh
 bash plugins/herdr-development-skills/tests/run-tests.sh
 claude plugin eval plugins/spec-workflow         # skill evals (early access; needs API credits)
 ```
@@ -379,6 +380,26 @@ call. See [herdr](plugins/herdr/README.md).
 claude plugin install herdr@development-skills
 ```
 
+### herdr-graph-engineering
+
+Graph engineering on Herdr, kept thin. One orchestrator chat takes your ideas;
+each becomes a lane (its own worktree) running a small graph from a pattern
+(`solo`: implementer then a tests gate with bounded retries; `investigate`: a
+read-only report). Scripts decide what is ready and record results in one lane
+file per lane; the orchestrator checks evidence, opens a draft pull request when
+a lane is done, and asks you only when a lane needs you. **Requires the herdr
+plugin**, `jq`, `yq` and `git`. See
+[herdr-graph-engineering](plugins/herdr-graph-engineering/README.md).
+
+| Skill | Purpose |
+|---|---|
+| `orchestrate` | The one chat: route ideas into lanes and run them until their definition of done |
+| `display` | Opens or closes the Herdr graph panel next to the orchestrator (refresh, interval toggle, jump, answer), or prints the picture as text |
+
+```bash
+claude plugin install herdr-graph-engineering@development-skills
+```
+
 ### herdr-simple-orchestrate (deprecated)
 
 The old way of orchestrating agents in Herdr, moved out of `herdr`: the
@@ -400,7 +421,7 @@ claude plugin install herdr-simple-orchestrate@development-skills
 The integration layer between Herdr and the plugins above. It checks which
 plugins and features are enabled and configured in the current repository, then
 runs board tasks and build-loop lanes in Herdr worktree agents an orchestrator
-listens to. **Requires the herdr plugin**; an integration whose specialized
+listens to. **Requires the herdr and herdr-simple-orchestrate plugins**; an integration whose specialized
 plugin is missing reports why and the rest keep working. Asked for work that
 has no task identifier, the lane skills ask once whether to run it without a
 task, create one through spec-workflow's intake, or use an existing one. See

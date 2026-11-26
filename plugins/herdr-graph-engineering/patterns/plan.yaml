@@ -1,0 +1,9 @@
+when: "Nothing else fits: draft a custom graph for the idea, for the user to approve."
+inputs: [idea]
+nodes:
+  plan:
+    agent: planner
+    access: read
+    brief: "Draft a graph for: {idea}"
+done:
+  - report

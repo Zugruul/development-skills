@@ -1,0 +1,17 @@
+when: "Review one pull request. The idea names the pull request by number or URL."
+inputs: [idea, pr]
+nodes:
+  review:
+    agent: pr-reviewer
+    access: read
+    brief: "Review pull request {pr}. The user said: {idea}"
+  approve:
+    human: "Post the review of {pr}? The draft is in the review node's file."
+    needs: [review]
+  post:
+    agent: poster
+    needs: [approve]
+    when: pass
+    brief: "Post the merged posting file for {pr}."
+done:
+  - posted-review

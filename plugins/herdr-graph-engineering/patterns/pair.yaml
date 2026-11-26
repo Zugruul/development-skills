@@ -1,0 +1,21 @@
+when: "Implement a change that needs a second opinion: the user asks for a review, or it touches security, data, money or a public interface."
+inputs: [idea]
+nodes:
+  impl:
+    agent: implementer
+    access: write
+    brief: "{idea}"
+  tests:
+    gate: "{gate}"
+    needs: [impl]
+    retry: { to: impl, max: 3, on: fail }
+  review:
+    agent: reviewer
+    access: read
+    needs: [tests]
+    when: pass
+    brief: "Review this lane's change. The change was meant to: {idea}"
+    retry: { to: impl, max: 2, on: changes }
+done:
+  - gate: tests
+  - draft-pr

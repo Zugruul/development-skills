@@ -7,9 +7,8 @@ This repo is [Zugruul/development-skills](https://github.com/Zugruul/development
 | Plugin | What it is | Needs |
 | --- | --- | --- |
 | [`herdr`](plugins/herdr/README.md) | Teaches an agent to use [Herdr](https://herdr.dev): worktrees, agents, prompts, listening, status. Only Herdr, no workflow of its own, no knowledge of other plugins. | `herdr`, `bash`, `jq`, `git` |
+| [`herdr-graph-engineering`](plugins/herdr-graph-engineering/README.md) | Graph engineering on `herdr`: one orchestrator chat, each idea a lane running a small graph from a pattern until its definition of done. | `herdr` plugin, `jq`, `yq`, `git` |
 | [`remote-compute`](plugins/remote-compute/README.md) | Registers remote machines over SSH and dispatches jobs to them (details below). | still needs `spec-workflow` for project enablement and role dispatch |
-
-`herdr-graph-engineering` (graph engineering on top of `herdr`: one chat, ideas become lanes, small graphs of agents run until their definition of done) is being planned and is not in the marketplace yet.
 
 ## Deprecated plugins
 
@@ -40,8 +39,10 @@ Run the checks of every plugin you touched, green, before calling the work done.
 ```bash
 bash plugins/herdr/tests/run-tests.sh
 bash plugins/remote-compute/tests/run-tests.sh
+bash plugins/herdr-graph-engineering/tests/run-tests.sh
 shellcheck -x plugins/herdr/scripts/*.sh plugins/herdr/scripts/src/*.sh plugins/herdr/tests/*.sh plugins/herdr/tests/fixtures/stub-herdr/herdr
-claude plugin validate plugins/herdr && claude plugin validate plugins/remote-compute
+shellcheck -x plugins/herdr-graph-engineering/scripts/*.sh plugins/herdr-graph-engineering/scripts/src/*.sh plugins/herdr-graph-engineering/tests/*.sh plugins/herdr-graph-engineering/tests/fixtures/stub-herdr/herdr
+claude plugin validate plugins/herdr && claude plugin validate plugins/herdr-graph-engineering && claude plugin validate plugins/remote-compute
 ```
 
 A change to a deprecated plugin also runs that plugin's own `tests/run-tests.sh` and `claude plugin validate`; `spec-workflow`'s full gate is in its `AGENTS.md`.

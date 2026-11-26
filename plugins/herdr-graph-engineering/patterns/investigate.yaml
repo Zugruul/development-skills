@@ -1,0 +1,9 @@
+when: "Find out why something happens, or answer a question about the code. Changes nothing."
+inputs: [idea]
+nodes:
+  investigate:
+    agent: investigator
+    access: read
+    brief: "{idea}"
+done:
+  - report

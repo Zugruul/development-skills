@@ -27,7 +27,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLUGINS_DIR = os.environ.get("HDS_PLUGINS_DIR") or os.path.dirname(os.path.dirname(HERE))
 MARKERS = {  # one skill that proves the plugin's skills are linked into a skills directory
-    "herdr": "worktree", "spec-workflow": "build-next",
+    "herdr": "worktree", "herdr-simple-orchestrate": "orchestrate", "spec-workflow": "build-next",
     "peer-review": "peer-review", "remote-compute": "remote-compute",
 }
 SKILL_DIRS = (".claude/skills", ".agents/skills", ".opencode/skills")
@@ -206,6 +206,9 @@ def detect(root):
         base.append("Herdr: " + herdr["why"])
     if plugins["herdr"]["state"] == "absent":
         base.append("the herdr plugin is not available (%s) -- install herdr@development-skills" % plugins["herdr"]["why"])
+    if plugins["herdr-simple-orchestrate"]["state"] == "absent":
+        base.append("the herdr-simple-orchestrate plugin is not available (%s) -- install herdr-simple-orchestrate@development-skills"
+                    % plugins["herdr-simple-orchestrate"]["why"])
 
     def board_blockers():
         """Why work cannot be tied to a board task here (empty list: it can)."""

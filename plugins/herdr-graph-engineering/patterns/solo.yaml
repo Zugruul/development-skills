@@ -1,0 +1,14 @@
+when: "Implement, fix or change something in one area of one repository."
+inputs: [idea]
+nodes:
+  impl:
+    agent: implementer
+    access: write
+    brief: "{idea}"
+  tests:
+    gate: "{gate}"
+    needs: [impl]
+    retry: { to: impl, max: 3, on: fail }
+done:
+  - gate: tests
+  - draft-pr

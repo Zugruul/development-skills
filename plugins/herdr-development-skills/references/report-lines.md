@@ -33,7 +33,7 @@ The `herdr-simple-orchestrate` plugin's format defines the block (one line per p
 
 - List every pull request opened from the lane's branch, in the order they were opened, read with `gh pr list --head <lane branch> --state all --json number,url,state,isDraft` in the lane's checkout (read-only). A lane usually has one; a lane whose work was split or reopened has several, and all of them are listed.
 - Use each `url` exactly as returned. State: `draft` when `isDraft`, otherwise `open`, `merged` or `closed` from `state`.
-- A lane whose work reached the main branch without a pull request (pushed or squashed onto it) gets the format's `direct` row, after its pull requests. Take it from `the `herdr-simple-orchestrate` plugin's `landed.sh` --cwd <lane checkout>` as the `herdr` reference describes; this plugin adds nothing to it. A lane whose pull request was merged has the `🟣 #N merged` row and no `direct` row.
+- A lane whose work reached the main branch without a pull request (pushed or squashed onto it) gets the format's `direct` row, after its pull requests. Take it from the `herdr-simple-orchestrate` plugin's `landed.sh --cwd <lane checkout>`, as that plugin's report reference describes; this plugin adds nothing to it. A lane whose pull request was merged has the `🟣 #N merged` row and no `direct` row.
 - A pull request you read this way is verified. One that only the lane agent mentions is written from its report: with the URL it gave, or the number and state alone when it gave none, and its state belongs under `claimed:`.
 
 ## Notes

@@ -18,7 +18,14 @@ jobs:
           sudo cp /tmp/shellcheck-v0.11.0/shellcheck /usr/local/bin/shellcheck
 
       - name: shellcheck
-        run: shellcheck -x plugins/*/scripts/*.sh plugins/*/scripts/lib/*.sh plugins/*/tests/*.sh
+        # src/ helpers and bash stub binaries are linted on their own: -x does not report
+        # warnings inside sourced files. nullglob drops patterns that match nothing.
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(plugins/*/scripts/*.sh plugins/*/scripts/lib/*.sh plugins/*/scripts/src/*.sh plugins/*/tests/*.sh)
+          for f in plugins/*/tests/fixtures/stub-*/*; do head -1 "$f" | grep -q 'bash' && files+=("$f"); done
+          shellcheck -x "${files[@]}"
 
       - name: install PyYAML (config loader + eval checks need it)
         run: pip install --quiet pyyaml
