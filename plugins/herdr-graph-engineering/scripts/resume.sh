@@ -188,7 +188,9 @@ render() {
     jq -r '(.queued // []) | if length == 0 then "  (none)" else .[] | "  #\(.id) \(.lane)" + (if .repo then " (repo \(.repo))" else "" end) + (if .ref then " brief \(.ref)" else "" end) + ": \(.text)" end' <<<"$sess"
     echo "STANDING ANSWERS"
     jq -r '(.standing // []) | if length == 0 then "  (none)" else .[] | "  #\(.id) \(.text)" end' <<<"$sess"
+    # Standing kind and dialog choices stay where kind.sh (--remember) and section 4 keep them.
     scratch="$(jq -r '.scratch // ""' <<<"$sess")"
+    [ -n "$scratch" ] || echo "  (scratch folder not recorded: standing kind and dialog choices in <scratch>/graph-kinds and <scratch>/graph-dialogs cannot be read; session.sh set --key scratch)"
     if [ -n "$scratch" ] && [ -s "$scratch/graph-kinds" ]; then
         echo "STANDING KINDS (role kind, from $scratch/graph-kinds)"
         sed 's/^/  /' "$scratch/graph-kinds"

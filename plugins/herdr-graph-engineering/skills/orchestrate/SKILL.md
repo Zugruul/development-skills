@@ -150,7 +150,8 @@ This chat will be compacted. Anything you would need afterwards that Herdr, git 
 
 | Fact | Write it with |
 | --- | --- |
-| A standing answer or approval (new worktrees, folder trust, monorepo imports for lane worktrees, opencode folder access "Allow always", a kind for a role) | `bash "../../scripts/session.sh" add --list standing --text "<the answer, in the user's words>"` |
+| A standing answer or approval that has no file of its own (new worktrees except a new repository or an unseen gate, an agent limit, how the user wants reports) | `bash "../../scripts/session.sh" add --list standing --text "<the answer, in the user's words>"` |
+| A standing kind for a role, or a standing answer to a startup dialog (folder trust, monorepo imports, opencode folder access "Allow always") | A standing kind choice stays with `kind.sh --remember` in `<scratch>/graph-kinds`, and dialog answers in `<scratch>/graph-dialogs`, as sections 3 and 4 say; `resume.sh` prints both from the session's `scratch` |
 | A lane queued at the agent limit, with its prepared brief | `session.sh add --list queued --lane <lane> --repo <repo> --ref <brief file> --text "<idea>"`; when it starts: `session.sh del --list queued --lane <lane>` |
 | A lane renamed | `session.sh add --list renames --lane <new> --text "<old> renamed to <new>"` |
 | A user decision about the whole session; a scratch file or pull request not tied to a lane | `session.sh add --list notes --text ...` / `session.sh add --list files --ref <path or url> --text ...` |
