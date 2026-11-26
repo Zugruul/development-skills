@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Hermetic stand-in for gh: answers `pr list --head B` from $GH_STUB_DIR/head-<B, / as _>.json
+# (else []) and `pr view URL` from $GH_STUB_DIR/pr-<number>.json (else it fails). Every call
+# is appended to $GH_STUB_DIR/gh.log; a file $GH_STUB_DIR/gh-fail makes every call fail.
+set -u
+d="${GH_STUB_DIR:?GH_STUB_DIR is not set}"
+printf '%s\n' "$*" >>"$d/gh.log"
+[ -f "$d/gh-fail" ] && exit 1
+case "${1:-} ${2:-}" in
+"pr list")
+    b=""
+    while [ $# -gt 0 ]; do
+        [ "$1" = --head ] && b="${2:-}"
+        shift
+    done
+    f="$d/head-$(printf '%s' "$b" | tr / _).json"
+    if [ -f "$f" ]; then cat "$f"; else echo '[]'; fi ;;
+"pr view")
+    f="$d/pr-${3##*/}.json"
+    [ -f "$f" ] || exit 1
+    cat "$f" ;;
+*) exit 1 ;;
+esac
