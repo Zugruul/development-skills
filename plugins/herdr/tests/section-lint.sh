@@ -25,7 +25,7 @@ done
 check_rc "every skill directory is covered above" 5 "$(find "$PLUGIN/skills" -name SKILL.md | wc -l | tr -d ' ')"
 
 scripts="$(cd "$PLUGIN/scripts" && find . -name '*.sh' | sort | tr '\n' ' ')"
-check "only the scripts Herdr cannot do in one call" "./check.sh ./listen.sh ./src/herdr.sh ./src/require.sh ./start.sh " "$scripts"
+check "only the scripts Herdr cannot do in one call" "./check-path.sh ./check.sh ./listen.sh ./src/herdr.sh ./src/require.sh ./start.sh " "$scripts"
 while IFS= read -r ref; do
     ok=0; [[ -f "$PLUGIN/skills/x/$ref" || -f "$PLUGIN/${ref#../../}" ]] || ok=1
     check_rc "skills reference an existing script: $ref" 0 "$ok"
@@ -39,6 +39,11 @@ for flag in --cwd --branch --base --path --label; do
     check "worktree: passes $flag explicitly" "$flag" "$wt"
 done
 check "worktree: follows the repository's location rule" "location rule" "$wt"
+check "worktree: the target repository is the git toplevel of the checkout being changed" "git -C <target> rev-parse --show-toplevel" "$wt"
+check "worktree: only the target's own instructions set the location" "only from that repository's own instructions" "$wt"
+check "worktree: an enclosing repository's rule never applies to a nested clone" "never applies to a nested standalone clone" "$wt"
+check "worktree: check-path gets the absolute path" "--path\` is the absolute worktree path" "$wt"
+check "worktree: the path is checked against other repositories" 'bash "../../scripts/check-path.sh" --target <target> --path <path>' "$wt"
 check "worktree: a failed create is checked before a retry" "run \`herdr worktree list\` before any retry" "$wt"
 check_absent "worktree: never grants repository trust by itself" "create --trust-repository" "$wt"
 ag="$(cat "$PLUGIN/skills/agent/SKILL.md")"
