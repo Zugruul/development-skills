@@ -88,21 +88,71 @@ out="$(g lane node --repo "$REPO" --lane busy --node investigate --status "done"
 check_rc "a stale lock of a dead process is taken over" 0 "$rc"
 
 echo "== graph: kinds =="
+# A fake PATH: only the fake agents, jq, yq and the system tools. Real agent CLIs never leak in.
 BIN="$G_TMP/bin"; mkdir -p "$BIN"
-for k in claude opencode; do printf '#!/bin/sh\n' >"$BIN/$k"; chmod +x "$BIN/$k"; done
-kind() { PATH="$BIN:/usr/bin:/bin:$(dirname "$(command -v yq)"):$(dirname "$(command -v jq)")" bash "$SC/kind.sh" "$@"; }
+for k in claude opencode gemini; do printf '#!/bin/sh\n' >"$BIN/$k"; chmod +x "$BIN/$k"; done
+ln -s "$(command -v jq)" "$BIN/jq"; ln -s "$(command -v yq)" "$BIN/yq"
+HB="$G_TMP/herdr-bin"; mkdir -p "$HB"; ln -s "$FIX/stub-herdr/herdr" "$HB/herdr"
+kind() { PATH="$BIN:$HB:/usr/bin:/bin" HERDR_STUB_DIR="$G_TMP" bash "$SC/kind.sh" "$@"; }
+kind_noherdr() { PATH="$BIN:/usr/bin:/bin" bash "$SC/kind.sh" "$@"; }
+SESS="$G_TMP/graph-kinds"
+
 out="$(kind --role investigator)"
 check "a read-only role picks the first installed kind" "KIND claude" "$out"
-check "read-only Claude denies the edit tools" "ARGS --disallowedTools Edit Write NotebookEdit" "$out"
+check "a read role runs in its normal mode, guarded by the brief and the checkout check" "GUARD brief" "$out"
+check_absent "read-only Claude keeps its Write tool for the report" "disallowedTools" "$out"
 out="$(kind --role investigator --not claude)"
 check "a second opinion uses another installed kind" "KIND opencode" "$out"
-check "read-only opencode uses its plan agent" "ARGS --agent plan" "$out"
-rm "$BIN/opencode"
-out="$(kind --role investigator --not claude)"
-check "with one kind installed it says the review is same-model" "SAME-KIND" "$out"
+check_absent "read-only opencode is not in its plan agent (it could not write its draft)" "--agent plan" "$out"
 out="$(kind --role implementer)"
 check "a write role gets no read-only arguments" "ARGS " "$out"
-check_absent "a write role gets no deny list" "disallowedTools" "$out"
+check_absent "a write role has no read guard line" "GUARD" "$out"
+
+out="$(kind --role reviewer --not claude --list)"; rc=$?
+check_rc "the installed kinds are listed" 0 "$rc"
+check "the recommended kind is listed first, with why" "CANDIDATE opencode recommended" "$(head -1 <<<"$out")"
+check "the implementer's kind is offered, marked same-model" "CANDIDATE claude same-kind" "$out"
+check "an installed kind outside the role's list is offered too" "CANDIDATE gemini" "$out"
+check_absent "a kind herdr supports but that is not installed is not offered" "CANDIDATE codex" "$out"
+check_absent "an uninstalled herdr kind is not offered" "CANDIDATE pi" "$out"
+out="$(kind --role reviewer --not claude --list --without opencode)"
+check "a kind that failed is left out and another kind is recommended" "CANDIDATE gemini recommended" "$(head -1 <<<"$out")"
+check_absent "the kind that failed is not offered again" "CANDIDATE opencode" "$out"
+check "the implementer's kind is still offered after a failure" "CANDIDATE claude same-kind" "$out"
+out="$(kind_noherdr --role reviewer --not claude --list)"
+check "without herdr's list only the role's kinds are checked, and it says so" "NOTE" "$out"
+check_absent "without herdr's list no other kind is offered" "CANDIDATE gemini" "$out"
+
+out="$(kind --role investigator --kind gemini)"
+check "the user's choice of kind is used" "KIND gemini" "$out"
+check "a kind with no read-only mode runs guarded by the brief" "GUARD brief" "$out"
+out="$(kind --role investigator --kind codex 2>&1)"; rc=$?
+check_rc "a chosen kind that is not installed is refused" 6 "$rc"
+check "it says the kind is not installed" "NOT INSTALLED" "$out"
+
+out="$(kind --role reviewer --remember opencode --session "$SESS")"
+check "a standing choice is recorded for the role" "STANDING reviewer opencode" "$out"
+kind --role pr-reviewer --remember gemini --session "$SESS" >/dev/null
+out="$(kind --role reviewer --not claude --list --session "$SESS")"
+check "the standing choice is shown with the candidates" "STANDING opencode" "$out"
+check "a standing choice for another role is kept apart" "STANDING gemini" "$(kind --role pr-reviewer --list --session "$SESS")"
+out="$(kind --role reviewer --not claude --session "$SESS")"
+check "the standing choice is used without asking" "KIND opencode" "$out"
+out="$(kind --role reviewer --not opencode --list --session "$SESS")"
+check "a standing choice equal to the implementer's kind is not reused" "STANDING-UNAVAILABLE opencode" "$out"
+out="$(kind --role reviewer --remember codex --session "$SESS" 2>&1)"; rc=$?
+check_rc "a standing choice of an uninstalled kind is refused" 6 "$rc"
+rm "$BIN/opencode"
+out="$(kind --role reviewer --not claude --list --session "$SESS")"
+check "a standing choice whose kind is gone is not reused" "STANDING-UNAVAILABLE opencode" "$out"
+out="$(kind --role investigator --not claude)"
+check "with only other-vendor kinds outside the list it still differs from the implementer" "KIND gemini" "$out"
+rm "$BIN/gemini"
+out="$(kind --role investigator --not claude)"
+check "with one kind installed it says the review is same-model" "SAME-KIND" "$out"
+out="$(kind --role reviewer --list --without claude 2>&1)"; rc=$?
+check_rc "with no kind left it says so" 6 "$rc"
+check "no kind left is named" "NO KIND" "$out"
 
 echo "== graph: gate =="
 g lane new --repo "$REPO" --lane gated --pattern solo --idea "x" --gate "npm test" >/dev/null
