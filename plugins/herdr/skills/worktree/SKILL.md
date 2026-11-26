@@ -30,6 +30,7 @@ bash "../../scripts/check-path.sh" --target <target> --path <path>   # PATH OK, 
 - The branch is already checked out (an entry in `.result.worktrees[]` has that `.branch`): do not make a second worktree; offer `herdr worktree open --cwd <primary checkout> --branch <branch> --no-focus` instead.
 - The path already exists: say so and stop.
 - The base does not resolve: fetch it, or ask.
+- `check-path.sh`: `--target` is the checkout being changed, and `--path` is the absolute worktree path.
 - `PATH REFUSED`: the path is inside another repository's working tree. Pick the path again by the rules above; add `--target-rule` only when the target's own instructions put it there.
 
 **Ask the user** to approve, showing why a worktree helps, the branch, the base (ref and commit), the exact path and the label. Skip the question only when the user already asked for this worktree in this conversation. Approval for one worktree is not approval for the next.

@@ -5,9 +5,10 @@
 # Why a script: a standalone clone nested inside another repository (its own .git,
 # gitignored there) must not get its worktree inside that enclosing repository just
 # because the enclosing repository's rule says so. Herdr does not check this.
-# The target is the git toplevel of CHECKOUT. PATH is refused when its nearest existing
-# directory belongs to a different repository's working tree, unless --target-rule says
-# the target repository's own instructions put it there.
+# PATH is absolute (a leading ~/ is expanded). It is refused when its nearest existing
+# directory belongs to a different repository than CHECKOUT (compared by the shared git
+# dir, so linked worktrees of one repository are the same repository), unless
+# --target-rule says the target repository's own instructions put it there.
 # Prints PATH OK ... or PATH REFUSED ...; exits 1 when refused, 2 on a usage error.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,10 +26,19 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -n "$target" ] && [ -n "$path" ] || usage "$USAGE"
+case "$path" in \~/*) path="$HOME/${path#\~/}" ;; esac
+case "$path" in /*) ;; *) die "--path must be absolute (got $path): a relative path would be judged against this shell's cwd." 2 ;; esac
 
-top="$(git -C "$target" rev-parse --show-toplevel 2>/dev/null)" ||
-    die "PATH UNKNOWN: $target is not inside a git repository." 2
-top="$(cd "$top" && pwd -P)"
+repo_of() { # directory -> physical path of its repository's common git dir, empty outside git
+    (cd "$1" 2>/dev/null && common="$(git rev-parse --git-common-dir 2>/dev/null)" && cd "$common" && pwd -P) || true
+}
+top_of() { # directory -> its working tree's toplevel, for messages only
+    git -C "$1" rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$1"
+}
+
+repo="$(repo_of "$target")"
+[ -n "$repo" ] || die "PATH UNKNOWN: $target is not inside a git repository." 2
+top="$(top_of "$target")"
 
 dir="$path"
 while [ ! -d "$dir" ]; do
@@ -37,14 +47,11 @@ while [ ! -d "$dir" ]; do
     dir="$parent"
 done
 other=""
-if [ -d "$dir" ]; then
-    other="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || true)"
-    [ -n "$other" ] && other="$(cd "$other" && pwd -P)"
-fi
+[ -d "$dir" ] && other="$(repo_of "$dir")"
 
-if [ -z "$other" ] || [ "$other" = "$top" ] || [ "$rule" -eq 1 ]; then
+if [ -z "$other" ] || [ "$other" = "$repo" ] || [ "$rule" -eq 1 ]; then
     printf 'PATH OK target=%s path=%s\n' "$top" "$path"
     exit 0
 fi
-printf 'PATH REFUSED: %s is inside the working tree of %s, not of the target repository %s. A location rule from an enclosing repository does not apply to a nested clone: use the target'"'"'s own rule, or Herdr'"'"'s worktree directory.\n' "$path" "$other" "$top"
+printf 'PATH REFUSED: %s is inside the working tree of %s, a different repository than the target %s. Only the target repository'"'"'s own location rule applies: use it, or Herdr'"'"'s worktree directory.\n' "$path" "$(top_of "$dir")" "$top"
 exit 1
