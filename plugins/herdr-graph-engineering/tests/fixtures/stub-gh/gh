@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Hermetic stand-in for the gh CLI: only `gh pr view <number|url|branch> --json ...`.
+# Pull requests live in $GH_STUB_DIR/gh.json: {"<number, url or branch>": {state, url, number, headRefOid}}.
+# Every call is appended to $GH_STUB_DIR/gh-calls.log.
+set -uo pipefail
+d="${GH_STUB_DIR:?GH_STUB_DIR is not set}"
+printf '%s\n' "$*" >>"$d/gh-calls.log"
+[ "${1:-} ${2:-}" = "pr view" ] || { echo "stub gh: unsupported: $*" >&2; exit 1; }
+pr="$(jq -c --arg r "${3:-}" '.[$r] // empty' "$d/gh.json" 2>/dev/null)"
+[ -n "$pr" ] || { echo "no pull requests found for ${3:-}" >&2; exit 1; }
+printf '%s\n' "$pr"

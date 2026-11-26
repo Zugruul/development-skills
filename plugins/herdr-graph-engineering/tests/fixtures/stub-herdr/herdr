@@ -130,6 +130,11 @@ case "$cmd" in
     "pane report-metadata")
         save "$(st | jq -c --arg p "$3" --arg all "$*" '.tokens += [{pane: $p, args: $all}]')"
         ok '{"type":"pane_metadata_reported"}' ;;
+    "worktree remove")
+        # state.worktree_remove = "fail" makes the removal fail, as for a dirty checkout.
+        [ "$(st | jq -r '.worktree_remove // "ok"')" = ok ] || fail worktree_dirty "the checkout has changes"
+        save "$(st | jq -c --arg w "$(opt --workspace "$@")" '.worktrees_removed += [$w]')"
+        ok '{"type":"worktree_removed"}' ;;
     "notification show") ok '{"type":"notification_show","shown":true}' ;;
     # Tabs live in state.tabs, keyed by tab id; `tab close` removes one and records it in
     # state.tabs_closed (the call is in calls.log too).
