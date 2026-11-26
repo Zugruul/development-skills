@@ -2,14 +2,19 @@
 # shellcheck source-path=SCRIPTDIR
 # cleanup.sh -- find lanes ready for cleanup and ask the user; clean one up after they said yes.
 # Usage:
-#   cleanup.sh check [--lane L] [--repo DIR]   every done lane (or one): never removes anything
+#   cleanup.sh check [--lane L] [--repo DIR]   every done lane and finished review lane (or one):
+#                                              never removes anything
 #   cleanup.sh run --lane L [--repo DIR]       after the user's yes is recorded (cleanup=confirmed): close the lane's tabs,
 #                                              herdr worktree remove (never --force), lane.sh close
 # Why a script: whether a lane may go depends on its pull request, its checkout and its graph,
 # and the user must be asked exactly once per reason; that is decided here and tested.
 #
 # A done lane is ready when its checkout is clean and:
-#   review lane (branch look/pr-N, pattern review, or a posted-review check): nothing else.
+#   review lane (branch look/pr-N, pattern review, or a posted-review check): nothing else. A review
+#     lane needs no merge and need not be done: it is also a candidate while open once it is
+#     finished, that is every poster node is done or skipped, or the user said no at the human
+#     node before the posts (nothing will be posted), or its findings were forwarded (forwarded
+#     = LANE/AGENT, recorded with lane.sh set).
 #   pull request lane (a recorded pr, a pr node, or a draft-pr check): the pull request (the
 #     recorded one, else the one a pr node opened, else the one for the branch) is MERGED and the checkout has no commit beyond its head.
 #   report lane (anything else): no commit that is on no other branch or remote.
@@ -18,7 +23,11 @@
 # CONFIRMED <lane> when the user said yes (cleanup=confirmed, recorded with lane.sh set),
 # BLOCKED <lane> (<reason>) for a merged lane that must not be removed (asks once per reason),
 # WAIT <lane> (<why>) for a pull request not merged yet, DECLINED <lane> when the user said no.
-# run refuses (exit 6) unless the user's yes is recorded (cleanup=confirmed) and a fresh check
+# For a ready review lane whose findings were not forwarded (nor declined), it also prints, per
+# reviewed pull request that an open lane owns (review-owner.sh: any repository with lanes):
+#   FORWARD <lane> <pr url> <owner repo> <owner lane> <agent|-> <node|->
+# and the cleanup question asks to send the findings to that agent first.
+# run refuses (exit 6) unless the lane is done or a finished review lane, the user's yes is recorded (cleanup=confirmed) and a fresh check
 # still finds the lane ready; only then does it close tabs or remove anything.
 # GRAPH_GH names the gh binary (default gh), as for prs.sh.
 # Prints CLEANED <lane> (...). Exit codes: 0 ok, 1 error, 2 usage, 6 not ready.
@@ -55,18 +64,71 @@ plural() { # n word
     if [ "$1" -eq 1 ]; then printf '1 %s' "$2"; else printf '%s %ss' "$1" "$2"; fi
 }
 
-# Sets VERDICT (READY|BLOCKED|WAIT), WHY and WT for the lane in file $1.
-judge() {
-    local f="$1" br pr pattern checks kind ref pj state url head n
+# Sets KIND (review|pr|report) and PR (the pull request of a pr lane, or empty) for the lane in file $1.
+lane_kind() {
+    local f="$1" br pattern checks
     br="$(yq -r '.branch // ""' "$f")"
     # the recorded pull request, else the one a pr node opened (its ref is the url)
     # shellcheck disable=SC2016  # $p and $k are jq variables
-    pr="$(yq -r '.pr // ([.graph | to_entries[] | select(.value.pr) | .key] as $p | [.nodes | to_entries[] | select(.key as $k | $p | contains([$k])) | .value.ref // "" | select(test("^https?://"))] | .[0]) // ""' "$f")" pattern="$(yq -r '.pattern // ""' "$f")"
+    PR="$(yq -r '.pr // ([.graph | to_entries[] | select(.value.pr) | .key] as $p | [.nodes | to_entries[] | select(.key as $k | $p | contains([$k])) | .value.ref // "" | select(test("^https?://"))] | .[0]) // ""' "$f")" pattern="$(yq -r '.pattern // ""' "$f")"
     checks="$(yq -o=json '.done // []' "$f")"
-    kind="report"
-    if [ -n "$pr" ] || jq -e 'index("draft-pr")' <<<"$checks" >/dev/null; then kind="pr"; fi
-    case "$br" in look/pr-*) kind="review" ;; esac
-    if [ "$pattern" = review ] || jq -e 'index("posted-review")' <<<"$checks" >/dev/null; then kind="review"; fi
+    KIND="report"
+    if [ -n "$PR" ] || jq -e 'index("draft-pr")' <<<"$checks" >/dev/null; then KIND="pr"; fi
+    case "$br" in look/pr-*) KIND="review" ;; esac
+    if [ "$pattern" = review ] || jq -e 'index("posted-review")' <<<"$checks" >/dev/null; then KIND="review"; fi
+}
+
+# Why a review lane is finished, or nothing while it is not: its findings were forwarded, the
+# user said no at a human node a poster node needs, or every poster node is done or skipped.
+review_finished() { # file
+    # shellcheck disable=SC2016  # $g, $s, $p and $h are jq variables
+    read_json "$1" | jq -r '
+        .graph as $g | .nodes as $s
+        | [$g | to_entries[] | select(.value.agent == "poster") | .key] as $p
+        | ([$p[] | ($g[.].needs // [])[] | select($g[.].human)] | unique) as $h
+        | if (.forwarded // "") != "" and .forwarded != "declined" then "its findings were forwarded to \(.forwarded)"
+          elif ($p | length) > 0 and any($h[]; $s[.].status == "done" and $s[.].result == "fail") then "the user decided not to post"
+          elif ($p | length) > 0 and all($p[]; $s[.].status == "done" or $s[.].status == "skipped") then
+              (if all($p[]; $s[.].status == "skipped") then "the user decided not to post" else "its review was posted" end)
+          else empty end'
+}
+
+# Whether cleanup looks at the lane at all: it is done, or it is a finished review lane.
+candidate() { # file
+    [ "$(yq -r '.status' "$1")" = "done" ] && return 0
+    lane_kind "$1"
+    [ "$KIND" = review ] && [ -n "$(review_finished "$1")" ]
+}
+
+# The reviewed pull requests of a review lane: its pr input and every URL in a poster's brief.
+reviewed_prs() { # file
+    read_json "$1" | jq -r '[(.inputs.pr // empty), (.graph[] | select(.agent == "poster") | .brief // "" | scan("https?://[^ ,]*[0-9]"))] | unique[]'
+}
+
+# Sets FORWARDS: one FORWARD line per owned reviewed pull request, unless already forwarded or declined.
+forwards() { # file, lane
+    local p line
+    FORWARDS=""
+    [ -z "$(yq -r '.forwarded // ""' "$1")" ] || return 0
+    while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        while IFS= read -r line; do
+            case "$line" in "OWNER "*) FORWARDS="$FORWARDS${FORWARDS:+
+}FORWARD $2 $p ${line#OWNER }" ;; esac
+        done <<OWNERS
+$(cd "$repo" && bash "$HERE/review-owner.sh" --pr "$p" 2>/dev/null)
+OWNERS
+    done <<PRS
+$(reviewed_prs "$1")
+PRS
+}
+
+# Sets VERDICT (READY|BLOCKED|WAIT), WHY and WT for the lane in file $1.
+judge() {
+    local f="$1" br pr kind ref pj state url head n fin
+    br="$(yq -r '.branch // ""' "$f")"
+    lane_kind "$f"
+    kind="$KIND" pr="$PR"
     WT="" head=""
     if [ "$kind" = pr ]; then
         ref="${pr:-$br}"
@@ -89,7 +151,10 @@ judge() {
             n="$(git -C "$WT" rev-list --count HEAD "^$head")"
             [ "$n" -eq 0 ] || { VERDICT=BLOCKED WHY="$(plural "$n" commit) not in the pull request (its head is ${head:0:7}; $WT)"; return; }
             VERDICT=READY WHY="pull request $url is merged, the checkout is clean and everything is pushed" ;;
-        review) VERDICT=READY WHY="review lane is done, the checkout is clean" ;;
+        review)
+            fin="$(review_finished "$f")"
+            if [ -n "$fin" ]; then VERDICT=READY WHY="review lane: $fin; the checkout is clean"
+            else VERDICT=READY WHY="review lane is done, the checkout is clean"; fi ;;
         report)
             n="$(git -C "$WT" rev-list --count HEAD --not --exclude="refs/heads/$br" --branches --remotes)"
             [ "$n" -eq 0 ] || { VERDICT=BLOCKED WHY="$(plural "$n" commit) on no other branch or remote ($WT)"; return; }
@@ -103,18 +168,30 @@ notify() { # lane, question
 }
 
 check_lane() { # file
-    local f="$1" l status was ws br q
-    l="$(yq -r '.lane' "$f")" status="$(yq -r '.status' "$f")" was="$(yq -r '.cleanup // ""' "$f")"
-    [ "$status" = "done" ] || return 0
+    local f="$1" l was ws br q fw o p ol oa
+    l="$(yq -r '.lane' "$f")" was="$(yq -r '.cleanup // ""' "$f")"
+    candidate "$f" || return 0
     [ "$was" != declined ] || { printf 'DECLINED %s (the user kept it)\n' "$l"; return 0; }
     judge "$f"
     ws="$(yq -r '.workspace // ""' "$f")" br="$(yq -r '.branch // ""' "$f")"
     case "$VERDICT" in
         WAIT) printf 'WAIT %s (%s)\n' "$l" "$WHY" ;;
         READY)
+            FORWARDS=""
+            [ "$KIND" != review ] || forwards "$f" "$l"
+            [ -z "$FORWARDS" ] || printf '%s\n' "$FORWARDS"
             if [ "$was" = ready ]; then printf 'PENDING %s (cleanup question asked)\n' "$l"; return 0; fi
             if [ "$was" = confirmed ]; then printf 'CONFIRMED %s (the user said yes; cleanup.sh run)\n' "$l"; return 0; fi
-            q="Cleanup $l: $WHY. Remove the worktree $WT (workspace ${ws:-?}) and close the lane? Its tabs close; the branch $br is kept."
+            fw=""
+            while IFS=' ' read -r _ _ p _ ol oa _; do
+                [ -n "${p:-}" ] || continue
+                o="$ol/$oa"
+                [ "$oa" != "-" ] || o="$ol (its agent is not running)"
+                fw="$fw Send the findings of review $l on $p to $o first?"
+            done <<FWD
+$FORWARDS
+FWD
+            q="Cleanup $l: $WHY.$fw Remove the worktree $WT (workspace ${ws:-?}) and close the lane? Its tabs close; the branch $br is kept."
             lane_sh set --lane "$l" --key cleanup --value ready || exit 1
             lane_sh ask --lane "$l" --text "$q" || exit 1
             notify "$l" "$q"
@@ -144,7 +221,7 @@ run)
     require_tools herdr
     f="$dir/$lane.yaml"
     [ -f "$f" ] || die "NO LANE: $lane" 6
-    [ "$(yq -r '.status' "$f")" = "done" ] || die "NOT READY: lane $lane is not done" 6
+    candidate "$f" || die "NOT READY: lane $lane is not done (nor a finished review lane)" 6
     [ "$(yq -r '.cleanup // ""' "$f")" = confirmed ] || die "NOT CONFIRMED: lane $lane: the user has not said yes to the cleanup (cleanup is '$(yq -r '.cleanup // ""' "$f")'). Ask, then record the yes: lane.sh set --key cleanup --value confirmed" 6
     judge "$f"
     [ "$VERDICT" = READY ] || die "NOT READY: $lane: $WHY" 6
