@@ -23,13 +23,14 @@ Not installed: say once that it can be installed with `herdr plugin install Zugr
 ## As text
 
 ```bash
+bash "../../scripts/drift.sh" --quiet            # first: read finished agents' RESULT lines (writes only its cache, never a lane file)
 bash "../../scripts/status.sh" --text            # every repository with a Herdr workspace open, plus this one
 bash "../../scripts/status.sh" --text --repo <dir>   # only that repository
 ```
 
 Print the output **unchanged inside one fenced code block** (` ```text `), then, in prose:
 
-- for each lane under `NEEDS YOU`: the exact question and what the user can answer;
+- for each lane under `NEEDS YOU`: the exact question (`?`) or what needs the user (`!`: an agent that finished, is blocked or gone, a merged pull request) and what the user can answer;
 - nothing else unless the user asked for more.
 
 To see one lane in full, `bash "../../scripts/lane.sh" show --lane <lane> --repo <dir>` prints its lane file (graph copy, results, retries, history).

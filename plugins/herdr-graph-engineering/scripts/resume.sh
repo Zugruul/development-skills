@@ -6,7 +6,8 @@
 #        resume.sh --hook pre-compact|session-start      (Claude Code hooks; see hooks/hooks.json)
 # Lanes come from every repository with a Herdr workspace, the current one, the --repo ones and
 # the repositories named in the session file. Per open lane: its nodes, its agents (live state from
-# `herdr agent list`, or gone), the open question, pull requests (prs.sh's cache; --fetch refreshes
+# `herdr agent list`, or gone; drift.sh --quiet first reads finished agents' RESULT lines, so a
+# node an agent finished or asked about before it was recorded shows that), the open question, pull requests (prs.sh's cache; --fetch refreshes
 # it first), the done checks and the extra ones, its notes, and the next action. Then the session
 # file: queued lanes, standing answers (and the standing kind and dialog choices kept in the
 # scratch folder), renames, notes and files.
@@ -89,6 +90,8 @@ EOF
 [ "${#rargs[@]}" -gt 0 ] || rargs=(--repo "$(pwd)")
 
 [ "$fetch" -eq 0 ] || bash "$HERE/prs.sh" fetch "${rargs[@]}" >/dev/null 2>&1
+# what finished agents printed as their RESULT line (drift.sh writes only its cache)
+command -v herdr >/dev/null 2>&1 && bash "$HERE/drift.sh" --quiet "${rargs[@]}" >/dev/null 2>&1
 view="$(bash "$HERE/status.sh" --json "${rargs[@]}" 2>/dev/null)" || view="[]"
 [ -n "$view" ] || view="[]"
 
@@ -122,9 +125,14 @@ def next:
     | [.nodes[] | select(.status == "running" or (.status == "blocked" and .agent != "" and .live == "blocked"))] as $run
     | [.nodes[] | select(.status == "failed" or (.status == "done" and .result == "changes"))] as $failed
     | [(.done_extra // [])[] | select(.met != true) | .text] as $unmet
-    | if .question != "" then "ask the user: \(.question | one) (answer with herdr:prompt when an agent asked, then lane.sh answer)"
+    | ([.nodes[] | select(.drift.kind == "question")][0].node // "") as $asked
+    | if .question_live == true then "record the agent'"'"'s question (lane.sh ask --lane \($l.lane) --node \($asked)), then ask the user: \(.question | one)"
+      elif .question != "" then "ask the user: \(.question | one) (answer with herdr:prompt when an agent asked, then lane.sh answer)"
       elif ($run | length) > 0 then
-        [ $run[] | if .agent == "" then "gate \(.node) is running: read its tab for the GATE line (gate.sh records it)"
+        [ $run[] | if .drift.kind == "pass" then "\(.agent) finished: pass \(.drift.ref): check it, then lane.sh node --lane \($l.lane) --node \(.node) --status done --result pass --ref \(.drift.ref)"
+          elif .drift.kind == "fail" then "\(.agent) finished: fail \(.drift.ref): check it, then lane.sh node --lane \($l.lane) --node \(.node) --status failed --result fail --ref \(.drift.ref)"
+          elif .drift.kind == "stopped" then "\(.agent) stopped without a NODE \(.node) RESULT line: read its screen, prompt it to finish or record what it did"
+          elif .agent == "" then "gate \(.node) is running: read its tab for the GATE line (gate.sh records it)"
           elif .live == "" then "\(.agent) is gone: check \(.node)'"'"'s checkout for its commits and its NODE RESULT, then record \(.node) or start it again"
           elif .live == "blocked" then "\(.agent) is blocked: read its screen, lane.sh ask, ask the user"
           elif .live == "working" then "listen to \(.agent)"
@@ -148,6 +156,7 @@ def block:
                  + (if .ref != "" then " \(.ref)" else "" end)] | join(" → "))",
     (if any(.nodes[]; .agent != "") then "  agents: \([.nodes[] | select(.agent != "") | "\(.agent) (\(.node)) \(if .live == "" then "gone" else .live end)"] | join("; "))" else empty end),
     (if .question != "" then "  question: \(.question | one)" else empty end),
+    ((.attention // [])[] | "  attention: \(. | one)"),
     (.prs[] | "  pr: #\(.number) \(.state)\(if .isDraft then " draft" else "" end) \(.url)"),
     "  done: \([.done[] | donecheck] | join(", "))",
     ((.done_extra // [])[] | "  extra: [\(if .met == true then "x" else " " end)] \(.text | one)"),

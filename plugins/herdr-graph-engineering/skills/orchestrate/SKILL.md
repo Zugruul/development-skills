@@ -35,7 +35,8 @@ Scripts (all `bash "../../scripts/<name>"`):
 | `ready.sh --lane L --repo R` | which nodes can start now |
 | `kind.sh --role R [--not KIND] [--without KIND] --list / --kind K / --remember K` | the installed kinds for a role (recommended first), the arguments for the chosen one, the session's standing choice |
 | `gate.sh --lane L --node N --pane P --repo R` | run a gate command in a visible tab and record its exit code |
-| `status.sh --text` | the picture of every lane, for reports |
+| `status.sh --text` | the picture of every lane, for reports; it also reads the live agents, so a lane whose agent finished, asks, is blocked or is gone shows under NEEDS YOU before you record anything |
+| `drift.sh --repo R` | every place the lane files and the live agents disagree, one `DRIFT` line each with the `lane.sh` command that would fix it, or `NO DRIFT`; it never writes a lane file |
 | `check-pattern.sh --name P --repo R` | validate a pattern |
 | `make-review-stack.sh --pr URL --pr URL ... --out FILE` | the graph for reviewing related pull requests together |
 | `review-owner.sh --pr URL` | which open lane (any repository with lanes) owns a reviewed pull request, and its live implementer |
@@ -44,7 +45,7 @@ For every Herdr step use the `herdr` plugin's skills: `herdr:worktree`, `herdr:a
 
 ## 1. Pick up where things are
 
-**After a compaction (or a new session)**, before anything else: run `bash "../../scripts/resume.sh"`. It prints one block, `RESUME` to `END RESUME`: every open lane of every repository with lanes (nodes, agents live or gone, open question, pull requests, done checks and the extra ones, notes) with its `next:` action, then the queued lanes, standing answers, renames, notes and files of your session file. In Claude Code a hook puts the same block into the chat after a compaction; if you see a summary of earlier conversation and no block, run it yourself. Then:
+**After a compaction (or a new session)**, before anything else: run `bash "../../scripts/resume.sh"`. It prints one block, `RESUME` to `END RESUME`: every open lane of every repository with lanes (nodes, agents live or gone, what a finished agent printed as its RESULT line, open question, pull requests, done checks and the extra ones, notes) with its `next:` action (for a finished agent: check it, then the `lane.sh` command to record), then the queued lanes, standing answers, renames, notes and files of your session file. In Claude Code a hook puts the same block into the chat after a compaction; if you see a summary of earlier conversation and no block, run it yourself. Then:
 
 1. Trust the block over your summary: the files are the record. Use the standing answers in it as given by the user.
 2. re-start `herdr:listen` for every agent the block shows live (working, blocked, idle); an agent shown `gone` is not running: follow that lane's `next:`.
@@ -92,6 +93,17 @@ For each lane, `ready.sh --lane L --repo R` prints `READY <node> <agent|gate|hum
 ## 4. Listen and check
 
 Follow every running agent with the `herdr:listen` skill.
+
+Listening is not enough on its own: an agent outside the current listen, or an event between two listens, leaves its lane file stale (a lane shows WORKING while its agent waits with a question, or has long finished). So **after every listen event and before every report**, run `bash "../../scripts/drift.sh"` (with `--repo R` for each repository you run lanes in). It reads every agent of a node recorded `running`, and its last `NODE <node> RESULT:` line when it is idle or done, and prints one line per mismatch:
+
+- `DRIFT L/N question: ...`: the agent asks. Read its questions (the ref is often a file), record them with the printed `lane.sh ask`, and relay them as below.
+- `DRIFT L/N finished pass|fail ...`: the agent settled. Check it as under "An agent settled" before you record; the printed command is what to record **after** the check, never on the agent's word.
+- `DRIFT L/N blocked: ...`: read its screen and treat it as "An agent is blocked".
+- `DRIFT L/N gone: ...`: the agent is no longer in Herdr. Tell the user; record `--status waiting` to start the node again only if they agree.
+- `DRIFT L/N stopped: ...`: idle with no RESULT line. Read its screen; prompt it to finish, or record what it did.
+- `DRIFT L pr-merged: ...`: the lane's own pull request merged. Run the printed `cleanup.sh check` (section 6).
+
+The panel and `status.sh` already show all of these under NEEDS YOU (the panel refreshes the reads itself every 10 seconds), so the user may see them before you record them; `drift.sh` is how you catch up.
 
 - **Startup dialogs** are normal: a new agent often stops before its brief on folder trust, imports of instruction files from outside the checkout (an external `CLAUDE.md`), access to a directory outside the checkout (opencode asks for `~/.claude` or `~`), a login or an update notice. `herdr:agent` reports `AGENT BLOCKED AT STARTUP` with the screen. Relay each dialog to the user exactly as shown, with lane and node, and answer only as they say. With the first one of a kind, offer a **standing answer** for this session (for example "trust lane worktrees of this repository", "allow external CLAUDE.md imports for lanes in this repository", "let opencode read ~/.claude"); keep the standing answers in `<scratch>/graph-dialogs`, apply them to the same dialog in later lanes, and say in the next report which you applied. A dialog with no standing answer goes to the user.
 - **An agent fails to start or to work** (the start fails, its provider's login expired, it errors on every prompt): record it, then ask the user which kind to use instead with `kind.sh --role <role> --session <scratch>/graph-kinds --list --without <the failed kind>` (plus `--not` as before): offer every kind it lists, not one. A standing choice whose kind failed is asked again. Close the failed agent's tab before starting the new kind there.
@@ -168,7 +180,7 @@ The graph panel's `[x]` on a DONE lane sends you "Clean up lane L": treat it as 
 
 ## Reports
 
-Report in the format of `../../references/report.md` after any lane changes section, when the user asks, and when you stop. Run the cleanup check (section 6) before each report, so a lane ready for cleanup shows under NEEDS YOU. The `display` skill opens the panel, or prints the same picture as text. After every lane change also run `bash "../../scripts/status.sh" --tokens` (it writes each lane agent's step into Herdr's sidebar), and `herdr plugin action invoke herdr-graph-engineering.graph.refresh` when the panel is installed.
+Report in the format of `../../references/report.md` after any lane changes section, when the user asks, and when you stop. Run `drift.sh` (section 4) and the cleanup check (section 6) before each report, and record what they show, so no lane is reported as WORKING while its agent waits for the user or has finished, and a lane ready for cleanup shows under NEEDS YOU. The `display` skill opens the panel, or prints the same picture as text. After every lane change also run `bash "../../scripts/status.sh" --tokens` (it writes each lane agent's step into Herdr's sidebar), and `herdr plugin action invoke herdr-graph-engineering.graph.refresh` when the panel is installed.
 
 Answers the user types in the panel's answer popup arrive here as a message starting `Answer for lane <lane>`: treat them exactly like an answer typed in this chat.
 

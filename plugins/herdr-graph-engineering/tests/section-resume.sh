@@ -172,6 +172,23 @@ check "notes" "keep the 3-agent limit" "$(sed -n '/^NOTES/,/^[A-Z]/p' <<<"$out")
 check "files" "$R_SCRATCH/rev-1-posting.md" "$(sed -n '/^FILES/,/^[A-Z]/p' <<<"$out")"
 check "the per-lane next action ends the block" "END RESUME" "$(tail -1 <<<"$out")"
 
+echo "== resume: live drift (an agent that finished or asked before it was recorded) =="
+for l in task-j task-k; do
+    r lane new --repo "$R_REPO" --lane "$l" --pattern solo --idea "idea $l" --gate "npm test" --owner graph >/dev/null
+    r lane node --repo "$R_REPO" --lane "$l" --node impl --status running --agent "claude-$l-impl" >/dev/null
+done
+saved_state="$(cat "$R_TMP/state.json")"
+rst "$(jq -c '.agents += {
+    j: {name: "claude-task-j-impl", agent_status: "idle", state_change_seq: 4, pane_id: "w5:p2", screen: "NODE impl RESULT: pass f00d123"},
+    k: {name: "claude-task-k-impl", agent_status: "idle", state_change_seq: 2, pane_id: "w6:p2", screen: "NODE impl RESULT: question /tmp/k-questions.md"}}' <<<"$saved_state")"
+out="$(r resume --repo "$R_REPO" 2>&1)"
+check "resume reads the finished agents first" "agent read claude-task-j-impl" "$(cat "$R_TMP/calls.log")"
+check "a finished agent is shown as such" "attention: impl finished: pass f00d123 (claude-task-j-impl); check and record" "$(lane_block task-j)"
+check "a finished agent: check, then record" "next: claude-task-j-impl finished: pass f00d123: check it, then lane.sh node --lane task-j --node impl --status done --result pass --ref f00d123" "$(lane_block task-j)"
+check "an agent's question not yet recorded: record it, then ask" "next: record the agent's question (lane.sh ask --lane task-k --node impl), then ask the user: impl (claude-task-k-impl) asks: /tmp/k-questions.md" "$(lane_block task-k)"
+rst "$saved_state"
+for l in task-j task-k; do r lane close --repo "$R_REPO" --lane "$l" >/dev/null; done
+
 # the cleanup state that cleanup.sh and the user record (lane.sh set --key cleanup)
 for l in task-j task-k task-l; do
     r lane new --repo "$R_REPO" --lane "$l" --pattern solo --idea "idea $l" --gate t --branch "feat/$l" --owner graph >/dev/null

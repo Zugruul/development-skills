@@ -217,6 +217,7 @@ body() { # selected index, width
               (if isfolded then empty else
                  [ {k: "", l: [chain]},
                    (if .question != "" then {k: "", l: ("? \(.question)" | styled($c.red; $n))} else empty end),
+                   (.attention // [] | .[] | {k: "", l: ("! \(.)" | styled($c.red; $n))}),
                    (.nodes[] | select(.ref != "" and (.ref | test("/"))) | {k: "f\(.ref)", l: ("\(.node): \(.ref)" | styled($c.grey; $n))}),
                    (if (.last // "") != "" then {k: "", l: ("last: \(.last)" | styled($c.grey; $n))} else empty end),
                    prs ]
@@ -409,10 +410,15 @@ open_ref() { # reference, lane JSON
     esac
 }
 
-# The pull requests come from prs.sh's cache. The live panel asks prs.sh to refresh it in
-# the background, at most once a minute; a render never waits on gh or the network.
+# The pull requests come from prs.sh's cache, the finished agents' RESULT lines from drift.sh's.
+# The live panel asks prs.sh to refresh its cache in the background at most once a minute, and
+# drift.sh every 10 seconds; a render never waits on gh, the network or an agent's screen.
 FETCH_PRS=0
-fetch_prs() { [ "$FETCH_PRS" -eq 0 ] || (bash "$HERE/prs.sh" fetch --max-age 60 >/dev/null 2>&1 &); }
+fetch_prs() {
+    [ "$FETCH_PRS" -eq 0 ] && return 0
+    (bash "$HERE/prs.sh" fetch --max-age 60 >/dev/null 2>&1 &)
+    (bash "$HERE/drift.sh" --quiet --max-age 10 >/dev/null 2>&1 &)
+}
 
 jump() { # lane JSON: focus the agent that needs the user, else a running one
     local agent
