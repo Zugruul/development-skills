@@ -13,7 +13,8 @@
 #   panel.sh --buttons [--width N] [--interval S] [--rows R]
 #                                  the bottom line's button columns and row (tests)
 #
-# Layout: no title (Herdr's pane border shows "Graph"), no margin; the lanes from the first line,
+# Layout: no title (Herdr's pane border shows "Graph"), one column of padding each side; the
+# lanes from the first line, each starting with its chevron and its lines hanging under it,
 # NEEDS YOU, WORKING, DONE; a thin divider; the footer pinned to the pane's bottom, its
 # last line ending with the [◷ 5s] and [↻] buttons. The size is read from the terminal on
 # every draw, and a resize (SIGWINCH) redraws at once.
@@ -24,9 +25,11 @@
 # config file ($HERDR_PLUGIN_CONFIG_DIR/config, a line `refresh=10s`), default 5s; the
 # button changes it for this panel only and writes nothing.
 # Mouse: the panel asks the terminal for SGR mouse reports (Herdr passes them to pane apps
-# that ask). A click on a lane selects it; a click on its fold icon (▾ unfolded, ▸ folded)
-# also folds it to its first line or unfolds its chain, question, references and last line.
-# A click on a button presses it.
+# that ask). A click on a lane selects it; a click on its fold chevron (▾ unfolded, ▸ folded)
+# also folds it to its first line or unfolds its chain, question, references, last line and
+# pull requests. A click on a pull request opens it in the browser; on a button presses it.
+# Pull requests: each lane's, from prs.sh's cache (its branch's, and those it mentions),
+# coloured by state; the live panel refreshes the cache in the background.
 # Keys: up/down select a lane, enter or space folds/unfolds it, g jumps to its agent,
 # a answers its question, d shows its detail, f shows only its agents in the sidebar,
 # n only the agents that need you, F all again, r refresh, t interval, q close.
@@ -72,6 +75,7 @@ configured_interval() {
 VIEW="[]"
 UPDATED=""
 refresh_view() {
+    fetch_prs
     VIEW="$(bash "$HERE/status.sh" --json 2>/dev/null)" || VIEW="[]"
     [ -n "$VIEW" ] || VIEW="[]"
     UPDATED="$(date +%H:%M:%S)"
@@ -107,63 +111,80 @@ buttons() { # width, interval, row
 }
 
 # The lanes, one "kind|width|line" per line: kind is the lane's display index, with an h
-# on the lane's first line (the one with the fold icon), or -1 for lines of no lane
-# (section headers, blanks, hints); width is the line's length without the style codes.
+# on the lane's first line (the one with the fold chevron) or u<URL> on a pull request's
+# line, or -1 for lines of no lane (section headers, blanks, hints); width is the line's
+# length without the style codes. One column of padding on each side; a lane's lines
+# hang under it on ├ and └, and long text wraps inside that, under its own start.
 # shellcheck disable=SC2016
-body() { # selected index
-    jq -r --argjson sel "$1" --argjson c "$STYLE" --arg folded "$FOLDED" --argjson seen "$SEEN" "$STYLE_JQ_MARK"'
+body() { # selected index, width
+    jq -r --argjson sel "$1" --argjson w "$2" --argjson c "$STYLE" --arg folded "$FOLDED" --argjson seen "$SEEN" \
+        "$STYLE_JQ_MARK$STYLE_JQ_PR$STYLE_JQ_PRCOLOUR"'
         def chain: [.nodes[] | "\(.node) \(markcolour)\(mark)"
                      + (if .max > 0 and .retries > 0 then " \(.retries)/\(.max)" else "" end) + $c.fg]
                    | join(" \($c.grey)→\($c.fg) ");
         def title: {"needs": "NEEDS YOU", "working": "WORKING", "done": "DONE"}[.];
         def isfolded: .lane as $n | $folded | contains("|\($n)|");
-        # Every other lane (odd display index) has the zebra background on all its lines,
-        # filled to the right edge; the selected row has its own background instead.
+        # plain text -> lines of at most $n columns, broken at spaces, long words cut
+        def wrap($n): if $n < 8 or length <= $n then [.] else
+            reduce (split(" ")[] | if length > $n then ([range(0; length; $n) as $i | .[$i:$i + $n]] | .[]) else . end) as $x
+              ([]; if length > 0 and ((.[-1] + " " + $x) | length) <= $n then .[-1] += " " + $x else . + [$x] end) end;
+        # one child line of a lane: {k: kind suffix, l: [styled lines]}
+        def styled($s; $n): wrap($n) | map("\($s)\(.)\($c.fg)");
+        def prs:
+            (.prs // []) as $p
+            | ([$p[] | "● #\(.number) \(prword)" | length] | max // 0) as $hw
+            | $p[] | "● #\(.number) \(prword)" as $h
+            | {k: "u\(.url)", l: ["\(prcolour)\($h)\($c.fg)\(" " * ($hw - ($h | length) + 2))\($c.grey)\(.url)\($c.fg)"]};
         def lane($i):
-            (if isfolded then "▸" else "▾" end) as $icon
-            | (if $i % 2 == 1 and $c.zebra != "" then $c.zebra else "" end) as $bg
-            | def striped: if $bg == "" then . else "\($bg)\(.)\($c.eol)\($c.reset)" end;
-            (if $i == $sel then
-                 "\($i)h|\($c.selbg)\($icon) \($c.bold)\(.lane)\($c.unbold) \($c.grey)\(.pattern)\($c.fg)\($c.selmark)\($c.eol)\($c.reset)"
-               else "\($i)h|" + ("\($icon) \($c.bold)\(.lane)\($c.unbold) \($c.grey)\(.pattern)\($c.fg)" | striped) end),
+            ($w - 8) as $n
+            | (if isfolded then "▸" else "▾" end) as $icon
+            | (if $i == $sel then
+                 "\($i)h|\($c.selbg) \($icon) \($c.bold)\(.lane)\($c.unbold)  \($c.grey)\(.pattern)\($c.fg)\($c.selmark)\($c.eol)\($c.reset)"
+               else "\($i)h| \($icon) \($c.bold)\(.lane)\($c.unbold)  \($c.grey)\(.pattern)\($c.fg)" end),
               (if isfolded then empty else
-                 ( chain,
-                   (if .question != "" then "\($c.red)? \(.question)\($c.fg)" else empty end),
-                   (.nodes[] | select(.ref != "" and (.ref | test("/"))) | "\($c.grey)\(.node): \(.ref)\($c.fg)"),
-                   (if (.last // "") != "" then "\($c.grey)last: \(.last)\($c.fg)" else empty end)
-                 ) | "\($i)|" + striped
+                 [ {k: "", l: [chain]},
+                   (if .question != "" then {k: "", l: ("? \(.question)" | styled($c.red; $n))} else empty end),
+                   (.nodes[] | select(.ref != "" and (.ref | test("/"))) | {k: "", l: ("\(.node): \(.ref)" | styled($c.grey; $n))}),
+                   (if (.last // "") != "" then {k: "", l: ("last: \(.last)" | styled($c.grey; $n))} else empty end),
+                   prs ]
+                 | length as $m | to_entries[] | .key as $j | .value as $v
+                 | (if $j == $m - 1 then ["└ ", "  "] else ["├ ", "│ "] end) as $tw
+                 | $v.l | to_entries[]
+                 | "\($i)\($v.k)| \($c.grey)  \(if .key == 0 then $tw[0] else $tw[1] end)\($c.fg)\(.value)"
                end);
         def plain: gsub("\u001b\\[[0-9;]*[A-Za-z]"; "");
         ([.[] | select(.section == "needs")] + [.[] | select(.section == "working")] + [.[] | select(.section == "done")]) as $l
-        | ( if ($l | length) == 0 then "-1|No lanes yet.", "-1|\($c.grey)Give the orchestrator an idea.\($c.fg)"
+        | ( if ($l | length) == 0 then "-1| No lanes yet.", "-1| \($c.grey)Give the orchestrator an idea.\($c.fg)"
             else
               ( range(0; $l | length) as $i | $l[$i] as $x
                 | (if $i == 0 or $l[$i - 1].section != $x.section then
                      (if $i == 0 then empty else "-1|" end),
-                     "-1|\($c.head[$x.section])\($x.section | title) (\([$l[] | select(.section == $x.section)] | length))\($c.reset)"
+                     "-1| \($c.head[$x.section])\($x.section | title) (\([$l[] | select(.section == $x.section)] | length))\($c.reset)"
                    else empty end),
                   ($x | lane($i)) ),
               ( if ($seen | length) == 0 then empty else
                   [$l[] | select($seen[.lane] != .section) | "\(.lane) → \(.section | title | ascii_downcase)"]
-                  | if length == 0 then empty else "-1|", "-1|\($c.grey)Since last look: \(join(", "))\($c.fg)" end
+                  | if length == 0 then empty
+                    else "-1|", ("Since last look: \(join(", "))" | wrap($w - 2) | .[] | "-1| \($c.grey)\(.)\($c.fg)") end
                 end )
             end )
         | capture("^(?<k>[^|]*)\\|(?<l>.*)$"; "s") | "\(.k)|\(.l | plain | length)|\(.l)"' <<<"$VIEW"
 }
 
-# The bottom block: a thin grey divider as wide as the pane, then the grey footer, wrapped at its " · " parts to the width,
-# its last line ending with the buttons (on a line of their own when they do not fit).
+# The bottom block: a thin grey divider and the grey footer, inside the one-column padding,
+# the footer wrapped at its " · " parts, its last line ending with the buttons (on a line
+# of their own when they do not fit), one column short of the right edge.
 # shellcheck disable=SC2016
 bottom() { # width, interval
     jq -rn --argjson w "$1" --argjson c "$STYLE" --arg b "[◷ $(label_of "$2")] [↻]" \
         --arg upd "updated $UPDATED" --arg every "every $(label_of "$2")" '
-        ($w - 1) as $max
+        ($w - 2) as $max
         | [$upd, $every, "↵ fold", "g go", "a answer", "d detail", "? keys"]
         | reduce .[] as $p ([];
             if length > 0 and ((.[-1] + " · " + $p) | length) <= $max then .[-1] += " · " + $p else . + [$p] end)
         | (if ((.[-1] | length) + 3 + ($b | length)) <= $max then .[-1] |= . + (" " * ($max - length - ($b | length))) + $b
            else . + [(" " * ($max - ($b | length))) + $b] end)
-        | "\($c.grey)\("─" * $w)\($c.fg)", (.[] | "\($c.grey)\(.)\($c.fg)")'
+        | " \($c.grey)\("─" * $max)\($c.fg)", (.[] | " \($c.grey)\(.)\($c.fg)")'
 }
 
 lane_count() { jq 'length' <<<"$VIEW"; }
@@ -184,9 +205,9 @@ layout() { # width, interval, selected
         rest="${l#*|}"
         TOPWIDTH+=("${rest%%|*}")
         TOP+=("${rest#*|}")
-    done < <(body "$3")
+    done < <(body "$3" "$1")
     while IFS= read -r l; do BOTTOM+=("$l"); done < <(bottom "$1" "$2")
-    [ -z "${MSG:-}" ] || BOTTOM=("${BOTTOM[0]}" "$MSG" "${BOTTOM[@]:1}")
+    [ -z "${MSG:-}" ] || BOTTOM=("${BOTTOM[0]}" " $MSG" "${BOTTOM[@]:1}")
 }
 
 # place decides how many TOP lines fit in the rows above the bottom block and maps every
@@ -236,6 +257,22 @@ open_popup() { # entrypoint, lane JSON
         --env "GRAPH_LANE=$lane" --env "GRAPH_REPO=$repo" >/dev/null 2>&1 || MSG="could not open the $1 popup"
 }
 
+# Opens a pull request in the browser, in the background (GRAPH_BROWSER, else open or xdg-open).
+browse() { # URL
+    local b="${GRAPH_BROWSER:-}"
+    if [ -z "$b" ]; then
+        if command -v open >/dev/null 2>&1; then b=open
+        elif command -v xdg-open >/dev/null 2>&1; then b=xdg-open
+        else MSG="no browser opener (open or xdg-open) for $1"; return 0; fi
+    fi
+    "$b" "$1" >/dev/null 2>&1 &
+}
+
+# The pull requests come from prs.sh's cache. The live panel asks prs.sh to refresh it in
+# the background, at most once a minute; a render never waits on gh or the network.
+FETCH_PRS=0
+fetch_prs() { [ "$FETCH_PRS" -eq 0 ] || (bash "$HERE/prs.sh" fetch --max-age 60 >/dev/null 2>&1 &); }
+
 jump() { # lane JSON: focus the agent that needs the user, else a running one
     local agent
     agent="$(jq -r '[.nodes[] | select(.agent != "" and .live != "")] | (map(select(.live == "blocked")) + map(select(.status == "running")) + .)[0].agent // empty' <<<"$1")"
@@ -247,7 +284,7 @@ jump() { # lane JSON: focus the agent that needs the user, else a running one
 }
 
 act() { # key
-    local n lane i k
+    local n lane k
     n="$(lane_count)"
     lane="$(lane_at "$sel")"
     case "$1" in
@@ -270,16 +307,20 @@ act() { # key
             elif [ "$CLICK_ROW" -eq "$BTN_ROW" ] && [ "$CLICK_COL" -ge "$BTN_RF_FROM" ] && [ "$CLICK_COL" -le "$BTN_RF_TO" ]; then
                 refresh_view
             elif [ "$CLICK_ROW" -ge 1 ] && [ "$CLICK_ROW" -le "${#ROWMAP[@]}" ]; then
-                # A click on a lane selects it; on its fold icon (columns 1-2 of its first
-                # line) it also folds or unfolds it.
+                # A click on a lane selects it; on its fold chevron (columns 2-3 of its first
+                # line) it also folds or unfolds it; on a pull request it opens it.
                 k="${ROWMAP[$((CLICK_ROW - 1))]}"
-                i="${k%h}"
-                if [ "$i" -ge 0 ]; then
-                    sel="$i"
-                    if [ "$k" != "$i" ] && [ "$CLICK_COL" -le 2 ]; then
-                        toggle_fold "$(lane_at "$sel" | jq -r '.lane')"
-                    fi
-                fi
+                case "$k" in
+                    *u*)
+                        sel="${k%%u*}"
+                        browse "${k#*u}" ;;
+                    *h)
+                        sel="${k%h}"
+                        if [ "$CLICK_COL" -ge 2 ] && [ "$CLICK_COL" -le 3 ]; then
+                            toggle_fold "$(lane_at "$sel" | jq -r '.lane')"
+                        fi ;;
+                    *) [ "$k" -lt 0 ] || sel="$k" ;;
+                esac
             fi ;;
     esac
     [ "$sel" -lt "$(lane_count)" ] || sel=0
@@ -365,6 +406,7 @@ case "${1:-}" in
         exit 0
     fi
     frame "$w" "$interval" "$sel"
+    wait
     exit 0 ;;
 "") ;;
 *) usage "panel.sh [--frame ... | --next-interval S | --buttons ...]" ;;
@@ -372,6 +414,7 @@ esac
 
 # ---- interactive ----
 require_tools jq yq git herdr
+FETCH_PRS=1
 interval="$(configured_interval)"
 sel=0 MSG=""
 old_stty="$(stty -g 2>/dev/null)"

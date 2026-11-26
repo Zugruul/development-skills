@@ -102,27 +102,34 @@ herdr plugin install Zugruul/development-skills/plugins/herdr-graph-engineering 
 ```
 
 ```text
- NEEDS YOU (1)                                   (bold red)
- ▎▸ why-slow investigate                         (selected: bar, subtle background)
-    investigate ?                                (? and its question red)
-    ? Staging or production?
-    investigate: /repo/.lanes/why-slow.md        (references and last: grey)
+ NEEDS YOU (1)
+ ▾ review-pr-812  review ◂                    (selected: row background)
+   ├ review ✓ → post ?
+   ├ ? post 4 findings                        (red)
+   └ ● #812 open · approved  https://github.com/o/r/pull/812
 
- WORKING (1)                                     (bold yellow)
-    task-x solo                                  (name bold, pattern grey)
-    impl ✓ → tests ⟳ 1/3                         (✓ green, ⟳ and retries yellow, · grey)
-    last: tests failed, retry 1
+ WORKING (1)
+ ▾ task-rate-limit  solo
+   ├ impl ✓ → tests ⟳ 2/3
+   ├ last: 3 failing                          (grey)
+   ├ ● #820 draft            https://github.com/o/r/pull/820
+   └ ● #818 merged           https://github.com/o/r/pull/818
 
- Since last look: why-slow → needs you
-────────────────────────────────────────────────
+ DONE (1)
+ ▸ investigate-sync  investigate              (folded)
+
+ Since last look: investigate-sync → done
+ ──────────────────────────────────────────────────────────
  updated 10:42:07 · every 5s · ↵ fold · g go · a answer
- d detail · ? keys                     [◷ 5s] [↻]
+ d detail · ? keys                           [◷ 5s] [↻]
 ```
 
 - `/herdr-graph-engineering:display` opens or closes it. Without the Herdr plugin, `display` prints the same picture as text.
-- Refresh: automatic, every 5s by default (`refresh=10s` in `$(herdr plugin config-dir herdr-graph-engineering.graph)/config` changes the start); `[◷ 5s]` or `t` cycles 5s, 10s, 15s, 30s, 1m, 5m; `[↻]` or `r` refreshes now. No title of its own (Herdr's pane border shows "Graph"): the lanes start on the first line, and a thin divider and the dim footer sit on the pane's bottom rows, the footer saying when it last read and ending with the two buttons.
-- Colour: plain ANSI, the same in the panel and its popups: section headers bold red / yellow / green, lane names bold, patterns, references, `last:` lines and the footer grey, node marks coloured by state. `NO_COLOR` turns it off.
-- Mouse: click a lane to select it and fold it to its first line (`…` marks a folded lane) or unfold it again; click a button to press it. Herdr passes mouse reports to the panel because the panel asks for them.
+- Refresh: automatic, every 5s by default (`refresh=10s` in `$(herdr plugin config-dir herdr-graph-engineering.graph)/config` changes the start); `[◷ 5s]` or `t` cycles 5s, 10s, 15s, 30s, 1m, 5m; `[↻]` or `r` refreshes now. No title of its own (Herdr's pane border shows "Graph"), one column of padding each side; a thin divider and the grey footer sit on the pane's bottom rows, the footer saying when it last read and ending with the two buttons. The size is read from the terminal on every draw and a resize redraws at once.
+- Layout: each lane starts with its fold chevron (▾ unfolded, ▸ folded); its chain, question, references, last line and pull requests hang under it on ├ and └, and long lines wrap inside that.
+- Pull requests: each lane lists the pull requests of its branch, in every state, and every GitHub pull request it mentions (idea, question, references, history), so a review lane lists the pull request it reviews. Coloured by state: draft grey, open blue, approved green, changes requested amber, merged purple, closed red. Click one to open it in the browser. `scripts/prs.sh fetch` asks `gh` and caches the answer next to the lane files; the panel starts it in the background at most once a minute and draws from the cache, so a render never waits on the network. Without `gh` the list stays empty.
+- Colour: plain ANSI 24-bit, the same in the panel and its popups: section headers bold red / amber / green, lane names bold, patterns, references, `last:` lines and the footer grey, node marks coloured by state, the selected lane's first line on a subtle background. `NO_COLOR` turns it off (the selected lane is then marked `◂`).
+- Mouse: a click on a lane selects it; a click on its chevron also folds or unfolds it; a click on a pull request opens it; a click on a button presses it. Herdr passes mouse reports to the panel because the panel asks for them.
 - "Since last look" lists the lanes that moved section since your last key or click.
 - Keys: ↑↓ select a lane; enter or space folds or unfolds it; `g` jumps to its agent (the blocked one first); `a` answers its question in a popup (the answer goes to the orchestrator chat, which relays it); `d` lane detail; `f` only this lane's agents in Herdr's sidebar, `n` only the agents that need you, `F` all again; `q` closes it.
 - Actions to bind in your Herdr config (`[[keys.command]] type = "plugin_action"`): `herdr-graph-engineering.graph.toggle`, `.refresh`, `.next-needs-me`.
