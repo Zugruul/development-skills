@@ -102,8 +102,6 @@ herdr plugin install Zugruul/development-skills/plugins/herdr-graph-engineering 
 ```
 
 ```text
- Graph                       [◷ 5s] [↻]
-----------------------------------------
  NEEDS YOU (1)
  ▸ why-slow  investigate
      investigate ?
@@ -114,10 +112,11 @@ herdr plugin install Zugruul/development-skills/plugins/herdr-graph-engineering 
      impl ✓ → tests ⟳ 1/3
 
  updated 10:42:07 · every 5s · ⏎ go · a answer · d detail · ? keys
+                             [◷ 5s] [↻]
 ```
 
 - `/herdr-graph-engineering:display` opens or closes it. Without the Herdr plugin, `display` prints the same picture as text.
-- Refresh: automatic, every 5s by default (`refresh=10s` in `$(herdr plugin config-dir herdr-graph-engineering.graph)/config` changes the start); `[◷ 5s]` or `t` cycles 5s, 10s, 15s, 30s, 1m, 5m; `[↻]` or `r` refreshes now. The footer says when it last read.
+- Refresh: automatic, every 5s by default (`refresh=10s` in `$(herdr plugin config-dir herdr-graph-engineering.graph)/config` changes the start); `[◷ 5s]` or `t` cycles 5s, 10s, 15s, 30s, 1m, 5m; `[↻]` or `r` refreshes now. The footer says when it last read; the two buttons sit on the bottom line, and the panel draws no title of its own (Herdr's pane border shows "Graph").
 - Keys: ↑↓ select a lane; enter jumps to its agent (the blocked one first); `a` answers its question in a popup (the answer goes to the orchestrator chat, which relays it); `d` lane detail; `f` only this lane's agents in Herdr's sidebar, `n` only the agents that need you, `F` all again; `q` closes it.
 - Actions to bind in your Herdr config (`[[keys.command]] type = "plugin_action"`): `herdr-graph-engineering.graph.toggle`, `.refresh`, `.next-needs-me`.
 - Ctrl-click a `.md` report path or a GitHub pull request URL to open it in a popup.

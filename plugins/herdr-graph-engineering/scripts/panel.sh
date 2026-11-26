@@ -7,8 +7,8 @@
 #   panel.sh --frame [--width N] [--interval S] [--selected I]
 #                                  print one frame and exit (tests, a quick look)
 #   panel.sh --next-interval S     the interval after S in the cycle (tests)
-#   panel.sh --buttons [--width N] [--interval S]
-#                                  the header's button columns (tests)
+#   panel.sh --buttons [--width N] [--interval S] [--rows R]
+#                                  the bottom line's button columns and row (tests)
 #
 # It only reads: the lane files and Herdr, through status.sh. Every write still goes
 # through lane.sh and every answer through the orchestrator.
@@ -62,19 +62,21 @@ refresh_view() {
     UPDATED="$(date +%H:%M:%S)"
 }
 
-# The header with its two buttons. Their symbols are one column wide everywhere (no emoji),
-# so the click columns can be computed from plain lengths: label + 4 for the interval button.
-BTN_IV_FROM=0 BTN_IV_TO=0 BTN_RF_FROM=0 BTN_RF_TO=0
-header() { # width, interval
+# The bottom line with the two buttons, right-aligned; no title, Herdr's pane border has it.
+# The button symbols are one column wide everywhere (no emoji), so the click columns can be
+# computed from plain lengths: label + 4 for the interval button. BTN_ROW is the pane's last row.
+BTN_IV_FROM=0 BTN_IV_TO=0 BTN_RF_FROM=0 BTN_RF_TO=0 BTN_ROW=0
+buttons() { # width, interval, rows -> the line, without a newline
     local w="$1" label pad
     label="$(label_of "$2")"
-    pad=$((w - 6 - (${#label} + 4) - 3 - 2))
-    [ "$pad" -ge 1 ] || pad=1
-    BTN_IV_FROM=$((6 + pad + 1))
+    pad=$((w - (${#label} + 4) - 3 - 2))
+    [ "$pad" -ge 0 ] || pad=0
+    BTN_ROW="$3"
+    BTN_IV_FROM=$((pad + 1))
     BTN_IV_TO=$((BTN_IV_FROM + ${#label} + 3))
     BTN_RF_FROM=$((BTN_IV_TO + 2))
     BTN_RF_TO=$((BTN_RF_FROM + 2))
-    printf ' Graph%*s[◷ %s] [↻]\n' "$pad" "" "$label"
+    printf '%*s[◷ %s] [↻]' "$pad" "" "$label"
 }
 
 # The body: one entry per lane, NEEDS YOU first; the selected lane is marked with ▸.
@@ -85,11 +87,11 @@ body() { # selected index
                   elif .status == "blocked" then "?" elif .status == "skipped" then "–" else "·" end;
         def chain: [.nodes[] | "\(.node) \(mark)" + (if .max > 0 and .retries > 0 then " \(.retries)/\(.max)" else "" end)] | join(" → ");
         ([.[] | select(.section == "needs")] + [.[] | select(.section == "working")] + [.[] | select(.section == "done")]) as $l
-        | if ($l | length) == 0 then "", " No lanes yet.", " Give the orchestrator an idea."
+        | if ($l | length) == 0 then " No lanes yet.", " Give the orchestrator an idea."
           else
             [ range(0; $l | length) as $i | $l[$i] as $x
               | (if $i == 0 or $l[$i - 1].section != $x.section then
-                   ["", ({"needs": " NEEDS YOU", "working": " WORKING", "done": " DONE"}[$x.section]
+                   (if $i == 0 then [] else [""] end) + [({"needs": " NEEDS YOU", "working": " WORKING", "done": " DONE"}[$x.section]
                          + " (\([$l[] | select(.section == $x.section)] | length))")] else [] end)
                 + ["\(if $i == $sel then " ▸ " else "   " end)\($x.lane)  \($x.pattern)",
                    "     \($x | chain)"]
@@ -104,12 +106,16 @@ lane_at() { # index -> one line of JSON
     jq -c --argjson i "$1" '([.[] | select(.section == "needs")] + [.[] | select(.section == "working")] + [.[] | select(.section == "done")])[$i] // empty' <<<"$VIEW"
 }
 
-frame() { # width, interval, selected
-    local w="$1"
-    header "$w" "$2"
-    printf '%s\n' "$(printf '%*s' "$w" '' | tr ' ' '-')"
-    body "$3"
-    printf '\n %s\n' "updated $UPDATED · every $(label_of "$2") · ⏎ go · a answer · d detail · ? keys"
+# The lanes from the first line, then the footer. The buttons follow on the bottom line.
+content() { # interval, selected
+    body "$2"
+    printf '\n %s\n' "updated $UPDATED · every $(label_of "$1") · ⏎ go · a answer · d detail · ? keys"
+}
+
+frame() { # width, interval, selected: one frame as text, the buttons on its last line
+    content "$2" "$3"
+    buttons "$1" "$2" 0
+    printf '\n'
 }
 
 # Herdr's agent view lives on the socket only; nc -U talks to it when available.
@@ -144,11 +150,18 @@ jump() { # lane JSON: focus the agent that needs the user, else a running one
 case "${1:-}" in
 --next-interval) next_interval "${2:?}"; exit 0 ;;
 --buttons)
-    w=48 iv=5
-    [ "${2:-}" = --width ] && w="$3"
-    [ "${4:-}" = --interval ] && iv="$5"
-    header "$w" "$iv" >/dev/null
-    printf 'IV %s-%s RF %s-%s\n' "$BTN_IV_FROM" "$BTN_IV_TO" "$BTN_RF_FROM" "$BTN_RF_TO"
+    shift
+    w=48 iv=5 rows=24
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --width) w="$2"; shift 2 ;;
+            --interval) iv="$2"; shift 2 ;;
+            --rows) rows="$2"; shift 2 ;;
+            *) usage "panel.sh --buttons [--width N] [--interval S] [--rows R]" ;;
+        esac
+    done
+    buttons "$w" "$iv" "$rows" >/dev/null
+    printf 'IV %s-%s RF %s-%s ROW %s\n' "$BTN_IV_FROM" "$BTN_IV_TO" "$BTN_RF_FROM" "$BTN_RF_TO" "$BTN_ROW"
     exit 0 ;;
 --frame)
     shift
@@ -182,12 +195,16 @@ stty -echo -icanon 2>/dev/null
 printf '\033[?1049h\033[?25l\033[?1000h\033[?1006h\033]0;%s\007' "$PANEL_TITLE"
 
 draw() {
-    local w
+    local w h
     w="$(tput cols 2>/dev/null || echo 48)"
+    h="$(tput lines 2>/dev/null || echo 24)"
     printf '\033[H\033[2J'
-    frame "$w" "$interval" "$sel"
+    content "$interval" "$sel"
     [ -z "$MSG" ] || printf ' %s\n' "$MSG"
     MSG=""
+    # The buttons on the pane's last row; no newline after them, so nothing scrolls.
+    printf '\033[%s;1H' "$h"
+    buttons "$w" "$interval" "$h"
 }
 
 act() { # key
@@ -208,9 +225,9 @@ act() { # key
         "?") MSG="↑↓ select · ⏎ go · a answer · d detail · f lane only · n needs me · F all · r refresh · t interval · q close" ;;
         q) exit 0 ;;
         click)
-            if [ "$CLICK_ROW" -eq 1 ] && [ "$CLICK_COL" -ge "$BTN_IV_FROM" ] && [ "$CLICK_COL" -le "$BTN_IV_TO" ]; then
+            if [ "$CLICK_ROW" -eq "$BTN_ROW" ] && [ "$CLICK_COL" -ge "$BTN_IV_FROM" ] && [ "$CLICK_COL" -le "$BTN_IV_TO" ]; then
                 interval="$(next_interval "$interval")"
-            elif [ "$CLICK_ROW" -eq 1 ] && [ "$CLICK_COL" -ge "$BTN_RF_FROM" ] && [ "$CLICK_COL" -le "$BTN_RF_TO" ]; then
+            elif [ "$CLICK_ROW" -eq "$BTN_ROW" ] && [ "$CLICK_COL" -ge "$BTN_RF_FROM" ] && [ "$CLICK_COL" -le "$BTN_RF_TO" ]; then
                 refresh_view
             fi ;;
     esac
