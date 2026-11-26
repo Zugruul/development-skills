@@ -120,7 +120,7 @@ When the planner's lane is done, validate its file: `check-pattern.sh <file> --r
 
 ## 6. After a lane
 
-When the user has merged a lane's pull request (`gh pr view <n> --json state` says `MERGED`), or has read a report lane's answer, offer cleanup: remove the worktree with `herdr worktree remove --workspace <id>` (never `--force`; a dirty checkout is the user's to decide), then `lane.sh close --lane L`. Branches are kept. The graph panel's `[x]` on a DONE lane sends you "Clean up lane L": treat it as the user asking for this cleanup, and still confirm before removing the worktree. `lane.sh clear --lane L` only moves a closed lane's file to `closed/cleared/` (the panel's `[x]` on a CLOSED lane, `[clear all reviews]` and `[clear all]`).
+When the user has merged a lane's pull request (`gh pr view <n> --json state` says `MERGED`), or has read a report lane's answer, offer cleanup: remove the worktree with `herdr worktree remove --workspace <id>` (never `--force`; a dirty checkout is the user's to decide), then `lane.sh close --lane L`. Branches are kept. The graph panel's `[x]` on a DONE lane sends you "Clean up lane L": treat it as the user asking for this cleanup, and still confirm before removing the worktree. `lane.sh clear --lane L` only moves a closed lane's file to `closed/cleared/` (the panel's `[x]` on a CLOSED lane, `[clear all reviews]` and `[clear all]`). `lane.sh restore --lane L` moves a closed lane's file back with its last status (the panel's `[restore]`); it brings back the record only, so if the user wants to work on it again, recreate the worktree and agents as for a new lane.
 
 ## Reports
 
