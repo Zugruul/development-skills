@@ -93,7 +93,8 @@ kind.sh --role R [--not K] [--without K] --list|--kind K|--remember K   the inst
 gate.sh --lane L --node N --pane P                      run a gate in a visible tab, record its exit code
 close-done.sh --lane L [--dry-run]                      close the tabs of finished agent and gate nodes (CLOSE/KEEP per node)
 cleanup.sh check | run --lane L                          find lanes ready for cleanup and ask; clean one up after your yes
-status.sh [--text|--line|--json]                        the picture of every lane (display, tab bar)
+status.sh [--text|--line|--json]                        the picture of every lane (display, tab bar), lane files plus live agents
+drift.sh [--repo R] [--quiet]                           where lane files and live agents disagree, with the lane.sh command to fix it
 check-pattern.sh (FILE | --name P)                      validate a pattern
 make-review-stack.sh --pr URL --pr URL ... --out FILE    the graph for reviewing related pull requests
 check.sh                                                inside Herdr?
@@ -111,6 +112,20 @@ Every agent and gate node runs in its own tab, recorded in the lane file (`lane.
 - at lane done or close, every agent and gate tab of the lane closes.
 
 Never closed: a tab not recorded for a node, a running or blocked node, an agent Herdr shows working or blocked, the first tab of the lane's workspace, a tab outside it. The worktree stays until you agree to cleanup.
+
+## When a lane file is behind
+
+A lane file changes only when the orchestrator records a node, and it records what it is listening to. So the picture does not trust the file alone. For every node recorded `running`, `status.sh` (and the panel through it) looks at its agent in Herdr:
+
+- blocked: NEEDS YOU, "blocked, waiting for an answer on its screen";
+- gone from Herdr: NEEDS YOU, "agent gone";
+- idle or done with a last line `NODE <node> RESULT: question <ref>`: NEEDS YOU, with the agent's question as the lane's question (the panel's answer popup relays your answer);
+- idle or done with `RESULT: pass|fail <ref>`: NEEDS YOU, "finished: pass ...; check and record" (the orchestrator still checks the evidence before it records a pass);
+- idle with no RESULT line: NEEDS YOU, "stopped without a RESULT line".
+
+`status.sh` never reads a screen: `drift.sh` reads the finished agents' screens and caches the RESULT lines in `<git common dir>/herdr-graph/live.json`, and a cached line counts only while the agent stays in the state it was read in. The panel runs `drift.sh --quiet` in the background every 10 seconds; the orchestrator runs `drift.sh` after every listen event and before every report, and records what it prints (`DRIFT <lane>/<node> ... | <lane.sh command>`, or `NO DRIFT`).
+
+A lane whose own pull request merged (its recorded `pr`, a node's pull request, or the one for its branch, from `prs.sh`'s cache) shows under NEEDS YOU as "PR #N merged, waiting for cleanup confirmation" until the cleanup is confirmed or declined.
 
 ## Cleanup after a lane
 

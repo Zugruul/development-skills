@@ -112,6 +112,7 @@ check "it says so" "PR #5 merged, waiting for cleanup confirmation" "$(lj merged
 check "a merged pull request it only mentions does not count" "working" "$(sect other)"
 check "a declined cleanup does not ask again" "working" "$(sect kept)"
 check "drift.sh points to cleanup.sh" "DRIFT merged pr-merged: PR #5 merged | cleanup.sh check --repo $D_REPO --lane merged" "$(dg drift --repo "$D_REPO")"
+dg lane set --repo "$D_REPO" --lane merged --key cleanup --value ready >/dev/null
 dg lane set --repo "$D_REPO" --lane merged --key cleanup --value confirmed >/dev/null
 check "a confirmed cleanup says what runs next" "PR #5 merged, cleanup confirmed: cleanup.sh run" "$(lj merged '.attention | join(" ")')"
 dg lane close --repo "$D_REPO" --lane merged >/dev/null

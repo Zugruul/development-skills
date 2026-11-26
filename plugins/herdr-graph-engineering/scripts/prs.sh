@@ -7,7 +7,7 @@
 #   pull request the lane mentions (its idea, question, references, history): what an
 #   orchestrator report lists as an agent's pull requests. Asked of gh, written to
 #   <lane folder>/prs.json: {"fetched": epoch seconds, "lanes": {lane: [{number, url, state,
-#   isDraft, reviewDecision}]}}, oldest first.
+#   isDraft, reviewDecision, headRefName}]}}, oldest first.
 #   --max-age S  leave a repository whose cache is younger than S seconds (default 0: always fetch)
 # Without --repo: every repository with a workspace open in Herdr, plus the current one.
 # It never fails its caller: without gh, on a failed call or while another fetch holds the
@@ -41,7 +41,7 @@ if [ -z "$repos" ]; then
 $here_root"
 fi
 
-FIELDS="number,url,state,isDraft,reviewDecision"
+FIELDS="number,url,state,isDraft,reviewDecision,headRefName"
 PR_URL='https://github\.com/[^/ "]+/[^/ "]+/pull/[0-9]+'
 
 fetch_repo() { # repo dir
