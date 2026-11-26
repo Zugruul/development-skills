@@ -12,6 +12,9 @@ PLUGIN="$(cd "$HERE/.." && pwd)"
 # shellcheck disable=SC2034  # FIX is used by the section-*.sh files
 FIX="$HERE/fixtures"
 fails=0
+# Plugin state (the panel-action pane records) never reaches the real home folder.
+TEST_STATE="$(mktemp -d)"
+export XDG_STATE_HOME="$TEST_STATE"
 
 # shellcheck source=plugins/herdr-graph-engineering/tests/_lib.sh
 source "$HERE/_lib.sh"
@@ -21,6 +24,7 @@ for section in "$HERE"/section-*.sh; do
     source "$section"
 done
 
+rm -rf "$TEST_STATE"
 echo "---"
 if [[ "$fails" -eq 0 ]]; then
     echo "ALL PASS"

@@ -116,7 +116,12 @@ case "$cmd" in
         case "${3:-}" in
             open)
                 ep="$(opt --entrypoint "$@")" target="$(opt --target-pane "$@")"
-                save "$(st | jq -c --arg e "$ep" --arg t "$target" '.opened += [{entrypoint: $e, target: $t}]')"
+                [ "$(st | jq -r '.plugin_open // "ok"')" = "fail" ] && fail plugin_pane_open_failed
+                # The new pane joins pane_list in the target's tab, untitled (its title comes later).
+                save "$(st | jq -c --arg e "$ep" --arg t "$target" '
+                    ([(.pane_list // [])[] | select(.pane_id == $t)][0].tab_id // ([(.agents // {})[] | select(.pane_id == $t)][0].tab_id) // "w1:t1") as $tab
+                    | .opened += [{entrypoint: $e, target: $t}]
+                    | if $e == "panel" then .pane_list = ((.pane_list // []) + [{pane_id: "w9:p9", tab_id: $tab}]) else . end')"
                 ok "$(jq -cn --arg e "$ep" '{type: "plugin_pane_opened", plugin_pane: {entrypoint: $e, pane: {pane_id: "w9:p9"}}}')" ;;
             close)
                 save "$(st | jq -c --arg p "${4:-}" '.closed += [$p] | .pane_list |= map(select(.pane_id != $p))')"
@@ -140,7 +145,6 @@ case "$cmd" in
         [ "$(st | jq -r '.worktree_remove // "ok"')" = ok ] || fail worktree_dirty "the checkout has changes"
         save "$(st | jq -c --arg w "$(opt --workspace "$@")" '.worktrees_removed += [$w]')"
         ok '{"type":"worktree_removed"}' ;;
-    "notification show") ok '{"type":"notification_show","shown":true}' ;;
     # Tabs live in state.tabs, keyed by tab id; `tab close` removes one and records it in
     # state.tabs_closed (the call is in calls.log too).
     "tab create")
@@ -162,5 +166,12 @@ case "$cmd" in
         st | jq -e --arg t "${3:-}" '(.tabs // {}) | has($t)' >/dev/null || fail tab_not_found "tab ${3:-} not found"
         save "$(st | jq -c --arg t "${3:-}" 'del(.tabs[$t]) | .tabs_closed += [$t]')"
         ok '{"type":"tab_closed"}' ;;
+    "config check")
+        if [ "$(st | jq -r '.config_check // "ok"')" = "fail" ]; then echo "config: issues found"; exit 1; fi
+        echo "config: ok"
+        exit 0 ;;
+    "notification show")
+        save "$(st | jq -c --arg t "${3:-}" '.notified += [$t]')"
+        ok '{"type":"notification_show","shown":true}' ;;
 esac
 fail stub_unsupported "$cmd"
