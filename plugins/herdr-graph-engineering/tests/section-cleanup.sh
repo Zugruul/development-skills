@@ -64,6 +64,12 @@ kst '{}'
 out="$(k cleanup check --repo "$K_REPO" --lane dirty-1 2>&1)"
 check "the recorded pull request is used" "pr view https://github.com/o/r/pull/12" "$(cat "$K_TMP/gh.log")"
 check "a merged lane with a dirty checkout is not ready" "BLOCKED dirty-1 (the checkout has uncommitted changes" "$out"
+K_GATES="$(git -C "$K_REPO" rev-parse --path-format=absolute --git-common-dir)/herdr-graph/gates/dirty-1"
+mkdir -p "$K_GATES" && printf '{"node":"tests","finished":true,"changed":["?? notes.txt"]}' >"$K_GATES/tests.json"
+kst '{}'
+out="$(k cleanup check --repo "$K_REPO" --lane dirty-1 2>&1)"
+check "a change a gate made is named, to restore it" "changed by gate tests: ?? notes.txt" "$out"
+rm -rf "$K_GATES"
 check "it goes to the user with the reason" "uncommitted changes" "$(klf '.question' dirty-1)"
 check "the user is notified about it" "notification show dirty-1 needs you" "$(cat "$K_TMP/calls.log")"
 k lane answer --repo "$K_REPO" --lane dirty-1 --text "I will look" >/dev/null
