@@ -84,7 +84,7 @@ check_absent "nothing moved, no since-last-look line" "Since last look" "$(pg pa
 echo "== panel: colour =="
 # The mockup's colours, as 24-bit SGR: red f85149, amber d29922, green 3fb950, grey 8b949e,
 # the selected row's background 21262d.
-RED="${E}[38;2;248;81;73m" AMB="${E}[38;2;210;153;34m" GRN="${E}[38;2;63;185;80m" GRY="${E}[38;2;139;148;158m"
+RED="${E}[38;2;248;81;73m" AMB="${E}[38;2;210;153;34m" GRY="${E}[38;2;139;148;158m"
 out="$(pgc panel --frame --width 40 --interval 5)"
 check "NEEDS YOU is a bold red header" "${E}[1m${RED}NEEDS YOU (1)" "$out"
 check "WORKING is a bold amber header" "${E}[1m${AMB}WORKING (1)" "$out"
@@ -98,7 +98,7 @@ check "the divider is grey" "${GRY}────" "$out"
 ZEB="${E}[48;2;22;27;34m"
 check "zebra: every other lane's first line has the subtle background" "${ZEB}▾ ${E}[1mtask-x" "$out"
 check "zebra: and so do its other lines, filled to the edge" "${ZEB}impl " "$out"
-check "zebra: each striped line ends by filling the row and resetting" "1" "$(grep "^${ZEB}impl " <<<"$out" | grep -c "${E}\[K${E}\[0m$")"
+check "zebra: each striped line ends by filling the row and resetting" "1" "$(grep -F "${ZEB}impl " <<<"$out" | grep -cF "${E}[K${E}[0m")"
 check_absent "zebra: the first lane's lines have no stripe" "${ZEB}investigate" "$out"
 check "zebra: the selected row keeps its own background" "${E}[48;2;33;38;45m▾ ${E}[1mtask-x" "$(pgc panel --frame --width 40 --selected 1)"
 check_absent "no 256-colour or dim codes, only the mockup's colours" "${E}[2;" "$out"

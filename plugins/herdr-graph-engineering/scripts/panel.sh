@@ -117,17 +117,21 @@ body() { # selected index
                    | join(" \($c.grey)→\($c.fg) ");
         def title: {"needs": "NEEDS YOU", "working": "WORKING", "done": "DONE"}[.];
         def isfolded: .lane as $n | $folded | contains("|\($n)|");
+        # Every other lane (odd display index) has the zebra background on all its lines,
+        # filled to the right edge; the selected row has its own background instead.
         def lane($i):
             (if isfolded then "▸" else "▾" end) as $icon
-            | (if $i == $sel then
+            | (if $i % 2 == 1 and $c.zebra != "" then $c.zebra else "" end) as $bg
+            | def striped: if $bg == "" then . else "\($bg)\(.)\($c.eol)\($c.reset)" end;
+            (if $i == $sel then
                  "\($i)h|\($c.selbg)\($icon) \($c.bold)\(.lane)\($c.unbold) \($c.grey)\(.pattern)\($c.fg)\($c.selmark)\($c.eol)\($c.reset)"
-               else "\($i)h|\($icon) \($c.bold)\(.lane)\($c.unbold) \($c.grey)\(.pattern)\($c.fg)" end),
+               else "\($i)h|" + ("\($icon) \($c.bold)\(.lane)\($c.unbold) \($c.grey)\(.pattern)\($c.fg)" | striped) end),
               (if isfolded then empty else
                  ( chain,
                    (if .question != "" then "\($c.red)? \(.question)\($c.fg)" else empty end),
                    (.nodes[] | select(.ref != "" and (.ref | test("/"))) | "\($c.grey)\(.node): \(.ref)\($c.fg)"),
                    (if (.last // "") != "" then "\($c.grey)last: \(.last)\($c.fg)" else empty end)
-                 ) | "\($i)|\(.)"
+                 ) | "\($i)|" + striped
                end);
         def plain: gsub("\u001b\\[[0-9;]*[A-Za-z]"; "");
         ([.[] | select(.section == "needs")] + [.[] | select(.section == "working")] + [.[] | select(.section == "done")]) as $l

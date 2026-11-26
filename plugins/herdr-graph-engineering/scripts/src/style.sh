@@ -8,17 +8,18 @@
 # shellcheck disable=SC2034
 
 # The colours are the mockup's, as 24-bit SGR: red f85149, amber d29922, green 3fb950,
-# grey 8b949e, the selected row's background 21262d. Without colour the selected row ends
+# grey 8b949e, the selected row's background 21262d, every other lane's background 161b22
+# (the zebra, so a lane and its lines read as one block). Without colour the selected row ends
 # with S_SELMARK instead of the background.
 if [ -n "${NO_COLOR:-}" ]; then
     S_BOLD="" S_UNBOLD="" S_FG="" S_RESET="" S_EOL=""
-    S_GREY="" S_RED="" S_YELLOW="" S_GREEN="" S_SELBG="" S_SELMARK=" ◂"
+    S_GREY="" S_RED="" S_YELLOW="" S_GREEN="" S_SELBG="" S_ZEBRA="" S_SELMARK=" ◂"
     S_H_NEEDS="" S_H_WORKING="" S_H_DONE=""
 else
     _e=$'\033'
     S_BOLD="${_e}[1m" S_UNBOLD="${_e}[22m" S_FG="${_e}[39m" S_RESET="${_e}[0m" S_EOL="${_e}[K"
     S_GREY="${_e}[38;2;139;148;158m" S_RED="${_e}[38;2;248;81;73m" S_YELLOW="${_e}[38;2;210;153;34m"
-    S_GREEN="${_e}[38;2;63;185;80m" S_SELBG="${_e}[48;2;33;38;45m" S_SELMARK=""
+    S_GREEN="${_e}[38;2;63;185;80m" S_SELBG="${_e}[48;2;33;38;45m" S_ZEBRA="${_e}[48;2;22;27;34m" S_SELMARK=""
     S_H_NEEDS="$S_BOLD$S_RED" S_H_WORKING="$S_BOLD$S_YELLOW" S_H_DONE="$S_BOLD$S_GREEN"
     unset _e
 fi
@@ -26,10 +27,10 @@ fi
 style_json() { # the styles as one JSON object, for jq --argjson c
     jq -cn --arg bold "$S_BOLD" --arg unbold "$S_UNBOLD" --arg fg "$S_FG" --arg reset "$S_RESET" \
         --arg eol "$S_EOL" --arg grey "$S_GREY" --arg red "$S_RED" \
-        --arg yellow "$S_YELLOW" --arg green "$S_GREEN" --arg selbg "$S_SELBG" --arg selmark "$S_SELMARK" \
+        --arg yellow "$S_YELLOW" --arg green "$S_GREEN" --arg selbg "$S_SELBG" --arg zebra "$S_ZEBRA" --arg selmark "$S_SELMARK" \
         --arg needs "$S_H_NEEDS" --arg working "$S_H_WORKING" --arg hdone "$S_H_DONE" \
         '{bold: $bold, unbold: $unbold, fg: $fg, reset: $reset, eol: $eol, grey: $grey,
-          red: $red, yellow: $yellow, green: $green, selbg: $selbg, selmark: $selmark,
+          red: $red, yellow: $yellow, green: $green, selbg: $selbg, zebra: $zebra, selmark: $selmark,
           head: {needs: $needs, working: $working, done: $hdone}}'
 }
 
