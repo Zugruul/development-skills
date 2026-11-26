@@ -16,6 +16,7 @@ cst() { # tab ids, then optional extra jq applied to the state
     : >"$C_TMP/calls.log"
 }
 clf() { yq -r "$1" "$(git -C "$C_REPO" rev-parse --path-format=absolute --git-common-dir)/herdr-graph/$2.yaml"; }
+c_herdr() { PATH="$FIX/stub-herdr:$PATH" HERDR_STUB_DIR="$C_TMP" herdr "$@"; }
 cnode() { c lane node --repo "$C_REPO" "$@" >/dev/null; }
 cd_() { c close-done --repo "$C_REPO" "$@" 2>&1; }
 
@@ -124,6 +125,23 @@ out="$(cd_ --lane solo-2)"
 check "a closed lane's tabs close too" "CLOSE impl w2:t2 (lane is closed)" "$out"
 check "the closed lane's tab is closed" "tab close w2:t2" "$(cat "$C_TMP/calls.log")"
 
+echo "== close: the skill's steps record the tab id, not the pane id =="
+c lane new --repo "$C_REPO" --lane ids-1 --pattern investigate --idea x --workspace w5 >/dev/null
+cst ""
+created="$(c_herdr tab create --workspace w5 --cwd /w --label investigate --no-focus)"
+pane="$(jq -r '.result.root_pane.pane_id' <<<"$created")"
+tab="$(c_herdr pane get "$pane" | jq -r '.result.pane.tab_id')"
+check_absent "in the fixture a tab id is not its pane id" "$pane" "$tab"
+cnode --lane ids-1 --node investigate --status running --agent claude-ids-1-investigate --tab "$tab"
+cnode --lane ids-1 --node investigate --status "done" --result pass
+out="$(cd_ --lane ids-1)"
+check "the tab read through pane get is closed" "CLOSE investigate $tab" "$out"
+check_absent "it is not mistaken for a gone tab" "GONE" "$out"
+check "herdr closes that tab" "tab close $tab" "$(cat "$C_TMP/calls.log")"
+check "the stub no longer has it" "$tab" "$(jq -r '.tabs_closed | join(" ")' "$C_TMP/state.json")"
+check "orchestrate: reads the tab id through pane get" "herdr pane get <its root pane id>" "$(cat "$PLUGIN/skills/orchestrate/SKILL.md")"
+check "orchestrate: names the tab id field" ".result.pane.tab_id" "$(cat "$PLUGIN/skills/orchestrate/SKILL.md")"
+
 echo "== close: what is never closed =="
 c lane new --repo "$C_REPO" --lane inv-1 --pattern investigate --idea x --workspace w2 >/dev/null
 cnode --lane inv-1 --node investigate --status "done" --result pass --tab w2:t1
@@ -157,4 +175,4 @@ check "orchestrate: closes every agent tab at lane done" "at lane done" "$orch"
 
 rm -rf "$C_TMP"
 unset XDG_CONFIG_HOME
-unset -f c cst clf cnode cd_
+unset -f c c_herdr cst clf cnode cd_

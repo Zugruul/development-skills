@@ -143,6 +143,17 @@ case "$cmd" in
     "notification show") ok '{"type":"notification_show","shown":true}' ;;
     # Tabs live in state.tabs, keyed by tab id; `tab close` removes one and records it in
     # state.tabs_closed (the call is in calls.log too).
+    "tab create")
+        # A new tab gets tab id <ws>:t<n> and a root pane <ws>:p<n+10>, so the two ids differ.
+        w="$(opt --workspace "$@")"
+        new="$(st | jq -c --arg w "$w" '
+            ([(.tabs // {})[] | select(.workspace_id == $w)] | length + 2) as $n
+            | {tab_id: "\($w):t\($n)", workspace_id: $w, number: $n, agent_status: "unknown", label: "x"} as $t
+            | .tabs[$t.tab_id] = $t
+            | .pane_list += [{pane_id: "\($w):p\($n + 10)", tab_id: $t.tab_id, workspace_id: $w}]
+            | .last_tab = $t | .last_pane = "\($w):p\($n + 10)"')"
+        save "$new"
+        ok "$(printf '%s' "$new" | jq -c '{type: "tab_created", tab: .last_tab, root_pane: {pane_id: .last_pane}}')" ;;
     "tab get")
         t="$(st | jq -c --arg t "${3:-}" '(.tabs // {})[$t] // empty')"
         [ -n "$t" ] || fail tab_not_found "tab ${3:-} not found"
