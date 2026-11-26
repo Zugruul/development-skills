@@ -118,6 +118,19 @@ check_rc "cleanup takes only known values" 2 "$rc"
 
 echo "== cleanup: the user says yes =="
 kgh "{\"feat/merged-1\": {\"state\": \"MERGED\", \"number\": 11, \"url\": \"https://github.com/o/r/pull/11\", \"headRefOid\": \"$head_a\"}}"
+kst '{"tabs": {"w-merged-1:t2": {"tab_id": "w-merged-1:t2", "workspace_id": "w-merged-1", "number": 2, "agent_status": "idle"}}}'
+out="$(k cleanup run --repo "$K_REPO" --lane merged-1 2>&1)"; rc=$?
+check_rc "a question asked is not a yes: run refuses" 6 "$rc"
+check "the refusal says the user has not confirmed" "NOT CONFIRMED" "$out"
+check_absent "without a yes no tab is closed" "tab close" "$(cat "$K_TMP/calls.log")"
+check_absent "without a yes no worktree is removed" "worktree remove" "$(cat "$K_TMP/calls.log")"
+check "without a yes the lane stays open" "done" "$(klf '.status' merged-1)"
+out="$(k lane set --repo "$K_REPO" --lane dirty-1 --key cleanup --value confirmed 2>&1)"; rc=$?
+check_rc "only a lane asked about cleanup can be confirmed" 6 "$rc"
+k lane answer --repo "$K_REPO" --lane merged-1 --text "yes, clean it up" >/dev/null
+k lane set --repo "$K_REPO" --lane merged-1 --key cleanup --value confirmed >/dev/null
+check "the yes is recorded" "confirmed" "$(klf '.cleanup' merged-1)"
+check "a confirmed lane is reported as such" "CONFIRMED merged-1" "$(k cleanup check --repo "$K_REPO" --lane merged-1 2>&1)"
 kst '{"tabs": {"w-merged-1:t2": {"tab_id": "w-merged-1:t2", "workspace_id": "w-merged-1", "number": 2, "agent_status": "idle"}, "w-merged-1:t3": {"tab_id": "w-merged-1:t3", "workspace_id": "w-merged-1", "number": 2, "agent_status": "idle"}}, "worktree_remove": "fail"}'
 out="$(k cleanup run --repo "$K_REPO" --lane merged-1 2>&1)"; rc=$?
 check_rc "a failed worktree removal stops the cleanup" 1 "$rc"
@@ -134,13 +147,14 @@ check_absent "never with --force" "--force" "$calls"
 check "the lane is closed" "merged-1	closed" "$(k lane list --all --repo "$K_REPO")"
 check "the cleanup is reported" "CLEANED merged-1" "$out"
 check "the branch is kept" "feat/merged-1" "$(git -C "$K_REPO" branch --list feat/merged-1)"
-check "the confirmation is in the history" "answer: cleanup confirmed" "$(klf '.history | join("\n")' merged-1)"
+check "the user's yes is in the history" "answer: yes, clean it up" "$(klf '.history | join("\n")' merged-1)"
 
 echo "== cleanup: the skill runs the check and asks first =="
 orch="$(cat "$PLUGIN/skills/orchestrate/SKILL.md")"
 check "orchestrate: checks for cleanup on every report" 'cleanup.sh" check' "$orch"
 check "orchestrate: cleans up only after the user confirms" 'cleanup.sh" run --lane L --repo R' "$orch"
 check "orchestrate: a no is recorded" "--key cleanup --value declined" "$orch"
+check "orchestrate: a yes is recorded before the run" "--key cleanup --value confirmed" "$orch"
 
 git -C "$K_REPO" worktree prune 2>/dev/null
 rm -rf "$K_TMP"
