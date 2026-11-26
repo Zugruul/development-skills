@@ -50,7 +50,12 @@ out="$(pg panel --frame --width 40 --interval 5)"
 check_absent "the panel draws no title of its own (Herdr's border has it)" " Graph" "$out"
 check_absent "no dashed separator" "-----" "$out"
 check "the lanes start on the first line, NEEDS YOU first, one column of padding" "1" "$(sed -n 1p <<<"$out" | grep -cx " NEEDS YOU (1)")"
-check "a lane starts with its fold chevron, name and pattern, no tree guide" "1" "$(sed -n 2p <<<"$out" | grep -cx " ▾ why-slow  investigate ◂")"
+check "a lane starts with its fold chevron, name and pattern, no tree guide" "1" "$(sed -n 2p <<<"$out" | grep -cE "^ ▾ why-slow  investigate ◂ +\[answer\]$")"
+check "a lane that asks something ends with [answer], one column short of the right edge" "39" "$(sed -n 2p <<<"$out" | jq -Rr 'length')"
+check "an unselected lane with no question has no buttons" "1" "$(grep -cx " ▾ task-x  solo" <<<"$out")"
+wide="$(pg panel --frame --width 60 --interval 5)"
+check "the selected lane also shows [detail], left of the others" "1" "$(grep -cE "^ ▾ why-slow  investigate ◂ +\[detail\] \[answer\]$" <<<"$wide")"
+check "in a pane too narrow for even one button, none show" "1" "$(pg panel --frame --width 28 | grep -cx " ▾ why-slow  investigate ◂")"
 check "its lines hang off ├ under it" "1" "$(sed -n 3p <<<"$out" | grep -cx "   ├ investigate ?")"
 check "the open question is one of them" "1" "$(grep -cx "   ├ ? Staging or production?" <<<"$out")"
 check "each lane's last line hangs off └" "3" "$(grep -c "^   └ last: " <<<"$out")"
@@ -66,7 +71,8 @@ check "a thin divider above the footer, inside the padding" " $(printf '─%.0s'
 check "the divider is exactly as wide as the pane minus padding" "39" "$(widest "$(grep "─" <<<"$out")")"
 check "the footer says when it read" " updated " "$out"
 check "the footer shows the interval" "every 5s" "$out"
-check "the footer names the keys" "↵ fold · g go · a answer · d detail · x close · ? keys" "$(pg panel --frame --width 120)"
+check "the footer is only when it read, the interval and the buttons" "1" "$(pg panel --frame --width 120 | grep -cE "^ updated [0-9:]+ · every 5s +\[◷ 5s\] \[↻\]$")"
+check_absent "the footer names no keys" "? keys" "$(pg panel --frame --width 120)"
 last="$(tail -1 <<<"$out")"
 check "the buttons end the bottom line" "[◷ 5s] [↻]" "$last"
 check "the buttons are on the bottom line only" "1" "$(grep -c "\[↻\]" <<<"$out")"
@@ -98,7 +104,8 @@ BLU="${E}[38;2;88;166;255m" PUR="${E}[38;2;163;113;247m" SEL="${E}[48;2;33;38;45
 out="$(pgc panel --frame --width 40 --interval 5)"
 check "NEEDS YOU is a bold red header" " ${E}[1m${RED}NEEDS YOU (1)" "$out"
 check "WORKING is a bold amber header" " ${E}[1m${AMB}WORKING (2)" "$out"
-check "the selected lane's first line: background from the edge, chevron, bold name, grey pattern" "${SEL} ▾ ${E}[1mwhy-slow${E}[22m  ${GRY}investigate${E}[39m${E}[K${E}[0m" "$out"
+check "the selected lane's first line: background from the edge, chevron, bold name, grey pattern" "${SEL} ▾ ${E}[1mwhy-slow${E}[22m  ${GRY}investigate${E}[39m" "$out"
+check "its buttons are grey, the line ends with the background" "${GRY}[answer]${E}[39m${E}[K${E}[0m" "$out"
 check "only the selected lane's first line has the background" "1" "$(grep -cF "$SEL" <<<"$out")"
 check "an unselected lane: chevron, bold name, grey pattern" " ▾ ${E}[1mtask-x${E}[22m  ${GRY}solo${E}[39m" "$out"
 check "the tree guides are grey" " ${GRY}  ├ ${E}[39minvestigate ${RED}?${E}[39m" "$out"
@@ -111,7 +118,7 @@ check_absent "no 256-colour or dim codes, only the mockup's colours" "${E}[2;" "
 check_absent "NO_COLOR: no escape codes at all" "$E" "$(pg panel --frame --width 40 --interval 5)"
 check_absent "an empty NO_COLOR still means colour" "NOCOLOUR" "$(grep -q "$E" <<<"$(cd "$PREPO" && NO_COLOR='' PATH="$FIX/stub-herdr:$PATH" HERDR_STUB_DIR="$P_TMP" XDG_CONFIG_HOME="$P_TMP/config" bash "$SC/panel.sh" --frame --width 40)" || echo NOCOLOUR)"
 
-echo "== panel: clicks and keys, through the real input loop =="
+echo "== panel: clicks, through the real input loop; keys do nothing =="
 # --feed runs stdin through read_key and act, as the live panel does, then prints the frame.
 # The fold chevron sits in column 2 of a lane's first line (" ▾").
 click() { printf '\033[<0;%s;%sM\033[<0;%s;%sm' "$1" "$2" "$1" "$2"; }
@@ -134,12 +141,24 @@ out="$(click 2 3 | pg panel --frame --width 40 --feed)"
 check "a click on a lane's chain line does not fold it" " ▾ why-slow  investigate ◂" "$out"
 out="$(click 2 1 | pg panel --frame --width 40 --feed)"
 check "a click on a section header changes nothing" "? Staging or production?" "$out"
-out="$(printf ' ' | pg panel --frame --width 40 --feed)"
-check "space folds the selected lane" " ▸ why-slow  investigate ◂" "$out"
-out="$(printf '\n' | pg panel --frame --width 40 --feed)"
-check "enter folds the selected lane" " ▸ why-slow  investigate ◂" "$out"
-out="$(printf '\033[B ' | pg panel --frame --width 40 --feed)"
-check "down then space folds the next lane" " ▸ task-x  solo ◂" "$out"
+# click only: no keystroke acts (the old keys, arrows, enter, space, escape, q)
+before="$(pg panel --frame --width 40 | grep -v "updated ")"
+pst '{"agents":{"a":{"name":"inv-why","pane_id":"w4:p1","workspace_id":"w4","agent":"claude","agent_status":"blocked"}}}'
+out="$(printf ' \n\033[B\033[Agadxrtfn?FXRoq\033' | pg panel --frame --width 40 --feed)"
+check "keystrokes change nothing (q does not quit, nothing folds, moves or cycles)" "1" "$([ "$before" = "$(grep -v "updated " <<<"$out")" ] && echo 1 || echo 0)"
+check_absent "no key opens a popup, jumps or filters" "plugin pane open" "$(cat "$P_TMP/calls.log")"
+check_absent "no agent is focused by a key" "agent focus" "$(cat "$P_TMP/calls.log")"
+# [answer] and [detail] open their popups on a click
+r2="$(pg panel --frame --width 60 --rowmap | sed -n 2p)"
+acol="${r2#*answer=}" acol="${acol%%-*}" dcol="${r2#*detail=}" dcol="${dcol%%-*}"
+pst '{}'
+click "$acol" 2 | pg panel --frame --width 60 --feed >/dev/null
+check "a click on [answer] opens the answer popup" "answer" "$(sj '.opened[0].entrypoint')"
+check "for that lane" "GRAPH_LANE=why-slow" "$(cat "$P_TMP/calls.log")"
+pst '{}'
+click "$dcol" 2 | pg panel --frame --width 60 --feed >/dev/null
+check "a click on [detail] opens the detail popup" "detail" "$(sj '.opened[0].entrypoint')"
+check "the row map says where each button was drawn" "1" "$(pg panel --frame --width 60 --rowmap | sed -n 2p | grep -cE "^2 0h@detail=[0-9]+-[0-9]+;answer=[0-9]+-[0-9]+$")"
 rows="$(pg panel --frame --width 40 | wc -l | tr -d ' ')"
 out="$(click 31 "$rows" | pg panel --frame --width 40 --interval 5 --feed)"
 check "a click on the interval button on the bottom row cycles it" "every 10s" "$out"
@@ -194,7 +213,8 @@ row="$(pg panel --frame --width 80 | grep -n "#8 open" | cut -d: -f1)"
 printf '#!/bin/sh\nprintf "%%s\\n" "$1" >>"%s/opened"\n' "$P_TMP" >"$P_TMP/browser" && chmod +x "$P_TMP/browser"
 (cd "$PREPO" && printf '\033[<0;12;%sM' "$row" | GRAPH_BROWSER="$P_TMP/browser" NO_COLOR=1 PATH="$FIX/stub-herdr:$PATH" HERDR_STUB_DIR="$P_TMP" XDG_CONFIG_HOME="$P_TMP/config" bash "$SC/panel.sh" --frame --width 80 --feed >/dev/null)
 check "a click on a pull request opens it in the browser" "https://github.com/o/r/pull/8" "$(cat "$P_TMP/opened" 2>/dev/null)"
-out="$(printf '\033[B ' | pg panel --frame --width 80 --feed)"
+row="$(pg panel --frame --width 80 | grep -n "task-x  solo" | cut -d: -f1)"
+out="$(click 2 "$row" | pg panel --frame --width 80 --feed)"
 check_absent "a folded lane hides its pull requests" "#8 open" "$out"
 check "status text lists a lane's pull requests" "pr: #8 open · approved https://github.com/o/r/pull/8" "$(pg status --text --repo "$PREPO")"
 mkdir -p "$P_TMP/cfg" && printf 'refresh=30s\n' >"$P_TMP/cfg/config"
@@ -212,13 +232,36 @@ check "toggle closes the panel in this tab" "PANEL CLOSED" "$out"
 check "only this tab's panel is closed" '["w1:p5"]' "$(jq -c .closed "$P_TMP/state.json")"
 pst '{"pane_list":[{"pane_id":"w1:p5","tab_id":"w1:t1","terminal_title_stripped":"herdr-graph-panel"},{"pane_id":"w1:p2","tab_id":"w1:t1","terminal_title_stripped":"zsh"}]}'
 pg panel-action refresh >/dev/null
-check "refresh tells every panel to redraw" '[{"pane":"w1:p5","text":"r"}]' "$(jq -c .sent "$P_TMP/state.json")"
+check "refresh tells every panel to redraw, with the private sequence ESC [ 99 ~ (not a key)" '[{"pane":"w1:p5","text":"\u001b[99~"}]' "$(jq -c .sent "$P_TMP/state.json")"
+pst '{}'
+pg panel --frame --width 40 </dev/null >/dev/null
+reads="$(grep -c "agent list" "$P_TMP/calls.log")"
+pst '{}'
+printf '\033[99~' | pg panel --frame --width 40 --feed >/dev/null
+check "the panel reads the lanes again on that sequence" "$((reads + 1))" "$(grep -c "agent list" "$P_TMP/calls.log")"
 pg lane node --repo "$PREPO" --lane why-slow --node investigate --status running --agent claude-why-slow-inv >/dev/null
 pst '{"agents":{"a":{"name":"claude-why-slow-inv","pane_id":"w4:p1","workspace_id":"w4","agent":"claude","agent_status":"blocked"}}}'
 out="$(pg panel-action next-needs-me)"
 check "next-needs-me focuses the blocked lane agent" "FOCUSED claude-why-slow-inv" "$out"
 pst '{"agents":{}}'
 check "next-needs-me says when nothing needs you" "NOTHING NEEDS YOU" "$(pg panel-action next-needs-me)"
+
+echo "== panel: no sidebar filter; a stuck one is cleared at start =="
+NCD="$P_TMP/nc-bin" && mkdir -p "$NCD"
+# shellcheck disable=SC2016  # $* belongs to the written script
+printf '#!/bin/sh\nprintf "%%s " "$*" >>"%s/nc.log"; cat >>"%s/nc.log"\n' "$P_TMP" "$P_TMP" >"$NCD/nc" && chmod +x "$NCD/nc"
+(cd "$PREPO" && PATH="$NCD:$PATH" HERDR_SOCKET_PATH="$P_TMP/sock" bash "$SC/panel.sh" --reset-view)
+check "at start the panel sends one agent.view.clear for its source" '-U -w 1 '"$P_TMP"'/sock {"id":"graph-view","method":"agent.view.clear","params":{"source":"graph-panel"}}' "$(cat "$P_TMP/nc.log")"
+check "only one" "1" "$(grep -c "agent.view" "$P_TMP/nc.log")"
+check_absent "it never sets a filter" "agent.view.set" "$(cat "$P_TMP/nc.log")"
+printf '#!/bin/sh\nexit 1\n' >"$NCD/nc"
+check_rc "an error from the socket is ignored" 0 "$(cd "$PREPO" && PATH="$NCD:$PATH" HERDR_SOCKET_PATH="$P_TMP/sock" bash "$SC/panel.sh" --reset-view >/dev/null 2>&1; echo $?)"
+NONC="$P_TMP/no-nc" && mkdir -p "$NONC"
+for t in jq dirname; do ln -s "$(command -v "$t")" "$NONC/$t"; done
+out="$(cd "$PREPO" && PATH="$NONC" HERDR_SOCKET_PATH="$P_TMP/sock" "$BASH" "$SC/panel.sh" --reset-view 2>&1; echo "rc=$?")"
+check "no nc: skipped silently" "rc=0" "$out"
+check "with nothing printed" "rc=0" "$(head -1 <<<"$out")"
+check_absent "the panel has no sidebar filter code left" "agent.view.set" "$(cat "$SC/panel.sh")"
 
 echo "== panel: sidebar tokens and restore =="
 pst '{"agents":{"a":{"name":"claude-why-slow-inv","pane_id":"w4:p1","workspace_id":"w4","agent":"claude","agent_status":"working"}}}'

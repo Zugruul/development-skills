@@ -7,40 +7,53 @@
 #   panel.sh --frame [--width N] [--interval S] [--selected I] [--seen JSON] [--feed]
 #                                  print one frame and exit (tests, a quick look); --seen is
 #                                  each lane's section at the last look ({"lane":"working"});
-#                                  --feed first runs stdin (keys, SGR mouse bytes) through the
+#                                  --feed first runs stdin (SGR mouse bytes, keys) through the
 #                                  same input loop as the live panel
 #   panel.sh --next-interval S     the interval after S in the cycle (tests)
 #   panel.sh --buttons [--width N] [--interval S] [--rows R]
 #                                  the bottom line's button columns and row (tests)
+#   panel.sh --reset-view          what the live panel does once at start: clear a sidebar
+#                                  filter an older version of the panel may have left (tests)
 #
+# Click only: the panel acts on mouse clicks and nothing else. Keystrokes are read and
+# ignored (they do not quit, move, fold or disarm anything). The one non-mouse input is
+# panel-action.sh refresh, which sends the private sequence ESC [ 99 ~ (no key sends it).
 # Layout: no title (Herdr's pane border shows "Graph"), one column of padding each side; the
 # lanes from the first line, each starting with its chevron and its lines hanging under it,
 # NEEDS YOU, WORKING, DONE, CLOSED; a thin divider; the footer pinned to the pane's bottom, its
 # last line ending with the [◷ 5s] and [↻] buttons. The size is read from the terminal on
 # every draw, and a resize (SIGWINCH) redraws at once.
+# A lane's first line ends with its buttons, right-aligned: [detail] (the selected lane only),
+# [answer] (a lane that asks something), [restore] (the selected closed lane only), [x] (a
+# DONE or CLOSED lane). When they do not all fit, they drop from the left. [x], [restore],
+# [clear all reviews] and [clear all] ask first: the first click turns the button into
+# [confirm] (green for [restore], red for the others), a second click on it acts, any other
+# click puts it back.
 # CLOSED: the closed lanes of every repository the panel reads, newest first, folded, the
-# first five and then "… n more" (a click shows them all). A DONE or CLOSED lane's first line
-# ends with [x], the CLOSED header with [clear all]; the first click (or x, X) turns the button
-# into [confirm], a second click on it acts, any other click or key puts it back. [x] on a
-# DONE lane asks the lane's orchestrator to clean it up (it confirms with the user again and
-# removes the worktree, never the panel); on a CLOSED lane, and [clear all] for every closed
+# first five and then "… n more" (a click shows them all). The CLOSED header ends with
+# [clear all reviews] (only while a closed review lane exists; it drops first when the two
+# do not fit) and [clear all]. [x] on a DONE lane asks the lane's orchestrator to clean it up
+# (it confirms with the user again and removes the worktree, never the panel); on a CLOSED
+# lane, [clear all reviews] for every closed review lane and [clear all] for every closed
 # lane, it runs lane.sh clear, which moves the lane file from closed/ to closed/cleared/.
+# [restore] runs lane.sh restore: the lane's record comes back with its last status (open or
+# done); never a worktree or a branch. A review lane: pattern review or review-stack; with
+# no pattern or a custom one (a review stack's --pattern-file), a look/pr-<n> branch.
 # It only reads: the lane files and Herdr, through status.sh. Every write still goes
 # through lane.sh and every answer through the orchestrator.
 # Refresh: automatic every interval; the interval cycles 5s, 10s, 15s, 30s, 1m, 5m with the
-# [◷ 5s] button or t; [↻] or r refreshes now. The starting interval comes from the plugin's
+# [◷ 5s] button; [↻] refreshes now. The starting interval comes from the plugin's
 # config file ($HERDR_PLUGIN_CONFIG_DIR/config, a line `refresh=10s`), default 5s; the
 # button changes it for this panel only and writes nothing.
 # Mouse: the panel asks the terminal for SGR mouse reports (Herdr passes them to pane apps
 # that ask). A click on a lane selects it; a click on its fold chevron (▾ unfolded, ▸ folded)
 # also folds it to its first line or unfolds its chain, question, references, last line and
-# pull requests. A click on a pull request opens it in the browser; on a button presses it.
+# pull requests. A double click on a lane (two clicks on its rows within DOUBLE_CLICK_MS of
+# the panel finishing the first) jumps to its agent. A click on a pull request opens it in
+# the browser; on a file reference (any of its wrapped rows) opens it (open_ref); on a button
+# presses it.
 # Pull requests: each lane's, from prs.sh's cache (its branch's, and those it mentions),
 # coloured by state; the live panel refreshes the cache in the background.
-# Keys: up/down select a lane, enter or space folds/unfolds it, g jumps to its agent,
-# a answers its question, d shows its detail, x closes or clears it, X clears every closed
-# lane, f shows only its agents in the sidebar,
-# n only the agents that need you, F all again, r refresh, t interval, q close.
 # Colour: plain ANSI SGR (src/style.sh); none when NO_COLOR is set.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -103,8 +116,18 @@ ORDER_JQ='
         + ([.[] | select(.section == "closed")] | sort_by([.closed, .lane]) | reverse
            | if $all == 1 then . else .[:5] end);'
 
-# The armed button, shown as [confirm]: "root|lane" for a lane's [x], "all" for [clear all].
-ARMED="" PREV="" PANEL_W=48
+# A review lane, for [clear all reviews]: the recorded pattern when it says (review,
+# review-stack, or another pattern: not a review); with no pattern or a custom one, its
+# branch, look/pr-<n> as the review patterns name it.
+# shellcheck disable=SC2016
+REVIEW_JQ='
+    def isreview: if .pattern == "review" or .pattern == "review-stack" then true
+        elif (.pattern // "") == "" or .pattern == "custom" then (.branch // "") | test("^look/pr-[0-9]+$")
+        else false end;'
+
+# The armed button, shown as [confirm]: "x|root|lane" for a lane's [x], "restore|root|lane"
+# for its [restore], "all" for [clear all], "reviews" for [clear all reviews].
+ARMED="" PREV=""
 
 # Lanes whose fold differs from their default, by name: |lane|lane|. Open lanes start
 # unfolded, closed lanes folded.
@@ -133,27 +156,40 @@ buttons() { # width, interval, row
 }
 
 # The lanes, one "kind|width|line" per line: kind is the lane's display index, with an h
-# on the lane's first line (the one with the fold chevron; hx when it ends with [x]) or
-# u<URL> on a pull request's line; c on the CLOSED header, m on its "… n more" line;
-# or -1 for lines of no lane (other section headers, blanks, hints); width is the line's
+# on the lane's first line (the one with the fold chevron), u<URL> on a pull request's line,
+# f<ref> on every row of a file reference; c on the CLOSED header, m on its "… n more" line;
+# or -1 for lines of no lane (other section headers, blanks, hints). An h or c line with
+# buttons adds @id=from-to;id=from-to, each button's columns as drawn. width is the line's
 # length without the style codes. One column of padding on each side; a lane's lines
 # hang under it on ├ and └, and long text wraps inside that, under its own start.
 # shellcheck disable=SC2016
 body() { # selected index, width
     jq -r --argjson sel "$1" --argjson w "$2" --argjson c "$STYLE" --arg folded "$FOLDED" --argjson seen "$SEEN" \
         --arg armed "$ARMED" --argjson all "$ALLCLOSED" \
-        "$STYLE_JQ_MARK$STYLE_JQ_PR$STYLE_JQ_PRCOLOUR$ORDER_JQ"'
+        "$STYLE_JQ_MARK$STYLE_JQ_PR$STYLE_JQ_PRCOLOUR$ORDER_JQ$REVIEW_JQ"'
         def plain: gsub("\u001b\\[[0-9;]*[A-Za-z]"; "");
         def chain: [.nodes[] | "\(.node) \(markcolour)\(mark)"
                      + (if .max > 0 and .retries > 0 then " \(.retries)/\(.max)" else "" end) + $c.fg]
                    | join(" \($c.grey)→\($c.fg) ");
         def title: {"needs": "NEEDS YOU", "working": "WORKING", "done": "DONE", "closed": "CLOSED"}[.];
         def isfolded: .lane as $n | ($folded | contains("|\($n)|")) != (.section == "closed");
-        # a button, or [confirm] in red while it is armed: {t: styled, n: columns}
-        def button($key; $label): if $armed == $key then {t: "\($c.red)[confirm]\($c.fg)", n: 9}
-                                  else {t: "\($c.grey)\($label)\($c.fg)", n: ($label | length)} end;
-        # styled text, then the button ending one column short of the right edge
-        def withbutton($b): (plain | length) as $n | "\(.)\(" " * ([1, $w - 2 - $n - $b.n] | max))\($b.t)";
+        # a button: {id, key (armed as [confirm]; "" never), label, green} -> + {t: styled, n: columns}
+        def button: . + (if .key != "" and $armed == .key
+                           then {t: "\(if .green then $c.green else $c.red end)[confirm]\($c.fg)", n: 9}
+                           else {t: "\($c.grey)\(.label)\($c.fg)", n: (.label | length)} end);
+        # styled text (one column of padding before it), then the buttons, one space apart,
+        # ending one column short of the right edge; those that do not fit drop from the left (all of them in a pane too narrow for even one).
+        # -> {l: the line, m: "id=from-to;..." with the columns of each button}
+        def withbuttons($bl): (plain | length) as $n
+            | ($bl | map(button)
+               | until(length == 0 or ((map(.n) | add) + length + $n) <= $w - 2; .[1:])) as $b
+            | if ($b | length) == 0 then {l: ., m: ""} else
+                (($b | map(.n) | add) + ($b | length) - 1) as $bn
+                | ([1, $w - 2 - $n - $bn] | max) as $pad
+                | {l: "\(.)\(" " * $pad)\($b | map(.t) | join(" "))",
+                   m: (reduce $b[] as $x ({at: (2 + $n + $pad), m: []};
+                         .m += ["\($x.id)=\(.at)-\(.at + $x.n - 1)"] | .at += $x.n + 1) | .m | join(";"))} end;
+        def withmap($k): if .m == "" then "\($k)|\(.l)" else "\($k)@\(.m)|\(.l)" end;
         def hasx: .section == "done" or .section == "closed";
         # plain text -> lines of at most $n columns, broken at spaces, long words cut
         def wrap($n): if $n < 8 or length <= $n then [.] else
@@ -170,15 +206,19 @@ body() { # selected index, width
             ($w - 8) as $n
             | (if isfolded then "▸" else "▾" end) as $icon
             | "\($icon) \($c.bold)\(.lane)\($c.unbold)  \($c.grey)\(.pattern)\($c.fg)" as $head
-            | (if hasx then "hx" else "h" end) as $hk
-            | (if hasx then button("\(.root)|\(.lane)"; "[x]") else null end) as $b
+            | [ (if $i == $sel then {id: "detail", key: "", label: "[detail]"} else empty end),
+                (if .question != "" then {id: "answer", key: "", label: "[answer]"} else empty end),
+                (if .section == "closed" and $i == $sel
+                 then {id: "restore", key: "restore|\(.root)|\(.lane)", label: "[restore]", green: true} else empty end),
+                (if hasx then {id: "x", key: "x|\(.root)|\(.lane)", label: "[x]"} else empty end) ] as $bl
             | (if $i == $sel then
-                 "\($i)\($hk)|\($c.selbg) \("\($head)\($c.selmark)" | if $b then withbutton($b) else . end)\($c.eol)\($c.reset)"
-               else "\($i)\($hk)| \($head | if $b then withbutton($b) else . end)" end),
+                 ("\($head)\($c.selmark)" | withbuttons($bl)) | .l |= "\($c.selbg) \(.)\($c.eol)\($c.reset)" | withmap("\($i)h")
+               else ($head | withbuttons($bl)) | .l |= " \(.)" | withmap("\($i)h") end),
               (if isfolded then empty else
                  [ {k: "", l: [chain]},
                    (if .question != "" then {k: "", l: ("? \(.question)" | styled($c.red; $n))} else empty end),
-                   (.nodes[] | select(.ref != "" and (.ref | test("/"))) | {k: "", l: ("\(.node): \(.ref)" | styled($c.grey; $n))}),
+                   (.attention // [] | .[] | {k: "", l: ("! \(.)" | styled($c.red; $n))}),
+                   (.nodes[] | select(.ref != "" and (.ref | test("/"))) | {k: "f\(.ref)", l: ("\(.node): \(.ref)" | styled($c.grey; $n))}),
                    (if (.last // "") != "" then {k: "", l: ("last: \(.last)" | styled($c.grey; $n))} else empty end),
                    prs ]
                  | length as $m | to_entries[] | .key as $j | .value as $v
@@ -187,6 +227,7 @@ body() { # selected index, width
                  | "\($i)\($v.k)| \($c.grey)  \(if .key == 0 then $tw[0] else $tw[1] end)\($c.fg)\(.value)"
                end);
         ([.[] | select(.section == "closed")] | length) as $nclosed
+        | ([.[] | select(.section == "closed" and isreview)] | length) as $nreviews
         | ordered($all) as $l
         | ( if ($l | length) == 0 then "-1| No lanes yet.", "-1| \($c.grey)Give the orchestrator an idea.\($c.fg)"
             else
@@ -194,7 +235,11 @@ body() { # selected index, width
                 | (if $i == 0 or $l[$i - 1].section != $x.section then
                      (if $i == 0 then empty else "-1|" end),
                      (if $x.section == "closed" then
-                        "c| \("\($c.head.closed)CLOSED (\($nclosed))\($c.reset)" | withbutton(button("all"; "[clear all]")))"
+                        # [clear all reviews] only while a closed review lane exists
+                        "\($c.head.closed)CLOSED (\($nclosed))\($c.reset)"
+                        | withbuttons([ (if $nreviews > 0 then {id: "reviews", key: "reviews", label: "[clear all reviews]"} else empty end),
+                                        {id: "all", key: "all", label: "[clear all]"} ])
+                        | .l |= " \(.)" | withmap("c")
                       else
                         "-1| \($c.head[$x.section])\($x.section | title) (\([$l[] | select(.section == $x.section)] | length))\($c.reset)"
                       end)
@@ -211,15 +256,15 @@ body() { # selected index, width
         | capture("^(?<k>[^|]*)\\|(?<l>.*)$"; "s") | "\(.k)|\(.l | plain | length)|\(.l)"' <<<"$VIEW"
 }
 
-# The bottom block: a thin grey divider and the grey footer, inside the one-column padding,
-# the footer wrapped at its " · " parts, its last line ending with the buttons (on a line
+# The bottom block: a thin grey divider and the grey footer ("updated HH:MM:SS · every 5s"),
+# inside the one-column padding, the footer wrapped at its " · " parts, its last line ending with the buttons (on a line
 # of their own when they do not fit), one column short of the right edge.
 # shellcheck disable=SC2016
 bottom() { # width, interval
     jq -rn --argjson w "$1" --argjson c "$STYLE" --arg b "[◷ $(label_of "$2")] [↻]" \
         --arg upd "updated $UPDATED" --arg every "every $(label_of "$2")" '
         ($w - 2) as $max
-        | [$upd, $every, "↵ fold", "g go", "a answer", "d detail", "x close", "? keys"]
+        | [$upd, $every]
         | reduce .[] as $p ([];
             if length > 0 and ((.[-1] + " · " + $p) | length) <= $max then .[-1] += " · " + $p else . + [$p] end)
         | (if ((.[-1] | length) + 3 + ($b | length)) <= $max then .[-1] |= . + (" " * ($max - length - ($b | length))) + $b
@@ -239,7 +284,6 @@ lane_at() { # index -> one line of JSON
 TOP=() TOPKIND=() TOPWIDTH=() BOTTOM=()
 layout() { # width, interval, selected
     local l rest
-    PANEL_W="$1"
     TOP=() TOPKIND=() TOPWIDTH=() BOTTOM=()
     while IFS= read -r l; do
         TOPKIND+=("${l%%|*}")
@@ -257,7 +301,7 @@ layout() { # width, interval, selected
 # one row per line (the text of --frame).
 ROWMAP=() SHOWN=0
 place() { # width (0: one row per line), rows available (0: all)
-    local i=0 n rows r more
+    local i=0 n rows r more k idx
     ROWMAP=() SHOWN=0
     n=${#TOP[@]}
     while [ "$i" -lt "$n" ]; do
@@ -266,8 +310,9 @@ place() { # width (0: one row per line), rows available (0: all)
         [ "$2" -eq 0 ] || [ $((${#ROWMAP[@]} + rows)) -le "$2" ] || break
         ROWMAP+=("${TOPKIND[$i]}")
         r=1
-        # the further rows of a lane's first line are no longer its chevron or its [x]
-        case "${TOPKIND[$i]}" in *u*) more="${TOPKIND[$i]}" ;; *h | *hx) more="${TOPKIND[$i]%%h*}" ;; *) more="${TOPKIND[$i]}" ;; esac
+        # the further rows of a lane's first line are no longer its chevron or its buttons
+        k="${TOPKIND[$i]}" idx="${TOPKIND[$i]%%[!0-9-]*}"
+        case "${k#"$idx"}" in h*) more="$idx" ;; *) more="$k" ;; esac
         while [ "$r" -lt "$rows" ]; do ROWMAP+=("$more"); r=$((r + 1)); done
         i=$((i + 1))
     done
@@ -281,16 +326,13 @@ frame() { # width, interval, selected: one frame as text, the footer on its last
     printf '%s\n' "${TOP[@]}" "${BOTTOM[@]}"
 }
 
-# Herdr's agent view lives on the socket only; nc -U talks to it when available.
-agent_view() { # JSON params, or "" to clear
-    local req
-    command -v nc >/dev/null 2>&1 && [ -n "${HERDR_SOCKET_PATH:-}" ] || { MSG="sidebar filters need nc with -U"; return 0; }
-    if [ -n "$1" ]; then
-        req="$(jq -cn --argjson p "$1" '{id: "graph-view", method: "agent.view.set", params: ({source: "graph-panel"} + $p)}')"
-    else
-        req='{"id":"graph-view","method":"agent.view.clear","params":{"source":"graph-panel"}}'
-    fi
-    printf '%s\n' "$req" | nc -U -w 1 "$HERDR_SOCKET_PATH" >/dev/null 2>&1 || MSG="Herdr refused the sidebar filter"
+# Once at start: clear a sidebar filter that an older version of the panel (which had the
+# f/n/F keys) may have left set. Herdr's agent view lives on the socket only, reached with
+# nc -U; without nc or a socket this is skipped, and an error is ignored.
+reset_view() {
+    command -v nc >/dev/null 2>&1 && [ -n "${HERDR_SOCKET_PATH:-}" ] || return 0
+    printf '%s\n' '{"id":"graph-view","method":"agent.view.clear","params":{"source":"graph-panel"}}' |
+        nc -U -w 1 "$HERDR_SOCKET_PATH" >/dev/null 2>&1 || true
 }
 
 open_popup() { # entrypoint, lane JSON
@@ -300,8 +342,9 @@ open_popup() { # entrypoint, lane JSON
         --env "GRAPH_LANE=$lane" --env "GRAPH_REPO=$repo" >/dev/null 2>&1 || MSG="could not open the $1 popup"
 }
 
-# Opens a pull request in the browser, in the background (GRAPH_BROWSER, else open or xdg-open).
-browse() { # URL
+# Opens a pull request, a URL or an .html file in the browser, in the background
+# (GRAPH_BROWSER, else open or xdg-open).
+browse() { # URL or path
     local b="${GRAPH_BROWSER:-}"
     if [ -z "$b" ]; then
         if command -v open >/dev/null 2>&1; then b=open
@@ -311,10 +354,71 @@ browse() { # URL
     "$b" "$1" >/dev/null 2>&1 &
 }
 
-# The pull requests come from prs.sh's cache. The live panel asks prs.sh to refresh it in
-# the background, at most once a minute; a render never waits on gh or the network.
+# Editors that need a terminal: they cannot run inside the panel, so they get a Herdr tab.
+# GRAPH_EDITOR_TERMINAL=yes|no overrides the guess.
+is_terminal_editor() { # editor command
+    local words
+    case "${GRAPH_EDITOR_TERMINAL:-}" in yes) return 0 ;; no) return 1 ;; esac
+    read -r -a words <<<"$1"
+    case "$(basename "${words[0]:-}")" in
+        vi | vim | nvim | nano | pico | micro | hx | helix | kak | joe | ne | mg | ed | jed) return 0 ;;
+        emacs | emacsclient) case " $1 " in *" -nw "* | *" -t "* | *" --tty "*) return 0 ;; esac ;;
+    esac
+    return 1
+}
+
+# Opens a file in the user's editor: $VISUAL, else $EDITOR, else the system opener
+# (GRAPH_OPENER, else open on macOS or xdg-open on Linux). A terminal editor runs in a new
+# Herdr tab in the panel's workspace (the tab closes when the editor exits); any other one
+# just runs, in the background.
+edit_file() { # path
+    local ed="${VISUAL:-${EDITOR:-}}" words pane tab
+    if [ -z "$ed" ]; then
+        ed="${GRAPH_OPENER:-}"
+        if [ -z "$ed" ]; then
+            if command -v open >/dev/null 2>&1; then ed=open
+            elif command -v xdg-open >/dev/null 2>&1; then ed=xdg-open
+            else MSG="no editor: set VISUAL or EDITOR to open $1"; return 0; fi
+        fi
+    fi
+    if is_terminal_editor "$ed"; then
+        tab=(herdr tab create --label edit --cwd "$(dirname "$1")" --focus)
+        [ -z "${HERDR_WORKSPACE_ID:-}" ] || tab=(herdr tab create --workspace "$HERDR_WORKSPACE_ID" --label edit --cwd "$(dirname "$1")" --focus)
+        pane="$("${tab[@]}" 2>/dev/null | jq -r '.result.root_pane.pane_id // empty')"
+        if [ -z "$pane" ]; then MSG="could not open a tab for $ed"; return 0; fi
+        herdr pane run "$pane" "$ed $(printf '%q' "$1"); exit" >/dev/null 2>&1 || MSG="could not start $ed"
+    else
+        read -r -a words <<<"$ed"
+        "${words[@]}" "$1" >/dev/null 2>&1 &
+    fi
+}
+
+# A click on a file reference. URLs and .html/.htm files open in the browser; every other
+# file in the editor (edit_file). A relative path is read from the lane's repository.
+# Format-specific panes (a viewer for some formats) would hook in at the case below.
+open_ref() { # reference, lane JSON
+    local ref="$1" path
+    case "$ref" in
+        http://* | https://*) browse "$ref"; return 0 ;;
+        /*) path="$ref" ;;
+        *) path="$(jq -r '.root' <<<"$2")/$ref" ;;
+    esac
+    [ -e "$path" ] || { MSG="no such file: $path"; return 0; }
+    case "$path" in
+        *.html | *.htm) browse "$path" ;;
+        *) edit_file "$path" ;;
+    esac
+}
+
+# The pull requests come from prs.sh's cache, the finished agents' RESULT lines from drift.sh's.
+# The live panel asks prs.sh to refresh its cache in the background at most once a minute, and
+# drift.sh every 10 seconds; a render never waits on gh, the network or an agent's screen.
 FETCH_PRS=0
-fetch_prs() { [ "$FETCH_PRS" -eq 0 ] || (bash "$HERE/prs.sh" fetch --max-age 60 >/dev/null 2>&1 &); }
+fetch_prs() {
+    [ "$FETCH_PRS" -eq 0 ] && return 0
+    (bash "$HERE/prs.sh" fetch --max-age 60 >/dev/null 2>&1 &)
+    (bash "$HERE/drift.sh" --quiet --max-age 10 >/dev/null 2>&1 &)
+}
 
 jump() { # lane JSON: focus the agent that needs the user, else a running one
     local agent
@@ -347,93 +451,132 @@ close_lane() { # lane JSON
     esac
 }
 
-clear_closed() { # [clear all], confirmed: every closed lane, shown or not
+# The [restore] of a closed lane, confirmed: lane.sh restore brings its record back with its
+# last status. The record only: no worktree or branch is made.
+restore_lane() { # lane JSON
+    local name root out
+    name="$(jq -r '.lane' <<<"$1")" root="$(jq -r '.root' <<<"$1")"
+    if out="$(bash "$HERE/lane.sh" restore --repo "$root" --lane "$name" 2>&1)"; then
+        MSG="restored $name (the record only: no worktree or branch)"
+    else
+        MSG="could not restore $name: ${out#*: }"
+    fi
+    refresh_view
+}
+
+# [clear all] (every closed lane, shown or not) or [clear all reviews] (every closed review
+# lane), confirmed. Open lanes, worktrees and branches are never touched.
+clear_closed() { # all | reviews
     local root name
     while IFS="$(printf '\t')" read -r root name; do
         [ -n "$name" ] || continue
         bash "$HERE/lane.sh" clear --repo "$root" --lane "$name" >/dev/null 2>&1 || MSG="could not clear $name"
-    done < <(jq -r '.[] | select(.section == "closed") | [.root, .lane] | @tsv' <<<"$VIEW")
+    done < <(jq -r --arg which "$1" "$REVIEW_JQ"'
+        .[] | select(.section == "closed" and ($which == "all" or isreview)) | [.root, .lane] | @tsv' <<<"$VIEW")
     refresh_view
 }
 
-# A press of [x] (key: root|lane) or [clear all] (key: all): the first arms it, a press of
-# the armed button acts. act has already put any armed button back in PREV.
-press() { # key, lane JSON (for [x])
+# A press of a button that asks first ([x]: x|root|lane, [restore]: restore|root|lane,
+# [clear all]: all, [clear all reviews]: reviews): the first arms it, a press of the armed
+# button acts. act has already put any armed button back in PREV.
+press() { # key, lane JSON (for [x] and [restore])
     if [ "$PREV" = "$1" ]; then
-        if [ "$1" = all ]; then clear_closed; else close_lane "$2"; fi
+        case "$1" in
+            all | reviews) clear_closed "$1" ;;
+            restore\|*) restore_lane "$2" ;;
+            *) close_lane "$2" ;;
+        esac
     else
         ARMED="$1"
     fi
 }
 
-act() { # key
-    local n lane k key bw
-    # any key or click puts an armed button back; press arms it again
-    PREV="$ARMED" ARMED=""
-    n="$(lane_count)"
-    lane="$(lane_at "$sel")"
+# Milliseconds, for the double click: bash 5's EPOCHREALTIME, else perl, else whole seconds.
+now_ms() {
+    local t="${EPOCHREALTIME:-}"
+    if [ -n "$t" ]; then t="${t/[.,]/}"; printf '%s\n' $((10#$t / 1000)); return 0; fi
+    perl -MTime::HiRes=time -e 'printf "%d\n", time * 1000' 2>/dev/null || printf '%s000\n' "$(date +%s)"
+}
+
+# A double click: a plain click (not a button, chevron, pull request or file) on a lane, then
+# another on the same lane within DOUBLE_CLICK_MS of the panel finishing the first (the click
+# is stamped after the redraw, so a slow redraw does not eat the window).
+DOUBLE_CLICK_MS="${GRAPH_DOUBLE_CLICK_MS:-400}"
+DC_LANE="" DC_AT=0 DC_PENDING=0
+plain_click() { # display index
+    local now
+    sel="$1"
+    now="$(now_ms)"
+    if [ "$DC_LANE" = "$1" ] && [ $((now - DC_AT)) -le "$DOUBLE_CLICK_MS" ]; then
+        DC_LANE=""
+        jump "$(lane_at "$1")"
+    else
+        DC_LANE="$1" DC_PENDING=1
+    fi
+}
+clicked_done() { # after the redraw that follows a click
+    [ "$DC_PENDING" -eq 0 ] || DC_AT="$(now_ms)"
+    DC_PENDING=0
+}
+
+# The button of a lane's first line or the CLOSED header under a column, from the
+# "id=from-to;..." map body() drew; prints its id.
+button_at() { # map, column
+    local b from to IFS=';'
+    for b in $1; do
+        from="${b#*=}" to="${from#*-}" from="${from%-*}"
+        if [ "$2" -ge "$from" ] && [ "$2" -le "$to" ]; then printf '%s\n' "${b%%=*}"; return 0; fi
+    done
+}
+
+act() { # key: only click (and refresh, from panel-action.sh) does anything
+    local lane k idx rest map hit
     case "$1" in
-        up) [ "$sel" -le 0 ] || sel=$((sel - 1)) ;;
-        down) [ "$sel" -ge $((n - 1)) ] || sel=$((sel + 1)) ;;
-        enter | space) [ -n "$lane" ] && toggle_fold "$(jq -r '.lane' <<<"$lane")" ;;
-        g) [ -n "$lane" ] && jump "$lane" ;;
-        a) if [ -n "$lane" ] && [ "$(jq -r '.question' <<<"$lane")" != "" ]; then open_popup answer "$lane"; else MSG="this lane asks nothing"; fi ;;
-        d) [ -n "$lane" ] && open_popup detail "$lane" ;;
-        x) if [ -n "$lane" ] && jq -e '.section == "done" or .section == "closed"' >/dev/null <<<"$lane"; then
-               press "$(jq -r '"\(.root)|\(.lane)"' <<<"$lane")" "$lane"
-           else MSG="only a done or closed lane has [x]"; fi ;;
-        X) if jq -e 'any(.[]; .section == "closed")' >/dev/null <<<"$VIEW"; then press all ""; else MSG="no closed lanes"; fi ;;
-        f) [ -n "$lane" ] && agent_view "$(jq -c '{label: "lane \(.lane)", filter: {op: "eq", field: "workspace_id", value: .workspace}}' <<<"$lane")" ;;
-        n) agent_view '{"label":"needs me","filter":{"op":"in","field":"status","values":["blocked"]}}' ;;
-        F) agent_view "" ;;
-        r) refresh_view ;;
-        t) interval="$(next_interval "$interval")" ;;
-        "?") MSG="↑↓ select · ↵/space/click fold · g go · a answer · d detail · x close · X clear closed · f lane only · n needs me · F all · r refresh · t interval · q close" ;;
-        q) exit 0 ;;
-        click)
-            if [ "$CLICK_ROW" -eq "$BTN_ROW" ] && [ "$CLICK_COL" -ge "$BTN_IV_FROM" ] && [ "$CLICK_COL" -le "$BTN_IV_TO" ]; then
-                interval="$(next_interval "$interval")"
-            elif [ "$CLICK_ROW" -eq "$BTN_ROW" ] && [ "$CLICK_COL" -ge "$BTN_RF_FROM" ] && [ "$CLICK_COL" -le "$BTN_RF_TO" ]; then
-                refresh_view
-            elif [ "$CLICK_ROW" -ge 1 ] && [ "$CLICK_ROW" -le "${#ROWMAP[@]}" ]; then
-                # A click on a lane selects it; on its fold chevron (columns 2-3 of its first
-                # line) it also folds or unfolds it; on a pull request it opens it.
-                k="${ROWMAP[$((CLICK_ROW - 1))]}"
-                case "$k" in
-                    *u*)
-                        sel="${k%%u*}"
-                        browse "${k#*u}" ;;
-                    *hx)
-                        # the [x] (or [confirm]) ends one column short of the right edge
-                        sel="${k%hx}"
-                        lane="$(lane_at "$sel")"
-                        key="$(jq -r '"\(.root)|\(.lane)"' <<<"$lane")"
-                        bw=3
-                        [ "$PREV" != "$key" ] || bw=9
-                        if [ "$CLICK_COL" -ge $((PANEL_W - bw)) ] && [ "$CLICK_COL" -le $((PANEL_W - 1)) ]; then
-                            press "$key" "$lane"
-                        elif [ "$CLICK_COL" -ge 2 ] && [ "$CLICK_COL" -le 3 ]; then
-                            toggle_fold "$(jq -r '.lane' <<<"$lane")"
-                        fi ;;
-                    c)
-                        bw=11
-                        [ "$PREV" != all ] || bw=9
-                        if [ "$CLICK_COL" -ge $((PANEL_W - bw)) ] && [ "$CLICK_COL" -le $((PANEL_W - 1)) ]; then press all ""; fi ;;
-                    m) ALLCLOSED=1 ;;
-                    *h)
-                        sel="${k%h}"
-                        if [ "$CLICK_COL" -ge 2 ] && [ "$CLICK_COL" -le 3 ]; then
-                            toggle_fold "$(lane_at "$sel" | jq -r '.lane')"
-                        fi ;;
-                    *) [ "$k" -lt 0 ] || sel="$k" ;;
-                esac
-            fi ;;
+        refresh) refresh_view; return 0 ;;
+        click) ;;
+        *) return 0 ;;
     esac
+    # any click puts an armed button back; press arms it again
+    PREV="$ARMED" ARMED=""
+    if [ "$CLICK_ROW" -eq "$BTN_ROW" ] && [ "$CLICK_COL" -ge "$BTN_IV_FROM" ] && [ "$CLICK_COL" -le "$BTN_IV_TO" ]; then
+        interval="$(next_interval "$interval")"
+        DC_LANE=""
+    elif [ "$CLICK_ROW" -eq "$BTN_ROW" ] && [ "$CLICK_COL" -ge "$BTN_RF_FROM" ] && [ "$CLICK_COL" -le "$BTN_RF_TO" ]; then
+        refresh_view
+        DC_LANE=""
+    elif [ "$CLICK_ROW" -ge 1 ] && [ "$CLICK_ROW" -le "${#ROWMAP[@]}" ]; then
+        k="${ROWMAP[$((CLICK_ROW - 1))]}"
+        idx="${k%%[!0-9-]*}" rest="${k#"$idx"}" map="" hit=""
+        case "$rest" in h*@* | c@*) map="${rest#*@}" rest="${rest%%@*}" ;; esac
+        [ -z "$map" ] || hit="$(button_at "$map" "$CLICK_COL")"
+        [ "$rest" = h ] && [ -z "$hit" ] && [ "$CLICK_COL" -ge 2 ] && [ "$CLICK_COL" -le 3 ] && hit="fold"
+        case "$rest" in
+            u*) sel="$idx" DC_LANE=""; browse "${rest#u}" ;;
+            f*) sel="$idx" DC_LANE=""; open_ref "${rest#f}" "$(lane_at "$idx")" ;;
+            c) DC_LANE=""
+               case "$hit" in all | reviews) press "$hit" "" ;; esac ;;
+            m) ALLCLOSED=1 DC_LANE="" ;;
+            h | "")
+                if [ "$idx" -lt 0 ]; then DC_LANE=""
+                elif [ -z "$hit" ]; then plain_click "$idx"
+                else
+                    sel="$idx" DC_LANE=""
+                    lane="$(lane_at "$idx")"
+                    case "$hit" in
+                        fold) toggle_fold "$(jq -r '.lane' <<<"$lane")" ;;
+                        detail) open_popup detail "$lane" ;;
+                        answer) open_popup answer "$lane" ;;
+                        x | restore) press "$hit|$(jq -r '"\(.root)|\(.lane)"' <<<"$lane")" "$lane" ;;
+                    esac
+                fi ;;
+        esac
+    fi
     [ "$sel" -lt "$(lane_count)" ] || sel=0
 }
 
-# Waits up to $1 seconds for a key; sets KEY (empty on a timeout or an ignored sequence)
-# and CLICK_ROW/CLICK_COL. Returns nonzero at the end of the input (--feed).
+# Waits up to $1 seconds for input; sets KEY (click, refresh, or the key that was pressed,
+# which act ignores; empty on a timeout or an ignored sequence) and CLICK_ROW/CLICK_COL.
+# Returns nonzero at the end of the input (--feed).
 read_key() {
     local c rest="" rc
     KEY=""
@@ -446,8 +589,6 @@ read_key() {
             [ "$c" = "[" ] || return 0
             IFS= read -rsn1 -t 1 c || return 0
             case "$c" in
-                A) KEY=up ;;
-                B) KEY=down ;;
                 "<") # SGR mouse: button;col;row then M (press) or m (release)
                     while IFS= read -rsn1 -t 1 c; do
                         case "$c" in M | m) break ;; *) rest="$rest$c" ;; esac
@@ -456,15 +597,21 @@ read_key() {
                         CLICK_COL="$(cut -d';' -f2 <<<"$rest")" CLICK_ROW="$(cut -d';' -f3 <<<"$rest")"
                         KEY=click
                     fi ;;
+                [0-9]) # ESC [ n ~ : ESC [ 99 ~ is panel-action.sh refresh; other keys are ignored
+                    rest="$c"
+                    while IFS= read -rsn1 -t 1 c; do
+                        case "$c" in [0-9]) rest="$rest$c" ;; *) break ;; esac
+                    done
+                    [ "$rest$c" = "99~" ] && KEY=refresh ;;
+                *) KEY=key ;;
             esac ;;
-        "" | $'\n' | $'\r') KEY=enter ;;
-        " ") KEY=space ;;
-        *) KEY="$c" ;;
+        *) KEY=key ;;
     esac
 }
 
 case "${1:-}" in
 --next-interval) next_interval "${2:?}"; exit 0 ;;
+--reset-view) reset_view; exit 0 ;;
 --buttons)
     shift
     w=48 iv=5 rows=24
@@ -497,10 +644,11 @@ case "${1:-}" in
     refresh_view
     if [ "$feed" -eq 1 ]; then
         frame "$w" "$interval" "$sel" >/dev/null
-        while read_key 1; do
+        while read_key 5; do
             [ -n "$KEY" ] || continue
             act "$KEY"
             frame "$w" "$interval" "$sel" >/dev/null
+            clicked_done
         done
     fi
     if [ "$rowmap" -eq 1 ]; then
@@ -515,7 +663,7 @@ case "${1:-}" in
     wait
     exit 0 ;;
 "") ;;
-*) usage "panel.sh [--frame ... | --next-interval S | --buttons ...]" ;;
+*) usage "panel.sh [--frame ... | --next-interval S | --buttons ... | --reset-view]" ;;
 esac
 
 # ---- interactive ----
@@ -523,6 +671,7 @@ require_tools jq yq git herdr
 FETCH_PRS=1
 interval="$(configured_interval)"
 sel=0 MSG=""
+reset_view
 old_stty="$(stty -g 2>/dev/null)"
 restore() {
     printf '\033[?1000l\033[?1006l\033[?25h\033[?1049l'
@@ -580,18 +729,20 @@ while :; do
     if [ "$RESIZED" -eq 1 ]; then
         RESIZED=0
         draw
-        [ -n "$KEY" ] || continue
     fi
-    if [ -z "$KEY" ]; then
-        if [ $((SECONDS - last)) -ge "$interval" ]; then
-            refresh_view
-            last=$SECONDS
-            draw
-        fi
-        continue
-    fi
-    mark_seen
+    case "$KEY" in
+        click | refresh) ;;
+        *) # a timeout or a keystroke (ignored): only the timer
+            if [ $((SECONDS - last)) -ge "$interval" ]; then
+                refresh_view
+                last=$SECONDS
+                draw
+            fi
+            continue ;;
+    esac
+    [ "$KEY" != click ] || mark_seen
     act "$KEY"
-    [ "$KEY" = r ] && last=$SECONDS
+    [ "$KEY" = refresh ] && last=$SECONDS
     draw
+    clicked_done
 done
