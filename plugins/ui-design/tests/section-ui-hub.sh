@@ -129,6 +129,8 @@ port=$((20000 + RANDOM % 20000))
 out="$(bash "$HUB" start --port "$port")"; rc=$?
 check "hub starts" "RUNNING http://127.0.0.1:$port" "$out"
 check_rc "start exits 0" 0 "$rc"
+# the stub is a bash script: give it time to record and "bind" under load
+for _ in $(seq 1 50); do [[ -d "$STUB_SOCAT_DIR/held-$port" ]] && break; sleep 0.1; done
 args="$(cat "$STUB_SOCAT_DIR/args" 2>/dev/null)"
 check "the listener binds 127.0.0.1 only" "TCP-LISTEN:$port,bind=127.0.0.1" "$args"
 check "the listener forks one handler per connection" ",fork" "$args"

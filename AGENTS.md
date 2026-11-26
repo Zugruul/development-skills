@@ -8,6 +8,7 @@ This repo is [Zugruul/development-skills](https://github.com/Zugruul/development
 | --- | --- | --- |
 | [`herdr`](plugins/herdr/README.md) | Teaches an agent to use [Herdr](https://herdr.dev): worktrees, agents, prompts, listening, status. Only Herdr, no workflow of its own, no knowledge of other plugins. | `herdr`, `bash`, `jq`, `git` |
 | [`herdr-graph-engineering`](plugins/herdr-graph-engineering/README.md) | Graph engineering on `herdr`: one orchestrator chat, each idea a lane running a small graph from a pattern until its definition of done. | `herdr` plugin, `jq`, `yq`, `git` |
+| [`ui-design`](plugins/ui-design/README.md) | Mocks UI options before implementation and lets the human decide on a local hub; accessibility in both themes, test ids, i18n. No workflow, no knowledge of other plugins. | `bash`, `jq`, `git`, `socat` |
 | [`remote-compute`](plugins/remote-compute/README.md) | Registers remote machines over SSH and dispatches jobs to them (details below). | still needs `spec-workflow` for project enablement and role dispatch |
 
 ## Deprecated plugins
@@ -40,9 +41,11 @@ Run the checks of every plugin you touched, green, before calling the work done.
 bash plugins/herdr/tests/run-tests.sh
 bash plugins/remote-compute/tests/run-tests.sh
 bash plugins/herdr-graph-engineering/tests/run-tests.sh
+bash plugins/ui-design/tests/run-tests.sh
 shellcheck -x plugins/herdr/scripts/*.sh plugins/herdr/scripts/src/*.sh plugins/herdr/tests/*.sh plugins/herdr/tests/fixtures/stub-herdr/herdr
 shellcheck -x plugins/herdr-graph-engineering/scripts/*.sh plugins/herdr-graph-engineering/scripts/src/*.sh plugins/herdr-graph-engineering/tests/*.sh plugins/herdr-graph-engineering/tests/fixtures/stub-herdr/herdr
-claude plugin validate plugins/herdr && claude plugin validate plugins/herdr-graph-engineering && claude plugin validate plugins/remote-compute
+shellcheck -x plugins/ui-design/scripts/*.sh plugins/ui-design/scripts/src/*.sh plugins/ui-design/tests/*.sh plugins/ui-design/tests/fixtures/stub-socat/socat
+claude plugin validate plugins/herdr && claude plugin validate plugins/herdr-graph-engineering && claude plugin validate plugins/remote-compute && claude plugin validate plugins/ui-design
 ```
 
 A change to a deprecated plugin also runs that plugin's own `tests/run-tests.sh` and `claude plugin validate`; `spec-workflow`'s full gate is in its `AGENTS.md`.

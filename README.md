@@ -74,13 +74,13 @@ of agents working, as it happens. Leave it on a second monitor and you can
 tell at a glance *what the loop is thinking about* without reading a single
 transcript.
 
-### UI Mode
+### UI Design
 
 ![](./docs/ui-mode-example.png)
 ![](./docs/ui-mode-annotate.png)
 ![](./docs/ui-mode-accessibility.png)
 
-Allows quick iterations over UI before its implementation. With i18n and theming support. Also supports a11y checks to ensure that you are delivering the best accessibility and testability possible as well. 
+Allows quick iterations over UI before its implementation. With i18n and theming support. Also supports a11y checks to ensure that you are delivering the best accessibility and testability possible as well. A standalone plugin, [`ui-design`](plugins/ui-design/README.md).
 
 ### Remote compute
 
@@ -227,6 +227,7 @@ linked worktree is checked independently of a dirty primary checkout. See the
 ```bash
 bash plugins/spec-workflow/tests/run-tests.sh    # hermetic: validator fixtures + preflight (CI runs this + shellcheck + manifest validation)
 bash plugins/herdr/tests/run-tests.sh            # hermetic: runs against a stub herdr, no Herdr install needed
+bash plugins/ui-design/tests/run-tests.sh        # hermetic: stub socat, the hub handler driven on stdin
 bash plugins/herdr-simple-orchestrate/tests/run-tests.sh
 bash plugins/herdr-graph-engineering/tests/run-tests.sh
 bash plugins/herdr-development-skills/tests/run-tests.sh
@@ -278,7 +279,7 @@ Spec-driven autonomous build workflow. A repo declares its boards, specs, epics,
 | `find-task` | Ranked search of existing board issues by title/body similarity (dedup) |
 | `create-inbound` | Search-first, dedup-gated capture of ad-hoc ideas/bugs/requests onto the board |
 | `implement-task` | One task via TDD, delegated to a dev subagent with a what/how/why brief |
-| `ui-options` | Iterative UI mode: human picks the UI from an options page (favorite + aspects) |
+| `refine-task-ui` | Run a task's UI through the `ui-design` plugin, then fold screenshots and acceptance criteria into the issue |
 | `gate` | The project's single green-before-advance quality command |
 | `build-next` | One full loop iteration — drive with `/loop /spec-workflow:build-next` |
 | `brain` | Per-identity zettel memory: private brains, spreading-activation recall, retro mint/prune/graduate |
@@ -358,6 +359,27 @@ Scaffolds a new greenfield project's minikube dev-workflow scripts
 claude plugin install scaffold-project@development-skills
 ```
 
+
+### ui-design
+
+Mock a UI before it is built and let the human decide. The agent mocks 2–4
+genuinely different options at the target's real size and serves them on a
+local decision hub; the human picks, favorites, ticks aspects or annotates
+elements, and the answer comes straight back. Every page passes an
+accessibility audit in both themes (WCAG contrast, real semantics, target size,
+input purpose, axe-core), carries a `data-testid` on every control, and is
+translated when asked. Standalone: no workflow, tracker or other plugin; other
+skills call it by name. Needs `bash`, `jq`, `git` and `socat`. See
+[ui-design](plugins/ui-design/README.md).
+
+| Skill | Purpose |
+|---|---|
+| `ui-mode` | Show or toggle Iterative UI mode (the human decides UIs, or the agent does) |
+| `ui-options` | Mock the options, gate them, ask on the hub, iterate until the human commits, record the pick |
+
+```bash
+claude plugin install ui-design@development-skills
+```
 
 ### herdr
 

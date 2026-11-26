@@ -1,0 +1,9 @@
+{
+    "name": "ui-design",
+    "description": "Mock a UI before it is built and let the human decide: 2-4 real options per decision, served on a local decision hub, audited for contrast and accessibility in both themes, with test ids and optional i18n, and the pick recorded in the page. Standalone; other skills may call it.",
+    "version": "0.1.0",
+    "author": {
+        "name": "event-sorcerer",
+        "url": "https://github.com/event-sorcerer"
+    }
+}

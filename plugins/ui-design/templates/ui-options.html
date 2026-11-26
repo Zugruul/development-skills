@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en">
 <!--
-  ui-options.html — template for the spec-workflow Iterative UI mode.
-  The agent copies this file to docs/ui-options/<task-id>.html and:
-    1. replaces __TASK_ID__, __TASK_TITLE__, __ISSUE_URL__
+  ui-options.html — template for the ui-design plugin's options page (Iterative UI mode).
+  The agent copies this file to docs/ui-options/<design-id>.html and:
+    1. replaces __DESIGN_ID__, __DESIGN_TITLE__, __SESSION_ID__
     2. duplicates the <section class="option panel"> block once per design option,
        replacing __OPTION_ID__ (A, B, C...), __OPTION_NAME__, __OPTION_SUMMARY__,
        the mockup inside .preview, and the aspect <label> chips (4–8 per option,
@@ -51,7 +51,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>UI options — __TASK_ID__</title>
+<title>UI options — __DESIGN_ID__</title>
 <style>
   /* Theme system: explicit variables, NOT the Canvas keyword (Canvas follows the OS
      scheme only and desyncs from the page's own toggle). Every color on this page —
@@ -160,14 +160,14 @@
   </div>
 </div>
 <header>
-  <h1>UI options — __TASK_ID__: __TASK_TITLE__</h1>
+  <h1>UI options — __DESIGN_ID__: __DESIGN_TITLE__</h1>
   <div>Switch between options with the tabs below — <b>Use this one</b> on an option decides it right away. Or explore: mark a <b>Favorite</b>, tick the aspects you like in any option, use <b>Annotate</b> to pin a note to a specific element inside a mockup (click the element, type the note), then open the <b>Review</b> tab to see your picks and send them.</div>
 </header>
 
 <div class="hint">
   <b>Iterative UI mode is ON</b> (the agent waits for your pick before committing to a UI, and keeps building everything else meanwhile).
   Turn it off with <code>touch .claude/ITERATIVE_UI_OFF</code> in the repo — or just tell the agent "turn off iterative UI" / that you'll be AFK, and it will decide UIs itself.
-  <br>Ways back to the agent: comment on <a href="__ISSUE_URL__">the issue</a> (read every iteration, works even after the session ends), or reopen the building session in a terminal: <code>claude --resume __SESSION_ID__</code>.
+  <br>Way back to the agent: reopen the building session in a terminal: <code>claude --resume __SESSION_ID__</code>.
 </div>
 
 <div class="tabbar" role="tablist">
@@ -494,7 +494,7 @@ function renderA11yReport(issues) {
   send.addEventListener('click', () => {
     const picked = [...bar.querySelectorAll('.a11y-pick:checked')].map(c => c.value);
     if (!picked.length) { send.textContent = 'Select issues first'; setTimeout(() => { send.textContent = 'Send selected to agent'; }, 1500); return; }
-    const lines = ['### A11y fixes requested — __TASK_ID__', ...picked.map(p => '- ' + p)];
+    const lines = ['### A11y fixes requested — __DESIGN_ID__', ...picked.map(p => '- ' + p)];
     const n = note.value.trim();
     if (n) lines.push('- Notes: ' + n);
     deliver(lines.join('\n'), false, true);
@@ -504,7 +504,7 @@ function renderA11yReport(issues) {
 }
 
 
-// Served by the decision hub (ui-hub.py) the page POSTs the answer back; opened
+// Served by the decision hub (ui-hub.sh) the page POSTs the answer back; opened
 // as a plain file it falls back to clipboard -> execCommand -> auto-select.
 const HUB_ID = location.pathname.startsWith('/decision/') ? decodeURIComponent(location.pathname.split('/').pop()) : null;
 const statusEl = () => document.getElementById('status');
@@ -529,7 +529,7 @@ async function deliver(text, forceCopy = false, keep = false) {
     ta.remove();
   }
   if (copied) {
-    statusEl().textContent = 'Copied — paste it as a comment on the task issue.';
+    statusEl().textContent = 'Copied — paste it to the agent.';
   } else {
     window.getSelection().selectAllChildren(out);
     statusEl().textContent = 'Clipboard blocked — the text above is selected, press Ctrl/Cmd+C.';
@@ -543,7 +543,7 @@ function withNotes(lines) {
 document.querySelectorAll('.use').forEach(btn => btn.addEventListener('click', () => {
   const s = btn.closest('.option');
   setFavorite(s);
-  const lines = [`### UI selection — __TASK_ID__`,
+  const lines = [`### UI selection — __DESIGN_ID__`,
                  `- Use: Option ${s.dataset.option} — ${s.dataset.name} (as-is, final)`];
   const en = elementNotes(s, '  ');
   if (en.length) lines.push('- Element notes (apply to the chosen option):', ...en);
@@ -551,7 +551,7 @@ document.querySelectorAll('.use').forEach(btn => btn.addEventListener('click', (
 }));
 function composed() {
   const fav = document.querySelector('.option.favorite');
-  const lines = ['### UI selection — __TASK_ID__'];
+  const lines = ['### UI selection — __DESIGN_ID__'];
   if (fav) {
     lines.push(`- Favorite: Option ${fav.dataset.option} — ${fav.dataset.name}`);
   } else {
