@@ -17,8 +17,13 @@
 #                                                 --tab: the Herdr tab the node runs in (a new tab clears tab_closed)
 #   lane.sh tab-closed --lane L --node N          record that the node's tab was closed (by close-done.sh)
 #   lane.sh retry --lane L --node N               N failed: rerun its retry target; exit 7 at the limit
-#   lane.sh ask --lane L --text Q [--node N]      record an open question for the user
-#   lane.sh answer --lane L --text A              record the user's answer and clear the question
+#   lane.sh ask --lane L --text Q [--node N] [--kind agent|human|cleanup|merged-early] [--source TEXT]
+#                                                 add an open question (a lane keeps every one); prints QUESTION <id>.
+#                                                 .question holds the open texts, joined with " | "
+#   lane.sh asked --lane L --id N                 record that the question was put to the user
+#   lane.sh answer --lane L [--id N] --text A     record the user's answer to one question (--id may be left out
+#                                                 while only one is open). A node blocked by it returns to running
+#                                                 while its agent is live (or liveness is unknown), else to waiting
 #   lane.sh note --lane L --text T [--node N] [--ref X]   a lane fact the chat would lose: a follow-up sent to
 #                                                 a node, scope the user added, the brief or a file path
 #   lane.sh done-extra --lane L (--text T | --met N)   a done criterion the user added beyond the pattern's
@@ -43,12 +48,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/pattern.sh
 . "$HERE/src/pattern.sh"
 
-USAGE="lane.sh new|show|list|node|tab-closed|retry|ask|answer|note|done-extra|set|close|clear|restore [options] (see the header of lane.sh)"
+USAGE="lane.sh new|show|list|node|tab-closed|retry|ask|asked|answer|note|done-extra|set|close|clear|restore [options] (see the header of lane.sh)"
 cmd="${1:-}"
 [ -n "$cmd" ] || usage "$USAGE"
 shift
 repo="$(pwd)" lane="" pattern="" pattern_file="" idea="" gate="" branch="" workspace="" owner="" node="" status=""
-result="" ref="" exitc="" agent="" tab="" note="" text="" key="" value="" as_json=0 all=0 inputs="{}" met=""
+result="" ref="" exitc="" agent="" tab="" note="" text="" key="" value="" as_json=0 all=0 inputs="{}" met="" id="" kind="" source=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo) need_value "$1" $#; repo="$2"; shift 2 ;;
@@ -75,6 +80,9 @@ while [ $# -gt 0 ]; do
         --key) need_value "$1" $#; key="$2"; shift 2 ;;
         --value) need_value "$1" $#; value="$2"; shift 2 ;;
         --met) need_value "$1" $#; met="$2"; shift 2 ;;
+        --id) need_value "$1" $#; id="$2"; shift 2 ;;
+        --kind) need_value "$1" $#; kind="$2"; shift 2 ;;
+        --source) need_value "$1" $#; source="$2"; shift 2 ;;
         --json) as_json=1; shift ;;
         --all) all=1; shift ;;
         *) usage "$USAGE" ;;
@@ -88,6 +96,32 @@ need_lane() {
     [ -n "$lane" ] || usage "lane.sh $cmd --lane L ..."
     file="$dir/$lane.yaml"
     [ -f "$file" ] || die "NO LANE: $lane (no $file)" 6
+}
+
+# The open questions, kept in .questions; .question is their texts for every reader of one
+# line. A lane written before .questions keeps its one question as a legacy entry.
+QJQ='
+    def migrate: if has("questions") then . else
+        .questions = (if (.question // "") != "" then [{id: 1, text: .question, legacy: true}] else [] end) end;
+    def openq: [.questions[] | select(.answer == null)];
+    def sync: .question = ([openq[] | .text] | join(" | "));
+    def addq($text; $node; $kind; $source; $now):
+        migrate
+        | (if $node != "" then
+              ([openq[] | select(.node == $node) | .was][0] // .nodes[$node].status) else null end) as $was
+        | .questions += [{id: (([.questions[].id] | max // 0) + 1), text: $text, at: $now, asked_at: null, answer: null}
+              + (if $node != "" then {node: $node, was: $was} else {} end)
+              + (if $kind != "" then {kind: $kind} else {} end)
+              + (if $source != "" then {source: $source} else {} end)]
+        | (if $node != "" then .nodes[$node].status = "blocked" else . end)
+        | sync;'
+
+# The names of the live agents, or "unknown" when herdr does not say.
+live_agents() {
+    local out
+    command -v herdr >/dev/null 2>&1 && out="$(herdr agent list 2>/dev/null)" &&
+        jq -ce '.result.agents | arrays | [.[] | .name // empty]' <<<"$out" 2>/dev/null && return 0
+    echo '"unknown"'
 }
 
 # Apply a jq program to the lane under the lock, append one history line, write back.
@@ -135,7 +169,7 @@ new)
          gate: $gate, branch: $branch, workspace: $ws, owner: $owner, inputs: $i, created: $now,
          graph: ($p.nodes | map_values(walk(fill))), done: ($p.done // []),
          nodes: ($p.nodes | map_values({status: "waiting", retries: 0})),
-         question: "", history: ["\($now) lane created from pattern \($pattern) (\($from))"]}' | write_yaml "$dir/$lane.yaml"
+         question: "", questions: [], history: ["\($now) lane created from pattern \($pattern) (\($from))"]}' | write_yaml "$dir/$lane.yaml"
     unlock
     printf 'LANE %s %s\n' "$lane" "$dir/$lane.yaml" ;;
 show)
@@ -185,7 +219,7 @@ retry)
     to="$(printf '%s' "$spec" | jq -r .to)" max="$(printf '%s' "$spec" | jq -r .max)"
     done_retries="$(yq -r ".nodes[\"$to\"].retries // 0" "$file")"
     if [ "$done_retries" -ge "$max" ]; then
-        update '.nodes[$n].status = "blocked" | .question = "Retry limit reached: \($to) was retried \($max) times and \($n) still fails. What now?"' \
+        update "$QJQ"' addq("Retry limit reached: \($to) was retried \($max) times and \($n) still fails. What now?"; $n; "retry-limit"; ""; $now)' \
             "$node failed, retry limit $max reached for $to" --arg n "$node" --arg to "$to" --argjson max "$max"
         printf 'RETRY LIMIT %s: %s retried %s/%s times; ask the user\n' "$lane" "$to" "$done_retries" "$max"
         exit 7
@@ -202,11 +236,42 @@ retry)
 ask)
     need_lane
     [ -n "$text" ] || usage "lane.sh ask --lane L --text Q [--node N]"
-    update '.question = $q | (if $n != "" then .nodes[$n].status = "blocked" else . end)' "question${node:+ from $node}: $text" --arg q "$text" --arg n "$node" ;;
+    case "$kind" in '' | agent | human | cleanup | merged-early) ;; *) die "--kind must be agent, human, cleanup or merged-early" 2 ;; esac
+    update "$QJQ"' addq($q; $n; $k; $src; $now)' "question${node:+ from $node}: $text" \
+        --arg q "$text" --arg n "$node" --arg k "$kind" --arg src "$source"
+    printf 'QUESTION %s\n' "$(yq -r '[.questions[].id] | max' "$file")" ;;
+asked)
+    need_lane
+    case "$id" in '' | *[!0-9]*) usage "lane.sh asked --lane L --id N" ;; esac
+    open_ids="$(read_json "$file" | jq -r "$QJQ"' migrate | openq | map(.id | tostring) | join(" ")')"
+    case " $open_ids " in *" $id "*) ;; *) die "NO QUESTION: $id is not open in lane $lane" 6 ;; esac
+    update "$QJQ"' migrate | (.questions[] | select(.id == ($i | tonumber))).asked_at = $now' "question $id put to the user" --arg i "$id" ;;
 answer)
     need_lane
-    [ -n "$text" ] || usage "lane.sh answer --lane L --text A"
-    update '.question = "" | .nodes |= map_values(if .status == "blocked" then .status = "waiting" else . end)' "answer: $text" ;;
+    [ -n "$text" ] || usage "lane.sh answer --lane L [--id N] --text A"
+    case "$id" in *[!0-9]*) die "--id must be a number" 2 ;; esac
+    open_ids="$(read_json "$file" | jq -r "$QJQ"' migrate | openq | map(.id | tostring) | join(", ")')"
+    if [ -n "$id" ]; then
+        case ", $open_ids, " in *", $id, "*) ;; *) die "NO QUESTION: $id is not open in lane $lane (open: ${open_ids:-none})" 6 ;; esac
+    else
+        case "$open_ids" in *,*) die "WHICH QUESTION: lane $lane has several open ($open_ids); pass --id N" 2 ;; esac
+        id="$open_ids"
+    fi
+    live="$(live_agents)"
+    update "$QJQ"'
+        def live($a): $a != "" and ($live == "unknown" or ($live | index($a)) != null);
+        migrate
+        | ($i | if . == "" then null else tonumber end) as $qid
+        | ([.questions[] | select(.id == $qid)][0]) as $q
+        | (.questions[] | select(.id == $qid)) |= (.answer = $a | .answered_at = $now)
+        # the nodes this question blocked (an old lane did not say which: every blocked one)
+        | (if $q == null then [] elif $q.legacy then [.nodes | to_entries[] | select(.value.status == "blocked") | .key]
+           else [$q.node // empty] end) as $ns
+        | reduce $ns[] as $n (.;
+              if .nodes[$n].status != "blocked" or any(openq[]; .node == $n) then .
+              else .nodes[$n].status = (if live(.nodes[$n].agent // "") and (($q.was // "running") | IN("running", "blocked"))
+                                        then "running" else "waiting" end) end)
+        | sync' "answer: $text" --arg a "$text" --arg i "$id" --argjson live "$live" ;;
 note)
     need_lane
     [ -n "$text" ] || usage "lane.sh note --lane L --text T [--node N] [--ref X]"
