@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+# preflight.sh [--spec] — local config/freshness checks, injected at skill load time.
+# Always exits 0: the skill still loads so the model can read the FAIL line and redirect.
+set -uo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+CONFIG="$(python3 "$HERE/config.py" "$ROOT" path)"
+
+if [[ -z "$CONFIG" || ! -f "$CONFIG" ]]; then
+    echo "PREFLIGHT FAIL: no .neural-network/project.yaml — STOP: run /spec-workflow:setup-project first (it will suggest /spec-workflow:craft-spec if there is no spec yet)."
+    exit 0
+fi
+
+# Advisory entrypoint retains its zero-exit/bootstrap contract.
+bash "$HERE/checkpoint-preflight.sh" 2>&1 || true
+
+# Dirty is a routing decision, not a blanket load-time stop: build-next can
+# isolate under the session's existing authorization. Unknown state stops.
+# Keep config/ignore checks independent, including on a dirty checkout.
+PREFLIGHT_CHECKS_OK=1
+CHECKOUT_RESULT="$(bash "$HERE/checkout-preflight.sh" 2>&1)"
+CHECKOUT_RC=$?
+if [[ "$CHECKOUT_RC" -eq 1 ]]; then
+    printf 'CHECKOUT ACTION REQUIRED: %s — preserve these changes; run checkout-preflight.sh with the authorized session --checkout mode before any switch/pull.\n' "$CHECKOUT_RESULT"
+elif [[ "$CHECKOUT_RC" -ne 0 ]]; then
+    printf 'PREFLIGHT FAIL: checkout uninspectable — STOP before checkout mutation: %s\n' "$CHECKOUT_RESULT"
+    PREFLIGHT_CHECKS_OK=0
+fi
+
+# Use the existing validator and renderer as the sole authorities. Capture
+# stdout separately from diagnostics without creating temporary files in the
+# consumer (TMPDIR may itself be inside that repository).
+if ! python3 - "$HERE" "$CONFIG" "$ROOT" <<'PY_CHECK'
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+here, config, root = sys.argv[1:]
+failed = False
+checks = [
+    ([sys.executable, str(Path(here) / "validate-config.py"), config], "config"),
+    (["bash", str(Path(here) / "gitignore-sync.sh"), "--dry-run", str(Path(root) / ".gitignore")], "ignores"),
+]
+for command, kind in checks:
+    try:
+        result = subprocess.run(command, capture_output=True, text=True)
+    except (OSError, UnicodeError) as exc:
+        result = None
+        evidence = str(exc)
+    else:
+        evidence = (result.stdout + result.stderr).strip()
+    if kind == "config":
+        if result is not None and result.returncode == 0:
+            continue
+        print(f"PREFLIGHT FAIL: invalid config {config} — STOP: fix the validator errors, then re-run "
+              + shlex.join(command))
+    else:
+        repair = shlex.join([command[0], command[1], command[-1]])
+        if result is not None and result.returncode == 0 and not result.stdout.strip():
+            continue
+        reason = "missing/stale managed block" if result is not None and result.returncode == 0 else "cannot establish managed-block freshness"
+        print(f"PREFLIGHT FAIL: {reason} in {command[-1]} — STOP: repair with {repair}; then re-run preflight.")
+    if evidence:
+        print(evidence)
+    failed = True
+sys.exit(1 if failed else 0)
+PY_CHECK
+then
+    PREFLIGHT_CHECKS_OK=0
+fi
+
+if [[ "$PREFLIGHT_CHECKS_OK" -eq 0 ]]; then
+    : # Keep the remaining independent advisories, but never report clean.
+elif [[ "${1:-}" == "--spec" ]]; then
+    python3 - "$CONFIG" "$ROOT" <<'PY'
+import os, sys
+import config as C
+try:
+    cfg = C.load_config(path=sys.argv[1], warn=False)
+except C.ConfigError as e:
+    print(f"PREFLIGHT FAIL: cannot parse config ({e}) — STOP: fix it, then re-run.")
+    sys.exit(0)
+root = sys.argv[2]
+specs = cfg.get("specs", [])
+if not specs:
+    print("PREFLIGHT FAIL: no specs configured in the config — STOP: run /spec-workflow:craft-spec to create one, then register it (setup-project).")
+    sys.exit(0)
+missing = [s.get("specPath", "?") for s in specs if not os.path.exists(os.path.join(root, s.get("specPath", "")))]
+if missing:
+    print("PREFLIGHT FAIL: spec file(s) missing: " + ", ".join(missing) + " — STOP: run /spec-workflow:craft-spec to create them (or fix specPath in the config).")
+else:
+    print("preflight ok: config + " + str(len(specs)) + " spec(s) present")
+# Deprecated inline specs: suggest migrating BEFORE starting new task work
+# (advisory — never blocks). project.yaml should hold configuration only;
+# the work-plan belongs in per-spec files.
+try:
+    raw = C._parse(sys.argv[1])
+except Exception:  # noqa: BLE001
+    raw = {}
+specs_dir = os.path.join(os.path.dirname(sys.argv[1]), C.SPECS_DIRNAME)
+if isinstance(raw, dict) and "specs" in raw and not os.path.isdir(specs_dir):
+    print("suggest: migrate inline specs out of project.yaml into .neural-network/specs/<id>.yaml "
+          "(one file per spec — project.yaml holds configuration only) before starting the next task.")
+PY
+else
+    echo "preflight ok: config present"
+fi
+
+# Agent identities: a WARN here never blocks (identity.sh --check always exits 0);
+# unresolvable roles just fall back to committing as the human.
+bash "$HERE/identity.sh" --check
+
+# AST-006 (SPEC-ASSISTANT.md §6.6): enumerated preflight for this repo's own
+# `assistant:` section, IF it's an assistant repo at all (marker present --
+# preflight.py itself is silent, zero noise, when there's no marker). Never
+# blocks: preflight.py's own contract is "always exit 0, print advisory
+# lines" -- the model reads a printed FAIL line and redirects the human,
+# exactly like every other check in this script.
+if [[ -d "$ROOT/.neural-network" ]]; then
+    python3 "$HERE/assistant/preflight.py" "$ROOT"
+fi
+
+# development-skills#197: this repo dogfoods plugins/spec-workflow -- a
+# session can invoke its scripts either from this repo's own working tree
+# (always current) or via an installed marketplace cache copy
+# (~/.claude/plugins/cache/*/spec-workflow/*/scripts, resolved via
+# ${CLAUDE_PLUGIN_ROOT} in a normal session) that does NOT auto-update when
+# this repo's own source changes and merges. A real merge once left the
+# cache silently 77+ lines stale, causing a genuine correctness failure
+# (a newly-added identity role unresolvable via the cache path moments
+# after the merge that added it). Advisory only -- never blocks, never
+# changes this script's own exit code. Silent no-op when this repo isn't
+# the plugin's own source, or no installed cache is found to compare
+# against. SPEC_WORKFLOW_CACHE_SEARCH_BASE overrides the search root
+# (tests point it at a fixture directory instead of the real cache).
+python3 - "$ROOT" <<'PY'
+import glob
+import os
+import sys
+
+root = sys.argv[1]
+local_scripts = os.path.join(root, "archived", "plugins", "spec-workflow", "scripts")
+if not os.path.isdir(local_scripts):
+    local_scripts = os.path.join(root, "plugins", "spec-workflow", "scripts")
+if not os.path.isdir(local_scripts):
+    sys.exit(0)  # this repo isn't plugins/spec-workflow's own source
+
+# Which installed cache copy to compare against, when more than one
+# version is installed simultaneously (a real, observed machine state --
+# e.g. 0.1.0/0.25.0/0.6.1/0.9.0 all present at once): lexicographically
+# sorting the glob and taking the first match is NOT the actually-active
+# or newest one -- it's an arbitrary string-sort artifact (development-
+# skills#197 review finding). Prefer CLAUDE_PLUGIN_ROOT when it's set and
+# points at a real scripts dir (that's the copy THIS session actually
+# resolved and would run); otherwise pick the candidate with the newest
+# mtime on its identity_lib.py (the most recently installed/updated copy).
+plugin_root_env = os.environ.get("CLAUDE_PLUGIN_ROOT")
+cache_scripts = None
+if plugin_root_env:
+    candidate = os.path.join(plugin_root_env, "scripts")
+    if os.path.isfile(os.path.join(candidate, "identity_lib.py")):
+        cache_scripts = candidate
+
+if cache_scripts is None:
+    search_base = os.environ.get(
+        "SPEC_WORKFLOW_CACHE_SEARCH_BASE",
+        os.path.expanduser("~/.claude/plugins/cache"),
+    )
+    candidates = glob.glob(os.path.join(search_base, "*", "spec-workflow", "*", "scripts"))
+    newest_mtime = None
+    for c in candidates:
+        key_file = os.path.join(c, "identity_lib.py")
+        if not os.path.isfile(key_file):
+            continue
+        mtime = os.path.getmtime(key_file)
+        if newest_mtime is None or mtime > newest_mtime:
+            newest_mtime = mtime
+            cache_scripts = c
+if cache_scripts is None:
+    sys.exit(0)  # no installed cache found to compare against
+
+KEY_FILES = ("identity_lib.py", "identity.sh", "board.sh", "config.py")
+diverged = []
+for name in KEY_FILES:
+    local_path = os.path.join(local_scripts, name)
+    cache_path = os.path.join(cache_scripts, name)
+    if not os.path.isfile(local_path) or not os.path.isfile(cache_path):
+        continue
+    with open(local_path, "rb") as f:
+        local_content = f.read()
+    with open(cache_path, "rb") as f:
+        cache_content = f.read()
+    if local_content != cache_content:
+        diverged.append(name)
+
+if diverged:
+    print(
+        "PLUGIN CACHE WARN: " + ", ".join(diverged)
+        + " differ between this repo's own source and the installed plugin"
+        + " cache (" + cache_scripts + "). A script invoked via the cache path"
+        + " may be running stale logic. Reinstall/update the spec-workflow"
+        + " plugin to pick up recent changes."
+    )
+PY
+
+# design-registry: surface finalized UI designs that are STALE (the UI
+# surface changed after the design was picked) or UNAPPLIED (finalized but
+# never marked applied) every iteration, so they cannot silently rot the way
+# four finalized designs already did before this check existed -- decisions
+# were made and then quietly never wired in. Advisory only, mirrors PLUGIN
+# CACHE WARN above: never blocks, silent when the registry script is missing
+# (older cache copy) or there is nothing to flag.
+DESIGN_REGISTRY="$HERE/design-registry.py"
+if [[ -f "$DESIGN_REGISTRY" ]]; then
+    python3 - "$DESIGN_REGISTRY" "$ROOT" <<'PY'
+import subprocess
+import sys
+
+script, root = sys.argv[1], sys.argv[2]
+try:
+    out = subprocess.run(
+        [sys.executable, script, "staleness"],
+        cwd=root, capture_output=True, text=True, timeout=15,
+    ).stdout
+except Exception:
+    sys.exit(0)  # advisory only -- never let a registry hiccup block preflight
+
+flagged = [
+    line for line in out.splitlines()
+    if "staleness=STALE" in line or "staleness=UNAPPLIED" in line
+]
+if flagged:
+    print(
+        "DESIGN REGISTRY WARN: " + str(len(flagged))
+        + " finalized UI design(s) need attention -- "
+        + "; ".join(flagged)
+        + " -- run `design-registry.py find --tags <surface>` before doing"
+        + " related UI work; a STALE design needs human re-confirmation,"
+        + " an UNAPPLIED one may just need `design-registry.py applied`."
+    )
+PY
+fi
