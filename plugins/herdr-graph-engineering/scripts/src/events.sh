@@ -7,7 +7,7 @@
 clock() { printf '%s\n' "${HERDR_GRAPH_CLOCK:-$(date +%s)}"; }
 
 STOP_HOLD="${HERDR_GRAPH_STOP_HOLD:-30}" REARM="${HERDR_GRAPH_REARM:-60}"
-REMIND_1="${HERDR_GRAPH_REMIND_1:-300}" REMIND_2="${HERDR_GRAPH_REMIND_2:-900}" MANUAL="${HERDR_GRAPH_MANUAL:-1200}"
+REMIND_1="${HERDR_GRAPH_REMIND_1:-300}" REMIND_2="${HERDR_GRAPH_REMIND_2:-900}"
 SWEEP="${HERDR_GRAPH_SWEEP:-300}" PUSH_GAP="${HERDR_GRAPH_PUSH_GAP:-60}"
 # how old a finished agent's screen read may be: 0 after an event (read now); the panel's tick raises it
 DRIFT_AGE=0
@@ -178,7 +178,7 @@ scan() { # session, full
     before="$(state_read "$s")"
     # shellcheck disable=SC2046
     added="$(jq -c --argjson now "$now" --argjson view "$view" --argjson merges "${merges:-null}" --argjson rearm "$REARM" \
-        --argjson r1 "$REMIND_1" --argjson r2 "$REMIND_2" --argjson manual "$MANUAL" "
+        --argjson r1 "$REMIND_1" --argjson r2 "$REMIND_2" "
         def conditions: \$view | $CONDITIONS_JQ;"'
         def key: [.repo, .lane, .node, .reason, .run, (.rev | tostring), .ref] | join("|");
         . as $st
@@ -206,7 +206,8 @@ scan() { # session, full
               | if $base == null then . else
                   (if ($now - $base) >= $r2 then 2 elif ($now - $base) >= $r1 then 1 else 0 end) as $level
                   | (if $level > .reminders then .reminders = $level | .due = .deliver | .notify_due = true else . end)
-                  | (if ($now - $base) >= $manual then .manual = true else . end)
+                  # the second reminder is the last: with it the lane needs the user by hand
+                  | (if $level == 2 then .manual = true else . end)
                 end))
     ' <<<"$before")" || { state_unlock; return 1; }
     state_write "$s" "$added"

@@ -25,12 +25,12 @@
 # notifications}. One event per key (repo, lane, node, reason, run, record count, ref). A key is
 # sent once; one that clears and comes back within a minute is not sent again. "stopped" must hold
 # 30 s. Delivered events stay open until the lane's facts change. A reminder follows after 5 and
-# 15 minutes (also as a Herdr notification), then the lane is marked "needs manual intervention"
-# (20 minutes). A lane's question waiting for the user reminds the user only. A message carries
+# 15 minutes (also as a Herdr notification); with the second one the lane is marked "needs manual
+# intervention" in the graph panel. A lane's question waiting for the user reminds the user only. A message carries
 # lane and node names and a reason code, never any text of an agent: a pushed message looks like
 # typing, so agent text in it could pass as the user's words.
 # Times (seconds): HERDR_GRAPH_STOP_HOLD 30, HERDR_GRAPH_REARM 60, HERDR_GRAPH_REMIND_1 300,
-# HERDR_GRAPH_REMIND_2 900, HERDR_GRAPH_MANUAL 1200, HERDR_GRAPH_SWEEP 300, HERDR_GRAPH_PUSH_GAP 60.
+# HERDR_GRAPH_REMIND_2 900, HERDR_GRAPH_SWEEP 300, HERDR_GRAPH_PUSH_GAP 60.
 # Exit codes: 0 ok, 1 nothing, 2 usage.
 # shellcheck disable=SC2016
 set -uo pipefail
