@@ -309,8 +309,9 @@ layout() { # width, interval, selected
     [ -z "${MSG:-}" ] || BOTTOM=("${BOTTOM[0]}" " $MSG" "${BOTTOM[@]:1}")
 }
 
-rows_of() { # line index, width (0: one row per line) -> the rows the line takes
-    if [ "$2" -gt 0 ] && [ "${TOPWIDTH[$1]}" -gt "$2" ]; then echo $(((TOPWIDTH[$1] + $2 - 1) / $2)); else echo 1; fi
+rows_of() { # line index, width (0: one row per line) -> ROWS, the rows the line takes (no subshell:
+    # it runs for every line of every draw)
+    if [ "$2" -gt 0 ] && [ "${TOPWIDTH[$1]}" -gt "$2" ]; then ROWS=$(((TOPWIDTH[$1] + $2 - 1) / $2)); else ROWS=1; fi
 }
 
 # place decides how many TOP lines, from line SCROLL on, fit in the rows above the bottom
@@ -323,7 +324,7 @@ place() { # width (0: one row per line), rows available (0: all)
     ROWMAP=() ROWLINE=() SHOWN=0
     n=${#TOP[@]}
     while [ "$i" -lt "$n" ]; do
-        rows="$(rows_of "$i" "$1")"
+        rows_of "$i" "$1"; rows="$ROWS"
         [ "$2" -eq 0 ] || [ $((${#ROWMAP[@]} + rows)) -le "$2" ] || break
         ROWMAP+=("${TOPKIND[$i]}") ROWLINE+=("$i")
         r=1
@@ -341,10 +342,10 @@ place() { # width (0: one row per line), rows available (0: all)
 # click moved it; the wheel alone does not). SCROLL is the first TOP line drawn.
 CUR=-1 CURID="" FOLLOW=0 SCROLL=0
 
-el_end() { # line of an element's start -> its last line (its further rows follow it)
+el_end() { # line of an element's start -> EL_END, its last line (its further rows follow it; no subshell)
     local e="$1"
     while [ $((e + 1)) -lt "${#TOP[@]}" ] && [ -z "${TOPEL[$((e + 1))]}" ] && [ "${TOPKIND[$((e + 1))]}" != -1 ]; do e=$((e + 1)); done
-    echo "$e"
+    EL_END="$e"
 }
 
 el_start() { # line -> the line its element starts on, or -1 when the line is in no element
@@ -385,16 +386,16 @@ scroll_view() { # width, room
             SCROLL="$CUR"
             while [ "$SCROLL" -gt 0 ] && [ "${TOPKIND[$((SCROLL - 1))]}" = -1 ]; do SCROLL=$((SCROLL - 1)); done
         fi
-        end="$(el_end "$CUR")" total=0 s="$end"
-        while [ "$s" -ge "$SCROLL" ]; do total=$((total + $(rows_of "$s" "$1"))); s=$((s - 1)); done
+        el_end "$CUR"; end="$EL_END" total=0 s="$end"
+        while [ "$s" -ge "$SCROLL" ]; do rows_of "$s" "$1"; total=$((total + ROWS)); s=$((s - 1)); done
         while [ "$total" -gt "$2" ] && [ "$SCROLL" -lt "$CUR" ]; do
-            total=$((total - $(rows_of "$SCROLL" "$1"))) SCROLL=$((SCROLL + 1))
+            rows_of "$SCROLL" "$1"; total=$((total - ROWS)) SCROLL=$((SCROLL + 1))
         done
     fi
     FOLLOW=0
     pad=$(($2 * 30 / 100)) total="$pad" s="${#TOP[@]}"
     while [ "$s" -gt 0 ]; do
-        rows="$(rows_of $((s - 1)) "$1")"
+        rows_of $((s - 1)) "$1"; rows="$ROWS"
         [ $((total + rows)) -le "$2" ] || break
         total=$((total + rows)) s=$((s - 1))
     done
@@ -405,7 +406,7 @@ scroll_view() { # width, room
 line_out() { # line index -> the line as drawn: the selected element's rows start with ›, except
     # a lane's first line, which shows its selection already (◂ and the background)
     local l="${TOP[$1]}"
-    if [ "$CUR" -ge 0 ] && ! [[ "${TOPEL[$CUR]}" =~ ^L[^/]*$ ]] && [ "$1" -ge "$CUR" ] && [ "$1" -le "$(el_end "$CUR")" ]; then l="${l/ /›}"; fi
+    if [ "$CUR" -ge 0 ] && ! [[ "${TOPEL[$CUR]}" =~ ^L[^/]*$ ]] && [ "$1" -ge "$CUR" ] && el_end "$CUR" && [ "$1" -le "$EL_END" ]; then l="${l/ /›}"; fi
     printf '%s' "$l"
 }
 

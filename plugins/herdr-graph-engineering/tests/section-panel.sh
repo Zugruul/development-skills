@@ -229,6 +229,13 @@ out="$( { click 2 3; for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do printf '%s' "$DN"; 
 check "Down scrolls so the selection stays visible" "$(sed -n "${lastrow}p" <<<"$full" | sed 's/^ /›/')" "$out"
 out="$( { click 2 3; for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do printf '%s' "$DN"; done; for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do printf '%s' "$UP"; done; } | pg panel --frame --width 40 --height $H --feed)"
 check "Up scrolls back so the selection stays visible, its header too" " ▾ why-slow  investigate ◂" "$(sed -n 2p <<<"$out")"
+# Input stays immediate: an arrow or a wheel notch redraws without a subshell per line. The
+# processes one event forks (xtrace marks each with a second +) stay a small fixed number,
+# whatever the number of lines; a fork per line made every click, arrow and notch lag.
+forks() { (cd "$PREPO" && env -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID -u HERDR_PLUGIN_ID PATH="$FIX/stub-herdr:$PATH" HERDR_STUB_DIR="$P_TMP" HERDR_ENV=1 NO_COLOR=1 XDG_CONFIG_HOME="$P_TMP/config" PS4='+' bash -x "$SC/panel.sh" --frame --width 40 --height $H --feed 2>&1 >/dev/null | grep -c '^++'); }
+f0="$(click 2 3 | forks)"
+f4="$( { click 2 3; printf '%s' "$DN"; wheel 65; wheel 64; printf '%s' "$UP"; } | forks)"
+check "an arrow or a wheel notch forks at most 20 processes, not one per line" "fast" "$([ $(((f4 - f0) / 4)) -le 20 ] && echo fast || echo "$(((f4 - f0) / 4)) per event")"
 
 echo "== panel: pull requests =="
 # prs.sh fetch asks gh (GRAPH_GH, here a stub) for each lane's pull requests: those of the
