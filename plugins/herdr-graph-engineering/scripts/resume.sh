@@ -20,6 +20,8 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/common.sh
 . "$HERE/src/common.sh"
+# shellcheck source=src/afk.sh
+. "$HERE/src/afk.sh"
 
 USAGE="resume.sh [--session NAME] [--repo DIR]... [--fetch] [--out FILE] | --hook pre-compact|session-start"
 session="" repos="" fetch=0 out="" hook=""
@@ -196,6 +198,12 @@ render() {
     echo
     echo "QUEUED (start when an agent slot is free)"
     jq -r '(.queued // []) | if length == 0 then "  (none)" else .[] | "  #\(.id) \(.lane)" + (if .repo then " (repo \(.repo))" else "" end) + (if .ref then " brief \(.ref)" else "" end) + ": \(.text)" end' <<<"$sess"
+    if [ -n "$name" ]; then
+        afk_line "$name"
+        printf 'AUTOMERGE %s\n' "$(jq -r '(.automerge // {}) as $a | "session \($a.session // "" | if . == "" then "off" else . end)" + ([($a.repos // {}) | to_entries[] | ", repository \(.key) \(.value)"] + [($a.lanes // {}) | to_entries[] | ", lane \(.key) \(.value)"] | join(""))' <<<"$sess")"
+        n="$(jq '[(.decisions // [])[] | select(.seen != true)] | length' <<<"$sess")"
+        [ "$n" -eq 0 ] || echo "DECIDED AND NOT SHOWN: $n (decide.sh digest, then decide.sh seen)"
+    fi
     echo "STANDING ANSWERS"
     jq -r '(.standing // []) | if length == 0 then "  (none)" else .[] | "  #\(.id) \(.text)" end' <<<"$sess"
     fbline="$(bash "$HERE/feedback.sh" state --session "${name:-graph}" 2>/dev/null | awk '{print $2}')"

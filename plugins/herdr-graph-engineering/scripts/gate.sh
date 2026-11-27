@@ -73,7 +73,7 @@ trimmed() { sed -E 's/^[[:space:]]+//'; }
 
 # Record a finished run once: the node must still be running; returns 3 while it runs.
 record_run() {
-    local f code note changed st
+    local f code note changed st ran
     lock_in "$gdir"
     f="$(gate_facts "$hbf")" || { unlock; return 3; }
     [ "$(jq -r '.finished' <<<"$f")" = true ] || { unlock; return 3; }
@@ -81,10 +81,11 @@ record_run() {
         st="$(yq -r ".nodes[\"$node\"].status // \"\"" "$file")"
         if [ "$st" = running ]; then
             code="$(jq -r '.exit' <<<"$f")"
+            ran="$(jq -r '.head // ""' <<<"$f")"
             changed="$(jq -r '.changed // [] | .[]' <<<"$f" | trimmed | paste -sd ',' - | sed 's/,/, /g')"
             note="${changed:+checkout changed by the gate: $changed}"
             if [ "$code" = 0 ]; then
-                bash "$HERE/lane.sh" node --repo "$repo" --lane "$lane" --node "$node" --status "done" --result pass --exit 0 \
+                bash "$HERE/lane.sh" node --repo "$repo" --lane "$lane" --node "$node" --status "done" --result pass --exit 0 ${ran:+--head "$ran"} \
                     --ref "$log" ${note:+--note "$note"} >/dev/null || { unlock; return 1; }
             else
                 bash "$HERE/lane.sh" node --repo "$repo" --lane "$lane" --node "$node" --status failed --result fail --exit "$code" \
@@ -159,7 +160,7 @@ exec)
     snap() { git status --porcelain=v1 --untracked-files=all 2>/dev/null | LC_ALL=C sort; }
     before="$(snap)"
     # shellcheck disable=SC2016  # $p and $d are jq variables
-    hb_set '. + {pid: $p, dir: $d}' --argjson p "$$" --arg d "$(pwd)" || die "could not write $hbf"
+    hb_set '. + {pid: $p, dir: $d, head: $h}' --argjson p "$$" --arg d "$(pwd)" --arg h "$(git rev-parse HEAD 2>/dev/null)" || die "could not write $hbf"
     interrupted=0
     trap 'interrupted=1' INT TERM
     env PAGER=cat GIT_PAGER=cat MANPAGER=cat GIT_TERMINAL_PROMPT=0 DEBIAN_FRONTEND=noninteractive \

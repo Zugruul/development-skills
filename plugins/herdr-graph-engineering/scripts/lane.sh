@@ -16,6 +16,8 @@
 #   lane.sh list [--all]                          open lanes (--all: closed ones too)
 #   lane.sh node --lane L --node N --status waiting|running|done|failed|blocked|skipped
 #               [--result pass|changes|fail|question] [--ref X] [--exit N] [--agent NAME] [--tab TAB] [--note TEXT]
+#                                                 A node recorded done keeps the lane branch's head (--head SHA: the
+#                                                 commit it really ran on, as gate.sh gives it)
 #                                                 --tab: the Herdr tab the node runs in (a new tab clears tab_closed)
 #                                                 [--output PATH] the agent's output file; PATH.result.json is its result file.
 #                                                 A node that starts running (or gets another agent) gets a new run id,
@@ -214,18 +216,24 @@ node)
     case "$result" in '' | pass | changes | fail | question) ;; *) die "--result must be pass, changes, fail or question" 2 ;; esac
     case "$exitc" in '' | *[!0-9]*) [ -z "$exitc" ] || die "--exit must be a number" 2 ;; esac
     yq -e ".graph | has(\"$node\")" "$file" >/dev/null 2>&1 || die "NO NODE: $node in lane $lane" 6
+    node_head="$head"
+    if [ -z "$node_head" ] && [ "$status" = "done" ]; then
+        b="$(yq -r '.branch // ""' "$file")"
+        [ -z "$b" ] || node_head="$(git -C "$repo" rev-parse --verify -q "refs/heads/$b")" || node_head=""
+    fi
     msg="$node $status${result:+ $result}${exitc:+ EXIT=$exitc}${ref:+ $ref}${tab:+ tab $tab}${note:+ - $note}"
     update '(.nodes[$n]) as $old
         | (if $s == "running" and ($old.status != "running" or ($old.run // "") == "" or ($a != "" and $a != ($old.agent // "")))
            then .nodes[$n] |= (.run = $run | del(.steps)) else . end)
         | (if $o != "" then .nodes[$n].output = $o else . end)
+        | (if $s == "done" and $head != "" then .nodes[$n].head = $head else . end)
         | .nodes[$n] |= (. + {status: $s}
             + (if $r != "" then {result: $r} else {} end)
             + (if $ref != "" then {ref: $ref} else {} end)
             + (if $x != "" then {exit: ($x | tonumber)} else {} end)
             + (if $a != "" then {agent: $a} else {} end))
         | if $t != "" then .nodes[$n] |= (.tab = $t | del(.tab_closed)) else . end' "$msg" \
-        --arg n "$node" --arg s "$status" --arg r "$result" --arg ref "$ref" --arg x "$exitc" --arg a "$agent" --arg t "$tab" --arg o "$output" --arg run "$(date +%s)-$$"
+        --arg n "$node" --arg s "$status" --arg r "$result" --arg ref "$ref" --arg x "$exitc" --arg a "$agent" --arg t "$tab" --arg o "$output" --arg run "$(date +%s)-$$" --arg head "$node_head"
     [ "$status" != running ] || printf 'RUN %s\n' "$(yq -r ".nodes[\"$node\"].run" "$file")" ;;
 step)
     need_lane
@@ -353,7 +361,7 @@ set)
     need_lane
     case "$key" in owner | workspace | branch | gate | status | pr | cleanup | cleanup_code | merged_early | forwarded) ;; *) die "--key must be owner, workspace, branch, gate, status, pr, cleanup or forwarded" 2 ;; esac
     [ "$key" != forwarded ] || case "$value" in declined | ?*/?*) ;; *) die "forwarded must be LANE/AGENT or declined" 2 ;; esac
-    [ "$key" != cleanup ] || case "$value" in '' | ready | confirmed | declined | "blocked: "?*) ;; *) die "cleanup must be ready, confirmed, declined or blocked: REASON" 2 ;; esac
+    [ "$key" != cleanup ] || case "$value" in '' | ready | confirmed | declined | "blocked: "?* | "afk-approved: "?*) ;; *) die "cleanup must be ready, confirmed, declined or blocked: REASON" 2 ;; esac
     # a yes only answers a cleanup question that was asked
     if [ "$key" = cleanup ] && [ "$value" = confirmed ]; then
         was="$(yq -r '.cleanup // ""' "$file")"
