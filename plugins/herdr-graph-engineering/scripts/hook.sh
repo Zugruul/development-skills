@@ -105,7 +105,7 @@ orchestrator_hook() {
             jq -cn --arg r "herdr-graph: open questions not yet put to the user: $list. Put each to the user now (one AskUserQuestion dialog), after recording it with lane.sh asked --lane L --id N." \
                 '{decision: "block", reason: $r}' ;;
         prompt)
-            case "$(field '.prompt // ""')" in "GRAPH EVENT"*) return 0 ;; esac
+            [[ ! "$(field '.prompt // ""')" =~ $EVENT_MESSAGE_RE ]] || return 0
             [ "$(afk_json "$session" | jq -r .state)" = on ] || return 0
             jq -cn '{hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext:
                 "herdr-graph: AFK is on. If this message is from the user (not the watcher, an agent or another session): show decide.sh digest first, then ask \"still away?\". Only their answer, or the afk off command, turns AFK off; then run decide.sh seen."}}' ;;

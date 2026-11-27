@@ -250,13 +250,12 @@ pending() { # session: reminders brought up to date from the stored times
     [ "$(pending_list "$1" | jq length)" -gt 0 ]
 }
 
-# One line: lane and node names (cut to safe characters) and fixed reason codes only.
-message() { # session, pending JSON
-    jq -r --arg s "$1" 'def safe: gsub("[^A-Za-z0-9._-]"; "") | .[0:40];
-        "GRAPH EVENT (from the watcher, not the user): "
-        + ([.[] | "\(.lane | safe)/\(if .node != "" then .node | safe else "-" end) \(.reason | safe)"
-             + (if .delivered_at != null then " (reminder \(.reminders))" else "" end)] | join("; "))
-        + ". Handle them as the orchestrate skill section \"When an event arrives\" says: start with notify.sh list --session \($s | safe) and drift.sh."' <<<"$2"
+# One line: the fixed prefix, then lane and node names (cut to safe characters) and fixed reason
+# codes only. How to handle it is the orchestrate skill's, not the message's.
+message() { # pending JSON
+    jq -r --arg p "$EVENT_PREFIX" 'def safe: gsub("[^A-Za-z0-9._-]"; "") | .[0:40];
+        $p + ([.[] | "\(.lane | safe)/\(if .node != "" then .node | safe else "-" end) \(.reason | safe)"
+             + (if .delivered_at != null then " (reminder \(.reminders))" else "" end)] | join(", "))' <<<"$1"
 }
 
 mark_delivered() { # session, pending JSON
@@ -268,7 +267,7 @@ take() { # session
     local p
     p="$(pending_list "$1")"
     [ "$(jq length <<<"$p")" -gt 0 ] || return 1
-    message "$1" "$p"
+    message "$p"
     mark_delivered "$1" "$p"
 }
 
@@ -322,7 +321,7 @@ push() { # session
         fi
         return 0
     fi
-    out="$(herdr agent prompt "$name" "$(message "$s" "$p")" 2>&1)" || return 0
+    out="$(herdr agent prompt "$name" "$(message "$p")" 2>&1)" || return 0
     mark_delivered "$s" "$p"
     state_change "$s" '.last_push = $now | .draft_told = false' --argjson now "$(clock)"
 }
