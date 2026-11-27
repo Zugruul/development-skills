@@ -4,7 +4,7 @@ How the graph orchestrator writes the first prompt of every agent node. It is a 
 
 ## Shape
 
-1. **The role file's body**, with its placeholders filled (`{node}`, `{output_path}`): Objective, Start, Boundaries, Tools and sources, Output, Ask, End. Paste it as it is; do not shorten or reword the role's rules.
+1. **The role file's body**, with its placeholders filled (`{node}`, `{output_path}`, and `{run}`, the run id `lane.sh node --status running` printed): Objective, Start, Boundaries, Tools and sources, Output, Ask, End. Paste it as it is; do not shorten or reword the role's rules.
 2. **`## Brief`**, written for this node:
    - **Where**: the checkout path, the branch and the base commit it starts from (`from origin/main <short sha>`), and where the relevant code lives (the plugin or package, the files or folders, the tests).
    - **Goal**: one short paragraph saying what should be true when the node is done, in the user's terms. Start from the node's `brief` in the lane file.

@@ -522,7 +522,9 @@ FETCH_PRS=0
 fetch_prs() {
     [ "$FETCH_PRS" -eq 0 ] && return 0
     (bash "$HERE/prs.sh" fetch --max-age 60 >/dev/null 2>&1 &)
-    (bash "$HERE/drift.sh" --quiet --max-age 10 >/dev/null 2>&1 &)
+    # reads the finished agents (drift.sh), brings each orchestrator's events up to date and pushes
+    # what no waiter took (notify.sh)
+    (bash "$HERE/notify.sh" tick >/dev/null 2>&1 &)
 }
 
 jump() { # lane JSON: focus the agent that needs the user, else a running one

@@ -14,6 +14,14 @@
 # Usage (every command takes --session NAME, default graph):
 #   session.sh set --key orchestrator|pane|scratch --value V
 #   session.sh set --key feedback --value on|off   the feedback loop for this session (off by default)
+#   session.sh afk on [--tiers 1|1,2] [--cleanup] [--lanes A,B] [--no-queued] [--until ISO-TIME]
+#   session.sh afk off | status           AFK (off by default; only the afk skill sets it). Default scope:
+#                                         tiers 1,2, all lanes, queued ideas (still only under a standing
+#                                         worktree approval), no worktree removal, until the user returns
+#   session.sh automerge on|off|status [--repo DIR [--lane L]]
+#                                         auto-merge (off by default; only the auto-merge skill sets it), for
+#                                         the session, one repository or one lane; the narrowest wins. A plain
+#                                         "off" turns every one off
 #   session.sh add --list standing|queued|renames|notes|files --text T [--lane L] [--repo DIR] [--ref PATH]
 #                                         queued needs --lane; --ref is its prepared brief
 #   session.sh del --list LIST (--id N | --lane L)
@@ -26,11 +34,15 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/common.sh
 . "$HERE/src/common.sh"
+# shellcheck source=src/panes.sh
+. "$HERE/src/panes.sh"
+# shellcheck source=src/afk.sh
+. "$HERE/src/afk.sh"
 
-USAGE="session.sh set|add|del|show|path|find [--session NAME] [options] (see the header of session.sh)"
+USAGE="session.sh set|add|del|show|path|find|afk|automerge [--session NAME] [options] (see the header of session.sh)"
 LISTS="standing queued renames notes files"
 args=()
-session="graph" key="" value="" list="" text="" lane="" repo="" ref="" id="" pane="" as_json=0
+session="graph" key="" value="" list="" text="" lane="" repo="" ref="" id="" pane="" as_json=0 tiers="1,2" cleanup=false lanes="" queued=true until=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --session) need_value "$1" $#; session="$2"; shift 2 ;;
@@ -44,12 +56,18 @@ while [ $# -gt 0 ]; do
         --id) need_value "$1" $#; id="$2"; shift 2 ;;
         --pane) need_value "$1" $#; pane="$2"; shift 2 ;;
         --json) as_json=1; shift ;;
+        --tiers) need_value "$1" $#; tiers="$2"; shift 2 ;;
+        --cleanup) cleanup=true; shift ;;
+        --lanes) need_value "$1" $#; lanes="$2"; shift 2 ;;
+        --no-queued) queued=false; shift ;;
+        --until) need_value "$1" $#; until="$2"; shift 2 ;;
         -*) usage "$USAGE" ;;
         *) args+=("$1"); shift ;;
     esac
 done
-[ "${#args[@]}" -eq 1 ] || usage "$USAGE"
-cmd="${args[0]}"
+[ "${#args[@]}" -ge 1 ] || usage "$USAGE"
+cmd="${args[0]}" sub="${args[1]:-}"
+case "$cmd" in afk | automerge) [ "${#args[@]}" -eq 2 ] || usage "$USAGE" ;; *) [ "${#args[@]}" -eq 1 ] || usage "$USAGE" ;; esac
 require_tools jq yq
 [ "$(slug "$session")" = "$session" ] || die "SESSION NAME: '$session' must be a lowercase slug, for example $(slug "$session")" 2
 dir="$(session_dir)"
@@ -85,6 +103,7 @@ set)
     [ -n "$value" ] || usage "session.sh set --key K --value V"
     no_secret "$value"
     update '.[$k] = $v' --arg k "$key" --arg v "$value"
+    [ "$key" != pane ] || pane_orch_set "$value" "$session"
     printf 'SET %s %s = %s\n' "$session" "$key" "$value" ;;
 add)
     need_list
@@ -113,6 +132,49 @@ show)
     [ -f "$file" ] || die "NO SESSION $session ($file)" 6
     if [ "$as_json" -eq 1 ]; then read_json "$file"; else cat "$file"; fi ;;
 path) printf '%s\n' "$file" ;;
+afk)
+    case "$sub" in
+        on)
+            case "$tiers" in 1 | 1,2) ;; *) die "--tiers must be 1 or 1,2: tier 3 always waits for the user" 2 ;; esac
+            case "$until" in '' | [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) ;; *) die "--until must be a UTC time like 2026-11-27T22:00:00Z" 2 ;; esac
+            update '.afk = {state: "on", since: $now, until: $u, tiers: ($t | split(",") | map(tonumber)),
+                    lanes: ($ls | split(",") | map(select(. != ""))), queued: $q, cleanup: $c}' \
+                --arg t "$tiers" --arg ls "$lanes" --arg u "$until" --argjson q "$queued" --argjson c "$cleanup"
+            afk_line "$session"
+            echo "AFK cannot answer this chat's own permission prompt: one of those stops everything until you answer it. Permission settings are not changed for AFK." ;;
+        off)
+            update '.afk = {state: "off", ended: $now}'
+            echo "AFK off"
+            echo "Show what was decided (decide.sh digest), then ask what waited." ;;
+        status) afk_line "$session" ;;
+        *) usage "session.sh afk on|off|status" ;;
+    esac ;;
+automerge)
+    root=""
+    if [ -n "$repo" ] || [ -n "$lane" ]; then
+        entry="$(repo_entry "${repo:-$(pwd)}")" || die "${repo:-$(pwd)} is not in a git repository" 2
+        root="${entry#*$'\t'}"
+    fi
+    case "$sub" in
+        on | off)
+            if [ -n "$lane" ]; then
+                update '.automerge.lanes[$r + "|" + $l] = $v' --arg r "$root" --arg l "$lane" --arg v "$sub"
+            elif [ -n "$root" ]; then
+                update '.automerge.repos[$r] = $v' --arg r "$root" --arg v "$sub"
+            elif [ "$sub" = off ]; then
+                update '.automerge = {session: "off", repos: {}, lanes: {}}'
+            else
+                update '.automerge.session = "on"'
+            fi
+            printf 'AUTOMERGE %s for %s\n' "$sub" "${lane:+lane $lane of }${root:-this session}" ;;
+        status)
+            printf 'AUTOMERGE %s\n' "$(automerge_state "$session" "${root:-}" "$lane")"
+            if [ -z "$root" ]; then
+                session_json "$session" | jq -r '(.automerge // {}) as $a | (($a.repos // {}) | to_entries[] | "  repository \(.key): \(.value)"),
+                    (($a.lanes // {}) | to_entries[] | "  lane \(.key | split("|") | "\(.[1]) of \(.[0])"): \(.value)")'
+            fi ;;
+        *) usage "session.sh automerge on|off|status [--repo DIR [--lane L]]" ;;
+    esac ;;
 find)
     [ -n "$pane" ] || usage "session.sh find --pane P"
     for f in "$dir"/*.yaml; do

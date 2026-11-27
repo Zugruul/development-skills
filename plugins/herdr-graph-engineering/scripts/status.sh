@@ -28,6 +28,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/src/common.sh"
 # shellcheck source=src/style.sh
 . "$HERE/src/style.sh"
+# shellcheck source=src/merged.sh
+. "$HERE/src/merged.sh"
 # shellcheck source=src/gatefile.sh
 . "$HERE/src/gatefile.sh"
 
@@ -78,9 +80,16 @@ while IFS= read -r r; do
         gf="$(gate_facts "$g")" || continue
         gates="$(jq -c --arg l "$(basename "$(dirname "$g")")" --arg n "$(basename "$g" .json)" --argjson f "$gf" '.[$l][$n] = $f' <<<"$gates")"
     done
+    # what each running node's agent claimed through its hooks (scripts/hook.sh), by lane and node
+    claims="{}"
+    for g in "$d"/claims/*/*.json; do
+        [ -f "$g" ] || continue
+        cj="$(jq -ce 'objects' "$g" 2>/dev/null)" || continue
+        claims="$(jq -c --arg l "$(basename "$(dirname "$g")")" --arg n "$(basename "$g" .json)" --argjson c "$cj" '.[$l][$n] = $c' <<<"$claims")"
+    done
     for f in "$d"/*.yaml "$d"/closed/*.yaml; do
         [ -f "$f" ] || continue
-        lanes="$(jq -c --argjson l "$(read_json "$f")" --argjson p "$prs" --argjson v "$live" --argjson gt "$gates" --arg r "$r" '. + [$l + {prs: ($p[$l.lane] // []), livecache: $v, gates: ($gt[$l.lane] // {}), root: $r}]' <<<"$lanes")"
+        lanes="$(jq -c --argjson l "$(read_json "$f")" --argjson p "$prs" --argjson v "$live" --argjson gt "$gates" --argjson cl "$claims" --arg r "$r" '. + [$l + {prs: ($p[$l.lane] // []), livecache: $v, gates: ($gt[$l.lane] // {}), claims: ($cl[$l.lane] // {}), root: $r}]' <<<"$lanes")"
     done
 done <<EOF2
 $repos
@@ -88,10 +97,21 @@ EOF2
 
 stall="${HERDR_GRAPH_GATE_STALL:-10}"
 case "$stall" in '' | *[!0-9]*) stall=10 ;; esac
-view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson stall "$((stall * 60))" '
+view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson stall "$((stall * 60))" "$MERGED_JQ"'
     def pad2: tostring | if length < 2 then "0" + . else . end;
     def dur: floor | if . < 60 then "\(.)s" elif . < 3600 then "\(. / 60 | floor)m \(. % 60 | pad2)s"
              else "\(. / 3600 | floor)h \(. % 3600 / 60 | floor | pad2)m" end;
+    # an observation (a hook claim, a result file or a screen line) as the mismatch it means
+    def drift_of:
+        . as $o | (.kind // (if (.result // "") != "" then "result" else "none" end)) as $k
+        | (if $k == "result" then {kind: .result, ref: (.ref // "")}
+           elif $k == "question" then {kind: "question", ref: (.ref // "")}
+           elif $k == "failure" then {kind: "agent-failed", ref: (.ref // "")}
+           elif $k == "busy" then null
+           elif $k == "step" and .result != "pass" then
+               {kind: "step-\(.result)", ref: ([.name, .result, .ref] | map(select((. // "") != "")) | join(" ")), name: .name, result: .result, stepref: (.ref // "")}
+           else {kind: "stopped"} end)
+        | if . == null then null else . + {source: ($o.source // "screen"), at: ($o.seen_at // $o.at // "")} end;
     ($agents | map({(.name): .}) | add // {}) as $live
     | map(. as $l
       | ($l.graph | keys_unsorted) as $order
@@ -100,6 +120,10 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
           # a gate run started by gate.sh: its heartbeat, while the node is recorded running
           | (if ($g.gate // "") != "" and $s.status == "running" then ($l.gates[$n] // null) else null end) as $gt
           | (if $s.agent and ($a.status // "") == "blocked" then "blocked" else $s.status end) as $st
+          # a hook claim counts only for the run it was made in
+          | (($l.claims[$n] // null) | if . != null and ($s.run // "") != "" and (.run // "") == $s.run then . else null end) as $cl
+          # what drift.sh read, while the agent is still in the state it was read in
+          | (if $c != null and $c.status == ($a.status // "") and $c.seq == ($a.seq // null) and ($c.run // "") == ($s.run // "") then $c else null end) as $read
           # a running node whose agent is out of step with the lane file
           | (if $gt != null then
                  (if $gt.finished then (if ($gt.recorded // false) then null else {kind: "gate-unrecorded", ref: "EXIT=\($gt.exit)"} end)
@@ -107,51 +131,80 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
                   elif ($gt.quiet // 0) >= $stall then {kind: "gate-stalled", ref: "\($gt.quiet | dur) (last: \($gt.last))"}
                   else null end)
              elif $s.status != "running" or $ag == "" or $have != 1 then null
-             elif $a == null then {kind: "gone"}
-             elif $a.status == "blocked" then {kind: "blocked"}
-             elif ($a.status == "idle" or $a.status == "done") and $c != null
-                  and $c.status == $a.status and $c.seq == $a.seq then
-                 (if ($c.result // "") != "" then {kind: $c.result, ref: ($c.ref // "")} else {kind: "stopped"} end)
-             else null end) as $drift
+             elif $a == null then (if ($cl.kind // "") == "result" then ($cl | drift_of) else {kind: "gone"} end)
+             elif $a.status == "blocked" then
+                 (if ($cl.kind // "") == "question" then ($cl | drift_of)
+                  elif ($cl.kind // "") == "permission" then {kind: "blocked", ref: ($cl.ref // ""), source: $cl.source}
+                  else {kind: "blocked"} end)
+             elif ($a.status == "idle" or $a.status == "done") then
+                 (if $cl != null and (($cl.kind // "") | IN("none", "permission") | not) then ($cl | drift_of)
+                  elif $read != null then ($read | drift_of)
+                  elif $cl != null then ($cl + {kind: "none"} | drift_of)
+                  else null end)
+             else null end) as $found
+          | ([($s.rejected // [])[].ref]) as $rejected
+          | (if $found == null then null
+             elif ($found.ref // "") != "" and ($rejected | index($found.ref)) != null then null
+             else $found + (if ($rejected | length) > 0 then {rejected: ($rejected | length)} else {} end) end) as $drift
+          | (($s.steps // []) | last) as $step
           | {node: $n, status: $st, result: ($s.result // ""), retries: ($s.retries // 0),
              agent: $ag, live: ($a.status // ""), seq: ($a.seq // null), drift: $drift,
+             run: ($s.run // ""), rev: ($s.rev // 0), output: ($s.output // ""), claim: $cl,
              max: ([$l.graph[] | select(.retry.to == $n) | .retry.max] | max // 0),
              human: ($g.human // null), ref: ($s.ref // ""), gate: $gt,
              progress: (if $gt != null and ($gt.finished | not) then
                             "running \($gt.elapsed | dur) · \($gt.ok) ok · \($gt.fail) FAIL"
                             + (if ($gt.last // "") != "" then " · last: \($gt.last)" else "" end)
+                        elif $s.status == "running" and $step != null then
+                            "step \($step.name) \($step.result)" + (if ($step.ref // "") != "" then " \($step.ref)" else "" end)
                         else "" end)} ] as $nodes
       | ($l.question // "") as $q
       | [$nodes[] | select(.drift.kind == "question") | "\(.node) (\(.agent)) asks: \(.drift.ref)"] as $asks
-      # the lane'"'"'s own pull request: the recorded one, one a node points to, or its branch'"'"'s
-      | ([$l.pr // empty] + [$l.nodes[]?.ref // empty | select(test("^https?://"))]) as $own
+      # the lane'"'"'s own merged pull request (src/merged.sh)
       | (if $l.status == "closed" or ($l.cleanup // "") == "declined" then null
-         else [($l.prs // [])[] | select(.state == "MERGED")
-               | select((.url as $u | $own | index($u)) or ((.headRefName // "") != "" and .headRefName == ($l.branch // "")))][0]
-         end) as $merged
+         else ($l | own_merged($l.prs // [])) end) as $found
+      | ([$nodes[] | select(.status != "done" and .status != "skipped") | .node]) as $unfinished
+      # an early merge the user already answered about stays quiet until the lane is done
+      | (if $found != null and $l.status == "open" and ($l.merged_early // "") == $found.url then null else $found end) as $merged
       | ([$nodes[] | .node as $n | .agent as $ag | .drift | select(. != null) |
            if .kind == "question" then (if $q != "" then "\($n) (\($ag)) asks: \(.ref)" else empty end)
            elif .kind == "pass" or .kind == "fail" then "\($n) finished: \(.kind) \(.ref) (\($ag)); check and record"
-           elif .kind == "blocked" then "\($n): \($ag) is blocked, waiting for an answer on its screen"
+           elif .kind == "blocked" then "\($n): \($ag) is blocked, " + (if (.ref // "") != "" then "waiting for approval (\(.ref))" else "waiting for an answer on its screen" end)
+           elif .kind == "agent-failed" then "\($n): \($ag) failed: \(.ref)"
+           elif (.kind | startswith("step-")) then "\($n): step \(.ref) (\($ag))"
            elif .kind == "gone" then "\($n): agent \($ag) is gone"
            elif .kind == "gate-unrecorded" then "\($n) finished \(.ref) but was never recorded: gate.sh --collect"
            elif .kind == "gate-lost" then "\($n): gate process \(.ref) is gone without an EXIT line"
            elif .kind == "gate-stalled" then "\($n): no gate output for \(.ref)"
            else "\($n): \($ag) stopped without a RESULT line" end]
-         + (if $merged == null then []
-            elif ($l.cleanup // "") == "confirmed" then ["PR #\($merged.number) merged, cleanup confirmed: cleanup.sh run"]
-            else ["PR #\($merged.number) merged, waiting for cleanup confirmation"] end)) as $att
+         + (($l.cleanup // "") as $cu
+            | if $merged == null then []
+              elif $cu == "confirmed" then ["PR #\($merged.number) merged, cleanup confirmed: cleanup.sh run"]
+              elif $cu == "ready" then ["PR #\($merged.number) merged, waiting for cleanup confirmation"]
+              elif ($cu | startswith("blocked: ")) then ["PR #\($merged.number) merged, cleanup \($cu)"]
+              elif ($cu | startswith("afk-approved")) then ["PR #\($merged.number) merged, removal approved under AFK"]
+              elif $l.status == "done" or ($unfinished | length) == 0 then ["PR #\($merged.number) merged, checking cleanup"]
+              else ["PR #\($merged.number) merged but the lane is unfinished (\($unfinished | join(", ")))"] end)) as $att
       | {lane: $l.lane, pattern: $l.pattern, repo: $l.repo,
          question: (if $q != "" then $q else ($asks | join("; ")) end),
          question_live: ($q == "" and ($asks | length) > 0), attention: $att,
          pr_merged: (if $merged then {number: $merged.number, url: $merged.url} else null end),
          workspace: ($l.workspace // ""), owner: ($l.owner // ""), idea: ($l.idea // ""), cleanup: ($l.cleanup // ""),
          branch: ($l.branch // ""), prs: ($l.prs // []),
-         root: $l.root, closed: ([($l.history // [])[] | select(endswith(" lane closed"))][-1] // "" | split(" ")[0]),
+         root: $l.root, status: ($l.status // ""), history: ($l.history // [] | length),
+         recorded_pr: ([$l.pr // empty | select(. != "")] + [$l.nodes[]?.ref // empty | select(test("^https?://[^ ]+/pull/[0-9]+$"))] | .[0] // ""),
+         questions: [($l.questions // [])[] | select(.answer == null) | {id, node: (.node // ""), kind: (.kind // ""), asked_at: (.asked_at // null)}],
+         closed: ([($l.history // [])[] | select(endswith(" lane closed"))][-1] // "" | split(" ")[0]),
          nodes: $nodes, last: ($l.history[-1] // ""),
          section: (if $l.status == "closed" then "closed"
                    elif $q != "" or ($asks | length) > 0 or ($att | length) > 0 or any($nodes[]; .status == "blocked") then "needs"
                    elif $l.status == "done" then "done" else "working" end)})' <<<"$lanes")"
+# what was left unhandled after both reminders (notify.sh's events) marks its lane
+manual="$(cat "$(session_dir)"/*.events.json 2>/dev/null |
+    jq -cs --argjson now "$(date +%s)" '[.[] | .open? // {} | .[] | select(.manual) | {repo, lane, what: "\(if .node != "" then .node + " " else "" end)\(.reason)"}] | unique' 2>/dev/null)" || manual='[]'
+[ "${manual:-[]}" = '[]' ] || view="$(jq -c --argjson m "$manual" 'map(. as $l | [$m[] | select(.repo == $l.root and .lane == $l.lane) | .what] as $w
+    | if ($w | length) == 0 or $l.section == "closed" then . else .manual = true | .section = "needs" | .attention += ["‼ needs manual intervention: \($w | join(", ")) unhandled after two reminders"] end)' <<<"$view")"
+
 # --text, --line and --tokens are about the open lanes only
 open_view="$(jq -c 'map(select(.section != "closed"))' <<<"$view")"
 

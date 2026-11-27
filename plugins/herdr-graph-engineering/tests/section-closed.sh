@@ -18,7 +18,7 @@ cst() { printf '%s' "$1" >"$C_TMP/state.json"; : >"$C_TMP/calls.log"; }
 dir_of() { printf '%s/herdr-graph' "$(git -C "$1" rev-parse --path-format=absolute --git-common-dir)"; }
 DA="$(dir_of "$CA")" DB="$(dir_of "$CB")"
 # Both repositories have a workspace open in Herdr, so status.sh reads both.
-WS="{\"workspaces\":[{\"workspace_id\":\"w1\",\"worktree\":{\"repo_root\":\"$CA\"}},{\"workspace_id\":\"w2\",\"worktree\":{\"repo_root\":\"$CB\"}}]}"
+WS="{\"agents\":{\"g\":{\"name\":\"graph\",\"pane_id\":\"w1:p1\",\"agent_status\":\"idle\"}},\"workspaces\":[{\"workspace_id\":\"w1\",\"worktree\":{\"repo_root\":\"$CA\"}},{\"workspace_id\":\"w2\",\"worktree\":{\"repo_root\":\"$CB\"}}]}"
 cst "$WS"
 # a closed lane's closing time, set by hand so the order is known
 closed_at() { # repo dir, lane, time

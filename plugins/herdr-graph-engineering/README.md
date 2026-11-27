@@ -30,6 +30,8 @@ Needs the `herdr` plugin, the `herdr` binary (the agent runs inside a Herdr pane
 | `orchestrate` | The one chat: route ideas into lanes, run each lane's graph, check evidence, retry within limits, relay questions, open a draft pull request when done |
 | `display` | Read-only picture of every lane: `NEEDS YOU`, `WORKING`, `DONE` (the panel also lists `CLOSED`), each with its node chain, retries, open question and file references |
 | `concurrency` | Judgement for many lanes at once: lanes that edit the same files, folding an ask into a running lane, merge order, merging `origin/main` in, version bumps across parallel pull requests, one writer per checkout, a cap only when you ask for one. Guidance only, no state |
+| `afk` | `on`, `off` or `status`: while on, the orchestrator decides the safe things itself, records each, and shows the list when you return. Only this command sets it |
+| `auto-merge` | `on` or `off`, for the session, one repository or one lane: while on, the orchestrator may merge a lane's pull request after its gate and reviews pass. Off by default |
 | `feedback-loop` | Turns the feedback loop on or off for the session (off by default): before a lane is cleaned up, the orchestrator and the lane's agents note how the whole flow could have been better; and how the repository's documentation could have helped more; general lessons, never task details, become improvement pull requests to this plugin or to that documentation |
 
 ## Concepts
@@ -90,8 +92,16 @@ A new agent often stops before its brief: folder trust, imports of instruction f
 ## Scripts
 
 ```text
-lane.sh new|show|list|node|retry|ask|answer|note|done-extra|set|close|clear|restore   the only writer of lane files
-session.sh set|add|del|show|find                       the only writer of the orchestrator's session file
+lane.sh new|show|list|node|step|reject|retry|ask|asked|answer|withdraw|offer|dismiss|note|done-extra|set|close|clear|restore   the only writer of lane files
+session.sh set|add|del|show|find|afk|automerge         the only writer of the orchestrator's session file (decide.sh writes its decisions)
+start.sh [--scratch DIR]                                the orchestrator's first command: its session file
+notify.sh reconcile|take|push|signal|tick|sweep|list|gate   what wakes the orchestrator, once, and the push fallback
+await.sh [--session S] [--hook]                         the waiter: ends with the next event, which wakes the chat
+hook.sh stop|prompt|ask|ask-done|permission|stop-failure    the client hooks: observe lane agents, guard unasked questions
+signal.sh herdr                                         the Herdr plugin's event hook
+adopt.sh --agent A --idea T --access read|write         watch an agent started outside the graph
+decide.sh add|list|digest|seen                          decisions made without you, and the list you see
+merge.sh check|run --lane L                             the only way the orchestrator merges (auto-merge on)
 resume.sh [--fetch] [--out FILE]                        everything the orchestrator needs after a compaction, one block
 autocompact.sh [print|check] [--pct N] [--write]          compact the orchestrator at 40% of its context: how, per client; is it on
 ready.sh --lane L                                       which nodes can start now
@@ -99,7 +109,7 @@ kind.sh --role R [--not K] [--without K] --list|--kind K|--remember K   the inst
 gate.sh --lane L --node N --pane P [--detach]           run a gate in a visible tab; the tab records its own result
 gate.sh --wait | --collect --lane L --node N            block until a gate finishes; record a finished one after the fact
 close-done.sh --lane L [--dry-run]                      close the tabs of finished agent and gate nodes (CLOSE/KEEP per node)
-cleanup.sh check | run --lane L                          find lanes ready for cleanup and ask (check without --repo: every repository); clean one up after your yes
+cleanup.sh check | run [--afk] | facts | reopen --lane L  find lanes ready for cleanup and ask (check without --repo: every repository); clean one up after your yes (--afk: nine checks)
 feedback.sh state|add|due|lesson|lessons|proposed|used|reopen|show|sanitize   the feedback loop: raw notes outside every repository; the sanitiser that refuses task details (--target plugin|repo keeps the plugin's lessons and a repository's documentation lessons apart; --strict for the latter)
 guard.sh check --repo DIR --base REF [--allow FILE]     the preservation check: every instruction sentence removed, changed or moved since the base, unless allowed with a reason
 status.sh [--text|--line|--json]                        the picture of every lane (display, tab bar), lane files plus live agents
@@ -148,25 +158,79 @@ Make a lane's checkout with the `herdr:worktree` skill (`herdr worktree create`)
 
 ## When a lane file is behind
 
-A lane file changes only when the orchestrator records a node, and it records what it is listening to. So the picture does not trust the file alone. For every node recorded `running`, `status.sh` (and the panel through it) looks at its agent in Herdr:
+A lane file changes only when the orchestrator records a node. So the picture does not trust the file alone. For every node recorded `running`, `status.sh` (and the panel through it) looks at its agent in Herdr: blocked, gone, finished, asking, failed or stopped all show under NEEDS YOU.
 
-- blocked: NEEDS YOU, "blocked, waiting for an answer on its screen";
-- gone from Herdr: NEEDS YOU, "agent gone";
-- idle or done with a last line `NODE <node> RESULT: question <ref>`: NEEDS YOU, with the agent's question as the lane's question (the panel's answer popup relays your answer);
-- idle or done with `RESULT: pass|fail <ref>`: NEEDS YOU, "finished: pass ...; check and record" (the orchestrator still checks the evidence before it records a pass);
-- idle with no RESULT line: NEEDS YOU, "stopped without a RESULT line".
+What a finished agent claims is read in this order (`src/result.sh`):
 
-`status.sh` never reads a screen: `drift.sh` reads the finished agents' screens and caches the RESULT lines in `<git common dir>/herdr-graph/live.json`, and a cached line counts only while the agent stays in the state it was read in. The panel runs `drift.sh --quiet` in the background every 10 seconds; the orchestrator runs `drift.sh` after every listen event and before every report, and records what it prints (`DRIFT <lane>/<node> ... | <lane.sh command>`, or `NO DRIFT`).
+1. **Its client's hooks** (`hook.sh`, Claude Code and Codex hooks): the last non-empty line of the final message at turn end; the exact question and options of a question dialog; the tool of a permission request; the client's own error. With a hook claim the screen is not read. Background tasks or crons with no result mean "not finished". A new turn drops the old claim.
+2. **Its result file**, `<output file>.result.json`: `{node, run, result, ref, final}`. Each start of a node has a run id (`lane.sh node` prints `RUN <id>`); a file of another run or node is ignored.
+3. **Its screen**, strictly: only a line that *is* `NODE <node> RESULT: pass|fail|question <ref>` (after spaces or a known bullet) counts. Quotes, examples, the brief's template and text after two spaces do not.
 
-A lane whose own pull request merged (its recorded `pr`, a node's pull request, or the one for its branch, from `prs.sh`'s cache) shows under NEEDS YOU as "PR #N merged, waiting for cleanup confirmation" until the cleanup is confirmed or declined.
+`NODE <node> STEP: <name> <pass|fail> <ref>` (or `"final": false`) is a step: it never finishes a node. Every claim shows its source (`# source: stop-hook`); a claim is never proof, and one that does not hold is rejected with `lane.sh reject`, after which that ref is not reported again.
+
+`drift.sh` prints each mismatch with the command that fixes it. It never writes a lane file.
+
+Only a lane's **own** merged pull request counts: the recorded one (`lane.sh set --key pr`, or a pr node's). With none recorded, its branch's, only while no pull request on the branch is open and only if the pull request is newer than the lane. The panel says what is true: "checking cleanup", "waiting for cleanup confirmation" (only once the question is asked), "cleanup blocked: ...", or "merged but the lane is unfinished". A wrong entry can be hidden for that pull request alone (`lane.sh dismiss`).
+
+## Waking the orchestrator
+
+The orchestrator does not poll. It ends its turn and is woken.
+
+```text
+fast:   lane agents' hooks · Herdr plugin events · a gate that ends in its tab
+slow:   a full sweep every 300 s (the waiter; the panel while it is open; Herdr startup)
+            -> notify.sh reconcile: read the facts again, one event per real change
+            -> delivery: the waiter (types nothing), else the push onto an empty input box
+```
+
+- **An event only means "look".** Hooks, Herdr events and the sweep call one function, so they agree. Only lanes the session owns count.
+- **Once.** The key is repository, lane, node, reason, run, record count and ref. A flapping agent does not resend: a state that clears and returns within 60 s is the same event. Recording the node arms it again. "Stopped" must hold for 30 s. Changes within 5 s make one message.
+- **The waiter** (`await.sh`) is armed by a Claude Code `Stop` hook with `asyncRewake` after every turn of the orchestrator: it waits in the background, costs no tokens, and when an event is pending it exits 2, which wakes the idle chat. One per session: a newer one takes over. It never touches what you are typing. It survives `/compact`. It ends quietly after 23 h 50 min (Claude kills a hook silently at its 24 h timeout); the push then covers. For any other client the hook returns at once.
+- **The push** (the Herdr plugin; also the only wake for Codex) types the message with `herdr agent prompt` only when no waiter is alive, the orchestrator's pane **and** name still match, it is idle or done, and its input box is recognisably empty (dim placeholder text counts as empty). On a draft, a dialog or an unknown screen it sends you a notification instead. At most one push a minute.
+- **The message is safe**: `GRAPH EVENT (from the watcher, not the user): lane/node reason; ...`. It carries lane and node names and reason codes, never any text of an agent.
+- **The sweep interval is 300 s** (`HERDR_GRAPH_SWEEP`). Events carry everything that has an event; the sweep only covers what has none: pull request merges, stalled or lost gates, events lost while the plugin was off or Herdr restarted, and what auto-merge can merge. 300 s keeps `gh` calls low and bounds a missed change to five minutes. Reminder times are checked against stored timestamps, not by the sweep.
+- **Reminders**: after 5 and 15 minutes unhandled, to the orchestrator and as a Herdr notification; with the second one, at 15 minutes, the lane is marked **‼ needs manual intervention** in the panel. A question waiting for you reminds only you. Herdr shows no notification with its default config (`shown: false`); `notify.sh list` says so.
+- **Questions** are put to you at once, in a dialog, one decision per question. A lane keeps every open question. Answering one never sends a node with a live agent back to `waiting`. In Claude Code the `Stop` hook refuses (once) to end a turn that leaves a question unasked.
+
+**The lane hooks only observe.** The plugin's hooks load in every chat where the plugin is enabled. In a pane that is neither a lane agent's nor the orchestrator's they exit after one file test. In a lane pane they print nothing, decide nothing and always exit 0. No hook guards or blocks a command.
+
+Both parts must be installed and current: the Claude or Codex plugin (hooks, waiter) and the Herdr plugin (events, push, panel), which is installed and updated separately. Codex asks you to review and trust plugin hooks; until then only the sweep, result files and screens report for Codex agents.
+
+## AFK
+
+`/herdr-graph-engineering:afk on|off|status`. Off until that command turns it on; the orchestrator never asks. Default scope: tiers 1 and 2, all lanes, queued ideas (still only under a standing worktree approval), no worktree removal, until you return. `on cleanup` ticks worktree removal.
+
+| | |
+|---|---|
+| Tier 1, alone | start a ready node, retry within limits, record a checked result, answer an agent only from your quoted words, prompt a stopped agent once, close finished tabs, push the lane branch and open or update a draft pull request, start a queued idea |
+| Tier 2, only if a fresh read-only agent of another kind agrees | a choice a commit can undo, replacing a failed agent, rerunning or stopping a gate |
+| Tier 3, always waits | approve, mark ready or merge (except auto-merge), force-push, posting, deleting or removing (except the checked removal), `human` nodes, secrets, installs, permission prompts, new repositories or gate commands, going past a limit, adopting |
+
+Each decision is recorded **before** it is acted on (`decide.sh`, which refuses tier 3, a tier 2 without its second-opinion file and an answer without its source). While something waits no dialog is opened; the other lanes go on. When you send a message, you first see "Decided while you were away" (with what can and cannot be undone), then you are asked "still away?". AFK cannot answer the orchestrator's own permission prompts. These are written rules: no hook blocks a command.
+
+**AFK worktree removal** (`cleanup.sh run --afk`) happens only when all nine hold: AFK on with `cleanup`, for this lane; the lane done with every extra criterion; a recorded pull request that `gh` says is merged from the lane's branch; no changed or untracked file and no commit beyond its head; no ignored file except build output (`target/`, `node_modules/`, `build/`, plus the lines of `~/.config/herdr-graph/safe-to-lose`); no working or blocked agent and no other agent or lane in the folder; no other open question and feedback collected; a linked worktree, not a main checkout or an adopted one; `herdr worktree remove` without `--force`. It is never done for review or report lanes, or merged-early, blocked, kept or dismissed ones. It is recorded as partly reversible.
+
+## Auto-merge
+
+`/herdr-graph-engineering:auto-merge on|off`, for the session, a repository or a lane (the narrowest setting wins; plain `off` turns every one off). Off by default; a new session starts off. Only `merge.sh` merges: the lane's recorded pull request, never a review lane's; no open question; every node passed, with at least one gate; the gate and each review passed on the pull request's head commit; the checkout clean and pushed; no requested changes or missing required review; no conflict; every CI check passed. It **marks a draft ready first** (GitHub merges no draft), merges only that commit (`--match-head-commit`), never uses `--admin` or `--auto`, never deletes a branch, and records the merge for you like an AFK decision.
+
+## Adopting an agent
+
+`adopt.sh --agent A --idea T --access read|write` makes a one-node lane around an agent you started yourself. It refuses an agent a lane already records and a second writer in a checkout, records no tab (so nothing closes it), keeps a read adoption's `HEAD` and status as its baseline, and sends the agent the result protocol once, when it is not blocked. Cleanup of an adopted lane closes the record only.
 
 ## Cleanup after a lane
 
-The orchestrator does not wait for you to notice a merge. Before every report and after a lane is done it runs `cleanup.sh check`. A done lane is ready for cleanup when its pull request is merged (the recorded one, else the one for its branch), its checkout is clean and nothing in it is unpushed; a report lane is ready once nothing is unpushed. A review lane (pattern `review`, a review stack, or branch `look/pr-<n>`) never waits for the reviewed pull request: it is ready, even before it is marked done, once it posted, you decided not to post, or its findings were forwarded. When the reviewed pull request belongs to another open lane (its branch is the pull request's head branch, in any repository with lanes; `review-owner.sh --pr URL` prints `OWNER <repo> <lane> <agent|-> <node|->`), `cleanup.sh check` prints a `FORWARD` line and the close question first asks: "Send the N findings of review X to <lane>/<agent>?". On yes the orchestrator prompts that agent with the summary's "Prompt for AI Agents" block, reopens the owner's node as running, and records `forwarded: <lane>/<agent>` on the review lane (`declined` on a no), so it is not asked again. A ready lane goes under NEEDS YOU with a cleanup question and a Herdr notification, and `status.sh --text` (and the panel) shows `cleanup: ready`. Nothing is removed until you say yes and the orchestrator records it (`cleanup: confirmed`; `cleanup.sh run` refuses without it); then `cleanup.sh run` closes the lane's tabs, removes the worktree with `herdr worktree remove` (never `--force`) and closes the lane. The branch is kept. A merged lane with a dirty checkout or unpushed commits is never removed: it goes under NEEDS YOU with the reason. A no is remembered (`cleanup: declined`).
+The sweep runs `cleanup.sh check`, as does the orchestrator before every report. A done lane is ready when its own pull request is merged, its checkout is clean and nothing in it is unpushed; a report lane once nothing is unpushed; a review lane (pattern `review`, a review stack, or branch `look/pr-<n>`) once it posted, you decided not to post, or its findings were forwarded. When the reviewed pull request belongs to another open lane, the orchestrator first asks whether to send it the findings.
+
+- **Asked per lane.** One lane at a time, one question per topic, each with a preview (`cleanup.sh facts`): the pull request, the worktree, the kept branch, ignored files that would be lost, tabs. Remove, not now, keep, or "this entry is wrong".
+- **Ignored files count.** Git calls a checkout clean while it holds a `.env`, and `herdr worktree remove` deletes it. Ignored files outside build folders are named in the question.
+- **A yes covers what was shown.** If the pull request, head or checkout changed, `run` refuses and the question is asked again. A question that no longer holds is withdrawn.
+- **Merged early** (the pull request merged, the lane unfinished) is its own question: keep working, finish, or dismiss. Never "cleanup".
+- Nothing is removed until you say yes and it is recorded (`cleanup: confirmed`), except the AFK removal above. `cleanup.sh run` closes the tabs, removes the worktree with `herdr worktree remove` (never `--force`) and closes the lane. The branch is kept. A dirty or unpushed lane is never removed. A no is remembered (`cleanup.sh reopen` takes it back).
 
 ## What the orchestrator may do alone
 
-Start agents and gates, retry within a pattern's limit, commit, push the lane branch, open a **draft** pull request. It asks before marking a pull request ready, posting anywhere, or touching anything outside the lane. It never merges, approves, force-pushes or deletes a branch.
+Start agents and gates, retry within a pattern's limit, commit, push the lane branch, open a **draft** pull request. It asks before marking a pull request ready, posting anywhere, or touching anything outside the lane. It never merges unless auto-merge is on for the lane (then only through `merge.sh`), and never approves, force-pushes or deletes a branch.
 
 ## The Herdr panel
 
@@ -288,10 +352,12 @@ So the orchestrator also reads the improvement lane's diff for task details befo
 The orchestrator is one long chat. When the client compacts it, the conversation is summarised and details are lost, so nothing the orchestrator needs may live only in the chat:
 
 - **Lane facts** go in the lane file: `lane.sh note` (a follow-up sent to a node, scope you added, a brief or file path) and `lane.sh done-extra` (a done criterion beyond the pattern's, such as "merged to main and this window runs the new plugin version"; `--met N` marks it).
-- **Session facts** go in the session file, `${XDG_STATE_HOME:-~/.local/state}/herdr-graph/sessions/<name>.yaml`, written only by `session.sh`: the orchestrator's pane and scratch folder, your standing answers that have no file of their own (such as the worktree approval), lanes queued at the agent limit with their prepared brief, renames, notes and scratch files. One file per orchestrator and per user, because lanes span repositories. Text that looks like a token, key or password is refused.
-- **`resume.sh`** prints all of it in one block: every open lane of every repository with lanes (nodes, agents live or gone, what a finished agent printed as its RESULT line (it runs `drift.sh --quiet` first), open question, pull requests, done checks, notes) with its next action, then the queue, the standing answers, and the standing kind and dialog choices that `kind.sh --remember` and the orchestrator keep in `<scratch>/graph-kinds` and `<scratch>/graph-dialogs`, renames, notes and files. The orchestrate skill runs it first after a compaction or in a new session, then re-starts `herdr:listen` for every live agent.
+- **Session facts** go in the session file, `${XDG_STATE_HOME:-~/.local/state}/herdr-graph/sessions/<name>.yaml`, written only by `session.sh`: the orchestrator's pane and scratch folder, your standing answers that have no file of their own (such as the worktree approval), queued lanes with their prepared brief, renames, notes and scratch files. One file per orchestrator and per user, because lanes span repositories. Text that looks like a token, key or password is refused.
+- **`resume.sh`** prints all of it in one block: every open lane of every repository with lanes (nodes, agents live or gone, what a finished agent printed as its RESULT line (it runs `drift.sh --quiet` first), open question, pull requests, done checks, notes) with its next action, then the queue, the standing answers, and the standing kind and dialog choices that `kind.sh --remember` and the orchestrator keep in `<scratch>/graph-kinds` and `<scratch>/graph-dialogs`, renames, notes and files. The orchestrate skill runs it first after a compaction or in a new session, then re-starts `herdr:listen` only where the user asked to watch an agent.
 
-**Claude Code** does this by itself through the plugin's hooks (`hooks/hooks.json`): `PreCompact` writes a fresh block to `<session folder>/<name>.resume.md`, and `SessionStart` with the `compact` matcher puts the block back into the chat. Both do nothing outside the orchestrator's pane (the session whose `pane` is `$HERDR_PANE_ID`) and never fail the chat. To compact by hand, give the summary a focus:
+`start.sh` is the orchestrator's first command, so the session file exists from the start; it also holds AFK, auto-merge and the recorded decisions, and `resume.sh` prints them with the open events.
+
+**Claude Code** does this by itself through the plugin's hooks (`hooks/hooks.json`): `PreCompact` writes a fresh block to `<session folder>/<name>.resume.md`, and `SessionStart` with the `compact` matcher puts the block back into the chat. Both do nothing outside the orchestrator's pane (the session whose `pane` is `$HERDR_PANE_ID`) and never fail the chat. In a pane whose agent is named `graph` with no session file, the block still comes back and says why it has no session. To compact by hand, give the summary a focus:
 
 ```text
 /compact Keep: that I am the graph orchestrator (herdr-graph-engineering:orchestrate), my session name, and every user decision not yet written with lane.sh or session.sh. Lane and session state is in the files: after compacting, run resume.sh and follow it.

@@ -7,7 +7,7 @@
 #   pull request the lane mentions (its idea, question, references, history): what an
 #   orchestrator report lists as an agent's pull requests. Asked of gh, written to
 #   <lane folder>/prs.json: {"fetched": epoch seconds, "lanes": {lane: [{number, url, state,
-#   isDraft, reviewDecision, headRefName}]}}, oldest first.
+#   isDraft, reviewDecision, headRefName, createdAt}]}}, oldest first.
 #   --max-age S  leave a repository whose cache is younger than S seconds (default 0: always fetch)
 # Without --repo: every repository that may hold lanes (lane_repos in src/common.sh).
 # It never fails its caller: without gh, on a failed call or while another fetch holds the
@@ -36,7 +36,7 @@ require_tools jq yq git
 
 [ -n "$repos" ] || repos="$(lane_repos)"
 
-FIELDS="number,url,state,isDraft,reviewDecision,headRefName"
+FIELDS="number,url,state,isDraft,reviewDecision,headRefName,createdAt"
 PR_URL='https://github\.com/[^/ "]+/[^/ "]+/pull/[0-9]+'
 
 fetch_repo() { # repo dir

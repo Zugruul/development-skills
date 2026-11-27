@@ -2,6 +2,7 @@
 # Hermetic stand-in for gh. Every call is appended to $GH_STUB_DIR/gh.log; a file
 # $GH_STUB_DIR/gh-fail makes every call fail.
 #   pr list --head B   answers from $GH_STUB_DIR/head-<B, / as _>.json (else [])
+#   pr ready|merge REF change that entry of gh.json
 #   pr view REF        answers from $GH_STUB_DIR/gh.json {"<number, url or branch>": {...}} when it
 #                      has REF, else from $GH_STUB_DIR/pr-<number>.json (else it fails)
 set -u
@@ -24,5 +25,11 @@ case "${1:-} ${2:-}" in
     f="$d/pr-${3##*/}.json"
     [ -f "$f" ] || { echo "no pull requests found for ${3:-}" >&2; exit 1; }
     cat "$f" ;;
+"pr ready" | "pr merge")
+    # changes gh.json: ready clears isDraft; merge sets MERGED ($GH_STUB_DIR/merge-fail refuses)
+    [ "$2" != merge ] || [ ! -f "$d/merge-fail" ] || { echo "merge refused" >&2; exit 1; }
+    change='.isDraft = false'
+    [ "$2" = ready ] || change='.state = "MERGED"'
+    jq -c --arg r "$3" "if has(\$r) then .[\$r] |= ($change) else . end" "$d/gh.json" >"$d/gh.json.tmp" && mv "$d/gh.json.tmp" "$d/gh.json" ;;
 *) exit 1 ;;
 esac
