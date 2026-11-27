@@ -1,0 +1,24 @@
+when: "An improvement lane of the feedback loop: its brief is the open lessons of one target. Only the feedback loop uses it; a second agent checks that existing expertise is preserved."
+inputs: [idea]
+nodes:
+  impl:
+    agent: implementer
+    access: write
+    brief: "{idea}"
+  tests:
+    gate: "{gate}"
+    needs: [impl]
+    retry: { to: impl, max: 3, on: fail }
+  review:
+    agent: reviewer
+    access: read
+    needs: [tests]
+    when: pass
+    brief: >-
+      Preservation review of an improvement lane's change. Your job is to check that existing expertise is preserved: what made these instructions useful must still be there and still apply. The change was meant to: {idea}
+      Answer each question. Is any existing rule weaker, narrower, optional or harder to find? Does new text contradict, override or add an exception to existing text, here or in another file? Did a specific (a command, a number, a named step, an example, a reason) become vague? Does any cut rest only on someone who did not need the text? Is each change traced to a lesson, and what does each addition tell an agent that it would not work out by itself?
+      The preservation check's report in your inputs lists the removed, changed and moved sentences, and which of them the user already allowed. It cannot see a new sentence that cancels an old one, so read every added line against the text around it. Do not pass a change because its diff is tidy. A weakening the user has not allowed is a finding: quote the old and the new text, give the reason you see, and answer changes. Only the user can accept a weakening.
+    retry: { to: impl, max: 2, on: changes }
+done:
+  - gate: tests
+  - draft-pr

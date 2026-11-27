@@ -15,6 +15,7 @@ Read every available pattern's `when:` line (the repository's `.herdr-graph/patt
 | The idea | Pattern |
 | --- | --- |
 | asks to implement, add, fix, change, remove, refactor, update something | `solo` |
+| is an improvement lane the feedback loop offered and the user accepted (never an ordinary idea) | `improve` |
 | the same, and the user asks for a review or a second opinion, or the change touches security, authentication, data deletion or migration, money, or a public interface | `pair` |
 | an urgent fix: asks for `fast` by name, or says fast, urgent or hotfix, or wants the pull request as soon as possible | `fast` |
 | asks why, how, where, what, whether; asks to investigate, find out, explain, compare, check | `investigate` |
@@ -38,6 +39,7 @@ Read the repository's own instructions (`AGENTS.md`, `CLAUDE.md`, contributing n
 
 - Make the lane's checkout with the `herdr:worktree` skill (`herdr worktree create`): it is what Herdr links to the repository, and what cleanup removes with `herdr worktree remove`. A workspace from `herdr workspace create` has no such link. A standalone clone is only for when the user asks for one; its lanes are still visible through the registry `lane.sh new` writes.
 - Changing patterns (`solo`, `pair`, `fast`): branch `feat/<lane>`, base a freshly fetched `origin/<main branch>`.
+- The `improve` pattern changes files too, and takes the same branch and base.
 - Read-only patterns (`investigate`, `plan`): branch `look/<lane>` from the same base. It exists so the checkout is the lane's alone.
 - Review patterns: one worktree per pull request at its head. Fetch the head first (`git fetch origin pull/<n>/head:look/pr-<n>` on GitHub, which also works for forks), then a worktree on `look/pr-<n>`. A merged pull request gets no worktree and no review: it is read from the default branch as reference only.
 - Path: a worktree location rule counts only from that repository's own instructions (at its toplevel), otherwise Herdr's default. A rule from an enclosing repository, or from the orchestrator's own checkout, never applies to a nested standalone clone. The path must not fall inside another repository's working tree unless the target's own rule puts it there; `herdr:worktree` checks this.
