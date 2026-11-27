@@ -66,9 +66,34 @@ command = ["bash", "scripts/panel-action.sh", "open-link"]
 [[startup]]
 command = ["bash", "scripts/panel-action.sh", "restore"]
 
+[[startup]]
+command = ["bash", "scripts/notify.sh", "sweep"]
+
 [[events]]
 on = "worktree.removed"
 command = ["bash", "scripts/panel-action.sh", "worktree-removed"]
+
+# Something changed: go look (scripts/signal.sh). It runs for every pane; one that is neither a lane
+# agent's nor the orchestrator's costs one file test.
+[[events]]
+on = "pane.agent_status_changed"
+command = ["bash", "scripts/signal.sh", "herdr"]
+
+[[events]]
+on = "pane.closed"
+command = ["bash", "scripts/signal.sh", "herdr"]
+
+[[events]]
+on = "pane.exited"
+command = ["bash", "scripts/signal.sh", "herdr"]
+
+[[events]]
+on = "tab.closed"
+command = ["bash", "scripts/signal.sh", "herdr"]
+
+[[events]]
+on = "workspace.closed"
+command = ["bash", "scripts/signal.sh", "herdr"]
 
 [[link_handlers]]
 id = "report"

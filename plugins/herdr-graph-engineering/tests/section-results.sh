@@ -15,6 +15,8 @@ V_DIR="$(git -C "$V_REPO" rev-parse --path-format=absolute --git-common-dir)/her
 vparse() { bash -c '. "$1/scripts/src/result.sh"; screen_claim work "$2" | jq -r "[.kind, .result, .ref] | join(\"|\")"' _ "$PLUGIN" "$1"; }
 vlast() { bash -c '. "$1/scripts/src/result.sh"; last_line_claim work "$2" | jq -r "[.kind, .result, .ref] | join(\"|\")"' _ "$PLUGIN" "$1"; }
 
+# shellcheck disable=SC2016  # backticks in the screens are text
+{
 echo "== results: only a real RESULT line counts on a screen =="
 check "A: a quoted example is no result" "none||" "$(vparse '> end with a line like "NODE work RESULT: fail <ref>"')"
 check "B: the same in backticks is no result" "none||" "$(vparse 'end with a line like `NODE work RESULT: fail <ref>`')"
@@ -40,6 +42,8 @@ NODE work RESULT: pass abc1234
 check "a result followed by more text is none" "none||" "$(vlast 'NODE work RESULT: pass abc1234
 Next I will also run the linter.')"
 check "the whole line in backticks counts" "result|question|/tmp/q.md" "$(vlast '`NODE work RESULT: question /tmp/q.md`')"
+
+}
 
 echo "== results: claim, then result file, then screen =="
 vs lane new --repo "$V_REPO" --lane w --pattern investigate --idea x >/dev/null

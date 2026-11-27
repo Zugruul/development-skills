@@ -59,6 +59,8 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/common.sh
 . "$HERE/src/common.sh"
+# shellcheck source=src/panes.sh
+. "$HERE/src/panes.sh"
 # shellcheck source=src/pattern.sh
 . "$HERE/src/pattern.sh"
 
@@ -227,6 +229,7 @@ node)
            then .nodes[$n] |= (.run = $run | del(.steps)) else . end)
         | (if $o != "" then .nodes[$n].output = $o else . end)
         | (if $s == "done" and $head != "" then .nodes[$n].head = $head else . end)
+        | .nodes[$n].rev = (($old.rev // 0) + 1)
         | .nodes[$n] |= (. + {status: $s}
             + (if $r != "" then {result: $r} else {} end)
             + (if $ref != "" then {ref: $ref} else {} end)
@@ -234,7 +237,15 @@ node)
             + (if $a != "" then {agent: $a} else {} end))
         | if $t != "" then .nodes[$n] |= (.tab = $t | del(.tab_closed)) else . end' "$msg" \
         --arg n "$node" --arg s "$status" --arg r "$result" --arg ref "$ref" --arg x "$exitc" --arg a "$agent" --arg t "$tab" --arg o "$output" --arg run "$(date +%s)-$$" --arg head "$node_head"
-    [ "$status" != running ] || printf 'RUN %s\n' "$(yq -r ".nodes[\"$node\"].run" "$file")" ;;
+    if [ "$status" = running ]; then
+        printf 'RUN %s\n' "$(yq -r ".nodes[\"$node\"].run" "$file")"
+        # where this node's agent lives, so its hooks and Herdr events find the node (src/panes.sh)
+        a="$(yq -r ".nodes[\"$node\"].agent // \"\"" "$file")"
+        if [ -n "$a" ] && command -v herdr >/dev/null 2>&1; then
+            p="$(herdr agent get "$a" 2>/dev/null | jq -r '.result.agent.pane_id // ""' 2>/dev/null)"
+            [ -z "$p" ] || pane_lane_set "$p" "$repo" "$lane" "$node" "$a"
+        fi
+    fi ;;
 step)
     need_lane
     [ -n "$node" ] && [ -n "$name" ] || usage "lane.sh step --lane L --node N --name S --result pass|fail [--ref X]"
@@ -312,7 +323,8 @@ answer)
         # the nodes this question blocked (an old lane did not say which: every blocked one)
         | (if $q == null then [] elif $q.legacy then [.nodes | to_entries[] | select(.value.status == "blocked") | .key]
            else [$q.node // empty] end) as $ns
-        | reduce $ns[] as $n (.;
+        | reduce $ns[] as $n (.; .nodes[$n].rev = ((.nodes[$n].rev // 0) + 1)
+            | 
               if .nodes[$n].status != "blocked" or any(openq[]; .node == $n) then .
               else .nodes[$n].status = (if live(.nodes[$n].agent // "") and (($q.was // "running") | IN("running", "blocked"))
                                         then "running" else "waiting" end) end)

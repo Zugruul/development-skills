@@ -14,7 +14,7 @@ nst() { printf '%s' "$1" >"$N_TMP/state.json"; : >"$N_TMP/calls.log"; }
 nsm() { jq -c "$1" "$N_TMP/state.json" >"$N_TMP/state.new" && mv "$N_TMP/state.new" "$N_TMP/state.json"; }
 N_EV="$XDG_STATE_HOME/herdr-graph/sessions/graph.events.json"
 nev() { jq -r "$1" "$N_EV" 2>/dev/null; }
-nrec() { ns notify reconcile --session graph "$@" >/dev/null 2>&1; }
+nrec() { ns notify reconcile --session graph >/dev/null 2>&1; }
 ntake() { ns notify take --session graph 2>&1; }
 BOX='transcript
 ────────────────────────
@@ -172,13 +172,13 @@ ev '{"event":"pane_agent_status_changed","data":{"pane_id":"w77:p1","agent_statu
 check "a pane that is no lane's and not the orchestrator's: nothing runs" "[]" "[$(cat "$N_TMP/calls.log")]"
 ntake >/dev/null
 nlane f; nsm '.agents.f = {name: "claude-f", pane_id: "w8:p1", agent: "claude", agent_status: "blocked", state_change_seq: 1}'
-N_CLOCK=1008000; nrec --no-new 2>/dev/null; nrec
+N_CLOCK=1008000; nrec
 nsm '.agents.o.agent_status = "idle"'
 : >"$N_TMP/calls.log"
 ev '{"event":"pane_agent_status_changed","data":{"pane_id":"w1:p1","agent_status":"idle","agent":"claude"}}'
 check "the orchestrator turning idle flushes the queue" "agent prompt graph GRAPH EVENT" "$(cat "$N_TMP/calls.log")"
 N_CLOCK=1008100
-nsm '.agents.f.agent_status = "working"'; nrec; N_CLOCK=1008200; nsm '.agents.f.agent_status = "blocked"'
+nsm '.agents.o.agent_status = "idle" | .agents.f.agent_status = "working"'; nrec; N_CLOCK=1008200; nsm '.agents.f.agent_status = "blocked"'
 : >"$N_TMP/calls.log"
 ev '{"event":"pane_agent_status_changed","data":{"pane_id":"w8:p1","agent_status":"blocked","agent":"claude"}}'
 check "a lane pane's event reconciles and delivers" "f/investigate blocked" "$(cat "$N_TMP/calls.log")"

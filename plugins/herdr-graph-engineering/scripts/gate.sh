@@ -176,6 +176,8 @@ exec)
         die "could not write $hbf"
     printf 'GATE %s %s EXIT=%s\n' "$node" "$run" "$code"
     record_run || die "could not record the result of $node"
+    # nobody may be waiting on this tab: tell the orchestrator it ended
+    bash "$HERE/notify.sh" gate --repo "$repo" --lane "$lane" --node "$node" >/dev/null 2>&1 || true
     print_result "$(gate_facts "$hbf")" ;;
 start)
     require_tools herdr

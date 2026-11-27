@@ -204,6 +204,10 @@ render() {
         n="$(jq '[(.decisions // [])[] | select(.seen != true)] | length' <<<"$sess")"
         [ "$n" -eq 0 ] || echo "DECIDED AND NOT SHOWN: $n (decide.sh digest, then decide.sh seen)"
     fi
+    if [ -n "$name" ] && [ -f "$(session_dir)/$name.events.json" ]; then
+        echo "OPEN EVENTS (notify.sh; each stays until its lane's facts change)"
+        bash "$HERE/notify.sh" list --session "$name" 2>/dev/null | sed 's/^/  /'
+    fi
     echo "STANDING ANSWERS"
     jq -r '(.standing // []) | if length == 0 then "  (none)" else .[] | "  #\(.id) \(.text)" end' <<<"$sess"
     fbline="$(bash "$HERE/feedback.sh" state --session "${name:-graph}" 2>/dev/null | awk '{print $2}')"

@@ -34,6 +34,8 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/common.sh
 . "$HERE/src/common.sh"
+# shellcheck source=src/panes.sh
+. "$HERE/src/panes.sh"
 # shellcheck source=src/afk.sh
 . "$HERE/src/afk.sh"
 
@@ -101,6 +103,7 @@ set)
     [ -n "$value" ] || usage "session.sh set --key K --value V"
     no_secret "$value"
     update '.[$k] = $v' --arg k "$key" --arg v "$value"
+    [ "$key" != pane ] || pane_orch_set "$value" "$session"
     printf 'SET %s %s = %s\n' "$session" "$key" "$value" ;;
 add)
     need_list

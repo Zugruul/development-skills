@@ -355,8 +355,8 @@ afk_wait() { die "AFK WAIT $lane: $1" 6; }
 # working or blocked, and any in the folder that the lane does not record.
 busy_agents() { # file, checkout
     local list
-    list="$(herdr agent list 2>/dev/null)" && jq -e '.result.agents | type == "array"' >/dev/null 2>&1 <<<"$list" ||
-        { echo "herdr does not say which agents are live"; return 0; }
+    list="$(herdr agent list 2>/dev/null)" || list=""
+    jq -e '.result.agents | type == "array"' >/dev/null 2>&1 <<<"$list" || { echo "herdr does not say which agents are live"; return 0; }
     read_json "$1" | jq -r --argjson l "$list" --arg wt "$2" '
         [.nodes[].agent // empty] as $mine
         | $l.result.agents[] | (.name // .pane_id // "?") as $n | (.agent_status // "unknown") as $s

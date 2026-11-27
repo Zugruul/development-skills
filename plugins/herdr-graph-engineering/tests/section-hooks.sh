@@ -102,9 +102,9 @@ check "with a long enough timeout" '"timeout":86400' "$w"
 # the events Herdr 0.9.5 was seen to run plugin hooks for
 H_VERIFIED=" pane.agent_status_changed pane.closed pane.exited tab.closed workspace.closed worktree.removed "
 bad=""
-for ev in $(sed -n 's/^on = "\(.*\)"$/\1/p' "$PLUGIN/herdr-plugin.toml"); do
+while IFS= read -r ev; do
     case "$H_VERIFIED" in *" $ev "*) ;; *) bad="$bad $ev" ;; esac
-done
+done < <(sed -n 's/^on = "\(.*\)"$/\1/p' "$PLUGIN/herdr-plugin.toml")
 check "every Herdr event the plugin hooks is a verified one" "[]" "[$bad]"
 for ev in pane.agent_status_changed pane.closed pane.exited tab.closed workspace.closed; do
     check "the plugin listens to $ev" "on = \"$ev\"" "$(cat "$PLUGIN/herdr-plugin.toml")"

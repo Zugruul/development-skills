@@ -149,7 +149,7 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
           | (($s.steps // []) | last) as $step
           | {node: $n, status: $st, result: ($s.result // ""), retries: ($s.retries // 0),
              agent: $ag, live: ($a.status // ""), seq: ($a.seq // null), drift: $drift,
-             run: ($s.run // ""), output: ($s.output // ""), claim: $cl,
+             run: ($s.run // ""), rev: ($s.rev // 0), output: ($s.output // ""), claim: $cl,
              max: ([$l.graph[] | select(.retry.to == $n) | .retry.max] | max // 0),
              human: ($g.human // null), ref: ($s.ref // ""), gate: $gt,
              progress: (if $gt != null and ($gt.finished | not) then
@@ -191,11 +191,20 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
          pr_merged: (if $merged then {number: $merged.number, url: $merged.url} else null end),
          workspace: ($l.workspace // ""), owner: ($l.owner // ""), idea: ($l.idea // ""), cleanup: ($l.cleanup // ""),
          branch: ($l.branch // ""), prs: ($l.prs // []),
-         root: $l.root, closed: ([($l.history // [])[] | select(endswith(" lane closed"))][-1] // "" | split(" ")[0]),
+         root: $l.root, status: ($l.status // ""), history: ($l.history // [] | length),
+         recorded_pr: ([$l.pr // empty | select(. != "")] + [$l.nodes[]?.ref // empty | select(test("^https?://[^ ]+/pull/[0-9]+$"))] | .[0] // ""),
+         questions: [($l.questions // [])[] | select(.answer == null) | {id, node: (.node // ""), kind: (.kind // ""), asked_at: (.asked_at // null)}],
+         closed: ([($l.history // [])[] | select(endswith(" lane closed"))][-1] // "" | split(" ")[0]),
          nodes: $nodes, last: ($l.history[-1] // ""),
          section: (if $l.status == "closed" then "closed"
                    elif $q != "" or ($asks | length) > 0 or ($att | length) > 0 or any($nodes[]; .status == "blocked") then "needs"
                    elif $l.status == "done" then "done" else "working" end)})' <<<"$lanes")"
+# what was left unhandled after both reminders (notify.sh's events) marks its lane
+manual="$(cat "$(session_dir)"/*.events.json 2>/dev/null |
+    jq -cs --argjson now "$(date +%s)" '[.[] | .open? // {} | .[] | select(.manual) | {repo, lane, what: "\(if .node != "" then .node + " " else "" end)\(.reason)"}] | unique' 2>/dev/null)" || manual='[]'
+[ "${manual:-[]}" = '[]' ] || view="$(jq -c --argjson m "$manual" 'map(. as $l | [$m[] | select(.repo == $l.root and .lane == $l.lane) | .what] as $w
+    | if ($w | length) == 0 or $l.section == "closed" then . else .manual = true | .section = "needs" | .attention += ["‼ needs manual intervention: \($w | join(", ")) unhandled after two reminders"] end)' <<<"$view")"
+
 # --text, --line and --tokens are about the open lanes only
 open_view="$(jq -c 'map(select(.section != "closed"))' <<<"$view")"
 
