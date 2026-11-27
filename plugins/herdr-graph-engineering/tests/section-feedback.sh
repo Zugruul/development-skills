@@ -137,6 +137,46 @@ f feedback used --id "$id" --ref "improvement lane 1" >/dev/null
 check_absent "a used lesson is no longer open" "caller died" "$(f feedback lessons)"
 check "the used lesson is kept with where it went" "improvement lane 1" "$(yq -r '.lessons[0].used' "$F_FB")"
 
+echo "== feedback: lessons about the repository the lanes worked in, kept apart from the plugin's =="
+F_OTHER="$F_TMP/other-repo"
+git init -q -b main "$F_OTHER" && git -C "$F_OTHER" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+check "a note's target defaults to the plugin" "plugin" "$(yq -r '.notes[0].target' "$F_FB")"
+out="$(f feedback add --target repo --repo "$F_REPO" --lane rate-guard --text "its agent instructions never say how to run one test" 2>&1)"; rc=$?
+check_rc "a note about the repository is added" 0 "$rc"
+check "the note keeps its target" "repo" "$(yq -r '.notes[-1].target' "$F_FB")"
+out="$(f feedback add --target repo --text "x" 2>&1)"; rc=$?
+check_rc "a repository note needs --repo" 2 "$rc"
+out="$(f feedback add --target elsewhere --text "x" 2>&1)"; rc=$?
+check_rc "the target is plugin or repo" 2 "$rc"
+out="$(f feedback lesson --target repo --repo "$F_REPO" --text "Agent instructions should say how to run a single test and where its output goes." 2>&1)"; rc=$?
+check_rc "a general repository lesson is stored" 0 "$rc"
+out="$(f feedback lesson --target repo --repo "$F_REPO" --text "The retry_budget setting was never documented." 2>&1)"; rc=$?
+check_rc "a repository lesson is checked harder: an identifier is refused" 3 "$rc"
+check "the stricter check names identifiers" "LEAK ident" "$out"
+out="$(f feedback lesson --target repo --repo "$F_REPO" --text "The v2 handler docs were stale." 2>&1)"; rc=$?
+check_rc "a repository lesson refuses a word with digits" 3 "$rc"
+out="$(f feedback lesson --target repo --repo "$F_REPO" --text "Document how \`lane.sh\` is not needed here." 2>&1)"; rc=$?
+check_rc "a repository lesson refuses any inline code" 3 "$rc"
+out="$(f feedback lesson --target repo --text "Docs should list the test command." 2>&1)"; rc=$?
+check_rc "a repository lesson needs --repo" 2 "$rc"
+out="$(printf 'Mind the retry_budget default.\n' | f feedback sanitize --strict 2>&1)"; rc=$?
+check_rc "sanitize --strict refuses identifiers" 3 "$rc"
+out="$(printf 'Mind the retry_budget default.\n' | f feedback sanitize 2>&1)"; rc=$?
+check_rc "without --strict the same line passes" 0 "$rc"
+out="$(f feedback lessons)"
+check "the plugin's lessons are the default" "Briefs should always name the base commit." "$out"
+check_absent "the plugin's lessons hold no repository lesson" "single test" "$out"
+out="$(f feedback lessons --target repo --repo "$F_REPO")"
+check "a repository's lessons are listed for it" "Agent instructions should say how to run a single test" "$out"
+check_absent "a repository's lessons hold no plugin lesson" "base commit" "$out"
+check "another repository has none" "(no open lessons)" "$(f feedback lessons --target repo --repo "$F_OTHER")"
+out="$(f feedback lessons --target repo 2>&1)"; rc=$?
+check_rc "listing repository lessons needs --repo" 2 "$rc"
+f feedback used --all --target repo --repo "$F_REPO" --ref "docs lane" >/dev/null
+check "used --all marks only that target's lessons" "(no open lessons)" "$(f feedback lessons --target repo --repo "$F_REPO")"
+check "the plugin's lessons stay open" "base commit" "$(f feedback lessons)"
+check "show groups lessons by target" "LESSONS for repository" "$(f feedback show)"
+
 echo "== feedback: cleanup waits for the orchestrator's feedback when the loop is on =="
 F_LREPO="$F_TMP/lanes"
 git init -q -b main "$F_LREPO" && git -C "$F_LREPO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
@@ -179,6 +219,11 @@ check "orchestrate: collects feedback before cleanup" 'feedback.sh" add' "$orch"
 check "orchestrate: lessons go through the sanitiser" 'feedback.sh" lesson' "$orch"
 check "orchestrate: states the no-leak rule" "never a detail of a task" "$orch"
 check "orchestrate: the improvement lane edits only the plugin's instructions" "only the plugin's instructions" "$orch"
+check "orchestrate: a repository improvement lane edits only its documentation" "edits only its documentation" "$orch"
+check "orchestrate: repository lessons are listed per repository" 'feedback.sh" lessons --target repo --repo' "$orch"
+check "orchestrate: repository lessons help other tasks" "help other tasks" "$orch"
+check "feedback-loop: covers the repository's documentation" "the repository's documentation" "$fl"
+check "README: documents repository lessons" "Lessons about the repository" "$(cat "$PLUGIN/README.md")"
 rd="$(cat "$PLUGIN/README.md")"
 check "README: lists the feedback-loop skill" "| \`feedback-loop\` |" "$rd"
 check "README: documents the no-leak rule" "never a detail of a task" "$rd"
