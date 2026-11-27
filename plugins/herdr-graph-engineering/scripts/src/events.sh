@@ -9,6 +9,8 @@ clock() { printf '%s\n' "${HERDR_GRAPH_CLOCK:-$(date +%s)}"; }
 STOP_HOLD="${HERDR_GRAPH_STOP_HOLD:-30}" REARM="${HERDR_GRAPH_REARM:-60}"
 REMIND_1="${HERDR_GRAPH_REMIND_1:-300}" REMIND_2="${HERDR_GRAPH_REMIND_2:-900}" MANUAL="${HERDR_GRAPH_MANUAL:-1200}"
 SWEEP="${HERDR_GRAPH_SWEEP:-300}" PUSH_GAP="${HERDR_GRAPH_PUSH_GAP:-60}"
+# how old a finished agent's screen read may be: 0 after an event (read now); the panel's tick raises it
+DRIFT_AGE=0
 
 events_file() { printf '%s/%s.events.json\n' "$(session_dir)" "$1"; }
 
@@ -99,7 +101,9 @@ sweep_facts() { # session, owned lanes view
         [ -n "$lane" ] || continue
         case "$(automerge_state "$s" "$root" "$lane")" in "on "*) ;; *) continue ;; esac
         out="$(bash "$HERE/merge.sh" check --repo "$root" --lane "$lane" --session "$s" 2>/dev/null)" || continue
-        ready="$(jq -c --arg r "$root" --arg l "$lane" --arg h "${out##* }" '. + [{repo: $r, lane: $l, node: "", reason: "merge-ready", run: "", rev: 0, ref: $h, deliver: true}]' <<<"$ready")"
+        ready="$(jq -c --arg r "$root" --arg l "$lane" --arg h "${out##* }" --argjson v "$2" \
+            '. + [{repo: $r, lane: $l, node: "", reason: "merge-ready", run: "", rev: 0, ref: $h, deliver: true,
+                   lane_history: ([$v[] | select(.root == $r and .lane == $l) | .history][0])}]' <<<"$ready")"
     done < <(jq -r '.[] | select(.section != "closed" and .recorded_pr != "" and all(.nodes[]; .status == "done" or .status == "skipped")) | [.root, .lane] | @tsv' <<<"$2")
     printf '%s\n' "$ready"
 }
@@ -162,7 +166,7 @@ scan() { # session, full
             bash "$HERE/prs.sh" fetch --max-age 60 "${args[@]}" >/dev/null 2>&1
         fi
     fi
-    bash "$HERE/drift.sh" --quiet >/dev/null 2>&1
+    bash "$HERE/drift.sh" --quiet --max-age "$DRIFT_AGE" >/dev/null 2>&1
     view="$(owned_view "$name")"
     if [ "$full" -eq 1 ]; then
         merges="$(sweep_facts "$s" "$view")"
@@ -178,9 +182,11 @@ scan() { # session, full
         def conditions: \$view | $CONDITIONS_JQ;"'
         def key: [.repo, .lane, .node, .reason, .run, (.rev | tostring), .ref] | join("|");
         . as $st
-        # a merge-ready event is only recomputed by the sweep; between sweeps it stays
+        # a merge-ready event is only recomputed by the sweep; between sweeps it stays while its lane is not written
         | (conditions + (if $merges != null then $merges
-              else [$st.open[] | select(.reason == "merge-ready") | {repo, lane, node, reason, run: "", rev: 0, ref, deliver: true}] end)) as $c
+              else [$st.open[] | select(.reason == "merge-ready") | . as $e
+                    | select(any($view[]; .root == $e.repo and .lane == $e.lane and .history == $e.lane_history))
+                    | {repo, lane, node, reason, run: "", rev: 0, ref, deliver: true, lane_history}] end)) as $c
         | ($c | map({(key): .}) | add // {}) as $want
         # a gate that recorded itself stays until its lane is written again
         | ($st.open | with_entries(select(.value.history != null

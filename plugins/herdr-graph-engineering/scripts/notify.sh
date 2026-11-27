@@ -71,9 +71,12 @@ signal)
     sleep "$delay"
     for s in $(sessions); do reconcile "$s" 0; push "$s"; done ;;
 tick)
-    bash "$HERE/drift.sh" --quiet --max-age 10 >/dev/null 2>&1
+    # the panel calls this on every refresh: a screen read is reused for 10 s, never repeated sooner
+    DRIFT_AGE=10
+    bash "$HERE/drift.sh" --quiet --max-age "$DRIFT_AGE" >/dev/null 2>&1
     for s in $(sessions); do
-        orchestrator_agent "$s" >/dev/null || continue
+        # a gone orchestrator's open events are still brought up to date, so none sticks
+        orchestrator_agent "$s" >/dev/null || [ "$(state_read "$s" | jq '.open | length')" -gt 0 ] || continue
         if sweep_due "$s"; then reconcile "$s" 1; else reconcile "$s" 0; fi
         push "$s"
     done ;;

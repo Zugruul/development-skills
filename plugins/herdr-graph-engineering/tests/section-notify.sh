@@ -222,6 +222,7 @@ check "a yes that was never run is its own event" "s/- cleanup-confirmed" "$(nta
 echo "== notify: the panel's tick does not poll =="
 for l in a c d f g s; do ns lane close --repo "$N_REPO" --lane "$l" >/dev/null 2>&1; done
 nlane t; nsm '.agents.t = {name: "claude-t", pane_id: "w11:p1", agent: "claude", agent_status: "idle", state_change_seq: 1, screen: "NODE investigate RESULT: pass t1"} | .agents.o.agent_status = "working"'
+rm -f "$N_REPO/.git/herdr-graph/live.json"
 N_CLOCK=1010500; : >"$N_TMP/calls.log"; ns notify tick >/dev/null 2>&1
 check "a tick reads a finished agent" "agent read claude-t" "$(cat "$N_TMP/calls.log")"
 : >"$N_TMP/calls.log"; N_CLOCK=1010505; ns notify tick >/dev/null 2>&1
