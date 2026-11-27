@@ -195,6 +195,21 @@ out="$(guard)"; rc=$?
 check_rc "a lane that makes its own guard always pass still fails" 3 "$rc"
 check "the guard's change is shown" "plugins/demo/scripts/guard.sh" "$out"
 
+case_start
+edit "$SK" 's/^Keep notes short\.$/<!-- an aside --> <!--\
+Keep notes short.\
+-->/'
+case_commit
+out="$(guard)"; rc=$?
+check_rc "a comment reopened on the line that closed one still hides, and fails" 3 "$rc"
+check "the hidden sentence is reported" "- Keep notes short." "$out"
+case_start
+edit "$SK" 's/^Keep notes short\.$/<!-- an aside -->\
+\
+Keep notes short./'
+case_commit
+out="$(guard)"; rc=$?
+check_rc "adding a closed comment passes" 0 "$rc"
 echo "== guard: only the exact finding is allowed, with a reason =="
 case_start
 edit "$SK" 's/Never force a push\./Never force a push without a reason./'
