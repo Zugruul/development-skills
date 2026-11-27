@@ -31,6 +31,11 @@
 #   lane.sh answer --lane L [--id N] --text A     record the user's answer to one question (--id may be left out
 #                                                 while only one is open). A node blocked by it returns to running
 #                                                 while its agent is live (or liveness is unknown), else to waiting
+#   lane.sh withdraw --lane L --kind cleanup|merged-early    close that kind's open questions without an answer of
+#                                                 the user's (they no longer hold); node states are never changed
+#   lane.sh offer --lane L --ref PR-URL --head SHA --path DIR   what a cleanup question showed: a yes covers only it
+#   lane.sh dismiss --lane L --reason pr-merged --ref PR-URL (--text WHY | --undo)   hide one wrong merge entry:
+#                                                 that pull request for that lane only; a later merge still reports
 #   lane.sh note --lane L --text T [--node N] [--ref X]   a lane fact the chat would lose: a follow-up sent to
 #                                                 a node, scope the user added, the brief or a file path
 #   lane.sh done-extra --lane L (--text T | --met N)   a done criterion the user added beyond the pattern's
@@ -55,12 +60,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/pattern.sh
 . "$HERE/src/pattern.sh"
 
-USAGE="lane.sh new|show|list|node|step|reject|tab-closed|retry|ask|asked|answer|note|done-extra|set|close|clear|restore [options] (see the header of lane.sh)"
+USAGE="lane.sh new|show|list|node|step|reject|tab-closed|retry|ask|asked|answer|withdraw|offer|dismiss|note|done-extra|set|close|clear|restore [options] (see the header of lane.sh)"
 cmd="${1:-}"
 [ -n "$cmd" ] || usage "$USAGE"
 shift
 repo="$(pwd)" lane="" pattern="" pattern_file="" idea="" gate="" branch="" workspace="" owner="" node="" status=""
-result="" ref="" exitc="" agent="" tab="" note="" text="" key="" value="" as_json=0 all=0 inputs="{}" met="" id="" kind="" source="" output="" name=""
+result="" ref="" exitc="" agent="" tab="" note="" text="" key="" value="" as_json=0 all=0 inputs="{}" met="" id="" kind="" source="" output="" name="" reason="" head="" path="" undo=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo) need_value "$1" $#; repo="$2"; shift 2 ;;
@@ -92,6 +97,10 @@ while [ $# -gt 0 ]; do
         --source) need_value "$1" $#; source="$2"; shift 2 ;;
         --output) need_value "$1" $#; output="$2"; shift 2 ;;
         --name) need_value "$1" $#; name="$2"; shift 2 ;;
+        --reason) need_value "$1" $#; reason="$2"; shift 2 ;;
+        --head) need_value "$1" $#; head="$2"; shift 2 ;;
+        --path) need_value "$1" $#; path="$2"; shift 2 ;;
+        --undo) undo=1; shift ;;
         --json) as_json=1; shift ;;
         --all) all=1; shift ;;
         *) usage "$USAGE" ;;
@@ -300,6 +309,28 @@ answer)
               else .nodes[$n].status = (if live(.nodes[$n].agent // "") and (($q.was // "running") | IN("running", "blocked"))
                                         then "running" else "waiting" end) end)
         | sync' "answer: $text" --arg a "$text" --arg i "$id" --argjson live "$live" ;;
+withdraw)
+    need_lane
+    case "$kind" in cleanup | merged-early) ;; *) die "--kind must be cleanup or merged-early" 2 ;; esac
+    # a question written before questions had kinds: a cleanup one by its first word
+    update "$QJQ"' def is($k): .kind == $k or ($k == "cleanup" and .kind == null and (.text | startswith("Cleanup ")));
+        migrate | (.questions[] | select(.answer == null and is($k))) |= (.answer = "(withdrawn)" | .withdrawn = true | .answered_at = $now) | sync' \
+        "$kind question withdrawn" --arg k "$kind" ;;
+offer)
+    need_lane
+    [ -n "$head" ] && [ -n "$path" ] || usage "lane.sh offer --lane L --ref PR-URL --head SHA --path DIR"
+    update '.cleanup_offer = {pr: $ref, head: $h, path: $p, at: $now}' "cleanup offer: ${ref:-no pull request} ${head:0:7} $path" \
+        --arg ref "$ref" --arg h "$head" --arg p "$path" ;;
+dismiss)
+    need_lane
+    [ -n "$ref" ] || usage "lane.sh dismiss --lane L --reason pr-merged --ref PR-URL (--text WHY | --undo)"
+    if [ "$undo" -eq 1 ]; then
+        update '.dismissed = [(.dismissed // [])[] | select(.ref != $ref)]' "dismissal undone: $ref" --arg ref "$ref"
+    else
+        [ "$reason" = pr-merged ] && [ -n "$text" ] || usage "lane.sh dismiss --lane L --reason pr-merged --ref PR-URL --text WHY"
+        update '.dismissed = ((.dismissed // []) + [{reason: $r, ref: $ref, why: $t, at: $now}])' "dismissed $reason $ref: $text" \
+            --arg r "$reason" --arg ref "$ref" --arg t "$text"
+    fi ;;
 note)
     need_lane
     [ -n "$text" ] || usage "lane.sh note --lane L --text T [--node N] [--ref X]"
@@ -320,7 +351,7 @@ done-extra)
     fi ;;
 set)
     need_lane
-    case "$key" in owner | workspace | branch | gate | status | pr | cleanup | forwarded) ;; *) die "--key must be owner, workspace, branch, gate, status, pr, cleanup or forwarded" 2 ;; esac
+    case "$key" in owner | workspace | branch | gate | status | pr | cleanup | cleanup_code | merged_early | forwarded) ;; *) die "--key must be owner, workspace, branch, gate, status, pr, cleanup or forwarded" 2 ;; esac
     [ "$key" != forwarded ] || case "$value" in declined | ?*/?*) ;; *) die "forwarded must be LANE/AGENT or declined" 2 ;; esac
     [ "$key" != cleanup ] || case "$value" in '' | ready | confirmed | declined | "blocked: "?*) ;; *) die "cleanup must be ready, confirmed, declined or blocked: REASON" 2 ;; esac
     # a yes only answers a cleanup question that was asked
@@ -329,7 +360,7 @@ set)
         [ "$was" = ready ] || [ "$was" = confirmed ] || die "NOT ASKED: lane $lane has no cleanup question to confirm (cleanup is '$was')" 6
     fi
     [ "$key" != status ] || case "$value" in open | done) ;; *) die "status must be open or done (use close to close)" 2 ;; esac
-    update '.[$k] = $v' "$key = $value" --arg k "$key" --arg v "$value" ;;
+    update '.[$k] = $v | (if $k == "cleanup" and $v == "" then del(.cleanup_code, .cleanup_offer) else . end)' "$key = $value" --arg k "$key" --arg v "$value" ;;
 close)
     need_lane
     update '.status = "closed"' "lane closed"

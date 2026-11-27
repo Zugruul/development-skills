@@ -2,6 +2,9 @@
 # shellcheck source-path=SCRIPTDIR
 # cleanup.sh -- find lanes ready for cleanup and ask the user; clean one up after they said yes.
 # Usage:
+#   cleanup.sh facts --lane L [--repo DIR]     what removing it takes and keeps, ignored files named (the preview
+#                                              of its question); reads only
+#   cleanup.sh reopen --lane L [--repo DIR]    take back a recorded no (cleanup=declined)
 #   cleanup.sh check [--lane L] [--repo DIR]   every done lane and finished review lane (or one):
 #                                              never removes anything. With neither --lane nor
 #                                              --repo: every repository that may hold lanes
@@ -25,6 +28,12 @@
 # CONFIRMED <lane> when the user said yes (cleanup=confirmed, recorded with lane.sh set),
 # BLOCKED <lane> (<reason>) for a merged lane that must not be removed (asks once per reason),
 # WAIT <lane> (<why>) for a pull request not merged yet, DECLINED <lane> when the user said no.
+# An unfinished lane whose own pull request merged gets MERGED-EARLY <lane>: its own question (keep
+# working, finish, or dismiss the entry), asked once per pull request, never a cleanup. A question
+# that no longer holds (the verdict is WAIT, or what it showed changed) is withdrawn: WITHDRAWN <lane>.
+# Only the recorded pull request counts; with none, the branch's when it is newer than the lane.
+# A yes covers only what was shown (cleanup_offer: pull request, head, checkout): else run refuses.
+# Ignored files are deleted with a worktree: those outside build folders (src/lost.sh) are named.
 # For a ready review lane whose findings were not forwarded (nor declined), it also prints, per
 # reviewed pull request that an open lane owns (review-owner.sh: any repository with lanes):
 #   FORWARD <lane> <pr url> <owner repo> <owner lane> <agent|-> <node|->
@@ -39,10 +48,14 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/common.sh
 . "$HERE/src/common.sh"
+# shellcheck source=src/merged.sh
+. "$HERE/src/merged.sh"
+# shellcheck source=src/lost.sh
+. "$HERE/src/lost.sh"
 
-USAGE="cleanup.sh check [--lane L] [--repo DIR] | cleanup.sh run --lane L [--repo DIR]"
+USAGE="cleanup.sh check [--lane L] [--repo DIR] | cleanup.sh run|facts|reopen --lane L [--repo DIR]"
 cmd="${1:-}"
-case "$cmd" in check | run) shift ;; *) usage "$USAGE" ;; esac
+case "$cmd" in check | run | facts | reopen) shift ;; *) usage "$USAGE" ;; esac
 repo="" lane=""
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -136,7 +149,8 @@ PRS
 
 # Sets VERDICT (READY|BLOCKED|WAIT), WHY and WT for the lane in file $1.
 judge() {
-    local f="$1" br pr kind ref pj state url head n fin gch
+    local f="$1" br pr kind ref pj state url head n fin gch made created
+    PRURL="" PRHEAD="" CODE=""
     br="$(yq -r '.branch // ""' "$f")"
     lane_kind "$f"
     kind="$KIND" pr="$PR"
@@ -145,15 +159,22 @@ judge() {
         ref="${pr:-$br}"
         [ -n "$ref" ] || { VERDICT=WAIT WHY="no pull request or branch recorded"; return; }
         command -v "$GH" >/dev/null 2>&1 || { VERDICT=WAIT WHY="gh is not installed, cannot see the pull request"; return; }
-        pj="$(cd "$repo" && "$GH" pr view "$ref" --json state,url,number,headRefOid 2>/dev/null)" || { VERDICT=WAIT WHY="no pull request found for $ref"; return; }
+        pj="$(pr_view "$ref")" || { VERDICT=WAIT WHY="no pull request found for $ref"; return; }
         state="$(jq -r '.state // ""' <<<"$pj")" url="$(jq -r '.url // ""' <<<"$pj")" head="$(jq -r '.headRefOid // ""' <<<"$pj")"
+        PRURL="$url" PRHEAD="$head"
+        if [ -z "$pr" ]; then
+            made="$(jq -r '.createdAt // ""' <<<"$pj")" created="$(yq -r '.created // ""' "$f")"
+            [ -z "$made" ] || [[ ! "$made" < "$created" ]] ||
+                { VERDICT=WAIT WHY="the pull request $url for branch $br is older than the lane; record the right one with lane.sh set --key pr"; return; }
+        fi
+        ! dismissed "$f" "$url" || { VERDICT=WAIT WHY="pull request $url was dismissed for this lane"; return; }
         [ "$state" = MERGED ] || { VERDICT=WAIT WHY="pull request $url is $state"; return; }
     fi
-    [ -n "$br" ] || { VERDICT=BLOCKED WHY="no branch recorded, cannot find the checkout"; return; }
+    [ -n "$br" ] || { VERDICT=BLOCKED CODE=no-branch WHY="no branch recorded, cannot find the checkout"; return; }
     WT="$(checkout_of "$br")"
-    [ -n "$WT" ] || { VERDICT=BLOCKED WHY="no checkout found for branch $br"; return; }
+    [ -n "$WT" ] || { VERDICT=BLOCKED CODE=no-checkout WHY="no checkout found for branch $br"; return; }
     if [ -n "$(git -C "$WT" status --porcelain 2>/dev/null)" ]; then
-        VERDICT=BLOCKED WHY="the checkout has uncommitted changes ($WT)"
+        VERDICT=BLOCKED CODE=dirty WHY="the checkout has uncommitted changes ($WT)"
         # what a gate run changed there (its heartbeat), so it can be restored rather than guessed at
         gch="$(jq -r '(.changed // []) as $c | select($c | length > 0)
             | "changed by gate \(.node): \($c | map(sub("^\\s+"; "")) | join(", "))"' \
@@ -163,9 +184,9 @@ judge() {
     fi
     case "$kind" in
         pr)
-            git -C "$WT" cat-file -e "$head^{commit}" 2>/dev/null || { VERDICT=BLOCKED WHY="the pull request's head ${head:0:7} is not in the checkout; cannot tell whether everything was pushed ($WT)"; return; }
+            git -C "$WT" cat-file -e "$head^{commit}" 2>/dev/null || { VERDICT=BLOCKED CODE=head-missing WHY="the pull request's head ${head:0:7} is not in the checkout; cannot tell whether everything was pushed ($WT)"; return; }
             n="$(git -C "$WT" rev-list --count HEAD "^$head")"
-            [ "$n" -eq 0 ] || { VERDICT=BLOCKED WHY="$(plural "$n" commit) not in the pull request (its head is ${head:0:7}; $WT)"; return; }
+            [ "$n" -eq 0 ] || { VERDICT=BLOCKED CODE=unpushed WHY="$(plural "$n" commit) not in the pull request (its head is ${head:0:7}; $WT)"; return; }
             VERDICT=READY WHY="pull request $url is merged, the checkout is clean and everything is pushed" ;;
         review)
             fin="$(review_finished "$f")"
@@ -173,7 +194,7 @@ judge() {
             else VERDICT=READY WHY="review lane is done, the checkout is clean"; fi ;;
         report)
             n="$(git -C "$WT" rev-list --count HEAD --not --exclude="refs/heads/$br" --branches --remotes)"
-            [ "$n" -eq 0 ] || { VERDICT=BLOCKED WHY="$(plural "$n" commit) on no other branch or remote ($WT)"; return; }
+            [ "$n" -eq 0 ] || { VERDICT=BLOCKED CODE=unpushed WHY="$(plural "$n" commit) on no other branch or remote ($WT)"; return; }
             VERDICT=READY WHY="report lane is done, the checkout is clean and nothing is unpushed" ;;
     esac
 }
@@ -183,21 +204,93 @@ notify() { # lane, question
     herdr notification show "$1 needs you" --body "$2" --sound request >/dev/null 2>&1 || true
 }
 
+pr_view() { # reference
+    (cd "$repo" && "$GH" pr view "$1" --json state,url,number,headRefOid,headRefName,createdAt 2>/dev/null)
+}
+
+dismissed() { # file, pull request url
+    read_json "$1" | jq -e --arg u "$2" "$MERGED_JQ"' dismissed_urls | index($u) != null' >/dev/null
+}
+
+# Whether an open question of this kind is waiting.
+asking() { # file, kind
+    read_json "$1" | jq -e --arg k "$2" 'any((.questions // [])[]; .answer == null and
+        (.kind == $k or ($k == "cleanup" and .kind == null and (.text | startswith("Cleanup ")))))' >/dev/null
+}
+
+# What no longer holds goes: the cleanup question and its state. Node states stay as they are.
+withdraw() { # file, lane
+    local was
+    was="$(yq -r '.cleanup // ""' "$1")"
+    case "$was" in
+        ready | confirmed | "blocked: "* | afk-approved*) ;;
+        *) asking "$1" cleanup || return 0 ;;
+    esac
+    ! asking "$1" cleanup || lane_sh withdraw --lane "$2" --kind cleanup || exit 1
+    lane_sh set --lane "$2" --key cleanup --value "" || exit 1
+    printf 'WITHDRAWN %s (the cleanup question no longer holds)\n' "$2"
+}
+
+withdraw_early() { # file, lane
+    ! asking "$1" merged-early || { lane_sh withdraw --lane "$2" --kind merged-early && printf 'WITHDRAWN %s (merged early no longer holds)\n' "$2"; }
+}
+
+# A lane that is not up for cleanup but whose own pull request merged: its own question, never
+# "cleanup". Only a recorded pull request, or the cache's by the branch rule, then a fresh look.
+early_check() { # file, lane
+    local f="$1" l="$2" url pj cached q unfinished
+    withdraw "$f" "$l"
+    if [ "$(yq -r '.status' "$f")" != open ] || [ "$(yq -r '.cleanup // ""' "$f")" = declined ]; then return 0; fi
+    lane_kind "$f"
+    url="$PR"
+    if [ -z "$url" ]; then
+        cached="$(jq -c --arg l "$l" '.lanes[$l] // []' "$dir/prs.json" 2>/dev/null)" || cached='[]'
+        url="$(read_json "$f" | jq -r --argjson p "${cached:-[]}" "$MERGED_JQ"' own_merged($p) | .url // ""')"
+    fi
+    if [ -z "$url" ] || dismissed "$f" "$url"; then withdraw_early "$f" "$l"; return 0; fi
+    command -v "$GH" >/dev/null 2>&1 || return 0
+    pj="$(pr_view "$url")" || return 0
+    [ "$(jq -r '.state // ""' <<<"$pj")" = MERGED ] || { withdraw_early "$f" "$l"; return 0; }
+    url="$(jq -r '.url // ""' <<<"$pj")"
+    [ "$(yq -r '.merged_early // ""' "$f")" != "$url" ] || return 0
+    unfinished="$(read_json "$f" | jq -r '[.nodes | to_entries[] | select(.value.status != "done" and .value.status != "skipped") | .key] | join(", ")')"
+    q="Merged early: pull request $url of lane $l merged, but the lane is unfinished (${unfinished:-its done checks}). Should I keep working, finish the lane, or dismiss this entry (it is not this lane's pull request)?"
+    lane_sh ask --lane "$l" --kind merged-early --text "$q" || exit 1
+    lane_sh set --lane "$l" --key merged_early --value "$url" || exit 1
+    notify "$l" "$q"
+    printf 'MERGED-EARLY %s (%s merged; unfinished: %s)\n' "$l" "$url" "${unfinished:-done checks}"
+}
+
+# Whether what the user was shown still holds: the same pull request, head and checkout.
+offer_holds() { # file (after judge)
+    local head="$PRHEAD"
+    [ -n "$head" ] || head="$(git -C "$WT" rev-parse HEAD 2>/dev/null)"
+    OFFER_HEAD="$head"
+    read_json "$1" | jq -e --arg pr "$PRURL" --arg h "$head" --arg p "$WT" \
+        '(.cleanup_offer // null) as $o | $o == null or ($o.pr == $pr and $o.head == $h and $o.path == $p)' >/dev/null
+}
+
 check_lane() { # file
-    local f="$1" l was ws br q fw o p ol oa
-    l="$(yq -r '.lane' "$f")" was="$(yq -r '.cleanup // ""' "$f")"
-    candidate "$f" || return 0
+    local f="$1" l was ws br q fw o p ol oa code lost
+    l="$(yq -r '.lane' "$f")"
+    candidate "$f" || { early_check "$f" "$l"; return 0; }
+    was="$(yq -r '.cleanup // ""' "$f")"
     [ "$was" != declined ] || { printf 'DECLINED %s (the user kept it)\n' "$l"; return 0; }
+    withdraw_early "$f" "$l"
     judge "$f"
     ws="$(yq -r '.workspace // ""' "$f")" br="$(yq -r '.branch // ""' "$f")"
     case "$VERDICT" in
-        WAIT) printf 'WAIT %s (%s)\n' "$l" "$WHY" ;;
+        WAIT) withdraw "$f" "$l"; printf 'WAIT %s (%s)\n' "$l" "$WHY" ;;
         READY)
             FORWARDS=""
             [ "$KIND" != review ] || forwards "$f" "$l"
             [ -z "$FORWARDS" ] || printf '%s\n' "$FORWARDS"
+            case "$was" in
+                ready | confirmed) offer_holds "$f" || { withdraw "$f" "$l"; was=""; } ;;
+            esac
             if [ "$was" = ready ]; then printf 'PENDING %s (cleanup question asked)\n' "$l"; feedback_due "$l"; return 0; fi
             if [ "$was" = confirmed ]; then printf 'CONFIRMED %s (the user said yes; cleanup.sh run)\n' "$l"; feedback_due "$l"; return 0; fi
+            withdraw "$f" "$l"
             fw=""
             while IFS=' ' read -r _ _ p _ ol oa _; do
                 [ -n "${p:-}" ] || continue
@@ -207,18 +300,29 @@ check_lane() { # file
             done <<FWD
 $FORWARDS
 FWD
-            q="Cleanup $l: $WHY.$fw Remove the worktree $WT (workspace ${ws:-?}) and close the lane? Its tabs close; the branch $br is kept."
+            ignored_split "$WT"
+            lost="${LOST:+ It also deletes ignored files that are not build output: $LOST.}"
+            q="Cleanup $l: $WHY.$fw Remove the worktree $WT (workspace ${ws:-?}) and close the lane? Its tabs close; the branch $br is kept.$lost"
+            offer_holds "$f" || true
+            lane_sh offer --lane "$l" --ref "$PRURL" --head "$OFFER_HEAD" --path "$WT" || exit 1
             lane_sh set --lane "$l" --key cleanup --value ready || exit 1
-            lane_sh ask --lane "$l" --text "$q" || exit 1
+            lane_sh ask --lane "$l" --kind cleanup --text "$q" || exit 1
             notify "$l" "$q"
             printf 'CLEANUP %s (%s)\n' "$l" "$WHY"
             feedback_due "$l" ;;
         BLOCKED)
-            if [ "$was" != "blocked: $WHY" ]; then
+            # the kind of reason and the head, not the counts and names that only change
+            code="$CODE $PRHEAD"
+            case "$was" in "blocked: "*) o="$(yq -r '.cleanup_code // ""' "$f")" ;; *) o="" ;; esac
+            if [ "$o" != "$code" ]; then
+                withdraw "$f" "$l"
                 q="Cleanup $l is blocked: $WHY. The lane is done, but it will not be removed until this is resolved. What should happen to it?"
                 lane_sh set --lane "$l" --key cleanup --value "blocked: $WHY" || exit 1
-                lane_sh ask --lane "$l" --text "$q" || exit 1
+                lane_sh set --lane "$l" --key cleanup_code --value "$code" || exit 1
+                lane_sh ask --lane "$l" --kind cleanup --text "$q" || exit 1
                 notify "$l" "$q"
+            elif [ "$was" != "blocked: $WHY" ]; then
+                lane_sh set --lane "$l" --key cleanup --value "blocked: $WHY" || exit 1
             fi
             printf 'BLOCKED %s (%s)\n' "$l" "$WHY" ;;
     esac
@@ -230,6 +334,21 @@ check_all() { # every lane of the repository in $repo, its lane folder in $dir
         [ -f "$f" ] && check_lane "$f"
     done
     return 0
+}
+
+# What a cleanup question is about, for its preview: what goes and what stays.
+facts() { # file, lane
+    judge "$1"
+    printf 'lane %s: %s (%s)\n' "$2" "$VERDICT" "$WHY"
+    [ -z "$PRURL" ] || printf 'pull request: %s\n' "$PRURL"
+    [ -n "$WT" ] || WT="$(checkout_of "$(yq -r '.branch // ""' "$1")")"
+    printf 'worktree: %s\n' "${WT:-none found}"
+    printf 'branch %s is kept\n' "$(yq -r '.branch // "?"' "$1")"
+    ignored_split "$WT"
+    printf 'ignored files LOST: %s\n' "${LOST:-nothing}"
+    printf 'ignored files safe to lose: %s\n' "${SAFE:-none}"
+    printf 'tabs:\n'
+    bash "$HERE/close-done.sh" --lane "$2" --repo "$repo" --dry-run 2>/dev/null | sed 's/^/  /' || true
 }
 
 case "$cmd" in
@@ -251,6 +370,15 @@ REPOS
     else
         check_all
     fi ;;
+facts)
+    [ -f "$dir/$lane.yaml" ] || die "NO LANE: $lane" 6
+    facts "$dir/$lane.yaml" "$lane" ;;
+reopen)
+    f="$dir/$lane.yaml"
+    [ -f "$f" ] || die "NO LANE: $lane" 6
+    [ "$(yq -r '.cleanup // ""' "$f")" = declined ] || die "NOT KEPT: lane $lane was not declined" 6
+    lane_sh set --lane "$lane" --key cleanup --value "" || exit 1
+    printf 'REOPENED %s (cleanup.sh check asks again)\n' "$lane" ;;
 run)
     require_tools herdr
     f="$dir/$lane.yaml"
@@ -260,6 +388,7 @@ run)
     if due="$(feedback_due "$lane")"; then die "FEEDBACK DUE: $due" 6; fi
     judge "$f"
     [ "$VERDICT" = READY ] || die "NOT READY: $lane: $WHY" 6
+    offer_holds "$f" || { withdraw "$f" "$lane" >/dev/null; die "NOT READY: lane $lane changed since the user was asked (pull request, head or checkout); run cleanup.sh check and ask again" 6; }
     ws="$(yq -r '.workspace // ""' "$f")" br="$(yq -r '.branch // ""' "$f")"
     [ -n "$ws" ] || die "NOT READY: lane $lane has no workspace recorded; remove its worktree by hand" 6
     tabs="$(bash "$HERE/close-done.sh" --lane "$lane" --repo "$repo")" || die "could not close the lane's tabs"

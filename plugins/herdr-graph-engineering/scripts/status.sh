@@ -28,6 +28,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/src/common.sh"
 # shellcheck source=src/style.sh
 . "$HERE/src/style.sh"
+# shellcheck source=src/merged.sh
+. "$HERE/src/merged.sh"
 # shellcheck source=src/gatefile.sh
 . "$HERE/src/gatefile.sh"
 
@@ -95,7 +97,7 @@ EOF2
 
 stall="${HERDR_GRAPH_GATE_STALL:-10}"
 case "$stall" in '' | *[!0-9]*) stall=10 ;; esac
-view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson stall "$((stall * 60))" '
+view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson stall "$((stall * 60))" "$MERGED_JQ"'
     def pad2: tostring | if length < 2 then "0" + . else . end;
     def dur: floor | if . < 60 then "\(.)s" elif . < 3600 then "\(. / 60 | floor)m \(. % 60 | pad2)s"
              else "\(. / 3600 | floor)h \(. % 3600 / 60 | floor | pad2)m" end;
@@ -158,12 +160,12 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
                         else "" end)} ] as $nodes
       | ($l.question // "") as $q
       | [$nodes[] | select(.drift.kind == "question") | "\(.node) (\(.agent)) asks: \(.drift.ref)"] as $asks
-      # the lane'"'"'s own pull request: the recorded one, one a node points to, or its branch'"'"'s
-      | ([$l.pr // empty] + [$l.nodes[]?.ref // empty | select(test("^https?://"))]) as $own
+      # the lane'"'"'s own merged pull request (src/merged.sh)
       | (if $l.status == "closed" or ($l.cleanup // "") == "declined" then null
-         else [($l.prs // [])[] | select(.state == "MERGED")
-               | select((.url as $u | $own | index($u)) or ((.headRefName // "") != "" and .headRefName == ($l.branch // "")))][0]
-         end) as $merged
+         else ($l | own_merged($l.prs // [])) end) as $found
+      | ([$nodes[] | select(.status != "done" and .status != "skipped") | .node]) as $unfinished
+      # an early merge the user already answered about stays quiet until the lane is done
+      | (if $found != null and $l.status == "open" and ($l.merged_early // "") == $found.url then null else $found end) as $merged
       | ([$nodes[] | .node as $n | .agent as $ag | .drift | select(. != null) |
            if .kind == "question" then (if $q != "" then "\($n) (\($ag)) asks: \(.ref)" else empty end)
            elif .kind == "pass" or .kind == "fail" then "\($n) finished: \(.kind) \(.ref) (\($ag)); check and record"
@@ -175,9 +177,14 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
            elif .kind == "gate-lost" then "\($n): gate process \(.ref) is gone without an EXIT line"
            elif .kind == "gate-stalled" then "\($n): no gate output for \(.ref)"
            else "\($n): \($ag) stopped without a RESULT line" end]
-         + (if $merged == null then []
-            elif ($l.cleanup // "") == "confirmed" then ["PR #\($merged.number) merged, cleanup confirmed: cleanup.sh run"]
-            else ["PR #\($merged.number) merged, waiting for cleanup confirmation"] end)) as $att
+         + (($l.cleanup // "") as $cu
+            | if $merged == null then []
+              elif $cu == "confirmed" then ["PR #\($merged.number) merged, cleanup confirmed: cleanup.sh run"]
+              elif $cu == "ready" then ["PR #\($merged.number) merged, waiting for cleanup confirmation"]
+              elif ($cu | startswith("blocked: ")) then ["PR #\($merged.number) merged, cleanup \($cu)"]
+              elif ($cu | startswith("afk-approved")) then ["PR #\($merged.number) merged, removal approved under AFK"]
+              elif $l.status == "done" or ($unfinished | length) == 0 then ["PR #\($merged.number) merged, checking cleanup"]
+              else ["PR #\($merged.number) merged but the lane is unfinished (\($unfinished | join(", ")))"] end)) as $att
       | {lane: $l.lane, pattern: $l.pattern, repo: $l.repo,
          question: (if $q != "" then $q else ($asks | join("; ")) end),
          question_live: ($q == "" and ($asks | length) > 0), attention: $att,
