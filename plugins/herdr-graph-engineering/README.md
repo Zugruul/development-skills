@@ -98,7 +98,7 @@ kind.sh --role R [--not K] [--without K] --list|--kind K|--remember K   the inst
 gate.sh --lane L --node N --pane P [--detach]           run a gate in a visible tab; the tab records its own result
 gate.sh --wait | --collect --lane L --node N            block until a gate finishes; record a finished one after the fact
 close-done.sh --lane L [--dry-run]                      close the tabs of finished agent and gate nodes (CLOSE/KEEP per node)
-cleanup.sh check | run --lane L                          find lanes ready for cleanup and ask; clean one up after your yes
+cleanup.sh check | run --lane L                          find lanes ready for cleanup and ask (check without --repo: every repository); clean one up after your yes
 feedback.sh state|add|due|lesson|lessons|used|show|sanitize   the feedback loop: raw notes outside every repository; the sanitiser that refuses task details (--target plugin|repo keeps the plugin's lessons and a repository's documentation lessons apart; --strict for the latter)
 status.sh [--text|--line|--json]                        the picture of every lane (display, tab bar), lane files plus live agents
 drift.sh [--repo R] [--quiet] [--gate-stall M]          where lane files, live agents and gates disagree, with the command to fix it
@@ -130,6 +130,19 @@ A gate node's command runs in its own tab through `gate.sh --exec`, not typed ba
 - **Nothing interactive.** The command runs with `PAGER=cat`, `GIT_PAGER=cat`, `MANPAGER=cat`, `GIT_TERMINAL_PROMPT=0` and stdin from `/dev/null`, so a `git grep` cannot stop in `less`. It runs in `bash -c` in the tab's directory, not in your interactive shell.
 - **It reports what it changed.** `git status` before and after: a gate that changes the checkout (a fixture's file mode, a generated file) says so in its result (`GATE CHECKOUT CHANGED tests: M path | restore: git -C DIR checkout -- path`) and in the lane record, and `cleanup.sh` names it when a dirty checkout blocks a cleanup.
 - **It names its failures.** Lines starting `FAIL` or `not ok` are counted and kept in the heartbeat (`failed`), so a gate on a repository whose base already fails can be compared with the base's failures.
+
+## Which repositories are shown
+
+Lane files live inside each repository, so the panel, `status.sh`, `drift.sh`, `resume.sh`, `prs.sh`, `review-owner.sh`, the worktree-removed hook and `cleanup.sh check` without `--repo` first find the repositories. They share one function (`lane_repos` in `scripts/src/common.sh`), which adds up:
+
+1. the repository Herdr records for each worktree workspace;
+2. the git toplevel of every Herdr pane's folder. A workspace made with `herdr workspace create` (for example on a standalone clone) records no repository, so this is how it is found while a pane is in it;
+3. the registry `${XDG_STATE_HOME:-~/.local/state}/herdr-graph/repos`, one primary checkout per line, which `lane.sh new` and `lane.sh restore` write. It keeps a repository visible after its workspaces close;
+4. the current folder.
+
+Each repository is listed once, as its primary checkout. A path that is gone or no longer a repository is skipped without an error; its registry line is kept, because a drive may only be away for a while (delete the line to forget it). A lane made before the registry existed is found only through 1, 2 and 4 until a new or restored lane registers its repository. The panel and the orchestrator must see the same `XDG_STATE_HOME`.
+
+Make a lane's checkout with the `herdr:worktree` skill (`herdr worktree create`): it is what Herdr links to the repository, and what cleanup removes with `herdr worktree remove`. A standalone clone is for when you ask for one.
 
 ## When a lane file is behind
 
