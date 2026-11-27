@@ -4,20 +4,28 @@
 #
 # Usage (Herdr starts it as the plugin pane "panel"):
 #   panel.sh                       the interactive panel
-#   panel.sh --frame [--width N] [--interval S] [--selected I] [--seen JSON] [--feed]
+#   panel.sh --frame [--width N] [--interval S] [--selected I] [--seen JSON] [--feed] [--height H]
 #                                  print one frame and exit (tests, a quick look); --seen is
 #                                  each lane's section at the last look ({"lane":"working"});
 #                                  --feed first runs stdin (SGR mouse bytes, keys) through the
-#                                  same input loop as the live panel
+#                                  same input loop as the live panel; --height draws a pane of
+#                                  H rows as the live panel does (scrolled, the footer last)
 #   panel.sh --next-interval S     the interval after S in the cycle (tests)
 #   panel.sh --buttons [--width N] [--interval S] [--rows R]
 #                                  the bottom line's button columns and row (tests)
 #   panel.sh --reset-view          what the live panel does once at start: clear a sidebar
 #                                  filter an older version of the panel may have left (tests)
 #
-# Click only: the panel acts on mouse clicks and nothing else. Keystrokes are read and
-# ignored (they do not quit, move, fold or disarm anything). The one non-mouse input is
-# panel-action.sh refresh, which sends the private sequence ESC [ 99 ~ (no key sends it).
+# Click first: the panel acts on mouse clicks and the mouse wheel. The only keys are the
+# arrows, and only once a click selected an element (a lane's first line, one of its lines,
+# a pull request, a file reference, the CLOSED header, "… n more"): Up and Down move the
+# selection one element at a time, scrolling so it stays visible; Left folds the selected
+# element's lane (or shows the first closed lanes again), Right unfolds it (or shows them all).
+# The selected element's rows start with › in the padding column. Every other keystroke is
+# read and ignored (no key quits, presses or disarms anything). The wheel scrolls the lanes
+# three lines a notch; below the last line there is room of 30% of the visible height. The
+# one other input is panel-action.sh refresh, which sends the private sequence ESC [ 99 ~
+# (no key sends it).
 # Layout: no title (Herdr's pane border shows "Graph"), one column of padding each side; the
 # lanes from the first line, each starting with its chevron and its lines hanging under it,
 # NEEDS YOU, WORKING, DONE, CLOSED; a thin divider; the footer pinned to the pane's bottom, its
@@ -155,7 +163,10 @@ buttons() { # width, interval, row
     BTN_ROW="$3"
 }
 
-# The lanes, one "kind|width|line" per line: kind is the lane's display index, with an h
+# The lanes, one "kind|element|width|line" per line. element names the selectable element a
+# line starts (L<lane> on a lane's first line, L<lane>/<n> on the first row of its n-th line,
+# c, m), empty on a further row of the same element and on lines of no element; it names the
+# element by lane, so a selection survives a refresh that moves lanes. kind is the lane's display index, with an h
 # on the lane's first line (the one with the fold chevron), u<URL> on a pull request's line,
 # f<ref> on every row of a file reference; c on the CLOSED header, m on its "… n more" line;
 # or -1 for lines of no lane (other section headers, blanks, hints). An h or c line with
@@ -203,7 +214,7 @@ body() { # selected index, width
             | $p[] | "● #\(.number) \(prword)" as $h
             | {k: "u\(.url)", l: ["\(prcolour)\($h)\($c.fg)\(" " * ($hw - ($h | length) + 2))\($c.grey)\(.url)\($c.fg)"]};
         def lane($i):
-            ($w - 8) as $n
+            ($w - 8) as $n | .lane as $name
             | (if isfolded then "▸" else "▾" end) as $icon
             | "\($icon) \($c.bold)\(.lane)\($c.unbold)  \($c.grey)\(.pattern)\($c.fg)" as $head
             | [ (if $i == $sel then {id: "detail", key: "", label: "[detail]"} else empty end),
@@ -212,8 +223,8 @@ body() { # selected index, width
                  then {id: "restore", key: "restore|\(.root)|\(.lane)", label: "[restore]", green: true} else empty end),
                 (if hasx then {id: "x", key: "x|\(.root)|\(.lane)", label: "[x]"} else empty end) ] as $bl
             | (if $i == $sel then
-                 ("\($head)\($c.selmark)" | withbuttons($bl)) | .l |= "\($c.selbg) \(.)\($c.eol)\($c.reset)" | withmap("\($i)h")
-               else ($head | withbuttons($bl)) | .l |= " \(.)" | withmap("\($i)h") end),
+                 ("\($head)\($c.selmark)" | withbuttons($bl)) | .l |= "\($c.selbg) \(.)\($c.eol)\($c.reset)" | withmap("L\($name)\u001f\($i)h")
+               else ($head | withbuttons($bl)) | .l |= " \(.)" | withmap("L\($name)\u001f\($i)h") end),
               (if isfolded then empty else
                  [ {k: "", l: [chain]},
                    (if .question != "" then {k: "", l: ("? \(.question)" | styled($c.red; $n))} else empty end),
@@ -224,7 +235,7 @@ body() { # selected index, width
                  | length as $m | to_entries[] | .key as $j | .value as $v
                  | (if $j == $m - 1 then ["└ ", "  "] else ["├ ", "│ "] end) as $tw
                  | $v.l | to_entries[]
-                 | "\($i)\($v.k)| \($c.grey)  \(if .key == 0 then $tw[0] else $tw[1] end)\($c.fg)\(.value)"
+                 | "\(if .key == 0 then "L\($name)/\($j)\u001f" else "" end)\($i)\($v.k)| \($c.grey)  \(if .key == 0 then $tw[0] else $tw[1] end)\($c.fg)\(.value)"
                end);
         ([.[] | select(.section == "closed")] | length) as $nclosed
         | ([.[] | select(.section == "closed" and isreview)] | length) as $nreviews
@@ -239,21 +250,21 @@ body() { # selected index, width
                         "\($c.head.closed)CLOSED (\($nclosed))\($c.reset)"
                         | withbuttons([ (if $nreviews > 0 then {id: "reviews", key: "reviews", label: "[clear all reviews]"} else empty end),
                                         {id: "all", key: "all", label: "[clear all]"} ])
-                        | .l |= " \(.)" | withmap("c")
+                        | .l |= " \(.)" | withmap("c\u001fc")
                       else
                         "-1| \($c.head[$x.section])\($x.section | title) (\([$l[] | select(.section == $x.section)] | length))\($c.reset)"
                       end)
                    else empty end),
                   ($x | lane($i)) ),
               ( ($nclosed - ([$l[] | select(.section == "closed")] | length)) as $more
-                | if $more > 0 then "m|   \($c.grey)… \($more) more\($c.fg)" else empty end ),
+                | if $more > 0 then "m\u001fm|   \($c.grey)… \($more) more\($c.fg)" else empty end ),
               ( if ($seen | length) == 0 then empty else
                   [$l[] | select($seen[.lane] != .section) | "\(.lane) → \(.section | title | ascii_downcase)"]
                   | if length == 0 then empty
                     else "-1|", ("Since last look: \(join(", "))" | wrap($w - 2) | .[] | "-1| \($c.grey)\(.)\($c.fg)") end
                 end )
             end )
-        | capture("^(?<k>[^|]*)\\|(?<l>.*)$"; "s") | "\(.k)|\(.l | plain | length)|\(.l)"' <<<"$VIEW"
+        | capture("^((?<e>[^\u001f|]*)\u001f)?(?<k>[^|]*)\\|(?<l>.*)$"; "s") | "\(.k)|\(.e // "")|\(.l | plain | length)|\(.l)"' <<<"$VIEW"
 }
 
 # The bottom block: a thin grey divider and the grey footer ("updated HH:MM:SS · every 5s"),
@@ -281,13 +292,15 @@ lane_at() { # index -> one line of JSON
 
 # layout fills TOP (the lane lines), TOPKIND and TOPWIDTH (each line's kind and width,
 # see body) and BOTTOM (the divider and the footer).
-TOP=() TOPKIND=() TOPWIDTH=() BOTTOM=()
+TOP=() TOPKIND=() TOPEL=() TOPWIDTH=() BOTTOM=()
 layout() { # width, interval, selected
     local l rest
-    TOP=() TOPKIND=() TOPWIDTH=() BOTTOM=()
+    TOP=() TOPKIND=() TOPEL=() TOPWIDTH=() BOTTOM=()
     while IFS= read -r l; do
         TOPKIND+=("${l%%|*}")
         rest="${l#*|}"
+        TOPEL+=("${rest%%|*}")
+        rest="${rest#*|}"
         TOPWIDTH+=("${rest%%|*}")
         TOP+=("${rest#*|}")
     done < <(body "$3" "$1")
@@ -295,35 +308,125 @@ layout() { # width, interval, selected
     [ -z "${MSG:-}" ] || BOTTOM=("${BOTTOM[0]}" " $MSG" "${BOTTOM[@]:1}")
 }
 
-# place decides how many TOP lines fit in the rows above the bottom block and maps every
-# screen row to its line's kind (ROWMAP; the h only on a lane line's first row). With a
-# width, a line takes as many rows as it wraps into, as on the live pane; with width 0,
-# one row per line (the text of --frame).
-ROWMAP=() SHOWN=0
+rows_of() { # line index, width (0: one row per line) -> the rows the line takes
+    if [ "$2" -gt 0 ] && [ "${TOPWIDTH[$1]}" -gt "$2" ]; then echo $(((TOPWIDTH[$1] + $2 - 1) / $2)); else echo 1; fi
+}
+
+# place decides how many TOP lines, from line SCROLL on, fit in the rows above the bottom
+# block and maps every screen row to its line's kind (ROWMAP; the h only on a lane line's
+# first row) and its line (ROWLINE). With a width, a line takes as many rows as it wraps
+# into, as on the live pane; with width 0, one row per line (the text of --frame).
+ROWMAP=() ROWLINE=() SHOWN=0
 place() { # width (0: one row per line), rows available (0: all)
-    local i=0 n rows r more k idx
-    ROWMAP=() SHOWN=0
+    local i="$SCROLL" n rows r more k idx
+    ROWMAP=() ROWLINE=() SHOWN=0
     n=${#TOP[@]}
     while [ "$i" -lt "$n" ]; do
-        rows=1
-        if [ "$1" -gt 0 ] && [ "${TOPWIDTH[$i]}" -gt "$1" ]; then rows=$(((TOPWIDTH[i] + $1 - 1) / $1)); fi
+        rows="$(rows_of "$i" "$1")"
         [ "$2" -eq 0 ] || [ $((${#ROWMAP[@]} + rows)) -le "$2" ] || break
-        ROWMAP+=("${TOPKIND[$i]}")
+        ROWMAP+=("${TOPKIND[$i]}") ROWLINE+=("$i")
         r=1
         # the further rows of a lane's first line are no longer its chevron or its buttons
         k="${TOPKIND[$i]}" idx="${TOPKIND[$i]%%[!0-9-]*}"
         case "${k#"$idx"}" in h*) more="$idx" ;; *) more="$k" ;; esac
-        while [ "$r" -lt "$rows" ]; do ROWMAP+=("$more"); r=$((r + 1)); done
+        while [ "$r" -lt "$rows" ]; do ROWMAP+=("$more") ROWLINE+=("$i"); r=$((r + 1)); done
         i=$((i + 1))
     done
-    SHOWN="$i"
+    SHOWN=$((i - SCROLL))
 }
 
-frame() { # width, interval, selected: one frame as text, the footer on its last lines
+# The selection the arrows move: the element a click selected (CURID, see body), at line CUR
+# of TOP (-1: none). FOLLOW asks the next view to scroll it into sight (an arrow or a
+# click moved it; the wheel alone does not). SCROLL is the first TOP line drawn.
+CUR=-1 CURID="" FOLLOW=0 SCROLL=0
+
+el_end() { # line of an element's start -> its last line (its further rows follow it)
+    local e="$1"
+    while [ $((e + 1)) -lt "${#TOP[@]}" ] && [ -z "${TOPEL[$((e + 1))]}" ] && [ "${TOPKIND[$((e + 1))]}" != -1 ]; do e=$((e + 1)); done
+    echo "$e"
+}
+
+el_start() { # line -> the line its element starts on, or -1 when the line is in no element
+    local i="$1"
+    [ "${TOPKIND[$i]:--1}" != -1 ] || { echo -1; return 0; }
+    while [ "$i" -gt 0 ] && [ -z "${TOPEL[$i]}" ]; do i=$((i - 1)); done
+    if [ -n "${TOPEL[$i]}" ]; then echo "$i"; else echo -1; fi
+}
+
+select_line() { # line of an element's start: select it, and its lane when it has one
+    local idx
+    CUR="$1" CURID="${TOPEL[$1]}" FOLLOW=1
+    idx="${TOPKIND[$1]%%[!0-9-]*}"
+    [ -z "$idx" ] || [ "$idx" -lt 0 ] || sel="$idx"
+}
+
+# After a new layout: find the selected element again by its id; when it is gone (folded
+# away, cleared), the nearest element at or above where it was.
+find_cursor() {
+    local i n="${#TOP[@]}"
+    [ "$CUR" -ge 0 ] || return 0
+    for ((i = 0; i < n; i++)); do
+        if [ "${TOPEL[$i]}" = "$CURID" ]; then CUR="$i"; return 0; fi
+    done
+    [ "$CUR" -lt "$n" ] || CUR=$((n - 1))
+    while [ "$CUR" -ge 0 ] && [ -z "${TOPEL[$CUR]:-}" ]; do CUR=$((CUR - 1)); done
+    if [ "$CUR" -ge 0 ]; then CURID="${TOPEL[$CUR]}"; else CURID=""; fi
+}
+
+# SCROLL for a pane of `room` rows: the selection in sight when FOLLOW, and no further down
+# than the last line with room of 30% of the visible height below it.
+scroll_view() { # width, room
+    local end s rows total pad
+    find_cursor
+    if [ "$FOLLOW" -eq 1 ] && [ "$CUR" -ge 0 ]; then
+        if [ "$CUR" -lt "$SCROLL" ]; then
+            # with the header or blank lines right above it
+            SCROLL="$CUR"
+            while [ "$SCROLL" -gt 0 ] && [ "${TOPKIND[$((SCROLL - 1))]}" = -1 ]; do SCROLL=$((SCROLL - 1)); done
+        fi
+        end="$(el_end "$CUR")" total=0 s="$end"
+        while [ "$s" -ge "$SCROLL" ]; do total=$((total + $(rows_of "$s" "$1"))); s=$((s - 1)); done
+        while [ "$total" -gt "$2" ] && [ "$SCROLL" -lt "$CUR" ]; do
+            total=$((total - $(rows_of "$SCROLL" "$1"))) SCROLL=$((SCROLL + 1))
+        done
+    fi
+    FOLLOW=0
+    pad=$(($2 * 30 / 100)) total="$pad" s="${#TOP[@]}"
+    while [ "$s" -gt 0 ]; do
+        rows="$(rows_of $((s - 1)) "$1")"
+        [ $((total + rows)) -le "$2" ] || break
+        total=$((total + rows)) s=$((s - 1))
+    done
+    [ "$SCROLL" -le "$s" ] || SCROLL="$s"
+    [ "$SCROLL" -ge 0 ] || SCROLL=0
+}
+
+line_out() { # line index -> the line as drawn: the selected element's rows start with ›, except
+    # a lane's first line, which shows its selection already (◂ and the background)
+    local l="${TOP[$1]}"
+    if [ "$CUR" -ge 0 ] && ! [[ "${TOPEL[$CUR]}" =~ ^L[^/]*$ ]] && [ "$1" -ge "$CUR" ] && [ "$1" -le "$(el_end "$CUR")" ]; then l="${l/ /›}"; fi
+    printf '%s' "$l"
+}
+
+frame() { # width, interval, selected, height (0: every line, unscrolled): one frame as text, the footer on its last lines
+    local h="${4:-0}" r room
     layout "$1" "$2" "$3"
-    place 0 0
-    buttons "$1" "$2" $((${#TOP[@]} + ${#BOTTOM[@]}))
-    printf '%s\n' "${TOP[@]}" "${BOTTOM[@]}"
+    if [ "$h" -eq 0 ]; then
+        SCROLL=0
+        find_cursor
+        place 0 0
+        buttons "$1" "$2" $((${#TOP[@]} + ${#BOTTOM[@]}))
+        room="${#TOP[@]}"
+    else
+        room=$((h - ${#BOTTOM[@]}))
+        scroll_view "$1" "$room"
+        place "$1" "$room"
+        buttons "$1" "$2" "$h"
+    fi
+    for ((r = 0; r < SHOWN; r++)); do line_out $((SCROLL + r)); printf '\n'; done
+    # a short pane: blank rows down to the bottom block, as the live pane leaves them
+    for ((r = ${#ROWMAP[@]}; r < room; r++)); do printf '\n'; done
+    printf '%s\n' "${BOTTOM[@]}"
 }
 
 # Once at start: clear a sidebar filter that an older version of the panel (which had the
@@ -529,10 +632,56 @@ button_at() { # map, column
     done
 }
 
-act() { # key: only click (and refresh, from panel-action.sh) does anything
-    local lane k idx rest map hit
+fold_state() { # lane JSON -> folded or unfolded, as body() draws it
+    local name section toggled=0 closed=0
+    name="$(jq -r '.lane' <<<"$1")" section="$(jq -r '.section' <<<"$1")"
+    case "$FOLDED" in *"|$name|"*) toggled=1 ;; esac
+    [ "$section" != closed ] || closed=1
+    if [ "$toggled" -ne "$closed" ]; then echo folded; else echo unfolded; fi
+}
+
+# An arrow, once a click selected an element: up/down move to the previous/next element;
+# left folds the element's lane (the selection goes to its first line) or shows the first
+# closed lanes again on "… n more", right unfolds it or shows them all.
+arrow() { # up | down | left | right
+    local i idx lane
+    [ "$CUR" -ge 0 ] || return 0
+    DC_LANE=""
+    case "$1" in
+        up | down)
+            i="$CUR"
+            while :; do
+                if [ "$1" = up ]; then i=$((i - 1)); else i=$((i + 1)); fi
+                [ "$i" -ge 0 ] && [ "$i" -lt "${#TOP[@]}" ] || return 0
+                [ -z "${TOPEL[$i]}" ] || break
+            done
+            select_line "$i" ;;
+        left | right)
+            FOLLOW=1
+            if [ "${TOPEL[$CUR]}" = m ]; then
+                [ "$1" = right ] && ALLCLOSED=1
+                return 0
+            fi
+            idx="${TOPKIND[$CUR]%%[!0-9-]*}"
+            [ -n "$idx" ] && [ "$idx" -ge 0 ] || return 0
+            lane="$(lane_at "$idx")"
+            [ -n "$lane" ] || return 0
+            case "$1:$(fold_state "$lane")" in
+                left:unfolded)
+                    toggle_fold "$(jq -r '.lane' <<<"$lane")"
+                    CURID="L$(jq -r '.lane' <<<"$lane")" ;;
+                right:folded) toggle_fold "$(jq -r '.lane' <<<"$lane")" ;;
+            esac ;;
+    esac
+}
+
+act() { # key: click, wheel, the arrows (and refresh, from panel-action.sh)
+    local lane k idx rest map hit line
     case "$1" in
         refresh) refresh_view; return 0 ;;
+        wheelup) SCROLL=$((SCROLL - 3)); [ "$SCROLL" -ge 0 ] || SCROLL=0; return 0 ;;
+        wheeldown) SCROLL=$((SCROLL + 3)); return 0 ;; # the next view keeps it in range
+        up | down | left | right) arrow "$1"; return 0 ;;
         click) ;;
         *) return 0 ;;
     esac
@@ -550,6 +699,10 @@ act() { # key: only click (and refresh, from panel-action.sh) does anything
         case "$rest" in h*@* | c@*) map="${rest#*@}" rest="${rest%%@*}" ;; esac
         [ -z "$map" ] || hit="$(button_at "$map" "$CLICK_COL")"
         [ "$rest" = h ] && [ -z "$hit" ] && [ "$CLICK_COL" -ge 2 ] && [ "$CLICK_COL" -le 3 ] && hit="fold"
+        # a click on an element selects it for the arrows (a press of a CLOSED header button is
+        # only that press)
+        line="$(el_start "${ROWLINE[$((CLICK_ROW - 1))]}")"
+        [ "$line" -lt 0 ] || { [ "$rest" = c ] && [ -n "$hit" ]; } || select_line "$line"
         case "$rest" in
             u*) sel="$idx" DC_LANE=""; browse "${rest#u}" ;;
             f*) sel="$idx" DC_LANE=""; open_ref "${rest#f}" "$(lane_at "$idx")" ;;
@@ -574,9 +727,9 @@ act() { # key: only click (and refresh, from panel-action.sh) does anything
     [ "$sel" -lt "$(lane_count)" ] || sel=0
 }
 
-# Waits up to $1 seconds for input; sets KEY (click, refresh, or the key that was pressed,
-# which act ignores; empty on a timeout or an ignored sequence) and CLICK_ROW/CLICK_COL.
-# Returns nonzero at the end of the input (--feed).
+# Waits up to $1 seconds for input; sets KEY (click, wheelup, wheeldown, up, down, left,
+# right, refresh, or the key that was pressed, which act ignores; empty on a timeout or an
+# ignored sequence) and CLICK_ROW/CLICK_COL. Returns nonzero at the end of the input (--feed).
 read_key() {
     local c rest="" rc
     KEY=""
@@ -586,16 +739,32 @@ read_key() {
     case "$c" in
         $'\033')
             IFS= read -rsn1 -t 1 c || { KEY=esc; return 0; }
-            [ "$c" = "[" ] || return 0
+            case "$c" in
+                "[") ;;
+                O) # an arrow in the terminal's application cursor mode: ESC O A
+                    IFS= read -rsn1 -t 1 c || return 0
+                    case "$c" in A) KEY=up ;; B) KEY=down ;; C) KEY=right ;; D) KEY=left ;; esac
+                    return 0 ;;
+                *) return 0 ;;
+            esac
             IFS= read -rsn1 -t 1 c || return 0
             case "$c" in
-                "<") # SGR mouse: button;col;row then M (press) or m (release)
+                A) KEY=up ;;
+                B) KEY=down ;;
+                C) KEY=right ;;
+                D) KEY=left ;;
+                "<") # SGR mouse: button;col;row then M (press) or m (release); 64/65 the wheel
                     while IFS= read -rsn1 -t 1 c; do
                         case "$c" in M | m) break ;; *) rest="$rest$c" ;; esac
                     done
-                    if [ "$c" = M ] && [ "${rest%%;*}" = 0 ]; then
-                        CLICK_COL="$(cut -d';' -f2 <<<"$rest")" CLICK_ROW="$(cut -d';' -f3 <<<"$rest")"
-                        KEY=click
+                    if [ "$c" = M ]; then
+                        case "${rest%%;*}" in
+                            0)
+                                CLICK_COL="$(cut -d';' -f2 <<<"$rest")" CLICK_ROW="$(cut -d';' -f3 <<<"$rest")"
+                                KEY=click ;;
+                            64) KEY=wheelup ;;
+                            65) KEY=wheeldown ;;
+                        esac
                     fi ;;
                 [0-9]) # ESC [ n ~ : ESC [ 99 ~ is panel-action.sh refresh; other keys are ignored
                     rest="$c"
@@ -638,28 +807,28 @@ case "${1:-}" in
             --feed) feed=1; shift ;;
             --rowmap) rowmap=1; shift ;;
             --height) height="$2"; shift 2 ;;
-            *) usage "panel.sh --frame [--width N] [--interval S] [--selected I] [--seen JSON] [--feed] [--rowmap [--height H]]" ;;
+            *) usage "panel.sh --frame [--width N] [--interval S] [--selected I] [--seen JSON] [--feed] [--height H] [--rowmap]" ;;
         esac
     done
     refresh_view
     if [ "$feed" -eq 1 ]; then
-        frame "$w" "$interval" "$sel" >/dev/null
+        frame "$w" "$interval" "$sel" "$height" >/dev/null
         while read_key 5; do
             [ -n "$KEY" ] || continue
             act "$KEY"
-            frame "$w" "$interval" "$sel" >/dev/null
+            frame "$w" "$interval" "$sel" "$height" >/dev/null
             clicked_done
         done
     fi
     if [ "$rowmap" -eq 1 ]; then
         layout "$w" "$interval" "$sel"
         room=0
-        [ "$height" -eq 0 ] || room=$((height - ${#BOTTOM[@]}))
+        if [ "$height" -gt 0 ]; then room=$((height - ${#BOTTOM[@]})); scroll_view "$w" "$room"; fi
         place "$w" "$room"
         for r in "${!ROWMAP[@]}"; do printf '%s %s\n' $((r + 1)) "${ROWMAP[$r]}"; done
         exit 0
     fi
-    frame "$w" "$interval" "$sel"
+    frame "$w" "$interval" "$sel" "$height"
     wait
     exit 0 ;;
 "") ;;
@@ -696,12 +865,14 @@ draw() {
     w="$TERM_COLS" h="$TERM_ROWS"
     layout "$w" "$interval" "$sel"
     MSG=""
+    scroll_view "$w" $((h - ${#BOTTOM[@]}))
     place "$w" $((h - ${#BOTTOM[@]}))
     buttons "$w" "$interval" "$h"
     printf '\033[H\033[2J'
     r=0
     while [ "$r" -lt "$SHOWN" ]; do
-        printf '%s\n' "${TOP[$r]}"
+        line_out $((SCROLL + r))
+        printf "\n"
         r=$((r + 1))
     done
     # The bottom block on the pane's last rows; no newline after the last, so nothing scrolls.
@@ -731,7 +902,7 @@ while :; do
         draw
     fi
     case "$KEY" in
-        click | refresh) ;;
+        click | refresh | wheelup | wheeldown | up | down | left | right) ;;
         *) # a timeout or a keystroke (ignored): only the timer
             if [ $((SECONDS - last)) -ge "$interval" ]; then
                 refresh_view
