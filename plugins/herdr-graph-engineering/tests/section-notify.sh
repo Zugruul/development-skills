@@ -79,7 +79,7 @@ check_rc "just stopped: not yet" 1 "$rc"
 N_CLOCK=1001031; nrec
 check "still stopped after 30 s" "a/investigate stopped" "$(ntake)"
 
-echo "== notify: reminders after 5 and 15 minutes, then manual intervention =="
+echo "== notify: reminders after 5 and 15 minutes, the second with the manual-intervention mark =="
 N_CLOCK=1001200; nrec
 ntake >/dev/null; rc=$?
 check_rc "before 5 minutes nothing" 1 "$rc"
@@ -89,14 +89,14 @@ check "after 5 minutes: a reminder" "a/investigate stopped (reminder 1)" "$(ntak
 check "and a notification to the user" "notification show" "$(cat "$N_TMP/calls.log")"
 N_CLOCK=1001600; nrec; ntake >/dev/null; rc=$?
 check_rc "no more until 15 minutes" 1 "$rc"
+nman() { ns status --json --repo "$N_REPO" | jq -r '.[] | select(.lane == "a") | "\(.manual) \(.attention | join(" | "))"'; }
+check_absent "after the first reminder: no mark" "needs manual intervention" "$(nman)"
 N_CLOCK=1001932; nrec
 check "after 15 minutes: the second" "(reminder 2)" "$(ntake)"
-nman() { ns status --json --repo "$N_REPO" | jq -r '.[] | select(.lane == "a") | "\(.manual) \(.attention | join(" | "))"'; }
-check_absent "not yet marked" "needs manual intervention" "$(nman)"
+check "right after it the lane is marked" "true" "$(nman)"
 N_CLOCK=1002232; nrec
 ntake >/dev/null; rc=$?
 check_rc "no third reminder" 1 "$rc"
-check "the lane is marked" "true" "$(nman)"
 check "with what is unhandled" "needs manual intervention: investigate stopped" "$(nman)"
 frame="$(cd "$N_REPO" && env -u HERDR_PANE_ID -u HERDR_TAB_ID PATH="$FIX/stub-herdr:$PATH" HERDR_STUB_DIR="$N_TMP" HERDR_ENV=1 NO_COLOR=1 bash "$PLUGIN/scripts/panel.sh" --frame --width 160)"
 check "the graph panel shows the mark" "needs manual intervention" "$frame"
@@ -112,8 +112,8 @@ check_rc "the orchestrator knows its own question" 1 "$rc"
 : >"$N_TMP/calls.log"; N_CLOCK=1003301; nrec; ntake >/dev/null; rc=$?
 check_rc "no wake at 5 minutes" 1 "$rc"
 check "the user is reminded" "notification show a needs you" "$(cat "$N_TMP/calls.log")"
-N_CLOCK=1004300; nrec; N_CLOCK=1004301; nrec
-check "and the lane marked in the end" "true" "$(nman)"
+N_CLOCK=1003901; nrec
+check "and the lane marked at 15 minutes" "true" "$(nman)"
 nsm '.notify = "disabled"'
 ns lane answer --repo "$N_REPO" --lane a --text yes >/dev/null
 ns lane ask --repo "$N_REPO" --lane a --text "again?" >/dev/null
