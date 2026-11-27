@@ -133,8 +133,11 @@ units() {
         comment || index(bare, "<!--") {
             flush()
             if (t != "") emit("comment: " t)
-            comment = 1
-            if (index(bare, "-->")) comment = 0
+            # the last opener or closer on the line decides whether the comment goes on
+            while (p = index(bare, comment ? "-->" : "<!--")) {
+                bare = substr(bare, p + (comment ? 3 : 4))
+                comment = !comment
+            }
             next
         }
         t ~ /^(```|~~~)/ {
