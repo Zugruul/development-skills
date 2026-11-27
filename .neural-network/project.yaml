@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Zugruul/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Zugruul/development-skills/main/archived/plugins/spec-workflow/schemas/project-config.schema.json
 # Synced 2026-07-08: repo transferred event-sorcerer/development-skills ->
 # Zugruul/development-skills; board migrated org-project #1 -> user-project #5
 # (Priority/Estimate fields + full Status flow re-created there to match).
@@ -44,12 +44,12 @@ boards:
         bug: type:bug
         feature: type:feature
 commands:
-    gate: bash plugins/spec-workflow/tests/run-tests.sh && bash plugins/remote-compute/tests/run-tests.sh && shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/scripts/lib/*.sh plugins/spec-workflow/tests/*.sh plugins/remote-compute/tests/*.sh && claude plugin validate plugins/spec-workflow && claude plugin validate plugins/remote-compute
+    gate: bash archived/plugins/spec-workflow/tests/run-tests.sh && bash archived/plugins/remote-compute/tests/run-tests.sh && shellcheck -x archived/plugins/spec-workflow/scripts/*.sh archived/plugins/spec-workflow/scripts/lib/*.sh archived/plugins/spec-workflow/tests/*.sh archived/plugins/remote-compute/tests/*.sh && claude plugin validate archived/plugins/spec-workflow && claude plugin validate archived/plugins/remote-compute
     gateAffected: >-
-        bash plugins/spec-workflow/tests/run-tests.sh --changed &&
-        { ! grep -q '^plugins/remote-compute/' <<<"$GATE_CHANGED_FILES" || bash plugins/remote-compute/tests/run-tests.sh; } &&
-        shellcheck -x plugins/spec-workflow/scripts/*.sh plugins/spec-workflow/scripts/lib/*.sh plugins/spec-workflow/tests/*.sh plugins/remote-compute/tests/*.sh &&
-        claude plugin validate plugins/spec-workflow && claude plugin validate plugins/remote-compute
+        bash archived/plugins/spec-workflow/tests/run-tests.sh --changed &&
+        { ! grep -q '^archived/plugins/remote-compute/' <<<"$GATE_CHANGED_FILES" || bash archived/plugins/remote-compute/tests/run-tests.sh; } &&
+        shellcheck -x archived/plugins/spec-workflow/scripts/*.sh archived/plugins/spec-workflow/scripts/lib/*.sh archived/plugins/spec-workflow/tests/*.sh archived/plugins/remote-compute/tests/*.sh &&
+        claude plugin validate archived/plugins/spec-workflow && claude plugin validate archived/plugins/remote-compute
 commit:
     convention: conventional-commits
     systemPrompt: "Simple titles. Enumerated bullet-point lists of the changes. Simple human language."
@@ -60,29 +60,29 @@ docs:
     - '**'
     notes: marketplace install/usage + skills table; update when skills or commands change
 -   id: plugin
-    path: plugins/spec-workflow/README.md
+    path: archived/plugins/spec-workflow/README.md
     covers:
-    - plugins/spec-workflow/**
+    - archived/plugins/spec-workflow/**
     notes: the plugin's user-facing docs — skills table, scripts list, config surface; every behavior/config change updates it
 -   id: spec
     path: SPEC.md
     covers:
-    - plugins/spec-workflow/**
+    - archived/plugins/spec-workflow/**
     notes: contract for tracked development; changed contracts flow via docs/spec-deltas, never direct edits
 -   id: compute-plugin
-    path: plugins/remote-compute/README.md
+    path: archived/plugins/remote-compute/README.md
     covers:
-    - plugins/remote-compute/**
+    - archived/plugins/remote-compute/**
     notes: the plugin's user-facing docs — skills table, capability bundles, the spec-workflow dependency; every behavior/config change updates it
 -   id: peer-plugin
-    path: plugins/peer-review/README.md
+    path: archived/plugins/peer-review/README.md
     covers:
-    - plugins/peer-review/**
+    - archived/plugins/peer-review/**
     notes: the plugin's user-facing docs — skills table, scripts list; every behavior/config change updates it
 -   id: peer-spec
     path: SPEC-PEER-REVIEW.md
     covers:
-    - plugins/peer-review/**
+    - archived/plugins/peer-review/**
     notes: contract for peer-review + remote dispatch; changed contracts flow via docs/spec-deltas, never direct edits
 delegation:
     identities:

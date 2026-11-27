@@ -1,0 +1,10 @@
+{
+    "name": "herdr-development-skills",
+    "description": "Integration layer between Herdr and the development-skills plugins: checks which plugins and features are enabled and configured, then runs spec-workflow tasks and build-loop lanes in Herdr worktree agents an orchestrator listens to, and peer reviews next to a lane. Requires the herdr and herdr-simple-orchestrate plugins; each integration degrades cleanly when its specialized plugin is absent.",
+    "version": "0.8.0",
+    "author": {
+        "name": "event-sorcerer",
+        "url": "https://github.com/event-sorcerer"
+    },
+    "dependencies": ["herdr@development-skills", "herdr-simple-orchestrate@development-skills"]
+}

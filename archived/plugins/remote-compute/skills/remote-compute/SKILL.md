@@ -1,0 +1,411 @@
+---
+name: remote-compute
+description: Registers remote machines (SSH, key-only) as user-level compute resources and advertises their availability to projects, capability-style -- register probes GPU/RAM/disks/envs and converges the machine to a consistent, verified setup; enable writes a non-exclusive availability entry (with an informational snapshot) into the repo's gitignored project.local.yaml overlay, and many projects may enable the same machine. Also list/status/probe, one-off exec, cooperative lock/unlock, detached dispatch with file-recoverable job state, and per-platform setup sheets. Use for 'register this machine as a compute resource', 'make gpubox available to this project', 'dispatch a training run', or 'is the GPU box up'.
+---
+
+# remote-compute
+
+This skill requires the spec-workflow plugin: `enable` writes into the target
+repo's `.neural-network/project.local.yaml` overlay, and project setup and the
+overlay's gitignoring are spec-workflow's machinery. Role dispatch reads only
+compute directly, matching `config.py`'s whole-key replacement semantics; the
+installed controller has no dependency on an installed spec-workflow Python module.
+
+Registers machines the human owns as compute resources (user-level registry
+`~/.remote-compute/resources.yaml`, machine-local, never committed) and
+advertises them to projects (a `compute:` section in `.neural-network/project.local.yaml`
+— the gitignored machine-local overlay; alias + informational capability
+snapshot only, never host/user/secrets, and never the committed project.yaml).
+Availability is capability-style and NON-exclusive, mirroring how
+`assistant.capabilities.NAME.enabled` works: many projects may enable the
+same machine; the machine-local cooperative lock is what serializes actual
+use, never the project declaration.
+
+Human-facing guide: `docs/remote-compute.md` (concepts, setup, worked example)
+— point the human there rather than explaining the model from scratch.
+Design/rationale: `docs/design/remote-compute-plan.md`. This is the human
+dev-workflow layer; it implements nothing of SPEC-ASSISTANT §14/E7 and must
+never be cited as satisfying any §14 requirement.
+
+All verbs go through the one script (run it with python3):
+
+```bash
+python3 "../../scripts/remote-compute.py" register gpubox testuser@192.0.2.17
+python3 "../../scripts/remote-compute.py" enable gpubox --root "$(git rev-parse --show-toplevel)" --role training
+python3 "../../scripts/remote-compute.py" remove-job gpubox old-job
+python3 "../../scripts/remote-compute.py" remove-capability gpubox comfyui
+python3 "../../scripts/remote-compute.py" capabilities list
+python3 "../../scripts/remote-compute.py" capabilities install gpubox slm-training
+python3 "../../scripts/remote-compute.py" capabilities installed
+python3 "../../scripts/remote-compute.py" capabilities installed gpubox
+python3 "../../scripts/remote-compute.py" list
+python3 "../../scripts/remote-compute.py" connect ; # ssh one-liners per machine (the `ssh` skill)
+python3 "../../scripts/remote-compute.py" scan ; # re-find machines whose IP moved (the `scan` skill)
+python3 "../../scripts/remote-compute.py" install-tools gpubox ; # re-ship the on-machine `remote-compute` command
+python3 "../../scripts/remote-compute.py" exec gpubox -- nvidia-smi
+python3 "../../scripts/remote-compute.py" dispatch gpubox --workdir "~/train" --cmd "python train.py" --env fab-training
+python3 "../../scripts/remote-compute.py" job-status j20260802 ; # also: job-logs, job-pull
+```
+
+**Bare invocation** (no arguments given): run `list`, show the result, and ask
+the human which verb they want. Never guess a nickname.
+
+## register (converge, not one-shot)
+
+`register` converges a machine to one declared end-state and is safe to re-run
+any time — every run re-verifies the full checklist (ssh alias, key auth under
+BatchMode, pinned host key, capability probe, remote `~/.remote-compute/jobs/`
+layout). Drive its stop-and-resume statuses like this:
+
+- `UNREACHABLE` (exit 1): the machine is off/asleep or sshd is not listening.
+  Print the matching platform sheet (`setup-sheet wsl2|linux|macos`) and relay
+  it to the human; retry when they say it is up. If they say it IS up, its
+  DHCP address has probably changed: run `scan` (the `scan` skill) before
+  anything else -- it re-finds the box by its pinned host key.
+- `NEEDS_HOSTKEY_ACK` (exit 4): show the human the printed fingerprint, ask
+  them to confirm it matches the machine, then re-run with `--accept-hostkey`.
+  Never accept a host key the human has not acked.
+- `NEEDS_KEY_AUTH` (exit 3): relay the printed `ssh-copy-id` line for the
+  human to run themselves (it prompts for their password — this skill never
+  handles passwords), then re-run register when they report success.
+- Exit 0 prints `REGISTERED` plus a summary table — relay the table, and if it
+  notes the power policy is unconfirmed, ask the human to confirm the machine
+  never sleeps on AC (then it can be recorded in the registry's policy block).
+  The table's `tools:` line says whether the on-machine `remote-compute`
+  command landed; relay any PATH note under it verbatim.
+
+Registration is user-level only — it never touches any repo.
+
+## enable / disable (availability, not allocation)
+
+Run inside a repo with `.neural-network/project.yaml` (pass `--root` explicitly).
+`enable` re-probes the device live, then rewrites the `compute:` section
+idempotently — a map keyed by alias with `{enabled, roles, probedAt,
+capabilities}` — in `.neural-network/project.local.yaml` (gitignored machine-local
+overlay, created if missing; the committed `project.yaml` is never touched).
+Project reads through `config.py` and the role selector both replace the whole
+committed `compute` value with the local value when present. Tell the human the resource is now available to this project
+(non-exclusive — other projects may enable it too) and that tasks can
+reference it by alias or role. `disable` keeps the entry with
+`enabled: false`, like a disabled capability. Snapshots are informational —
+request `probe` explicitly when fresh hardware facts are needed; dispatch does
+not silently perform a full hardware re-probe.
+
+## Hard rules (the script enforces these; do not work around them)
+
+1. Key auth only; `BatchMode=yes` on every ssh call; never prompt for, store,
+   or transmit passwords.
+2. Never run sudo, locally or remotely — sudo payloads are rejected (exit 5);
+   privileged steps are printed as instructions for the human.
+3. Built-in hardware probes are read-only. Job and environment recipes are
+   trusted code, not sandboxed: they can write anywhere the SSH account permits.
+   Parameter quoting and the sudo-text check are not privilege boundaries.
+4. Every capability claim comes from real probe output; failures are recorded
+   verbatim in the registry, never guessed.
+5. No dispatch to a resource locked by someone else (exit 6); `unlock --force`
+   warns with the prior holder's context.
+6. `~/.remote-compute/` is machine-local and never committed; the repo gets
+   alias + snapshot only.
+
+## declared jobs — dispatch by intent
+
+A resource can declare NAMED jobs (`add-job`): a command template plus a regex
+per `{param}` — the same stance as `capability.yaml` invoke (schema-validated
+substitution into a pre-authored template; substituted values are always
+shell-quoted; sudo templates rejected). When the human asks for an OUTCOME
+("generate a 3d duck", "run a training epoch"):
+
+1. Check which resources this project has enabled (`config.py ROOT get
+   compute.resources`), then read each candidate's roster with `jobs NICKNAME`.
+2. Pick the declared job that matches the intent and use `run --role ROLE JOBNAME
+   --root REPO --param name=value` for project selection, or `run NICKNAME JOBNAME
+   --param name=value` for an explicit target. Follow with `job-status` / `job-logs` / `job-pull`.
+3. If NO declared job matches, refuse honestly and name the nearest declared
+   jobs (never improvise a raw command for an intent-level ask — `exec` and
+   `dispatch --cmd` are for the human explicitly dictating a command).
+
+## role selection
+
+Use selector-first `run --role ROLE JOB [--root DIR]` or, for an explicitly
+specified human command, `dispatch --role ROLE --workdir W --cmd C [--root DIR]`.
+All existing run/dispatch options remain available. Root defaults to cwd and must
+contain `.neural-network/project.yaml`; optional project.local.yaml replaces the
+whole compute value, including an empty override. Missing compute means no
+candidates. Invalid relevant YAML shapes, duplicate/mixed selectors, missing or
+blank role/root values and unknown options are usage errors. Option values are
+data, so a parameter containing `--role` is never treated as a selector.
+
+The engine sorts aliases lexically, requires `enabled: true`, exact case-sensitive
+roles and client registration, then checks each candidate's declared job, params
+and named environment activation. A recorded verification error excludes the
+candidate; a missing legacy stamp alone does not. Raw `--env` uses the same rule.
+No hardware probe, inferred readiness, environment installation or automatic sync
+occurs. Explicit nickname commands do not read project config or require enablement.
+
+Relay the engine's exclusions and selected target/job ID. Fallback is only for
+local capacity/lock or bounded read-only connectivity failure before reservation,
+or an explicit unambiguous target busy/lock reservation refusal. After a possibly
+accepted reservation, any failure stops, including staging and launch exit 6.
+An ambiguous reservation or lost launch reply retains an unknown receipt: inspect
+`job-status ID` and the reported target's `remote-compute status ID` before any
+manual retry. Never turn an exit code alone into a second dispatch. No eligible
+candidates exits 2; all busy exits 6; exhaustion including unreachable exits 1.
+Target admission remains authoritative; there is no queue or automatic rerun.
+
+## capability bundles (how domains plug in)
+
+The engine is domain-agnostic: it knows machines, envs, jobs, and transport,
+and nothing about any particular tool. A DOMAIN arrives as a **bundle** — a
+`capability.yaml` manifest (`{name, description, payload[], jobs{}}`) plus the
+payload scripts its jobs invoke. `capabilities list` shows the bundles shipped
+with this plugin. Install one by name, or pass a local bundle directory for a
+custom capability:
+
+```bash
+python3 "../../scripts/remote-compute.py" capabilities install gpubox comfyui
+python3 "../../scripts/remote-compute.py" capabilities install gpubox /path/to/my-capability
+```
+
+Installation rsyncs the payload to `~/.remote-compute/caps/<name>/` on the
+target and records the manifest's jobs as `<name>:<job>` in the caller's local
+registry and publishes a target-side catalog. Another registered client runs
+`capabilities sync NICK` to import that catalog without reinstalling payloads;
+it still declares needed environments locally with `add-env`. Legacy bundles
+need a reviewed reinstall to publish metadata; first follow the installed-update
+guide linked below for complete backup, original-source comparison and mutable
+asset preservation. Never substitute a built-in same-name bundle for custom
+source. `capabilities installed` shows cached
+registered machine with its installed bundles; `capabilities installed <nick>`
+filters to one machine. The old `install-capability <nick> <bundle-dir>` and
+`capabilities <nick>` forms remain supported.
+
+Adding a new domain means adding a bundle — never editing `remote-compute.py`.
+Templates may use `{capdir}` (installed payload dir) and `{jobdir}`; every
+other placeholder is a validated job param. Values render once from the original
+template with shell quoting; bare, single-quoted, and double-quoted argument
+slots are supported. Keep slots in argument positions, not shell syntax or
+embedded programming languages. Bundle commands are sudo-checked at install time.
+
+GitHub repositories can supply bundles directly:
+
+```bash
+remote-compute capabilities install gpubox https://github.com/OWNER/REPO NAME --ref TAG
+remote-compute capabilities install gpubox git@github.com:OWNER/REPO.git --all
+remote-compute capabilities validate /path/to/bundle
+remote-compute capabilities sync gpubox
+remote-compute doctor gpubox --json
+```
+
+The repository must contain `capability.yaml` bundles, not arbitrary workflow
+files. Install only trusted sources. Git uses existing credentials/key-only SSH,
+never URL-embedded credentials; submodules and hooks are not run. Discovery
+validates all bundles before writes. Each bundle installation is atomic, but an
+`--all` batch can partially succeed. URL/ref/resolved commit provenance is saved.
+Installed means payload present, not dependencies/services ready; doctor checks
+configured environments, versions, catalog drift, connectivity and stale jobs.
+
+The shipped `comfyui` bundle documents its own rules in its manifest; the one
+that matters generally: a bundle must invoke PRE-AUTHORED artifacts and change
+only input values, never compose executable structure (workflow graphs,
+pipelines) from model output. A real end-to-end walkthrough lives in
+`tests/e2e-remote-compute-manual.sh` (manual, network-touching — deliberately
+not part of the hermetic gate).
+
+## setup plans after install
+
+`capabilities install` prints the bundle's declared setup plan (manifest
+`setup:` section: steps, required params, prerequisites, verify jobs). Relay it
+to the human verbatim. Agent shells are non-interactive, so setup never runs
+implicitly there: ask the human, then re-run with `--setup --param NAME=VALUE`
+or use `capabilities setup <nick> <capability> --param NAME=VALUE`. Never guess
+required values such as a ComfyUI root. Steps run in order and stop on the
+first failure; inspect `job-logs` before any manual retry. `--no-setup` only
+prints the plan. A completed setup is not service or inference readiness.
+
+## ComfyUI UI-save import
+
+For an explicit request to import a trusted pre-authored UI save, use the
+declared `comfyui:import-workflow` job:
+
+```bash
+python3 "../../scripts/remote-compute.py" run gpubox comfyui:import-workflow --job-id comfy-import-example --param workflow=/path/on/target/UI.json --param port=8188
+```
+
+This authoring utility writes a NEW `workflow_api.json` and reports `ARTIFACT`;
+it never queues a prompt or creates nodes/edges. Rendering that file is a separate
+human-approved action. Do not auto-convert during rendering. The helper requires
+the explicit `core-txt2img-v1` serializer profile: numeric workflow v0.4, seven
+reviewed core classes, fixed seed control, exact schema/slot agreement and literal
+widgets. Refuse custom/virtual nodes, subgraphs, mute/bypass, reroutes, converted
+widgets, dynamic prompts, filename substitution tokens and ambiguous graphs.
+SaveImage/PreviewImage legacy empty and current IMAGE outputs are supported only
+when UI and schema agree. Never claim every workflow or frontend release works.
+Use `Workflow -> Export (API)` for unsupported cases.
+
+Standalone: `python3 comfy-import.py --workflow UI.json --output API.json --profile core-txt2img-v1 --object-info INFO.json`
+uses a trusted offline snapshot, which does not certify the current server;
+omit `--object-info` to use bounded loopback GET `/object_info` on port 8188.
+See [the exact profile, limits and provenance](../../../../docs/remote-compute.md#explicit-comfyui-ui-save-import).
+Source/existing output paths are preserved. API rendering, list-nodes and
+value-only runtime overrides remain unchanged. This grants no assistant access.
+Validate behavioral options at their reviewed node/input sites, including types
+and values; refuse transformed prompt escapes and reserved IDs `nodes`/`links`.
+Ordinary backslashes, even trailing backslash runs and other supported string
+IDs remain usable. A temporary-file cleanup warning after publication is a
+successful import (exit `0` plus `ARTIFACT`), not a reason to retry or remove the
+artifact. Failures before publication retain their original error; existing
+outputs remain protected.
+
+## naming artifact jobs
+
+For jobs that PRODUCE artifacts (images, video, models), let the capability
+name the run: omit `--job-id` and the bundle's `jobIdSchema` builds one. The
+shipped comfyui bundle uses `img-{model}-{seed}`, so a render lands as
+`img-waiillustrioussdxl-v150-129381729381723211-<unique-suffix>` (long prefixes
+are truncated to keep IDs at most 64 characters).
+
+The shape matters because artifacts outlive the session that made them:
+
+- a stable **prefix** says what kind of run it was (`img-`, `vid-`),
+- the **model slug** says which checkpoint produced it,
+- the **seed last** makes a batch sort together and makes any single output
+  reproducible from its id alone.
+
+A bundle declares it in `capability.yaml`:
+
+```yaml
+jobIdSchema:
+    template: "img-{model}-{seed}"
+```
+
+Any `{param}` of that job may appear in the template; values are slugified, so
+the id is always filename- and shell-safe. Each automatic run adds a unique
+suffix. An explicit `--job-id` always wins, but existing IDs are refused,
+never overwritten, including retries.
+Recommend the schema-derived id when the human is generating artifacts, and
+reserve hand-written ids for one-off experiments.
+
+## dispatch and jobs
+
+`dispatch` validates the environment, atomically reserves a target slot and
+persists a local receipt before staging inputs and launching a detached Python
+supervisor. Failed transfers never launch. `job.log`, `pid`, `record.json`, and
+`exitcode` live under `~/.remote-compute/jobs/JOBID/`; the client receipt is
+`~/.remote-compute/jobs/JOBID.json`. A lost launch response remains `unknown`:
+inspect `job-status` before retrying with a new ID. Reservations expire after an
+hour if never launched. `job-cancel` checks process fingerprints and does not
+claim success while tracked processes survive. Lost processes are not successful
+jobs. `job-logs` and `job-pull` retain their existing interfaces.
+Legacy jobs without a stored fingerprint remain readable, but cancellation
+requires manual process verification instead of signaling a potentially reused PID.
+
+Coordination is per target SSH account. All dispatching clients must be updated;
+old controllers and arbitrary commands outside this protocol are not serialized.
+Use `policy NICK --max-concurrent-jobs N`, not registry edits, for target limits.
+
+## Retiring things
+
+- `remove-job <nick> NAME` drops one declared job. Local only -- the machine
+  keeps its payload and job directories. If the job came from a bundle, say so:
+  re-installing that bundle declares it again.
+- `remove-capability <nick> NAME` uninstalls a bundle: it leaves the roster and
+  every job it declared goes with it. The remote payload is LEFT IN PLACE,
+  because "stop offering this here" does not imply deleting files on someone's
+  machine. `--purge-remote` opts into removing that one capability's directory;
+  `--retire-remote` removes it from the shared catalog without deleting payloads.
+  Active work blocks both operations. Default removal is local and sync can restore it.
+- `remove <nick>` unregisters the machine itself and never touches the remote.
+
+None of these delete job history or artifacts. Use `compute-top` on the machine
+for that, or delete a job directory there deliberately.
+
+## The on-machine command
+
+For existing installations, use the [installed-update guide](../../../../docs/remote-compute-updates.md)
+(repository documentation; if absent in a packaged plugin, see the
+[published guide](https://github.com/Zugruul/development-skills/blob/main/archived/docs/remote-compute-updates.md)).
+Verify the active host/profile/cache separately from standalone and target
+tools. Never resolve a legacy-catalog warning by overwriting a custom same-name
+bundle with the built-in one. Preserve complete backups and compare reviewed
+original source and mutable assets before reinstalling; `install-tools` does
+not install/update bundles. Missing models or datasets remain missing.
+Current reviewed source supports `preservePaths` for declared top-level runtime
+roots; verify the installing controller's revision before relying on it. Older
+controllers may ignore that field. Unlisted and unpreserved files can be lost.
+
+`register` ships `scripts/remote-capabilities/_shared/` to
+`~/.remote-compute/tools/` on the box, installs
+`~/.remote-compute/bin/remote-compute` (linked from `~/.local/bin`, with a
+marker-fenced PATH line in the login shell files), and stamps
+`~/.remote-compute/.identity` with the first nickname, preserving old stamps,
+and adds a stable `.machine-id` UUID independent of client nicknames. So the human
+at the keyboard and this skill over ssh drive every machine the same way.
+`install-tools <nick>` updates target tools and the controller after a plugin update;
+`identity <nick>` asks the machine who it thinks it is.
+
+```bash
+remote-compute top             # live job dashboard (compute-top.py)
+remote-compute jobs            # one-shot job table
+remote-compute running         # ids still running
+remote-compute log <id> [-f]   # tail a job log
+remote-compute status <id>     # state, exit code, pid, timestamps, paths
+remote-compute cancel <id>     # stop a running job (asks first; --yes skips)
+remote-compute caps | gpu | disk | paths | identity
+```
+
+Over ssh: `ssh -t gpubox remote-compute top` (the `-t` gives the dashboard a
+terminal), `ssh gpubox remote-compute jobs` for a snapshot. The `ssh` skill
+prints these per machine. Prefer `job-status`/`job-logs` here when you also
+need the orchestrator's job state updated; the on-machine command only reads
+and writes the machine's own `~/.remote-compute/`.
+
+`python3 scripts/remote-compute.py install-cli [--prefix DIR]` installs a
+combined command on WSL/Linux/macOS. Bare invocation shows help only. Local
+commands remain supported; controller verbs (including capability subcommands)
+are routed to the installed controller. `local` and `controller` prefixes
+resolve ambiguity. Do not set up native PowerShell for this workflow.
+
+In the dashboard, arrow keys navigate, enter opens a job's log tail with its
+exit code, `f` filters (all/running/finished/failed), `d` removes one job from
+history (never one that is still running), `D` purges finished jobs.
+
+## Rules
+
+- Relay script output faithfully — especially LOCKED refusals, verbatim probe
+  errors, and the setup sheets; they are written for the human.
+- Prefer the verbs over hand-editing `~/.remote-compute/resources.yaml`: the
+  script writes envs (`add-env`), jobs (`add-job`), capabilities
+  (`install-capability`) and availability (`enable`). Use `policy` to set the
+  shared concurrency limit; power-policy confirmation remains an informational
+  registry field.
+- A hand-edited `activate` line is still re-checked for sudo when a job
+  dispatches, so editing the file cannot smuggle privileged commands past
+  hard rule 2.
+- `remove` unregisters only — it never touches the remote machine and leaves
+  the ssh alias in place (say so when you use it).
+
+## Local repositories and runtime preservation
+
+Local checkouts can use the same bundle selection as GitHub repositories:
+
+```bash
+remote-compute capabilities install gpubox /path/to/repository --all
+remote-compute capabilities install gpubox /path/to/repository game-assets
+```
+
+Discovery validates all bundles before installation. Each bundle is replaced
+individually; a batch can stop after earlier bundles succeeded. Local source
+metadata records the resolved path, bundle path, Git commit and dirty state when
+available. Installation takes a snapshot; it does not create a live symlink.
+
+A manifest may declare `preservePaths: [runtime]` to retain named top-level
+runtime roots through replacement. Names must be unique safe path components,
+not symlinks, managed payload, capability.yaml or .installed.json. Runtime roots
+are moved while the target coordination lock is held and retain their absolute
+paths. An ordinary filesystem error rolls the replacement back. A process/host
+crash can leave a previous-* staging backup requiring manual recovery; this is
+not a crash-journaled transaction. Files not declared for preservation are
+replaced. Purge deliberately deletes runtime state. Prefer --retire-remote when
+switching a capability source, then install the new bundle.
+
+install-tools and install-cli normalize shell script CRLF to LF in staging for Windows-hosted checkouts.
