@@ -3,8 +3,8 @@
 # review-owner.sh -- who owns a reviewed pull request: the open lane whose branch is the pull
 # request's head branch, in any repository with lanes, and that lane's implementer agent.
 # Usage: review-owner.sh --pr URL [--repo DIR]...
-# Without --repo: every repository with a workspace open in Herdr, plus the current one
-# (as status.sh). --repo adds to that list.
+# Without --repo: every repository that may hold lanes (lane_repos in src/common.sh).
+# --repo adds to that list.
 # Prints one line per owning lane:
 #   OWNER <repo> <lane> <agent|-> <node|->
 #     node: the lane's implementer node (its first agent node with write access);
@@ -42,11 +42,9 @@ live="[]"
 if command -v herdr >/dev/null 2>&1; then
     live="$(herdr agent list 2>/dev/null | jq -c '[.result.agents[]?.name // empty]' 2>/dev/null)" || live="[]"
     [ -n "$live" ] || live="[]"
-    repos="$repos
-$(herdr workspace list 2>/dev/null | jq -r '.result.workspaces[]?.worktree.repo_root // empty' 2>/dev/null)"
 fi
-here_root="$(git rev-parse --show-toplevel 2>/dev/null)" && repos="$repos
-$here_root"
+repos="$repos
+$(lane_repos)"
 
 found=0 seen=""
 while IFS= read -r r; do

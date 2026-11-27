@@ -114,6 +114,72 @@ session_dir() {
     printf '%s/herdr-graph/sessions\n' "${XDG_STATE_HOME:-$HOME/.local/state}"
 }
 
+# The registry of repositories lane.sh made or restored a lane in, one primary checkout per
+# line, per user: ${XDG_STATE_HOME:-~/.local/state}/herdr-graph/repos. Never inside a repository.
+repo_registry() {
+    printf '%s/herdr-graph/repos\n' "${XDG_STATE_HOME:-$HOME/.local/state}"
+}
+
+# A folder's repository, as "<git common dir><TAB><primary checkout>". The primary checkout
+# outlives the repository's linked worktrees. Fails when the folder is in no repository.
+repo_entry() { # dir
+    local out common top="" root
+    [ -d "$1" ] || return 1
+    # inside a .git folder --show-toplevel fails, after the common dir was printed
+    out="$(git -C "$1" rev-parse --path-format=absolute --git-common-dir --show-toplevel 2>/dev/null)"
+    common="${out%%$'\n'*}"
+    [ "$common" = "$out" ] || top="${out#*$'\n'}"
+    case "$common" in
+        /*/.git) root="${common%/.git}" ;;
+        /*) root="${top:-$common}" ;;
+        *) return 1 ;;
+    esac
+    printf '%s\t%s\n' "$common" "$root"
+}
+
+# Add a repository to the registry, once. A registry that cannot be written never fails the
+# caller: the lane is already recorded.
+register_repo() { # repo dir
+    local entry root file
+    entry="$(repo_entry "$1")" || return 0
+    root="${entry#*$'\t'}" file="$(repo_registry)"
+    (
+        mkdir -p "$(dirname "$file")" 2>/dev/null || exit 1
+        lock_in "$(dirname "$file")"
+        grep -qxF -- "$root" "$file" 2>/dev/null || printf '%s\n' "$root" >>"$file"
+    ) || printf 'NOT REGISTERED: could not write %s; %s shows in the panel only while a Herdr pane is open in it\n' "$file" "$root" >&2
+    return 0
+}
+
+# Every repository that may hold lanes, one primary checkout per line, each once. Every script
+# that sweeps all lanes uses this. Sources, in this order:
+#   1. the repository root Herdr records for a worktree workspace;
+#   2. the folder of every pane: a plain workspace ("herdr workspace create --cwd") has no
+#      .worktree, and its workspace record has no folder of its own;
+#   3. the registry: a repository stays known after its workspaces close;
+#   4. the current folder.
+# A path that is gone or is no repository is skipped; the registry keeps it, since a drive may
+# only be away for a while.
+lane_repos() {
+    local dirs dir entry common seen=""
+    dirs="$(
+        if command -v herdr >/dev/null 2>&1; then
+            herdr workspace list 2>/dev/null | jq -r '.result.workspaces[]?.worktree.repo_root // empty' 2>/dev/null
+            herdr pane list 2>/dev/null | jq -r '.result.panes[]? | .cwd, .foreground_cwd | strings' 2>/dev/null
+        fi
+        cat "$(repo_registry)" 2>/dev/null
+        pwd
+    )"
+    # each folder once before asking git: many panes share one
+    while IFS= read -r dir; do
+        entry="$(repo_entry "$dir")" || continue
+        common="${entry%%$'\t'*}"
+        case "$seen" in *"|$common|"*) continue ;; esac
+        seen="$seen|$common|"
+        printf '%s\n' "${entry#*$'\t'}"
+    done < <(printf '%s\n' "$dirs" | awk 'NF && !seen[$0]++')
+}
+
 # Text that looks like a credential is never written to a session or lane file.
 looks_secret() { # text -> 0 when it looks like a token, key or password
     printf '%s' "$1" | grep -qiE 'gh[pousr]_[A-Za-z0-9]{16,}|github_pat_|(^|[^a-z])sk-[A-Za-z0-9_-]{16,}|xox[abprs]-|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|bearer [A-Za-z0-9._~+/=-]{16,}|(password|passwd|secret|token|api[_-]?key)[[:space:]]*[=:][[:space:]]*[^[:space:]]+'

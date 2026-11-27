@@ -3,7 +3,8 @@
 # status.sh -- the picture of every lane, derived each time from the lane files and Herdr.
 # Reads only. Used by the display skill, the tab bar line and the graph panel.
 # Usage: status.sh [--text | --line | --json | --tokens] [--repo DIR]...
-# Without --repo: every repository with a workspace open in Herdr, plus the current one.
+# Without --repo: every repository that may hold lanes (lane_repos in src/common.sh: Herdr's
+# workspaces and panes, lane.sh's registry and the current one). --repo: those, plus the current one.
 #   --text   NEEDS YOU / WORKING / DONE, one line per lane with its node chain (default)
 #   --line   one short line for Herdr's tab bar
 #   --json   the same facts for a program, with each lane's pull requests from prs.sh's cache;
@@ -49,13 +50,13 @@ if command -v herdr >/dev/null 2>&1; then
     a="$(herdr agent list 2>/dev/null)" &&
         agents="$(printf '%s' "$a" | jq -ce '[.result.agents[] | {name: (.name // ""), status: (.agent_status // "unknown"), pane: (.pane_id // ""), seq: (.state_change_seq // null)}]' 2>/dev/null)" &&
         have_agents=1 || agents="[]"
-    if [ -z "$repos" ]; then
-        repos="$(herdr workspace list 2>/dev/null | jq -r '.result.workspaces[]?.worktree.repo_root // empty' 2>/dev/null)"
-    fi
 fi
-[ -n "$repos" ] || repos="$(pwd)"
-here_root="$(git rev-parse --show-toplevel 2>/dev/null)" && repos="$repos
+if [ -z "$repos" ]; then
+    repos="$(lane_repos)"
+else
+    here_root="$(git rev-parse --show-toplevel 2>/dev/null)" && repos="$repos
 $here_root"
+fi
 
 # one JSON object per lane, open or closed, each repository's lane folder read once
 lanes="[]" seen=""

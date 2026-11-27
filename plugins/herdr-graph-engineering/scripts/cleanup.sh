@@ -3,7 +3,9 @@
 # cleanup.sh -- find lanes ready for cleanup and ask the user; clean one up after they said yes.
 # Usage:
 #   cleanup.sh check [--lane L] [--repo DIR]   every done lane and finished review lane (or one):
-#                                              never removes anything
+#                                              never removes anything. With neither --lane nor
+#                                              --repo: every repository that may hold lanes
+#                                              (lane_repos), a REPO <dir> line before each one's
 #   cleanup.sh run --lane L [--repo DIR]       after the user's yes is recorded (cleanup=confirmed): close the lane's tabs,
 #                                              herdr worktree remove (never --force), lane.sh close
 # Why a script: whether a lane may go depends on its pull request, its checkout and its graph,
@@ -41,7 +43,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USAGE="cleanup.sh check [--lane L] [--repo DIR] | cleanup.sh run --lane L [--repo DIR]"
 cmd="${1:-}"
 case "$cmd" in check | run) shift ;; *) usage "$USAGE" ;; esac
-repo="$(pwd)" lane=""
+repo="" lane=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo) need_value "$1" $#; repo="$2"; shift 2 ;;
@@ -51,8 +53,12 @@ while [ $# -gt 0 ]; do
 done
 [ "$cmd" = check ] || [ -n "$lane" ] || usage "$USAGE"
 require_tools jq yq git
+sweep=0
+[ "$cmd" != check ] || [ -n "$repo" ] || [ -n "$lane" ] || sweep=1
+[ -n "$repo" ] || repo="$(pwd)"
 repo="$(cd "$repo" 2>/dev/null && pwd)" || die "no such directory: $repo" 2
-dir="$(lane_dir "$repo")"
+dir=""
+[ "$sweep" -eq 1 ] || dir="$(lane_dir "$repo")"
 GH="${GRAPH_GH:-gh}"
 
 lane_sh() { bash "$HERE/lane.sh" "$@" --repo "$repo" >/dev/null; }
@@ -218,15 +224,32 @@ FWD
     esac
 }
 
+check_all() { # every lane of the repository in $repo, its lane folder in $dir
+    local f
+    for f in "$dir"/*.yaml; do
+        [ -f "$f" ] && check_lane "$f"
+    done
+    return 0
+}
+
 case "$cmd" in
 check)
-    if [ -n "$lane" ]; then
+    if [ "$sweep" -eq 1 ]; then
+        rc=0
+        while IFS= read -r repo; do
+            [ -n "$repo" ] || continue
+            dir="$(lane_dir "$repo" 2>/dev/null)" || continue
+            out="$(check_all)" || rc=1
+            [ -z "$out" ] || printf 'REPO %s\n%s\n' "$repo" "$out"
+        done <<REPOS
+$(lane_repos)
+REPOS
+        exit "$rc"
+    elif [ -n "$lane" ]; then
         [ -f "$dir/$lane.yaml" ] || die "NO LANE: $lane" 6
         check_lane "$dir/$lane.yaml"
     else
-        for f in "$dir"/*.yaml; do
-            [ -f "$f" ] && check_lane "$f"
-        done
+        check_all
     fi ;;
 run)
     require_tools herdr
