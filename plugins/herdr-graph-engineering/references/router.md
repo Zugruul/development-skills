@@ -37,6 +37,7 @@ Read the repository's own instructions (`AGENTS.md`, `CLAUDE.md`, contributing n
 
 ## 5. Branch and worktree
 
+- Make the lane's checkout with the `herdr:worktree` skill (`herdr worktree create`): it is what Herdr links to the repository, and what cleanup removes with `herdr worktree remove`. A workspace from `herdr workspace create` has no such link. A standalone clone is only for when the user asks for one; its lanes are still visible through the registry `lane.sh new` writes.
 - Changing patterns (`solo`, `pair`, `fast`): branch `feat/<lane>`, base a freshly fetched `origin/<main branch>`.
 - The `improve` pattern changes files too, and takes the same branch and base.
 - Read-only patterns (`investigate`, `plan`): branch `look/<lane>` from the same base. It exists so the checkout is the lane's alone.

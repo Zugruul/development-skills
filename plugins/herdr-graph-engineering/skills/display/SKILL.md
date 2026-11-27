@@ -24,7 +24,7 @@ Not installed: say once that it can be installed with `herdr plugin install Zugr
 
 ```bash
 bash "../../scripts/drift.sh" --quiet            # first: read finished agents' RESULT lines (writes only its cache, never a lane file)
-bash "../../scripts/status.sh" --text            # every repository with a Herdr workspace open, plus this one
+bash "../../scripts/status.sh" --text            # every repository with lanes: Herdr workspaces and panes, the registry, this one
 bash "../../scripts/status.sh" --text --repo <dir>   # only that repository
 ```
 

@@ -9,7 +9,7 @@
 #   <lane folder>/prs.json: {"fetched": epoch seconds, "lanes": {lane: [{number, url, state,
 #   isDraft, reviewDecision, headRefName}]}}, oldest first.
 #   --max-age S  leave a repository whose cache is younger than S seconds (default 0: always fetch)
-# Without --repo: every repository with a workspace open in Herdr, plus the current one.
+# Without --repo: every repository that may hold lanes (lane_repos in src/common.sh).
 # It never fails its caller: without gh, on a failed call or while another fetch holds the
 # lock, the cache stays as it was (a failed lane keeps its last known pull requests).
 # GRAPH_GH names the gh binary (default gh).
@@ -34,12 +34,7 @@ GH="${GRAPH_GH:-gh}"
 command -v "$GH" >/dev/null 2>&1 || exit 0
 require_tools jq yq git
 
-if [ -z "$repos" ]; then
-    command -v herdr >/dev/null 2>&1 &&
-        repos="$(herdr workspace list 2>/dev/null | jq -r '.result.workspaces[]?.worktree.repo_root // empty' 2>/dev/null)"
-    here_root="$(git rev-parse --show-toplevel 2>/dev/null)" && repos="$repos
-$here_root"
-fi
+[ -n "$repos" ] || repos="$(lane_repos)"
 
 FIELDS="number,url,state,isDraft,reviewDecision,headRefName"
 PR_URL='https://github\.com/[^/ "]+/[^/ "]+/pull/[0-9]+'

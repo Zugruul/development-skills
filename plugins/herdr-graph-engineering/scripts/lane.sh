@@ -6,6 +6,8 @@
 # cannot show: the idea, the pattern and a copy of its graph, the gate command the user
 # approved, each node's last result, retries, the open question, the owner and history.
 # Every write takes the repository's lock, writes a temporary file and renames it.
+# new and restore also add the repository to the user's registry (src/common.sh lane_repos), so
+# its lanes stay visible when no Herdr workspace or pane points to it.
 #
 # Usage (every command takes --repo DIR, default: the current directory):
 #   lane.sh new --lane L (--pattern P | --pattern-file FILE) --idea TEXT [--input K=V]... [--gate CMD] [--branch B]
@@ -137,6 +139,7 @@ new)
          nodes: ($p.nodes | map_values({status: "waiting", retries: 0})),
          question: "", history: ["\($now) lane created from pattern \($pattern) (\($from))"]}' | write_yaml "$dir/$lane.yaml"
     unlock
+    register_repo "$repo"
     printf 'LANE %s %s\n' "$lane" "$dir/$lane.yaml" ;;
 show)
     need_lane
@@ -273,6 +276,7 @@ restore)
     printf '%s' "$out" | write_yaml "$file"
     rm -f "$src"
     unlock
+    register_repo "$repo"
     printf 'RESTORED %s %s %s\n' "$lane" "$(jq -r .status <<<"$out")" "$file" ;;
 *) usage "$USAGE" ;;
 esac

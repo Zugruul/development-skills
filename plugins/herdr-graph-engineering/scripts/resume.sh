@@ -4,8 +4,8 @@
 # Reads only (except --out and the hook's snapshot file). Any client: run it and follow it.
 # Usage: resume.sh [--session NAME] [--repo DIR]... [--fetch] [--out FILE]
 #        resume.sh --hook pre-compact|session-start      (Claude Code hooks; see hooks/hooks.json)
-# Lanes come from every repository with a Herdr workspace, the current one, the --repo ones and
-# the repositories named in the session file. Per open lane: its nodes, its agents (live state from
+# Lanes come from every repository that may hold lanes (lane_repos in src/common.sh), the --repo
+# ones and the repositories named in the session file. Per open lane: its nodes, its agents (live state from
 # `herdr agent list`, or gone; drift.sh --quiet first reads finished agents' RESULT lines, so a
 # node an agent finished or asked about before it was recorded shows that), the open question, pull requests (prs.sh's cache; --fetch refreshes
 # it first), the done checks and the extra ones, its notes, and the next action. Then the session
@@ -72,12 +72,8 @@ fi
 # Every repository that may hold lanes.
 repos="$repos
 $(jq -r '[.queued, .standing, .renames, .notes, .files] | map(. // []) | add | .[] | .repo // empty' <<<"$sess")"
-if command -v herdr >/dev/null 2>&1; then
-    repos="$repos
-$(herdr workspace list 2>/dev/null | jq -r '.result.workspaces[]?.worktree.repo_root // empty' 2>/dev/null)"
-fi
-here_root="$(git rev-parse --show-toplevel 2>/dev/null)" && repos="$repos
-$here_root"
+repos="$repos
+$(lane_repos)"
 rargs=() seen=""
 while IFS= read -r r; do
     [ -n "$r" ] && [ -d "$r" ] || continue

@@ -138,8 +138,8 @@ worktree-removed)
     ws="$(jq -r '.workspace_id // .data.workspace_id // empty' <<<"$ev" 2>/dev/null)"
     repo="$(jq -r '.worktree.repo_root // .data.worktree.repo_root // empty' <<<"$ev" 2>/dev/null)"
     [ -n "$ws" ] || exit 0
-    for r in $repo $(herdr workspace list 2>/dev/null | jq -r '.result.workspaces[]?.worktree.repo_root // empty' | sort -u); do
-        [ -d "$r" ] || continue
+    { printf '%s\n' "$repo"; lane_repos; } | while IFS= read -r r; do
+        [ -n "$r" ] && [ -d "$r" ] || continue
         bash "$HERE/lane.sh" list --repo "$r" 2>/dev/null | cut -f1 | while IFS= read -r lane; do
             [ -n "$lane" ] || continue
             [ "$(yq -r '.workspace // ""' "$(lane_file "$r" "$lane")")" = "$ws" ] || continue
