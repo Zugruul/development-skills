@@ -87,6 +87,7 @@ case "$cmd" in
         ok "$(printf '%s' "$new" | jq -c --arg n "$name" '{type: "agent_started", agent: .agents[$n]}')" ;;
     "agent prompt")
         k="$(find_key "$3")"
+        [ -n "$k" ] || fail agent_not_found
         mode="$(st | jq -r '.prompt // "ok"')"
         [ "$mode" = "blocked" ] && fail agent_blocked
         [ "$mode" = "stalled" ] && fail agent_prompt_stalled
@@ -175,6 +176,8 @@ case "$cmd" in
         exit 0 ;;
     "notification show")
         save "$(st | jq -c --arg t "${3:-}" '.notified += [$t]')"
+        # state.notify = "disabled" shows nothing, with exit 0, as a default Herdr config does
+        [ "$(st | jq -r '.notify // "ok"')" != disabled ] || ok '{"type":"notification_show","shown":false,"reason":"disabled"}'
         ok '{"type":"notification_show","shown":true}' ;;
 esac
 fail stub_unsupported "$cmd"
