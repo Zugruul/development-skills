@@ -35,6 +35,7 @@ Scripts (all `bash "../../scripts/<name>"`):
 | `ready.sh --lane L --repo R` | which nodes can start now |
 | `kind.sh --role R [--not KIND] [--without KIND] --list / --kind K / --remember K` | the installed kinds for a role (recommended first), the arguments for the chosen one, the session's standing choice |
 | `gate.sh --lane L --node N --pane P --repo R` | run a gate command in a visible tab and record its exit code |
+| `autocompact.sh check` / `print [--write]` | is this chat set to compact at 40%; how to set it per client (writes only with `--write`, after the user says yes) |
 | `status.sh --text` | the picture of every lane, for reports; it also reads the live agents, so a lane whose agent finished, asks, is blocked or is gone shows under NEEDS YOU before you record anything |
 | `drift.sh --repo R` | every place the lane files and the live agents disagree, one `DRIFT` line each with the `lane.sh` command that would fix it, or `NO DRIFT`; it never writes a lane file |
 | `check-pattern.sh --name P --repo R` | validate a pattern |
@@ -55,6 +56,8 @@ For every Herdr step use the `herdr` plugin's skills: `herdr:worktree`, `herdr:a
 
 At the start of every orchestrator session, record where it lives (session name `graph`, or your agent name when that is taken):
 `bash "../../scripts/session.sh" set --key pane --value "$HERDR_PANE_ID"`, then `--key orchestrator --value <your name>` and `--key scratch --value <your scratch directory>` (add `--session <name>` to each when it is not `graph`). The hooks find the session by this pane. Keep the session and lane files current as section "Keep state outside the chat" says.
+
+This chat compacts by itself at **40%** of its context, so it stays fast and the state files, not the chat, carry the work. Check it once per session: `bash "../../scripts/autocompact.sh" check`. `AUTOCOMPACT ON` is enough. `AUTOCOMPACT OFF` (or `UNKNOWN` in Codex or OpenCode): run `bash "../../scripts/autocompact.sh" print` and offer the user, once, what it shows for this client: start the orchestrator again with `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=40`, or, with `--write`, the local settings of the folder the orchestrator starts in (Codex: `model_auto_compact_token_limit`; OpenCode: `compaction.buffer`). Run `--write` only after the user says yes; never write the global settings. Only the orchestrator: lane agents keep the default. A compaction, automatic or by hand, is followed by "After a compaction" above (in Claude Code the hooks bring the block back; elsewhere run `resume.sh`). Record the user's answer as a standing answer.
 
 Then ask once whether to turn the **feedback loop** on for this session, as the `herdr-graph-engineering:feedback-loop` skill does: **off by default** (Off is the first option; no answer is off), recorded with `bash "../../scripts/session.sh" set --key feedback --value on|off`. Do not ask when `bash "../../scripts/feedback.sh" state` already shows `on` (the user turned it on with that skill), nor after a compaction: the `RESUME` block's `FEEDBACK LOOP:` line holds the answer.
 
