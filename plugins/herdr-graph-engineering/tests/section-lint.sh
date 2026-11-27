@@ -5,7 +5,7 @@
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/herdr-graph-engineering/tests/run-tests.sh" >&2; exit 2; }
 echo "== lint: frontmatter / scripts / patterns / roles / standalone =="
 
-for skill in orchestrate display concurrency; do
+for skill in orchestrate display concurrency feedback-loop; do
     f="$PLUGIN/skills/$skill/SKILL.md"
     head="$(sed -n '2,/^---$/p' "$f" 2>/dev/null)"
     check "$skill: frontmatter name matches its directory" "name: $skill" "$head"
@@ -14,7 +14,7 @@ for skill in orchestrate display concurrency; do
     check_absent "$skill: description has no angle brackets (Codex rejects them)" "<" "$desc"
     check_absent "$skill: description has no closing angle brackets" ">" "$desc"
 done
-check_rc "every skill directory is covered above" 3 "$(find "$PLUGIN/skills" -name SKILL.md | wc -l | tr -d ' ')"
+check_rc "every skill directory is covered above" 4 "$(find "$PLUGIN/skills" -name SKILL.md | wc -l | tr -d ' ')"
 check "orchestrate: checks it is inside Herdr first" 'bash "../../scripts/check.sh"' "$(cat "$PLUGIN/skills/orchestrate/SKILL.md")"
 
 py="$(find "$PLUGIN" -name '*.py' | sed "s#^$PLUGIN/##")"

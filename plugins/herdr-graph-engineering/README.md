@@ -30,6 +30,7 @@ Needs the `herdr` plugin, the `herdr` binary (the agent runs inside a Herdr pane
 | `orchestrate` | The one chat: route ideas into lanes, run each lane's graph, check evidence, retry within limits, relay questions, open a draft pull request when done |
 | `display` | Read-only picture of every lane: `NEEDS YOU`, `WORKING`, `DONE` (the panel also lists `CLOSED`), each with its node chain, retries, open question and file references |
 | `concurrency` | Judgement for many lanes at once: lanes that edit the same files, folding an ask into a running lane, merge order, merging `origin/main` in, version bumps across parallel pull requests, one writer per checkout, a cap only when you ask for one. Guidance only, no state |
+| `feedback-loop` | Turns the feedback loop on or off for the session (off by default): before a lane is cleaned up, the orchestrator and the lane's agents note how the whole flow could have been better; and how the repository's documentation could have helped more; general lessons, never task details, become improvement pull requests to this plugin or to that documentation |
 
 ## Concepts
 
@@ -97,6 +98,7 @@ kind.sh --role R [--not K] [--without K] --list|--kind K|--remember K   the inst
 gate.sh --lane L --node N --pane P                      run a gate in a visible tab, record its exit code
 close-done.sh --lane L [--dry-run]                      close the tabs of finished agent and gate nodes (CLOSE/KEEP per node)
 cleanup.sh check | run --lane L                          find lanes ready for cleanup and ask; clean one up after your yes
+feedback.sh state|add|due|lesson|lessons|used|show|sanitize   the feedback loop: raw notes outside every repository; the sanitiser that refuses task details (--target plugin|repo keeps the plugin's lessons and a repository's documentation lessons apart; --strict for the latter)
 status.sh [--text|--line|--json]                        the picture of every lane (display, tab bar), lane files plus live agents
 drift.sh [--repo R] [--quiet]                           where lane files and live agents disagree, with the lane.sh command to fix it
 check-pattern.sh (FILE | --name P)                      validate a pattern
@@ -202,6 +204,39 @@ It binds `prefix+alt+g` to the `plugin_action` `herdr-graph-engineering.graph.to
 - After a Herdr restart it reopens next to the orchestrator and rewrites the sidebar tokens; a lane whose worktree you remove by hand is closed.
 - It only reads, except `[x]`, `[clear all reviews]` and `[clear all]` on closed lanes, which go through `lane.sh clear`, and `[restore]`, which goes through `lane.sh restore`. Lane files are still written only by `lane.sh`, answers still go through the orchestrator, and the only thing it stores is the pane id of the panel it opened.
 - It never filters Herdr's sidebar (older versions did, with `f`, `n` and `F`); at start it clears a filter such a version may have left, through `nc -U` when `nc` is there. `.refresh` reaches open panels as the private sequence `ESC [ 99 ~`, which no key sends.
+
+## Feedback loop
+
+Off by default. `/herdr-graph-engineering:feedback-loop` turns it on or off for one orchestrator session (it asks with the client's question tool where there is one, in plain text otherwise), and the orchestrator asks the same once at its start. The choice is stored in the session file (`session.sh set --key feedback --value on|off`), so it survives a compaction; the resume block shows it as `FEEDBACK LOOP: on|off`.
+
+When it is on:
+
+1. **Before a lane is cleaned up**, `cleanup.sh check` prints `FEEDBACK <lane>` and `cleanup.sh run` refuses (`FEEDBACK DUE`) until the orchestrator has asked the lane's still-live agents how the whole flow (pattern, roles, briefs, gates, reviews, panel, scripts, the orchestrator's behaviour) could have been better, and written its own note. `feedback.sh add` keeps these raw notes in `${XDG_STATE_HOME:-~/.local/state}/herdr-graph/sessions/feedback/<session>.yaml`, outside every repository.
+2. **Notes become lessons.** The orchestrator writes general lessons from the notes with `feedback.sh lesson`, which stores one only when the sanitiser finds no task detail in it.
+3. **Lessons become pull requests.** Every few lessons, at the end of a session, or when you ask, the orchestrator offers an improvement lane in the plugin's own repository. Its brief is the open lessons (`feedback.sh lessons`) and nothing else; it changes only the plugin's instructions, skills, roles, patterns, references and scripts. Its commit messages and pull request body must pass `feedback.sh sanitize` before the pull request opens, and you merge it as any other. Lessons about the repository the lanes worked in go to that repository's documentation instead (below).
+
+### Lessons about the repository
+
+The loop has a second target besides the plugin: the documentation of the repository a lane worked in. Before cleanup, the agents and the orchestrator are also asked how that repository's `AGENTS.md`, `CLAUDE.md`, READMEs and docs could have helped more: guidance that was missing or wrong, rules agents kept tripping over, context that was hard to find, places where agents read too much or too little (context to trim, split or point to), commands that did not work as documented. These notes and lessons carry `--target repo --repo R` and are kept apart from the plugin's: `feedback.sh lessons` lists the plugin's, `feedback.sh lessons --target repo --repo R` that repository's, and each improvement lane gets only its own.
+
+A repository's improvement lane runs in that repository, follows its own rules for branches, commits, checks and pull requests, and edits only its documentation (`AGENTS.md`, `CLAUDE.md`, READMEs, docs), never code, configuration or tests. The bar is higher: a repository lesson must be a general improvement that helps other tasks there ("the agent instructions should say how to run a single test and where its output goes"), never the task, ticket, pull request, branch, service-specific bug or data that produced it. `feedback.sh lesson --target repo` checks it with `--strict`, which also refuses identifiers (`snake_case` words, words with digits) and any inline code; the pull request body and commits pass `feedback.sh sanitize --strict`, and the orchestrator reads the diff.
+
+### The no-leak rule
+
+What reaches a repository is the general lesson, never a detail of a task: "a gate's result was lost when the caller died", not which repository, service, branch, file, pull request or person it happened to. Raw notes never leave the state folder, and the improvement lane's agent never sees them, so it cannot copy a detail it was never given.
+
+`feedback.sh sanitize` refuses (exit 3, one `LEAK <kind> line N: <what>` per finding) text that holds a link, an email, an `@handle`, a token or key, a `#number`, issue, pull request or ticket number, a long number, a commit id, an IP address, a path or branch (anything with `/` or `~`, except the plugin's own files), a file or domain name (except the plugin's own files), code (a fenced block, an inline code span that does not start with a plugin script or `herdr`/`git`/`gh`/`jq`/`yq`/`bash`, braces, `==`, `&&`, `$(`), quoted words (double or curly quotes, a quoted phrase in single quotes, a `>` quote line), a capitalised name in the middle of a sentence or a CamelCase word anywhere, and every denied word. Denied words are the names of the lanes and the repositories in the session's notes and queue (for each repository: its folder name, its remote's owner and name, its branches, its commit authors), plus `--repo DIR` and `--deny WORD`. `--strip` drops the leaking lines instead and refuses only when none is left.
+
+### What the sanitiser cannot catch
+
+It is a conservative pattern check, not an understanding of the text. It refuses rather than guesses, so it also refuses some harmless text (a sentence with a long number, a capitalised word mid-sentence); rewrite the lesson more generally. It cannot know:
+
+- a name written in lower case that is not a denied word (a service or product named by a common word), or a capitalised name at the start of a sentence that is not an author of a repository it was given;
+- a description precise enough to identify the task without naming it ("the payments retry bug from last week");
+- a detail spelled to slip past it (a name split up, a paraphrased quote);
+- anything in the diff itself: it checks the lessons, commit messages and pull request body, not code or instruction changes.
+
+So the orchestrator also reads the improvement lane's diff for task details before its pull request opens, and you review it before merging.
 
 ## Surviving a compaction
 
