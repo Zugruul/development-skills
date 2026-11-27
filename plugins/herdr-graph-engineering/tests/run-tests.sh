@@ -19,7 +19,9 @@ export XDG_STATE_HOME="$TEST_STATE"
 # shellcheck source=plugins/herdr-graph-engineering/tests/_lib.sh
 source "$HERE/_lib.sh"
 
+# each section gets its own state folder: lane.sh keeps a registry of repositories there
 for section in "$HERE"/section-*.sh; do
+    export XDG_STATE_HOME="$TEST_STATE/$(basename "$section" .sh)"
     # shellcheck source=/dev/null
     source "$section"
 done
