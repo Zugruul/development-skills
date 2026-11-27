@@ -121,21 +121,94 @@ out="$(f feedback sanitize --file "$F_TMP/body.md" --file "$F_TMP/bad.md" 2>&1)"
 check_rc "sanitize refuses when any file leaks" 3 "$rc"
 
 echo "== feedback: lessons are the only text an improvement lane gets =="
-out="$(f feedback lesson --text "the gate in billing-api lost its result" 2>&1)"; rc=$?
+out="$(f feedback lesson --from-note 1 --text "the gate in billing-api lost its result" 2>&1)"; rc=$?
 check_rc "a leaking lesson is refused" 3 "$rc"
 check_absent "a refused lesson is not stored" "lost its result" "$(yq -r '.lessons' "$F_FB")"
-out="$(f feedback lesson --text "A gate's result was lost when the caller died; gate.sh should record it itself." 2>&1)"; rc=$?
+out="$(f feedback lesson --from-note 1 --text "A gate's result was lost when the caller died; gate.sh should record it itself." 2>&1)"; rc=$?
 check_rc "a general lesson is stored" 0 "$rc"
 check "lesson prints its id" "ADDED lesson" "$out"
-f feedback lesson --text "Briefs should always name the base commit." >/dev/null
+f feedback lesson --from-note 2 --text "Briefs should always name the base commit." >/dev/null
 out="$(f feedback lessons)"
 check "lessons prints the open lessons" "- Briefs should always name the base commit." "$out"
 check_absent "lessons never print raw notes" "impl-agent" "$out"
 check_absent "lessons never print lane names" "rate-guard" "$out"
+
+echo "== feedback: each lesson records which notes and lanes support it =="
+check "a lesson keeps its supporting notes" "[1]" "$(yq -o=json -I=0 '.lessons[0].notes' "$F_FB")"
+check "a lesson keeps the lanes of those notes" '["rate-guard"]' "$(yq -o=json -I=0 '.lessons[0].lanes' "$F_FB")"
+out="$(f feedback lesson --text "A lesson with no note behind it." 2>&1)"; rc=$?
+check_rc "a lesson without a supporting note is refused" 2 "$rc"
+check "the refusal names the option" "--from-note" "$out"
+out="$(f feedback lesson --from-note 1,99 --text "A lesson citing a note that does not exist." 2>&1)"; rc=$?
+check_rc "an unknown note id is refused" 6 "$rc"
+check "the refusal names the unknown id" "99" "$out"
+out="$(f feedback lesson --from-note one --text "A lesson citing a word." 2>&1)"; rc=$?
+check_rc "a note id is a number" 2 "$rc"
+check_absent "refused lessons are not stored" "A lesson citing" "$(cat "$F_FB")"
+f feedback add --lane other-lane --from orchestrator --text "the same trouble again" >/dev/null
+last="$(yq -r '.notes[-1].id' "$F_FB")"
+out="$(f feedback lesson --from-note "1,2" --from-note "$last" --text "A reviewer should always get the goal of the change." 2>&1)"
+check "two notes of one lane count as one lane" "2 lane(s)" "$out"
+check_rc "each note is recorded once" 3 "$(yq -r '.lessons[-1].notes | length' "$F_FB")"
+sup="$(f feedback lessons --support)"
+check "--support shows the lanes behind a lesson" "rate-guard, other-lane" "$sup"
+check "--support shows the note ids" "notes 1, 2, $last" "$sup"
+check "--support shows each lesson's id" "#$(yq -r '.lessons[-1].id' "$F_FB")" "$sup"
+out="$(f feedback lessons)"
+check_absent "the brief's lessons hold no lane" "other-lane" "$out"
+check_absent "the brief's lessons hold no support" "notes 1" "$out"
+check "show prints the support" "notes 1, 2, $last" "$(f feedback show)"
+
+echo "== feedback: lessons are used only after their pull request merges =="
+F_PR=https://github.com/o/r/pull/12
+pr_state() { printf '{"state":"%s"}' "$1" >"$F_TMP/pr-12.json"; }
 id="$(yq -r '.lessons[0].id' "$F_FB")"
-f feedback used --id "$id" --ref "improvement lane 1" >/dev/null
+id2="$(yq -r '.lessons[1].id' "$F_FB")"
+out="$(f feedback used --id "$id" --ref "$F_PR" 2>&1)"; rc=$?
+check_rc "a lesson not in a pull request cannot be used" 6 "$rc"
+check "the refusal says what to run first" "proposed" "$out"
+out="$(f feedback proposed --id "$id" 2>&1)"; rc=$?
+check_rc "proposed needs --ref" 2 "$rc"
+out="$(f feedback proposed --id "$id,$id2" --ref "$F_PR" 2>&1)"; rc=$?
+check_rc "lessons are marked as in a pull request" 0 "$rc"
+check "proposed counts them" "PROPOSED 2 lesson(s)" "$out"
+check_absent "a lesson in a pull request is not offered again" "caller died" "$(f feedback lessons)"
+check "it is not used yet" "null" "$(yq -r '.lessons[0].used' "$F_FB")"
+check "show says where it waits" "in pull request: $F_PR" "$(f feedback show)"
+check "resume counts lessons waiting for a merge" "2 in a pull request not yet merged" "$(f resume --session graph 2>&1)"
+pr_state OPEN
+out="$(f feedback used --ref "$F_PR" 2>&1)"; rc=$?
+check_rc "an open pull request uses nothing" 7 "$rc"
+check "the refusal says it is not merged" "NOT MERGED" "$out"
+check "still not used" "null" "$(yq -r '.lessons[0].used' "$F_FB")"
+pr_state CLOSED
+out="$(f feedback used --ref "$F_PR" 2>&1)"; rc=$?
+check_rc "a closed pull request uses nothing" 7 "$rc"
+out="$(f feedback reopen --ref "$F_PR" --text "the change weakened a rule" 2>&1)"; rc=$?
+check_rc "the lessons of a closed pull request reopen" 0 "$rc"
+check "reopen counts them" "REOPENED 2 lesson(s)" "$out"
+check "a reopened lesson is open again" "caller died" "$(f feedback lessons)"
+check "the rejection and its reason are kept" "rejected in $F_PR: the change weakened a rule" "$(f feedback lessons --support)"
+check_absent "the brief's lessons hold no rejection" "weakened" "$(f feedback lessons)"
+f feedback proposed --id "$id" --ref "$F_PR" >/dev/null
+rm -f "$F_TMP/pr-12.json"
+out="$(f feedback used --ref "$F_PR" 2>&1)"; rc=$?
+check_rc "a pull request gh cannot read uses nothing" 7 "$rc"
+check "the refusal says it could not verify" "CANNOT VERIFY" "$out"
+out="$(f feedback reopen --ref https://github.com/o/r/pull/404 2>&1)"; rc=$?
+check_rc "reopen of an unknown pull request finds nothing" 6 "$rc"
+pr_state MERGED
+out="$(f feedback reopen --ref "$F_PR" 2>&1)"; rc=$?
+check_rc "a merged pull request's lessons do not reopen" 7 "$rc"
+out="$(f feedback used --ref "$F_PR" 2>&1)"; rc=$?
+check_rc "a merged pull request's lessons are used" 0 "$rc"
+check "used counts them" "USED 1 lesson(s)" "$out"
+check "the used lesson is kept with where it went" "$F_PR" "$(yq -r '.lessons[0].used' "$F_FB")"
 check_absent "a used lesson is no longer open" "caller died" "$(f feedback lessons)"
-check "the used lesson is kept with where it went" "improvement lane 1" "$(yq -r '.lessons[0].used' "$F_FB")"
+id3="$(yq -r '.lessons[2].id' "$F_FB")"
+f feedback proposed --id "$id3" --ref "improvement on another host" >/dev/null
+out="$(f feedback used --ref "improvement on another host" --user-confirmed-merge 2>&1)"; rc=$?
+check_rc "where gh cannot tell, the user's word about the merge is recorded" 0 "$rc"
 
 echo "== feedback: lessons about the repository the lanes worked in, kept apart from the plugin's =="
 F_OTHER="$F_TMP/other-repo"
@@ -148,16 +221,16 @@ out="$(f feedback add --target repo --text "x" 2>&1)"; rc=$?
 check_rc "a repository note needs --repo" 2 "$rc"
 out="$(f feedback add --target elsewhere --text "x" 2>&1)"; rc=$?
 check_rc "the target is plugin or repo" 2 "$rc"
-out="$(f feedback lesson --target repo --repo "$F_REPO" --text "Agent instructions should say how to run a single test and where its output goes." 2>&1)"; rc=$?
+out="$(f feedback lesson --from-note 1 --target repo --repo "$F_REPO" --text "Agent instructions should say how to run a single test and where its output goes." 2>&1)"; rc=$?
 check_rc "a general repository lesson is stored" 0 "$rc"
-out="$(f feedback lesson --target repo --repo "$F_REPO" --text "The retry_budget setting was never documented." 2>&1)"; rc=$?
+out="$(f feedback lesson --from-note 1 --target repo --repo "$F_REPO" --text "The retry_budget setting was never documented." 2>&1)"; rc=$?
 check_rc "a repository lesson is checked harder: an identifier is refused" 3 "$rc"
 check "the stricter check names identifiers" "LEAK ident" "$out"
-out="$(f feedback lesson --target repo --repo "$F_REPO" --text "The v2 handler docs were stale." 2>&1)"; rc=$?
+out="$(f feedback lesson --from-note 1 --target repo --repo "$F_REPO" --text "The v2 handler docs were stale." 2>&1)"; rc=$?
 check_rc "a repository lesson refuses a word with digits" 3 "$rc"
-out="$(f feedback lesson --target repo --repo "$F_REPO" --text "Document how \`lane.sh\` is not needed here." 2>&1)"; rc=$?
+out="$(f feedback lesson --from-note 1 --target repo --repo "$F_REPO" --text "Document how \`lane.sh\` is not needed here." 2>&1)"; rc=$?
 check_rc "a repository lesson refuses any inline code" 3 "$rc"
-out="$(f feedback lesson --target repo --text "Docs should list the test command." 2>&1)"; rc=$?
+out="$(f feedback lesson --from-note 1 --target repo --text "Docs should list the test command." 2>&1)"; rc=$?
 check_rc "a repository lesson needs --repo" 2 "$rc"
 out="$(printf 'Mind the retry_budget default.\n' | f feedback sanitize --strict 2>&1)"; rc=$?
 check_rc "sanitize --strict refuses identifiers" 3 "$rc"
@@ -172,8 +245,8 @@ check_absent "a repository's lessons hold no plugin lesson" "base commit" "$out"
 check "another repository has none" "(no open lessons)" "$(f feedback lessons --target repo --repo "$F_OTHER")"
 out="$(f feedback lessons --target repo 2>&1)"; rc=$?
 check_rc "listing repository lessons needs --repo" 2 "$rc"
-f feedback used --all --target repo --repo "$F_REPO" --ref "docs lane" >/dev/null
-check "used --all marks only that target's lessons" "(no open lessons)" "$(f feedback lessons --target repo --repo "$F_REPO")"
+f feedback proposed --all --target repo --repo "$F_REPO" --ref "docs lane" >/dev/null
+check "proposed --all takes only that target's lessons" "(no open lessons)" "$(f feedback lessons --target repo --repo "$F_REPO")"
 check "the plugin's lessons stay open" "base commit" "$(f feedback lessons)"
 check "show groups lessons by target" "LESSONS for repository" "$(f feedback show)"
 

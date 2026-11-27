@@ -16,6 +16,8 @@
 #   ${XDG_STATE_HOME:-~/.local/state}/herdr-graph/sessions/feedback/<session>.yaml
 # A lesson is a general rule written from those notes. It is stored only when the sanitiser
 # finds no task detail in it, and the open lessons are the only text an improvement lane gets.
+# Each lesson records the notes behind it and their lanes (local only). A lesson is open, then in
+# a pull request (proposed), then used once that pull request merged; closed unmerged, it reopens.
 #
 # Usage (every command takes --session NAME; default: the session whose pane is $HERDR_PANE_ID, else graph):
 #   feedback.sh state                               FEEDBACK on|off (session)
@@ -23,12 +25,21 @@
 #                                                   a raw note (WHO default orchestrator); exit 4 while off
 #   feedback.sh due --lane L                        FEEDBACK L (...) and exit 0 when the loop is on and the
 #                                                   orchestrator has no note for L yet; exit 1 otherwise
-#   feedback.sh lesson --text T [--target plugin|repo] [--repo DIR]... [--deny WORD]...
+#   feedback.sh lesson --text T --from-note ID[,ID]... [--target plugin|repo] [--repo DIR]... [--deny WORD]...
 #                                                   a sanitised lesson; exit 3 (and nothing stored) on a leak.
-#                                                   --target repo needs --repo (the repository it is about)
+#                                                   --target repo needs --repo (the repository it is about).
+#                                                   --from-note (repeatable): the notes that support it;
+#                                                   exit 6 on an unknown id
 #   feedback.sh lessons [--target plugin|repo --repo DIR]   the open lessons of one target, one "- " line each
-#   feedback.sh used (--id N | --all) [--target plugin|repo --repo DIR] [--ref TEXT]
-#                                                   lessons handed to an improvement lane (TEXT: where they went)
+#   feedback.sh lessons [...] --support             for you and the user, never for a brief: ids, lanes, notes
+#                                                   and earlier rejections of the open lessons
+#   feedback.sh proposed (--id N[,N] | --all) --ref URL [--target plugin|repo --repo DIR]
+#                                                   the lessons are in this pull request: no longer offered
+#   feedback.sh used --ref URL [--id N[,N]] [--user-confirmed-merge]
+#                                                   mark that pull request's lessons used, only once gh says it
+#                                                   MERGED (else exit 7). --user-confirmed-merge: where gh cannot
+#                                                   tell, and only after the user said it merged
+#   feedback.sh reopen --ref URL [--text REASON]    it closed unmerged: its lessons are open again, with the reason
 #   feedback.sh show [--json]                       notes and lessons
 #   feedback.sh path                                the feedback file's path
 #   feedback.sh sanitize [--file F]... [--strip] [--strict] [--repo DIR]... [--deny WORD]...
@@ -42,16 +53,17 @@
 # its branch names, its commit authors) and from the session (every lane and repository its
 # feedback notes and queued lanes name). The sanitiser is conservative: it refuses a line rather
 # than guess. It cannot know every name: see "What the sanitiser cannot catch" in the README.
-# Exit codes: 0 ok, 1 error or not due, 2 usage, a secret or a missing --repo, 3 a leak, 4 the loop is off, 6 no such item.
+# Exit codes: 0 ok, 1 error or not due, 2 usage, a secret or a missing --repo, 3 a leak, 4 the loop is off, 6 no such item,
+# 7 the pull request is not merged (or is, for reopen), or gh cannot tell.
 # shellcheck disable=SC2016 # jq programs and the code-span pattern are single-quoted on purpose
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/common.sh
 . "$HERE/src/common.sh"
 
-USAGE="feedback.sh state|add|due|lesson|lessons|used|show|path|sanitize [--session NAME] [options] (see the header of feedback.sh)"
+USAGE="feedback.sh state|add|due|lesson|lessons|proposed|used|reopen|show|path|sanitize [--session NAME] [options] (see the header of feedback.sh)"
 args=() files=() repos=() denies=()
-session="" text="" from="orchestrator" target="plugin" strict=0 lane="" node="" repo="" id="" all=0 ref="" strip=0 as_json=0
+session="" text="" from="orchestrator" target="plugin" strict=0 lane="" node="" repo="" id="" all=0 ref="" strip=0 as_json=0 from_notes="" support=0 user_merged=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --session) need_value "$1" $#; session="$2"; shift 2 ;;
@@ -65,6 +77,9 @@ while [ $# -gt 0 ]; do
         --id) need_value "$1" $#; id="$2"; shift 2 ;;
         --ref) need_value "$1" $#; ref="$2"; shift 2 ;;
         --all) all=1; shift ;;
+        --from-note) need_value "$1" $#; from_notes="$from_notes,$2"; shift 2 ;;
+        --support) support=1; shift ;;
+        --user-confirmed-merge) user_merged=1; shift ;;
         --strip) strip=1; shift ;;
         --strict) strict=1; shift ;;
         --target) need_value "$1" $#; target="$2"; shift 2 ;;
@@ -332,6 +347,28 @@ sanitize() { # file
 
 # The lessons of the selected target (and repository).
 MINE='def mine: (.target // "plugin") == $tg and ($tg == "plugin" or .repo == $rp); '
+# Open: neither used nor waiting in a pull request.
+OPEN='def isopen: .used == null and .pr == null; '
+# What supports a lesson, and the pull requests that were closed with it.
+SUPPORT='def support: "\((.lanes // []) | length) lane(s)" + (if (.lanes // []) | length > 0 then ": " + (.lanes | join(", ")) else "" end)
+    + "; " + (if (.notes // []) | length > 0 then "notes " + (.notes | map(tostring) | join(", ")) else "no notes recorded" end)
+    + ((.rejected // []) | map("; rejected in \(.ref)" + (if .reason != "" then ": \(.reason)" else "" end)) | join("")); '
+
+# ids "1,2,..." -> a JSON array of unique numbers in the order given; dies on anything else
+ids_json() { # list, flag name
+    local out
+    out="$(jq -cn --arg l "$1" '$l | split(",") | map(select(. != "")) | if all(.[]; test("^[0-9]+$")) then map(tonumber) | reduce .[] as $n ([]; if index($n) then . else . + [$n] end) else error("bad") end' 2>/dev/null)" || die "$2 takes note or lesson numbers, comma separated" 2
+    printf '%s\n' "$out"
+}
+
+# pr_state URL -> OPEN, CLOSED or MERGED; 1 when gh cannot tell
+pr_state() {
+    local s
+    command -v gh >/dev/null 2>&1 || return 1
+    s="$(gh pr view "$1" --json state 2>/dev/null | jq -r '.state // empty' 2>/dev/null)"
+    [ -n "$s" ] || return 1
+    printf '%s\n' "$s"
+}
 
 TMP=""
 cleanup_tmp() { [ -z "$TMP" ] || rm -f "$TMP"; unlock; }
@@ -359,8 +396,12 @@ due)
     [ "${has:-0}" -eq 0 ] || exit 1
     printf 'FEEDBACK %s (the feedback loop is on: before cleanup, ask the lane'"'"'s live agents how the whole flow and the repository'"'"'s documentation could have been better, then write your own note: feedback.sh add --from orchestrator --lane %s [--target repo --repo R] --text ...)\n' "$lane" "$lane" ;;
 lesson)
-    [ -n "$text" ] || usage "feedback.sh lesson --text T [--target plugin|repo] [--repo DIR]... [--deny WORD]..."
+    [ -n "$text" ] || usage "feedback.sh lesson --text T --from-note ID[,ID]... [--target plugin|repo] [--repo DIR]... [--deny WORD]..."
     [ "$(loop_state)" = on ] || die "FEEDBACK OFF: the feedback loop is off for session $session" 4
+    notes="$(ids_json "$from_notes" --from-note)" || exit 2
+    [ "$notes" != "[]" ] || die "a lesson names the notes that support it: --from-note ID[,ID]... (feedback.sh show lists them; add the note first when there is none)" 2
+    unknown="$(jq -r --argjson ids "$notes" '$ids - [.notes // [] | .[].id] | map(tostring) | join(", ")' <<<"$(fb_json)")"
+    [ -z "$unknown" ] || die "NO NOTE with id $unknown (feedback.sh show lists the notes)" 6
     need_repo_target
     [ "$target" = plugin ] || strict=1
     TMP="$(mktemp)"
@@ -368,33 +409,61 @@ lesson)
     strip=0
     sanitize "$TMP" >/dev/null || exit 3
     rm -f "$TMP"; TMP=""
-    update '.next_id as $id | .next_id += 1 | .lessons += [{id: $id, target: $tg, text: $t, at: $now} + (if $tg == "repo" then {repo: $rp} else {} end)]' \
-        --arg t "$text" --arg tg "$target" --arg rp "$repo"
-    printf 'ADDED lesson %s (%s)\n' "$(yq -r '.lessons[-1].id' "$file")" "$target" ;;
+    update '.next_id as $id | .next_id += 1
+            | ([.notes[] | select(.id as $n | $ids | index($n)) | .lane // empty] | reduce .[] as $l ([]; if index($l) then . else . + [$l] end)) as $lanes
+            | .lessons += [{id: $id, target: $tg, text: $t, at: $now, notes: $ids, lanes: $lanes} + (if $tg == "repo" then {repo: $rp} else {} end)]' \
+        --arg t "$text" --arg tg "$target" --arg rp "$repo" --argjson ids "$notes"
+    printf 'ADDED lesson %s (%s; support: %s lane(s), %s note(s))\n' "$(yq -r '.lessons[-1].id' "$file")" "$target" \
+        "$(yq -r '.lessons[-1].lanes | length' "$file")" "$(yq -r '.lessons[-1].notes | length' "$file")" ;;
 lessons)
     need_repo_target
-    jq -r --arg tg "$target" --arg rp "$repo" "$MINE"'
-        [.lessons // [] | .[] | select(.used == null) | select(mine)]
-        | if length == 0 then "(no open lessons)" else .[] | "- " + (.text | gsub("\n"; " ")) end' <<<"$(fb_json)" ;;
-used)
-    [ -n "$id" ] || [ "$all" -eq 1 ] || usage "feedback.sh used (--id N | --all) [--target plugin|repo --repo DIR] [--ref TEXT]"
+    jq -r --arg tg "$target" --arg rp "$repo" --argjson support "$support" "$MINE$OPEN$SUPPORT"'
+        [.lessons // [] | .[] | select(isopen) | select(mine)]
+        | if length == 0 then "(no open lessons)" else .[]
+            | if $support == 1 then "- #\(.id) " + (.text | gsub("\n"; " ")) + " [support: " + support + "]"
+              else "- " + (.text | gsub("\n"; " ")) end end' <<<"$(fb_json)" ;;
+proposed)
+    if [ -z "$ref" ] || { [ -z "$id" ] && [ "$all" -eq 0 ]; }; then usage "feedback.sh proposed (--id N[,N] | --all) --ref URL [--target plugin|repo --repo DIR]"; fi
     [ -f "$file" ] || die "NO FEEDBACK for session $session" 6
     ! looks_secret "$ref" || die "SECRET: that looks like a token, key or password; it is never stored." 2
     [ "$all" -eq 0 ] || need_repo_target
-    sel='select(.used == null) | select(if $all == 1 then mine else (.id | tostring) == $id end)'
-    hit="$(jq -r --arg id "$id" --argjson all "$all" --arg tg "$target" --arg rp "$repo" "${MINE}[.lessons // [] | .[] | ${sel}] | length" <<<"$(fb_json)")"
+    ids="$(ids_json "$id" --id)" || exit 2
+    sel="$MINE$OPEN"'def picked: isopen and (if $all == 1 then mine else (.id as $n | $ids | index($n)) != null end); '
+    hit="$(jq -r --argjson ids "$ids" --argjson all "$all" --arg tg "$target" --arg rp "$repo" "$sel"'[.lessons // [] | .[] | select(picked)] | length' <<<"$(fb_json)")"
     [ "${hit:-0}" -gt 0 ] || die "NO OPEN LESSON${id:+ with id $id}" 6
-    update "$MINE"'.lessons |= map(if (.used == null and (if $all == 1 then mine else (.id | tostring) == $id end)) then .used = (if $ref == "" then "yes" else $ref end) | .used_at = $now else . end)' \
-        --arg id "$id" --argjson all "$all" --arg ref "$ref" --arg tg "$target" --arg rp "$repo"
-    printf 'USED %s lesson(s)\n' "$hit" ;;
+    [ "$all" -eq 1 ] || [ "$hit" -eq "$(jq length <<<"$ids")" ] || die "NO OPEN LESSON for some of $id; nothing was marked" 6
+    update "$sel"'.lessons |= map(if picked then .pr = $ref | .pr_at = $now else . end)' \
+        --argjson ids "$ids" --argjson all "$all" --arg ref "$ref" --arg tg "$target" --arg rp "$repo"
+    printf 'PROPOSED %s lesson(s) in %s (feedback.sh used --ref %s once it merged)\n' "$hit" "$ref" "$ref" ;;
+used | reopen)
+    [ -n "$ref" ] || usage "feedback.sh $cmd --ref URL"
+    [ -f "$file" ] || die "NO FEEDBACK for session $session" 6
+    ! looks_secret "$ref$text" || die "SECRET: that looks like a token, key or password; it is never stored." 2
+    ids="$(ids_json "$id" --id)" || exit 2
+    sel='def picked: .used == null and .pr == $ref and (($ids | length) == 0 or ((.id as $n | $ids | index($n)) != null)); '
+    hit="$(jq -r --argjson ids "$ids" --arg ref "$ref" "$sel"'[.lessons // [] | .[] | select(picked)] | length' <<<"$(fb_json)")"
+    [ "${hit:-0}" -gt 0 ] || die "NO LESSON waiting in $ref (feedback.sh proposed --ref marks the lessons of a pull request first)" 6
+    if [ "$cmd" = used ]; then
+        if [ "$user_merged" -eq 0 ]; then
+            state="$(pr_state "$ref")" || die "CANNOT VERIFY: gh cannot say whether $ref merged; the lessons stay in the pull request. Only when the user said it merged: --user-confirmed-merge" 7
+            [ "$state" = MERGED ] || die "NOT MERGED: $ref is $state; a lesson is used only after its pull request merged (closed unmerged: feedback.sh reopen --ref)" 7
+        fi
+        update "$sel"'.lessons |= map(if picked then .used = $ref | .used_at = $now else . end)' --argjson ids "$ids" --arg ref "$ref"
+        printf 'USED %s lesson(s)\n' "$hit"
+    else
+        [ "$(pr_state "$ref")" != MERGED ] || die "MERGED: $ref merged; its lessons are used, not reopened (feedback.sh used --ref)" 7
+        update "$sel"'.lessons |= map(if picked then .rejected += [{ref: $ref, reason: $reason, at: $now}] | del(.pr, .pr_at) else . end)' \
+            --argjson ids "$ids" --arg ref "$ref" --arg reason "$text"
+        printf 'REOPENED %s lesson(s)\n' "$hit"
+    fi ;;
 show)
     if [ "$as_json" -eq 1 ]; then fb_json; else
         printf 'FEEDBACK %s (%s): %s\n' "$(loop_state)" "$session" "$file"
-        jq -r 'def where: if (.target // "plugin") == "repo" then "repo \(.repo // "?")" else "plugin" end;
+        jq -r "$SUPPORT"'def where: if (.target // "plugin") == "repo" then "repo \(.repo // "?")" else "plugin" end;
                "NOTES (raw: never leave this folder)",
                (.notes // [] | if length == 0 then "  (none)" else .[] | "  #\(.id) [\(where)] \(.from)" + (if .lane then " lane \(.lane)" else "" end) + (if .node then "/\(.node)" else "" end) + ": \(.text | gsub("\n"; " "))" end),
                (.lessons // [] | group_by(where)[] | "LESSONS for " + (.[0] | if (.target // "plugin") == "repo" then "repository \(.repo)" else "the plugin" end) + " (sanitised)",
-                 (.[] | "  #\(.id) " + (if .used then "[used: \(.used)] " else "" end) + (.text | gsub("\n"; " "))))' <<<"$(fb_json)"
+                 (.[] | "  #\(.id) " + (if .used then "[used: \(.used)] " elif .pr then "[in pull request: \(.pr)] " else "" end) + (.text | gsub("\n"; " ")) + " [support: " + support + "]"))' <<<"$(fb_json)"
     fi ;;
 path) printf '%s\n' "$file" ;;
 sanitize)

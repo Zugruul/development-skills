@@ -221,7 +221,8 @@ render() {
     jq -r '(.standing // []) | if length == 0 then "  (none)" else .[] | "  #\(.id) \(.text)" end' <<<"$sess"
     fbline="$(bash "$HERE/feedback.sh" state --session "${name:-graph}" 2>/dev/null | awk '{print $2}')"
     if [ "$fbline" = on ]; then
-        printf 'FEEDBACK LOOP: on (%s; feedback.sh show). Before each cleanup, collect feedback (cleanup.sh prints FEEDBACK lines).\n' "$(bash "$HERE/feedback.sh" show --json --session "${name:-graph}" 2>/dev/null | jq -r '"\(.notes // [] | length) notes, \([.lessons // [] | .[] | select(.used == null)] | length) open lessons"')"
+        printf 'FEEDBACK LOOP: on (%s; feedback.sh show). Before each cleanup, collect feedback (cleanup.sh prints FEEDBACK lines).\n' "$(bash "$HERE/feedback.sh" show --json --session "${name:-graph}" 2>/dev/null | jq -r '[.lessons // [] | .[] | select(.used == null)] as $l | ([$l[] | select(.pr != null)] | length) as $w
+            | "\(.notes // [] | length) notes, \(($l | length) - $w) open lessons" + (if $w > 0 then ", \($w) in a pull request not yet merged: feedback.sh used --ref once it merged, reopen --ref if it closed" else "" end)')"
     else
         echo "FEEDBACK LOOP: off (herdr-graph-engineering:feedback-loop turns it on)"
     fi
