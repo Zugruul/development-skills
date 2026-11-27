@@ -205,7 +205,8 @@ check_rc "a merged pull request's lessons are used" 0 "$rc"
 check "used counts them" "USED 1 lesson(s)" "$out"
 check "the used lesson is kept with where it went" "$F_PR" "$(yq -r '.lessons[0].used' "$F_FB")"
 check_absent "a used lesson is no longer open" "caller died" "$(f feedback lessons)"
-f feedback proposed --id "$id2" --ref "improvement on another host" >/dev/null
+id3="$(yq -r '.lessons[2].id' "$F_FB")"
+f feedback proposed --id "$id3" --ref "improvement on another host" >/dev/null
 out="$(f feedback used --ref "improvement on another host" --user-confirmed-merge 2>&1)"; rc=$?
 check_rc "where gh cannot tell, the user's word about the merge is recorded" 0 "$rc"
 

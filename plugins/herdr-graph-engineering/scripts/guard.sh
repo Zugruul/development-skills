@@ -50,7 +50,7 @@ while [ $# -gt 0 ]; do
         *) [ -z "$cmd" ] || usage "$USAGE"; cmd="$1"; shift ;;
     esac
 done
-[ "$cmd" = check ] && [ -n "$repo" ] && [ -n "$base" ] || usage "$USAGE"
+if [ "$cmd" != check ] || [ -z "$repo" ] || [ -z "$base" ]; then usage "$USAGE"; fi
 case "$target" in plugin | repo) ;; *) die "--target must be plugin or repo" 2 ;; esac
 require_tools git diff awk
 

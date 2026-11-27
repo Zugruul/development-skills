@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016 # single-quoted text is literal text of the test files
 # section-guard.sh -- sourced by run-tests.sh; do not run standalone.
 # The preservation check (guard.sh): every instruction sentence of the base must still be there,
 # unchanged and in place, or be listed in an allow file with a reason. The copy that judges a
@@ -202,7 +203,8 @@ case_commit
 out="$(guard)"
 id1="$(ids "$out" | sed -n 1p)" id2="$(ids "$out" | sed -n 2p)"
 check_rc "two findings, two ids" 2 "$(ids "$out" | sort -u | wc -l | tr -d ' ')"
-check_rc "the ids are the same on a second run" 0 "$([ "$(ids "$(guard)")" = "$(ids "$out")" ]; echo $?)"
+again="$(ids "$(guard)")"
+check "the ids are the same on a second run" "$(ids "$out" | tr '\n' " ")" "$(tr '\n' " " <<<"$again")"
 printf '# approved by the user\n%s the user approved it\n' "$id1" >"$G_TMP/allow"
 out="$(guard --allow "$G_TMP/allow")"; rc=$?
 check_rc "one allowed of two still fails" 3 "$rc"
