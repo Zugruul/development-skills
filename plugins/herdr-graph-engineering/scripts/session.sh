@@ -13,6 +13,7 @@
 #
 # Usage (every command takes --session NAME, default graph):
 #   session.sh set --key orchestrator|pane|scratch --value V
+#   session.sh set --key feedback --value on|off   the feedback loop for this session (off by default)
 #   session.sh add --list standing|queued|renames|notes|files --text T [--lane L] [--repo DIR] [--ref PATH]
 #                                         queued needs --lane; --ref is its prepared brief
 #   session.sh del --list LIST (--id N | --lane L)
@@ -72,7 +73,7 @@ update() { # jq program, extra jq args...
     [ -f "$file" ] && cur="$(read_json "$file")"
     [ -n "$cur" ] && [ "$cur" != null ] || cur='{}'
     out="$(jq -c --arg now "$(now)" --arg s "$session" "$@" \
-        '{session: $s, orchestrator: "", pane: "", scratch: "", next_id: 1, standing: [], queued: [], renames: [], notes: [], files: []} + .
+        '{session: $s, orchestrator: "", pane: "", scratch: "", feedback: "off", next_id: 1, standing: [], queued: [], renames: [], notes: [], files: []} + .
          | '"$prog"' | .updated = $now' <<<"$cur")" || die "could not update $file"
     printf '%s' "$out" | write_yaml "$file"
     unlock
@@ -80,7 +81,7 @@ update() { # jq program, extra jq args...
 
 case "$cmd" in
 set)
-    case "$key" in orchestrator | pane | scratch) ;; *) die "--key must be orchestrator, pane or scratch" 2 ;; esac
+    case "$key" in orchestrator | pane | scratch) ;; feedback) case "$value" in on | off) ;; *) die "--key feedback takes on or off" 2 ;; esac ;; *) die "--key must be orchestrator, pane, scratch or feedback" 2 ;; esac
     [ -n "$value" ] || usage "session.sh set --key K --value V"
     no_secret "$value"
     update '.[$k] = $v' --arg k "$key" --arg v "$value"
