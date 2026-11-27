@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 # shellcheck source-path=SCRIPTDIR
 # feedback.sh -- the feedback loop: notes on how the whole flow could have been better, and
-# the sanitiser that keeps every detail of a task out of the plugin's repository.
+# the sanitiser that keeps every detail of a task out of every repository.
+#
+# Two targets, kept apart: "plugin" (this plugin's instructions, skills, roles, patterns and
+# scripts; the default) and "repo" (the documentation of a repository the lanes worked in: its
+# AGENTS.md, CLAUDE.md, READMEs, docs; --repo names it). Each improvement lane gets only the
+# lessons of its own target. A repository lesson is checked harder (--strict): it must help other
+# tasks, so it also refuses identifiers (snake_case, words with digits) and any inline code.
 #
 # The loop is off by default; the session file holds the toggle (session.sh set --key feedback
 # --value on|off, asked by the feedback-loop skill and at the orchestrator's start).
@@ -13,27 +19,30 @@
 #
 # Usage (every command takes --session NAME; default: the session whose pane is $HERDR_PANE_ID, else graph):
 #   feedback.sh state                               FEEDBACK on|off (session)
-#   feedback.sh add --text T [--from WHO] [--lane L] [--node N] [--repo DIR]
+#   feedback.sh add --text T [--target plugin|repo] [--from WHO] [--lane L] [--node N] [--repo DIR]
 #                                                   a raw note (WHO default orchestrator); exit 4 while off
 #   feedback.sh due --lane L                        FEEDBACK L (...) and exit 0 when the loop is on and the
 #                                                   orchestrator has no note for L yet; exit 1 otherwise
-#   feedback.sh lesson --text T [--repo DIR]... [--deny WORD]...
-#                                                   a sanitised lesson; exit 3 (and nothing stored) on a leak
-#   feedback.sh lessons                             the open lessons, one "- " line each
-#   feedback.sh used (--id N | --all) [--ref TEXT]  lessons handed to an improvement lane (TEXT: where they went)
+#   feedback.sh lesson --text T [--target plugin|repo] [--repo DIR]... [--deny WORD]...
+#                                                   a sanitised lesson; exit 3 (and nothing stored) on a leak.
+#                                                   --target repo needs --repo (the repository it is about)
+#   feedback.sh lessons [--target plugin|repo --repo DIR]   the open lessons of one target, one "- " line each
+#   feedback.sh used (--id N | --all) [--target plugin|repo --repo DIR] [--ref TEXT]
+#                                                   lessons handed to an improvement lane (TEXT: where they went)
 #   feedback.sh show [--json]                       notes and lessons
 #   feedback.sh path                                the feedback file's path
-#   feedback.sh sanitize [--file F]... [--strip] [--repo DIR]... [--deny WORD]...
+#   feedback.sh sanitize [--file F]... [--strip] [--strict] [--repo DIR]... [--deny WORD]...
 #                                                   check text (the files, else stdin). Clean: print it
 #                                                   unchanged, exit 0. Else one "LEAK <kind> line N: <what>"
 #                                                   line per finding and REFUSED on stderr, exit 3. With
 #                                                   --strip: print only the clean lines, exit 3 if none.
-# Leak kinds: url email handle secret number sha ip path file code quote name deny.
+# Leak kinds: url email handle secret number sha ip path file code quote name deny, and with
+# --strict also ident (snake_case or a word with digits) and every inline code span.
 # Denied words come from --deny, from each --repo (its folder name, its origin's owner and name,
 # its branch names, its commit authors) and from the session (every lane and repository its
 # feedback notes and queued lanes name). The sanitiser is conservative: it refuses a line rather
 # than guess. It cannot know every name: see "What the sanitiser cannot catch" in the README.
-# Exit codes: 0 ok, 1 error or not due, 2 usage or a secret, 3 a leak, 4 the loop is off, 6 no such item.
+# Exit codes: 0 ok, 1 error or not due, 2 usage, a secret or a missing --repo, 3 a leak, 4 the loop is off, 6 no such item.
 # shellcheck disable=SC2016 # jq programs and the code-span pattern are single-quoted on purpose
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,7 +51,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 USAGE="feedback.sh state|add|due|lesson|lessons|used|show|path|sanitize [--session NAME] [options] (see the header of feedback.sh)"
 args=() files=() repos=() denies=()
-session="" text="" from="orchestrator" lane="" node="" repo="" id="" all=0 ref="" strip=0 as_json=0
+session="" text="" from="orchestrator" target="plugin" strict=0 lane="" node="" repo="" id="" all=0 ref="" strip=0 as_json=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --session) need_value "$1" $#; session="$2"; shift 2 ;;
@@ -57,6 +66,8 @@ while [ $# -gt 0 ]; do
         --ref) need_value "$1" $#; ref="$2"; shift 2 ;;
         --all) all=1; shift ;;
         --strip) strip=1; shift ;;
+        --strict) strict=1; shift ;;
+        --target) need_value "$1" $#; target="$2"; shift 2 ;;
         --json) as_json=1; shift ;;
         -*) usage "$USAGE" ;;
         *) args+=("$1"); shift ;;
@@ -70,6 +81,13 @@ if [ -z "$session" ]; then
     [ -z "${HERDR_PANE_ID:-}" ] || session="$(bash "$HERE/session.sh" find --pane "$HERDR_PANE_ID" 2>/dev/null)" || session="graph"
 fi
 [ "$(slug "$session")" = "$session" ] || die "SESSION NAME: '$session' must be a lowercase slug" 2
+case "$target" in plugin | repo) ;; *) die "--target must be plugin or repo" 2 ;; esac
+# A repository lesson is about one repository: --repo names it, resolved to its top folder.
+need_repo_target() {
+    [ "$target" = repo ] || return 0
+    [ -n "$repo" ] || die "--target repo needs --repo DIR (the repository the lesson is about)" 2
+    repo="$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null)" || die "not a git repository: $repo" 2
+}
 sfile="$(session_dir)/$session.yaml"
 dir="$(session_dir)/feedback"
 file="$dir/$session.yaml"
@@ -190,6 +208,7 @@ RE_LEAD="^[][(){}\"'\`*_<>]"
 RE_TRAIL="[][(){}.,;:!?\"'\`*_<>]\$"
 RE_SPAN_OK='^(--|<|[A-Z][A-Z_]+:?$)'
 RE_FILE='^[A-Za-z0-9_-]{2,}(\.[A-Za-z0-9_-]+)*\.[A-Za-z][A-Za-z0-9]{0,5}$'
+RE_IDENT='[A-Za-z][0-9]|[0-9][A-Za-z]'
 
 FOUND=""
 leak() { FOUND="$FOUND$1 line $2: $3
@@ -210,6 +229,7 @@ scan_line() { # line, number
     while [[ "$rest" =~ $RE_SPAN ]]; do
         span="${BASH_REMATCH[1]}" whole="${BASH_REMATCH[0]}"
         first="${span%% *}"
+        if [ "$strict" -eq 1 ]; then leak code "$n" "\`$span\` (no inline code in a repository lesson)"; rest="${rest#*"$whole"}"; continue; fi
         case "$ALLOW_CODE" in *" $first "*) ;; *)
             if ! is_plugin_file "$first" && ! is_plugin_file "$first.sh" && [[ ! "$first" =~ $RE_SPAN_OK ]] && ! plugin_path "$first"; then
                 leak code "$n" "\`$span\`"
@@ -233,6 +253,9 @@ scan_line() { # line, number
                 elif [[ "$tok" =~ $RE_FILE ]] && ! is_plugin_file "$tok" && ! [[ "$tok" =~ ^[0-9.]+$ ]]; then
                     leak file "$n" "$tok"
                 fi
+            fi
+            if [ "$strict" -eq 1 ] && ! is_plugin_file "$tok" && [[ "$tok" == *_* || "$tok" =~ $RE_IDENT ]]; then
+                leak ident "$n" "$tok"
             fi
             lower="$(printf '%s' "$tok" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
             if is_denied "$lower"; then
@@ -307,6 +330,9 @@ sanitize() { # file
     cat "$f"
 }
 
+# The lessons of the selected target (and repository).
+MINE='def mine: (.target // "plugin") == $tg and ($tg == "plugin" or .repo == $rp); '
+
 TMP=""
 cleanup_tmp() { [ -z "$TMP" ] || rm -f "$TMP"; unlock; }
 trap cleanup_tmp EXIT
@@ -314,51 +340,61 @@ trap cleanup_tmp EXIT
 case "$cmd" in
 state) printf 'FEEDBACK %s (%s)\n' "$(loop_state)" "$session" ;;
 add)
-    [ -n "$text" ] || usage "feedback.sh add --text T [--from WHO] [--lane L] [--node N] [--repo DIR]"
+    [ -n "$text" ] || usage "feedback.sh add --text T [--target plugin|repo] [--from WHO] [--lane L] [--node N] [--repo DIR]"
     [ "$(loop_state)" = on ] || die "FEEDBACK OFF: the feedback loop is off for session $session; turn it on with the feedback-loop skill (session.sh set --key feedback --value on)" 4
     ! looks_secret "$text" || die "SECRET: that looks like a token, key or password; it is never stored." 2
+    need_repo_target
     if [ -n "$repo" ]; then repo="$(cd "$repo" 2>/dev/null && pwd)" || die "no such directory: $repo" 2; fi
     update '.next_id as $id | .next_id += 1
-            | .notes += [{id: $id, from: $from, text: $t, at: $now}
+            | .notes += [{id: $id, target: $tg, from: $from, text: $t, at: $now}
                          + (if $lane != "" then {lane: $lane} else {} end)
                          + (if $node != "" then {node: $node} else {} end)
                          + (if $repo != "" then {repo: $repo} else {} end)]' \
-        --arg from "$from" --arg t "$text" --arg lane "$lane" --arg node "$node" --arg repo "$repo"
+        --arg tg "$target" --arg from "$from" --arg t "$text" --arg lane "$lane" --arg node "$node" --arg repo "$repo"
     printf 'ADDED note %s\n' "$(yq -r '.notes[-1].id' "$file")" ;;
 due)
     [ -n "$lane" ] || usage "feedback.sh due --lane L"
     [ "$(loop_state)" = on ] || exit 1
     has="$(jq -r --arg l "$lane" '[.notes // [] | .[] | select(.lane == $l and .from == "orchestrator")] | length' <<<"$(fb_json)")"
     [ "${has:-0}" -eq 0 ] || exit 1
-    printf 'FEEDBACK %s (the feedback loop is on: before cleanup, ask the lane'"'"'s live agents how the whole flow could have been better, then write your own note: feedback.sh add --from orchestrator --lane %s --text ...)\n' "$lane" "$lane" ;;
+    printf 'FEEDBACK %s (the feedback loop is on: before cleanup, ask the lane'"'"'s live agents how the whole flow and the repository'"'"'s documentation could have been better, then write your own note: feedback.sh add --from orchestrator --lane %s [--target repo --repo R] --text ...)\n' "$lane" "$lane" ;;
 lesson)
-    [ -n "$text" ] || usage "feedback.sh lesson --text T [--repo DIR]... [--deny WORD]..."
+    [ -n "$text" ] || usage "feedback.sh lesson --text T [--target plugin|repo] [--repo DIR]... [--deny WORD]..."
     [ "$(loop_state)" = on ] || die "FEEDBACK OFF: the feedback loop is off for session $session" 4
+    need_repo_target
+    [ "$target" = plugin ] || strict=1
     TMP="$(mktemp)"
     printf '%s\n' "$text" >"$TMP"
     strip=0
     sanitize "$TMP" >/dev/null || exit 3
     rm -f "$TMP"; TMP=""
-    update '.next_id as $id | .next_id += 1 | .lessons += [{id: $id, text: $t, at: $now}]' --arg t "$text"
-    printf 'ADDED lesson %s\n' "$(yq -r '.lessons[-1].id' "$file")" ;;
+    update '.next_id as $id | .next_id += 1 | .lessons += [{id: $id, target: $tg, text: $t, at: $now} + (if $tg == "repo" then {repo: $rp} else {} end)]' \
+        --arg t "$text" --arg tg "$target" --arg rp "$repo"
+    printf 'ADDED lesson %s (%s)\n' "$(yq -r '.lessons[-1].id' "$file")" "$target" ;;
 lessons)
-    jq -r '[.lessons // [] | .[] | select(.used == null)] | if length == 0 then "(no open lessons)" else .[] | "- " + (.text | gsub("\n"; " ")) end' <<<"$(fb_json)" ;;
+    need_repo_target
+    jq -r --arg tg "$target" --arg rp "$repo" "$MINE"'
+        [.lessons // [] | .[] | select(.used == null) | select(mine)]
+        | if length == 0 then "(no open lessons)" else .[] | "- " + (.text | gsub("\n"; " ")) end' <<<"$(fb_json)" ;;
 used)
-    [ -n "$id" ] || [ "$all" -eq 1 ] || usage "feedback.sh used (--id N | --all) [--ref TEXT]"
+    [ -n "$id" ] || [ "$all" -eq 1 ] || usage "feedback.sh used (--id N | --all) [--target plugin|repo --repo DIR] [--ref TEXT]"
     [ -f "$file" ] || die "NO FEEDBACK for session $session" 6
     ! looks_secret "$ref" || die "SECRET: that looks like a token, key or password; it is never stored." 2
-    hit="$(jq -r --arg id "$id" --argjson all "$all" '[.lessons // [] | .[] | select(.used == null) | select($all == 1 or (.id | tostring) == $id)] | length' <<<"$(fb_json)")"
+    [ "$all" -eq 0 ] || need_repo_target
+    sel='select(.used == null) | select(if $all == 1 then mine else (.id | tostring) == $id end)'
+    hit="$(jq -r --arg id "$id" --argjson all "$all" --arg tg "$target" --arg rp "$repo" "${MINE}[.lessons // [] | .[] | ${sel}] | length" <<<"$(fb_json)")"
     [ "${hit:-0}" -gt 0 ] || die "NO OPEN LESSON${id:+ with id $id}" 6
-    update '.lessons |= map(if .used == null and ($all == 1 or (.id | tostring) == $id) then .used = (if $ref == "" then "yes" else $ref end) | .used_at = $now else . end)' \
-        --arg id "$id" --argjson all "$all" --arg ref "$ref"
+    update "$MINE"'.lessons |= map(if (.used == null and (if $all == 1 then mine else (.id | tostring) == $id end)) then .used = (if $ref == "" then "yes" else $ref end) | .used_at = $now else . end)' \
+        --arg id "$id" --argjson all "$all" --arg ref "$ref" --arg tg "$target" --arg rp "$repo"
     printf 'USED %s lesson(s)\n' "$hit" ;;
 show)
     if [ "$as_json" -eq 1 ]; then fb_json; else
         printf 'FEEDBACK %s (%s): %s\n' "$(loop_state)" "$session" "$file"
-        jq -r '"NOTES (raw: never leave this folder)",
-               (.notes // [] | if length == 0 then "  (none)" else .[] | "  #\(.id) \(.from)" + (if .lane then " lane \(.lane)" else "" end) + (if .node then "/\(.node)" else "" end) + ": \(.text | gsub("\n"; " "))" end),
-               "LESSONS (sanitised)",
-               (.lessons // [] | if length == 0 then "  (none)" else .[] | "  #\(.id) " + (if .used then "[used: \(.used)] " else "" end) + (.text | gsub("\n"; " ")) end)' <<<"$(fb_json)"
+        jq -r 'def where: if (.target // "plugin") == "repo" then "repo \(.repo // "?")" else "plugin" end;
+               "NOTES (raw: never leave this folder)",
+               (.notes // [] | if length == 0 then "  (none)" else .[] | "  #\(.id) [\(where)] \(.from)" + (if .lane then " lane \(.lane)" else "" end) + (if .node then "/\(.node)" else "" end) + ": \(.text | gsub("\n"; " "))" end),
+               (.lessons // [] | group_by(where)[] | "LESSONS for " + (.[0] | if (.target // "plugin") == "repo" then "repository \(.repo)" else "the plugin" end) + " (sanitised)",
+                 (.[] | "  #\(.id) " + (if .used then "[used: \(.used)] " else "" end) + (.text | gsub("\n"; " "))))' <<<"$(fb_json)"
     fi ;;
 path) printf '%s\n' "$file" ;;
 sanitize)
