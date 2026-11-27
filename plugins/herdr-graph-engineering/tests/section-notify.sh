@@ -219,6 +219,38 @@ ns lane set --repo "$N_REPO" --lane s --key cleanup --value confirmed >/dev/null
 N_CLOCK=1010100; nrec
 check "a yes that was never run is its own event" "s/- cleanup-confirmed" "$(ntake)"
 
+echo "== notify: the panel's tick does not poll =="
+for l in a c d f g s; do ns lane close --repo "$N_REPO" --lane "$l" >/dev/null 2>&1; done
+nlane t; nsm '.agents.t = {name: "claude-t", pane_id: "w11:p1", agent: "claude", agent_status: "idle", state_change_seq: 1, screen: "NODE investigate RESULT: pass t1"} | .agents.o.agent_status = "working"'
+N_CLOCK=1010500; : >"$N_TMP/calls.log"; ns notify tick >/dev/null 2>&1
+check "a tick reads a finished agent" "agent read claude-t" "$(cat "$N_TMP/calls.log")"
+: >"$N_TMP/calls.log"; N_CLOCK=1010505; ns notify tick >/dev/null 2>&1
+check_absent "the next tick within 10 s reads no screen" "agent read claude-t" "$(cat "$N_TMP/calls.log")"
+echo "== notify: a gone orchestrator's events still close =="
+ns lane node --repo "$N_REPO" --lane t --node investigate --status "done" --result pass >/dev/null
+nsm 'del(.agents.o)'; N_CLOCK=1010600; ns notify tick >/dev/null 2>&1
+check "what was handled closes, so no mark sticks" "0" "$(nev '[.open[] | select(.lane == "t")] | length')"
+nst "$(nstate)"
+
+echo "== notify: what auto-merge could merge =="
+git -C "$N_REPO" worktree add -q -b feat/mr "$N_TMP/wt-mr" main
+git -C "$N_TMP/wt-mr" -c user.name=t -c user.email=t@t commit -q --allow-empty -m work
+ns lane new --repo "$N_REPO" --lane mr --pattern solo --idea x --gate true --branch feat/mr --owner graph >/dev/null
+ns lane set --repo "$N_REPO" --lane mr --key pr --value https://github.com/o/r/pull/8 >/dev/null
+for n in impl tests; do ns lane node --repo "$N_REPO" --lane mr --node "$n" --status "done" --result pass >/dev/null; done
+jq -cn --arg h "$(git -C "$N_TMP/wt-mr" rev-parse HEAD)" '{"https://github.com/o/r/pull/8": {number: 8, url: "https://github.com/o/r/pull/8", state: "OPEN", headRefName: "feat/mr", headRefOid: $h, isDraft: false, reviewDecision: "", mergeable: "MERGEABLE", statusCheckRollup: []}}' >"$N_TMP/gh.json"
+N_CLOCK=1010700; ns notify reconcile --session graph --full >/dev/null 2>&1
+check_absent "auto-merge off: nothing to merge" "merge-ready" "$(ns notify list --session graph)"
+ns session automerge on --repo "$N_REPO" --lane mr >/dev/null
+ns notify reconcile --session graph --full >/dev/null 2>&1
+check "on: the sweep says it can merge" "mr/- merge-ready" "$(ns notify list --session graph)"
+nrec
+check "it stays between sweeps" "mr/- merge-ready" "$(ns notify list --session graph)"
+ns lane note --repo "$N_REPO" --lane mr --text "something happened" >/dev/null; nrec
+check_absent "and goes once the lane is written, until a sweep looks again" "merge-ready" "$(ns notify list --session graph)"
+ns lane close --repo "$N_REPO" --lane mr >/dev/null
+ns lane close --repo "$N_REPO" --lane t >/dev/null
+
 echo "== await: the waiter =="
 aw() { HERDR_GRAPH_TICK=0.2 HERDR_GRAPH_BATCH=0 HERDR_GRAPH_WAIT_MAX="${AW_MAX:-3}" HERDR_PANE_ID="${AW_PANE:-w1:p1}" ns await "$@"; }
 for l in a c d f g s; do ns lane close --repo "$N_REPO" --lane "$l" >/dev/null 2>&1; done
