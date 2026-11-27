@@ -1,0 +1,118 @@
+---
+name: setup-project
+description: Bootstraps a repository for the spec-workflow — creates the GitHub Project board, auto-fills .neural-network/project.yaml ids via init-config.sh, validates the config, and sets up local-state gitignores, so the repo is ready to run the workflow. Use for 'set up this repo', 'adopt the workflow', 'initialize the board', or onboarding a new/existing project.
+---
+
+# Set up a repository for the spec-workflow
+
+Goal: after this skill, the repo has a valid `.neural-network/project.yaml` (schemaVersion 2), a GitHub Project board wired to it, editor schema wiring, and is ready for `seed-board` → `/loop /spec-workflow:build-next`.
+
+Config is YAML (`.neural-network/project.yaml`, schemaVersion 2). A legacy `.neural-network/project.json` (schemaVersion 1) is still read (deprecated) — `init-config.sh` converts one to `project.yaml` and tells you to delete the old file after review.
+
+Work through the phases in order. Do not skip validation.
+
+## Phase 1 — prerequisites (check, fix, or stop)
+```bash
+gh auth status          # must be logged in AND show the 'project' scope
+git rev-parse --show-toplevel   # must be inside a git repo (git init if new)
+```
+If the `project` scope is missing: `gh auth refresh -h github.com -s project` (interactive — ask the human to run it if it fails).
+
+## Phase 2 — the spec(s)
+Each spec is a design document plus a backlog of numbered tasks. One repo can have several specs (e.g. `platform` + `mobile-app`), each with its own task prefix.
+- If a spec already exists, note its path. If not, STOP here and run the `craft-spec` skill — it interviews the user and produces the spec + backlog this workflow needs; then resume at Phase 3. The workflow is spec-driven; there is nothing to build without it.
+- For each spec, a backlog doc (e.g. `docs/BACKLOG.md`) should list every task: `<PREFIX>-<number>`, title, epic, priority, story points, acceptance criteria, Definition of Done. Number tasks in per-epic ranges (e.g. E0 = 001–009, E1 = 010–019, infra = 090–099) so ranges map cleanly to epics.
+
+## Phase 3 — GitHub Project board
+1. **Choose the board source — NEVER create a Project implicitly.** Creating a new Project is allowed only when the user explicitly chose it (here or in their original request). Unless the request already named an existing Project or explicitly asked for a new one, list the candidates (`gh project list --owner <owner> --format json`) and ask through the host's structured-input facility (header "Board") — see `references/host-claude.md` for the Claude Code adapter:
+   - **Use an existing Project (Recommended when any exist)** — offer the discovered Projects as options (title + number). Setup then only WIRES it: adds missing fields/options per the reference, confirms before altering any existing field.
+   - **Create a new Project** — the only path that runs `gh project create`; requires this explicit selection.
+2. Exact commands: read `../../skills/setup-project/references/github-project-setup.md` **now** and follow it (its §1 creation step only on the explicit create path). It covers Status options, Priority and Estimate fields.
+
+## Phase 4 — write .neural-network/project.yaml
+1. Auto-fill the board ids (creates the config from the template if none exists, else updates `boards[0]` in place):
+   ```bash
+   bash "../../scripts/init-config.sh" <owner> <owner/repo> <project-number>
+   ```
+   Review its output: reorder `statusFlow` / priority options if the board returned them in a different order than the intended pipeline/rank.
+2. Fill every field. The full schema with descriptions is `../../schemas/project-config.schema.json`; keep the template's first-line `# yaml-language-server: $schema=...` modeline — the Red Hat YAML extension downloads modeline schemas without the JSON-language-server trust wall, so hover + autocomplete work. Key decisions:
+   - `project.branchPattern` — default `feat/<id>-<slug>` → branches like `feat/012-error-model`. An existing pattern (for example `<prefix>/<id>-<slug>`) keeps working; leave it unless the human wants the default.
+   - `boards[]` — ids from Phase 3. `statusFlow` order **is** the pipeline; priority `options` order **is** the priority order (highest first).
+   - **specs — per-spec files, NOT in project.yaml**: write each spec's work-plan to `.neural-network/specs/<id>.yaml` (template: `../../templates/spec.example.yaml`; the file's basename is the spec id): unique `taskPrefix`, `epics` in build order with `taskRanges`, and `blockedBy` guards for hard dependencies (e.g. nothing from E1 until E0 is fully Deployed). project.yaml holds configuration only — an inline `specs:` section is deprecated (still read when no specs/ dir exists; the dir wins otherwise).
+   - spec `invariants` (in the spec file) — the project's hard rules, stated imperatively; they are pasted verbatim into every implementation brief, so make them self-contained.
+   - `commands.gate` — ONE command running build+lint+format+tests. Create it (e.g. a `gate` script in package.json) if it doesn't exist; the whole workflow hinges on it.
+   - **Gate scope** (`methodology.gateScope`) — ask through the host's structured-input facility (header "Gate scope"): when an agent runs the gate before review, does it check only what the branch changed, or everything?
+     - **Affected files only (Recommended, default)** — description: "`gate.sh` runs `commands.gateAffected` with the branch's changed files (`GATE_CHANGED_FILES`, `GATE_BASE`) — much faster on a large suite. Falls back to the full `commands.gate` when `gateAffected` is unset or no merge base resolves. CI should still run the full gate."
+     - **Full gate every time** — description: "`gate.sh` always runs `commands.gate`. Slower, but every local pass covers the whole repo."
+     Apply with `methodology.gateScope: affected|full`. For **affected**, also set `commands.gateAffected`: derive it from the repo's tooling (e.g. `pnpm turbo run lint typecheck test --filter="...[$GATE_BASE]"`, `nx affected -t test --base=$GATE_BASE`, `pytest --picked`, or a runner flag that reads `GATE_CHANGED_FILES`) and confirm it with the human; if the repo has no way to scope its checks, say so and leave `gateAffected` unset (the full gate runs). Either scope can be forced per run with `gate.sh --full` / `--affected`.
+   - `delegation.identities` — the agent roster: who codes/reviews/orchestrates, as whom, and each role's ALLOWED `models` (full ids only; the orchestrator picks a suitable one per task). The template's defaults (per-person plus-addressed names, dev/reviewer model sets) work as-is; the `agent-identities` and `pr-review-model` skills tune them later. In a monorepo you can make `dev` an array of per-package identities with `covers` path globs (the entry with no `covers` is the fallback).
+   - **peer-reviewer identity (only if the peer-review plugin is enabled)** — check `.claude/settings.json`'s `enabledPlugins` map for a `"peer-review@<marketplace>"` key set truthy (e.g. `"peer-review@development-skills-archived"`). If present, offer configuring the `peer-reviewer` identity as part of this same identity-setup step (same keep-defaults/customize/disable choice the `agent-identities` skill offers for dev/reviewer/orchestrator) — never force it, and skip this offer entirely when the plugin isn't enabled.
+   - **Merge policy** — ask through the host's structured-input facility (header "Merging"): does a human approve/merge every PR (default, `methodology.autoMerge: false`) or does the loop review+merge autonomously (`true` — the `auto-merge` skill explains/toggles it later)? If autonomous, also ask `methodology.mergeMethod`: **squash (Recommended)** — linear history; per-role commit attribution is preserved as `Co-authored-by:` trailers in the squash body plus the PR link — vs **merge** — keeps the individual role-attributed commits on main — vs **rebase**. Also mention `docs[]`: declare where documentation lives (one set for a standalone repo, one per package for a monorepo) so the reviewer can enforce doc maintenance.
+   - **Checkout placement** (`work.checkout`, #532) — ask through the host's structured-input facility (header "Checkout"): where does a task's work happen?
+     - **worktree (Recommended, default)** — description: "Each task gets its own git worktree + branch, and the work is REGISTERED before implementation starts: empty registration commit, branch pushed, draft PR opened (body `Closes #N`) — in-flight work is always visible, even if it dies early. The PR flips ready at gate-green."
+     - **main** — description: "No branch — commits land directly on `project.mainBranch`. With `methodology.maxInProgress > 1` the orchestrator serializes workers' edits (one worker's uncommitted changes at a time, complete small commits as the work goes)."
+     Apply with `work.checkout: worktree|main` in `.neural-network/project.yaml`; the build-next/implement-task skills re-ask once per session (the in-session answer wins over the recorded preference).
+   - **Definition of agent work done** (`work.done`) — ask through the host's structured-input facility (header "Work done"): at which phase does the AGENT consider its own work finished? This is the agent's stop-gate, distinct from a task's definition of done (what the TASK requires — the agent works toward that, but stops and reports done at this phase). Offer:
+     - **Default (Recommended)** — description: "No `work.done` written — the delivery flow decides (work.type + autoMerge): PR opened, reviewed, merged per merge policy."
+     - **A preset phase** — `code` (gate-green code committed; no delivery step is the agent's job) | `pr-open` (PR open into the lower environment) | `pr-review-requested` (PR sent for review in a communication channel) | `pr-validated` (change validated in an environment) | `deployed-staging` | `deployed-production` (deployment verified, not just merged).
+     - **custom** — `work.done.instructions` IS the definition (required in this case).
+     For any preset, also offer recording extra guidance in `work.done.instructions` (WHICH channel gets the review request, WHICH environment validates, …). Apply with a `work.done: {phase, instructions}` block in `.neural-network/project.yaml`; the pr-* phases are invalid under `work.type: local` (no PR ever exists).
+   - **Serial delivery** (`methodology.serialDelivery`, #272/#423) — ask through the host's structured-input facility (header "Serial delivery"): should merges land ONE at a time, on main as it actually is, rather than in whatever order PRs happen to finish review?
+     - **On (Recommended default)** — description: "A task occupies a COUNT-based slot from PICK until MERGE (both In progress and In review count toward `maxInProgress`); `next` allows a new pick while a slot is free, so `maxInProgress: N>1` still gives N genuinely parallel implementation lanes, but merges themselves always serialize strictly one at a time — the merge dance, run FIFO oldest-In-review-first (protocol: the `concurrency` skill's reference). Keeps main honest as concurrency grows, at the cost of a per-merge rebase+re-gate step."
+     - **Off** — description: "Business as usual — `methodology.maxInProgress` alone governs concurrency; a new task can be picked as soon as the previous one reaches In review, before it merges, and merges themselves are not serialized either."
+     Apply with `methodology.serialDelivery: true|false` in `.neural-network/project.yaml` (the template already writes `true` for a fresh setup); the `concurrency` skill documents/tunes it later alongside `maxInProgress`.
+   - **Process feedback** — ask through the host's structured-input facility (header "Feedback"):
+     - **Enable (Recommended)** — description: "The loop records structured process feedback each iteration (what worked, friction, incidents) and triages it into the backlog/brains at retro time." Preview the exact block written into `.neural-network/project.yaml`:
+       ```yaml
+       methodology:
+           feedback: true
+       ```
+     - **Don't enable** — no feedback feed; skip this block entirely.
+     If accepted, write `methodology.feedback: true` into the config (the `feedback` skill and its config surface are documented in the plugin README).
+   - **Commit convention** (`commit.convention` / `commit.systemPrompt`, #418) — ask through the host's structured-input facility (header "Commit convention"): which commit-message convention does this repo use, and does the commit LANGUAGE need customizing? A squash-merge body renders verbatim into the generated CHANGELOG, so dense prose there is unreadable to a human — this is why the question is asked at setup instead of left to each agent's habits.
+     - **conventional-commits (Recommended default)** — description: "`type(scope): description` — https://www.conventionalcommits.org. What the CHANGELOG generator and semver classification already assume."
+     - **angular** — description: "The stricter, fixed type/scope Angular convention conventional-commits itself descends from, with a strict subject length limit."
+     - **gitmoji** — description: "An emoji prefixes (or replaces) the type word, e.g. `:bug: fix the widget cache`."
+     - **plain** — description: "Tim Pope's 50/72 style — a short imperative summary line, no type prefix at all."
+     - **Custom** — any other free-string convention name this repo already follows in-house.
+     Write the choice as `commit.convention: <value>` in `.neural-network/project.yaml` (omit the whole `commit:` block to accept the conventional-commits default outright).
+     Then ask whether to customize the commit-body LANGUAGE (`commit.systemPrompt`): the default, used whenever this key is absent, is
+     ```
+     Simple titles. Enumerated bullet-point lists of the changes. Simple human language.
+     ```
+     Offer to keep that default or write a custom `commit.systemPrompt` string (e.g. a house style guide, a different human language, stricter length limits). Preview the block:
+     ```yaml
+     commit:
+         convention: conventional-commits
+         systemPrompt: "Simple titles. Enumerated bullet-point lists of the changes. Simple human language."
+     ```
+3. Validate — must print `VALID`:
+   ```bash
+   bash "../../scripts/board.sh" config
+   ```
+4. Ensure every configured label (`labels.bug`/`labels.feature`/`labels.inbound`) exists on the repo — declaring a label name in config does not create it, and any runtime path that applies a missing label (e.g. `board.sh add --type inbound`) fails until it does. Idempotent, safe to re-run:
+   ```bash
+   bash "../../scripts/board.sh" ensure-labels
+   ```
+
+## Phase 5 — repo hygiene + editor wiring
+- Add the plugin's local-state paths to `.gitignore` via the managed block, not a raw append: `bash "../../scripts/gitignore-sync.sh" .gitignore`. It reads the `ignore`-policy entries from the canonical manifest (`scripts/local-state.manifest` — the single source of truth, MEM-010) and writes them between `# >>> spec-workflow managed` / `# <<< spec-workflow managed` markers, replacing only that block on a re-run (idempotent, safe to re-run on an already-configured repo) and warning — never editing — if a `track`-policy path (e.g. `.neural-network/feedbacks/`, see below) is already ignored by one of the repo's own, non-managed rules.
+- **Do not gitignore `.neural-network/feedbacks/`.** It's the loop-feedback archive (adjacent to `project.yaml`), and unlike the other local state above it is committed and pushed alongside code by default — a tracked, orchestrator-mediated record of process feedback across iterations, never read or written by dev/reviewer subagents. Opt out only by adding it to the repo's own `.gitignore` if the human explicitly wants it local-only.
+- **Editor schema (VSCode)** — so `project.yaml` gets hover + autocomplete, merge these into the repo's `.vscode/` files WITHOUT clobbering existing settings (read each file first; add only the missing keys, preserve the rest). The modeline in `project.yaml` already helps; this makes it explicit and recommends the extension.
+  - `.vscode/settings.json` — add under `yaml.schemas`:
+    ```json
+    { "yaml.schemas": { "https://raw.githubusercontent.com/Zugruul/development-skills/main/archived/plugins/spec-workflow/schemas/project-config.schema.json": "**/.neural-network/project.yaml" } }
+    ```
+  - `.vscode/extensions.json` — add `"redhat.vscode-yaml"` to `recommendations` (the Red Hat YAML extension that reads the modeline schema).
+- Create `paths.handoffDir` (default `docs/handoffs/`).
+- **Seed `.neural-network/identities/<role>/brain/` for every role in `delegation.identities`** (an empty `notes/` dir + a one-line `ROLE.md` stub is enough) so the directory exists from the first commit — build-next's retro step is self-bootstrapping (`brain.py mint` would create it anyway), but seeding it here means the loop's very first retro is never the one iteration that has to decide "is a missing dir a skip reason or not."
+- If the project has a dev stack, set `commands.devUp` and write the doc at `paths.devDoc` (ports, profiles, preconditions).
+- Commit `.neural-network/project.yaml` + `.vscode/*` + `.neural-network/identities/` + docs.
+
+## Phase 6 — seed and go
+1. Run the `seed-board` skill to create one issue + board item per backlog task.
+2. Smoke-test: `board.sh next` must print a sensible `=> PICK`, and `board.sh list` the seeded items.
+3. Start building: `/spec-workflow:build-next` once, or `/loop /spec-workflow:build-next` for the autonomous loop. Pause anytime with the `checkpoint` skill.
+
+## Adding a spec to an already-configured repo
+Add a new `.neural-network/specs/<id>.yaml` file (unique `taskPrefix`, own epics/ranges/guards — template `../../templates/spec.example.yaml`), re-run `board.sh config`, extend the backlog doc, and run `seed-board` for the new tasks. Boards can be shared or per-spec (each spec file's `board` key).

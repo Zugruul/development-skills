@@ -1,7 +1,6 @@
 {
   "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true,
-    "peer-review@development-skills": true
+    "frontend-design@claude-plugins-official": true
   },
   "permissions": {
     "allow": [

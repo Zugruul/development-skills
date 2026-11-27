@@ -145,7 +145,7 @@ Bump `spec-workflow` and `scaffold-project` plugin versions (both manifests, bot
 ## E5 — Compatibility sweep for new/in-flight work (§11)
 
 ### CDX-050 · Audit four shipped remote-compute skills for dual-host compliance — P1 · 3 pts · §11.1
-Owner triage (issue #194): audit `remote-compute`, `compute-top`, `scan`, and `ssh` against §7–§9. Add exactly four incremental rows to the [CDX-042 compatibility matrix](compatibility-matrix.md); the rest of the marketplace remains unaudited by this task and CDX-042 remains incomplete.
+Owner triage (issue #194): audit `remote-compute`, `compute-top`, `scan`, and `ssh` against §7–§9. Add exactly four incremental rows to the [CDX-042 compatibility matrix](../archived/docs/compatibility-matrix.md); the rest of the marketplace remains unaudited by this task and CDX-042 remains incomplete.
 **Acceptance:** source-backed interaction/invocation, delegation and enforcement review per skill; distinguish static review, executed hermetic behavior, external validators and live-host/SSH evidence. State WSL/Linux/macOS execution, native PowerShell unsupported, Windows-host WSL bridging, and justified N/A clauses. Name and link separately filed gaps; no inline fixes. Root README/AGENTS and plugin README link the scoped matrix, including a packaged-plugin fallback. Record the narrow §11 delta without editing the canonical spec or broad §10.1 infrastructure requirements.
 **DoD:** red-first audit coverage with negative fixtures, complete remote suite and scoped checks green using local tests only; missing validators and unperformed checks explicitly unverified. Parent owns the full recorded repository gate, independent review, merge and delta fold. Runtime, schemas, manifests and source skill instructions remain unchanged.
 

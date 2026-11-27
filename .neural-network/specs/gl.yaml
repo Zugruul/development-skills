@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Zugruul/development-skills/main/plugins/spec-workflow/schemas/project-config.schema.json#/properties/specs/items
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Zugruul/development-skills/main/archived/plugins/spec-workflow/schemas/project-config.schema.json#/properties/specs/items
 id: gl
 title: Graphify-inspired improvements — learning loop, recall signals, neural-view
   (SPEC-GRAPHIFY.md)

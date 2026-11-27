@@ -108,7 +108,7 @@ pr() { jq -cn --argjson n "$1" --arg b "$2" --arg s "$3" '{number: $n, url: "htt
 jq -cn --argjson a "$(pr 5 feat/merged MERGED)" --argjson b "$(pr 4 feat/x MERGED)" --argjson c "$(pr 6 feat/kept MERGED)" \
     '{fetched: 1, lanes: {merged: [$b, $a], other: [$b], kept: [$c]}}' >"$D_DIR/prs.json"
 check "a lane whose own pull request merged needs the user" "needs" "$(sect merged)"
-check "it says so" "PR #5 merged, waiting for cleanup confirmation" "$(lj merged '.attention | join(" ")')"
+check "it says so, an unfinished lane never as waiting for cleanup" "PR #5 merged but the lane is unfinished (investigate)" "$(lj merged '.attention | join(" ")')"
 check "a merged pull request it only mentions does not count" "working" "$(sect other)"
 check "a declined cleanup does not ask again" "working" "$(sect kept)"
 check "drift.sh points to cleanup.sh" "DRIFT merged pr-merged: PR #5 merged | cleanup.sh check --repo $D_REPO --lane merged" "$(dg drift --repo "$D_REPO")"

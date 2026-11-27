@@ -4,76 +4,14 @@
         "name": "event-sorcerer",
         "url": "https://github.com/event-sorcerer"
     },
-    "description": "Marketplace of development-workflow plugins (spec-driven, board-tracked, TDD build loops).",
+    "description": "Marketplace of plugins for coding agents: Herdr, graph engineering on Herdr, and UI design.",
     "version": "1.0.0",
     "plugins": [
-        {
-            "name": "spec-workflow",
-            "source": "./plugins/spec-workflow",
-            "description": "Spec-driven autonomous build workflow: GitHub Project board as source of truth, TDD via delegated dev agents, quality gate, checkpoint/handoff loop. Configured per-repo via .claude/project.yaml (versioned schema; legacy project.json still read).",
-            "version": "0.100.2",
-            "author": {
-                "name": "event-sorcerer"
-            },
-            "keywords": [
-                "workflow",
-                "tdd",
-                "github-projects",
-                "spec-driven",
-                "build-loop"
-            ]
-        },
-        {
-            "name": "scaffold-project",
-            "source": "./plugins/scaffold-project",
-            "description": "Scaffolds a new greenfield project's minikube dev-workflow (start/stop/dev/build/port-forward scripts + package.json wiring), with every profile bound explicitly from day one so scaffolded projects never collide on minikube's shared default profile.",
-            "version": "0.1.0",
-            "author": {
-                "name": "event-sorcerer"
-            },
-            "keywords": [
-                "scaffold",
-                "minikube",
-                "kubernetes",
-                "dev-workflow",
-                "greenfield"
-            ]
-        },
-        {
-            "name": "peer-review",
-            "source": "./plugins/peer-review",
-            "description": "Independent, cross-vendor code review of the current diff via OpenAI's codex CLI -- deliberately never Claude reviewing its own diff, since that shares Claude's own blind spots.",
-            "version": "0.1.0",
-            "author": {
-                "name": "event-sorcerer"
-            },
-            "keywords": [
-                "code-review",
-                "codex",
-                "peer-review"
-            ]
-        },
-        {
-            "name": "remote-compute",
-            "source": "./plugins/remote-compute",
-            "description": "Register remote machines (SSH, key-only) as user-level compute resources, advertise them to projects, and dispatch jobs/capability bundles to them. Requires the spec-workflow plugin (project overlay + config loader).",
-            "version": "0.4.0",
-            "author": {
-                "name": "event-sorcerer"
-            },
-            "keywords": [
-                "remote",
-                "compute",
-                "ssh",
-                "gpu",
-                "dispatch"
-            ]
-        },
         {
             "name": "herdr",
             "source": "./plugins/herdr",
             "description": "Teaches an agent to use Herdr, the terminal workspace manager for coding agents: start worktrees and agents, prompt them safely, listen to their work and see what is running. Standalone and thin over the herdr CLI; no workflow of its own.",
-            "version": "0.11.0",
+            "version": "0.11.1",
             "author": {
                 "name": "event-sorcerer"
             },
@@ -89,7 +27,7 @@
             "name": "herdr-graph-engineering",
             "source": "./plugins/herdr-graph-engineering",
             "description": "Graph engineering on Herdr: one orchestrator chat runs each idea as a lane (a worktree running a small graph of agent, gate and person steps from a pattern) until its definition of done, and comes to you only when a lane needs you. Requires the herdr plugin, jq, yq and git.",
-            "version": "0.28.0",
+            "version": "0.29.0",
             "author": {
                 "name": "event-sorcerer"
             },
@@ -114,22 +52,6 @@
                 "orchestration",
                 "code-review",
                 "deprecated"
-            ]
-        },
-        {
-            "name": "herdr-development-skills",
-            "source": "./plugins/herdr-development-skills",
-            "description": "Integration layer between Herdr and the development-skills plugins: checks which plugins and features are enabled and configured, then runs spec-workflow tasks and build-loop lanes in Herdr worktree agents an orchestrator listens to. Requires the herdr plugin; degrades cleanly when a specialized plugin is absent.",
-            "version": "0.7.3",
-            "author": {
-                "name": "event-sorcerer"
-            },
-            "keywords": [
-                "herdr",
-                "spec-workflow",
-                "build-loop",
-                "worktree",
-                "orchestration"
             ]
         },
         {

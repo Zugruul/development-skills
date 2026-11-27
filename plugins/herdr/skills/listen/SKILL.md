@@ -62,7 +62,7 @@ Surface it at once; a blocked agent does nothing until someone answers.
 3. If the user's answer does not say which agent it is for and more than one is blocked, ask which agent or tab before sending anything.
 4. Send the answer with the `prompt` skill (`../prompt/SKILL.md`), then go back to listening.
 
-Do not answer an approval or a question yourself. If you can show a notification so the user notices, do: `herdr notification show "<agent> needs you" --body "<the question, short>" --sound request`.
+Do not answer an approval or a question yourself, unless the user already gave a standing answer or a delegation that covers it. If you can show a notification so the user notices, do: `herdr notification show "<agent> needs you" --body "<the question, short>" --sound request`.
 
 ## 5. When an agent settles or disappears
 

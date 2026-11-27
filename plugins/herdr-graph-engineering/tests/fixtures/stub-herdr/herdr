@@ -50,6 +50,11 @@ case "$cmd" in
         root="$(st | jq -r '.root // ""')"
         ok "$(st | jq -c --arg r "$root" --arg n "$(basename "$root")" \
             '{type: "worktree_list", worktrees: (.worktrees // []), source: {repo_root: $r, repo_name: $n, source_checkout_path: $r}}')" ;;
+    "agent rename")
+        k="$(find_key "$3")"
+        [ -n "$k" ] || fail agent_not_found
+        save "$(st | jq -c --arg k "$k" --arg n "$4" '.agents[$k].name = $n')"
+        ok '{"type":"agent_renamed"}' ;;
     "agent get")
         k="$(find_key "$3")"
         [ -n "$k" ] || fail agent_not_found
@@ -66,7 +71,7 @@ case "$cmd" in
         k="$(find_key "$3")"
         scr=""
         [ -n "$k" ] && scr="$(st | jq -r --arg k "$k" '.agents[$k].screen // ""')"
-        printf 'SCREEN[%s] %s\n' "$(opt --source "$@")" "$scr"
+        printf 'SCREEN[%s]\n%s\n' "$(opt --source "$@")" "$scr"
         exit 0 ;;
     "agent start")
         busy="$(st | jq -r '.busy // 0')"
@@ -87,6 +92,7 @@ case "$cmd" in
         ok "$(printf '%s' "$new" | jq -c --arg n "$name" '{type: "agent_started", agent: .agents[$n]}')" ;;
     "agent prompt")
         k="$(find_key "$3")"
+        [ -n "$k" ] || fail agent_not_found
         mode="$(st | jq -r '.prompt // "ok"')"
         [ "$mode" = "blocked" ] && fail agent_blocked
         [ "$mode" = "stalled" ] && fail agent_prompt_stalled
@@ -175,6 +181,8 @@ case "$cmd" in
         exit 0 ;;
     "notification show")
         save "$(st | jq -c --arg t "${3:-}" '.notified += [$t]')"
+        # state.notify = "disabled" shows nothing, with exit 0, as a default Herdr config does
+        [ "$(st | jq -r '.notify // "ok"')" != disabled ] || ok '{"type":"notification_show","shown":false,"reason":"disabled"}'
         ok '{"type":"notification_show","shown":true}' ;;
 esac
 fail stub_unsupported "$cmd"
