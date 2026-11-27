@@ -165,6 +165,71 @@ check "a click on the interval button on the bottom row cycles it" "every 10s" "
 out="$(click 31 1 | pg panel --frame --width 40 --interval 5 --feed)"
 check "the same column on the top row is not the button" "every 5s" "$out"
 
+
+echo "== panel: arrows move a clicked selection, wheel scrolls, room below the last element =="
+# Up/Down/Left/Right act only once a click selected an element; the selected element's rows
+# start with › in the padding column. The wheel (SGR buttons 64 and 65) scrolls 3 lines.
+UP=$'\033[A' DN=$'\033[B' RT=$'\033[C' LT=$'\033[D'
+wheel() { printf '\033[<%s;5;5M' "$1"; }
+out="$( { click 2 3; printf '%s' "$DN"; } | pg panel --frame --width 40 --feed)"
+check "Down moves the selection to the next element" "›  ├ ? Staging or production?" "$out"
+check "one element is selected" "1" "$(grep -c '^›  ' <<<"$out")"
+out="$( { click 2 3; printf '%s' "$UP"; } | pg panel --frame --width 40 --feed)"
+check "Up moves it to the previous element, the lane's first line" " ▾ why-slow  investigate ◂" "$out"
+check_absent "a selected first line shows ◂, no ›" "›" "$out"
+out="$( { click 7 2; printf '%s%s' "$UP" "$UP"; } | pg panel --frame --width 40 --feed)"
+check "Up on the first element stays there" " ▾ why-slow  investigate ◂" "$out"
+check_absent "still on that first line" "›" "$out"
+out="$( { click 2 3; printf '%s%s' "$DN" "$DN"; } | pg panel --frame --width 40 --feed)"
+check "a wrapped element is selected on all its rows" "1" "$([ "$(grep -c '^›' <<<"$out")" -ge 2 ] && echo 1 || echo 0)"
+check "the last line of a lane is an element" "›  └ last: " "$out"
+out="$( { click 2 3; printf '%s%s%s' "$DN" "$DN" "$DN"; } | pg panel --frame --width 40 --feed)"
+check "Down skips blank lines and section headers to the next lane" " ▾ task-x  solo ◂" "$out"
+check_absent "the selection left the other lane" "›" "$out"
+out="$( { click 7 "$row"; printf '%s' "$UP"; } | pg panel --frame --width 40 --feed)"
+check "Up from a lane goes to the previous lane's last element" "›  └ last: " "$out"
+check "the selected lane follows the selection" " ▾ why-slow  investigate ◂" "$out"
+full="$(pg panel --frame --width 40)"
+lastrow="$(grep -n '^   └ ' <<<"$full" | tail -1 | cut -d: -f1)"
+out="$( { click 6 "$lastrow"; printf '%s%s%s' "$DN" "$DN" "$DN"; } | pg panel --frame --width 40 --feed)"
+check "Down on the last element stays there" "$(sed -n "${lastrow}p" <<<"$full" | sed 's/^ /›/')" "$out"
+out="$( { click 2 3; printf '%s' "$LT"; } | pg panel --frame --width 40 --feed)"
+check "Left folds the selected element's lane" " ▸ why-slow  investigate ◂" "$out"
+check_absent "the folded lane hides its lines" "Staging or production?" "$out"
+out="$( { click 2 3; printf '%s%s' "$LT" "$RT"; } | pg panel --frame --width 40 --feed)"
+check "Right unfolds it again" " ▾ why-slow  investigate ◂" "$out"
+check "and shows its lines" "? Staging or production?" "$out"
+out="$( { click 2 3; printf '%s' "$RT"; } | pg panel --frame --width 40 --feed)"
+check "Right on an unfolded lane changes nothing" "›  ├ investigate ?" "$out"
+pst '{}'
+out="$(printf '%s%s%s%s' "$DN" "$UP" "$LT" "$RT" | pg panel --frame --width 40 --feed)"
+check_absent "with no clicked selection, arrows select nothing" "›" "$out"
+check "and fold nothing" "? Staging or production?" "$out"
+# a short pane: --height draws the rows the live panel would, scrolled, the footer at the bottom
+H=12
+top0="$(pg panel --frame --width 40 --height $H)"
+check "a short pane starts at the top" " NEEDS YOU (1)" "$(sed -n 1p <<<"$top0")"
+check "a short pane draws exactly its height" "$H" "$(wc -l <<<"$top0" | tr -d ' ')"
+out="$(wheel 65 | pg panel --frame --width 40 --height $H --feed)"
+check "the wheel scrolls the content down three lines" "$(sed -n 4p <<<"$full")" "$(sed -n 1p <<<"$out")"
+check "the footer stays at the bottom" "[↻]" "$(tail -1 <<<"$out")"
+out="$( { wheel 65; wheel 64; } | pg panel --frame --width 40 --height $H --feed)"
+check "the wheel scrolls back up" " NEEDS YOU (1)" "$(sed -n 1p <<<"$out")"
+out="$(wheel 64 | pg panel --frame --width 40 --height $H --feed)"
+check "the wheel stops at the top" " NEEDS YOU (1)" "$(sed -n 1p <<<"$out")"
+out="$(for _ in 1 2 3 4 5 6 7 8 9 10; do wheel 65; done | pg panel --frame --width 40 --height $H --feed)"
+nbottom=$(($(wc -l <<<"$full") - $(grep -n '─' <<<"$full" | cut -d: -f1) + 1))
+room=$((H - nbottom)) pad=$(((H - nbottom) * 30 / 100))
+lastline="$(sed -n "$(($(grep -n '─' <<<"$full" | cut -d: -f1) - 1))p" <<<"$full")"
+check "scrolled to the end, the last line shows" "$lastline" "$(sed -n "$((room - pad))p" <<<"$out")"
+check "with 30% of the visible height blank below it" "$pad" "$(sed -n "$((room - pad + 1)),${room}p" <<<"$out" | grep -c '^$')"
+out="$( { wheel 65; click 7 1; } | pg panel --frame --width 40 --height $H --feed)"
+check "a click on a scrolled view selects what is drawn there" "›$(sed -n 4p <<<"$full" | cut -c2-)" "$out"
+out="$( { click 2 3; for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do printf '%s' "$DN"; done; } | pg panel --frame --width 40 --height $H --feed)"
+check "Down scrolls so the selection stays visible" "$(sed -n "${lastrow}p" <<<"$full" | sed 's/^ /›/')" "$out"
+out="$( { click 2 3; for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do printf '%s' "$DN"; done; for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do printf '%s' "$UP"; done; } | pg panel --frame --width 40 --height $H --feed)"
+check "Up scrolls back so the selection stays visible, its header too" " ▾ why-slow  investigate ◂" "$(sed -n 2p <<<"$out")"
+
 echo "== panel: pull requests =="
 # prs.sh fetch asks gh (GRAPH_GH, here a stub) for each lane's pull requests: those of the
 # lane's branch, and every pull request URL the lane mentions. The cache sits next to the
