@@ -22,7 +22,7 @@
 #    or NO DRIFT.
 #   --quiet      refresh the cache, print nothing (the graph panel, in the background)
 #   --max-age S  leave a repository whose cache is younger than S seconds (default 0: always read)
-# Without --repo: the repositories status.sh reads. Never fails its caller: without herdr nothing
+# Without --repo: the repositories status.sh reads (lane_repos in src/common.sh). Never fails its caller: without herdr nothing
 # is read; while another drift.sh holds a repository's lock its cache stays as it was.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
