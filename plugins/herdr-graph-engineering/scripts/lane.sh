@@ -17,6 +17,11 @@
 #   lane.sh node --lane L --node N --status waiting|running|done|failed|blocked|skipped
 #               [--result pass|changes|fail|question] [--ref X] [--exit N] [--agent NAME] [--tab TAB] [--note TEXT]
 #                                                 --tab: the Herdr tab the node runs in (a new tab clears tab_closed)
+#                                                 [--output PATH] the agent's output file; PATH.result.json is its result file.
+#                                                 A node that starts running (or gets another agent) gets a new run id,
+#                                                 printed as RUN <id>: claims and result files of another run are ignored
+#   lane.sh step --lane L --node N --name S --result pass|fail [--ref X]   a step of a node done; it stays running
+#   lane.sh reject --lane L --node N --ref R --text WHY      a claimed result that did not hold: never reported again
 #   lane.sh tab-closed --lane L --node N          record that the node's tab was closed (by close-done.sh)
 #   lane.sh retry --lane L --node N               N failed: rerun its retry target; exit 7 at the limit
 #   lane.sh ask --lane L --text Q [--node N] [--kind agent|human|cleanup|merged-early] [--source TEXT]
@@ -50,12 +55,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/pattern.sh
 . "$HERE/src/pattern.sh"
 
-USAGE="lane.sh new|show|list|node|tab-closed|retry|ask|asked|answer|note|done-extra|set|close|clear|restore [options] (see the header of lane.sh)"
+USAGE="lane.sh new|show|list|node|step|reject|tab-closed|retry|ask|asked|answer|note|done-extra|set|close|clear|restore [options] (see the header of lane.sh)"
 cmd="${1:-}"
 [ -n "$cmd" ] || usage "$USAGE"
 shift
 repo="$(pwd)" lane="" pattern="" pattern_file="" idea="" gate="" branch="" workspace="" owner="" node="" status=""
-result="" ref="" exitc="" agent="" tab="" note="" text="" key="" value="" as_json=0 all=0 inputs="{}" met="" id="" kind="" source=""
+result="" ref="" exitc="" agent="" tab="" note="" text="" key="" value="" as_json=0 all=0 inputs="{}" met="" id="" kind="" source="" output="" name=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo) need_value "$1" $#; repo="$2"; shift 2 ;;
@@ -85,6 +90,8 @@ while [ $# -gt 0 ]; do
         --id) need_value "$1" $#; id="$2"; shift 2 ;;
         --kind) need_value "$1" $#; kind="$2"; shift 2 ;;
         --source) need_value "$1" $#; source="$2"; shift 2 ;;
+        --output) need_value "$1" $#; output="$2"; shift 2 ;;
+        --name) need_value "$1" $#; name="$2"; shift 2 ;;
         --json) as_json=1; shift ;;
         --all) all=1; shift ;;
         *) usage "$USAGE" ;;
@@ -199,13 +206,31 @@ node)
     case "$exitc" in '' | *[!0-9]*) [ -z "$exitc" ] || die "--exit must be a number" 2 ;; esac
     yq -e ".graph | has(\"$node\")" "$file" >/dev/null 2>&1 || die "NO NODE: $node in lane $lane" 6
     msg="$node $status${result:+ $result}${exitc:+ EXIT=$exitc}${ref:+ $ref}${tab:+ tab $tab}${note:+ - $note}"
-    update '.nodes[$n] |= (. + {status: $s}
+    update '(.nodes[$n]) as $old
+        | (if $s == "running" and ($old.status != "running" or ($old.run // "") == "" or ($a != "" and $a != ($old.agent // "")))
+           then .nodes[$n] |= (.run = $run | del(.steps)) else . end)
+        | (if $o != "" then .nodes[$n].output = $o else . end)
+        | .nodes[$n] |= (. + {status: $s}
             + (if $r != "" then {result: $r} else {} end)
             + (if $ref != "" then {ref: $ref} else {} end)
             + (if $x != "" then {exit: ($x | tonumber)} else {} end)
             + (if $a != "" then {agent: $a} else {} end))
         | if $t != "" then .nodes[$n] |= (.tab = $t | del(.tab_closed)) else . end' "$msg" \
-        --arg n "$node" --arg s "$status" --arg r "$result" --arg ref "$ref" --arg x "$exitc" --arg a "$agent" --arg t "$tab" ;;
+        --arg n "$node" --arg s "$status" --arg r "$result" --arg ref "$ref" --arg x "$exitc" --arg a "$agent" --arg t "$tab" --arg o "$output" --arg run "$(date +%s)-$$"
+    [ "$status" != running ] || printf 'RUN %s\n' "$(yq -r ".nodes[\"$node\"].run" "$file")" ;;
+step)
+    need_lane
+    [ -n "$node" ] && [ -n "$name" ] || usage "lane.sh step --lane L --node N --name S --result pass|fail [--ref X]"
+    case "$result" in pass | fail) ;; *) die "--result must be pass or fail" 2 ;; esac
+    yq -e ".graph | has(\"$node\")" "$file" >/dev/null 2>&1 || die "NO NODE: $node in lane $lane" 6
+    update '.nodes[$n].steps = ((.nodes[$n].steps // []) + [{name: $s, result: $r, ref: $ref, at: $now}])' \
+        "$node step $name $result${ref:+ $ref}" --arg n "$node" --arg s "$name" --arg r "$result" --arg ref "$ref" ;;
+reject)
+    need_lane
+    [ -n "$node" ] && [ -n "$ref" ] && [ -n "$text" ] || usage "lane.sh reject --lane L --node N --ref R --text WHY"
+    yq -e ".graph | has(\"$node\")" "$file" >/dev/null 2>&1 || die "NO NODE: $node in lane $lane" 6
+    update '.nodes[$n].rejected = ((.nodes[$n].rejected // []) + [{ref: $ref, why: $t, at: $now}])' \
+        "$node claim rejected: $ref - $text" --arg n "$node" --arg ref "$ref" --arg t "$text" ;;
 tab-closed)
     need_lane
     [ -n "$node" ] || usage "lane.sh tab-closed --lane L --node N"

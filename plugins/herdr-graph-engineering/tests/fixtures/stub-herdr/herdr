@@ -66,7 +66,7 @@ case "$cmd" in
         k="$(find_key "$3")"
         scr=""
         [ -n "$k" ] && scr="$(st | jq -r --arg k "$k" '.agents[$k].screen // ""')"
-        printf 'SCREEN[%s] %s\n' "$(opt --source "$@")" "$scr"
+        printf 'SCREEN[%s]\n%s\n' "$(opt --source "$@")" "$scr"
         exit 0 ;;
     "agent start")
         busy="$(st | jq -r '.busy // 0')"

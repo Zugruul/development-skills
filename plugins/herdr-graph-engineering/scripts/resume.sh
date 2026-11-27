@@ -127,6 +127,8 @@ def next:
       elif ($run | length) > 0 then
         [ $run[] | if .drift.kind == "pass" then "\(.agent) finished: pass \(.drift.ref): check it, then lane.sh node --lane \($l.lane) --node \(.node) --status done --result pass --ref \(.drift.ref)"
           elif .drift.kind == "fail" then "\(.agent) finished: fail \(.drift.ref): check it, then lane.sh node --lane \($l.lane) --node \(.node) --status failed --result fail --ref \(.drift.ref)"
+          elif .drift.kind == "agent-failed" then "\(.agent) failed (\(.drift.ref)): read its screen and tell the user"
+          elif ((.drift.kind // "") | startswith("step-")) then "\(.agent) step \(.drift.ref): check it, then lane.sh step --lane \($l.lane) --node \(.node)"
           elif .drift.kind == "stopped" then "\(.agent) stopped without a NODE \(.node) RESULT line: read its screen, prompt it to finish or record what it did"
           elif .agent == "" then "gate \(.node) is running: read its tab for the GATE line (gate.sh records it)"
           elif .live == "" then "\(.agent) is gone: check \(.node)'"'"'s checkout for its commits and its NODE RESULT, then record \(.node) or start it again"

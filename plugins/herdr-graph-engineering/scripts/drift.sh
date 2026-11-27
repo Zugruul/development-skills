@@ -7,14 +7,20 @@
 # stale. This reads the facts and says what to record; it never writes a lane file.
 #
 # 1. For every node recorded running whose agent Herdr shows idle or done, read the agent's
-#    screen (herdr agent read --source recent-unwrapped, so a long line is not wrapped) and take
-#    its last line `NODE <node> RESULT: pass|fail|question <ref>`. The reads are cached per
-#    repository in <lane folder>/live.json ({"fetched": epoch seconds, "agents": {name: {status,
-#    seq, result, ref}}}), which status.sh uses for the NEEDS YOU section without reading screens.
+#    claim, in this order (src/result.sh): its hook's claim (scripts/hook.sh; the screen is then
+#    not read), its result file <output>.result.json of this run, then its screen (herdr agent
+#    read --source recent-unwrapped, so a long line is not wrapped), where only a line that is
+#    `NODE <node> RESULT: pass|fail|question <ref>` or `NODE <node> STEP: <name> <result> <ref>`
+#    counts, never a quote or an example. The reads are cached per repository in
+#    <lane folder>/live.json ({"fetched": epoch seconds, "agents": {name: {status, seq, run,
+#    kind, result, ref, line, source, seen_at}}}), which status.sh uses for the NEEDS YOU section
+#    without reading screens. Each line ends with "# source: ..." naming where the claim is from.
 # 2. Print every mismatch status.sh then derives, one line each:
 #      DRIFT <lane>/<node> <what>: <detail> | <suggested command>
 #    what: question, finished pass|fail (verify before recording; never record pass on the
-#    agent's word), blocked, gone, stopped (idle without a RESULT line); for a gate node, from
+#    agent's word; a claim that does not hold: lane.sh reject), step-fail, step-question,
+#    agent-failed (the agent's own error), blocked, gone, stopped (idle without a RESULT line);
+#    for a gate node, from
 #    its heartbeat (src/gatefile.sh): gate-unrecorded (EXIT printed, never recorded: gate.sh
 #    --collect), gate-lost (its process is gone without an EXIT line), gate-stalled (no output
 #    for --gate-stall M minutes, default HERDR_GRAPH_GATE_STALL or 10: a pager, a prompt?); and
@@ -28,6 +34,8 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/common.sh
 . "$HERE/src/common.sh"
+# shellcheck source=src/result.sh
+. "$HERE/src/result.sh"
 
 USAGE="drift.sh [--repo DIR]... [--quiet] [--max-age S] [--gate-stall M]"
 args=() quiet=0 max_age=0
@@ -55,15 +63,10 @@ screen_of() { # agent
     fi
 }
 
-# The last RESULT line of a node on a screen, as "result<TAB>ref"; nothing when there is none.
-# shellcheck disable=SC2016  # the backtick is a character to strip, not an expansion
-result_of() { # node, screen text
-    printf '%s\n' "$2" | sed -nE "s/.*NODE $1 RESULT: (pass|fail|question)([[:space:]]+(.*))?\$/\\1	\\3/p" | tail -1 |
-        sed -E 's/[`[:space:]]+$//; s/	[`[:space:]]+/	/'
-}
-
-refresh() { # repo root, its lanes' running nodes whose agents are idle or done (JSON)
-    local d="$2" lock cache now fetched entries name node status seq r ref
+# What a settled agent finished with, in this order: its hook's claim (status.sh reads that
+# itself, so the screen is not touched), its result file, then a strict screen line.
+refresh() { # repo root, lane folder, its running nodes whose agents are idle or done (JSON)
+    local d="$2" lock cache now fetched entries name node status seq run output hook found source
     lock="$d/live.lock" cache="$d/live.json"
     now="$(date +%s)"
     if [ "$max_age" -gt 0 ] && [ -f "$cache" ]; then
@@ -76,13 +79,21 @@ refresh() { # repo root, its lanes' running nodes whose agents are idle or done 
         rm -rf "$lock" && mkdir "$lock" 2>/dev/null || return 0
     fi
     entries="{}"
-    while IFS="	" read -r name node status seq; do
+    # a unit separator, not a tab: read would merge the tabs around an empty field
+    while IFS=$'\x1f' read -r name node status seq run output hook; do
         [ -n "$name" ] || continue
-        r="$(result_of "$node" "$(screen_of "$name")")" ref=""
-        [ "${r#*	}" = "$r" ] || ref="${r#*	}"
-        entries="$(jq -c --arg n "$name" --arg s "$status" --argjson q "$seq" --arg r "${r%%	*}" --arg f "$ref" \
-            '. + {($n): {status: $s, seq: $q, result: $r, ref: $f}}' <<<"$entries")"
-    done < <(jq -r '.[] | [.agent, .node, .live, (.seq | tojson)] | @tsv' <<<"$3")
+        case "$hook" in '' | none | permission) ;; *) continue ;; esac
+        found="$(file_claim "$node" "$run" "$output")" source=result-file
+        if [ -z "$found" ]; then
+            if [ "$hook" = none ]; then
+                found='{"kind":"none","result":"","ref":"","name":"","line":""}' source=stop-hook
+            else
+                found="$(screen_claim "$node" "$(screen_of "$name")")" source=screen
+            fi
+        fi
+        entries="$(jq -c --arg n "$name" --arg s "$status" --argjson q "$seq" --argjson f "$found" --arg src "$source" --arg run "$run" --arg at "$(now)" \
+            '. + {($n): ($f + {status: $s, seq: $q, run: $run, source: $src, seen_at: $at})}' <<<"$entries")"
+    done < <(jq -r '.[] | [.agent, .node, .live, (.seq | tojson), .run, .output, (.claim.kind // "")] | map(gsub("[\u001f\n]"; " ")) | join("\u001f")' <<<"$3")
     jq -cn --argjson t "$now" --argjson a "$entries" '{fetched: $t, agents: $a}' >"$cache.tmp" && mv "$cache.tmp" "$cache"
     rmdir "$lock" 2>/dev/null
     return 0
@@ -103,6 +114,7 @@ fi
 
 # shellcheck disable=SC2016  # $l, $n, $q and $c are jq variables
 out="$(jq -r '
+    def src: if (.source // "") != "" then "  # source: \(.source)" + (if (.rejected // 0) > 0 then ", after \(.rejected) rejected" else "" end) else "" end;
     def q: if test("^[A-Za-z0-9_./:@%+=,-]+$") then . else @sh end;
     .[] | select(.section != "closed") | . as $l | ("--repo \(.root | q) --lane \(.lane)") as $at
     | (.nodes[] | select(.drift != null) | . as $n | .drift as $d | "--node \($n.node)" as $at2
@@ -114,7 +126,13 @@ out="$(jq -r '
            elif $d.kind == "fail" then
                "finished fail \($d.ref): verify it, then | lane.sh node \($at) \($at2) --status failed --result fail --ref \($d.ref | q)"
            elif $d.kind == "blocked" then
-               "blocked: \($n.agent) waits on its screen | herdr agent read \($n.agent) --source visible --lines 80, then lane.sh ask \($at) \($at2) --text QUESTION"
+               "blocked: \($n.agent) " + (if ($d.ref // "") != "" then "waits for approval (\($d.ref))" else "waits on its screen" end)
+               + " | herdr agent read \($n.agent) --source visible --lines 80, then lane.sh ask \($at) \($at2) --text QUESTION"
+           elif $d.kind == "agent-failed" then
+               "agent-failed: \($n.agent): \($d.ref) | herdr agent read \($n.agent) --source visible --lines 80, then tell the user"
+           elif ($d.kind | startswith("step-")) then
+               "\($d.kind): \($n.agent): \($d.ref) | verify it, then lane.sh step \($at) \($at2) --name \($d.name) --result \(if $d.result == "pass" then "pass" else "fail" end)"
+               + (if $d.stepref != "" then " --ref \($d.stepref | q)" else "" end)
            elif $d.kind == "gate-unrecorded" then
                "gate-unrecorded: finished \($d.ref), never recorded | gate.sh --collect \($at) \($at2)"
            elif $d.kind == "gate-lost" then
@@ -125,7 +143,7 @@ out="$(jq -r '
                "gone: agent \($n.agent) is gone | lane.sh node \($at) \($at2) --status waiting (to start it again), or ask the user"
            else
                "stopped: \($n.agent) is idle without a RESULT line | herdr agent read \($n.agent) --source visible --lines 80, then prompt it to finish or record what it did"
-           end),
+           end + ($d | src)),
       (select(.pr_merged != null)
        | "DRIFT \(.lane) pr-merged: PR #\(.pr_merged.number) merged | "
          + if .cleanup == "confirmed" then "cleanup.sh run \($at)" else "cleanup.sh check \($at)" end)' <<<"$v")"
