@@ -1,6 +1,6 @@
 # Reviewer brief
 
-What the graph orchestrator puts into the first prompt of every `pr-reviewer` node (the `review` and `review-stack` patterns), and the formats a reviewer writes in. The orchestrator fills in the template per agent; nothing in it belongs to one repository, and what a repository requires comes from that repository's own rule files.
+What the graph orchestrator puts into the first prompt of every `pr-reviewer` node (the `review` and `review-stack` patterns), and the formats a reviewer writes in. The orchestrator fills in the template per agent; nothing in it belongs to one repository, and what a repository requires comes from that repository's own rule files. It comes after the role body and the `## Brief` section of `brief-format.md`.
 
 ## Template
 

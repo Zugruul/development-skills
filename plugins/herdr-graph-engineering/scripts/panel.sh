@@ -229,6 +229,7 @@ body() { # selected index, width
                  [ {k: "", l: [chain]},
                    (if .question != "" then {k: "", l: ("? \(.question)" | styled($c.red; $n))} else empty end),
                    (.attention // [] | .[] | {k: "", l: ("! \(.)" | styled($c.red; $n))}),
+                   (.nodes[] | select((.progress // "") != "") | {k: "", l: ("\(.node): \(.progress)" | styled($c.grey; $n))}),
                    (.nodes[] | select(.ref != "" and (.ref | test("/"))) | {k: "f\(.ref)", l: ("\(.node): \(.ref)" | styled($c.grey; $n))}),
                    (if (.last // "") != "" then {k: "", l: ("last: \(.last)" | styled($c.grey; $n))} else empty end),
                    prs ]
