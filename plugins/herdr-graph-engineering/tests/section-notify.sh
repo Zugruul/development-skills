@@ -225,6 +225,9 @@ nlane t; nsm '.agents.t = {name: "claude-t", pane_id: "w11:p1", agent: "claude",
 rm -f "$N_REPO/.git/herdr-graph/live.json"
 N_CLOCK=1010500; : >"$N_TMP/calls.log"; ns notify tick >/dev/null 2>&1
 check "a tick reads a finished agent" "agent read claude-t" "$(cat "$N_TMP/calls.log")"
+# the 10 s are real time: say the cache was read just now, however slow this machine is
+N_LIVE="$N_REPO/.git/herdr-graph/live.json"
+jq -c --argjson t "$(date +%s)" '.fetched = $t' "$N_LIVE" >"$N_LIVE.new" && mv "$N_LIVE.new" "$N_LIVE"
 : >"$N_TMP/calls.log"; N_CLOCK=1010505; ns notify tick >/dev/null 2>&1
 check_absent "the next tick within 10 s reads no screen" "agent read claude-t" "$(cat "$N_TMP/calls.log")"
 echo "== notify: a gone orchestrator's events still close =="
