@@ -50,7 +50,16 @@ if [ -n "$hook" ]; then
     cat >/dev/null 2>&1
     [ -n "${HERDR_PANE_ID:-}" ] || exit 0
     for t in jq yq git; do command -v "$t" >/dev/null 2>&1 || exit 0; done
-    name="$(bash "$HERE/session.sh" find --pane "$HERDR_PANE_ID" 2>/dev/null)" || exit 0
+    if ! name="$(bash "$HERE/session.sh" find --pane "$HERDR_PANE_ID" 2>/dev/null)"; then
+        # an orchestrator whose session file was never written still gets the picture
+        [ "$hook" = session-start ] && command -v herdr >/dev/null 2>&1 &&
+            herdr agent list 2>/dev/null | jq -e --arg p "$HERDR_PANE_ID" \
+                'any(.result.agents[]?; .pane_id == $p and ((.name // "") | test("^graph(-[0-9]+)?$")))' >/dev/null 2>&1 || exit 0
+        text="NOTE: there is no session file for this pane ($HERDR_PANE_ID), so queued lanes and standing answers are unknown here. Run start.sh first.
+$(bash "$HERE/resume.sh" 2>/dev/null)"
+        jq -n --arg c "$text" '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}'
+        exit 0
+    fi
     snap="$(session_dir)/$name.resume.md"
     text="$(bash "$HERE/resume.sh" --session "${name:-graph}" 2>/dev/null)"
     if [ -n "$text" ]; then
@@ -135,7 +144,7 @@ def next:
           elif .agent == "" then "gate \(.node) is running: read its tab for the GATE line (gate.sh records it)"
           elif .live == "" then "\(.agent) is gone: check \(.node)'"'"'s checkout for its commits and its NODE RESULT, then record \(.node) or start it again"
           elif .live == "blocked" then "\(.agent) is blocked: read its screen, lane.sh ask, ask the user"
-          elif .live == "working" then "listen to \(.agent)"
+          elif .live == "working" then "wait: the watcher wakes you when \(.agent) changes"
           else "\(.agent) has settled (\(.live)): read its screen for NODE \(.node) RESULT, check it, record it" end ] | join("; ")
       elif ($failed | length) > 0 then [ $failed[] | "lane.sh retry --lane \($l.lane) --node \(.node)" ] | join("; ")
       elif .section == "done" then
@@ -172,9 +181,9 @@ render() {
     else
         printf 'RESUME at %s: no session file%s; record one with session.sh set --key pane --value "$HERDR_PANE_ID"\n' "$(now)" "${HERDR_PANE_ID:+ for pane $HERDR_PANE_ID}"
     fi
-    echo 'Do now: follow "After a compaction (or a new session)" in the orchestrate skill. Re-start herdr:listen for every live agent below, then take each lane'"'"'s next action. Briefs and follow-ups in the notes were already sent: do not send them again.'
+    echo 'Do now: follow "After a compaction (or a new session)" in the orchestrate skill. The watcher wakes you on changes (do not poll or start listeners); take each lane'"'"'s next action. Briefs and follow-ups in the notes were already sent: do not send them again.'
     echo
-    printf 'LANES (%s open; %s of 3 agents running)\n' "$(jq 'length' <<<"$lanes")" "$running"
+    printf 'LANES (%s open; %s agents running)\n' "$(jq 'length' <<<"$lanes")" "$running"
     n="$(jq 'length' <<<"$lanes")"
     for ((i = 0; i < n; i++)); do
         l="$(jq -c ".[$i]" <<<"$lanes")"
@@ -196,7 +205,7 @@ render() {
     done
     [ "$n" -gt 0 ] || echo "  (no open lanes)"
     echo
-    echo "QUEUED (start when an agent slot is free)"
+    echo "QUEUED (start them unless the user set a cap)"
     jq -r '(.queued // []) | if length == 0 then "  (none)" else .[] | "  #\(.id) \(.lane)" + (if .repo then " (repo \(.repo))" else "" end) + (if .ref then " brief \(.ref)" else "" end) + ": \(.text)" end' <<<"$sess"
     if [ -n "$name" ]; then
         afk_line "$name"

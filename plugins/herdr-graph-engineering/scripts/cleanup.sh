@@ -154,6 +154,8 @@ $(reviewed_prs "$1")
 PRS
 }
 
+is_adopted() { [ "$(yq -r '.adopted // false' "$1")" = true ]; }
+
 # Sets VERDICT (READY|BLOCKED|WAIT), WHY and WT for the lane in file $1.
 judge() {
     local f="$1" br pr kind ref pj state url head n fin gch made created
@@ -162,6 +164,12 @@ judge() {
     lane_kind "$f"
     kind="$KIND" pr="$PR"
     WT="" head=""
+    # an adopted lane's checkout was never the graph's: only the record is ever closed
+    if is_adopted "$f"; then
+        WT="$(checkout_of "$br")"
+        VERDICT=READY WHY="adopted lane: only its record is closed, and its checkout is left as it is"
+        return
+    fi
     if [ "$kind" = pr ]; then
         ref="${pr:-$br}"
         [ -n "$ref" ] || { VERDICT=WAIT WHY="no pull request or branch recorded"; return; }
@@ -310,8 +318,12 @@ FWD
             ignored_split "$WT"
             lost="${LOST:+ It also deletes ignored files that are not build output: $LOST.}"
             q="Cleanup $l: $WHY.$fw Remove the worktree $WT (workspace ${ws:-?}) and close the lane? Its tabs close; the branch $br is kept.$lost"
-            offer_holds "$f" || true
-            lane_sh offer --lane "$l" --ref "$PRURL" --head "$OFFER_HEAD" --path "$WT" || exit 1
+            if is_adopted "$f"; then
+                q="Cleanup $l: $WHY.$fw Close the lane?"
+            else
+                offer_holds "$f" || true
+                lane_sh offer --lane "$l" --ref "$PRURL" --head "$OFFER_HEAD" --path "$WT" || exit 1
+            fi
             lane_sh set --lane "$l" --key cleanup --value ready || exit 1
             lane_sh ask --lane "$l" --kind cleanup --text "$q" || exit 1
             notify "$l" "$q"
@@ -382,6 +394,7 @@ afk_run() { # file, lane
     case "$(yq -r '.cleanup // ""' "$f")" in "blocked: "*) afk_wait "its cleanup is blocked" ;; esac
     [ "$(yq -r '.dismissed // [] | length' "$f")" -eq 0 ] || afk_wait "it has a dismissed entry"
     ! asking "$f" merged-early || afk_wait "it was merged early"
+    ! is_adopted "$f" || afk_wait "it is an adopted lane"
     # 2. done: every node done or skipped, and every extra done criterion met
     read_json "$f" | jq -e '.status == "done" and all(.nodes[]; .status == "done" or .status == "skipped") and all((.done_extra // [])[]; .met == true)' >/dev/null ||
         afk_wait "the lane is not done (every node, and every extra done criterion)"
@@ -411,7 +424,6 @@ afk_run() { # file, lane
         else (.question // "") == "" or (.question | startswith("Cleanup ")) end)' >/dev/null || afk_wait "it has another open question"
     if why="$(feedback_due "$l")"; then afk_wait "$why"; fi
     # 8. a linked worktree made for this lane: not a main checkout or clone, not adopted
-    [ "$(yq -r '.adopted // false' "$f")" != true ] || afk_wait "it is an adopted lane"
     [ "$(git -C "$WT" rev-parse --path-format=absolute --git-dir)" != "$(git -C "$WT" rev-parse --path-format=absolute --git-common-dir)" ] ||
         afk_wait "$WT is a main checkout, not a linked worktree"
     # 9. herdr worktree remove without --force; the branch is kept
@@ -488,6 +500,11 @@ run)
     if due="$(feedback_due "$lane")"; then die "FEEDBACK DUE: $due" 6; fi
     judge "$f"
     [ "$VERDICT" = READY ] || die "NOT READY: $lane: $WHY" 6
+    if is_adopted "$f"; then
+        lane_sh close --lane "$lane" || exit 1
+        printf 'CLEANED %s (adopted lane: its record is closed; the checkout and its agent are left as they are)\n' "$lane"
+        exit 0
+    fi
     offer_holds "$f" || { withdraw "$f" "$lane" >/dev/null; die "NOT READY: lane $lane changed since the user was asked (pull request, head or checkout); run cleanup.sh check and ask again" 6; }
     remove_worktree "$f" "$lane"
     lane_sh close --lane "$lane" || exit 1

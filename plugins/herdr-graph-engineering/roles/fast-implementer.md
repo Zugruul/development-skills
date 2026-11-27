@@ -30,3 +30,4 @@ When you cannot go on without a decision (an ambiguous requirement, a missing cr
 Your last line, alone, exactly:
 `NODE {node} RESULT: <pass|fail|question> <last commit id or {output_path}>`
 `pass` = the fix and its test are committed. `fail` = you could not make the fix (say why above the line). `question` = you are waiting for an answer.
+Print `RESULT` only when the whole node is done. For a finished step with more to do, print `NODE {node} STEP: <name> <pass|fail> <ref>` and go on. When the brief gives a run id, write `{output_path}.result.json` just before that last line: `{"node": "{node}", "run": "{run}", "result": "<pass|fail|question>", "ref": "<the same ref>", "final": true}`.

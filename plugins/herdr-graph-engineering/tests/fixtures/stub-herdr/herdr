@@ -50,6 +50,11 @@ case "$cmd" in
         root="$(st | jq -r '.root // ""')"
         ok "$(st | jq -c --arg r "$root" --arg n "$(basename "$root")" \
             '{type: "worktree_list", worktrees: (.worktrees // []), source: {repo_root: $r, repo_name: $n, source_checkout_path: $r}}')" ;;
+    "agent rename")
+        k="$(find_key "$3")"
+        [ -n "$k" ] || fail agent_not_found
+        save "$(st | jq -c --arg k "$k" --arg n "$4" '.agents[$k].name = $n')"
+        ok '{"type":"agent_renamed"}' ;;
     "agent get")
         k="$(find_key "$3")"
         [ -n "$k" ] || fail agent_not_found

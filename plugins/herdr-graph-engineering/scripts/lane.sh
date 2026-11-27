@@ -11,7 +11,7 @@
 #
 # Usage (every command takes --repo DIR, default: the current directory):
 #   lane.sh new --lane L (--pattern P | --pattern-file FILE) --idea TEXT [--input K=V]... [--gate CMD] [--branch B]
-#               [--workspace ID] [--owner NAME]
+#               [--workspace ID] [--owner NAME] [--adopted [--baseline JSON]]   (adopted: by adopt.sh)
 #   lane.sh show --lane L [--json]
 #   lane.sh list [--all]                          open lanes (--all: closed ones too)
 #   lane.sh node --lane L --node N --status waiting|running|done|failed|blocked|skipped
@@ -69,7 +69,7 @@ cmd="${1:-}"
 [ -n "$cmd" ] || usage "$USAGE"
 shift
 repo="$(pwd)" lane="" pattern="" pattern_file="" idea="" gate="" branch="" workspace="" owner="" node="" status=""
-result="" ref="" exitc="" agent="" tab="" note="" text="" key="" value="" as_json=0 all=0 inputs="{}" met="" id="" kind="" source="" output="" name="" reason="" head="" path="" undo=0
+result="" ref="" exitc="" agent="" tab="" note="" text="" key="" value="" as_json=0 all=0 inputs="{}" met="" id="" kind="" source="" output="" name="" reason="" head="" path="" undo=0 adopted=false baseline=null
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo) need_value "$1" $#; repo="$2"; shift 2 ;;
@@ -105,6 +105,8 @@ while [ $# -gt 0 ]; do
         --head) need_value "$1" $#; head="$2"; shift 2 ;;
         --path) need_value "$1" $#; path="$2"; shift 2 ;;
         --undo) undo=1; shift ;;
+        --adopted) adopted=true; shift ;;
+        --baseline) need_value "$1" $#; baseline="$2"; shift 2 ;;
         --json) as_json=1; shift ;;
         --all) all=1; shift ;;
         *) usage "$USAGE" ;;
@@ -183,7 +185,7 @@ new)
     [ ! -e "$dir/$lane.yaml" ] || { unlock; die "LANE EXISTS: $lane ($dir/$lane.yaml); pick another name" 6; }
     jq -cn --argjson p "$pjson" --argjson i "$inputs" --arg lane "$lane" --arg repo "$repo" --arg idea "$idea" \
         --arg pattern "$pattern" --arg from "$pwhere" --arg gate "$gate" --arg branch "$branch" \
-        --arg ws "$workspace" --arg owner "$owner" --arg now "$(now)" '
+        --arg ws "$workspace" --arg owner "$owner" --arg now "$(now)" --argjson adopted "$adopted" --argjson baseline "$baseline" '
         ($i + {idea: $idea, gate: $gate}) as $vals
         | def fill: if type == "string" then
               reduce ($vals | to_entries[]) as $e (.; gsub("\\{" + $e.key + "\\}"; $e.value | gsub("\\\\"; "\\\\\\\\"))) else . end;
@@ -191,7 +193,8 @@ new)
          gate: $gate, branch: $branch, workspace: $ws, owner: $owner, inputs: $i, created: $now,
          graph: ($p.nodes | map_values(walk(fill))), done: ($p.done // []),
          nodes: ($p.nodes | map_values({status: "waiting", retries: 0})),
-         question: "", questions: [], history: ["\($now) lane created from pattern \($pattern) (\($from))"]}' | write_yaml "$dir/$lane.yaml"
+         question: "", questions: [], history: ["\($now) lane created from pattern \($pattern) (\($from))"]}
+        + (if $adopted then {adopted: true} else {} end) + (if $baseline != null then {baseline: $baseline} else {} end)' | write_yaml "$dir/$lane.yaml"
     unlock
     register_repo "$repo"
     printf 'LANE %s %s\n' "$lane" "$dir/$lane.yaml" ;;
@@ -371,7 +374,7 @@ done-extra)
     fi ;;
 set)
     need_lane
-    case "$key" in owner | workspace | branch | gate | status | pr | cleanup | cleanup_code | merged_early | forwarded) ;; *) die "--key must be owner, workspace, branch, gate, status, pr, cleanup or forwarded" 2 ;; esac
+    case "$key" in owner | workspace | branch | gate | status | pr | cleanup | cleanup_code | merged_early | protocol_sent | forwarded) ;; *) die "--key must be owner, workspace, branch, gate, status, pr, cleanup or forwarded" 2 ;; esac
     [ "$key" != forwarded ] || case "$value" in declined | ?*/?*) ;; *) die "forwarded must be LANE/AGENT or declined" 2 ;; esac
     [ "$key" != cleanup ] || case "$value" in '' | ready | confirmed | declined | "blocked: "?* | "afk-approved: "?*) ;; *) die "cleanup must be ready, confirmed, declined or blocked: REASON" 2 ;; esac
     # a yes only answers a cleanup question that was asked

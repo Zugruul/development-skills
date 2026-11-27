@@ -25,3 +25,4 @@ When the idea is unclear, stop and ask in this pane.
 ## End
 Your last line, alone, exactly:
 `NODE {node} RESULT: <pass|question> {output_path}`
+Print `RESULT` only when the whole node is done. For a finished step with more to do, print `NODE {node} STEP: <name> <pass|fail> <ref>` and go on. When the brief gives a run id, write `{output_path}.result.json` just before that last line: `{"node": "{node}", "run": "{run}", "result": "<pass|fail|question>", "ref": "<the same ref>", "final": true}`.
