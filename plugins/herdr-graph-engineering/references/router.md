@@ -21,6 +21,7 @@ Read every available pattern's `when:` line (the repository's `.herdr-graph/patt
 | asks why, how, where, what, whether; asks to investigate, find out, explain, compare, check | `investigate` |
 | names one pull request to review | `review`, with `--input pr=<url>` |
 | names two or more related pull requests to review together | a stack: `make-review-stack.sh --pr <url> --pr <url> ... --out <scratch>/<lane>.yaml`, then `--pattern-file` |
+| explicitly asks to take over or adopt agents or worktrees that already run | adopt, as the orchestrate skill's "Adopting a running agent" says; never otherwise |
 | matches the `when:` of a repository or user pattern better than the above | that pattern |
 | fits none, or would need steps no pattern has | `plan`: a planner drafts a custom graph; the user approves it before it runs |
 | fits two | ask the user, naming the candidates |

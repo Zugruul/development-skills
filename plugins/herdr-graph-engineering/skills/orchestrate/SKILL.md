@@ -193,6 +193,28 @@ Ask the user to confirm each `CLEANUP` lane, with the question and the worktree 
 
 The graph panel's `[x]` on a DONE lane sends you "Clean up lane L": treat it as the user asking for this cleanup: run `cleanup.sh check --lane L --repo R` and still confirm before `cleanup.sh run`. `lane.sh clear --lane L` only moves a closed lane's file to `closed/cleared/` (the panel's `[x]` on a CLOSED lane, `[clear all reviews]` and `[clear all]`). `lane.sh restore --lane L` moves a closed lane's file back with its last status (the panel's `[restore]`); it brings back the record only, so if the user wants to work on it again, recreate the worktree and agents as for a new lane.
 
+## Adopting a running agent
+
+Only when the user asks to take over agents that already run, in the graph. Never on your own, whatever `herdr agent list`, `drift.sh`, `resume.sh` or startup show. Adopt only the ones they name; for "all", show the list and get a yes. This is not the owner change of section 1, which takes over a lane that already exists.
+
+For each agent: take `name`, `agent_status` and `cwd` from `herdr agent list`. No name: `herdr agent rename <pane id> <name>`. The repository `R` is the first entry of `git -C <cwd> worktree list --porcelain`. A folder outside git cannot be adopted: say so. The lane name `L` follows the router's rules and must also differ across repositories (the panel tracks lanes by name): one based on the agent name, cut to 24 characters, works. This replaces sections 2 and 3: no new worktree, tab, agent or role brief.
+
+```bash
+bash "../../scripts/lane.sh" new --repo R --lane L --pattern adopt --idea "<what it is doing>" --owner <your name>
+bash "../../scripts/lane.sh" set --repo R --lane L --key pr --value <url>   # only its current pull request, checked
+bash "../../scripts/lane.sh" node --repo R --lane L --node work --status running --agent <agent name>
+```
+
+Pass no `--branch`, `--workspace` or `--tab`: the graph did not create these, so it must never close or remove them. Without a branch, another merged pull request of that branch is never taken for the lane's own. Then send this once with the `herdr:prompt` skill, exactly, placeholders included, and add no example (a filled-in line on its screen would be read as its result):
+
+> The graph orchestrator now tracks you as node `work`. Keep your task and your rules. When a step ends and more is left, you may print `PROGRESS work: <what ended, what is next>`. Only when your whole assignment is finished, or you cannot go on without an answer, end with this line, filled in: `NODE work RESULT: <pass|fail|question> <commit, pull request or file>`. Never quote or repeat that line before then.
+
+Follow it as any running node (section 4). On a new `PROGRESS` line: `lane.sh note --repo R --lane L --node work --text "<the line>"`. Before recording a result, check that the agent has no work left, not only that the step's evidence exists. If the node is reopened, an old RESULT line may be read again: compare its reference.
+
+**Already finished:** check its evidence, send nothing, then run together `lane.sh new` (and `set --key pr`), `lane.sh node --repo R --lane L --node work --status done --result pass --ref <evidence> --agent <agent name>` and `lane.sh close --repo R --lane L`: it goes straight to CLOSED.
+
+**End:** when `work` is recorded done, ask the pattern's question. When the user says close (at any time), `lane.sh close --repo R --lane L`. This replaces section 5: never `--key status --value done`, even if `resume.sh` suggests it, and never `cleanup.sh` for this lane. `lane.sh clear` takes it off CLOSED.
+
 ## Feedback loop (only when it is on)
 
 The loop is off unless the user turned it on (section 1, or the `herdr-graph-engineering:feedback-loop` skill at any time). While it is off, skip this section: `feedback.sh add` refuses and `cleanup.sh` prints no `FEEDBACK` line.

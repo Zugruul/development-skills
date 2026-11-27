@@ -4,6 +4,7 @@
 # The recipe changes no script, so these tests run it through the shipped scripts: what it
 # records shows in the graph, nothing the graph did not create is closed or removed, the sent
 # message is never read as a result, and a finished agent goes straight to CLOSED.
+# shellcheck disable=SC2016  # the backticks are text in the skill and README
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/herdr-graph-engineering/tests/run-tests.sh" >&2; exit 2; }
 
 A_TMP="$(mktemp -d)"
@@ -26,7 +27,7 @@ pjson="$(yq -o=json '.' "$pat" 2>/dev/null)"
 check "adopt: shipped and valid" "PATTERN OK" "$(ag check-pattern "$pat" 2>&1)"
 check "adopt: one agent node, no gate and no pull request node" '["work"]' "$(jq -c '.nodes | keys' <<<"$pjson")"
 check "adopt: done is only the user's yes to close" '["human"]' "$(jq -c '[.done[] | keys[]]' <<<"$pjson")"
-check "adopt: the pattern says it is only for an explicit ask" "only when the user explicitly asks" "$(jq -r '.when' <<<"$pjson")"
+check "adopt: the pattern says it is only for an explicit ask" "Only when the user explicitly asks" "$(jq -r '.when' <<<"$pjson")"
 
 echo "== adopt: the recipe in the orchestrate skill =="
 recipe="$(awk '/^## / {f = ($0 == "## Adopting a running agent")} f' "$PLUGIN/skills/orchestrate/SKILL.md")"

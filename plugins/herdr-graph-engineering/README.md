@@ -55,6 +55,9 @@ Shipped patterns:
 | `review` | a pull request reviewer drafts → you approve → a poster posts one grouped `COMMENT` review whose body is the summary, verified |
 | review stack | `make-review-stack.sh` writes the graph for related pull requests: one reviewer each in parallel → a cross-PR check → you approve → one poster each |
 | `plan` | a planner drafts a custom graph; you approve it before it runs |
+| `adopt` | only when you ask to take over agents that already run: one `work` node on the running agent → you close the lane |
+
+`adopt` puts an agent you started yourself into the graph, only when you ask for it: the orchestrator records it without a branch, workspace or tab, so the graph never closes or removes what it did not create. A finished one goes straight to CLOSED; an agent in a folder outside git cannot be adopted.
 
 ```yaml
 # patterns/solo.yaml
