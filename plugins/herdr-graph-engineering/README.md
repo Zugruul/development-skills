@@ -50,6 +50,7 @@ Shipped patterns:
 | `solo` | implementer → tests gate (retry up to 3) → draft pull request |
 | `pair` | the same, then a read-only reviewer of another kind; `changes` sends the work back to the implementer (up to 2) |
 | `fast` | urgent fixes, only when you ask (fast, urgent, hotfix, pull request ASAP): the smallest fix with a focused test → the draft pull request opens at once (`pr` node) → tests gate; a failure goes back to the implementer (up to 3) and the fix is pushed to the same pull request |
+| `improve` | the feedback loop's improvement lanes only: implementer → tests gate → a read-only reviewer of another kind that checks existing expertise is preserved; `changes` sends the work back (up to 2) |
 | `investigate` | a read-only investigator writes a report |
 | `review` | a pull request reviewer drafts → you approve → a poster posts one grouped `COMMENT` review whose body is the summary, verified |
 | review stack | `make-review-stack.sh` writes the graph for related pull requests: one reviewer each in parallel → a cross-PR check → you approve → one poster each |
@@ -99,7 +100,8 @@ gate.sh --lane L --node N --pane P [--detach]           run a gate in a visible 
 gate.sh --wait | --collect --lane L --node N            block until a gate finishes; record a finished one after the fact
 close-done.sh --lane L [--dry-run]                      close the tabs of finished agent and gate nodes (CLOSE/KEEP per node)
 cleanup.sh check | run --lane L                          find lanes ready for cleanup and ask; clean one up after your yes
-feedback.sh state|add|due|lesson|lessons|used|show|sanitize   the feedback loop: raw notes outside every repository; the sanitiser that refuses task details (--target plugin|repo keeps the plugin's lessons and a repository's documentation lessons apart; --strict for the latter)
+feedback.sh state|add|due|lesson|lessons|proposed|used|reopen|show|sanitize   the feedback loop: raw notes outside every repository; the sanitiser that refuses task details (--target plugin|repo keeps the plugin's lessons and a repository's documentation lessons apart; --strict for the latter)
+guard.sh check --repo DIR --base REF [--allow FILE]     the preservation check: every instruction sentence removed, changed or moved since the base, unless allowed with a reason
 status.sh [--text|--line|--json]                        the picture of every lane (display, tab bar), lane files plus live agents
 drift.sh [--repo R] [--quiet] [--gate-stall M]          where lane files, live agents and gates disagree, with the command to fix it
 check-pattern.sh (FILE | --name P)                      validate a pattern
@@ -224,15 +226,32 @@ Off by default. `/herdr-graph-engineering:feedback-loop` turns it on or off for 
 
 When it is on:
 
-1. **Before a lane is cleaned up**, `cleanup.sh check` prints `FEEDBACK <lane>` and `cleanup.sh run` refuses (`FEEDBACK DUE`) until the orchestrator has asked the lane's still-live agents how the whole flow (pattern, roles, briefs, gates, reviews, panel, scripts, the orchestrator's behaviour) could have been better, and written its own note. `feedback.sh add` keeps these raw notes in `${XDG_STATE_HOME:-~/.local/state}/herdr-graph/sessions/feedback/<session>.yaml`, outside every repository.
-2. **Notes become lessons.** The orchestrator writes general lessons from the notes with `feedback.sh lesson`, which stores one only when the sanitiser finds no task detail in it.
-3. **Lessons become pull requests.** Every few lessons, at the end of a session, or when you ask, the orchestrator offers an improvement lane in the plugin's own repository. Its brief is the open lessons (`feedback.sh lessons`) and nothing else; it changes only the plugin's instructions, skills, roles, patterns, references and scripts. Its commit messages and pull request body must pass `feedback.sh sanitize` before the pull request opens, and you merge it as any other. Lessons about the repository the lanes worked in go to that repository's documentation instead (below).
+1. **Before a lane is cleaned up**, `cleanup.sh check` prints `FEEDBACK <lane>` and `cleanup.sh run` refuses (`FEEDBACK DUE`) until the orchestrator has asked the lane's still-live agents how the whole flow (pattern, roles, briefs, gates, reviews, panel, scripts, the orchestrator's behaviour) could have been better, and written its own note. Both are also asked which guidance helped or prevented a mistake. `feedback.sh add` keeps these raw notes in `${XDG_STATE_HOME:-~/.local/state}/herdr-graph/sessions/feedback/<session>.yaml`, outside every repository.
+2. **Notes become lessons.** The orchestrator writes general lessons from the notes with `feedback.sh lesson`, which stores one only when the sanitiser finds no task detail in it. Each lesson names the notes that support it (`--from-note`), and the script records them with their lanes; `feedback.sh lessons --support` shows them to you when a lane is offered, and no brief or repository gets them.
+3. **Lessons become pull requests.** Every few lessons, at the end of a session, or when you ask, the orchestrator offers an improvement lane in the plugin's own repository. Its brief is the open lessons (`feedback.sh lessons`) and nothing else; it changes only the plugin's instructions, skills, roles, patterns, references and scripts. Its commit messages and pull request body must pass `feedback.sh sanitize` before the pull request opens, and you merge it as any other. While it is open its lessons wait (`feedback.sh proposed`); they count as used only after the pull request merged (`feedback.sh used --ref`, which asks `gh`), and a pull request closed unmerged reopens them with the reason (`feedback.sh reopen`). Lessons about the repository the lanes worked in go to that repository's documentation instead (below).
 
 ### Lessons about the repository
 
 The loop has a second target besides the plugin: the documentation of the repository a lane worked in. Before cleanup, the agents and the orchestrator are also asked how that repository's `AGENTS.md`, `CLAUDE.md`, READMEs and docs could have helped more: guidance that was missing or wrong, rules agents kept tripping over, context that was hard to find, places where agents read too much or too little (context to trim, split or point to), commands that did not work as documented. These notes and lessons carry `--target repo --repo R` and are kept apart from the plugin's: `feedback.sh lessons` lists the plugin's, `feedback.sh lessons --target repo --repo R` that repository's, and each improvement lane gets only its own.
 
 A repository's improvement lane runs in that repository, follows its own rules for branches, commits, checks and pull requests, and edits only its documentation (`AGENTS.md`, `CLAUDE.md`, READMEs, docs), never code, configuration or tests. The bar is higher: a repository lesson must be a general improvement that helps other tasks there ("the agent instructions should say how to run a single test and where its output goes"), never the task, ticket, pull request, branch, service-specific bug or data that produced it. `feedback.sh lesson --target repo` checks it with `--strict`, which also refuses identifiers (`snake_case` words, words with digits) and any inline code; the pull request body and commits pass `feedback.sh sanitize --strict`, and the orchestrator reads the diff.
+
+### Keeping what the skills know
+
+An instruction that is improved again and again can lose the specific knowledge that made it useful, one reasonable edit at a time. So the loop adds and extends, and a removal is deliberate, visible and approved:
+
+- **The brief** of every improvement lane asks for the smallest targeted edit: no rewrite, merge, shortening or move of existing instruction text, and a question before any removal or weakening. A note that someone read something and did not need it never becomes a deletion by itself.
+- **The preservation check**, `guard.sh check --repo <lane worktree> --base origin/<main> [--target repo] [--allow <file>]`, compares the instruction text of the branch with its merge base. For the plugin that is everything under `skills/`, `roles/`, `patterns/` and `references/`, plus every line of the existing tests and of the check itself; for a repository, `AGENTS.md`, `CLAUDE.md`, READMEs and the text files under `docs/`. It splits Markdown into sentences, headings, table rows and code lines (reflowing, list markers and table alignment change nothing), reports each one `REMOVED`, `CHANGED` or `MOVED` (another file, place or section; into a comment or code block counts as changed), and exits 3 until each is in the allow file as `<id> <reason>`. Pure additions pass. It needs no model, and it does not guess which sentences matter.
+- **Out of the lane's reach.** The orchestrator runs its installed copy, with an allow file it keeps outside every checkout. The script refuses to run from inside the checkout it judges, or with an allow file there. This is a process barrier, not a security one: an agent running as the same user can write any file, and an installed copy can be older than the repository's.
+- **Your yes.** You see each removal or weakening as old → new with its reason, and nothing is allowed without your yes. An id covers the old and the new text, so a later change needs a new one.
+- **A second reader.** The `improve` pattern ends with a reviewer, of another agent kind when one is installed, whose brief is to check that existing expertise is preserved.
+
+#### What the preservation check cannot see
+
+- a new sentence that cancels, narrows or adds an exception to an old one: the old one is still there. The preservation review and your reading of the diff cover this;
+- what a script does: it reads instruction text and the lines of tests, not behaviour;
+- whether an edit makes anything better: nothing here runs the instructions on a task. The loop limits loss; it does not measure gain;
+- files outside the paths above, and uncommitted changes.
 
 ### The no-leak rule
 
