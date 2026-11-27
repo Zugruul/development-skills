@@ -155,29 +155,33 @@ check_rc "with no kind left it says so" 6 "$rc"
 check "no kind left is named" "NO KIND" "$out"
 
 echo "== graph: gate =="
-g lane new --repo "$REPO" --lane gated --pattern solo --idea "x" --gate "npm test" >/dev/null
+# The stub runs the typed command for real (pane_exec); the gate's own commands stand in for a suite.
+g lane new --repo "$REPO" --lane gated --pattern solo --idea "x" --gate "echo ok   one" >/dev/null
 g lane node --repo "$REPO" --lane gated --node impl --status "done" --result pass >/dev/null
-st '{"gate_exit":0}'
-out="$(g gate --repo "$REPO" --lane gated --node tests --pane w2:p2 --timeout 2 2>&1)"; rc=$?
+st '{"pane_exec":true}'
+out="$(HERDR_GRAPH_INTERVAL=0.2 g gate --repo "$REPO" --lane gated --node tests --pane w2:p2 --timeout 10 2>&1)"; rc=$?
 check_rc "a passing gate exits 0" 0 "$rc"
 check "the gate reports pass" "GATE PASS tests EXIT=0" "$out"
 check "the gate result is recorded" "done pass 0" "$(lf '[.nodes.tests.status, .nodes.tests.result, .nodes.tests.exit] | join(" ")' gated)"
-check "the command runs in the pane with a marker" 'npm test; echo "GATE tests ' "$(jq -r '.panes["w2:p2"].typed[0]' "$G_TMP/state.json")"
+check "the pane runs the gate through gate.sh --exec" "gate.sh --exec" "$(jq -r '.panes["w2:p2"].typed[0]' "$G_TMP/state.json")"
 out="$(g lane retry --repo "$REPO" --lane gated --node tests 2>&1)"; rc=$?
 check_rc "a node that passed is not retried" 6 "$rc"
 g lane node --repo "$REPO" --lane gated --node tests --status waiting >/dev/null
 g lane node --repo "$REPO" --lane gated --node impl --status "done" --result pass >/dev/null
-st '{"gate_exit":3}'
-out="$(g gate --repo "$REPO" --lane gated --node tests --pane w2:p2 --timeout 2 2>&1)"
+yq -i '.graph.tests.gate = "exit 3"' "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)/herdr-graph/gated.yaml"
+out="$(HERDR_GRAPH_INTERVAL=0.2 g gate --repo "$REPO" --lane gated --node tests --pane w2:p2 --timeout 10 2>&1)"
 check "a failing gate reports its exit code" "GATE FAIL tests EXIT=3" "$out"
 check "the failure is recorded" "failed 3" "$(lf '[.nodes.tests.status, .nodes.tests.exit] | join(" ")' gated)"
 g lane retry --repo "$REPO" --lane gated --node tests >/dev/null 2>&1
 g lane node --repo "$REPO" --lane gated --node impl --status "done" --result pass >/dev/null
-st '{"gate_hang":true}'
-out="$(g gate --repo "$REPO" --lane gated --node tests --pane w2:p2 --timeout 1 2>&1)"; rc=$?
+yq -i '.graph.tests.gate = "sleep 31"' "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)/herdr-graph/gated.yaml"
+out="$(HERDR_GRAPH_INTERVAL=0.2 g gate --repo "$REPO" --lane gated --node tests --pane w2:p2 --timeout 1 2>&1)"; rc=$?
 check_rc "a gate that does not finish times out with exit 5" 5 "$rc"
-check "the timeout says how to keep waiting" "--resume" "$out"
+check "the timeout says how to keep waiting" "--wait" "$out"
 check "the node stays running" "running" "$(lf '.nodes.tests.status' gated)"
+# stop it and drop its heartbeat: the lane keeps showing the gate as running, as before gate liveness
+kill -9 "$(jq -r '.pid' "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)/herdr-graph/gates/gated/tests.json")" 2>/dev/null
+rm -rf "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)/herdr-graph/gates/gated"
 
 echo "== graph: G2 pair, human, skip, review, custom =="
 g lane new --repo "$REPO" --lane pair-x --pattern pair --idea "touch auth" --gate "npm test" >/dev/null

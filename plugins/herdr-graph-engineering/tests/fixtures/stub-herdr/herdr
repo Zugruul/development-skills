@@ -97,19 +97,22 @@ case "$cmd" in
         save "$new"
         ok '{"type":"prompt_submitted"}' ;;
     "pane run")
-        # Pretend the shell ran the command: the gate marker line gets the exit code from
-        # state.gate_exit (default 0); state.gate_hang leaves the pane silent.
+        # Records the typed text. With state.pane_exec true the stub's "shell" runs it for real,
+        # detached, in the caller's directory, its output appended to $HERDR_STUB_DIR/pane-<pane>.out
+        # (what `pane read` and `pane wait-output` see, after any state.panes[p].lines).
         pane="$3" text="${4:-}"
-        hang="$(st | jq -r '.gate_hang // false')"
-        code="$(st | jq -r '.gate_exit // 0')"
-        marker="$(printf '%s' "$text" | sed -n 's/.*echo "\(GATE [^ ]* [^ ]* EXIT=\)\$?".*/\1/p')"
-        line=""
-        [ "$hang" = "true" ] || [ -z "$marker" ] || line="$marker$code"
-        save "$(st | jq -c --arg p "$pane" --arg t "$text" --arg l "$line" '.panes[$p].typed += [$t] | if $l != "" then .panes[$p].lines += [$l] else . end')"
+        save "$(st | jq -c --arg p "$pane" --arg t "$text" '.panes[$p].typed += [$t]')"
+        if [ "$(st | jq -r '.pane_exec // false')" = true ]; then
+            nohup bash -c "$text" >>"$d/pane-${pane//[^A-Za-z0-9]/_}.out" 2>&1 </dev/null &
+        fi
         ok '{"type":"pane_run"}' ;;
+    "pane read")
+        pane="$3"
+        { st | jq -r --arg p "$pane" '.panes[$p].lines // [] | .[]'; cat "$d/pane-${pane//[^A-Za-z0-9]/_}.out" 2>/dev/null; } | tail -n "$(opt --lines "$@" || echo 1000)"
+        exit 0 ;;
     "pane wait-output")
         pane="$3" re="$(opt --regex "$@")"
-        hit="$(st | jq -r --arg p "$pane" '.panes[$p].lines // [] | .[]' | grep -E -- "$re" | tail -1)"
+        hit="$({ st | jq -r --arg p "$pane" '.panes[$p].lines // [] | .[]'; cat "$d/pane-${pane//[^A-Za-z0-9]/_}.out" 2>/dev/null; } | grep -E -- "$re" | tail -1)"
         [ -n "$hit" ] || fail timeout "no match"
         ok "$(jq -cn --arg p "$pane" --arg l "$hit" '{type: "pane_output_matched", pane_id: $p, matched_line: $l}')" ;;
     "plugin pane")

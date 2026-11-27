@@ -95,12 +95,13 @@ resume.sh [--fetch] [--out FILE]                        everything the orchestra
 autocompact.sh [print|check] [--pct N] [--write]          compact the orchestrator at 40% of its context: how, per client; is it on
 ready.sh --lane L                                       which nodes can start now
 kind.sh --role R [--not K] [--without K] --list|--kind K|--remember K   the installed kinds (recommended first), the chosen one's arguments, standing choices
-gate.sh --lane L --node N --pane P                      run a gate in a visible tab, record its exit code
+gate.sh --lane L --node N --pane P [--detach]           run a gate in a visible tab; the tab records its own result
+gate.sh --wait | --collect --lane L --node N            block until a gate finishes; record a finished one after the fact
 close-done.sh --lane L [--dry-run]                      close the tabs of finished agent and gate nodes (CLOSE/KEEP per node)
 cleanup.sh check | run --lane L                          find lanes ready for cleanup and ask; clean one up after your yes
 feedback.sh state|add|due|lesson|lessons|used|show|sanitize   the feedback loop: raw notes outside every repository; the sanitiser that refuses task details (--target plugin|repo keeps the plugin's lessons and a repository's documentation lessons apart; --strict for the latter)
 status.sh [--text|--line|--json]                        the picture of every lane (display, tab bar), lane files plus live agents
-drift.sh [--repo R] [--quiet]                           where lane files and live agents disagree, with the lane.sh command to fix it
+drift.sh [--repo R] [--quiet] [--gate-stall M]          where lane files, live agents and gates disagree, with the command to fix it
 check-pattern.sh (FILE | --name P)                      validate a pattern
 make-review-stack.sh --pr URL --pr URL ... --out FILE    the graph for reviewing related pull requests
 review-owner.sh --pr URL                                the open lane (any repository) and live agent that own a reviewed pull request
@@ -119,6 +120,16 @@ Every agent and gate node runs in its own tab, recorded in the lane file (`lane.
 - at lane done or close, every agent and gate tab of the lane closes.
 
 Never closed: a tab not recorded for a node, a running or blocked node, an agent Herdr shows working or blocked, the first tab of the lane's workspace, a tab outside it. The worktree stays until you agree to cleanup.
+
+## Gates
+
+A gate node's command runs in its own tab through `gate.sh --exec`, not typed bare into the shell:
+
+- **It records itself.** The tab's process records `pass` or `fail` with `lane.sh` when the command ends, so an orchestrator that is interrupted, or whose background call ended, loses nothing. `gate.sh --wait` blocks until it finishes (exit 5 on its timeout: still running, wait again); `gate.sh --collect` records a run after the fact, from its heartbeat or else the `GATE <node> <run> EXIT=<n>` line in the tab.
+- **It shows that it is alive.** A heartbeat, `<git common dir>/herdr-graph/gates/<lane>/<node>.json`, and the output log next to it hold the start time, the process id, the exit code and the counts. The panel and `status.sh` show a running gate as `tests: running 12m 04s · 340 ok · 2 FAIL · last: <its last output line>`. A gate whose process is gone without an `EXIT` line, whose output stopped for `HERDR_GRAPH_GATE_STALL` minutes (default 10), or that finished without a record goes under NEEDS YOU, and `drift.sh` prints the command that fixes it.
+- **Nothing interactive.** The command runs with `PAGER=cat`, `GIT_PAGER=cat`, `MANPAGER=cat`, `GIT_TERMINAL_PROMPT=0` and stdin from `/dev/null`, so a `git grep` cannot stop in `less`. It runs in `bash -c` in the tab's directory, not in your interactive shell.
+- **It reports what it changed.** `git status` before and after: a gate that changes the checkout (a fixture's file mode, a generated file) says so in its result (`GATE CHECKOUT CHANGED tests: M path | restore: git -C DIR checkout -- path`) and in the lane record, and `cleanup.sh` names it when a dirty checkout blocks a cleanup.
+- **It names its failures.** Lines starting `FAIL` or `not ok` are counted and kept in the heartbeat (`failed`), so a gate on a repository whose base already fails can be compared with the base's failures.
 
 ## When a lane file is behind
 

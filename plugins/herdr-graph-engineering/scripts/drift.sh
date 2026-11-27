@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source-path=SCRIPTDIR
 # drift.sh -- where the lane files and the live agents disagree, and the lane.sh command that fixes it.
-# Usage: drift.sh [--repo DIR]... [--quiet] [--max-age S]
+# Usage: drift.sh [--repo DIR]... [--quiet] [--max-age S] [--gate-stall M]
 # Why a script: a lane file changes only when the orchestrator records a node, and it records only
 # what it is listening to; an agent that finished, asked or went away outside that leaves its lane
 # stale. This reads the facts and says what to record; it never writes a lane file.
@@ -14,7 +14,10 @@
 # 2. Print every mismatch status.sh then derives, one line each:
 #      DRIFT <lane>/<node> <what>: <detail> | <suggested command>
 #    what: question, finished pass|fail (verify before recording; never record pass on the
-#    agent's word), blocked, gone, stopped (idle without a RESULT line), and
+#    agent's word), blocked, gone, stopped (idle without a RESULT line); for a gate node, from
+#    its heartbeat (src/gatefile.sh): gate-unrecorded (EXIT printed, never recorded: gate.sh
+#    --collect), gate-lost (its process is gone without an EXIT line), gate-stalled (no output
+#    for --gate-stall M minutes, default HERDR_GRAPH_GATE_STALL or 10: a pager, a prompt?); and
 #      DRIFT <lane> pr-merged: PR #N merged | cleanup.sh check (or run, once confirmed)
 #    or NO DRIFT.
 #   --quiet      refresh the cache, print nothing (the graph panel, in the background)
@@ -26,13 +29,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/common.sh
 . "$HERE/src/common.sh"
 
-USAGE="drift.sh [--repo DIR]... [--quiet] [--max-age S]"
+USAGE="drift.sh [--repo DIR]... [--quiet] [--max-age S] [--gate-stall M]"
 args=() quiet=0 max_age=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo) need_value "$1" $#; args+=(--repo "$2"); shift 2 ;;
         --quiet) quiet=1; shift ;;
         --max-age) need_value "$1" $#; max_age="$2"; shift 2 ;;
+        --gate-stall) need_value "$1" $#; export HERDR_GRAPH_GATE_STALL="$2"; shift 2 ;;
         *) usage "$USAGE" ;;
     esac
 done
@@ -111,6 +115,12 @@ out="$(jq -r '
                "finished fail \($d.ref): verify it, then | lane.sh node \($at) \($at2) --status failed --result fail --ref \($d.ref | q)"
            elif $d.kind == "blocked" then
                "blocked: \($n.agent) waits on its screen | herdr agent read \($n.agent) --source visible --lines 80, then lane.sh ask \($at) \($at2) --text QUESTION"
+           elif $d.kind == "gate-unrecorded" then
+               "gate-unrecorded: finished \($d.ref), never recorded | gate.sh --collect \($at) \($at2)"
+           elif $d.kind == "gate-lost" then
+               "gate-lost: gate process \($d.ref) is gone without an EXIT line | herdr pane read \($n.gate.pane) --source recent --lines 80, then gate.sh --collect \($at) \($at2) (reads its EXIT line), else lane.sh node \($at) \($at2) --status waiting (to run it again)"
+           elif $d.kind == "gate-stalled" then
+               "gate-stalled: no output for \($d.ref) | herdr pane read \($n.gate.pane) --source recent --lines 80 (a pager or a prompt?), then gate.sh --wait \($at) \($at2), or stop it"
            elif $d.kind == "gone" then
                "gone: agent \($n.agent) is gone | lane.sh node \($at) \($at2) --status waiting (to start it again), or ask the user"
            else
