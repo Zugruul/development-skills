@@ -85,7 +85,7 @@ check "the buttons are clicked on the last row of the pane" "ROW 24" "$(pg panel
 check "selection moves" " ▾ task-x  solo ◂" "$(pg panel --frame --width 40 --selected 1)"
 check "the interval cycles and wraps" "10 15 30 60 300 5" "$(for i in 5 10 15 30 60 300; do pg panel --next-interval "$i"; done | tr '\n' ' ' | sed 's/ $//')"
 check "a minute shows as 1m" "[◷ 1m]" "$(pg panel --frame --width 40 --interval 60)"
-check "no lanes: the hint starts on the first line" "1" "$(cd "$P_TMP" && NO_COLOR=1 PATH="$FIX/stub-herdr:$PATH" HERDR_STUB_DIR="$P_TMP" XDG_CONFIG_HOME="$P_TMP/empty" bash "$SC/panel.sh" --frame --width 40 | sed -n 1p | grep -cx " No lanes yet.")"
+check "no lanes: the hint starts on the first line" "1" "$(cd "$P_TMP" && NO_COLOR=1 PATH="$FIX/stub-herdr:$PATH" HERDR_STUB_DIR="$P_TMP" XDG_CONFIG_HOME="$P_TMP/empty" XDG_STATE_HOME="$P_TMP/no-state" bash "$SC/panel.sh" --frame --width 40 | sed -n 1p | grep -cx " No lanes yet.")"
 # --rowmap prints "row kind" per screen row, as the live panel maps clicks.
 map="$(pg panel --frame --width 30 --rowmap)"
 narrow="$(pg panel --frame --width 30)"

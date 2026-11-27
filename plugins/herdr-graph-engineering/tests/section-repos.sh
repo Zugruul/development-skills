@@ -88,7 +88,7 @@ done
 wait
 check_rc "parallel writes keep every line" 6 "$(grep -c "/par[1-6]\$" "$N_REG" 2>/dev/null)"
 : >"$N_TMP/not-a-folder"
-out="$( (N_STATE="$N_TMP/not-a-folder"; nr lane new --repo "$N_OLD" --lane lane-nostate --pattern investigate --idea x) 2>&1)"; rc=$?
+out="$(N_STATE="$N_TMP/not-a-folder" nr lane new --repo "$N_OLD" --lane lane-nostate --pattern investigate --idea x 2>&1)"; rc=$?
 check_rc "a registry that cannot be written does not fail lane new" 0 "$rc"
 check "it says so" "NOT REGISTERED" "$out"
 
