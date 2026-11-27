@@ -38,7 +38,7 @@ Herdr submits the text once, then waits until the agent shows activity and settl
 A blocked agent shows an approval or a question. That decision belongs to a human.
 
 1. Read it: `herdr agent read <target> --source visible --lines 80`.
-2. **Ask the user** what to answer, quoting the agent's question and its options exactly, and naming the agent, its tab and what it was doing. Do not approve, deny or pick an option on your own, even when one looks obviously right. The one exception: the user already gave a standing answer for exactly this kind of question in this conversation.
+2. **Ask the user** what to answer, quoting the agent's question and its options exactly, and naming the agent, its tab and what it was doing. Do not approve, deny or pick an option on your own, even when one looks obviously right. The one exception: the user already gave, in this conversation, a standing answer for exactly this kind of question, or a delegation that covers deciding it.
 3. Send the answer the way the dialog expects it:
    - an options dialog: `herdr agent send-keys <target> <key> [key ...]` (for example `1`, `y`, `down enter`, `esc`);
    - a free-text question: `herdr agent send-keys` cannot type sentences, so once the dialog accepts text, use `herdr agent prompt <target> "<answer>"`.
