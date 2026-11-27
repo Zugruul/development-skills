@@ -78,7 +78,8 @@ check "under AFK a question waits without a dialog" "[]" "[$(hook w1:p1 stop '{"
 out="$(hook w1:p1 prompt '{"prompt":"how is it going?"}')"
 check "a message while AFK reminds to show the list and ask" "still away" "$out"
 check "as added context" "UserPromptSubmit" "$(jq -r .hookSpecificOutput.hookEventName <<<"$out")"
-check "the watcher's own message is not the user" "[]" "[$(hook w1:p1 prompt '{"prompt":"GRAPH EVENT (from the watcher, not the user): a/b blocked"}')]"
+check "the watcher's own message is not the user" "[]" "[$(hook w1:p1 prompt '{"prompt":"graph: a/b blocked, c/- merged-early (reminder 1)"}')]"
+check "the user's own words that start the same way are the user's" "AFK is on" "$(hook w1:p1 prompt '{"prompt":"graph: show me the lanes"}')"
 hs session afk off >/dev/null
 check "AFK off: no reminder" "[]" "[$(hook w1:p1 prompt '{"prompt":"hi"}')]"
 hs lane asked --repo "$H_REPO" --lane q --id 1 >/dev/null

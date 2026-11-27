@@ -46,7 +46,9 @@ echo "== notify: several lanes make one batch, without any agent text =="
 nsm '.agents.b.agent_status = "blocked"'
 nrec
 msg="$(ntake)"
-check "one message" "GRAPH EVENT (from the watcher, not the user):" "$msg"
+check "one message, with the short fixed prefix" "graph: a/investigate finished-pass, b/investigate blocked" "$msg"
+check_absent "no instruction tail: the skill says how to handle it" "skill" "$msg"
+check_absent "and no command" "notify.sh" "$msg"
 check "naming each lane, node and a reason code" "a/investigate finished-pass" "$msg"
 check "and the other" "b/investigate blocked" "$msg"
 check_absent "never an agent's text or ref" "abc1234" "$msg"
@@ -146,7 +148,7 @@ nsm '.agents.o.screen = "nothing recognisable here"'
 check_absent "never when the box cannot be read" "agent prompt" "$(push)"
 nsm '.agents.o.screen = "────\n❯ \u001b[2mTry \"fix lint errors\"\u001b[0m\n────"'
 out="$(push)"
-check "a dim placeholder is an empty box" "agent prompt graph GRAPH EVENT" "$out"
+check "a dim placeholder is an empty box" "agent prompt graph graph: " "$out"
 check "the screen is read with its styles" "--ansi" "$out"
 check "pushed events are delivered" "1" "$(nev '[.open[] | select(.delivered_at != null)] | length')"
 nlane d; nsm '.agents.d = {name: "claude-d", pane_id: "w5:p1", agent: "claude", agent_status: "blocked", state_change_seq: 1} | .agents.o.agent_status = "idle" | .agents.o.screen = "────\n❯ \n────"'
@@ -176,7 +178,7 @@ N_CLOCK=1008000; nrec
 nsm '.agents.o.agent_status = "idle"'
 : >"$N_TMP/calls.log"
 ev '{"event":"pane_agent_status_changed","data":{"pane_id":"w1:p1","agent_status":"idle","agent":"claude"}}'
-check "the orchestrator turning idle flushes the queue" "agent prompt graph GRAPH EVENT" "$(cat "$N_TMP/calls.log")"
+check "the orchestrator turning idle flushes the queue" "agent prompt graph graph: " "$(cat "$N_TMP/calls.log")"
 N_CLOCK=1008100
 nsm '.agents.o.agent_status = "idle" | .agents.f.agent_status = "working"'; nrec; N_CLOCK=1008200; nsm '.agents.f.agent_status = "blocked"'
 : >"$N_TMP/calls.log"
@@ -265,7 +267,7 @@ check "silently, so no turn is spent" "[]" "[$out]"
 nlane w; nsm '.agents.w = {name: "claude-w", pane_id: "w10:p1", agent: "claude", agent_status: "blocked", state_change_seq: 1}'
 out="$(aw --session graph 2>"$N_TMP/aw.err")"; rc=$?
 check_rc "an event ends it with exit 2, which wakes the chat" 2 "$rc"
-check "the message goes to stderr" "GRAPH EVENT (from the watcher, not the user): w/investigate blocked" "$(cat "$N_TMP/aw.err")"
+check "the message goes to stderr" "graph: w/investigate blocked" "$(cat "$N_TMP/aw.err")"
 check "the waiter swept" "$N_CLOCK" "$(nev .swept_at)"
 AW_MAX=30 aw --session graph >"$N_TMP/aw1.out" 2>&1 & first=$!
 for _ in $(seq 50); do [ -s "${N_EV%.events.json}.waiter" ] && break; sleep 0.1; done
