@@ -38,7 +38,7 @@ Needs the `herdr` plugin, the `herdr` binary (the agent runs inside a Herdr pane
 |---|---|
 | **Lane** | One idea. One Herdr workspace (labelled with the lane name), one branch. |
 | **Pattern** | A small YAML graph: `agent`, `gate`, `human` and `pr` (`pr: draft`: the orchestrator pushes the branch and opens or updates the draft pull request at that point) nodes; `needs`, `when` and `retry` (with a `max`) edges; `done` checks. Frozen: no other keys, no expressions. |
-| **Role** | The brief an agent node gets: Markdown with frontmatter (`name`, `description`, `kind` preference list, `access`). |
+| **Role** | The brief an agent node gets: Markdown with frontmatter (`name`, `description`, `kind` preference list, `access`). The orchestrator sends its body, then a `## Brief` section for the node (checkout and base, goal, numbered asks, your constraints, the exact gate command, notes), in the shape of [`references/brief-format.md`](references/brief-format.md): a recommended template, not a strict schema. |
 | **Lane file** | `<git common dir>/herdr-graph/<lane>.yaml`: only what Herdr and git cannot show (idea, graph copy, approved gate command, node results, retries, open question, owner, history). Written only by `lane.sh`, under a lock. |
 
 Patterns and roles are looked up in the repository's `.herdr-graph/patterns|roles/`, then `~/.config/herdr-graph/patterns|roles/`, then this plugin. To add a kind of work, add a pattern; to add an agent, add a role. No skill changes.
