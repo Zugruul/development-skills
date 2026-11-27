@@ -57,6 +57,7 @@ Shipped patterns:
 | `review` | a pull request reviewer drafts → you approve → a poster posts one grouped `COMMENT` review whose body is the summary, verified |
 | review stack | `make-review-stack.sh` writes the graph for related pull requests: one reviewer each in parallel → a cross-PR check → you approve → one poster each |
 | `plan` | a planner drafts a custom graph; you approve it before it runs |
+| `adopt` | an agent that already finished, only when you ask to adopt it: one `work` node recorded done → CLOSED |
 
 ```yaml
 # patterns/solo.yaml
@@ -217,6 +218,8 @@ Each decision is recorded **before** it is acted on (`decide.sh`, which refuses 
 ## Adopting an agent
 
 `adopt.sh --agent A --idea T --access read|write` makes a one-node lane around an agent you started yourself. It refuses an agent a lane already records and a second writer in a checkout, records no tab (so nothing closes it), keeps a read adoption's `HEAD` and status as its baseline, and sends the agent the result protocol once, when it is not blocked. Cleanup of an adopted lane closes the record only.
+
+Agents are adopted only when you ask: the ones you name, and for "all" the orchestrator shows the list and gets your yes first. `adopt.sh` is for an agent still at work. For one that already finished, the orchestrator checks its evidence, sends it nothing and records it with the `adopt` pattern, without a branch, workspace or tab, straight to CLOSED. An agent in a folder outside git cannot be adopted.
 
 ## Cleanup after a lane
 

@@ -231,7 +231,20 @@ The graph panel's `[x]` on a DONE lane sends you "Clean up lane L": treat it as 
 
 ## Adopting an agent
 
-When the user asks you to watch an agent they started themselves: `bash "../../scripts/adopt.sh" --agent <name> --idea "<what it is doing>" --access read|write [--lane L]`. It refuses an agent a lane already records and a second writer in a checkout, makes a one-node lane (node `work`), records no tab, and sends the agent the result protocol once if it is not blocked (`PROTOCOL NOT SENT`: later, `adopt.sh --protocol --lane L`). Its cleanup closes the record only. Never adopt an agent on your own, also under AFK.
+Only when the user explicitly asks to take over or watch agents that run outside the graph (such as ones they started themselves). Never adopt an agent on your own, also under AFK, whatever `herdr agent list`, `drift.sh`, `resume.sh` or startup show. Adopt only the agents they name; for "all", show the list and get a yes. This is not the owner change of section 1, which takes over a lane that already exists. Take `name`, `agent_status` and `cwd` from `herdr agent list`; no name: `herdr agent rename <pane id> <name>`. A folder outside git cannot be adopted: say so. A lane name must also differ across repositories (the panel tracks lanes by name): one based on the agent name, cut to 24 characters, works. Adopting replaces sections 2 and 3: no new worktree, tab, agent or role brief.
+
+**Still at work** (working, blocked, or idle with work left): `bash "../../scripts/adopt.sh" --agent <name> --idea "<what it is doing>" --access read|write --lane L`. It refuses an agent a lane already records and a second writer in a checkout, makes a one-node lane (node `work`), records no tab, and sends the agent the result protocol once if it is not blocked (`PROTOCOL NOT SENT`: later, `adopt.sh --protocol --lane L`). Its cleanup closes the record only.
+
+**Already finished** (its whole assignment is done): use the `adopt` pattern, not `adopt.sh`, which sends the protocol to an idle or done agent. Check that no open lane records the agent (`status.sh --text`), check its evidence and send nothing. The repository `R` is the first entry of `git -C <cwd> worktree list --porcelain`. Then run together:
+
+```bash
+bash "../../scripts/lane.sh" new --repo R --lane L --pattern adopt --idea "<what it did>" --owner <your name>
+bash "../../scripts/lane.sh" set --repo R --lane L --key pr --value <url>   # only its own pull request, checked
+bash "../../scripts/lane.sh" node --repo R --lane L --node work --status done --result pass --ref <evidence> --agent <agent name>
+bash "../../scripts/lane.sh" close --repo R --lane L
+```
+
+It goes straight to CLOSED. Pass no `--branch`, `--workspace` or `--tab`: the graph did not create these, so it must never close or remove them. The pattern's question is for a lane left open: ask it before closing only when the user wants to look first. This replaces section 5 for such a lane: never `--key status --value done`, even if `resume.sh` suggests it, and never `cleanup.sh`. `lane.sh clear` takes it off CLOSED.
 
 ## Feedback loop (only when it is on)
 

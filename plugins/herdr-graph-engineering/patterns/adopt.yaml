@@ -1,0 +1,8 @@
+when: "Only when the user explicitly asks to adopt an agent that runs outside the graph and has already finished all its work (one still at work is adopted with adopt.sh instead); never for a new idea."
+nodes:
+  work:
+    agent: implementer
+    access: write
+    brief: "{idea}"
+done:
+  - human: "Close this adopted lane? The agent, its tab and its worktree stay."
