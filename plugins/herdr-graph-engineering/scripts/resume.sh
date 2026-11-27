@@ -50,7 +50,7 @@ if [ -n "$hook" ]; then
     for t in jq yq git; do command -v "$t" >/dev/null 2>&1 || exit 0; done
     name="$(bash "$HERE/session.sh" find --pane "$HERDR_PANE_ID" 2>/dev/null)" || exit 0
     snap="$(session_dir)/$name.resume.md"
-    text="$(bash "$HERE/resume.sh" --session "$name" 2>/dev/null)"
+    text="$(bash "$HERE/resume.sh" --session "${name:-graph}" 2>/dev/null)"
     if [ -n "$text" ]; then
         write_file "$snap" "$text" || true
     else
@@ -200,6 +200,12 @@ render() {
     jq -r '(.queued // []) | if length == 0 then "  (none)" else .[] | "  #\(.id) \(.lane)" + (if .repo then " (repo \(.repo))" else "" end) + (if .ref then " brief \(.ref)" else "" end) + ": \(.text)" end' <<<"$sess"
     echo "STANDING ANSWERS"
     jq -r '(.standing // []) | if length == 0 then "  (none)" else .[] | "  #\(.id) \(.text)" end' <<<"$sess"
+    fbline="$(bash "$HERE/feedback.sh" state --session "${name:-graph}" 2>/dev/null | awk '{print $2}')"
+    if [ "$fbline" = on ]; then
+        printf 'FEEDBACK LOOP: on (%s; feedback.sh show). Before each cleanup, collect feedback (cleanup.sh prints FEEDBACK lines).\n' "$(bash "$HERE/feedback.sh" show --json --session "${name:-graph}" 2>/dev/null | jq -r '"\(.notes // [] | length) notes, \([.lessons // [] | .[] | select(.used == null)] | length) open lessons"')"
+    else
+        echo "FEEDBACK LOOP: off (herdr-graph-engineering:feedback-loop turns it on)"
+    fi
     # Standing kind and dialog choices stay where kind.sh (--remember) and section 4 keep them.
     scratch="$(jq -r '.scratch // ""' <<<"$sess")"
     [ -n "$scratch" ] || echo "  (scratch folder not recorded: standing kind and dialog choices in <scratch>/graph-kinds and <scratch>/graph-dialogs cannot be read; session.sh set --key scratch)"

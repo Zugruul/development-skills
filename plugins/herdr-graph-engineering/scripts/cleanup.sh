@@ -27,6 +27,8 @@
 # reviewed pull request that an open lane owns (review-owner.sh: any repository with lanes):
 #   FORWARD <lane> <pr url> <owner repo> <owner lane> <agent|-> <node|->
 # and the cleanup question asks to send the findings to that agent first.
+# With the feedback loop on (feedback.sh), a ready lane also prints FEEDBACK <lane> (...) until the
+# orchestrator wrote its feedback note for it, and run refuses (FEEDBACK DUE, exit 6) until then.
 # run refuses (exit 6) unless the lane is done or a finished review lane, the user's yes is recorded (cleanup=confirmed) and a fresh check
 # still finds the lane ready; only then does it close tabs or remove anything.
 # GRAPH_GH names the gh binary (default gh), as for prs.sh.
@@ -54,6 +56,9 @@ dir="$(lane_dir "$repo")"
 GH="${GRAPH_GH:-gh}"
 
 lane_sh() { bash "$HERE/lane.sh" "$@" --repo "$repo" >/dev/null; }
+
+# With the feedback loop on, a lane closes only after the orchestrator wrote its feedback note.
+feedback_due() { bash "$HERE/feedback.sh" due --lane "$1" 2>/dev/null; }
 
 # The checkout of a branch, from git's worktree list; empty when there is none.
 checkout_of() { # branch
@@ -185,8 +190,8 @@ check_lane() { # file
             FORWARDS=""
             [ "$KIND" != review ] || forwards "$f" "$l"
             [ -z "$FORWARDS" ] || printf '%s\n' "$FORWARDS"
-            if [ "$was" = ready ]; then printf 'PENDING %s (cleanup question asked)\n' "$l"; return 0; fi
-            if [ "$was" = confirmed ]; then printf 'CONFIRMED %s (the user said yes; cleanup.sh run)\n' "$l"; return 0; fi
+            if [ "$was" = ready ]; then printf 'PENDING %s (cleanup question asked)\n' "$l"; feedback_due "$l"; return 0; fi
+            if [ "$was" = confirmed ]; then printf 'CONFIRMED %s (the user said yes; cleanup.sh run)\n' "$l"; feedback_due "$l"; return 0; fi
             fw=""
             while IFS=' ' read -r _ _ p _ ol oa _; do
                 [ -n "${p:-}" ] || continue
@@ -200,7 +205,8 @@ FWD
             lane_sh set --lane "$l" --key cleanup --value ready || exit 1
             lane_sh ask --lane "$l" --text "$q" || exit 1
             notify "$l" "$q"
-            printf 'CLEANUP %s (%s)\n' "$l" "$WHY" ;;
+            printf 'CLEANUP %s (%s)\n' "$l" "$WHY"
+            feedback_due "$l" ;;
         BLOCKED)
             if [ "$was" != "blocked: $WHY" ]; then
                 q="Cleanup $l is blocked: $WHY. The lane is done, but it will not be removed until this is resolved. What should happen to it?"
@@ -228,6 +234,7 @@ run)
     [ -f "$f" ] || die "NO LANE: $lane" 6
     candidate "$f" || die "NOT READY: lane $lane is not done (nor a finished review lane)" 6
     [ "$(yq -r '.cleanup // ""' "$f")" = confirmed ] || die "NOT CONFIRMED: lane $lane: the user has not said yes to the cleanup (cleanup is '$(yq -r '.cleanup // ""' "$f")'). Ask, then record the yes: lane.sh set --key cleanup --value confirmed" 6
+    if due="$(feedback_due "$lane")"; then die "FEEDBACK DUE: $due" 6; fi
     judge "$f"
     [ "$VERDICT" = READY ] || die "NOT READY: $lane: $WHY" 6
     ws="$(yq -r '.workspace // ""' "$f")" br="$(yq -r '.branch // ""' "$f")"
