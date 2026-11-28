@@ -19,6 +19,10 @@
 #                                      due, push
 #   notify.sh sweep                    a full reconcile and push for every session (Herdr startup)
 #   notify.sh list --session S         the open events
+#   notify.sh prompt --session S --id N --index I
+#                                      the panel's click: clear the orchestrator's input box and type
+#                                      prompt I (from 0) of its needs entry N, without Enter
+#                                      (src/events.sh type_prompt; exit 1: nothing typed, and why)
 #   notify.sh ack --session S --lane L [--node N] [--reason R] [--note T]
 #                                      mark the lane's matching open events handled (--node -: the
 #                                      lane's own): no reminder and no second message until the
@@ -54,10 +58,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/events.sh
 . "$HERE/src/events.sh"
 
-USAGE="notify.sh reconcile|take|pending|push|signal|tick|sweep|list|ack|answered|gate [options] (see the header of notify.sh)"
+USAGE="notify.sh reconcile|take|pending|push|signal|tick|sweep|list|prompt|ack|answered|gate [options] (see the header of notify.sh)"
 cmd="${1:-}"
-case "$cmd" in reconcile | take | pending | push | signal | tick | sweep | list | ack | answered | gate) shift ;; *) usage "$USAGE" ;; esac
-session="" full=0 delay=0 repo="" lane="" node="" reason="" note=""
+case "$cmd" in reconcile | take | pending | push | signal | tick | sweep | list | prompt | ack | answered | gate) shift ;; *) usage "$USAGE" ;; esac
+session="" full=0 delay=0 repo="" lane="" node="" reason="" note="" id="" index=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --session) need_value "$1" $#; session="$2"; shift 2 ;;
@@ -67,6 +71,8 @@ while [ $# -gt 0 ]; do
         --lane) need_value "$1" $#; lane="$2"; shift 2 ;;
         --node) need_value "$1" $#; node="$2"; shift 2 ;;
         --reason) need_value "$1" $#; reason="$2"; shift 2 ;;
+        --id) need_value "$1" $#; id="$2"; shift 2 ;;
+        --index) need_value "$1" $#; index="$2"; shift 2 ;;
         --note) need_value "$1" $#; note="$2"; shift 2 ;;
         *) usage "$USAGE" ;;
     esac
@@ -94,6 +100,10 @@ tick)
     done ;;
 sweep) for s in $(sessions); do reconcile "$s" 1; push "$s"; done ;;
 list) [ -n "$session" ] || usage "$USAGE"; list_events "$session" ;;
+prompt)
+    case "$id/$index" in /* | */ | *[!0-9/]*) usage "notify.sh prompt --session S --id N --index I" ;; esac
+    [ -n "$session" ] || usage "notify.sh prompt --session S --id N --index I"
+    type_prompt "$session" "$id" "$index" ;;
 ack)
     if [ -z "$session" ] || [ -z "$lane" ]; then usage "notify.sh ack --session S --lane L [--node N] [--reason R] [--note T]"; fi
     ! looks_secret "$note" || die "SECRET: that looks like a token, key or password; it is never stored" 2

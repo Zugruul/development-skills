@@ -47,7 +47,11 @@
 # [restore] runs lane.sh restore: the lane's record comes back with its last status (open or
 # done); never a worktree or a branch. A review lane: pattern review or review-stack; with
 # no pattern or a custom one (a review stack's --pattern-file), a look/pr-<n> branch.
-# It only reads: the lane files and Herdr, through status.sh. Every write still goes
+# At the top of NEEDS YOU: the orchestrators' own entries (session.sh add --list needs), each
+# "● orchestrator" with [done] (asks first: session.sh del), what the user must do, and one
+# "▶" line per prompt. A click on a prompt line runs notify.sh prompt: it clears the
+# orchestrator's input box and types the text there, without Enter.
+# It only reads: the lane files, the session files and Herdr, through status.sh. Every write still goes
 # through lane.sh and every answer through the orchestrator.
 # Refresh: automatic every interval; the interval cycles 5s, 10s, 15s, 30s, 1m, 5m with the
 # [◷ 5s] button; [↻] refreshes now. The starting interval comes from the plugin's
@@ -102,11 +106,23 @@ configured_interval() {
 }
 
 VIEW="[]"
+# What the orchestrators themselves need from the user (session.sh add --list needs):
+# [{session, id, text, prompts}], drawn at the top of NEEDS YOU.
+ORCH="[]"
+orch_needs() {
+    local f
+    for f in "$(session_dir)"/*.yaml; do
+        [ -f "$f" ] || continue
+        read_json "$f" | jq -c --arg s "$(basename "$f" .yaml)" '(.needs // [])[] | {session: $s, id, text, prompts: (.prompts // [])}'
+    done 2>/dev/null | jq -cs '.'
+}
 UPDATED=""
 refresh_view() {
     fetch_prs
     VIEW="$(bash "$HERE/status.sh" --json 2>/dev/null)" || VIEW="[]"
     [ -n "$VIEW" ] || VIEW="[]"
+    ORCH="$(orch_needs)"
+    [ -n "$ORCH" ] || ORCH="[]"
     UPDATED="$(date +%H:%M:%S)"
 }
 
@@ -176,7 +192,7 @@ buttons() { # width, interval, row
 # shellcheck disable=SC2016
 body() { # selected index, width
     jq -r --argjson sel "$1" --argjson w "$2" --argjson c "$STYLE" --arg folded "$FOLDED" --argjson seen "$SEEN" \
-        --arg armed "$ARMED" --argjson all "$ALLCLOSED" \
+        --arg armed "$ARMED" --argjson all "$ALLCLOSED" --argjson orch "$ORCH" \
         "$STYLE_JQ_MARK$STYLE_JQ_PR$STYLE_JQ_PRCOLOUR$ORDER_JQ$REVIEW_JQ"'
         def plain: gsub("\u001b\\[[0-9;]*[A-Za-z]"; "");
         def chain: [.nodes[] | "\(.node) \(markcolour)\(mark)"
@@ -241,15 +257,33 @@ body() { # selected index, width
                  | (if $j == $m - 1 then ["└ ", "  "] else ["├ ", "│ "] end) as $tw
                  | $v.l | to_entries[]
                  | "\(if .key == 0 then "L\($name)/\($j)\u001f" else "" end)\($i)\($v.k)| \($c.grey)  \(if .key == 0 then $tw[0] else $tw[1] end)\($c.fg)\(.value)");
+        # an orchestrator entry: its name and [done], what to do, one clickable line per prompt
+        def needhead($n): "-1| \($c.head.needs)NEEDS YOU (\($n))\($c.reset)";
+        def orchentry:
+            "\(.session):\(.id)" as $k | "done|\(.session)|\(.id)" as $done
+            | ("\($c.red)●\($c.fg) \($c.bold)orchestrator\($c.unbold)"
+               + (if .session != "graph" then "  \($c.grey)\(.session)\($c.fg)" else "" end)
+               | withbuttons([{id: "done", key: $done, label: "[done]"}])
+               | .l |= " \(.)" | withmap("o\($k)\u001fo\($k)")),
+              (.text | gsub("[\u0000-\u001f]+"; " ") | wrap($w - 4)[] | "-1|   \(.)"),
+              (.prompts | to_entries[] | .key as $n
+               | .value | wrap($w - 6) | to_entries[]
+               | "\(if .key == 0 then "p\($k):\($n)\u001f" else "" end)p\($k):\($n)|   \(if .key == 0 then "▶ " else "  " end)\(.value)");
         ([.[] | select(.section == "closed")] | length) as $nclosed
         | ([.[] | select(.section == "closed" and isreview)] | length) as $nreviews
         | ordered($all) as $l
-        | ( if ($l | length) == 0 then "-1| No lanes yet.", "-1| \($c.grey)Give the orchestrator an idea.\($c.fg)"
+        | ([$l[] | select(.section == "needs")] | length) as $nneeds
+        | ($orch | length) as $norch
+        | ( if $norch == 0 then empty else needhead($nneeds + $norch), ($orch[] | orchentry),
+              (if ($l | length) > 0 and $nneeds == 0 then "-1|" else empty end) end ),
+          ( if ($l | length) == 0 then
+              (if $norch > 0 then empty else "-1| No lanes yet.", "-1| \($c.grey)Give the orchestrator an idea.\($c.fg)" end)
             else
               ( range(0; $l | length) as $i | $l[$i] as $x
                 | (if $i == 0 or $l[$i - 1].section != $x.section then
                      (if $i == 0 then empty else "-1|" end),
-                     (if $x.section == "closed" then
+                     (if $x.section == "needs" and $norch > 0 then empty
+                      elif $x.section == "closed" then
                         # [clear all reviews] only while a closed review lane exists
                         "\($c.head.closed)CLOSED (\($nclosed))\($c.reset)"
                         | withbuttons([ (if $nreviews > 0 then {id: "reviews", key: "reviews", label: "[clear all reviews]"} else empty end),
@@ -333,7 +367,7 @@ place() { # width (0: one row per line), rows available (0: all)
         r=1
         # the further rows of a lane's first line are no longer its chevron or its buttons
         k="${TOPKIND[$i]}" idx="${TOPKIND[$i]%%[!0-9-]*}"
-        case "${k#"$idx"}" in h*) more="$idx" ;; *) more="$k" ;; esac
+        case "${k#"$idx"}" in h*) more="$idx" ;; o*) more="${k%%@*}" ;; *) more="$k" ;; esac
         while [ "$r" -lt "$rows" ]; do ROWMAP+=("$more") ROWLINE+=("$i"); r=$((r + 1)); done
         i=$((i + 1))
     done
@@ -586,6 +620,21 @@ clear_closed() { # all | reviews
     refresh_view
 }
 
+# A click on a prompt line of an orchestrator entry (session:id:index): notify.sh types it in the
+# orchestrator's input box, never submitted, or says why not.
+type_orch_prompt() {
+    local entry="${1%:*}" out
+    out="$(bash "$HERE/notify.sh" prompt --session "${entry%:*}" --id "${entry##*:}" --index "${1##*:}" 2>&1)"
+    MSG="${out##*$'\n'}"
+}
+
+# The confirmed [done] of an orchestrator entry (done|session|id): it leaves NEEDS YOU.
+orch_done() {
+    local rest="${1#done|}"
+    bash "$HERE/session.sh" del --session "${rest%|*}" --list needs --id "${rest##*|}" >/dev/null 2>&1 || MSG="could not remove the entry"
+    refresh_view
+}
+
 # A press of a button that asks first ([x]: x|root|lane, [restore]: restore|root|lane,
 # [clear all]: all, [clear all reviews]: reviews): the first arms it, a press of the armed
 # button acts. act has already put any armed button back in PREV.
@@ -593,6 +642,7 @@ press() { # key, lane JSON (for [x] and [restore])
     if [ "$PREV" = "$1" ]; then
         case "$1" in
             all | reviews) clear_closed "$1" ;;
+            done\|*) orch_done "$1" ;;
             restore\|*) restore_lane "$2" ;;
             *) close_lane "$2" ;;
         esac
@@ -703,7 +753,7 @@ act() { # key: click, wheel, the arrows (and refresh, from panel-action.sh)
     elif [ "$CLICK_ROW" -ge 1 ] && [ "$CLICK_ROW" -le "${#ROWMAP[@]}" ]; then
         k="${ROWMAP[$((CLICK_ROW - 1))]}"
         idx="${k%%[!0-9-]*}" rest="${k#"$idx"}" map="" hit=""
-        case "$rest" in h*@* | c@*) map="${rest#*@}" rest="${rest%%@*}" ;; esac
+        case "$rest" in h*@* | c@* | o*@*) map="${rest#*@}" rest="${rest%%@*}" ;; esac
         [ -z "$map" ] || hit="$(button_at "$map" "$CLICK_COL")"
         [ "$rest" = h ] && [ -z "$hit" ] && [ "$CLICK_COL" -ge 2 ] && [ "$CLICK_COL" -le 3 ] && hit="fold"
         # a click on an element selects it for the arrows (a press of a CLOSED header button is
@@ -711,6 +761,11 @@ act() { # key: click, wheel, the arrows (and refresh, from panel-action.sh)
         line="$(el_start "${ROWLINE[$((CLICK_ROW - 1))]}")"
         [ "$line" -lt 0 ] || { [ "$rest" = c ] && [ -n "$hit" ]; } || select_line "$line"
         case "$rest" in
+            o*) DC_LANE=""
+                rest="${rest#o}"
+                [ "$hit" != "done" ] || press "done|${rest%:*}|${rest##*:}" "" ;;
+            p*) DC_LANE=""
+                type_orch_prompt "${rest#p}" ;;
             u*) sel="$idx" DC_LANE=""; browse "${rest#u}" ;;
             f*) sel="$idx" DC_LANE=""; open_ref "${rest#f}" "$(lane_at "$idx")" ;;
             c) DC_LANE=""

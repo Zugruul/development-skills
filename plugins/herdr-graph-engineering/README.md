@@ -120,7 +120,7 @@ A new agent often stops before its brief: folder trust, imports of instruction f
 lane.sh new|show|list|node|step|reject|retry|ask|asked|answer|withdraw|offer|dismiss|note|done-extra|set|close|clear|restore   the only writer of lane files
 session.sh set|add|del|show|find|afk|automerge         the only writer of the orchestrator's session file (decide.sh writes its decisions)
 start.sh [--scratch DIR]                                the orchestrator's first command: its session file
-notify.sh reconcile|take|push|signal|tick|sweep|list|gate   what wakes the orchestrator, once, and the push fallback
+notify.sh reconcile|take|push|signal|tick|sweep|list|gate|promptwhat wakes the orchestrator, once, and the push fallback
 await.sh [--session S] [--hook [--client claude|opencode]]
                                                         the waiter: ends with the next event, which wakes the chat
 hook.sh stop|prompt|ask|ask-done|permission|stop-failure    the client hooks (and the OpenCode plugin's calls): observe lane agents, guard unasked questions
@@ -312,6 +312,24 @@ It binds `prefix+alt+g` to the `plugin_action` `herdr-graph-engineering.graph.to
   updated 10:42:07 · every 5s               [◷ 5s] [↻]
 ```
 
+- The orchestrator's own entry: what only you can do for it (a slash command such as `/reload-plugins` or `/compact`, a restart, a decision about the session) is recorded with `session.sh add --list needs --text ... [--prompt ...]` and shown at the top of NEEDS YOU:
+
+  ```text
+   NEEDS YOU (1)
+   ● orchestrator                                      [done]
+     Reload the plugins so the new version runs
+     ▶ /reload-plugins
+  ```
+
+  A click on a `▶` line clears the orchestrator's input box and types that prompt there, **without Enter**: you press it. It types only into the session's recorded orchestrator pane, while the agent there is idle or done; otherwise the footer says `not typed:` and why. The entry leaves when the orchestrator removes it (`session.sh del --list needs --id N`), or with `[done]` (it asks first). The box is cleared with Ctrl+E and Ctrl+U only, repeated for further lines; never Ctrl+C or Esc, which can exit a client or interrupt a turn.
+
+  | Client | Clearing | Check before typing |
+  | --- | --- | --- |
+  | Claude Code | Ctrl+E, Ctrl+U ([documented](https://code.claude.com/docs/en/interactive-mode): repeat to clear across lines) | the box must show as empty, else nothing is typed |
+  | Codex | Ctrl+E, Ctrl+U (its default keymap) | the same |
+  | OpenCode | Ctrl+E, Ctrl+U ([documented](https://opencode.ai/docs/keybinds/)), 20 pairs | none: its box cannot be recognised, so the footer says to check it before Enter |
+
+  Not run against the real clients: the tests use the stub herdr. Text below the cursor's line in a multi-line draft is not cleared: Claude Code and Codex then get nothing typed.
 - `/herdr-graph-engineering:display` opens or closes it. Without the Herdr plugin, `display` prints the same picture as text.
 - Refresh: automatic, every 5s by default (`refresh=10s` in `$(herdr plugin config-dir herdr-graph-engineering.graph)/config` changes the start); `[◷ 5s]` cycles 5s, 10s, 15s, 30s, 1m, 5m; `[↻]` refreshes now. No title of its own (Herdr's pane border shows "Graph"), one column of padding each side; a thin divider and the grey footer sit on the pane's bottom rows, the footer saying when it last read and ending with the two buttons. The size is read from the terminal on every draw and a resize redraws at once.
 - Layout: each lane starts with its fold chevron (▾ unfolded, ▸ folded); its chain, question, references, last line and pull requests hang under it on ├ and └, and long lines wrap inside that.
@@ -328,7 +346,7 @@ It binds `prefix+alt+g` to the `plugin_action` `herdr-graph-engineering.graph.to
 - Toggle finds the panel by the pane it opened (kept in the plugin state folder, `$HERDR_PLUGIN_STATE_DIR`), as well as by its terminal title, so a panel that is still starting or lost its title is closed rather than doubled; a panel closed by hand is forgotten and the next toggle opens a new one. Toggles run one at a time, so two quick presses never open two panels in a tab. When the panel does not open, Herdr shows a notification.
 - Ctrl-click a `.md` report path or a GitHub pull request URL to open it in a popup.
 - After a Herdr restart it reopens next to the orchestrator and rewrites the sidebar tokens; a lane whose worktree you remove by hand is closed.
-- It only reads, except `[x]`, `[clear all reviews]` and `[clear all]` on closed lanes, which go through `lane.sh clear`, and `[restore]`, which goes through `lane.sh restore`. Lane files are still written only by `lane.sh`, answers still go through the orchestrator, and the only thing it stores is the pane id of the panel it opened.
+- It only reads, except a click on an orchestrator prompt line (types in the orchestrator's input box), its `[done]` (`session.sh del`), `[x]`, `[clear all reviews]` and `[clear all]` on closed lanes, which go through `lane.sh clear`, and `[restore]`, which goes through `lane.sh restore`. Lane files are still written only by `lane.sh`, answers still go through the orchestrator, and the only thing it stores is the pane id of the panel it opened.
 - It never filters Herdr's sidebar (older versions did, with `f`, `n` and `F`); at start it clears a filter such a version may have left, through `nc -U` when `nc` is there. `.refresh` reaches open panels as the private sequence `ESC [ 99 ~`, which no key sends.
 
 ## Feedback loop

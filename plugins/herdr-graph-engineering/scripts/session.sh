@@ -24,6 +24,11 @@
 #                                         "off" turns every one off
 #   session.sh add --list standing|queued|renames|notes|files --text T [--lane L] [--repo DIR] [--ref PATH]
 #                                         queued needs --lane; --ref is its prepared brief
+#   session.sh add --list needs --text "<what the user must do>" [--prompt "<exact text>"]...
+#                                         the orchestrator itself needs the user (a slash command only
+#                                         the user can type, a restart, a decision): the graph panel shows
+#                                         it under NEEDS YOU, one line per prompt (notify.sh prompt).
+#                                         A prompt is one line and does not start with -
 #   session.sh del --list LIST (--id N | --lane L)
 #   session.sh show [--json]
 #   session.sh path                       the session file's path
@@ -40,8 +45,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/src/afk.sh"
 
 USAGE="session.sh set|add|del|show|path|find|afk|automerge [--session NAME] [options] (see the header of session.sh)"
-LISTS="standing queued renames notes files"
-args=()
+LISTS="standing queued renames notes files needs"
+args=() prompts=()
 session="graph" key="" value="" list="" text="" lane="" repo="" ref="" id="" pane="" as_json=0 tiers="1,2" cleanup=false lanes="" queued=true until=""
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -50,6 +55,11 @@ while [ $# -gt 0 ]; do
         --value) need_value "$1" $#; value="$2"; shift 2 ;;
         --list) need_value "$1" $#; list="$2"; shift 2 ;;
         --text) need_value "$1" $#; text="$2"; shift 2 ;;
+        --prompt) need_value "$1" $#
+            case "$2" in
+                '' | -* | *[[:cntrl:]]*) die "--prompt must be one line of text that does not start with -: a newline would submit it" 2 ;;
+            esac
+            prompts+=("$2"); shift 2 ;;
         --lane) need_value "$1" $#; lane="$2"; shift 2 ;;
         --repo) need_value "$1" $#; repo="$2"; shift 2 ;;
         --ref) need_value "$1" $#; ref="$2"; shift 2 ;;
@@ -91,7 +101,7 @@ update() { # jq program, extra jq args...
     [ -f "$file" ] && cur="$(read_json "$file")"
     [ -n "$cur" ] && [ "$cur" != null ] || cur='{}'
     out="$(jq -c --arg now "$(now)" --arg s "$session" "$@" \
-        '{session: $s, orchestrator: "", pane: "", scratch: "", feedback: "off", next_id: 1, standing: [], queued: [], renames: [], notes: [], files: []} + .
+        '{session: $s, orchestrator: "", pane: "", scratch: "", feedback: "off", next_id: 1, needs: [], standing: [], queued: [], renames: [], notes: [], files: []} + .
          | '"$prog"' | .updated = $now' <<<"$cur")" || die "could not update $file"
     printf '%s' "$out" | write_yaml "$file"
     unlock
@@ -109,12 +119,17 @@ add)
     need_list
     [ -n "$text" ] || usage "session.sh add --list $list --text T [--lane L] [--repo DIR] [--ref PATH]"
     [ "$list" != queued ] || [ -n "$lane" ] || die "a queued lane needs --lane L (and --ref to its prepared brief)" 2
-    no_secret "$text" "$ref"
+    [ "$list" = needs ] || [ "${#prompts[@]}" -eq 0 ] || die "--prompt is only for --list needs" 2
+    no_secret "$text" "$ref" ${prompts[@]+"${prompts[@]}"}
+    pj='[]'
+    [ "${#prompts[@]}" -eq 0 ] || pj="$(jq -cn '$ARGS.positional' --args -- "${prompts[@]}")"
     update '.next_id as $id | .next_id += 1
             | .[$l] += [{id: $id, text: $t, at: $now}
                         + (if $lane != "" then {lane: $lane} else {} end)
                         + (if $repo != "" then {repo: $repo} else {} end)
-                        + (if $ref != "" then {ref: $ref} else {} end)]' \
+                        + (if $ref != "" then {ref: $ref} else {} end)
+                        + (if ($ps | length) > 0 then {prompts: $ps} else {} end)]' \
+        --argjson ps "$pj" \
         --arg l "$list" --arg t "$text" --arg lane "$lane" --arg repo "$repo" --arg ref "$ref"
     printf 'ADDED %s %s\n' "$list" "$(yq -r ".${list}[-1].id" "$file")" ;;
 del)

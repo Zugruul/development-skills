@@ -152,6 +152,13 @@ case "$cmd" in
     "pane send-text")
         save "$(st | jq -c --arg p "$3" --arg t "${4:-}" '.sent += [{pane: $p, text: $t}]')"
         ok '{"type":"pane_send_text"}' ;;
+    "pane send-keys")
+        # state.agents[k].cleared: the screen the pane's agent shows once it got keys
+        p="$3"
+        shift 3
+        save "$(st | jq -c --arg p "$p" --arg k "$*" '.sent += [{pane: $p, keys: $k}]
+            | .agents |= with_entries(if .value.pane_id == $p and .value.cleared != null then .value.screen = .value.cleared else . end)')"
+        ok '{"type":"pane_send_keys"}' ;;
     "agent focus")
         save "$(st | jq -c --arg a "$3" '.focused += [$a]')"
         ok '{"type":"agent_focused"}' ;;
