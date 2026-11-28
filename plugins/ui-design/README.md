@@ -18,6 +18,18 @@ The plugin is standalone. It knows no workflow, task tracker or other plugin, an
 | [ui-mode](skills/ui-mode/SKILL.md) | Show or toggle Iterative UI mode: whether UI decisions go to the human or the agent decides alone. |
 | [ui-options](skills/ui-options/SKILL.md) | Mock the options, gate them, ask on the hub, collect the answer, iterate until the human commits, record the pick. |
 
+## Clients
+
+| | Claude Code | Codex | OpenCode |
+| --- | --- | --- | --- |
+| Install | `claude plugin install ui-design@development-skills` | `codex plugin add ui-design@development-skills` | a clone, then `./install-skills.sh opencode --global` |
+| Waiting for the human's pick | `ui-hub.sh wait` in the background; its end wakes the agent | no wake: the agent reads `answers` between steps, then waits in the foreground | the same as Codex |
+| "Way back to the agent" on the page | `claude --resume <id>` | `codex resume <id>` | left out: OpenCode gives its shell no session id |
+
+The plugin has no hooks. A sandbox that turns the network off (Codex `workspace-write`) can stop the hub from listening: approve running `ui-hub.sh start` outside it. The hub's state folder is `.claude/ui-hub/` in every client; the name is only a path.
+
+**Tested** (2026-11, isolated config folders): all three clients install the two skills, and Codex 0.165.0's shell receives `CODEX_THREAD_ID`. `ui-hub.sh wait` and the handler are tested with a stub `socat`. Not run: a real hub started from Codex or OpenCode.
+
 ## Scripts
 
 | Script | What it does |

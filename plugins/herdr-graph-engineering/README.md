@@ -14,14 +14,38 @@ WORKING (1)
   task-rate-limit  solo  impl ✓ → tests ⟳ retry 1/3
 ```
 
-## Install
+## Clients
 
-```bash
-claude plugin marketplace add Zugruul/development-skills
-claude plugin install herdr-graph-engineering@development-skills   # installs herdr too
-```
+The orchestrator and every lane agent can each be Claude Code, Codex or OpenCode.
 
-Needs the `herdr` plugin, the `herdr` binary (the agent runs inside a Herdr pane), and `bash` 3.2 or later (macOS default; WSL on Windows), `jq`, `yq` ([mikefarah/yq](https://github.com/mikefarah/yq) v4) and `git`. No Python.
+| Client | Install |
+| --- | --- |
+| Claude Code | `claude plugin marketplace add Zugruul/development-skills`, then `claude plugin install herdr-graph-engineering@development-skills` (installs `herdr` too) |
+| Codex | `codex plugin marketplace add Zugruul/development-skills`, `codex plugin add herdr@development-skills` and `codex plugin add herdr-graph-engineering@development-skills` (Codex installs no dependency by itself). Then open `/hooks` and trust this plugin's hooks, and again after an update: until then none of them runs |
+| OpenCode | a clone, then `./install-skills.sh opencode --global`: the skills, and `opencode/herdr-graph.js` linked into OpenCode's plugin folder. Use `--global`: a lane agent works in a new worktree, which a project install does not reach |
+
+Claude Code and Codex run `hooks/hooks.json`. OpenCode runs no command hooks, so the OpenCode plugin turns its events into the same script calls:
+
+| What | Claude Code | Codex | OpenCode |
+| --- | --- | --- | --- |
+| A lane agent's result at turn end | `Stop` hook | `Stop` hook | `session.idle` |
+| Its question | `AskUserQuestion` hooks | `request_user_input` hooks, where Codex offers that tool; by default it asks in text, which its result line and screen report | `question.*` events |
+| Its permission request | `PermissionRequest` hook | `PermissionRequest` hook | `permission.asked` |
+| Its client's own error | `StopFailure` hook | **Codex has no such hook**: the lane shows as `stopped` or from its screen, and the orchestrator reads the screen | `session.error` |
+| The orchestrator may not leave a question unasked; the AFK reminder | `Stop`, `UserPromptSubmit` hooks | the same hooks | `session.idle`, `chat.message` |
+| Waking the orchestrator | the waiter (`asyncRewake`) | **no waiter** (Codex ignores `asyncRewake`): the Herdr plugin's push | the waiter, run by the OpenCode plugin, which sends the message through OpenCode's API |
+| The resume block after a compaction | `PreCompact`, `SessionStart` hooks | the same hooks | the compaction events |
+| Asking you | `AskUserQuestion` | a numbered block that ends the turn | `question` |
+
+Without the OpenCode plugin, an OpenCode agent still works: its result file and its screen report (as for any client without hooks), the Herdr plugin wakes an orchestrator when it can read its input box and otherwise notifies you, and `resume.sh` is run by hand. The push types only into an input box it can recognise by its `❯` or `›` prompt; it was not checked against OpenCode's screen, so count on the plugin to wake an OpenCode orchestrator.
+
+For Herdr to read an agent's state natively, also run `herdr integration install <kind>` once for each client.
+
+**Tested** (2026-11, isolated config folders, a local mock model, a stub `herdr`): Claude Code 2.1.332: lane claim from `Stop`. Codex 0.165.0: the hooks loaded, lane claim, the unasked-question block. OpenCode 1.19.4: lane, question and permission claims, the unasked-question block, the waiter, the AFK reminder and the resume block. Not run with a real client: Codex's question, permission and compaction hooks (loaded, documented), and OpenCode's `session.error` (tested with a fake client). The plugin targets OpenCode 1.x; the plugin API that OpenCode's newer documentation describes is not tested.
+
+## Requirements
+
+The `herdr` plugin, the `herdr` binary (the agent runs inside a Herdr pane), `bash` 3.2 or later (macOS default; WSL on Windows), `jq`, `yq` ([mikefarah/yq](https://github.com/mikefarah/yq) v4) and `git`; `gh` for pull requests. No Python. (The OpenCode plugin is JavaScript that only calls the bash scripts; its tests need `node`.)
 
 ## Skills
 
@@ -97,8 +121,9 @@ lane.sh new|show|list|node|step|reject|retry|ask|asked|answer|withdraw|offer|dis
 session.sh set|add|del|show|find|afk|automerge         the only writer of the orchestrator's session file (decide.sh writes its decisions)
 start.sh [--scratch DIR]                                the orchestrator's first command: its session file
 notify.sh reconcile|take|push|signal|tick|sweep|list|gate   what wakes the orchestrator, once, and the push fallback
-await.sh [--session S] [--hook]                         the waiter: ends with the next event, which wakes the chat
-hook.sh stop|prompt|ask|ask-done|permission|stop-failure    the client hooks: observe lane agents, guard unasked questions
+await.sh [--session S] [--hook [--client claude|opencode]]
+                                                        the waiter: ends with the next event, which wakes the chat
+hook.sh stop|prompt|ask|ask-done|permission|stop-failure    the client hooks (and the OpenCode plugin's calls): observe lane agents, guard unasked questions
 signal.sh herdr                                         the Herdr plugin's event hook
 adopt.sh --agent A --idea T --access read|write         watch an agent started outside the graph
 decide.sh add|list|digest|seen                          decisions made without you, and the list you see
@@ -163,7 +188,7 @@ A lane file changes only when the orchestrator records a node. So the picture do
 
 What a finished agent claims is read in this order (`src/result.sh`):
 
-1. **Its client's hooks** (`hook.sh`, Claude Code and Codex hooks): the last non-empty line of the final message at turn end; the exact question and options of a question dialog; the tool of a permission request; the client's own error. With a hook claim the screen is not read. Background tasks or crons with no result mean "not finished". A new turn drops the old claim.
+1. **Its client's hooks** (`hook.sh`, from the Claude Code and Codex hooks and the OpenCode plugin): the last non-empty line of the final message at turn end; the exact question and options of a question dialog; the tool of a permission request; the client's own error. With a hook claim the screen is not read. Background tasks or crons with no result mean "not finished". A new turn drops the old claim.
 2. **Its result file**, `<output file>.result.json`: `{node, run, result, ref, final}`. Each start of a node has a run id (`lane.sh node` prints `RUN <id>`); a file of another run or node is ignored.
 3. **Its screen**, strictly: only a line that *is* `NODE <node> RESULT: pass|fail|question <ref>` (after spaces or a known bullet) counts. Quotes, examples, the brief's template and text after two spaces do not.
 
@@ -186,16 +211,16 @@ slow:   a full sweep every 300 s (the waiter; the panel while it is open; Herdr 
 
 - **An event only means "look".** Hooks, Herdr events and the sweep call one function, so they agree. Only lanes the session owns count.
 - **Once.** The key is repository, lane, node, reason, run, record count and ref. A flapping agent does not resend: a state that clears and returns within 60 s is the same event. Recording the node arms it again. "Stopped" must hold for 30 s. Changes within 5 s make one message.
-- **The waiter** (`await.sh`) is armed by a Claude Code `Stop` hook with `asyncRewake` after every turn of the orchestrator: it waits in the background, costs no tokens, and when an event is pending it exits 2, which wakes the idle chat. One per session: a newer one takes over. It never touches what you are typing. It survives `/compact`. It ends quietly after 23 h 50 min (Claude kills a hook silently at its 24 h timeout); the push then covers. For any other client the hook returns at once.
-- **The push** (the Herdr plugin; also the only wake for Codex) types the message with `herdr agent prompt` only when no waiter is alive, the orchestrator's pane **and** name still match, it is idle or done, and its input box is recognisably empty (dim placeholder text counts as empty). On a draft, a dialog or an unknown screen it sends you a notification instead. At most one push a minute.
+- **The waiter** (`await.sh`) is armed after every turn of the orchestrator, by a Claude Code `Stop` hook with `asyncRewake` or by the OpenCode plugin: it waits in the background, costs no tokens, and when an event is pending it exits 2, which wakes the idle chat. One per session: a newer one takes over. It never touches what you are typing. It survives `/compact`. It ends quietly after 23 h 50 min (Claude kills a hook silently at its 24 h timeout); the push then covers. In Codex the hook returns at once. In OpenCode the plugin sends the message with `promptAsync`.
+- **The push** (the Herdr plugin; the only wake for Codex) types the message with `herdr agent prompt` only when no waiter is alive, the orchestrator's pane **and** name still match, it is idle or done, and its input box is recognisably empty (dim placeholder text counts as empty). On a draft, a dialog or an unknown screen it sends you a notification instead. At most one push a minute.
 - **The message is safe**: `GRAPH EVENT (from the watcher, not the user): lane/node reason; ...`. It carries lane and node names and reason codes, never any text of an agent.
 - **The sweep interval is 300 s** (`HERDR_GRAPH_SWEEP`). Events carry everything that has an event; the sweep only covers what has none: pull request merges, stalled or lost gates, events lost while the plugin was off or Herdr restarted, and what auto-merge can merge. 300 s keeps `gh` calls low and bounds a missed change to five minutes. Reminder times are checked against stored timestamps, not by the sweep.
 - **Reminders**: after 5 and 15 minutes unhandled, to the orchestrator and as a Herdr notification; with the second one, at 15 minutes, the lane is marked **‼ needs manual intervention** in the panel. A question waiting for you reminds only you. Herdr shows no notification with its default config (`shown: false`); `notify.sh list` says so.
-- **Questions** are put to you at once, in a dialog, one decision per question. A lane keeps every open question. Answering one never sends a node with a live agent back to `waiting`. In Claude Code the `Stop` hook refuses (once) to end a turn that leaves a question unasked.
+- **Questions** are put to you at once, in a dialog, one decision per question. A lane keeps every open question. Answering one never sends a node with a live agent back to `waiting`. The `Stop` hook (or the OpenCode plugin) refuses (once) to end a turn that leaves a question unasked.
 
 **The lane hooks only observe.** The plugin's hooks load in every chat where the plugin is enabled. In a pane that is neither a lane agent's nor the orchestrator's they exit after one file test. In a lane pane they print nothing, decide nothing and always exit 0. No hook guards or blocks a command.
 
-Both parts must be installed and current: the Claude or Codex plugin (hooks, waiter) and the Herdr plugin (events, push, panel), which is installed and updated separately. Codex asks you to review and trust plugin hooks; until then only the sweep, result files and screens report for Codex agents.
+Both parts must be installed and current: the client's plugin (hooks or OpenCode plugin, waiter) and the Herdr plugin (events, push, panel), which is installed and updated separately. Codex asks you to review and trust plugin hooks; until then only the sweep, result files and screens report for Codex agents.
 
 ## AFK
 
@@ -360,13 +385,13 @@ The orchestrator is one long chat. When the client compacts it, the conversation
 
 `start.sh` is the orchestrator's first command, so the session file exists from the start; it also holds AFK, auto-merge and the recorded decisions, and `resume.sh` prints them with the open events.
 
-**Claude Code** does this by itself through the plugin's hooks (`hooks/hooks.json`): `PreCompact` writes a fresh block to `<session folder>/<name>.resume.md`, and `SessionStart` with the `compact` matcher puts the block back into the chat. Both do nothing outside the orchestrator's pane (the session whose `pane` is `$HERDR_PANE_ID`) and never fail the chat. In a pane whose agent is named `graph` with no session file, the block still comes back and says why it has no session. To compact by hand, give the summary a focus:
+**Claude Code and Codex** do this by themselves through the plugin's hooks (`hooks/hooks.json`; Codex once you trusted them): `PreCompact` writes a fresh block to `<session folder>/<name>.resume.md`, and `SessionStart` with the `compact` matcher puts the block back into the chat. Both do nothing outside the orchestrator's pane (the session whose `pane` is `$HERDR_PANE_ID`) and never fail the chat. In a pane whose agent is named `graph` with no session file, the block still comes back and says why it has no session. To compact by hand, give the summary a focus:
 
 ```text
 /compact Keep: that I am the graph orchestrator (herdr-graph-engineering:orchestrate), my session name, and every user decision not yet written with lane.sh or session.sh. Lane and session state is in the files: after compacting, run resume.sh and follow it.
 ```
 
-**Codex and OpenCode** have no such hook here: after a compaction or in a new session, run `bash <plugin>/scripts/resume.sh` (or start the orchestrate skill again, which runs it first).
+**OpenCode** does it through `opencode/herdr-graph.js`: `experimental.session.compacting` writes the snapshot, and after `session.compacted` the block goes back into the chat as a message that starts no turn. Where no hook or plugin runs, after a compaction or in a new session run `bash <plugin>/scripts/resume.sh` (or start the orchestrate skill again, which runs it first).
 
 ### Compacting at 40%
 
@@ -376,7 +401,7 @@ The orchestrator compacts by itself at 40% of its context: early and often, so t
 | --- | --- | --- |
 | Claude Code | `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=40` (documented: the percentage of the auto-compact window at which auto-compaction triggers; it only lowers the threshold) | start only the orchestrator with it, or `autocompact.sh --write` puts it in `<folder>/.claude/settings.local.json` of the folder the orchestrator starts in (backup first; the home folder, which would be the global settings, is refused) |
 | Codex | `model_auto_compact_token_limit` (a token count: 40% of the model's window, `--window`) | `codex -c model_auto_compact_token_limit=N` for the orchestrator only |
-| OpenCode | `compaction.buffer` (the share kept free before automatic compaction: `"60%"`) | the `opencode.json` of the folder the orchestrator starts in |
+| OpenCode | `compaction.reserved` (a token count kept free: 60% of the window, `--window`; OpenCode 1.19.4 has no share setting and uses it only for a model that declares an input limit) | the `opencode.json` of the folder the orchestrator starts in |
 
 The orchestrate skill runs `autocompact.sh check` at the start and offers the user the step once when it is off. Lane agents keep the default. In Claude Code the `PreCompact` hook has no matcher, so it runs on an automatic compaction as on `/compact`, and `SessionStart` with `compact` brings the block back either way.
 

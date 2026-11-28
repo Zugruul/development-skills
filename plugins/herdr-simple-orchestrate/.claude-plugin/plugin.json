@@ -1,7 +1,7 @@
 {
     "name": "herdr-simple-orchestrate",
     "description": "DEPRECATED - the old way of orchestrating agents in Herdr: take the orchestrator role, and orchestrate a code review of related pull requests with reviewer agents in worktrees. Kept so existing setups keep working. Requires the herdr plugin.",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "author": {
         "name": "event-sorcerer",
         "url": "https://github.com/event-sorcerer"

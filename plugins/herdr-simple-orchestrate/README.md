@@ -4,12 +4,17 @@ The old way of orchestrating coding agents in [Herdr](https://herdr.dev): one ag
 
 These skills used to live in the [`herdr`](../herdr/README.md) plugin. They moved here so `herdr` only teaches how to use Herdr. The plugin is **deprecated**: it is kept, unchanged in behaviour, so existing setups keep working. It is not developed further.
 
-## Install
+## Clients
 
-```bash
-claude plugin marketplace add Zugruul/development-skills
-claude plugin install herdr-simple-orchestrate@development-skills   # installs herdr too
-```
+| Client | Install | Use a skill |
+| --- | --- | --- |
+| Claude Code | `claude plugin marketplace add Zugruul/development-skills`, then `claude plugin install herdr-simple-orchestrate@development-skills` (installs `herdr` too) | `/herdr-simple-orchestrate:orchestrate` |
+| Codex | `codex plugin add herdr-simple-orchestrate@development-skills` and `codex plugin add herdr@development-skills`: Codex installs no dependency by itself | `$herdr-simple-orchestrate:orchestrate` |
+| OpenCode | a clone, then `./install-skills.sh opencode --global` | ask for the `herdr-simple-orchestrate-orchestrate` skill (`orchestrate` is the graph orchestrator) or `orchestrate-code-reviews` |
+
+The plugin has no hooks, so nothing else differs between the clients. In OpenCode two skills cannot share a name: the installer gives this plugin's `orchestrate` its own name, as a pointer to the real `SKILL.md`.
+
+**Tested** (2026-11, isolated config folders): all three clients install the two skills (Codex 0.165.0 and OpenCode 1.19.4 list them; Claude Code 2.1.332 installs and validates the plugin). The scripts run against a stub `herdr`; no client drove a live Herdr.
 
 ## Requirements
 

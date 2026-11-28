@@ -11,7 +11,7 @@
             "name": "herdr",
             "source": "./plugins/herdr",
             "description": "Teaches an agent to use Herdr, the terminal workspace manager for coding agents: start worktrees and agents, prompt them safely, listen to their work and see what is running. Standalone and thin over the herdr CLI; no workflow of its own.",
-            "version": "0.11.1",
+            "version": "0.11.2",
             "author": {
                 "name": "event-sorcerer"
             },
@@ -27,7 +27,7 @@
             "name": "herdr-graph-engineering",
             "source": "./plugins/herdr-graph-engineering",
             "description": "Graph engineering on Herdr: one orchestrator chat runs each idea as a lane (a worktree running a small graph of agent, gate and person steps from a pattern) until its definition of done, and comes to you only when a lane needs you. Requires the herdr plugin, jq, yq and git.",
-            "version": "0.29.0",
+            "version": "0.30.0",
             "author": {
                 "name": "event-sorcerer"
             },
@@ -43,7 +43,7 @@
             "name": "herdr-simple-orchestrate",
             "source": "./plugins/herdr-simple-orchestrate",
             "description": "DEPRECATED - the old way of orchestrating agents in Herdr: take the orchestrator role, and orchestrate a code review of related pull requests with reviewer agents in worktrees. Kept so existing setups keep working. Requires the herdr plugin.",
-            "version": "0.1.1",
+            "version": "0.1.2",
             "author": {
                 "name": "event-sorcerer"
             },
@@ -58,7 +58,7 @@
             "name": "ui-design",
             "source": "./plugins/ui-design",
             "description": "Mock a UI before it is built and let the human decide: 2-4 real options per decision, served on a local decision hub, audited for contrast and accessibility in both themes, with test ids and optional i18n, and the pick recorded in the page. Standalone; other skills may call it.",
-            "version": "0.1.0",
+            "version": "0.2.0",
             "author": {
                 "name": "event-sorcerer"
             },
