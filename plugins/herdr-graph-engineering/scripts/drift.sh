@@ -25,7 +25,8 @@
 #    for a gate node, from
 #    its heartbeat (src/gatefile.sh): gate-unrecorded (EXIT printed, never recorded: gate.sh
 #    --collect), gate-lost (its process is gone without an EXIT line), gate-stalled (no output
-#    for --gate-stall M minutes, default HERDR_GRAPH_GATE_STALL or 10: a pager, a prompt?); and
+#    for --gate-stall M minutes, default HERDR_GRAPH_GATE_STALL or 10, while its process tree
+#    uses no CPU: a pager, a prompt?); and
 #      DRIFT <lane> pr-merged: PR #N merged | cleanup.sh check (or run, once confirmed)
 #    or NO DRIFT.
 #   --quiet      refresh the cache, print nothing (the graph panel, in the background)
