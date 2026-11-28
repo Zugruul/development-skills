@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2329  # the sourced section files call the helpers
 # run-tests.sh -- tests of the repository's own scripts: install-skills.sh and
 # .github/scripts/check-marketplaces.sh. Hermetic: temporary folders stand in for the
 # project, the home folder and the client config folders; nothing real is touched.
