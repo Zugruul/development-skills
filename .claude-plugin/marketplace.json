@@ -27,7 +27,7 @@
             "name": "herdr-graph-engineering",
             "source": "./plugins/herdr-graph-engineering",
             "description": "Graph engineering on Herdr: one orchestrator chat runs each idea as a lane (a worktree running a small graph of agent, gate and person steps from a pattern) until its definition of done, and comes to you only when a lane needs you. Requires the herdr plugin, jq, yq and git.",
-            "version": "0.30.0",
+            "version": "0.31.0",
             "author": {
                 "name": "event-sorcerer"
             },

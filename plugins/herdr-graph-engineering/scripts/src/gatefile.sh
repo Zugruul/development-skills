@@ -64,6 +64,33 @@ gate_facts() { # heartbeat file -> its JSON with the live facts
          + {alive: $a, elapsed: ($now - (.started // $now)), quiet: ([$now - $mt, 0] | max)}' <<<"$hb"
 }
 
+# The CPU time, in hundredths of a second, of a process and everything under it. From /proc,
+# where each process also keeps the time of its ended children (so many short compiler runs
+# count); without /proc (macOS) from ps, which sees the live processes only.
+gate_tree_cpu() { # pid
+    if [ -r /proc/self/stat ]; then
+        cat /proc/[0-9]*/stat 2>/dev/null | awk -v root="$1" -v hz="$(getconf CLK_TCK 2>/dev/null || echo 100)" '
+            { pid = $1; rest = $0; sub(/^.*\) /, "", rest); split(rest, f, " "); par[pid] = f[2]; t[pid] = (f[12] + f[13] + f[14] + f[15]) * 100 / hz }
+            END { for (p in par) { q = p; for (n = 0; n < 64 && q != root && (q in par); n++) q = par[q]; if (q == root) s += t[p] } printf "%d\n", s }'
+    else
+        ps -A -o pid=,ppid=,time= 2>/dev/null | awk -v root="$1" '
+            { par[$1] = $2; d = 0; s = $3; if (split(s, x, "-") == 2) { d = x[1]; s = x[2] }
+              n = split(s, c, ":"); v = 0; for (i = 1; i <= n; i++) v = v * 60 + c[i]; t[$1] = (d * 86400 + v) * 100 }
+            END { for (p in par) { q = p; for (n = 0; n < 64 && q != root && (q in par); n++) q = par[q]; if (q == root) s += t[p] } printf "%d\n", s }'
+    fi
+}
+
+# Whether the tree works now: over HERDR_GRAPH_CPU_SAMPLE seconds (1) it used at least a
+# tenth of one core. An idle shell, tee or sleep stays far under that.
+gate_busy() { # pid
+    local before after sample="${HERDR_GRAPH_CPU_SAMPLE:-1}"
+    case "$sample" in '' | 0 | *[!0-9]*) sample=1 ;; esac
+    before="$(gate_tree_cpu "$1")"
+    sleep "$sample"
+    after="$(gate_tree_cpu "$1")"
+    [ $((${after:-0} - ${before:-0})) -ge $((sample * 10)) ]
+}
+
 # A duration for people: 45s, 12m 04s, 1h 05m.
 gate_dur() { # seconds
     local s="${1:-0}"

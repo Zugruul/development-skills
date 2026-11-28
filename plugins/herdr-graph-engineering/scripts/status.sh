@@ -21,7 +21,8 @@
 # A gate node recorded running carries its run's heartbeat (src/gatefile.sh) as "gate" and a
 # "progress" line (elapsed, ok/FAIL counts, last output line). It needs the user when the run
 # finished but was never recorded, its process is gone without an EXIT line, or its log has not
-# grown for HERDR_GRAPH_GATE_STALL minutes (default 10).
+# grown for HERDR_GRAPH_GATE_STALL minutes (default 10) while its process tree is idle (a quiet
+# log makes this take one HERDR_GRAPH_CPU_SAMPLE, 1 s, per such gate).
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/common.sh
@@ -60,6 +61,9 @@ else
 $here_root"
 fi
 
+stall="${HERDR_GRAPH_GATE_STALL:-10}"
+case "$stall" in '' | *[!0-9]*) stall=10 ;; esac
+
 # one JSON object per lane, open or closed, each repository's lane folder read once
 lanes="[]" seen=""
 while IFS= read -r r; do
@@ -78,6 +82,9 @@ while IFS= read -r r; do
     for g in "$d"/gates/*/*.json; do
         [ -f "$g" ] || continue
         gf="$(gate_facts "$g")" || continue
+        # a log that went quiet: the CPU says whether the run still works (src/gatefile.sh)
+        pid="$(jq -r --argjson s "$((stall * 60))" 'select(.alive == true and (.quiet // 0) >= $s) | .pid' <<<"$gf")"
+        if [ -n "$pid" ] && gate_busy "$pid"; then gf="$(jq -c '.busy = true' <<<"$gf")"; fi
         gates="$(jq -c --arg l "$(basename "$(dirname "$g")")" --arg n "$(basename "$g" .json)" --argjson f "$gf" '.[$l][$n] = $f' <<<"$gates")"
     done
     # what each running node's agent claimed through its hooks (scripts/hook.sh), by lane and node
@@ -95,8 +102,6 @@ done <<EOF2
 $repos
 EOF2
 
-stall="${HERDR_GRAPH_GATE_STALL:-10}"
-case "$stall" in '' | *[!0-9]*) stall=10 ;; esac
 view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson stall "$((stall * 60))" "$MERGED_JQ"'
     def pad2: tostring | if length < 2 then "0" + . else . end;
     def dur: floor | if . < 60 then "\(.)s" elif . < 3600 then "\(. / 60 | floor)m \(. % 60 | pad2)s"
@@ -128,7 +133,7 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
           | (if $gt != null then
                  (if $gt.finished then (if ($gt.recorded // false) then null else {kind: "gate-unrecorded", ref: "EXIT=\($gt.exit)"} end)
                   elif $gt.alive == false then {kind: "gate-lost", ref: "\($gt.pid)"}
-                  elif ($gt.quiet // 0) >= $stall then {kind: "gate-stalled", ref: "\($gt.quiet | dur) (last: \($gt.last))"}
+                  elif ($gt.quiet // 0) >= $stall and ($gt.busy != true) then {kind: "gate-stalled", ref: "\($gt.quiet | dur) (last: \($gt.last))"}
                   else null end)
              elif $s.status != "running" or $ag == "" or $have != 1 then null
              elif $a == null then (if ($cl.kind // "") == "result" then ($cl | drift_of) else {kind: "gone"} end)
@@ -142,10 +147,15 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
                   elif $cl != null then ($cl + {kind: "none"} | drift_of)
                   else null end)
              else null end) as $found
+          # when its evidence was written (a result file, a hook claim) or the gate run: "" for a screen
+          | (if $found == null then "" elif $gt != null then ($gt.run // "" | tostring)
+             elif $found.source == "result-file" then ($read.stamp // "")
+             elif (($found.source // "") | endswith("-hook")) then ($cl.at // "")
+             else "" end) as $stamp
           | ([($s.rejected // [])[].ref]) as $rejected
           | (if $found == null then null
              elif ($found.ref // "") != "" and ($rejected | index($found.ref)) != null then null
-             else $found + (if ($rejected | length) > 0 then {rejected: ($rejected | length)} else {} end) end) as $drift
+             else $found + {stamp: $stamp} + (if ($rejected | length) > 0 then {rejected: ($rejected | length)} else {} end) end) as $drift
           | (($s.steps // []) | last) as $step
           | {node: $n, status: $st, result: ($s.result // ""), retries: ($s.retries // 0),
              agent: $ag, live: ($a.status // ""), seq: ($a.seq // null), drift: $drift,
@@ -155,6 +165,7 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
              progress: (if $gt != null and ($gt.finished | not) then
                             "running \($gt.elapsed | dur) · \($gt.ok) ok · \($gt.fail) FAIL"
                             + (if ($gt.last // "") != "" then " · last: \($gt.last)" else "" end)
+                            + (if $gt.busy == true then " · quiet \($gt.quiet | dur), using the CPU" else "" end)
                         elif $s.status == "running" and $step != null then
                             "step \($step.name) \($step.result)" + (if ($step.ref // "") != "" then " \($step.ref)" else "" end)
                         else "" end)} ] as $nodes

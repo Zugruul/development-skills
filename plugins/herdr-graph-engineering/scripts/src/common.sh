@@ -29,6 +29,12 @@ require_tools() { # tool...
     done
 }
 
+# The watcher's message (src/events.sh writes it, hook.sh knows it by this shape): the fixed
+# prefix, then "<lane>/<node> <reason code>[ (reminder N)]" items. Nothing else is ever in it.
+EVENT_PREFIX='graph: '
+EVENT_ITEM_RE='[A-Za-z0-9._-]+/[A-Za-z0-9._-]+ [a-z]+(-[a-z]+)*( \(reminder [0-9]+\))?'
+EVENT_MESSAGE_RE="^${EVENT_PREFIX}(${EVENT_ITEM_RE})(, (${EVENT_ITEM_RE}))*\$"
+
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 slug() { # text -> lowercase kebab slug, at most 24 characters

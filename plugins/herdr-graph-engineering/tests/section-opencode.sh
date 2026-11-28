@@ -80,7 +80,7 @@ echo "== opencode: the waiter =="
 jq -c '.agents.a.agent_status = "blocked"' "$O_TMP/state.json" >"$O_TMP/state.new" && mv "$O_TMP/state.new" "$O_TMP/state.json"
 out="$(O_MAX=20 drive w1:p1 "$(sc "$SES" "$(idle)" '{"waitCall": 15000}')")"
 check "an event wakes the idle orchestrator chat" "CALL promptAsync ses_main" "$out"
-check "with the watcher's message" "GRAPH EVENT (from the watcher, not the user): o/investigate blocked" "$out"
+check "with the watcher's message" "graph: o/investigate blocked" "$out"
 
 echo "== opencode: after a compaction =="
 out="$(drive w1:p1 "$(sc "$SES" '{"compacting": "ses_main"}' "$(ev session.compacted '{"sessionID": "ses_main"}')")")"

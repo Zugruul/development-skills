@@ -19,6 +19,12 @@
 #                                      due, push
 #   notify.sh sweep                    a full reconcile and push for every session (Herdr startup)
 #   notify.sh list --session S         the open events
+#   notify.sh ack --session S --lane L [--node N] [--reason R] [--note T]
+#                                      mark the lane's matching open events handled (--node -: the
+#                                      lane's own): no reminder and no second message until the
+#                                      facts change (a new RESULT line or question, a new gate run,
+#                                      a status change). Exit 1: nothing open matches
+#   notify.sh answered --repo R --lane L --node N  (lane.sh answer) the node's question is acknowledged
 #   notify.sh gate --repo R --lane L --node N     a gate that ran in its tab recorded itself: an event
 #                                      until the lane is written again
 # State: <state>/herdr-graph/sessions/<session>.events.json {open, sent, swept_at, last_push,
@@ -41,13 +47,17 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/src/afk.sh"
 # shellcheck source=src/panes.sh
 . "$HERE/src/panes.sh"
+# shellcheck source=src/result.sh
+. "$HERE/src/result.sh"
+# shellcheck source=src/gatefile.sh
+. "$HERE/src/gatefile.sh"
 # shellcheck source=src/events.sh
 . "$HERE/src/events.sh"
 
-USAGE="notify.sh reconcile|take|pending|push|signal|tick|sweep|list|gate [options] (see the header of notify.sh)"
+USAGE="notify.sh reconcile|take|pending|push|signal|tick|sweep|list|ack|answered|gate [options] (see the header of notify.sh)"
 cmd="${1:-}"
-case "$cmd" in reconcile | take | pending | push | signal | tick | sweep | list | gate) shift ;; *) usage "$USAGE" ;; esac
-session="" full=0 delay=0 repo="" lane="" node=""
+case "$cmd" in reconcile | take | pending | push | signal | tick | sweep | list | ack | answered | gate) shift ;; *) usage "$USAGE" ;; esac
+session="" full=0 delay=0 repo="" lane="" node="" reason="" note=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --session) need_value "$1" $#; session="$2"; shift 2 ;;
@@ -56,6 +66,8 @@ while [ $# -gt 0 ]; do
         --repo) need_value "$1" $#; repo="$2"; shift 2 ;;
         --lane) need_value "$1" $#; lane="$2"; shift 2 ;;
         --node) need_value "$1" $#; node="$2"; shift 2 ;;
+        --reason) need_value "$1" $#; reason="$2"; shift 2 ;;
+        --note) need_value "$1" $#; note="$2"; shift 2 ;;
         *) usage "$USAGE" ;;
     esac
 done
@@ -82,6 +94,14 @@ tick)
     done ;;
 sweep) for s in $(sessions); do reconcile "$s" 1; push "$s"; done ;;
 list) [ -n "$session" ] || usage "$USAGE"; list_events "$session" ;;
+ack)
+    if [ -z "$session" ] || [ -z "$lane" ]; then usage "notify.sh ack --session S --lane L [--node N] [--reason R] [--note T]"; fi
+    ! looks_secret "$note" || die "SECRET: that looks like a token, key or password; it is never stored" 2
+    ack_events "$session" "$lane" "$node" "$reason" "$note" ||
+        die "NOTHING TO ACK: no open event matches lane $lane${node:+ node $node}${reason:+ reason $reason} (notify.sh list --session $session)" 1 ;;
+answered)
+    if [ -z "$repo" ] || [ -z "$lane" ] || [ -z "$node" ]; then usage "notify.sh answered --repo R --lane L --node N"; fi
+    answered_event "$repo" "$lane" "$node" ;;
 gate)
     if [ -z "$repo" ] || [ -z "$lane" ] || [ -z "$node" ]; then usage "notify.sh gate --repo R --lane L --node N"; fi
     gate_event "$repo" "$lane" "$node" ;;

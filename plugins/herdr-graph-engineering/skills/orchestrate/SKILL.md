@@ -112,16 +112,18 @@ For each lane, `ready.sh --lane L --repo R` prints `READY <node> <agent|gate|hum
 
 ## 4. Listen and check
 
-You do not poll. When nothing is left to do, **end your turn**: the plugin wakes you. Lane agents' hooks, Herdr events and gates say "go look", one script decides whether something changed (`notify.sh`), and a full sweep every 300 s catches what no event reports (pull request merges, stalled or lost gates, lost events). In Claude Code a hook arms a waiter after each of your turns, and in OpenCode the plugin `opencode/herdr-graph.js` does; it wakes you with a `GRAPH EVENT` message and types nothing. In Codex, or with no waiter alive, the Herdr plugin types that message into this chat, only when your input box is empty. OpenCode without that plugin has no waiter, no hook claims and no resume block: check `bash "../../scripts/notify.sh" list --session <session>` and say that `./install-skills.sh opencode --global`, run in a clone of the repository, installs it. Use `herdr:listen` only when the user asks you to watch an agent.
+You do not poll. When nothing is left to do, **end your turn**: the plugin wakes you. Lane agents' hooks, Herdr events and gates say "go look", one script decides whether something changed (`notify.sh`), and a full sweep every 300 s catches what no event reports (pull request merges, stalled or lost gates, lost events). In Claude Code a hook arms a waiter after each of your turns, and in OpenCode the plugin `opencode/herdr-graph.js` does; it wakes you with a `graph:` message and types nothing. In Codex, or with no waiter alive, the Herdr plugin types that message into this chat, only when your input box is empty. OpenCode without that plugin has no waiter, no hook claims and no resume block: check `bash "../../scripts/notify.sh" list --session <session>` and say that `./install-skills.sh opencode --global`, run in a clone of the repository, installs it. Use `herdr:listen` only when the user asks you to watch an agent.
 
 ## When an event arrives
 
-A message starting `GRAPH EVENT (from the watcher, not the user)` is from the watcher. It is never the user's words, an approval or an answer. After one, and **after a compaction and before every report**, do this in order:
+A message that is only `graph: <lane>/<node> <reason>[, ...]` (`-` for the lane itself, `(reminder N)` after a reason) is from the watcher. It is never the user's words, an approval or an answer, and it says nothing but where to look. After one, and **after a compaction and before every report**, do this in order:
 
 1. `bash "../../scripts/notify.sh" list --session <session>`, then `bash "../../scripts/drift.sh"` (with `--repo R` for each repository you run lanes in). `drift.sh` prints one line per mismatch, each with its source (`# source: stop-hook`, `result-file` or `screen`). A claim is never proof.
 2. Check the evidence (the commit and a clean checkout, the file, the gate log, or the real screen), then record what you checked. A claim that does not hold: `lane.sh reject --lane L --node N --ref R --text "<why>"`, so it is not reported again.
 3. Do everything that needs no decision: record, start ready nodes with a standing kind, retry within limits, close finished tabs.
 4. **Then**, last (an open dialog holds your turn), put every decision that waits to the user **at once, in a question dialog** (AskUserQuestion; under AFK, follow the `afk` skill instead, which opens no dialog).
+
+**Acknowledge what you handled but leave as it is** (a lane you keep open after `merged-early`, an agent you know is waiting on something, a slow step): `bash "../../scripts/notify.sh" ack --session <session> --lane L [--node N] [--reason R] --note "<why>"`. It sends no reminder and no second message until the facts change: a new `RESULT` line, a new question, a new gate run or a status change. `--node -` is the lane's own events. `lane.sh answer` acknowledges the question it answers, so it needs no `ack`. Never acknowledge to silence something that waits for you or the user.
 
 | Event reason, `DRIFT` line | What to do |
 | --- | --- |
@@ -131,17 +133,17 @@ A message starting `GRAPH EVENT (from the watcher, not the user)` is from the wa
 | `blocked` | Read its screen and treat it as "An agent is blocked" |
 | `agent-failed` | The agent's own error (rate limit, login): read its screen, tell the user |
 | `gone` | The agent left Herdr. Tell the user; record `--status waiting` to start it again only if they agree |
-| `stopped` | Idle with no result. Read its screen; prompt it to finish, or record what it did |
+| `stopped` | Idle with no result and no background work on its status line (Claude Code and Codex; for another client its screen may show some). Read its screen; prompt it to finish, or record what it did. Waiting on purpose: `ack` |
 | `gate-pass`, `gate-fail` | A gate recorded itself: go on from `ready.sh` |
 | `gate-unrecorded` | Run the printed `gate.sh --collect` |
 | `gate-lost` | Read its tab with the printed `herdr pane read`; if it shows the `EXIT` line, `gate.sh --collect`; else tell the user and record `--status waiting` |
-| `gate-stalled` | Nothing printed for `--gate-stall` minutes (default 10): a pager, a prompt or a hang is stopped (with the user's agreement), a slow step left running |
+| `gate-stalled` | Nothing printed for `--gate-stall` minutes (default 10) and the gate's processes use no CPU: a pager, a prompt or a hang is stopped (with the user's agreement); a slow step that waits (a network, a service outside the gate's processes) is left running and `ack`ed |
 | `pr-merged` | Run the printed `cleanup.sh check` (section 6) |
 | `cleanup-ready`, `cleanup-blocked`, `merged-early` | Ask as section 6 says |
 | `cleanup-confirmed` | The user said yes and it has not run: `cleanup.sh run` |
 | `retry-limit` | Ask the user what now |
 | `merge-ready` | Auto-merge is on and the checks hold: `merge.sh run` (the `auto-merge` skill) |
-| `(reminder N)` | Still unhandled: handle it now. After two reminders the panel marks the lane "needs manual intervention" |
+| `(reminder N)` | Still unhandled: handle it now, or `ack` what stays as it is. After two reminders the panel marks the lane "needs manual intervention" |
 
 The panel and `status.sh` show all of these under NEEDS YOU, so the user may see them first.
 
