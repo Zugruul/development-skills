@@ -141,6 +141,14 @@ out="$(u cleanup check --repo "$U_REPO" --lane refused 2>&1)"
 check "a workspace Herdr will not close keeps the lane open" "AUTOCLOSE-WAIT refused" "$out"
 check "the lane file stays" "1" "$(isfile "$U_DIR/refused.yaml")"
 
+ulane reused 13
+umerged reused 13
+ust "{\"workspaces\": [{\"workspace_id\": \"w-reused\", \"worktree\": {\"repo_root\": \"$U_REPO\", \"checkout_path\": \"$U_TMP/elsewhere\"}}]}"
+u cleanup check --repo "$U_REPO" --lane reused >/dev/null 2>&1
+check_absent "a recorded workspace id that now holds another checkout is not closed" "workspace close" "$(cat "$U_TMP/calls.log")"
+check "and the note says why" "another checkout" "$(ul reused '.restore.workspace_kept')"
+u lane clear --repo "$U_REPO" --lane reused >/dev/null
+
 echo "== autoclose: work left in the worktree is kept and named =="
 ulane leftover 10
 umerged leftover 10
