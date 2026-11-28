@@ -35,6 +35,15 @@ check "the second one is a pointer under its own name" "name: herdr-simple-orche
 check "with a description" "description: " "$second"
 check "that sends the agent to the real file" "$REPO/plugins/herdr-simple-orchestrate/skills/orchestrate/SKILL.md" "$second"
 
+echo "== install-skills.sh: an install made by the earlier script =="
+P2="$OS/skills/herdr-simple-orchestrate-orchestrate"
+rm -r "$P2" && ln -s "$REPO/plugins/herdr-simple-orchestrate/skills/orchestrate" "$P2"
+inst opencode >/dev/null; rc=$?
+check_rc "its prefixed link is replaced without a refusal" 0 "$rc"
+r=NO; [[ ! -L "$P2" ]] && grep -q '^name: herdr-simple-orchestrate-orchestrate$' "$P2/SKILL.md" && r=YES
+check "by the pointer with its own name" YES "$r"
+check "and the plugin's own file is untouched" "name: orchestrate" "$(sed -n 2p "$REPO/plugins/herdr-simple-orchestrate/skills/orchestrate/SKILL.md")"
+
 echo "== install-skills.sh: the OpenCode plugins =="
 check "opencode: the graph plugin is linked" "$REPO/plugins/herdr-graph-engineering/opencode/herdr-graph.js" "$(readlink "$OS/plugins/herdr-graph-engineering.js")"
 r=NO; [[ -e "$I_TMP/proj/.claude/plugins" || -e "$I_TMP/proj/.agents/plugins" ]] && r=YES
