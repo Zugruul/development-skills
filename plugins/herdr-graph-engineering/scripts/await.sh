@@ -11,7 +11,9 @@
 #                      not know asyncRewake (Codex) would hold its turn until the waiter ends, so
 #                      there it returns at once and the Herdr plugin's push wakes the chat.
 #            opencode  opencode/herdr-graph.js runs it beside the chat and sends what it wrote to
-#                      stderr through OpenCode's API on exit 2.
+#                      stderr through OpenCode's API on exit 2. It ends when the process that started
+#                      it is gone: a killed OpenCode stops nothing, and an orphan would take events
+#                      that no chat receives and keep the push away.
 # One waiter per session: a newer one takes over and the older ends quietly. While it waits it
 # costs no tokens. Hooks and Herdr events update the events; the waiter looks at them every
 # HERDR_GRAPH_TICK seconds (2) and runs the full sweep (notify.sh reconcile --full: pull
@@ -30,7 +32,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/events.sh
 . "$HERE/src/events.sh"
 
-session="" hook=0 client=claude
+session="" hook=0 client=claude parent=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --session) need_value "$1" $#; session="$2"; shift 2 ;;
@@ -49,6 +51,7 @@ if [ "$hook" -eq 1 ]; then
     session="$(cat "$ofile")"
     agent="$(orchestrator_agent "$session")" || exit 0
     [ "$(jq -r '.agent // ""' <<<"$agent")" = "$client" ] || exit 0
+    [ "$client" != opencode ] || parent="$PPID"
 fi
 require_tools jq yq git
 session="${session:-$(default_session)}"
@@ -57,6 +60,7 @@ mine="$(session_dir)/$session.waiter" beat="$(session_dir)/$session.beat"
 mkdir -p "$(session_dir)"
 printf '%s' "$$" >"$mine"
 touch "$beat"
+orphaned() { [ -n "$parent" ] && ! kill -0 "$parent" 2>/dev/null; }
 bye() { [ "$(cat "$mine" 2>/dev/null)" != "$$" ] || rm -f "$mine" "$beat"; }
 trap bye EXIT
 trap 'exit 0' INT TERM HUP
@@ -68,11 +72,13 @@ if sweep_due "$session"; then reconcile "$session" 1 >/dev/null 2>&1; else recon
 checked="$(date +%s)"
 while :; do
     [ "$(cat "$mine" 2>/dev/null)" = "$$" ] || exit 0
+    ! orphaned || exit 0
     touch "$beat"
     if pending "$session"; then
         sleep "$batch" # one message for what happens together
         reconcile "$session" 0 >/dev/null 2>&1
         [ "$(cat "$mine" 2>/dev/null)" = "$$" ] || exit 0
+        ! orphaned || exit 0 # leave the events for whoever can deliver them
         if msg="$(take "$session")"; then
             printf '%s\n' "$msg" >&2
             exit 2
