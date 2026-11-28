@@ -72,6 +72,8 @@ The `herdr` plugin, the `herdr` binary (the agent runs inside a Herdr pane), `ba
 
 Patterns and roles are looked up in the repository's `.herdr-graph/patterns|roles/`, then `~/.config/herdr-graph/patterns|roles/`, then this plugin. To add a kind of work, add a pattern; to add an agent, add a role. No skill changes.
 
+Every view (status text and JSON, the panel, the popups, the resume block, `lane.sh list`, the lane type dialog) names a lane by its pattern only when the plugin ships that pattern. Any other graph (hand-written, `--pattern-file`, or a user or repository pattern, also one that reuses a shipped name) shows as `custom` or `custom: <name>`. In `status.sh --json`, `pattern` is that shown type and `pattern_name` is the stored name.
+
 Shipped patterns:
 
 | Pattern | Graph |

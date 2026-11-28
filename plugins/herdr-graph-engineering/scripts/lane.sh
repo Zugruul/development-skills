@@ -214,11 +214,11 @@ list)
         [ -f "$f" ] || continue
         st="$(yq -r '.status' "$f")"
         [ "$all" -eq 1 ] || [ "$st" != "closed" ] || continue
-        printf '%s\t%s\t%s\n' "$(basename "$f" .yaml)" "$st" "$(yq -r '.pattern' "$f")"
+        printf '%s\t%s\t%s\n' "$(basename "$f" .yaml)" "$st" "$(read_json "$f" | jq -r "$LANE_TYPE_JQ lane_type")"
     done
     if [ "$all" -eq 1 ] && [ -d "$dir/closed" ]; then
         for f in "$dir"/closed/*.yaml; do
-            [ -f "$f" ] && printf '%s\tclosed\t%s\n' "$(basename "$f" .yaml)" "$(yq -r '.pattern' "$f")"
+            [ -f "$f" ] && printf '%s\tclosed\t%s\n' "$(basename "$f" .yaml)" "$(read_json "$f" | jq -r "$LANE_TYPE_JQ lane_type")"
         done
     fi ;;
 node)

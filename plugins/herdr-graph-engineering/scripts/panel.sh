@@ -132,8 +132,8 @@ ORDER_JQ='
 # branch, look/pr-<n> as the review patterns name it.
 # shellcheck disable=SC2016
 REVIEW_JQ='
-    def isreview: if .pattern == "review" or .pattern == "review-stack" then true
-        elif (.pattern // "") == "" or .pattern == "custom" then (.branch // "") | test("^look/pr-[0-9]+$")
+    def isreview: if .pattern_name == "review" or .pattern_name == "review-stack" then true
+        elif (.pattern_name // "") == "" or .pattern_name == "custom" then (.branch // "") | test("^look/pr-[0-9]+$")
         else false end;'
 
 # The armed button, shown as [confirm]: "x|root|lane" for a lane's [x], "restore|root|lane"

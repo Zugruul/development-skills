@@ -102,7 +102,7 @@ done <<EOF2
 $repos
 EOF2
 
-view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson stall "$((stall * 60))" "$MERGED_JQ"'
+view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson stall "$((stall * 60))" "$MERGED_JQ$LANE_TYPE_JQ"'
     def pad2: tostring | if length < 2 then "0" + . else . end;
     def dur: floor | if . < 60 then "\(.)s" elif . < 3600 then "\(. / 60 | floor)m \(. % 60 | pad2)s"
              else "\(. / 3600 | floor)h \(. % 3600 / 60 | floor | pad2)m" end;
@@ -202,7 +202,7 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
               elif ($cu | startswith("afk-approved")) then ["PR #\($merged.number) merged, removal approved under AFK"]
               elif $l.status == "done" or ($unfinished | length) == 0 then ["PR #\($merged.number) merged, checking cleanup"]
               else ["PR #\($merged.number) merged but the lane is unfinished (\($unfinished | join(", ")))"] end)) as $att
-      | {lane: $l.lane, pattern: $l.pattern, repo: $l.repo,
+      | {lane: $l.lane, pattern: ($l | lane_type), pattern_name: $l.pattern, repo: $l.repo,
          question: (if $q != "" then $q else ($asks | join("; ")) end),
          question_live: ($q == "" and ($asks | length) > 0), attention: $att,
          pr_merged: (if $merged then {number: $merged.number, url: $merged.url} else null end),
