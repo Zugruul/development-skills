@@ -21,6 +21,9 @@ rlf() { local f; f="$(git -C "$RA" rev-parse --path-format=absolute --git-common
 U9="https://github.com/o/r/pull/9" U10="https://github.com/o/r/pull/10" U12="https://github.com/o/r/pull/12"
 printf '{"%s": {"number": 9, "url": "%s", "headRefName": "feat/x", "state": "OPEN"}, "%s": {"number": 12, "url": "%s", "headRefName": "feat/other", "state": "OPEN"}}' \
     "$U9" "$U9" "$U12" "$U12" >"$R_TMP/gh.json"
+# the ask flow, which is what happens with auto-close off (section-autoclose.sh covers it on)
+rk session set --key autoclose --value off >/dev/null
+
 # a review lane on its own clean worktree, still open
 rlane() { # lane, pr number, lane.sh new args...
     local l="$1" n="$2"

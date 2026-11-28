@@ -101,6 +101,7 @@ check "--quiet only refreshes the cache" "" "$(dg drift --repo "$D_REPO" --quiet
 echo "== drift: a merged pull request waits for the cleanup confirmation =="
 for l in ask bad gone busy stuck quiet; do dg lane close --repo "$D_REPO" --lane "$l" >/dev/null; done
 dg lane new --repo "$D_REPO" --lane merged --pattern investigate --idea "see https://github.com/o/r/pull/4" --branch feat/merged >/dev/null
+dg lane set --repo "$D_REPO" --lane merged --key pr --value https://github.com/o/r/pull/5 >/dev/null
 dg lane new --repo "$D_REPO" --lane other --pattern investigate --idea "about https://github.com/o/r/pull/4" --branch feat/other >/dev/null
 dg lane new --repo "$D_REPO" --lane kept --pattern investigate --idea x --branch feat/kept >/dev/null
 dg lane set --repo "$D_REPO" --lane kept --key cleanup --value declined >/dev/null

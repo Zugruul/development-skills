@@ -46,6 +46,13 @@ cmd="${1:-} ${2:-}"
 case "$cmd" in
     "agent list") ok "$(st | jq -c '{agents: [.agents[]]}')" ;;
     "workspace list") ok "$(st | jq -c '{workspaces: (.workspaces // [])}')" ;;
+    "workspace close")
+        # Closes the workspace with every agent in it. state.workspace_close = "fail" refuses.
+        [ "$(st | jq -r '.workspace_close // "ok"')" = ok ] || fail workspace_group_close_required "refused"
+        save "$(st | jq -c --arg w "${3:-}" '.workspaces_closed += [$w]
+            | .agents |= with_entries(select(.value.workspace_id != $w))
+            | .workspaces = [(.workspaces // [])[] | select(.workspace_id != $w)]')"
+        ok '{"type":"workspace_closed"}' ;;
     "worktree list")
         root="$(st | jq -r '.root // ""')"
         ok "$(st | jq -c --arg r "$root" --arg n "$(basename "$root")" \

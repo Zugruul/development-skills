@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck source-path=SCRIPTDIR
-# cleanup.sh -- find lanes ready for cleanup and ask the user; clean one up after they said yes.
+# cleanup.sh -- close finished lanes, ask about the rest, and remove a worktree only on the user's word.
 # Usage:
 #   cleanup.sh run --afk --lane L [--session S]  remove without asking, only when the AFK scope ticked
 #                                              worktree removal and all nine checks hold (afk_run below); recorded
@@ -8,12 +8,27 @@
 #   cleanup.sh facts --lane L [--repo DIR]     what removing it takes and keeps, ignored files named (the preview
 #                                              of its question); reads only
 #   cleanup.sh reopen --lane L [--repo DIR]    take back a recorded no (cleanup=declined)
-#   cleanup.sh check [--lane L] [--repo DIR]   every done lane and finished review lane (or one):
-#                                              never removes anything. With neither --lane nor
+#   cleanup.sh check [--lane L] [--repo DIR] [--session S]   every done lane and finished review lane
+#                                              (or one): closes the finished ones (auto_close below),
+#                                              never removes a worktree. With neither --lane nor
 #                                              --repo: every repository that may hold lanes
 #                                              (lane_repos), a REPO <dir> line before each one's
 #   cleanup.sh run --lane L [--repo DIR]       after the user's yes is recorded (cleanup=confirmed): close the lane's tabs,
 #                                              herdr worktree remove (never --force), lane.sh close
+#   cleanup.sh remove --lane L [--lose-ignored] [--repo DIR]   a CLOSED lane's worktree, when the
+#                                              user asks (the panel's [x] on CLOSED runs it): never
+#                                              --force, never a dirty one, a main checkout, or one an
+#                                              agent or an open lane uses; ignored files that are not
+#                                              build output only with --lose-ignored (the user's yes).
+#                                              Prints REMOVED, or NO WORKTREE (nothing to remove)
+# A lane closes by itself (unless session.sh set --key autoclose --value off) when its recorded pull
+# request is MERGED and every node is done or skipped, or it is a finished review lane with nothing
+# left to forward. Unmet extra done criteria do not hold it: they stay listed as open. It records a
+# restore note (checkout, each agent's resume command), closes the lane's workspace so its agents
+# leave Herdr, keeps worktree and branch, closes the lane: AUTOCLOSED <lane> (...). The workspace
+# stays when it is not the lane's alone. It waits, AUTOCLOSE-WAIT <lane> (<why>), while an agent is
+# working or blocked, a question is open, the feedback is due (FEEDBACK) or Herdr refuses. Never for
+# a lane the user kept or restored, one they confirmed for removal, or one AFK removes.
 # Why a script: whether a lane may go depends on its pull request, its checkout and its graph,
 # and the user must be asked exactly once per reason; that is decided here and tested.
 #
@@ -31,7 +46,8 @@
 # CONFIRMED <lane> when the user said yes (cleanup=confirmed, recorded with lane.sh set),
 # BLOCKED <lane> (<reason>) for a merged lane that must not be removed (asks once per reason),
 # WAIT <lane> (<why>) for a pull request not merged yet, DECLINED <lane> when the user said no.
-# An unfinished lane whose own pull request merged gets MERGED-EARLY <lane>: its own question (keep
+# A merged pull request on the lane's branch that is not its recorded one is only a lane note,
+# SIDE-MERGE <lane> (...). An unfinished lane whose own pull request merged gets MERGED-EARLY <lane>: its own question (keep
 # working, finish, or dismiss the entry), asked once per pull request, never a cleanup. A question
 # that no longer holds (the verdict is WAIT, or what it showed changed) is withdrawn: WITHDRAWN <lane>.
 # Only the recorded pull request counts; with none, the branch's when it is newer than the lane.
@@ -58,15 +74,16 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/afk.sh
 . "$HERE/src/afk.sh"
 
-USAGE="cleanup.sh check [--lane L] [--repo DIR] | cleanup.sh run [--afk [--session S]]|facts|reopen --lane L [--repo DIR]"
+USAGE="cleanup.sh check [--lane L] [--repo DIR] [--session S] | cleanup.sh run [--afk [--session S]]|facts|reopen|remove [--lose-ignored] --lane L [--repo DIR]"
 cmd="${1:-}"
-case "$cmd" in check | run | facts | reopen) shift ;; *) usage "$USAGE" ;; esac
-repo="" lane="" afk=0 session=""
+case "$cmd" in check | run | facts | reopen | remove) shift ;; *) usage "$USAGE" ;; esac
+repo="" lane="" afk=0 session="" lose=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo) need_value "$1" $#; repo="$2"; shift 2 ;;
         --lane) need_value "$1" $#; lane="$2"; shift 2 ;;
         --afk) afk=1; shift ;;
+        --lose-ignored) lose=1; shift ;;
         --session) need_value "$1" $#; session="$2"; shift 2 ;;
         *) usage "$USAGE" ;;
     esac
@@ -84,7 +101,7 @@ GH="${GRAPH_GH:-gh}"
 lane_sh() { bash "$HERE/lane.sh" "$@" --repo "$repo" >/dev/null; }
 
 # With the feedback loop on, a lane closes only after the orchestrator wrote its feedback note.
-feedback_due() { bash "$HERE/feedback.sh" due --lane "$1" 2>/dev/null; }
+feedback_due() { bash "$HERE/feedback.sh" due --lane "$1" ${2:+--session "$2"} 2>/dev/null; }
 
 # The checkout of a branch, from git's worktree list; empty when there is none.
 checkout_of() { # branch
@@ -250,18 +267,226 @@ withdraw_early() { # file, lane
     ! asking "$1" merged-early || { lane_sh withdraw --lane "$2" --kind merged-early && printf 'WITHDRAWN %s (merged early no longer holds)\n' "$2"; }
 }
 
+# Notes, once each, the merged pull requests on the lane's branch that are not its recorded one.
+side_merges() { # file, lane
+    local url br
+    br="$(yq -r '.branch // ""' "$1")"
+    while IFS= read -r url; do
+        [ -n "$url" ] || continue
+        lane_sh note --lane "$2" --ref "$url" --text "side pull request $url merged on branch $br; it is not the lane's recorded pull request" || exit 1
+        printf 'SIDE-MERGE %s (%s merged; not the recorded pull request, noted only)\n' "$2" "$url"
+    done < <(read_json "$1" | jq -r --argjson p "$(jq -c --arg l "$2" '.lanes[$l] // []' "$dir/prs.json" 2>/dev/null || echo '[]')" --arg own "$PR" "$MERGED_JQ"'
+        . as $l | [(.notes // [])[].ref // empty] as $noted | dismissed_urls as $gone
+        | $p[] | select(.state == "MERGED" and (.headRefName // "") == ($l.branch // "") and ($l.branch // "") != ""
+            and ((.createdAt // "") == "" or .createdAt >= ($l.created // "")))
+        | .url | select(. != $own and (. as $u | ($noted + $gone) | index($u) == null))')
+}
+
+# Whether the lane is finished so that it closes by itself; sets AUTOWHY and judge's VERDICT, WHY, WT.
+# BLOCKED still counts: what is left in the worktree stays there, and the note names it.
+finished() { # file, lane
+    local fin
+    case "$(yq -r '.status' "$1")" in open | done) ;; *) return 1 ;; esac
+    lane_kind "$1"
+    if [ "$KIND" = review ]; then
+        fin="$(review_finished "$1")"
+        [ -n "$fin" ] || [ "$(yq -r '.status' "$1")" = "done" ] || return 1
+        # findings an open lane owns are offered to it first: that is the user's call
+        forwards "$1" "$2"
+        [ -z "$FORWARDS" ] || return 1
+        judge "$1"
+        AUTOWHY="finished review${fin:+: $fin}"
+    else
+        [ -n "$PR" ] || return 1
+        read_json "$1" | jq -e '(.nodes | length) > 0 and all(.nodes[]; .status == "done" or .status == "skipped")' >/dev/null || return 1
+        judge "$1"
+        if is_adopted "$1"; then
+            ! dismissed "$1" "$PR" && [ "$(pr_view "$PR" | jq -r '.state // ""')" = MERGED ] || return 1
+            PRURL="$PR"
+        fi
+        AUTOWHY="pull request $PRURL is merged and every node is done"
+    fi
+    [ "$VERDICT" != WAIT ]
+}
+
+# AFK with worktree removal in its scope removes a merged lane itself (afk_run), so it stays open for it.
+afk_removes() { # file, lane, session
+    [ "$KIND" = pr ] && ! is_adopted "$1" &&
+        afk_json "$3" | jq -e --arg l "$2" '.state == "on" and .cleanup == true and ((.lanes | length) == 0 or (.lanes | index($l)) != null)' >/dev/null
+}
+
+# Forget a wait that no longer applies.
+drop_wait() { # file, lane
+    case "$(yq -r '.cleanup // ""' "$1")" in feedback-due | "auto-wait: "*) lane_sh set --lane "$2" --key cleanup --value "" || exit 1 ;; esac
+}
+
+# The lane stays open for now, with no question of its own: the next check tries again.
+auto_wait() { # file, lane, cleanup value, why
+    if asking "$1" cleanup || asking "$1" merged-early; then
+        withdraw "$1" "$2" >/dev/null
+        withdraw_early "$1" "$2" >/dev/null
+    fi
+    [ "$(yq -r '.cleanup // ""' "$1")" = "$3" ] || lane_sh set --lane "$2" --key cleanup --value "$3" || exit 1
+    printf 'AUTOCLOSE-WAIT %s (%s)\n' "$2" "$4"
+}
+
+lane_agents() { # file -> the agents its nodes record
+    read_json "$1" | jq -r '[.nodes[].agent // empty | select(. != "")] | unique[]'
+}
+
+# A lane's agent, or one in its workspace or checkout, that is working or blocked.
+active_agent() { # file, Herdr's agent list
+    read_json "$1" | jq -r --argjson l "$2" --arg wt "$WT" '
+        [.nodes[].agent // empty] as $mine | (.workspace // "") as $ws
+        | $l.result.agents[] | (.name // .pane_id // "?") as $n | (.agent_status // "") as $s
+        | select(($s == "working" or $s == "blocked") and (($mine | index($n)) != null or ($ws != "" and .workspace_id == $ws)
+            or ($wt != "" and ([.cwd, .foreground_cwd] | any(strings; . == $wt or startswith($wt + "/"))))))
+        | "agent \($n) is \($s)"' | head -1
+}
+
+is_linked() { # checkout
+    [ -n "$1" ] && [ "$(git -C "$1" rev-parse --path-format=absolute --git-dir)" != "$(git -C "$1" rev-parse --path-format=absolute --git-common-dir)" ]
+}
+
+# Why the lane's workspace must stay open, or nothing: only a workspace that is the lane's alone closes.
+workspace_keep() { # file, lane, workspace, Herdr's agent list
+    local f other
+    ! is_adopted "$1" || { echo "adopted lane: the graph did not create it"; return 0; }
+    [ -n "$3" ] || { echo "no workspace is recorded"; return 0; }
+    [ "$3" != "${HERDR_WORKSPACE_ID:-}" ] || { echo "it is the caller's own workspace"; return 0; }
+    for f in "$(session_dir)"/*.yaml; do
+        [ -f "$f" ] || continue
+        case "$(yq -r '.pane // ""' "$f")" in "$3":*) echo "an orchestrator's pane is in it"; return 0 ;; esac
+    done
+    is_linked "$WT" || { echo "the lane has no linked worktree of its own"; return 0; }
+    # Herdr may give a recorded id to a later workspace
+    other="$(herdr workspace list 2>/dev/null | jq -r --arg ws "$3" '[.result.workspaces[]? | select(.workspace_id == $ws) | .worktree.checkout_path // empty][0] // empty' 2>/dev/null)"
+    [ -z "$other" ] || [ "$other" = "$WT" ] || { echo "it now holds another checkout ($other)"; return 0; }
+    for other in "$dir"/*.yaml; do
+        [ "$other" != "$1" ] && [ -f "$other" ] || continue
+        [ "$(yq -r '.workspace // ""' "$other")" != "$3" ] || { echo "lane $(basename "$other" .yaml) uses it"; return 0; }
+    done
+    read_json "$1" | jq -r --argjson l "$4" --arg ws "$3" '[.nodes[].agent // empty] as $mine
+        | $l.result.agents[] | select(.workspace_id == $ws) | (.name // .pane_id // "?") as $n
+        | select(($mine | index($n)) == null) | "agent \($n), not one of this lane, is in it"' | head -1
+}
+
+# What brings the lane back: its checkout and, per agent, its session (live, or kept when its tab
+# closed) with the command that resumes it in its client.
+restore_json() { # file
+    local a s kept='[]'
+    while IFS= read -r a; do
+        [ -n "$a" ] || continue
+        s="$(herdr agent get "$a" 2>/dev/null | jq -c '.result.agent | select(.agent_session != null)
+            | .agent_session + {agent: (.agent // .agent_session.agent)}' 2>/dev/null)"
+        [ -n "$s" ] || s="$(read_json "$1" | jq -c --arg a "$a" '[.nodes[] | select(.agent == $a) | .session // empty][-1] // {}')"
+        kept="$(jq -c --arg n "$a" --argjson s "$s" '. + [{name: $n, kind: ($s.agent // ""), session_kind: ($s.kind // ""), session_id: ($s.value // "")}]' <<<"$kept")"
+    done < <(lane_agents "$1")
+    jq -c --arg path "$WT" --arg ws "$(yq -r '.workspace // ""' "$1")" --arg br "$(yq -r '.branch // ""' "$1")" '
+        # an id that is not a plain word never goes into a command the user pastes
+        def resume: if .session_kind != "id" or (.session_id | test("^[A-Za-z0-9][A-Za-z0-9._-]*$") | not) then ""
+            elif .kind == "claude" then "claude --resume \(.session_id)"
+            elif .kind == "codex" then "codex resume \(.session_id)"
+            elif .kind == "opencode" then "opencode --session \(.session_id)" else "" end;
+        {workspace_path: $path, workspace: $ws, branch: $br,
+         agents: map(resume as $r | . + {resume: $r, command: (if $r == "" then ""
+             elif $path == "" then $r
+             else "cd \($path | if test("^[A-Za-z0-9_./-]+$") then . else @sh end) && \($r)" end)})}' <<<"$kept"
+}
+
+# Closes a finished lane by itself. Returns 1 when this lane is not one to close: check goes on.
+auto_close() { # file, lane
+    local f="$1" l="$2" sn list why ws keep note restore out open_extra
+    case "$(yq -r '.cleanup // ""' "$f")" in declined | confirmed) return 1 ;; esac
+    [ "$(yq -r '.restored // false' "$f")" != true ] || return 1
+    sn="$(lane_session "$session" "$(yq -r '.owner // ""' "$f")")"
+    if ! autoclose_on "$sn" || ! finished "$f" "$l" || afk_removes "$f" "$l" "$sn"; then
+        drop_wait "$f" "$l"
+        return 1
+    fi
+    if read_json "$f" | jq -e 'any((.questions // [])[]; .answer == null and .kind != "cleanup" and .kind != "merged-early"
+            and (.kind != null or (.text | startswith("Cleanup ") | not)))' >/dev/null; then
+        auto_wait "$f" "$l" "auto-wait: an open question waits for the user" "an open question waits for the user"
+        return 0
+    fi
+    list="$(herdr agent list 2>/dev/null)" || list=""
+    if ! jq -e '.result.agents | type == "array"' >/dev/null 2>&1 <<<"$list"; then
+        auto_wait "$f" "$l" "auto-wait: herdr does not say which agents are live" "herdr does not say which agents are live"
+        return 0
+    fi
+    why=""
+    is_adopted "$f" || why="$(active_agent "$f" "$list")"
+    [ -z "$why" ] || { auto_wait "$f" "$l" "auto-wait: $why" "$why"; return 0; }
+    if why="$(feedback_due "$l" "$sn")"; then
+        printf '%s\n' "$why"
+        auto_wait "$f" "$l" feedback-due "the feedback is due"
+        return 0
+    fi
+    ws="$(yq -r '.workspace // ""' "$f")"
+    restore="$(restore_json "$f")" || die "could not make the restore note of lane $l"
+    keep="$(workspace_keep "$f" "$l" "$ws" "$list")"
+    if [ -z "$keep" ]; then
+        if ! out="$(herdr workspace close "$ws" 2>&1)"; then
+            case "$out" in
+                *workspace_not_found*) ;;
+                *) auto_wait "$f" "$l" "auto-wait: herdr workspace close $ws failed" "herdr workspace close $ws failed: $out"; return 0 ;;
+            esac
+        fi
+    fi
+    withdraw "$f" "$l" >/dev/null
+    withdraw_early "$f" "$l" >/dev/null
+    drop_wait "$f" "$l"
+    restore="$(jq -c --arg k "$keep" '. + {workspace_closed: ($k == "")} + (if $k != "" then {workspace_kept: $k} else {} end)' <<<"$restore")"
+    lane_sh restore-note --lane "$l" --value "$restore" || exit 1
+    note="closed by itself: $AUTOWHY.${WT:+ The worktree $WT and the branch are kept.}"
+    [ "$VERDICT" != BLOCKED ] || note="$note Left in the worktree: $WHY."
+    open_extra="$(read_json "$f" | jq -r '[(.done_extra // [])[] | select(.met != true) | .text] | join("; ")')"
+    [ -z "$open_extra" ] || note="$note open done criteria: $open_extra"
+    lane_sh note --lane "$l" --text "$note" || echo "NOT NOTED: tell the user: $note" >&2
+    lane_sh close --lane "$l" || exit 1
+    # a workspace that stays still loses the lane's finished tabs
+    if [ -n "$keep" ] && ! is_adopted "$f"; then bash "$HERE/close-done.sh" --lane "$l" --repo "$repo" >/dev/null 2>&1 || true; fi
+    herdr notification show "$l closed" --body "$note" >/dev/null 2>&1 || true
+    printf 'AUTOCLOSED %s (%s%s%s%s)\n' "$l" "$AUTOWHY" "${WT:+; worktree $WT kept}" "${keep:+; workspace kept: $keep}" "${open_extra:+; open: $open_extra}"
+}
+
+# A closed lane's worktree, on the user's word. The branch is always kept.
+remove_closed() { # lane
+    local f="$dir/closed/$1.yaml" br other why wsid out
+    [ -f "$f" ] && [ ! -f "$dir/$1.yaml" ] || die "NOT CLOSED: $1; only a closed lane's worktree is removed this way (an open one: cleanup.sh run)" 6
+    ! is_adopted "$f" || { printf 'NO WORKTREE %s (adopted lane: its checkout is left as it is)\n' "$1"; return 0; }
+    br="$(yq -r '.branch // ""' "$f")" WT=""
+    [ -z "$br" ] || WT="$(checkout_of "$br")"
+    [ -n "$WT" ] && [ -d "$WT" ] || { printf 'NO WORKTREE %s (no checkout of its branch is left)\n' "$1"; return 0; }
+    is_linked "$WT" || { printf 'NO WORKTREE %s (%s is a main checkout, never removed)\n' "$1" "$WT"; return 0; }
+    for other in "$dir"/*.yaml; do
+        [ -f "$other" ] || continue
+        [ "$(yq -r '.branch // ""' "$other")" != "$br" ] || die "NOT REMOVED: $1: lane $(basename "$other" .yaml) uses the branch $br" 6
+    done
+    [ -z "$(git -C "$WT" status --porcelain)" ] || die "NOT REMOVED: $1: the checkout has uncommitted changes ($WT)" 6
+    why="$(busy_agents "$f" "$WT")"
+    [ -z "$why" ] || die "NOT REMOVED: $1: $why" 6
+    ignored_split "$WT"
+    [ -z "$LOST" ] || [ "$lose" -eq 1 ] || die "NOT REMOVED: $1: ignored files would be deleted: $LOST. Ask the user, then cleanup.sh remove --lane $1 --lose-ignored" 6
+    # a workspace still open on the checkout goes with it, through herdr
+    wsid="$(herdr workspace list 2>/dev/null | jq -r --arg w "$WT" '[.result.workspaces[]? | select(.worktree.checkout_path == $w) | .workspace_id][0] // empty' 2>/dev/null)"
+    if [ -n "$wsid" ]; then
+        out="$(herdr worktree remove --workspace "$wsid" 2>&1)" || die "NOT REMOVED: $1: herdr worktree remove --workspace $wsid failed: $out" 1
+    else
+        out="$(git -C "$repo" worktree remove "$WT" 2>&1)" || die "NOT REMOVED: $1: git worktree remove $WT failed: $out" 1
+    fi
+    printf 'REMOVED %s (worktree %s removed, branch %s kept)\n' "$1" "$WT" "$br"
+}
+
 # A lane that is not up for cleanup but whose own pull request merged: its own question, never
 # "cleanup". Only a recorded pull request, or the cache's by the branch rule, then a fresh look.
 early_check() { # file, lane
-    local f="$1" l="$2" url pj cached q unfinished
+    local f="$1" l="$2" url pj q unfinished
     withdraw "$f" "$l"
     if [ "$(yq -r '.status' "$f")" != open ] || [ "$(yq -r '.cleanup // ""' "$f")" = declined ]; then return 0; fi
     lane_kind "$f"
     url="$PR"
-    if [ -z "$url" ]; then
-        cached="$(jq -c --arg l "$l" '.lanes[$l] // []' "$dir/prs.json" 2>/dev/null)" || cached='[]'
-        url="$(read_json "$f" | jq -r --argjson p "${cached:-[]}" "$MERGED_JQ"' own_merged($p) | .url // ""')"
-    fi
+    side_merges "$f" "$l"
     if [ -z "$url" ] || dismissed "$f" "$url"; then withdraw_early "$f" "$l"; return 0; fi
     command -v "$GH" >/dev/null 2>&1 || return 0
     pj="$(pr_view "$url")" || return 0
@@ -288,6 +513,7 @@ offer_holds() { # file (after judge)
 check_lane() { # file
     local f="$1" l was ws br q fw o p ol oa code lost
     l="$(yq -r '.lane' "$f")"
+    ! auto_close "$f" "$l" || return 0
     candidate "$f" || { early_check "$f" "$l"; return 0; }
     was="$(yq -r '.cleanup // ""' "$f")"
     [ "$was" != declined ] || { printf 'DECLINED %s (the user kept it)\n' "$l"; return 0; }
@@ -481,6 +707,9 @@ REPOS
     else
         check_all
     fi ;;
+remove)
+    require_tools herdr
+    remove_closed "$lane" ;;
 facts)
     [ -f "$dir/$lane.yaml" ] || die "NO LANE: $lane" 6
     facts "$dir/$lane.yaml" "$lane" ;;
@@ -494,6 +723,7 @@ run)
     [ "$afk" -eq 0 ] || { require_tools herdr; afk_run "$dir/$lane.yaml" "$lane"; exit 0; }
     require_tools herdr
     f="$dir/$lane.yaml"
+    [ -f "$f" ] || [ ! -f "$dir/closed/$lane.yaml" ] || die "ALREADY CLOSED: $lane; its worktree goes with cleanup.sh remove --lane $lane" 6
     [ -f "$f" ] || die "NO LANE: $lane" 6
     candidate "$f" || die "NOT READY: lane $lane is not done (nor a finished review lane)" 6
     [ "$(yq -r '.cleanup // ""' "$f")" = confirmed ] || die "NOT CONFIRMED: lane $lane: the user has not said yes to the cleanup (cleanup is '$(yq -r '.cleanup // ""' "$f")'). Ask, then record the yes: lane.sh set --key cleanup --value confirmed" 6

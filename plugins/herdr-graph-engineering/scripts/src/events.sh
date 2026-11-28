@@ -94,8 +94,8 @@ sweep_facts() { # session, owned lanes view
     local s="$1" root lane out ready='[]'
     while IFS=$'\t' read -r root lane; do
         [ -n "$lane" ] || continue
-        bash "$HERE/cleanup.sh" check --repo "$root" --lane "$lane" >/dev/null 2>&1
-    done < <(jq -r '.[] | select(.section != "closed" and (.status == "done" or .cleanup != "" or .pr_merged != null or .recorded_pr != "" or .pattern == "review"
+        bash "$HERE/cleanup.sh" check --repo "$root" --lane "$lane" --session "$s" >/dev/null 2>&1
+    done < <(jq -r '.[] | select(.section != "closed" and (.status == "done" or .cleanup != "" or .pr_merged != null or .recorded_pr != "" or .pattern == "review" or any(.prs[]; .state == "MERGED")
                     or any((.questions // [])[]; .kind == "merged-early"))) | [.root, .lane] | @tsv' <<<"$2")
     while IFS=$'\t' read -r root lane; do
         [ -n "$lane" ] || continue
@@ -184,6 +184,7 @@ CONDITIONS_JQ='
                + (if .asked_at == null and (.kind == "cleanup" or .kind == "merged-early" or .kind == "retry-limit") then
                       {deliver: true, reason: (if .kind == "cleanup" then (if ($l.cleanup | startswith("blocked")) then "cleanup-blocked" else "cleanup-ready" end) else .kind end)}
                   else {deliver: false, reason: "awaiting-user"} end)),
+          ( select(.cleanup == "feedback-due") | $at + {node: "", run: "", rev: 0, ref: "", reason: "feedback-due", deliver: true} ),
           ( select(.cleanup == "confirmed") | $at + {node: "", run: "", rev: 0, ref: "", reason: "cleanup-confirmed", deliver: true} ) ) ]'
 
 reconcile() { # session, full
