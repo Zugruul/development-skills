@@ -155,14 +155,17 @@ export const HerdrGraphEngineering = async ({ client, directory }) => {
 
   return {
     event: ({ event }) => inOrder(() => onEvent(event)),
-    "chat.message": (input, output) =>
-      inOrder(async () => {
+    "chat.message": (input, output) => {
+      const text = output.parts
+        .filter((p) => p.type === "text")
+        .map((p) => p.text)
+        .join("\n")
+      // Our own message: leave at once. session.prompt returns only after this hook, and the
+      // queue may be waiting for that very call, so it must not go through the queue.
+      if (own.delete(text)) return
+      return inOrder(async () => {
         const id = input.sessionID
-        const text = output.parts
-          .filter((p) => p.type === "text")
-          .map((p) => p.text)
-          .join("\n")
-        if (own.delete(text) || (await isSubagent(id))) return
+        if (await isSubagent(id)) return
         const chat = {}
         if (input.agent) chat.agent = input.agent
         if (input.model) chat.model = input.model
@@ -179,7 +182,8 @@ export const HerdrGraphEngineering = async ({ client, directory }) => {
           text: context,
           synthetic: true,
         })
-      }),
+      })
+    },
     "experimental.session.compacting": () =>
       inOrder(async () => {
         await run("resume.sh", ["--hook", "pre-compact"], {})
