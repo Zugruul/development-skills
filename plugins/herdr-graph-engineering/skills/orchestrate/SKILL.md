@@ -6,6 +6,8 @@ allowed-tools: Bash, AskUserQuestion
 
 # Graph engineering: the one chat
 
+**Clients.** If this skill folder is a symlink (an install by the repository's `./install-skills.sh`), take `../../` from the folder it links to (`cd -P <this skill folder> && pwd` prints it). Where this skill says AskUserQuestion, use your client's question tool: AskUserQuestion in Claude Code, `question` in OpenCode, `request_user_input` in Codex when it is offered. Without a question tool (Codex by default), ask in plain text with lettered options, end your turn and wait. OpenCode names a skill without its plugin: there `herdr:worktree` is the `worktree` skill, and so on.
+
 Paths are relative to this `SKILL.md`; the scripts are in `../../scripts/`. Run these first:
 
 ```bash
@@ -55,7 +57,7 @@ For every Herdr step use the `herdr` plugin's skills: `herdr:worktree`, `herdr:a
 
 ## 1. Pick up where things are
 
-**After a compaction (or a new session)**, before anything else: run `bash "../../scripts/resume.sh"`. It prints one block, `RESUME` to `END RESUME`: every open lane of every repository with lanes (nodes, agents live or gone, what a finished agent printed as its RESULT line, open question, pull requests, done checks and the extra ones, notes) with its `next:` action (for a finished agent: check it, then the `lane.sh` command to record), then the queued lanes, standing answers, renames, notes and files of your session file. In Claude Code a hook puts the same block into the chat after a compaction; if you see a summary of earlier conversation and no block, run it yourself. Then:
+**After a compaction (or a new session)**, before anything else: run `bash "../../scripts/resume.sh"`. It prints one block, `RESUME` to `END RESUME`: every open lane of every repository with lanes (nodes, agents live or gone, what a finished agent printed as its RESULT line, open question, pull requests, done checks and the extra ones, notes) with its `next:` action (for a finished agent: check it, then the `lane.sh` command to record), then the queued lanes, standing answers, renames, notes and files of your session file. After a compaction the same block comes into the chat by itself: in Claude Code and Codex through the plugin's hooks (Codex runs them only once you trusted them with `/hooks`), in OpenCode through the plugin `opencode/herdr-graph.js`. If you see a summary of earlier conversation and no block, run it yourself. Then:
 
 1. Trust the block over your summary: the files are the record. Use the standing answers in it as given by the user.
 2. Do not start `herdr:listen` for the live agents: the plugin wakes you (section 4). `OPEN EVENTS` and each lane's `next:` say what is unhandled; an agent shown `gone` is not running.
@@ -66,7 +68,7 @@ For every Herdr step use the `herdr` plugin's skills: `herdr:worktree`, `herdr:a
 
 **Never ask whether the user is AFK** and never ask about auto-merge at the start: both are off until the user runs `/herdr-graph-engineering:afk` or `/herdr-graph-engineering:auto-merge`.
 
-This chat compacts by itself at **40%** of its context, so it stays fast and the state files, not the chat, carry the work. Check it once per session: `bash "../../scripts/autocompact.sh" check`. `AUTOCOMPACT ON` is enough. `AUTOCOMPACT OFF` (or `UNKNOWN` in Codex or OpenCode): run `bash "../../scripts/autocompact.sh" print` and offer the user, once, what it shows for this client: start the orchestrator again with `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=40`, or, with `--write`, the local settings of the folder the orchestrator starts in (Codex: `model_auto_compact_token_limit`; OpenCode: `compaction.buffer`). Run `--write` only after the user says yes; never write the global settings. Only the orchestrator: lane agents keep the default. A compaction, automatic or by hand, is followed by "After a compaction" above (in Claude Code the hooks bring the block back; elsewhere run `resume.sh`). Record the user's answer as a standing answer.
+This chat compacts by itself at **40%** of its context, so it stays fast and the state files, not the chat, carry the work. Check it once per session: `bash "../../scripts/autocompact.sh" check`. `AUTOCOMPACT ON` is enough. `AUTOCOMPACT OFF` (or `UNKNOWN` in Codex or OpenCode): run `bash "../../scripts/autocompact.sh" print` and offer the user, once, what it shows for this client: start the orchestrator again with `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=40`, or, with `--write`, the local settings of the folder the orchestrator starts in (Codex: `model_auto_compact_token_limit`; OpenCode: `compaction.reserved`). Run `--write` only after the user says yes; never write the global settings. Only the orchestrator: lane agents keep the default. A compaction, automatic or by hand, is followed by "After a compaction" above (the hooks or the OpenCode plugin bring the block back; with neither, run `resume.sh`). Record the user's answer as a standing answer.
 
 Then ask once whether to turn the **feedback loop** on for this session, as the `herdr-graph-engineering:feedback-loop` skill does: **off by default** (Off is the first option; no answer is off), recorded with `bash "../../scripts/session.sh" set --key feedback --value on|off`. Do not ask when `bash "../../scripts/feedback.sh" state` already shows `on` (the user turned it on with that skill), nor after a compaction: the `RESUME` block's `FEEDBACK LOOP:` line holds the answer.
 
@@ -110,7 +112,7 @@ For each lane, `ready.sh --lane L --repo R` prints `READY <node> <agent|gate|hum
 
 ## 4. Listen and check
 
-You do not poll. When nothing is left to do, **end your turn**: the plugin wakes you. Lane agents' hooks, Herdr events and gates say "go look", one script decides whether something changed (`notify.sh`), and a full sweep every 300 s catches what no event reports (pull request merges, stalled or lost gates, lost events). In Claude Code a hook arms a waiter after each of your turns; it wakes you with a `GRAPH EVENT` message and types nothing. For other clients, or with no waiter alive, the Herdr plugin types that message into this chat, only when your input box is empty. Use `herdr:listen` only when the user asks you to watch an agent.
+You do not poll. When nothing is left to do, **end your turn**: the plugin wakes you. Lane agents' hooks, Herdr events and gates say "go look", one script decides whether something changed (`notify.sh`), and a full sweep every 300 s catches what no event reports (pull request merges, stalled or lost gates, lost events). In Claude Code a hook arms a waiter after each of your turns, and in OpenCode the plugin `opencode/herdr-graph.js` does; it wakes you with a `GRAPH EVENT` message and types nothing. In Codex, or with no waiter alive, the Herdr plugin types that message into this chat, only when your input box is empty. OpenCode without that plugin has no waiter, no hook claims and no resume block: check `bash "../../scripts/notify.sh" list --session <session>` and say that `./install-skills.sh opencode --global`, run in a clone of the repository, installs it. Use `herdr:listen` only when the user asks you to watch an agent.
 
 ## When an event arrives
 

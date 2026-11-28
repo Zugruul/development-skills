@@ -6,6 +6,8 @@ allowed-tools: Bash, AskUserQuestion
 
 # Prompt or answer a Herdr agent
 
+**Clients.** If this skill folder is a symlink (an install by the repository's `./install-skills.sh`), take `../../` from the folder it links to (`cd -P <this skill folder> && pwd` prints it).
+
 Run `bash "../../scripts/check.sh"` first (paths are relative to this `SKILL.md`). If it prints `HERDR UNAVAILABLE`, say so and stop.
 
 Target an agent by its unique name, or by the pane id it runs in. If the request does not say which agent and more than one could be meant, list the live agents (`herdr agent list`) and ask.

@@ -5,6 +5,8 @@ description: Teaches an orchestrator how to run many lanes and agents at once wi
 
 # Concurrency: running many lanes at once
 
+**Clients.** Only Claude Code fills in the argument placeholder: in a client that leaves that placeholder as it is, take the argument from the user's message. OpenCode names a skill without its plugin: there `herdr:worktree` is the `worktree` skill, and so on.
+
 This skill is judgement only. It keeps no files, no state and no config, and it adds no rule the scripts enforce. Read it when several lanes run at once, when lanes may collide, or when the user asks about a cap. If invoked with an argument (`$ARGUMENTS`), treat it as the situation to reason about.
 
 ## No limit by default

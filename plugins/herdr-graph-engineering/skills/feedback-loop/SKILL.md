@@ -5,6 +5,8 @@ description: Turns the graph engineering feedback loop on or off for this orches
 
 # Feedback loop: on or off for this session
 
+**Clients.** If this skill folder is a symlink (an install by the repository's `./install-skills.sh`), take `../../` from the folder it links to (`cd -P <this skill folder> && pwd` prints it). Only Claude Code fills in the argument placeholder: in a client that leaves that placeholder as it is, take the argument from the user's message. Where this skill says AskUserQuestion, use your client's question tool: AskUserQuestion in Claude Code, `question` in OpenCode, `request_user_input` in Codex when it is offered. Without a question tool (Codex by default), ask in plain text with lettered options, end your turn and wait.
+
 Paths are relative to this `SKILL.md`; the scripts are in `../../scripts/`. Works in Claude Code, OpenCode and Codex.
 
 The feedback loop is **off by default**. The choice holds for one orchestrator session and is stored in that session's file (`session.sh`), so it survives a compaction; a new session starts off again.

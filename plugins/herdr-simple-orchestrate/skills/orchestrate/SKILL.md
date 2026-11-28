@@ -6,6 +6,8 @@ allowed-tools: Bash, AskUserQuestion
 
 # Become the Herdr orchestrator
 
+**Clients.** If this skill folder is a symlink (an install by the repository's `./install-skills.sh`), take `../../` from the folder it links to (`cd -P <this skill folder> && pwd` prints it). OpenCode names a skill without its plugin: there `herdr:worktree` is the `worktree` skill, and so on.
+
 Scripts are in `../../scripts/` (resolve the path relative to this `SKILL.md`). Run `bash "../../scripts/check.sh"` first; if it prints `HERDR UNAVAILABLE`, say so and stop: there is nothing to orchestrate from outside Herdr. In Codex, `HERDR_ENV` may be absent even inside a Herdr pane; the check accepts that case only when Codex's session marker and Herdr's live agent registry identify one matching Codex agent in the current checkout.
 
 ## 1. Take the role

@@ -5,6 +5,8 @@ description: Runs Iterative UI mode's decision step — mocks 2-4 concrete UI de
 
 # UI options page — delegate the UI decision to the human
 
+**Clients.** If this skill folder is a symlink (an install by the repository's `./install-skills.sh`), take `../../` from the folder it links to (`cd -P <this skill folder> && pwd` prints it).
+
 The human, not the agent, picks UI direction when iterative UI mode is ON. You mock real options before anything is implemented, they choose, and everything else continues meanwhile. A mock is only worth deciding on when it is accessible in both themes, testable, and translatable when asked — this skill enforces all three.
 
 **Called by another skill?** Fine — that skill owns its own context (what the UI is for, where else to report, what happens after the pick). This skill only needs a **design id** (a short slug, e.g. `login-form` or the caller's own id), a **title**, and the requirements; it returns the human's decision. It posts nothing anywhere except the hub.

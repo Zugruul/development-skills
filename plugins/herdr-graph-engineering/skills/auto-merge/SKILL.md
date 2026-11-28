@@ -6,6 +6,8 @@ allowed-tools: Bash, AskUserQuestion
 
 # Auto-merge: on or off
 
+**Clients.** If this skill folder is a symlink (an install by the repository's `./install-skills.sh`), take `../../` from the folder it links to (`cd -P <this skill folder> && pwd` prints it). Only Claude Code fills in the argument placeholder: in a client that leaves that placeholder as it is, take the argument from the user's message. Where this skill says AskUserQuestion, use your client's question tool: AskUserQuestion in Claude Code, `question` in OpenCode, `request_user_input` in Codex when it is offered. Without a question tool (Codex by default), ask in plain text with lettered options, end your turn and wait.
+
 Paths are relative to this `SKILL.md`; the scripts are in `../../scripts/`. The argument is `$ARGUMENTS`.
 
 Auto-merge is **off by default**, and a new orchestrator session starts off. **Only this command changes it.** Never turn it on from other words, from AFK, or because a lane is waiting to merge.

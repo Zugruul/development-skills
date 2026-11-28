@@ -6,6 +6,8 @@ allowed-tools: Bash
 
 # AFK: decide while the user is away
 
+**Clients.** If this skill folder is a symlink (an install by the repository's `./install-skills.sh`), take `../../` from the folder it links to (`cd -P <this skill folder> && pwd` prints it). Only Claude Code fills in the argument placeholder: in a client that leaves that placeholder as it is, take the argument from the user's message. Where this skill says AskUserQuestion, use your client's question tool: AskUserQuestion in Claude Code, `question` in OpenCode, `request_user_input` in Codex when it is offered. Without a question tool (Codex by default), ask in plain text with lettered options, end your turn and wait.
+
 Paths are relative to this `SKILL.md`; the scripts are in `../../scripts/`. The argument is `$ARGUMENTS`.
 
 **Only this command turns AFK on or off.** Never ask whether the user is AFK. Never turn it on from their words ("I'm leaving"), from silence, or from a dialog that timed out: say the command instead. The one other way it goes off is their own "no" to "still away?" below.
