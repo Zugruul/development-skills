@@ -190,18 +190,21 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
            elif .kind == "gate-lost" then "\($n): gate process \(.ref) is gone without an EXIT line"
            elif .kind == "gate-stalled" then "\($n): no gate output for \(.ref)"
            else "\($n): \($ag) stopped without a RESULT line" end]
-         + (($l.cleanup // "") as $cu
-            | if $l.status == "closed" then []
-              # waiting to close by itself: only a blocked agent is the user'"'"'s to handle
-              elif ($cu | startswith("auto-wait: ")) then
-                  (if ($cu | endswith(" is blocked")) then ["finished, not closed: \($cu | ltrimstr("auto-wait: "))"] else [] end)
-              elif $cu == "feedback-due" or $merged == null then []
+         ) as $real
+      | ($l.status == "done" or ($l.status == "open" and $merged != null and ($unfinished | length) == 0)) as $finished
+      | ((($l.cleanup // "") as $cu
+            | if $merged == null then []
               elif $cu == "confirmed" then ["PR #\($merged.number) merged, cleanup confirmed: cleanup.sh run"]
               elif $cu == "ready" then ["PR #\($merged.number) merged, waiting for cleanup confirmation"]
               elif ($cu | startswith("blocked: ")) then ["PR #\($merged.number) merged, cleanup \($cu)"]
               elif ($cu | startswith("afk-approved")) then ["PR #\($merged.number) merged, removal approved under AFK"]
               elif $l.status == "done" or ($unfinished | length) == 0 then ["PR #\($merged.number) merged, checking cleanup"]
-              else ["PR #\($merged.number) merged but the lane is unfinished (\($unfinished | join(", ")))"] end)) as $att
+              else ["PR #\($merged.number) merged but the lane is unfinished (\($unfinished | join(", ")))"] end)) as $merge_att
+      | ($real + $merge_att) as $att
+      # an open question other than the cleanup one
+      | (if ($l | has("questions")) then
+             any($l.questions[]; .answer == null and .kind != "cleanup" and (.kind != null or (.text | startswith("Cleanup ") | not)))
+         else $q != "" and ($q | startswith("Cleanup ") | not) end) as $asked
       | {lane: $l.lane, pattern: $l.pattern, repo: $l.repo,
          question: (if $q != "" then $q else ($asks | join("; ")) end),
          question_live: ($q == "" and ($asks | length) > 0), attention: $att,
@@ -211,16 +214,16 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
          root: $l.root, status: ($l.status // ""), history: ($l.history // [] | length),
          recorded_pr: ([$l.pr // empty | select(. != "")] + [$l.nodes[]?.ref // empty | select(test("^https?://[^ ]+/pull/[0-9]+$"))] | .[0] // ""),
          questions: [($l.questions // [])[] | select(.answer == null) | {id, node: (.node // ""), kind: (.kind // ""), asked_at: (.asked_at // null)}],
-         open_criteria: (if $l.status == "closed" then [($l.done_extra // [])[] | select(.met != true) | .text] else [] end),
-         resume: [$l.restore.agents[]? | .command // "" | select(. != "")],
+         open_criteria: [($l.done_extra // [])[] | select(.met != true) | .text | select($finished or $l.status == "closed")],
          closed: ([($l.history // [])[] | select(endswith(" lane closed"))][-1] // "" | split(" ")[0]),
          nodes: $nodes, last: ($l.history[-1] // ""),
          section: (if $l.status == "closed" then "closed"
-                   elif $q != "" or ($asks | length) > 0 or ($att | length) > 0 or any($nodes[]; .status == "blocked") then "needs"
-                   elif $l.status == "done" then "done" else "working" end)})' <<<"$lanes")"
+                   elif $asked or ($asks | length) > 0 or ($real | length) > 0 or ($finished | not) and ($merge_att | length) > 0
+                       or any($nodes[]; .status == "blocked") then "needs"
+                   elif $finished then "done" else "working" end)})' <<<"$lanes")"
 # what was left unhandled after both reminders (notify.sh's events) marks its lane
 manual="$(cat "$(session_dir)"/*.events.json 2>/dev/null |
-    jq -cs --argjson now "$(date +%s)" '[.[] | .open? // {} | .[] | select(.manual) | {repo, lane, what: "\(if .node != "" then .node + " " else "" end)\(.reason)"}] | unique' 2>/dev/null)" || manual='[]'
+    jq -cs --argjson now "$(date +%s)" '[.[] | .open? // {} | .[] | select(.manual and ((.reason // "") | startswith("cleanup-") | not)) | {repo, lane, what: "\(if .node != "" then .node + " " else "" end)\(.reason)"}] | unique' 2>/dev/null)" || manual='[]'
 [ "${manual:-[]}" = '[]' ] || view="$(jq -c --argjson m "$manual" 'map(. as $l | [$m[] | select(.repo == $l.root and .lane == $l.lane) | .what] as $w
     | if ($w | length) == 0 or $l.section == "closed" then . else .manual = true | .section = "needs" | .attention += ["‼ needs manual intervention: \($w | join(", ")) unhandled after two reminders"] end)' <<<"$view")"
 
@@ -256,6 +259,7 @@ text)
                  + (if .question != "" then "\n    ? \(.question)" else "" end)
                  + (.attention | map("\n    ! \(.)") | join(""))
                  + (if .cleanup != "" and .cleanup != "declined" then "\n    cleanup: \(.cleanup)" else "" end)
+                 + ((.open_criteria // []) | map("\n    open: \(.)") | join(""))
                  + ([.nodes[] | select(.progress != "")] | map("\n    \(.node): \(.progress)") | join(""))
                  + ([.nodes[] | select(.ref != "" and (.ref | test("/")))] | map("\n    \(.node): \(.ref)") | join(""))
                  + "\n    last: \(.last)"

@@ -91,15 +91,11 @@ while IFS="	" read -r verdict n t why; do
     case "$verdict" in
         CLOSE)
             if [ "$dry" -eq 0 ]; then
-                # the agent's session goes with its tab: keep it, to resume it later
-                a="$(jq -r --arg n "$n" '.nodes[$n].agent // ""' <<<"$lj")" s=""
-                [ -z "$a" ] || s="$(herdr agent get "$a" 2>/dev/null | jq -c '.result.agent | select(.agent_session != null)
-                    | .agent_session + {agent: (.agent // .agent_session.agent)}' 2>/dev/null)"
                 if ! herdr tab close "$t" >/dev/null 2>&1; then
                     printf 'KEEP %s (herdr tab close %s failed)\n' "$n" "$t"
                     continue
                 fi
-                [ "$closed" -eq 1 ] || bash "$HERE/lane.sh" tab-closed --repo "$repo" --lane "$lane" --node "$n" --value "$s" >/dev/null || exit 1
+                [ "$closed" -eq 1 ] || bash "$HERE/lane.sh" tab-closed --repo "$repo" --lane "$lane" --node "$n" >/dev/null || exit 1
             fi
             printf 'CLOSE %s %s %s\n' "$n" "$t" "$why" ;;
         GONE)

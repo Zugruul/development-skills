@@ -48,6 +48,7 @@ ulane a 1
 umerged a 1
 u lane done-extra --repo "$U_REPO" --lane a --text "live check after a restart" >/dev/null
 ust "$(uag claude-a w-a claude idle sess-a | uagents)"
+jq -cn --argjson p "$(upr 1 feat/a MERGED)" '{fetched: 1, lanes: {a: [$p]}}' >"$U_DIR/prs.json"
 check "before any check it is in DONE, though a criterion is open" "done" "$(usec a)"
 out="$(u cleanup check --repo "$U_REPO" --lane a 2>&1)"
 check "the check asks the cleanup question" "CLEANUP a" "$out"
@@ -76,9 +77,19 @@ rm "$U_TMP/wt-a/scratch.txt"
 u cleanup check --repo "$U_REPO" --lane a >/dev/null 2>&1
 u lane ask --repo "$U_REPO" --lane a --kind agent --text "which name?" >/dev/null
 check "an agent's question still needs the user" "needs" "$(usec a)"
-u lane withdraw --repo "$U_REPO" --lane a --kind agent >/dev/null
+u lane answer --repo "$U_REPO" --lane a --id "$(ul a '[.questions[] | select(.answer == null and .kind == "agent") | .id][0]')" --text either >/dev/null
+check "answered: back in DONE" "done" "$(usec a)"
+
+echo "== DONE: the panel's [x] only asks the orchestrator =="
+ust "$(uag graph w-graph claude idle "" | uagents)"
+r="$(urow "a  solo")"
+{ uclick 88 "$r"; uclick 82 "$r"; } | u panel --frame --width 90 --feed >/dev/null
+check "the panel asks the owner" "agent prompt graph Clean up lane a" "$(ucalls)"
+check "and moves nothing" "1" "$(isfile "$U_DIR/a.yaml")"
+check "the worktree stays" "1" "$(isdir "$U_TMP/wt-a")"
 
 echo "== DONE to CLOSED: only on the recorded yes =="
+ust '{}'
 check "without a yes it is refused" "NOT CONFIRMED" "$(u cleanup run --repo "$U_REPO" --lane a 2>&1)"
 u lane set --repo "$U_REPO" --lane a --key cleanup --value confirmed >/dev/null
 out="$(u cleanup run --repo "$U_REPO" --lane a 2>&1)"; rc=$?

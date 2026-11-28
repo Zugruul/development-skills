@@ -33,24 +33,6 @@ afk_line() { # session -> one line for people
         "AFK on, tiers \(.tiers | map(tostring) | join(",")), lanes \(if (.lanes | length) == 0 then "all" else .lanes | join(",") end), queued ideas \(if .queued then "yes" else "no" end), worktree removal \(if .cleanup then "yes" else "no" end), until \(if (.until // "") == "" then "you return" else .until end) (since \(.since))" end'
 }
 
-# The session whose toggles hold for a lane: the one given, else the one whose orchestrator owns
-# the lane (the panel's sweep runs outside that chat), else this chat's.
-lane_session() { # session or "", lane owner
-    local f name
-    [ -z "$1" ] || { printf '%s\n' "$1"; return 0; }
-    for f in "$(session_dir)"/*.yaml; do
-        [ -n "$2" ] && [ -f "$f" ] || continue
-        name="$(basename "$f" .yaml)"
-        [ "$(session_json "$name" | jq -r --arg s "$name" 'if (.orchestrator // "") != "" then .orchestrator else $s end')" != "$2" ] || { printf '%s\n' "$name"; return 0; }
-    done
-    default_session
-}
-
-# Finished lanes close by themselves unless the session turned it off (session.sh set --key autoclose).
-autoclose_on() { # session
-    [ "$(session_json "$1" | jq -r '.autoclose // "on"')" != off ]
-}
-
 # "on (lane|repository|session)", "off (...)" or "off": the narrowest setting wins.
 automerge_state() { # session, repo root, lane
     local entry root="$2"

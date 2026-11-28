@@ -14,8 +14,6 @@
 # Usage (every command takes --session NAME, default graph):
 #   session.sh set --key orchestrator|pane|scratch --value V
 #   session.sh set --key feedback --value on|off   the feedback loop for this session (off by default)
-#   session.sh set --key autoclose --value on|off  finished lanes close by themselves (on by default;
-#                                         cleanup.sh)
 #   session.sh afk on [--tiers 1|1,2] [--cleanup] [--lanes A,B] [--no-queued] [--until ISO-TIME]
 #   session.sh afk off | status           AFK (off by default; only the afk skill sets it). Default scope:
 #                                         tiers 1,2, all lanes, queued ideas (still only under a standing
@@ -101,7 +99,7 @@ update() { # jq program, extra jq args...
 
 case "$cmd" in
 set)
-    case "$key" in orchestrator | pane | scratch) ;; feedback | autoclose) case "$value" in on | off) ;; *) die "--key $key takes on or off" 2 ;; esac ;; *) die "--key must be orchestrator, pane, scratch, feedback or autoclose" 2 ;; esac
+    case "$key" in orchestrator | pane | scratch) ;; feedback) case "$value" in on | off) ;; *) die "--key feedback takes on or off" 2 ;; esac ;; *) die "--key must be orchestrator, pane, scratch or feedback" 2 ;; esac
     [ -n "$value" ] || usage "session.sh set --key K --value V"
     no_secret "$value"
     update '.[$k] = $v' --arg k "$key" --arg v "$value"

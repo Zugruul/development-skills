@@ -24,10 +24,7 @@
 #                                                 printed as RUN <id>: claims and result files of another run are ignored
 #   lane.sh step --lane L --node N --name S --result pass|fail [--ref X]   a step of a node done; it stays running
 #   lane.sh reject --lane L --node N --ref R --text WHY      a claimed result that did not hold: never reported again
-#   lane.sh tab-closed --lane L --node N [--value JSON]   record that the node's tab was closed (by
-#                                                 close-done.sh); JSON: its agent's Herdr session
-#   lane.sh restore-note --lane L --value JSON     what brings a lane that closes by itself back: its
-#                                                 workspace path and each agent's resume command (cleanup.sh)
+#   lane.sh tab-closed --lane L --node N          record that the node's tab was closed (by close-done.sh)
 #   lane.sh retry --lane L --node N               N failed: rerun its retry target; exit 7 at the limit
 #   lane.sh ask --lane L --text Q [--node N] [--kind agent|human|cleanup|merged-early] [--source TEXT]
 #                                                 add an open question (a lane keeps every one); prints QUESTION <id>.
@@ -55,10 +52,7 @@
 #   lane.sh close --lane L                        move the file to closed/
 #   lane.sh clear --lane L                        a closed lane: move its file to closed/cleared/ (kept, off the panel)
 #   lane.sh restore --lane L                      a closed lane: move its file back to the open lanes with its last
-#                                                 status (open or done); the record only, never a worktree or branch.
-#                                                 It never closes by itself again; one that did prints a
-#                                                 RESUME <agent>: <command> line per agent and is kept (no
-#                                                 cleanup question; cleanup.sh reopen asks again)
+#                                                 status (open or done); the record only, never a worktree or branch
 # Exit codes: 0 ok, 1 error, 2 usage, 6 invalid pattern or lane, 7 retry limit reached.
 # jq programs are single-quoted on purpose: $names in them are jq variables.
 # shellcheck disable=SC2016
@@ -71,7 +65,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/pattern.sh
 . "$HERE/src/pattern.sh"
 
-USAGE="lane.sh new|show|list|node|step|reject|tab-closed|restore-note|retry|ask|asked|answer|withdraw|offer|dismiss|note|done-extra|set|close|clear|restore [options] (see the header of lane.sh)"
+USAGE="lane.sh new|show|list|node|step|reject|tab-closed|retry|ask|asked|answer|withdraw|offer|dismiss|note|done-extra|set|close|clear|restore [options] (see the header of lane.sh)"
 cmd="${1:-}"
 [ -n "$cmd" ] || usage "$USAGE"
 shift
@@ -274,11 +268,7 @@ tab-closed)
     [ -n "$node" ] || usage "lane.sh tab-closed --lane L --node N"
     t="$(yq -r ".nodes[\"$node\"].tab // \"\"" "$file")"
     [ -n "$t" ] || die "NO TAB: node $node in lane $lane has no tab recorded" 6
-    update '.nodes[$n].tab_closed = true | if $v != "" then .nodes[$n].session = ($v | fromjson) else . end' "$node tab $t closed" --arg n "$node" --arg v "$value" ;;
-restore-note)
-    need_lane
-    jq -e 'type == "object"' >/dev/null 2>&1 <<<"$value" || usage "lane.sh restore-note --lane L --value JSON"
-    update '.restore = (($v | fromjson) + {at: $now})' "restore note recorded" --arg v "$value" ;;
+    update '.nodes[$n].tab_closed = true' "$node tab $t closed" --arg n "$node" ;;
 retry)
     need_lane
     [ -n "$node" ] || usage "lane.sh retry --lane L --node N"
@@ -390,7 +380,7 @@ set)
     need_lane
     case "$key" in owner | workspace | branch | gate | status | pr | cleanup | cleanup_code | merged_early | protocol_sent | forwarded) ;; *) die "--key must be owner, workspace, branch, gate, status, pr, cleanup or forwarded" 2 ;; esac
     [ "$key" != forwarded ] || case "$value" in declined | ?*/?*) ;; *) die "forwarded must be LANE/AGENT or declined" 2 ;; esac
-    [ "$key" != cleanup ] || case "$value" in '' | ready | confirmed | declined | feedback-due | "blocked: "?* | "afk-approved: "?* | "auto-wait: "?*) ;; *) die "cleanup must be ready, confirmed, declined or blocked: REASON" 2 ;; esac
+    [ "$key" != cleanup ] || case "$value" in '' | ready | confirmed | declined | "blocked: "?* | "afk-approved: "?*) ;; *) die "cleanup must be ready, confirmed, declined or blocked: REASON" 2 ;; esac
     # a yes only answers a cleanup question that was asked
     if [ "$key" = cleanup ] && [ "$value" = confirmed ]; then
         was="$(yq -r '.cleanup // ""' "$file")"
@@ -430,13 +420,11 @@ restore)
     [ ! -e "$file" ] || { unlock; die "LANE EXISTS: $lane ($file) is open; close or rename it first" 6; }
     out="$(read_json "$src" | jq -c --arg now "$(now)" '
         ([(.history // [])[] | capture(" status = (?<s>open|done)$") | .s][-1] // "open") as $s
-        | .status = $s | .restored = true | (if .restore then .cleanup = "declined" else . end)
-        | .history += ["\($now) lane restored (\($s))"]')" || { unlock; die "could not read $src"; }
+        | .status = $s | .history += ["\($now) lane restored (\($s))"]')" || { unlock; die "could not read $src"; }
     printf '%s' "$out" | write_yaml "$file"
     rm -f "$src"
     unlock
     register_repo "$repo"
-    printf 'RESTORED %s %s %s\n' "$lane" "$(jq -r .status <<<"$out")" "$file"
-    jq -r '.restore.agents[]? | "RESUME \(.name): \(if (.command // "") != "" then .command else "no session id recorded" end)"' <<<"$out" ;;
+    printf 'RESTORED %s %s %s\n' "$lane" "$(jq -r .status <<<"$out")" "$file" ;;
 *) usage "$USAGE" ;;
 esac
