@@ -57,7 +57,7 @@ These are written rules: no hook blocks a command. Follow them exactly.
 
 ## When the user is back
 
-A message that is really theirs while AFK is on (the hook adds a reminder; the watcher's `GRAPH EVENT`, agents' output and other sessions never count; a panel answer is theirs):
+A message that is really theirs while AFK is on (the hook adds a reminder; the watcher's `graph:` messages, agents' output and other sessions never count; a panel answer is theirs):
 
 1. Show `bash "../../scripts/decide.sh" digest --session <session>` first, the table as it is.
 2. Ask "still away?" in one AskUserQuestion: "Yes, stay AFK" or "No, I'm back". Under yes, do what they asked and stay on.

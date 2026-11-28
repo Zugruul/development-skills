@@ -25,6 +25,8 @@ case "$1" in
     env) echo "PAGER=$PAGER GIT_PAGER=$GIT_PAGER"; if [ -t 0 ]; then echo stdin-tty; else echo stdin-not-tty; fi; exit 0 ;;
     chmod) chmod +x fixture.txt; echo "ok   mode"; exit 0 ;;
     hang) echo "ok   start"; sleep "$2"; exit 0 ;;
+    spin) echo "ok   start"; bash -c 'while :; do :; done' spin-"$2"; exit 0 ;;
+    churn) echo "ok   start"; while [ "$SECONDS" -lt "$2" ]; do bash -c 'i=0; while [ "$i" -lt 20000 ]; do i=$((i+1)); done'; done; exit 0 ;;
 esac
 EOF
 # every command runs inside the checkout, as a gate tab does
@@ -145,6 +147,23 @@ check_rc "without a heartbeat or a pane there is nothing to read" 6 "$rc"
 out="$(gt gate --repo "$T_REPO" --lane old --node tests --collect --pane w1:p8)"
 check "--collect --pane reads the EXIT line from the tab" "GATE FAIL tests EXIT=2" "$out"
 check "and records it" "failed fail 2" "$(tlf '[.nodes.tests.status, .nodes.tests.result, .nodes.tests.exit] | join(" ")' old)"
+
+echo "== gate: a silent step that uses the CPU is not stalled =="
+# the CPU is used by children of the gate: one long one (a compiler), or many short ones
+for mode in spin churn; do
+    tlane "$mode" "$mode" 120
+    gt gate --repo "$T_REPO" --lane "$mode" --node tests --pane "w2:$mode" --detach >/dev/null
+    i=0; while [ "$i" -lt 50 ] && ! grep -q "ok   start" "$T_DIR/gates/$mode/tests.log" 2>/dev/null; do sleep 0.2; i=$((i + 1)); done
+    touch -t 202001010000 "$T_DIR/gates/$mode/tests.log"
+    check "$mode: silent but busy is still working" "working" "$(gt status --json --repo "$T_REPO" | jq -r ".[] | select(.lane == \"$mode\") | .section")"
+    check_absent "$mode: drift.sh does not call it stalled" "$mode/tests gate-stalled" "$(gt drift --repo "$T_REPO")"
+    check "$mode: the progress line says why it is quiet" "using the CPU" "$(gt status --json --repo "$T_REPO" | jq -r ".[] | select(.lane == \"$mode\") | .nodes[] | select(.node == \"tests\") | .progress")"
+    pid="$(hb .pid "$mode")"
+    # stop the gate's whole tree, the busy children first
+    tree_kill() { local c; for c in $(pgrep -P "$1"); do tree_kill "$c"; done; kill -9 "$1" 2>/dev/null; }
+    tree_kill "$pid"
+done
+unset -f tree_kill
 
 pkill -f "$FAKE hang" 2>/dev/null
 rm -rf "$T_TMP"
