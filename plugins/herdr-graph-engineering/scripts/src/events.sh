@@ -95,7 +95,7 @@ sweep_facts() { # session, owned lanes view
     while IFS=$'\t' read -r root lane; do
         [ -n "$lane" ] || continue
         bash "$HERE/cleanup.sh" check --repo "$root" --lane "$lane" --session "$s" >/dev/null 2>&1
-    done < <(jq -r '.[] | select(.section != "closed" and (.status == "done" or .cleanup != "" or .pr_merged != null or .recorded_pr != "" or .pattern == "review" or any(.prs[]; .state == "MERGED")
+    done < <(jq -r '.[] | select(.section != "closed" and (.status == "done" or .cleanup != "" or .pr_merged != null or .recorded_pr != "" or .pattern_name == "review" or any(.prs[]; .state == "MERGED")
                     or any((.questions // [])[]; .kind == "merged-early"))) | [.root, .lane] | @tsv' <<<"$2")
     while IFS=$'\t' read -r root lane; do
         [ -n "$lane" ] || continue

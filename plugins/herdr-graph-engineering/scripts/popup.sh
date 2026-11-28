@@ -52,9 +52,9 @@ answer)
 detail)
     require_tools jq yq git
     # shellcheck disable=SC2016
-    lane_json | jq -r --argjson c "$(style_json)" "$STYLE_JQ_MARK"'
+    lane_json | jq -r --argjson c "$(style_json)" "$STYLE_JQ_MARK$LANE_TYPE_JQ"'
         def field($k): "\($c.grey)\($k)\($c.fg)";
-        "\($c.bold)\(.lane)\($c.unbold)\($c.grey) · \(.pattern) · \(.status)\($c.fg)",
+        "\($c.bold)\(.lane)\($c.unbold)\($c.grey) · \(lane_type) · \(.status)\($c.fg)",
         "\(field("idea"))    \(.idea)",
         (if (.branch // "") != "" then "\(field("branch"))  \(.branch)" else empty end),
         (if (.gate // "") != "" then "\(field("gate"))    \(.gate)" else empty end),

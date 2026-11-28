@@ -1,0 +1,30 @@
+when: "A user-facing change the user wants to see first: plan and an HTML preview, adversarial review rounds on the plan, the user approves the preview, then implement."
+inputs: [idea]
+nodes:
+  plan:
+    agent: investigator
+    access: read
+    brief: "Plan and HTML experience preview for: {idea}"
+  review:
+    agent: reviewer
+    access: read
+    needs: [plan]
+    brief: "Adversarial review of the plan and preview for: {idea}"
+    retry: { to: plan, max: 3, on: changes }
+  approve:
+    human: "Approve the plan and the HTML preview?"
+    needs: [review]
+    when: pass
+  impl:
+    agent: implementer
+    access: write
+    needs: [approve]
+    when: pass
+    brief: "Implement the approved plan: {idea}"
+  tests:
+    gate: "{gate}"
+    needs: [impl]
+    retry: { to: impl, max: 3, on: fail }
+done:
+  - gate: tests
+  - draft-pr

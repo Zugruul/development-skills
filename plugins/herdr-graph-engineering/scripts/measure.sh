@@ -35,11 +35,11 @@ done <<EOF2
 $repos
 EOF2
 
-rows="$(jq -c '
+rows="$(jq -c "$LANE_TYPE_JQ"'
     def ts: sub("Z$"; "") | strptime("%Y-%m-%dT%H:%M:%S") | mktime;
     map(. as $l
       | ($l.history | map(split(" ")[0])) as $t
-      | {lane: $l.lane, pattern: $l.pattern,
+      | {lane: $l.lane, pattern: ($l | lane_type),
          outcome: (if $l.status == "closed" and any($l.history[]; test("set status = done|status = done")) then "done"
                    elif $l.status == "done" then "done" elif $l.status == "closed" then "closed early" else "open" end),
          minutes: (if ($t | length) > 1 then ((($t[-1] | ts) - ($t[0] | ts)) / 60 | floor) else 0 end),

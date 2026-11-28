@@ -72,6 +72,8 @@ The `herdr` plugin, the `herdr` binary (the agent runs inside a Herdr pane), `ba
 
 Patterns and roles are looked up in the repository's `.herdr-graph/patterns|roles/`, then `~/.config/herdr-graph/patterns|roles/`, then this plugin. To add a kind of work, add a pattern; to add an agent, add a role. No skill changes.
 
+Every view (status text and JSON, the panel, the popups, the resume block, `lane.sh list`, the lane type dialog) names a lane by its pattern only when the plugin ships that pattern. Any other graph (hand-written, `--pattern-file`, or a user or repository pattern, also one that reuses a shipped name) shows as `custom` or `custom: <name>`. In `status.sh --json`, `pattern` is that shown type and `pattern_name` is the stored name.
+
 Shipped patterns:
 
 | Pattern | Graph |
@@ -79,6 +81,7 @@ Shipped patterns:
 | `solo` | implementer → tests gate (retry up to 3) → draft pull request |
 | `pair` | the same, then a read-only reviewer of another kind; `changes` sends the work back to the implementer (up to 2) |
 | `fast` | urgent fixes, only when you ask (fast, urgent, hotfix, pull request ASAP): the smallest fix with a focused test → the draft pull request opens at once (`pr` node) → tests gate; a failure goes back to the implementer (up to 3) and the fix is pushed to the same pull request |
+| `preview` | user-facing changes you want to see first: a read-only plan with an HTML preview → adversarial review (`changes` goes back to the plan, up to 3) → you approve → implementer → tests gate (retry up to 3) → draft pull request |
 | `improve` | the feedback loop's improvement lanes only: implementer → tests gate → a read-only reviewer of another kind that checks existing expertise is preserved; `changes` sends the work back (up to 2) |
 | `investigate` | a read-only investigator writes a report |
 | `review` | a pull request reviewer drafts → you approve → a poster posts one grouped `COMMENT` review whose body is the summary, verified |

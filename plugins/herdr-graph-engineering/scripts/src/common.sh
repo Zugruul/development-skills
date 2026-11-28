@@ -99,6 +99,12 @@ read_json() { # yaml path -> JSON on stdout
     yq -o=json '.' "$1"
 }
 
+# A lane's shown type, from its lane file: only a pattern the plugin ships shows its bare
+# name; any other graph is "custom" or "custom: <name>". The stored .pattern stays for rules.
+# shellcheck disable=SC2034,SC2016  # used by the scripts that source this file; jq text
+LANE_TYPE_JQ='def lane_type: if (.pattern_from // "plugin") == "plugin" then .pattern
+    elif (.pattern // "") | . == "" or . == "custom" then "custom" else "custom: \(.pattern)" end;'
+
 # Find a pattern or role: the repository's .herdr-graph/, then the user's
 # ~/.config/herdr-graph/, then this plugin. First found wins.
 #   resolve patterns|roles NAME REPO -> prints "<path>\t<repo|user|plugin>"
