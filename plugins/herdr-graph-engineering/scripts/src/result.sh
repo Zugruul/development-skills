@@ -19,9 +19,39 @@ CLAIM_JQ='
           + [$l | capture("^NODE " + $node + " STEP: (?<name>[A-Za-z0-9_.-]+) (?<result>pass|fail|question)( (?<ref>[^\\s<>\"`]+))?$") | . + {kind: "step"}] )
         | if length == 0 then empty else (nothing + (.[0] | with_entries(.value //= "")) + {line: $l}) end;'
 
-# The last protocol line anywhere in a screen.
+# The last protocol line anywhere in a screen. A question line followed by a newer prompt (the
+# user's or the orchestrator's, "❯ text" or "› text") was already answered: it is nothing. The
+# last prompt on a screen is its input box (empty, a placeholder or a draft), never a newer one.
 screen_claim() { # node, text
-    printf '%s' "$2" | jq -Rsc --arg n "$1" "$CLAIM_JQ"' [split("\n")[] | lineclaim($n)] | last // nothing'
+    printf '%s' "$2" | jq -Rsc --arg n "$1" "$CLAIM_JQ"'
+        split("\n") as $lines
+        | ([range(0; $lines | length) as $i | $lines[$i] | lineclaim($n) | {at: $i, claim: .}] | last) as $hit
+        | [range(0; $lines | length) as $i | select($lines[$i] | test("^ ?[❯›]")) | $i] as $prompts
+        | if $hit == null then nothing
+          elif $hit.claim.result == "question"
+               and any($prompts[:-1][]; . > $hit.at and ($lines[.] | test("^ ?[❯›][\\s\u00a0]+[^\\s\u00a0]"))) then nothing
+          else $hit.claim end'
+}
+
+# Whether an idle agent's screen says work of its own still runs in the background. Only the
+# client's own status lines count, never the transcript:
+#   claude    the footer under the input box ("1 shell"), or the spinner line right above it
+#             ("2 shells still running", "Waiting for 1 background agent")
+#   codex     "N background terminal(s) running · /ps to view" among the last lines
+# No status text is known for other clients: for them nothing is background work.
+background_work() { # client kind, screen text -> 0 when it does
+    printf '%s' "$2" | jq -Rse --arg kind "$1" '
+        def rule: test("^[\\s╭╰─]*───");
+        [split("\n")[] | gsub("\u001b\\[[0-9;?]*[A-Za-z]"; "") | select(test("\\S"))] as $l
+        | if $kind == "claude" then
+              ([range(1; $l | length) as $i | select(($l[$i] | test("^\\s*[❯›]")) and ($l[$i - 1] | rule)) | $i] | last) as $box
+              | $box != null
+                and (any($l[$box + 1:][]; test("\\b[0-9]+ (shells?|bashes|monitors?|background (tasks?|agents?|shells?))\\b"))
+                     or any($l[([$box - 4, 0] | max):$box - 1][];
+                            test("^\\s*[✻✽✶✳✢✦∗*·].*\\b[0-9]+ (shells?|monitors?|background (tasks?|agents?|shells?|commands?))\\b")))
+          elif $kind == "codex" then
+              any($l[-8:][]; test("^\\s*[0-9]+ background terminals? running · /ps"))
+          else false end' >/dev/null 2>&1
 }
 
 # Only the last non-empty line of an agent's final message (a Stop hook has it).

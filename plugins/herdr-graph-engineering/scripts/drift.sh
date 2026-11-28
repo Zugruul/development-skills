@@ -14,7 +14,9 @@
 #    counts, never a quote or an example. The reads are cached per repository in
 #    <lane folder>/live.json ({"fetched": epoch seconds, "agents": {name: {status, seq, run,
 #    kind, result, ref, line, source, seen_at}}}), which status.sh uses for the NEEDS YOU section
-#    without reading screens. Each line ends with "# source: ..." naming where the claim is from.
+#    without reading screens. A question line with a newer prompt under it counts no more. An
+#    agent with no claim whose status line shows background work (shells, background terminals;
+#    its visible screen is read for this, also with a hook claim) is kind busy: not stopped. Each line ends with "# source: ..." naming where the claim is from.
 # 2. Print every mismatch status.sh then derives, one line each:
 #      DRIFT <lane>/<node> <what>: <detail> | <suggested command>
 #    what: question, finished pass|fail (verify before recording; never record pass on the
@@ -53,9 +55,9 @@ require_tools jq yq git
 view() { bash "$HERE/status.sh" --json ${args[@]+"${args[@]}"} 2>/dev/null || echo '[]'; }
 
 # The text of `herdr agent read`: plain text, or the text field of a JSON answer.
-screen_of() { # agent
+screen_of() { # agent [source] [lines]
     local out
-    out="$(herdr agent read "$1" --source recent-unwrapped --lines 120 2>/dev/null)" || return 0
+    out="$(herdr agent read "$1" --source "${2:-recent-unwrapped}" --lines "${3:-120}" 2>/dev/null)" || return 0
     if jq -e 'type == "object"' >/dev/null 2>&1 <<<"$out"; then
         jq -r '((.result | objects) // {}) as $r | [$r.text, $r.content, $r.output] | map(strings) | .[0] // ""' <<<"$out"
     else
@@ -91,6 +93,11 @@ refresh() { # repo root, lane folder, its running nodes whose agents are idle or
                 found="$(screen_claim "$node" "$(screen_of "$name")")" source=screen
             fi
         fi
+        # idle while its own background work runs is not stopped (src/result.sh)
+        if [ "$(jq -r .kind <<<"$found")" = none ] &&
+            background_work "$(jq -r --arg n "$name" '[.result.agents[]? | select(.name == $n) | .agent][0] // ""' <<<"$AGENT_LIST")" "$(screen_of "$name" visible 40)"; then
+            found="$(jq -c '.kind = "busy"' <<<"$found")"
+        fi
         entries="$(jq -c --arg n "$name" --arg s "$status" --argjson q "$seq" --argjson f "$found" --arg src "$source" --arg run "$run" --arg at "$(now)" \
             '. + {($n): ($f + {status: $s, seq: $q, run: $run, source: $src, seen_at: $at})}' <<<"$entries")"
     done < <(jq -r '.[] | [.agent, .node, .live, (.seq | tojson), .run, .output, (.claim.kind // "")] | map(gsub("[\u001f\n]"; " ")) | join("\u001f")' <<<"$3")
@@ -101,6 +108,7 @@ refresh() { # repo root, lane folder, its running nodes whose agents are idle or
 
 v="$(view)"
 if command -v herdr >/dev/null 2>&1; then
+    AGENT_LIST="$(herdr agent list 2>/dev/null)" || AGENT_LIST='{}'
     while IFS="	" read -r root; do
         [ -n "$root" ] || continue
         d="$(lane_dir "$root" 2>/dev/null)" || continue
