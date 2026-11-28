@@ -73,7 +73,7 @@ echo "== autoclose: resume commands for Codex and OpenCode =="
 ulane done-b 2
 umerged done-b 2
 u lane node --repo "$U_REPO" --lane done-b --node tests --status "done" --result pass --agent opencode-done-b >/dev/null
-ust "$({ uag claude-done-b w-done-b codex done thread-b; uag opencode-done-b w-done-b opencode idle ses_b; } | uagents)"
+ust "$({ uag claude-done-b w-done-b codex "done" thread-b; uag opencode-done-b w-done-b opencode idle ses_b; } | uagents)"
 u cleanup check --repo "$U_REPO" --lane done-b >/dev/null 2>&1
 res="$(ul done-b '[.restore.agents[].resume] | join(" | ")')"
 check "Codex" "codex resume thread-b" "$res"
@@ -264,7 +264,7 @@ check "orchestrate: lanes close by themselves" "AUTOCLOSED" "$orch"
 check "orchestrate: the toggle" "--key autoclose --value off" "$orch"
 check "orchestrate: removal is the user's" 'cleanup.sh" remove --lane L' "$orch"
 check "orchestrate: a side merge is a note" "SIDE-MERGE" "$orch"
-check "orchestrate: the feedback-due event" '`feedback-due`' "$orch"
+check "orchestrate: the feedback-due event" "\`feedback-due\`" "$orch"
 rd="$(cat "$PLUGIN/README.md")"
 check "README: the toggle" "--key autoclose" "$rd"
 check "README: removal" "cleanup.sh remove" "$rd"

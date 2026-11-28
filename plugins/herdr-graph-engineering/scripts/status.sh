@@ -173,8 +173,10 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
       | [$nodes[] | select(.drift.kind == "question") | "\(.node) (\(.agent)) asks: \(.drift.ref)"] as $asks
       # the lane'"'"'s own merged pull request (src/merged.sh)
       | (if $l.status == "closed" or ($l.cleanup // "") == "declined" then null
-         else ($l | own_merged($l.prs // [])) end) as $found
+         else ($l | own_merged($l.prs // [])) end) as $own
       | ([$nodes[] | select(.status != "done" and .status != "skipped") | .node]) as $unfinished
+      # a side pull request of an unfinished lane (none recorded) is only a note (cleanup.sh)
+      | (if $l.status == "open" and ($unfinished | length) > 0 and ($l | own_urls | length) == 0 then null else $own end) as $found
       # an early merge the user already answered about stays quiet until the lane is done
       | (if $found != null and $l.status == "open" and ($l.merged_early // "") == $found.url then null else $found end) as $merged
       | ([$nodes[] | .node as $n | .agent as $ag | .drift | select(. != null) |
@@ -189,7 +191,11 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
            elif .kind == "gate-stalled" then "\($n): no gate output for \(.ref)"
            else "\($n): \($ag) stopped without a RESULT line" end]
          + (($l.cleanup // "") as $cu
-            | if $merged == null then []
+            | if $l.status == "closed" then []
+              # waiting to close by itself: only a blocked agent is the user'"'"'s to handle
+              elif ($cu | startswith("auto-wait: ")) then
+                  (if ($cu | endswith(" is blocked")) then ["finished, not closed: \($cu | ltrimstr("auto-wait: "))"] else [] end)
+              elif $cu == "feedback-due" or $merged == null then []
               elif $cu == "confirmed" then ["PR #\($merged.number) merged, cleanup confirmed: cleanup.sh run"]
               elif $cu == "ready" then ["PR #\($merged.number) merged, waiting for cleanup confirmation"]
               elif ($cu | startswith("blocked: ")) then ["PR #\($merged.number) merged, cleanup \($cu)"]
@@ -205,6 +211,8 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
          root: $l.root, status: ($l.status // ""), history: ($l.history // [] | length),
          recorded_pr: ([$l.pr // empty | select(. != "")] + [$l.nodes[]?.ref // empty | select(test("^https?://[^ ]+/pull/[0-9]+$"))] | .[0] // ""),
          questions: [($l.questions // [])[] | select(.answer == null) | {id, node: (.node // ""), kind: (.kind // ""), asked_at: (.asked_at // null)}],
+         open_criteria: (if $l.status == "closed" then [($l.done_extra // [])[] | select(.met != true) | .text] else [] end),
+         resume: [$l.restore.agents[]? | .command // "" | select(. != "")],
          closed: ([($l.history // [])[] | select(endswith(" lane closed"))][-1] // "" | split(" ")[0]),
          nodes: $nodes, last: ($l.history[-1] // ""),
          section: (if $l.status == "closed" then "closed"

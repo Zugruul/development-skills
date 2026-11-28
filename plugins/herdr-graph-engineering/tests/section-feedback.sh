@@ -252,6 +252,8 @@ check "show groups lessons by target" "LESSONS for repository" "$(f feedback sho
 
 echo "== feedback: cleanup waits for the orchestrator's feedback when the loop is on =="
 F_LREPO="$F_TMP/lanes"
+# the ask flow, which is what happens with auto-close off (section-autoclose.sh covers it on)
+f session set --key autoclose --value off >/dev/null
 git init -q -b main "$F_LREPO" && git -C "$F_LREPO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 git -C "$F_LREPO" worktree add -q -b look/pr-7 "$F_TMP/wt-rv" main
 f lane new --repo "$F_LREPO" --lane rv-7 --pattern review --input pr=https://github.com/o/r/pull/7 --idea x --branch look/pr-7 --workspace w-rv >/dev/null

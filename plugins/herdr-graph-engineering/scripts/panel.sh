@@ -42,8 +42,11 @@
 # [clear all reviews] (only while a closed review lane exists; it drops first when the two
 # do not fit) and [clear all]. [x] on a DONE lane asks the lane's orchestrator to clean it up
 # (it confirms with the user again and removes the worktree, never the panel); on a CLOSED
-# lane, [clear all reviews] for every closed review lane and [clear all] for every closed
-# lane, it runs lane.sh clear, which moves the lane file from closed/ to closed/cleared/.
+# lane it first removes its worktree (cleanup.sh remove: never --force; the entry stays, with
+# the reason, while it cannot go), then runs lane.sh clear, which moves the lane file from
+# closed/ to closed/cleared/. [clear all reviews] (every closed review lane) and [clear all]
+# (every closed lane) only run lane.sh clear: no worktree is removed in bulk. A closed lane
+# lists its open done criteria ("open: ..."), and unfolded its agents' resume commands.
 # [restore] runs lane.sh restore: the lane's record comes back with its last status (open or
 # done); never a worktree or a branch. A review lane: pattern review or review-stack; with
 # no pattern or a custom one (a review stack's --pattern-file), a look/pr-<n> branch.
@@ -225,19 +228,23 @@ body() { # selected index, width
             | (if $i == $sel then
                  ("\($head)\($c.selmark)" | withbuttons($bl)) | .l |= "\($c.selbg) \(.)\($c.eol)\($c.reset)" | withmap("L\($name)\u001f\($i)h")
                else ($head | withbuttons($bl)) | .l |= " \(.)" | withmap("L\($name)\u001f\($i)h") end),
-              (if isfolded then empty else
+              # a done criterion left open shows even while the closed lane is folded
+              ( ([(.open_criteria // [])[] | {k: "", l: ("open: \(.)" | styled($c.grey; $n))}]) as $open
+              | (if isfolded then $open else
                  [ {k: "", l: [chain]},
                    (if .question != "" then {k: "", l: ("? \(.question)" | styled($c.red; $n))} else empty end),
                    (.attention // [] | .[] | {k: "", l: ("! \(.)" | styled($c.red; $n))}),
                    (.nodes[] | select((.progress // "") != "") | {k: "", l: ("\(.node): \(.progress)" | styled($c.grey; $n))}),
                    (.nodes[] | select(.ref != "" and (.ref | test("/"))) | {k: "f\(.ref)", l: ("\(.node): \(.ref)" | styled($c.grey; $n))}),
+                   ($open[]),
+                   ((.resume // [])[] | {k: "", l: ("resume: \(.)" | styled($c.grey; $n))}),
                    (if (.last // "") != "" then {k: "", l: ("last: \(.last)" | styled($c.grey; $n))} else empty end),
                    prs ]
+                 end)
                  | length as $m | to_entries[] | .key as $j | .value as $v
                  | (if $j == $m - 1 then ["└ ", "  "] else ["├ ", "│ "] end) as $tw
                  | $v.l | to_entries[]
-                 | "\(if .key == 0 then "L\($name)/\($j)\u001f" else "" end)\($i)\($v.k)| \($c.grey)  \(if .key == 0 then $tw[0] else $tw[1] end)\($c.fg)\(.value)"
-               end);
+                 | "\(if .key == 0 then "L\($name)/\($j)\u001f" else "" end)\($i)\($v.k)| \($c.grey)  \(if .key == 0 then $tw[0] else $tw[1] end)\($c.fg)\(.value)");
         ([.[] | select(.section == "closed")] | length) as $nclosed
         | ([.[] | select(.section == "closed" and isreview)] | length) as $nreviews
         | ordered($all) as $l
@@ -541,11 +548,18 @@ jump() { # lane JSON: focus the agent that needs the user, else a running one
 # asked to clean it up, and confirms with the user before it removes anything. A CLOSED
 # lane: lane.sh clear moves its file to closed/cleared/.
 close_lane() { # lane JSON
-    local name root owner
+    local name root owner out
     name="$(jq -r '.lane' <<<"$1")" root="$(jq -r '.root' <<<"$1")" owner="$(jq -r '.owner' <<<"$1")"
     case "$(jq -r '.section' <<<"$1")" in
         closed)
-            bash "$HERE/lane.sh" clear --repo "$root" --lane "$name" >/dev/null 2>&1 || MSG="could not clear $name"
+            # the confirmed [x] is the user's word to remove the worktree too; the entry stays while it cannot go
+            if out="$(bash "$HERE/cleanup.sh" remove --repo "$root" --lane "$name" 2>&1)"; then
+                case "$out" in REMOVED*) MSG="removed the worktree of $name (branch kept)" ;; esac
+                bash "$HERE/lane.sh" clear --repo "$root" --lane "$name" >/dev/null 2>&1 || MSG="could not clear $name"
+            else
+                out="${out%%$'\n'*}"
+                MSG="worktree kept: ${out#NOT REMOVED: }"
+            fi
             refresh_view ;;
         done)
             if [ -z "$owner" ]; then
@@ -565,6 +579,7 @@ restore_lane() { # lane JSON
     name="$(jq -r '.lane' <<<"$1")" root="$(jq -r '.root' <<<"$1")"
     if out="$(bash "$HERE/lane.sh" restore --repo "$root" --lane "$name" 2>&1)"; then
         MSG="restored $name (the record only: no worktree or branch)"
+        case "$out" in *$'\n'"RESUME "*) out="${out#*$'\n'RESUME }"; MSG="restored $name; resume ${out%%$'\n'*}" ;; esac
     else
         MSG="could not restore $name: ${out#*: }"
     fi
@@ -583,6 +598,15 @@ clear_closed() { # all | reviews
     refresh_view
 }
 
+# Armed [x] on a closed lane with a checkout: say what confirming removes.
+warn_removal() { # lane JSON
+    local br
+    br="$(jq -r 'select(.section == "closed") | .branch' <<<"$1")"
+    [ -n "$br" ] || return 0
+    git -C "$(jq -r .root <<<"$1")" worktree list --porcelain 2>/dev/null | grep -qxF "branch refs/heads/$br" || return 0
+    MSG="confirm removes its worktree if clean (branch kept)"
+}
+
 # A press of a button that asks first ([x]: x|root|lane, [restore]: restore|root|lane,
 # [clear all]: all, [clear all reviews]: reviews): the first arms it, a press of the armed
 # button acts. act has already put any armed button back in PREV.
@@ -595,6 +619,7 @@ press() { # key, lane JSON (for [x] and [restore])
         esac
     else
         ARMED="$1"
+        case "$1" in x\|*) warn_removal "$2" ;; esac
     fi
 }
 

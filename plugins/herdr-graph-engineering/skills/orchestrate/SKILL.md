@@ -34,7 +34,8 @@ Scripts (all `bash "../../scripts/<name>"`):
 
 | Script | For |
 | --- | --- |
-| `lane.sh new / node / step / reject / retry / ask / asked / answer / dismiss / set / close / clear / show / list` | every write to a lane file |
+| `lane.sh new / node / step / reject / retry / ask / asked / answer / dismiss / set / close / clear / restore / show / list` | every write to a lane file |
+| `cleanup.sh check / run / remove --lane L --repo R` | close finished lanes, ask about the rest, remove a worktree on the user's word (section 6) |
 | `start.sh [--scratch DIR]` | your session file: run it first |
 | `notify.sh list --session S` | the open events: what changed, what was delivered, what is unhandled |
 | `adopt.sh --agent A --idea T --access read\|write` | watch an agent that was started outside the graph, as a one-node lane |
@@ -141,6 +142,7 @@ A message that is only `graph: <lane>/<node> <reason>[, ...]` (`-` for the lane 
 | `pr-merged` | Run the printed `cleanup.sh check` (section 6) |
 | `cleanup-ready`, `cleanup-blocked`, `merged-early` | Ask as section 6 says |
 | `cleanup-confirmed` | The user said yes and it has not run: `cleanup.sh run` |
+| `feedback-due` | The lane is finished and closes by itself once your feedback note is written: collect it (section "Feedback loop"), then `cleanup.sh check` |
 | `retry-limit` | Ask the user what now |
 | `merge-ready` | Auto-merge is on and the checks hold: `merge.sh run` (the `auto-merge` skill) |
 | `(reminder N)` | Still unhandled: handle it now, or `ack` what stays as it is. After two reminders the panel marks the lane "needs manual intervention" |
@@ -186,6 +188,8 @@ Then, at lane done, run `close-done.sh --lane L --repo R`: every agent and gate 
 After recording a lane done, also run the cleanup check of section 6.
 Notify once: `herdr notification show "<lane> done" --body "<one line>"`.
 
+**A merged lane does not wait for these steps.** Once its recorded pull request is merged and every node is `done` or `skipped`, the cleanup check closes it by itself (section 6), even while its status is `open` or an extra done criterion (`lane.sh done-extra`) is unmet. The unmet criterion stays listed as open in the lane note and on the panel's CLOSED entry. Never hold a merged lane open for it: check it later, and tell the user the result.
+
 You may commit, push the lane branch and open a draft pull request without asking. **Ask before** marking a pull request ready, posting to a pull request or issue, or anything outside the lane's checkout. **Never** merge unless auto-merge is on for that lane, and then only with `bash "../../scripts/merge.sh" run --lane L --repo R` (the `auto-merge` skill; it also marks the draft ready). **Never** approve, force-push or delete a branch.
 
 ## Reviews (`review` and stack lanes)
@@ -211,7 +215,19 @@ When the planner's lane is done, validate its file: `check-pattern.sh <file> --r
 
 ## 6. After a lane
 
-Never leave noticing a merge to the user. The sweep runs the cleanup check and wakes you; also run `bash "../../scripts/cleanup.sh" check --repo R` before every report (section "Reports") and after recording a lane done. For each lane whose status is `done`, and each review lane that is finished while still open (Reviews, step 8), it prints:
+Never leave noticing a merge to the user. The sweep runs the cleanup check and wakes you; also run `bash "../../scripts/cleanup.sh" check --repo R` before every report (section "Reports"), after recording a lane done, and right after merging its pull request.
+
+**A finished lane closes by itself.** It is finished when its recorded pull request is merged and every node is `done` or `skipped`, or when it is a finished review lane with no findings left to forward. The check then records a restore note (the checkout, and each agent's resume command from `herdr agent get`), closes the lane's workspace so its agents leave Herdr, keeps the worktree and the branch, and closes the lane. It asks nothing. A workspace that is not the lane's alone stays open. An adopted lane only has its record closed.
+
+- `AUTOCLOSED <lane> (...)`: it closed. Name it in your next report, with what the line says is open or kept.
+- `AUTOCLOSE-WAIT <lane> (<why>)`: an agent is still working or blocked, a question is open, the feedback is due, or Herdr refused. The next check tries again. Handle the reason.
+- `SIDE-MERGE <lane> (...)`: a pull request merged on the lane's branch that is not its recorded one. It is only a lane note: nothing to ask. If it is the lane's own pull request, record it with `lane.sh set --key pr`.
+
+The user can turn this off for the session: `bash "../../scripts/session.sh" set --key autoclose --value off` (`on` is the default). Change it only when they ask. It never applies to a lane the user kept or restored, one they confirmed for removal, or a pull request lane AFK removes.
+
+**Removing a closed lane's worktree is the user's call.** Only when they ask, run `bash "../../scripts/cleanup.sh" remove --lane L --repo R`. The panel's `[x]` on a CLOSED lane runs it itself. It never uses `--force`. It refuses (`NOT REMOVED`) a dirty checkout, a busy or foreign agent in it, a branch an open lane uses, and ignored files that would be lost. For ignored files, show the user their names, and add `--lose-ignored` only on their yes. The branch is kept.
+
+For each other lane whose status is `done` (and each review lane that is finished while still open, Reviews step 8), which happens when auto-close is off or the lane has no recorded pull request, it prints:
 
 - `CLEANUP <lane> (<why>)`: ready. Its pull request is `MERGED` (the recorded one; with none, its branch's when no other is open and it is newer than the lane), its checkout is clean and has no commit beyond the pull request's head. A review lane (pattern `review`, a review stack, or branch `look/pr-<n>`) is ready once it posted, the user decided not to post, or it was forwarded, with no merge; a report lane once nothing in it is unpushed. An adopted lane only ever has its record closed. The script has recorded a cleanup question and sent a Herdr notification. It never removes anything itself.
 - `BLOCKED <lane> (<reason>)`: merged, but the checkout is dirty or has unpushed commits (or no checkout was found). It is never removed; the lane is under NEEDS YOU, asked once per kind of reason.
@@ -231,7 +247,7 @@ The question being asked is not a yes. Only on the user's yes: record it, `lane.
 
 For a `BLOCKED` lane, relay the user's decision; the next check asks again only for a new kind of reason or a new head. Under AFK with worktree removal in its scope, the `afk` skill's `cleanup.sh run --afk` applies.
 
-The graph panel's `[x]` on a DONE lane sends you "Clean up lane L": treat it as the user asking for this cleanup: run `cleanup.sh check --lane L --repo R` and still confirm before `cleanup.sh run`. `lane.sh clear --lane L` only moves a closed lane's file to `closed/cleared/` (the panel's `[x]` on a CLOSED lane, `[clear all reviews]` and `[clear all]`). `lane.sh restore --lane L` moves a closed lane's file back with its last status (the panel's `[restore]`); it brings back the record only, so if the user wants to work on it again, recreate the worktree and agents as for a new lane.
+The graph panel's `[x]` on a DONE lane sends you "Clean up lane L": treat it as the user asking for this cleanup: run `cleanup.sh check --lane L --repo R` and still confirm before `cleanup.sh run`. `lane.sh clear --lane L` only moves a closed lane's file to `closed/cleared/` (`[clear all reviews]` and `[clear all]`, which remove no worktree; the panel's `[x]` on a CLOSED lane runs `cleanup.sh remove` first). `lane.sh restore --lane L` moves a closed lane's file back with its last status (the panel's `[restore]`); it brings back the record only, and it never closes by itself again. It prints `RESUME <agent>: <command>` for each agent of a lane that closed by itself: offer the user that command. To work on it again, open the kept worktree with the `herdr:worktree` skill (or recreate it) and start the agent in it with that command's session.
 
 ## Adopting an agent
 
