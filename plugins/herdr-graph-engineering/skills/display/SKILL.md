@@ -6,6 +6,8 @@ allowed-tools: Bash
 
 # Display the lanes
 
+**Clients.** If this skill folder is a symlink (an install by the repository's `./install-skills.sh`), take `../../` from the folder it links to (`cd -P <this skill folder> && pwd` prints it).
+
 Paths are relative to this `SKILL.md`. This skill only reads; it never changes a lane.
 
 ## With the Herdr panel (preferred)

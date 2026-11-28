@@ -2,12 +2,18 @@
 # shellcheck source-path=SCRIPTDIR
 # await.sh -- the waiter: it waits for the session's next event and ends with it, which wakes the
 # chat. It types nothing, so a half-typed message is never touched.
-# Usage: await.sh [--session S] [--hook]
-#   --hook   how hooks/hooks.json arms it after every turn of the orchestrator (a Claude Code Stop
-#            hook with asyncRewake: it runs in the background, and exit 2 wakes the idle chat with
-#            what it wrote to stderr). It does nothing outside the orchestrator's pane, or when
-#            Herdr shows that pane running another client: one that does not know asyncRewake
-#            would hold its turn until the waiter ends.
+# Usage: await.sh [--session S] [--hook [--client claude|opencode]]
+#   --hook   how it is armed after every turn of the orchestrator. It reads the hook's input and does
+#            nothing outside the orchestrator's pane, or when Herdr shows that pane running another
+#            client than --client (default claude):
+#            claude    hooks/hooks.json, a Stop hook with asyncRewake: it runs in the background and
+#                      exit 2 wakes the idle chat with what it wrote to stderr. A client that does
+#                      not know asyncRewake (Codex) would hold its turn until the waiter ends, so
+#                      there it returns at once and the Herdr plugin's push wakes the chat.
+#            opencode  opencode/herdr-graph.js runs it beside the chat and sends what it wrote to
+#                      stderr through OpenCode's API on exit 2. It ends when the process that started
+#                      it is gone: a killed OpenCode stops nothing, and an orphan would take events
+#                      that no chat receives and keep the push away.
 # One waiter per session: a newer one takes over and the older ends quietly. While it waits it
 # costs no tokens. Hooks and Herdr events update the events; the waiter looks at them every
 # HERDR_GRAPH_TICK seconds (2) and runs the full sweep (notify.sh reconcile --full: pull
@@ -26,14 +32,16 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=src/events.sh
 . "$HERE/src/events.sh"
 
-session="" hook=0
+session="" hook=0 client=claude parent=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --session) need_value "$1" $#; session="$2"; shift 2 ;;
         --hook) hook=1; shift ;;
-        *) usage "await.sh [--session S] [--hook]" ;;
+        --client) need_value "$1" $#; client="$2"; shift 2 ;;
+        *) usage "await.sh [--session S] [--hook [--client claude|opencode]]" ;;
     esac
 done
+case "$client" in claude | opencode) ;; *) die "--client must be claude or opencode" 2 ;; esac
 if [ "$hook" -eq 1 ]; then
     [ -n "${HERDR_PANE_ID:-}" ] || exit 0
     ofile="$(panes_dir)/$(pane_key "$HERDR_PANE_ID").orch"
@@ -42,7 +50,8 @@ if [ "$hook" -eq 1 ]; then
     for t in jq yq git herdr; do command -v "$t" >/dev/null 2>&1 || exit 0; done
     session="$(cat "$ofile")"
     agent="$(orchestrator_agent "$session")" || exit 0
-    [ "$(jq -r '.agent // ""' <<<"$agent")" = claude ] || exit 0
+    [ "$(jq -r '.agent // ""' <<<"$agent")" = "$client" ] || exit 0
+    [ "$client" != opencode ] || parent="$PPID"
 fi
 require_tools jq yq git
 session="${session:-$(default_session)}"
@@ -51,6 +60,7 @@ mine="$(session_dir)/$session.waiter" beat="$(session_dir)/$session.beat"
 mkdir -p "$(session_dir)"
 printf '%s' "$$" >"$mine"
 touch "$beat"
+orphaned() { [ -n "$parent" ] && ! kill -0 "$parent" 2>/dev/null; }
 bye() { [ "$(cat "$mine" 2>/dev/null)" != "$$" ] || rm -f "$mine" "$beat"; }
 trap bye EXIT
 trap 'exit 0' INT TERM HUP
@@ -62,11 +72,13 @@ if sweep_due "$session"; then reconcile "$session" 1 >/dev/null 2>&1; else recon
 checked="$(date +%s)"
 while :; do
     [ "$(cat "$mine" 2>/dev/null)" = "$$" ] || exit 0
+    ! orphaned || exit 0
     touch "$beat"
     if pending "$session"; then
         sleep "$batch" # one message for what happens together
         reconcile "$session" 0 >/dev/null 2>&1
         [ "$(cat "$mine" 2>/dev/null)" = "$$" ] || exit 0
+        ! orphaned || exit 0 # leave the events for whoever can deliver them
         if msg="$(take "$session")"; then
             printf '%s\n' "$msg" >&2
             exit 2

@@ -82,13 +82,20 @@ check "ui-options: records the pick" 'design-registry.sh" pick' "$uo"
 check "ui-options: no Suggested badge" 'Do **not** badge any option as "Suggested"' "$uo"
 check "ui-options: element notes stay scoped" "Element notes:" "$uo"
 check "ui-options: other skills may call it" "Called by another skill" "$uo"
-# §7.6 of the Codex compatibility contract: the resume link is omitted, never fabricated.
+# the way back into the session is each client's own command, and is omitted, never invented
 # shellcheck disable=SC2016  # the literal SKILL.md prose, not an expansion
-check "ui-options: fills __SESSION_ID__ from CLAUDE_CODE_SESSION_ID" '__SESSION_ID__` with the value of `echo "$CLAUDE_CODE_SESSION_ID"`' "$uo"
-check "ui-options: omits the resume sentence when the session id is empty" "if empty, replace the whole resume sentence with nothing" "$uo"
+check "ui-options: Claude Code's resume command" '`claude --resume <the value of CLAUDE_CODE_SESSION_ID>`' "$uo"
+# shellcheck disable=SC2016
+check "ui-options: Codex's resume command" '`codex resume <the value of CODEX_THREAD_ID>`' "$uo"
+check "ui-options: OpenCode gives its shell no session id" "OpenCode gives its shell no session id" "$uo"
+check "ui-options: omits the resume sentence when there is no session id" "replace the whole resume sentence with nothing" "$uo"
+# shellcheck disable=SC2016  # literal SKILL.md text
+check "ui-options: the watcher is the hub's own wait" '$HUB wait --id' "$uo"
+check "ui-options: a fallback where no background command wakes the agent" "Codex and OpenCode: no finished background command starts a new turn" "$uo"
+check_absent "template: no client's command is built in" "claude --resume" "$(cat "$PLUGIN/templates/ui-options.html")"
 
 tpl="$(cat "$PLUGIN/templates/ui-options.html" 2>/dev/null)"
-for ph in __DESIGN_ID__ __DESIGN_TITLE__ __SESSION_ID__ __OPTION_ID__ __OPTION_NAME__ __OPTION_SUMMARY__ __ASPECT_KEYWORD__; do
+for ph in __DESIGN_ID__ __DESIGN_TITLE__ __RESUME_COMMAND__ __OPTION_ID__ __OPTION_NAME__ __OPTION_SUMMARY__ __ASPECT_KEYWORD__; do
     check "template: placeholder $ph" "$ph" "$tpl"
 done
 check "template: loads axe-core from the hub" "sc.src = '/vendor/axe.min.js'" "$tpl"

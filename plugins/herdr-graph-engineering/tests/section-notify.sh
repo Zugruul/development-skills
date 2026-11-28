@@ -277,6 +277,13 @@ wait "$first"; rc=$?
 check_rc "a newer waiter takes over: only one per session" 0 "$rc"
 out="$(printf '{}' | AW_PANE=w77:p1 aw --hook 2>&1)"; rc=$?
 check_rc "the hook in another pane does nothing" 0 "$rc"
+nsm '.agents.o.agent = "opencode"'
+start=$(date +%s); out="$(printf '{}' | AW_MAX=30 aw --hook 2>&1)"; rc=$?
+check_rc "the Claude Code hook leaves an OpenCode orchestrator alone" 0 "$rc"
+ns lane node --repo "$N_REPO" --lane w --node investigate --status running --note rearm-oc >/dev/null
+out="$(printf '{}' | aw --hook --client opencode 2>&1)"; rc=$?
+check_rc "the OpenCode adapter arms it with --client opencode" 2 "$rc"
+check "and gets the watcher's message" "graph: w/investigate blocked" "$out"
 nsm '.agents.o.agent = "codex"'
 start=$(date +%s); out="$(printf '{}' | AW_MAX=30 aw --hook 2>&1)"; rc=$?
 check_rc "for a client that cannot be woken this way the hook returns" 0 "$rc"
@@ -285,6 +292,19 @@ nsm '.agents.o.agent = "claude"'
 ns lane node --repo "$N_REPO" --lane w --node investigate --status running --note rearm >/dev/null
 out="$(printf '{"stop_hook_active":false}' | aw --hook 2>&1)"; rc=$?
 check_rc "armed by the hook in the orchestrator's Claude pane" 2 "$rc"
+
+ns notify take --session graph >/dev/null 2>&1
+# OpenCode killed with its pane: no exit handler of the adapter runs, so the waiter must notice
+nsm '.agents.o.agent = "opencode" | .agents.w.agent_status = "working"'
+rm -f "${N_EV%.events.json}.waiter"
+(cd "$N_TMP" && printf '{}' | PATH="$FIX/stub-herdr:$FIX/stub-gh:$PATH" HERDR_STUB_DIR="$N_TMP" GH_STUB_DIR="$N_TMP" HERDR_ENV=1 HERDR_PANE_ID=w1:p1 HERDR_GRAPH_NO_SIGNAL=1 HERDR_GRAPH_TICK=0.2 HERDR_GRAPH_WAIT_MAX=40 \
+    bash -c 'bash "$0" --hook --client opencode >/dev/null 2>&1 <&0 & sleep 3' "$PLUGIN/scripts/await.sh")
+orphan="$(cat "${N_EV%.events.json}.waiter" 2>/dev/null)"
+for _ in $(seq 50); do kill -0 "${orphan:-0}" 2>/dev/null || break; [ -n "$orphan" ] || break; sleep 0.2; done
+check "the OpenCode waiter had started" "yes" "$([ -n "$orphan" ] && echo yes || echo "no waiter file, or it was gone already")"
+check "and ends once the process that started it is gone" "gone" "$([ -n "$orphan" ] && kill -0 "$orphan" 2>/dev/null && echo alive || echo gone)"
+[ -z "$orphan" ] || kill "$orphan" 2>/dev/null
+nsm '.agents.o.agent = "claude"'
 
 rm -rf "$N_TMP"
 export XDG_STATE_HOME="$N_STATE_OLD"; unset N_CLOCK

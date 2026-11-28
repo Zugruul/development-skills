@@ -1,6 +1,6 @@
 # development-skills
 
-Plugins that teach coding agents to work in [Herdr](https://herdr.dev) and to design UIs, as a marketplace for [Claude Code](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) and Codex, with OpenCode skill-directory support.
+Plugins that teach coding agents to work in [Herdr](https://herdr.dev) and to design UIs, for [Claude Code](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces), Codex and [OpenCode](https://opencode.ai): a marketplace for the first two, and an installer script for OpenCode.
 
 ## Plugins
 
@@ -22,6 +22,17 @@ claude plugin install spec-workflow@development-skills-archived
 ```
 
 **Had one of them installed from here?** This is a breaking change: once your copy of this marketplace updates, Claude Code can no longer load it. Follow [Moving an existing install](archived/README.md#moving-an-existing-install).
+
+## Client support
+
+| Plugin | Claude Code | Codex | OpenCode |
+| --- | --- | --- | --- |
+| `herdr` | full | full | full (skill names without the plugin prefix) |
+| `herdr-graph-engineering` | full | works; no hook for the client's own error (screen instead), no waiter (the Herdr plugin wakes it), hooks need your trust | full, through the plugin's OpenCode plugin |
+| `herdr-simple-orchestrate` | full | full (install `herdr` too) | full (`orchestrate` is named `herdr-simple-orchestrate-orchestrate`) |
+| `ui-design` | full | works; the agent does not wake by itself on your pick | works; the same as Codex, and no resume command on the page |
+
+"Full" means that every feature has a way to work in that client; no client was run against a live Herdr. Each plugin's README has a `## Clients` section with the detail and what was tested. Versions used: Claude Code 2.1.332, Codex 0.165.0, OpenCode 1.19.4.
 
 ## Install
 
@@ -53,6 +64,8 @@ codex plugin marketplace add Zugruul/development-skills
 
 Restart the ChatGPT desktop app, open the Plugins Directory, select **Development Skills**, and install the plugin or plugins you need. Start a new chat after installation so Codex loads their skills. For a local checkout, run `codex plugin marketplace add .` from the repository root instead.
 
+In the Codex CLI, install each plugin with `codex plugin add <plugin>@development-skills`. Codex does not install a plugin's dependencies: for `herdr-graph-engineering` or `herdr-simple-orchestrate`, install `herdr` too. After installing or updating `herdr-graph-engineering`, open `/hooks` and trust its hooks.
+
 Before updating, confirm `codex plugin marketplace list` includes
 `development-skills` in the same runtime/profile as the desktop's active skill
 path. Then run `codex plugin marketplace upgrade development-skills`, verify
@@ -63,21 +76,34 @@ skills together with their scripts, references, and templates.
 `install-skills.sh codex` is an alternative for linking raw skill folders into
 a project's `.agents/skills/`; use one installation method per skill to avoid duplicates.
 
-### Skill directories (all three hosts)
+### OpenCode
 
-Every skill is host-portable (frontmatter `name` matching its directory, a `description`, `$ARGUMENTS` for arguments). Beyond the marketplaces, `install-skills.sh` symlinks the skills of the maintained plugins into any project's per-client skill directories:
+OpenCode has no plugin marketplace for these. Install from a clone:
 
 ```bash
-./install-skills.sh all        # or: claude | opencode | codex
+git clone https://github.com/Zugruul/development-skills.git
+./development-skills/install-skills.sh opencode --global
 ```
 
-| Host | Project skill directory | Marketplace alternative |
-|-|-|-|
-| Claude Code | `.claude/skills/` | `/plugin marketplace add` on `.claude-plugin/marketplace.json` |
-| OpenCode | `.opencode/skills/` | — (skills dirs are the mechanism; OpenCode also auto-loads `~/.claude/skills` and `~/.agents/skills`) |
-| Codex | `.agents/skills/` | `.agents/plugins/marketplace.json` |
+This links the skills of every maintained plugin and the OpenCode plugin of `herdr-graph-engineering` into `~/.config/opencode/` (`OPENCODE_CONFIG_DIR` and `XDG_CONFIG_HOME` are honoured). To update, run `git pull` in the clone, then the installer again, and restart OpenCode. Without `--global` it installs into the current project only.
 
-Symlinks, never copies — canonical edits are live immediately. Use either a marketplace or the skills-dir install per host, not both (duplicate entries). Set `DEV_SKILLS_PROJECT_ROOT` to target another project. Verified live: `opencode debug skill` lists every installed skill from a target project.
+OpenCode names a skill without its plugin (`herdr:worktree` is `worktree`). It also reads `.claude/skills` and `.agents/skills`, so two skills never get the same name: the second `orchestrate` is installed as `herdr-simple-orchestrate-orchestrate`.
+
+### Skill directories (all three clients)
+
+The same installer also serves Claude Code and Codex, instead of their marketplaces:
+
+```bash
+./install-skills.sh all        # or: claude | opencode | codex; add --global for your user folders
+```
+
+| Client | In a project | With `--global` | Marketplace alternative |
+|-|-|-|-|
+| Claude Code | `.claude/skills/` | `~/.claude/skills/` | `.claude-plugin/marketplace.json` (also brings the hooks) |
+| Codex | `.agents/skills/` | `~/.agents/skills/` | `.agents/plugins/marketplace.json` (also brings the hooks) |
+| OpenCode | `.opencode/skills/` and `.opencode/plugins/` | `~/.config/opencode/` | none |
+
+It links, never copies, so edits are live (the one exception is the small pointer file for a duplicate name). Linked skill folders carry no hooks for Claude Code or Codex: use the marketplace for `herdr-graph-engineering` there. Use one way per client, not both. Set `DEV_SKILLS_PROJECT_ROOT` to target another project.
 
 ## Update
 
@@ -88,7 +114,7 @@ claude plugin marketplace update development-skills
 claude plugin update herdr@development-skills
 ```
 
-In Claude Code's `/plugin` Installed view, **Update now** updates one plugin. Verify the installed copy, then reload plugins or start a new session. In Codex, see the note above.
+In Claude Code's `/plugin` Installed view, **Update now** updates one plugin. Verify the installed copy, then reload plugins or start a new session. For Codex and OpenCode, see their install sections above.
 
 ## Plugin details
 
@@ -130,6 +156,9 @@ plugin**, `jq`, `yq` and `git`. See
 | `orchestrate` | The one chat: route ideas into lanes and run them until their definition of done |
 | `display` | Opens or closes the Herdr graph panel next to the orchestrator (refresh, interval toggle, jump, answer), or prints the picture as text |
 | `concurrency` | Guidance for running many lanes at once; no limit by default, a cap only when you ask |
+| `afk` | While on, the orchestrator decides the safe things itself, records each and shows the list when you return |
+| `auto-merge` | While on (off by default), the orchestrator may merge a lane's pull request after its gate and reviews pass |
+| `feedback-loop` | While on (off by default), lanes' lessons become improvement pull requests, never with task details |
 
 ```bash
 claude plugin install herdr-graph-engineering@development-skills
@@ -183,6 +212,7 @@ bash plugins/herdr/tests/run-tests.sh                    # hermetic: runs agains
 bash plugins/herdr-graph-engineering/tests/run-tests.sh
 bash plugins/herdr-simple-orchestrate/tests/run-tests.sh
 bash plugins/ui-design/tests/run-tests.sh                # hermetic: stub socat, the hub handler driven on stdin
+bash .github/tests/run-tests.sh                          # install-skills.sh and check-marketplaces.sh
 bash .github/scripts/check-marketplaces.sh               # both marketplaces, root and archived
 ```
 
@@ -195,4 +225,4 @@ claude plugin marketplace add /path/to/development-skills
 
 Removing a marketplace uninstalls the plugins installed from it, so reinstall the ones you need.
 
-The rules for agents and contributors are in [`AGENTS.md`](AGENTS.md), for both Claude Code and Codex; [`CLAUDE.md`](CLAUDE.md) points to it. [`CHANGELOG.md`](CHANGELOG.md) is generated on `main`.
+The rules for agents and contributors are in [`AGENTS.md`](AGENTS.md), for Claude Code, Codex and OpenCode; [`CLAUDE.md`](CLAUDE.md) points to it. [`CHANGELOG.md`](CHANGELOG.md) is generated on `main`.

@@ -96,7 +96,7 @@ if [ "$write" -eq 1 ]; then
 fi
 
 limit=$((window * pct / 100))
-keep=$((100 - pct))
+reserve=$((window - limit))
 cat <<EOF
 Compact the orchestrator's chat by itself at $pct% of its context. Only the orchestrator: lane agents keep the default.
 
@@ -112,9 +112,12 @@ Claude Code (documented: $VAR, "the percentage (1-100) of the auto-compact windo
 
 Codex (config.toml takes a token count, not a share: $pct% of a $window-token window)
     codex -c model_auto_compact_token_limit=$limit
-  Use --window with your model's context window. After it compacts, run resume.sh (no hook here).
+  Use --window with your model's context window.
+  The plugin's PreCompact and SessionStart(compact) hooks bring the resume block back by themselves, once the hooks are trusted (/hooks).
 
-OpenCode (opencode.json: "buffer" is the share of the context window kept free before automatic compaction)
-    { "compaction": { "auto": true, "buffer": "$keep%" } }
-  Put it in the opencode.json of the folder the orchestrator starts in. After it compacts, run resume.sh (no hook here).
+OpenCode (1.19.4 has no share setting: "reserved" is the number of tokens kept free; here $((100 - pct))% of a $window-token window)
+    { "compaction": { "auto": true, "reserved": $reserve } }
+  Put it in the opencode.json of the folder the orchestrator starts in. Use --window with your model's input limit.
+  OpenCode uses "reserved" only for a model that declares an input limit; any other model compacts when its window is nearly full.
+  opencode/herdr-graph.js (install-skills.sh opencode) brings the resume block back by itself; without it, run resume.sh.
 EOF

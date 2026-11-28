@@ -6,6 +6,8 @@ allowed-tools: Bash, AskUserQuestion
 
 # Start an agent in a Herdr pane
 
+**Clients.** If this skill folder is a symlink (an install by the repository's `./install-skills.sh`), take `../../` from the folder it links to (`cd -P <this skill folder> && pwd` prints it).
+
 Run `bash "../../scripts/check.sh"` first (paths are relative to this `SKILL.md`). If it prints `HERDR UNAVAILABLE`, say so and stop.
 
 Starting and prompting are **separate steps**: start, wait until the agent is idle, then prompt. Never fold the prompt into the start.

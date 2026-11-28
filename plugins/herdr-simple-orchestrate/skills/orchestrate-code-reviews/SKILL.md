@@ -6,6 +6,8 @@ allowed-tools: Bash, AskUserQuestion
 
 # Orchestrate a code review of related pull requests
 
+**Clients.** If this skill folder is a symlink (an install by the repository's `./install-skills.sh`), take `../../` from the folder it links to (`cd -P <this skill folder> && pwd` prints it). OpenCode names a skill without its plugin: there `herdr:worktree` is the `worktree` skill, and so on.
+
 Scripts are in `../../scripts/` (resolve the path relative to this `SKILL.md`). Run `bash "../../scripts/check.sh"` first; if it prints `HERDR UNAVAILABLE`, say so and stop.
 
 When you script several calls, call the scripts by their absolute path (`bash "<absolute path>/scripts/roster.sh"`).

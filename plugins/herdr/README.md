@@ -6,16 +6,21 @@ The plugin only teaches Herdr. It has no workflow of its own and knows no other 
 
 It is also thin. Skills call the `herdr` CLI directly, and the installed binary stays the authority for syntax (`herdr --help`, `herdr agent`, `herdr --skill`). There are four small bash scripts, each for something the CLI cannot do in one call.
 
-## Install
+## Clients
 
-```bash
-claude plugin marketplace add Zugruul/development-skills
-claude plugin install herdr@development-skills
-```
+| Client | Install | Use a skill |
+| --- | --- | --- |
+| Claude Code | `claude plugin marketplace add Zugruul/development-skills`, then `claude plugin install herdr@development-skills` | `/herdr:agent` |
+| Codex | `codex plugin marketplace add Zugruul/development-skills`, then `codex plugin add herdr@development-skills` | `$herdr:agent` |
+| OpenCode | a clone, then `./install-skills.sh opencode --global` | ask for the `agent` skill: OpenCode names a skill without its plugin |
+
+The plugin has no hooks, so the three clients behave the same. Herdr starts each of them as an agent kind (`claude`, `codex`, `opencode`). For Herdr to read an agent's state and session natively, also run `herdr integration install <kind>` once for each client you use (`herdr integration status` shows what is installed).
+
+**Tested** (2026-11, isolated config folders): all three clients find the five skills (Codex 0.165.0 and OpenCode 1.19.4 list them; Claude Code 2.1.332 installs the plugin and validates it), and the shell tools of Codex and OpenCode receive `HERDR_ENV`. The scripts run against a stub `herdr`. No client drove a live Herdr in this test. A Codex sandbox that turns the network off may also keep `herdr` from its server: approve the command if Codex asks.
 
 ## Requirements
 
-- The `herdr` binary on `PATH`, and the agent running inside a Herdr pane. Claude and other hosts use Herdr's injected `HERDR_ENV=1` caller context. Codex does not currently inherit that variable, so `check.sh` accepts Codex only when `CODEX_SESSION_ID` is set and Herdr reports one live Codex agent whose `cwd` and `foreground_cwd` both exactly match the current checkout. A reachable server or an ordinary shell never passes this fallback. Every skill checks this first and stops outside Herdr.
+- The `herdr` binary on `PATH`, and the agent running inside a Herdr pane. All three clients use Herdr's injected `HERDR_ENV=1` caller context, which their shell tools inherit (seen in OpenCode 1.19.4 and in `codex exec` 0.165.0). A Codex session can lack it, so `check.sh` also accepts Codex when `CODEX_SESSION_ID` is set and Herdr reports one live Codex agent whose `cwd` and `foreground_cwd` both exactly match the current checkout. A reachable server or an ordinary shell never passes this fallback. Every skill checks this first and stops outside Herdr.
 - `bash` (3.2 or later, so the macOS default works; WSL on Windows), `jq` and `git`. No Python.
 
 ## Skills

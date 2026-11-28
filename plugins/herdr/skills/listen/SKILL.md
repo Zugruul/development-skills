@@ -6,6 +6,8 @@ allowed-tools: Bash, AskUserQuestion
 
 # Listen to Herdr agents
 
+**Clients.** If this skill folder is a symlink (an install by the repository's `./install-skills.sh`), take `../../` from the folder it links to (`cd -P <this skill folder> && pwd` prints it).
+
 Run `bash "../../scripts/check.sh"` first (paths are relative to this `SKILL.md`). If it prints `HERDR UNAVAILABLE`, say so and stop.
 
 Nothing notifies you when another agent finishes or blocks. Listening means waiting on Herdr's state yourself.

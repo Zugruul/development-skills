@@ -60,6 +60,17 @@ check "a failed turn is a failure claim" "failure rate_limit" "$(hc '"\(.kind) \
 out="$(hook w1:p2 stop 'not json at all')"; rc=$?
 check_rc "bad input never fails the agent" 0 "$rc"
 
+echo "== hooks: the question tools of Codex and OpenCode =="
+for tool in request_user_input question; do
+    rm -f "$H_CLAIM"
+    hook w1:p2 ask '{"tool_name":"'"$tool"'","tool_input":{"questions":[{"id":"tz","header":"Zone","question":"Which time zone?","options":[{"label":"UTC","description":"d"},{"label":"local","description":"d"}]}]}}' >/dev/null
+    check "$tool: the exact question and options are kept" "Which time zone? [UTC | local]" "$(hc .ref)"
+    hook w1:p2 permission '{"tool_name":"'"$tool"'","tool_input":{}}' >/dev/null
+    check "$tool: its own permission event keeps the question" "question" "$(hc .kind)"
+    hook w1:p2 ask-done '{"tool_name":"'"$tool"'"}' >/dev/null
+    check "$tool: answered, the claim goes" "gone" "$([ -f "$H_CLAIM" ] && echo there || echo gone)"
+done
+
 echo "== hooks: a pane whose node moved on records nothing =="
 hs lane node --repo "$H_REPO" --lane h --node investigate --status "done" --result pass >/dev/null
 rm -f "$H_CLAIM"
@@ -72,6 +83,8 @@ hs lane ask --repo "$H_REPO" --lane q --text "merge order?" >/dev/null
 out="$(hook w1:p1 stop '{"stop_hook_active":false}')"
 check "the turn may not end" '"decision":"block"' "$out"
 check "it names the lane and question" "q #1" "$out"
+check "it names no dialog tool one client alone has" "question dialog" "$out"
+check_absent "so Codex is not told to open a Claude Code dialog" "AskUserQuestion" "$out"
 check "a second stop is let through" "[]" "[$(hook w1:p1 stop '{"stop_hook_active":true}')]"
 hs session afk on >/dev/null
 check "under AFK a question waits without a dialog" "[]" "[$(hook w1:p1 stop '{"stop_hook_active":false}')]"
@@ -94,7 +107,8 @@ hcmd() { jq -r --arg e "$1" '[.hooks[$e][]?.hooks[].command] | join("\n")' "$HJ"
 for pair in Stop:stop UserPromptSubmit:prompt PreToolUse:ask PostToolUse:ask-done PermissionRequest:permission StopFailure:stop-failure; do
     check "${pair%:*} runs hook.sh ${pair#*:}" "hook.sh\" ${pair#*:}" "$(hcmd "${pair%:*}")"
 done
-check "the question hooks match only AskUserQuestion" "AskUserQuestion AskUserQuestion" "$(jq -r '"\(.hooks.PreToolUse[0].matcher) \(.hooks.PostToolUse[0].matcher)"' "$HJ")"
+check "the question hooks match Claude Code's and Codex's question tools" "AskUserQuestion|request_user_input AskUserQuestion|request_user_input" "$(jq -r '"\(.hooks.PreToolUse[0].matcher) \(.hooks.PostToolUse[0].matcher)"' "$HJ")"
+check "the resume hooks keep their whole block in Codex (its default cuts at about 2500 tokens)" "true" "$(jq '[.hooks.SessionStart[].hooks[].additionalContextLimit] | all(. >= 10000)' "$HJ")"
 check "no hook guards commands" "2" "$(jq '[.hooks.PreToolUse, .hooks.PostToolUse] | length' "$HJ")"
 w="$(jq -c '[.hooks.Stop[].hooks[] | select(.command | test("await.sh"))][0]' "$HJ")"
 check "a Stop hook arms the waiter" 'await.sh\" --hook' "$w"

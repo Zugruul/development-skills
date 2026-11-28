@@ -5,6 +5,8 @@ description: Checks the status of, turns on, or turns off Iterative UI mode, whi
 
 # Iterative UI mode — status / on / off
 
+**Clients.** If this skill folder is a symlink (an install by the repository's `./install-skills.sh`), take `../../` from the folder it links to (`cd -P <this skill folder> && pwd` prints it).
+
 One command does everything; run it with the action the user asked for (`status` if unspecified):
 
 ```bash

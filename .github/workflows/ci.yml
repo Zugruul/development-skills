@@ -31,7 +31,7 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          files=(.github/scripts/*.sh plugins/*/scripts/*.sh plugins/*/scripts/lib/*.sh plugins/*/scripts/src/*.sh plugins/*/tests/*.sh)
+          files=(install-skills.sh .github/scripts/*.sh .github/tests/*.sh plugins/*/scripts/*.sh plugins/*/scripts/lib/*.sh plugins/*/scripts/src/*.sh plugins/*/tests/*.sh)
           for f in plugins/*/tests/fixtures/stub-*/*; do head -1 "$f" | grep -q 'bash' && files+=("$f"); done
           shellcheck -x "${files[@]}"
 
@@ -40,6 +40,7 @@ jobs:
           git config --global user.email ci@example.com
           git config --global user.name ci
           for t in plugins/*/tests/run-tests.sh; do bash "$t"; done
+          bash .github/tests/run-tests.sh
 
   validate-manifests:
     runs-on: ubuntu-latest

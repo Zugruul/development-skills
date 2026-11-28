@@ -3,7 +3,7 @@
 <!--
   ui-options.html — template for the ui-design plugin's options page (Iterative UI mode).
   The agent copies this file to docs/ui-options/<design-id>.html and:
-    1. replaces __DESIGN_ID__, __DESIGN_TITLE__, __SESSION_ID__
+    1. replaces __DESIGN_ID__, __DESIGN_TITLE__, __RESUME_COMMAND__
     2. duplicates the <section class="option panel"> block once per design option,
        replacing __OPTION_ID__ (A, B, C...), __OPTION_NAME__, __OPTION_SUMMARY__,
        the mockup inside .preview, and the aspect <label> chips (4–8 per option,
@@ -167,7 +167,7 @@
 <div class="hint">
   <b>Iterative UI mode is ON</b> (the agent waits for your pick before committing to a UI, and keeps building everything else meanwhile).
   Turn it off with <code>touch .claude/ITERATIVE_UI_OFF</code> in the repo — or just tell the agent "turn off iterative UI" / that you'll be AFK, and it will decide UIs itself.
-  <br>Way back to the agent: reopen the building session in a terminal: <code>claude --resume __SESSION_ID__</code>.
+  <br>Way back to the agent: reopen the building session in a terminal: <code>__RESUME_COMMAND__</code>.
 </div>
 
 <div class="tabbar" role="tablist">
