@@ -15,6 +15,9 @@
 #       one exact card id (and its kept fixes) — ALWAYS pass --id when several
 #       agents share the hub, since a bare --consume drains and archives every
 #       OTHER pending answer too, not just your own.
+#   ui-hub.sh wait --id ID [--timeout SECONDS]
+#       block until that card has an answer: ANSWERED ID (exit 0), or WAITING ID after
+#       SECONDS (exit 5; default 600, 0 = no limit). It consumes nothing.
 #
 # State dir: $UI_HUB_STATE, else <PRIMARY repo root>/.claude/ui-hub (gitignore it).
 # Port: --port, else $UI_HUB_PORT, else 4747. Binds 127.0.0.1 only.
@@ -41,7 +44,7 @@ DEFAULT_PORT="${UI_HUB_PORT:-4747}"
 SOCAT="${UI_HUB_SOCAT:-socat}"
 
 usage() {
-    sed -n '9,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '9,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 ensure_dirs() { mkdir -p "$INBOX" "$OUTBOX" "$HTML" "$ARCHIVE/asked" "$ARCHIVE/answers"; }
@@ -171,6 +174,28 @@ case "$cmd" in
             tr '\n' ' ' <"$f"; echo
             [[ $consume -eq 1 ]] && mv "$f" "$ARCHIVE/answers/$name"
         done ;;
+    wait)
+        want=""; limit=600
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --id) want="${2:-}"; shift ;;
+                --timeout) limit="${2:-}"; shift ;;
+            esac
+            shift
+        done
+        if [[ -z "$want" || ! "$limit" =~ ^[0-9]+$ ]]; then
+            echo "usage: ui-hub.sh wait --id ID [--timeout SECONDS]" >&2
+            exit 1
+        fi
+        deadline=$((SECONDS + limit))
+        until [[ -f "$OUTBOX/$want.json" ]]; do
+            if [[ $limit -gt 0 && $SECONDS -ge $deadline ]]; then
+                echo "WAITING $want: no answer after ${limit}s"
+                exit 5
+            fi
+            sleep "${UI_HUB_WAIT_TICK:-2}"
+        done
+        echo "ANSWERED $want" ;;
     *)
         usage
         exit 1 ;;

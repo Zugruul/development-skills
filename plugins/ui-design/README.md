@@ -23,7 +23,7 @@ The plugin is standalone. It knows no workflow, task tracker or other plugin, an
 | Script | What it does |
 | --- | --- |
 | `scripts/ui-mode.sh status\|on\|off` | The mode is ON unless `.claude/ITERATIVE_UI_OFF` exists in the main checkout (local, gitignored; every worktree sees the same flag). |
-| `scripts/ui-hub.sh start\|status\|stop\|ask\|answers` | The decision hub on `http://127.0.0.1:4747` (`--port`, or `$UI_HUB_PORT`). State is plain files under `.claude/ui-hub/` in the main checkout (or `$UI_HUB_STATE`). |
+| `scripts/ui-hub.sh start\|status\|stop\|ask\|answers\|wait` | The decision hub on `http://127.0.0.1:4747` (`--port`, or `$UI_HUB_PORT`). State is plain files under `.claude/ui-hub/` in the main checkout (or `$UI_HUB_STATE`). |
 | `scripts/design-registry.sh index\|find --tags\|pick` | Finds past designs by tag and records the final pick in the page's own `design-meta` block. |
 
 The hub server is [socat](http://www.dest-unreach.org/socat/) listening on 127.0.0.1 only and running `scripts/src/hub-handler.sh` for each connection. socat is the one extra dependency: bash cannot accept TCP connections itself, and the `nc` variants differ between systems and serve one connection at a time.

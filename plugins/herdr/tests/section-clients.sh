@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016  # single quotes: literal SKILL.md text
 # section-clients.sh -- sourced by run-tests.sh; do not run standalone.
 # Every skill must be followable in Claude Code, Codex and OpenCode.
 declare -F check >/dev/null 2>&1 || { echo "section files are sourced by run-tests.sh; run: bash plugins/herdr/tests/run-tests.sh" >&2; exit 2; }

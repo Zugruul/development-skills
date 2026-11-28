@@ -89,6 +89,7 @@ check "ui-options: Claude Code's resume command" '`claude --resume <the value of
 check "ui-options: Codex's resume command" '`codex resume <the value of CODEX_THREAD_ID>`' "$uo"
 check "ui-options: OpenCode gives its shell no session id" "OpenCode gives its shell no session id" "$uo"
 check "ui-options: omits the resume sentence when there is no session id" "replace the whole resume sentence with nothing" "$uo"
+# shellcheck disable=SC2016  # literal SKILL.md text
 check "ui-options: the watcher is the hub's own wait" '$HUB wait --id' "$uo"
 check "ui-options: a fallback where no background command wakes the agent" "Codex and OpenCode: no finished background command starts a new turn" "$uo"
 check_absent "template: no client's command is built in" "claude --resume" "$(cat "$PLUGIN/templates/ui-options.html")"
