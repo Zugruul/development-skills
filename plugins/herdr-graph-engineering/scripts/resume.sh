@@ -237,6 +237,8 @@ render() {
         echo "STANDING DIALOGS (from $scratch/graph-dialogs)"
         sed 's/^/  /' "$scratch/graph-dialogs"
     fi
+    echo "WAITING FOR THE USER (in the panel's NEEDS YOU; session.sh del --list needs --id N once done)"
+    jq -r '(.needs // []) | if length == 0 then "  (none)" else .[] | "  #\(.id) \(.text)" + ([.prompts // [] | .[] | "\n    prompt: \(.)"] | join("")) end' <<<"$sess"
     for s in renames:RENAMES notes:NOTES files:FILES; do
         echo "${s#*:}"
         jq -r --arg k "${s%%:*}" '(.[$k] // []) | if length == 0 then "  (none)" else .[] | "  #\(.id) " + (if .lane then "\(.lane): " else "" end) + .text + (if .ref then " \(.ref)" else "" end) end' <<<"$sess"
