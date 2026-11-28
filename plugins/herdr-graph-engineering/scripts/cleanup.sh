@@ -359,6 +359,9 @@ workspace_keep() { # file, lane, workspace, Herdr's agent list
         case "$(yq -r '.pane // ""' "$f")" in "$3":*) echo "an orchestrator's pane is in it"; return 0 ;; esac
     done
     is_linked "$WT" || { echo "the lane has no linked worktree of its own"; return 0; }
+    # Herdr may give a recorded id to a later workspace
+    other="$(herdr workspace list 2>/dev/null | jq -r --arg ws "$3" '[.result.workspaces[]? | select(.workspace_id == $ws) | .worktree.checkout_path // empty][0] // empty' 2>/dev/null)"
+    [ -z "$other" ] || [ "$other" = "$WT" ] || { echo "it now holds another checkout ($other)"; return 0; }
     for other in "$dir"/*.yaml; do
         [ "$other" != "$1" ] && [ -f "$other" ] || continue
         [ "$(yq -r '.workspace // ""' "$other")" != "$3" ] || { echo "lane $(basename "$other" .yaml) uses it"; return 0; }
