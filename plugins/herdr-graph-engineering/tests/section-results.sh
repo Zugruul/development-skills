@@ -43,6 +43,36 @@ check "a result followed by more text is none" "none||" "$(vlast 'NODE work RESU
 Next I will also run the linter.')"
 check "the whole line in backticks counts" "result|question|/tmp/q.md" "$(vlast '`NODE work RESULT: question /tmp/q.md`')"
 
+
+echo "== results: a question counts only while no newer prompt follows it =="
+V_BOX='────────────────────────
+❯ 
+────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle)'
+check "the question is the newest exchange" "result|question|/tmp/q.md" "$(vparse "⏺ NODE work RESULT: question /tmp/q.md
+$V_BOX")"
+check "answered by a newer prompt: no question" "none||" "$(vparse "⏺ NODE work RESULT: question /tmp/q.md
+
+❯ Use UTC, the user says.
+
+⏺ Done, the clock is UTC now.
+$V_BOX")"
+check "the same with a codex prompt" "none||" "$(vparse 'NODE work RESULT: question /tmp/q.md
+› Use UTC.
+• Done.
+› Explain this codebase')"
+check "a placeholder or draft in the input box is no newer prompt" "result|question|/tmp/q.md" "$(vparse 'NODE work RESULT: question /tmp/q.md
+────────────────────────
+❯ Try "fix lint errors"
+────────────────────────')"
+check "a question asked again after the answer counts" "result|question|/tmp/q2.md" "$(vparse "NODE work RESULT: question /tmp/q.md
+❯ Use UTC.
+⏺ NODE work RESULT: question /tmp/q2.md
+$V_BOX")"
+check "a pass is not undone by a later prompt" "result|pass|abc1234" "$(vparse "NODE work RESULT: pass abc1234
+❯ thanks
+$V_BOX")"
+
 }
 
 echo "== results: claim, then result file, then screen =="
@@ -87,7 +117,7 @@ vst "$(vagent idle 'NODE investigate RESULT: pass quoted-ref')"
 rm -f "$V_TMP/w-out.md.result.json"
 out="$(vdrift)"
 check "a turn that ended without a result is stopped, whatever the screen says" "stopped: claude-w" "$out"
-check_absent "the screen is not read" "agent read" "$(cat "$V_TMP/calls.log")"
+check_absent "no result is taken from the screen" "recent-unwrapped" "$(cat "$V_TMP/calls.log")"
 claim '{kind: "busy", background: 1}'
 check "background work is not finished" "NO DRIFT" "$(vdrift)"
 claim '{kind: "question", ref: "Use UTC? [Yes | No]", source: "ask-hook"}'
@@ -101,6 +131,32 @@ check "a failed turn is reported as a failed agent" "agent-failed: claude-w: rat
 claim '{kind: "result", result: "pass", ref: "x1", run: "old"}'
 vst "$(vagent idle 'nothing here')"
 check "a claim of an old run is ignored" "stopped: claude-w" "$(vdrift)"
+
+echo "== results: idle with background work is not stopped =="
+rm -f "$V_DIR/claims/w/investigate.json" "$V_TMP/w-out.md.result.json"
+vkind() { rm -f "$V_DIR/live.json"; vst "$(vagent idle "$2" | jq -c --arg k "$1" '.agents.a.agent = $k')"; vdrift; }
+vclaude() { printf '⏺ The build runs in the background.\n\n%s\n\n────────────────────────\n❯ \n────────────────────────\n  %s' "$1" "$2"; }
+check "claude: shells still running" "NO DRIFT" "$(vkind claude "$(vclaude '✻ Cooked for 3m 2s · 2 shells still running' '⏵⏵ bypass permissions on')")"
+check "claude: one shell in the footer" "NO DRIFT" "$(vkind claude "$(vclaude '✻ Brewed for 9s' '⏵⏵ accept edits on · 1 shell · ↓ to manage')")"
+check "claude: a background agent" "NO DRIFT" "$(vkind claude "$(vclaude '✻ Waiting for 1 background agent to finish' '? for shortcuts')")"
+check "claude: no background work is stopped" "stopped: claude-w" "$(vkind claude "$(vclaude '✻ Cooked for 3m 2s' '⏵⏵ bypass permissions on')")"
+check "claude: words in the transcript do not count" "stopped: claude-w" "$(vkind claude "⏺ I saw 2 shells still running earlier.
+a
+b
+c
+d
+$(vclaude '✻ Cooked for 3s' '? for shortcuts')")"
+check "codex: a background terminal" "NO DRIFT" "$(vkind codex '• Started the server.
+
+  2 background terminals running · /ps to view · /stop to close
+
+› Explain this codebase')"
+check "codex: none is stopped" "stopped: claude-w" "$(vkind codex '• Done.
+
+› Explain this codebase')"
+claim '{kind: "none"}'
+check "a stop hook with nothing left but a running shell on screen is not stopped" "NO DRIFT" "$(vkind claude "$(vclaude '✻ Cooked for 1m · 1 shell still running' '? for shortcuts')")"
+check "status.sh agrees" "working" "$(vjson .section)"
 
 echo "== results: a rejected claim stays quiet, a new one says so =="
 claim '{kind: "result", result: "pass", ref: "bad-ref"}'
@@ -122,4 +178,4 @@ claim '{kind: "none"}'
 check "the recorded step shows in the lane's progress" "step build pass abc" "$(vs status --text --repo "$V_REPO")"
 
 rm -rf "$V_TMP"
-unset -f vs vst vparse vlast vagent vdrift vjson claim
+unset -f vkind vclaude vs vst vparse vlast vagent vdrift vjson claim
