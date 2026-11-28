@@ -371,6 +371,52 @@ box_empty() { # screen text with ANSI styles, client kind
                and (($lines[$at + 1] // "───") | plain | test("^[\\s╰─]*───"))))' >/dev/null 2>&1
 }
 
+# A click on a prompt line of the orchestrator's NEEDS YOU entry (the panel): put that text in
+# the orchestrator's input box, never submitted. Only into the recorded orchestrator pane, only
+# while it is idle or done. The box is cleared with Ctrl+E (end of line) and Ctrl+U (delete to
+# the line's start), which Claude Code, Codex and OpenCode all document; a further pair per
+# extra line. Never Ctrl+C or Esc: they can exit a client or interrupt a turn. Claude Code and
+# Codex must then show a recognisably empty box (box_empty), or nothing is typed; OpenCode's
+# box cannot be recognised, so it gets CLEAR_ROUNDS pairs and the user is told to check.
+# Prints one short line (the panel shows it); exit 0 only when the text was typed.
+CLEAR_ROUNDS=20
+orchestrator_ready() { # session -> READY_AGENT; says why not
+    local status
+    READY_AGENT="$(orchestrator_agent "$1")" || { echo "not typed: orchestrator not in its pane"; return 1; }
+    status="$(jq -r '.agent_status // "unknown"' <<<"$READY_AGENT")"
+    case "$status" in idle | done) ;; *) echo "not typed: the orchestrator is $status"; return 1 ;; esac
+}
+orchestrator_screen() { # agent name -> its visible screen, with styles
+    local text
+    text="$(herdr agent read "$1" --source visible --lines 40 --ansi 2>/dev/null)" || text=""
+    if jq -e 'type == "object"' >/dev/null 2>&1 <<<"$text"; then
+        text="$(jq -r '((.result | objects) // {}) as $r | [$r.text, $r.content, $r.output] | map(strings) | .[0] // ""' <<<"$text")"
+    fi
+    printf '%s' "$text"
+}
+type_prompt() { # session, entry id, prompt number (from 0)
+    local s="$1" text pane name kind i=0 cleared=0
+    text="$(session_json "$s" | jq -r --argjson id "$2" --argjson n "$3" '.needs // [] | .[] | select(.id == $id) | .prompts[$n] // empty')"
+    [ -n "$text" ] || { echo "not typed: that prompt is gone"; return 1; }
+    orchestrator_ready "$s" || return 1
+    pane="$(jq -r .pane_id <<<"$READY_AGENT")" name="$(jq -r .name <<<"$READY_AGENT")" kind="$(jq -r '.agent // ""' <<<"$READY_AGENT")"
+    while [ "$i" -lt "$CLEAR_ROUNDS" ]; do
+        # checked before every keystroke: a turn may start, or the pane may change hands
+        [ "$i" -eq 0 ] || orchestrator_ready "$s" || return 1
+        herdr pane send-keys "$pane" ctrl+e ctrl+u >/dev/null 2>&1 || { echo "not typed: herdr could not send keys"; return 1; }
+        i=$((i + 1))
+        case "$kind" in
+            claude | codex)
+                sleep "${HERDR_GRAPH_KEY_WAIT:-0.1}"
+                if box_empty "$(orchestrator_screen "$name")" "$kind"; then cleared=1; break; fi ;;
+        esac
+    done
+    case "$kind" in claude | codex) [ "$cleared" -eq 1 ] || { echo "not typed: the input box did not clear"; return 1; } ;; esac
+    orchestrator_ready "$s" || return 1
+    herdr pane send-text "$pane" "$text" >/dev/null 2>&1 || { echo "not typed: herdr could not send the text"; return 1; }
+    if [ "$cleared" -eq 1 ]; then echo "typed: press Enter there"; else echo "typed: check the box, then press Enter"; fi
+}
+
 push() { # session
     local s="$1" p agent status name screen_text out
     ! waiter_alive "$s" || return 0
@@ -388,10 +434,7 @@ push() { # session
     status="$(jq -r '.agent_status // "unknown"' <<<"$agent")" name="$(jq -r .name <<<"$agent")"
     # blocked: a dialog is open; working: its turn end delivers (its idle event, or its waiter)
     case "$status" in idle | done) ;; *) return 0 ;; esac
-    screen_text="$(herdr agent read "$name" --source visible --lines 40 --ansi 2>/dev/null)" || screen_text=""
-    if jq -e 'type == "object"' >/dev/null 2>&1 <<<"$screen_text"; then
-        screen_text="$(jq -r '((.result | objects) // {}) as $r | [$r.text, $r.content, $r.output] | map(strings) | .[0] // ""' <<<"$screen_text")"
-    fi
+    screen_text="$(orchestrator_screen "$name")"
     if ! box_empty "$screen_text" "$(jq -r '.agent // ""' <<<"$agent")"; then
         if [ "$(state_read "$s" | jq -r .draft_told)" != true ]; then
             state_change "$s" '.draft_told = true'

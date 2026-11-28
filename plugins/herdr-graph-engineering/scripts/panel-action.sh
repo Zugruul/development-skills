@@ -73,6 +73,16 @@ orchestrator_pane() { # the pane of the live graph orchestrator, if any
     herdr agent list 2>/dev/null | jq -r '[.result.agents[]? | select((.name // "") | test("^graph(-[0-9]+)?$"))][0].pane_id // empty'
 }
 
+# The first orchestrator with an open NEEDS YOU entry of its own (session.sh add --list needs).
+orchestrator_needing() {
+    local f
+    for f in "$(session_dir)"/*.yaml; do
+        [ -f "$f" ] || continue
+        read_json "$f" | jq -er --arg s "$(basename "$f" .yaml)" 'select((.needs // []) | length > 0) | if (.orchestrator // "") != "" then .orchestrator else $s end' && return 0
+    done 2>/dev/null
+    return 1
+}
+
 open_panel() { # target pane
     local args=(plugin pane open --plugin "$PLUGIN_ID" --entrypoint panel --placement split --direction right --no-focus)
     local out pane
@@ -115,6 +125,8 @@ next-needs-me)
     agent="$(bash "$HERE/status.sh" --json | jq -r '[.[] | select(.section == "needs") | .nodes[] | select(.live == "blocked") | .agent][0] // empty')"
     if [ -n "$agent" ]; then
         herdr agent focus "$agent" >/dev/null 2>&1 && echo "FOCUSED $agent"
+    elif orch="$(orchestrator_needing)" && [ -n "$orch" ]; then
+        herdr agent focus "$orch" >/dev/null 2>&1 && echo "FOCUSED $orch"
     else
         herdr notification show "Nothing needs you" --body "No lane agent is waiting on you." >/dev/null 2>&1
         echo "NOTHING NEEDS YOU"

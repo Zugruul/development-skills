@@ -314,12 +314,25 @@ Report in the format of `../../references/report.md` after any lane changes sect
 
 Answers the user types in the panel's answer popup arrive here as a message starting `Answer for lane <lane>`: treat them exactly like an answer typed in this chat.
 
+## When you need the user yourself
+
+You cannot type your own client's slash commands (`/reload-plugins`, `/compact`) or restart yourself, and a line in this chat is easy to miss. Whenever you need the user for such a thing, or for a decision that belongs to no lane, **record it as well as saying it**:
+
+```bash
+bash "../../scripts/session.sh" add --list needs --text "Reload the plugins so the new version runs" --prompt "/reload-plugins"
+```
+
+It shows at the top of the panel's NEEDS YOU as `orchestrator`. Give one `--prompt` for each text the user has to enter, in order, exactly as your client takes it (one line each, never starting with `-`). A click on a prompt line clears your input box and puts that text there; the user presses Enter. It works only while this session's `pane` is recorded (`session.sh set --key pane`) and you are idle or done. A lane's question stays on its lane (`lane.sh ask`), not here.
+
+When the user did it, remove the entry at once: `session.sh del --list needs --id <n>` (`ADDED needs <n>` printed the number; `session.sh show` and `resume.sh` list the open ones). Check this before each report. The user can also remove it with the panel's `[done]`.
+
 ## Keep state outside the chat
 
 This chat will be compacted. Anything you would need afterwards that Herdr, git and the lane files do not already show is written down **when it happens**, not later:
 
 | Fact | Write it with |
 | --- | --- |
+| Something **only the user** can do for you: a slash command (`/reload-plugins`, `/compact`; Codex and OpenCode have their own), a restart, a decision about the session | `session.sh add --list needs --text "<what to do, and why>" [--prompt "<exact text to type>"]...` (section "When you need the user yourself"); once done: `session.sh del --list needs --id <n>` |
 | A standing answer or approval that has no file of its own (new worktrees except a new repository or an unseen gate, an agent limit, how the user wants reports) | `bash "../../scripts/session.sh" add --list standing --text "<the answer, in the user's words>"` |
 | A standing kind for a role, or a standing answer to a startup dialog (folder trust, monorepo imports, opencode folder access "Allow always") | A standing kind choice stays with `kind.sh --remember` in `<scratch>/graph-kinds`, and dialog answers in `<scratch>/graph-dialogs`, as sections 3 and 4 say; `resume.sh` prints both from the session's `scratch` |
 | A lane queued at the agent limit, with its prepared brief | `session.sh add --list queued --lane <lane> --repo <repo> --ref <brief file> --text "<idea>"`; when it starts: `session.sh del --list queued --lane <lane>` |
