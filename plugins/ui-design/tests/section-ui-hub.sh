@@ -30,6 +30,25 @@ for d in inbox outbox html archive/asked archive/answers; do
     r=MISSING; [[ -d "$UI_HUB_STATE/$d" ]] && r=PRESENT
     check "state dir has $d/" PRESENT "$r"
 done
+# --- wait: what every client can run to catch the human's Send ----------------
+out="$(bash "$HUB" wait --id w1 --timeout 1 2>&1)"; rc=$?
+check_rc "wait with no answer ends at its timeout with exit 5" 5 "$rc"
+check "and says it is still waiting" "WAITING w1" "$out"
+( sleep 1; echo '{"id":"w1"}' >"$UI_HUB_STATE/outbox/w1.json" ) &
+out="$(UI_HUB_WAIT_TICK=0.2 bash "$HUB" wait --id w1 --timeout 20 2>&1)"; rc=$?
+wait
+check_rc "wait ends with exit 0 when the answer arrives" 0 "$rc"
+check "naming the round" "ANSWERED w1" "$out"
+check "and leaves the answer for answers --consume" "w1" "$(bash "$HUB" answers --consume --id w1)"
+echo '{"id":"w10"}' >"$UI_HUB_STATE/outbox/w10.json"
+out="$(bash "$HUB" wait --id w1 --timeout 1 2>&1)"; rc=$?
+check_rc "another round's answer does not end it" 5 "$rc"
+rm -f "$UI_HUB_STATE/outbox/w10.json"
+bash "$HUB" wait --timeout 1 >/dev/null 2>&1; rc=$?
+check_rc "wait needs --id" 1 "$rc"
+bash "$HUB" wait --id w1 --timeout soon >/dev/null 2>&1; rc=$?
+check_rc "and a whole number of seconds" 1 "$rc"
+
 echo '<h1>d</h1>' >"$_hubtmp/d.html"
 out="$(bash "$HUB" ask d1 "T" "$_hubtmp/d.html" --blocking)"
 check "hub ask" "asked 'd1'" "$out"
