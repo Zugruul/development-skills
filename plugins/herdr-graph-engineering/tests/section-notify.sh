@@ -275,6 +275,13 @@ wait "$first"; rc=$?
 check_rc "a newer waiter takes over: only one per session" 0 "$rc"
 out="$(printf '{}' | AW_PANE=w77:p1 aw --hook 2>&1)"; rc=$?
 check_rc "the hook in another pane does nothing" 0 "$rc"
+nsm '.agents.o.agent = "opencode"'
+start=$(date +%s); out="$(printf '{}' | AW_MAX=30 aw --hook 2>&1)"; rc=$?
+check_rc "the Claude Code hook leaves an OpenCode orchestrator alone" 0 "$rc"
+ns lane node --repo "$N_REPO" --lane w --node investigate --status running --note rearm-oc >/dev/null
+out="$(printf '{}' | aw --hook --client opencode 2>&1)"; rc=$?
+check_rc "the OpenCode adapter arms it with --client opencode" 2 "$rc"
+check "and gets the watcher's message" "GRAPH EVENT (from the watcher, not the user): w/investigate blocked" "$out"
 nsm '.agents.o.agent = "codex"'
 start=$(date +%s); out="$(printf '{}' | AW_MAX=30 aw --hook 2>&1)"; rc=$?
 check_rc "for a client that cannot be woken this way the hook returns" 0 "$rc"
