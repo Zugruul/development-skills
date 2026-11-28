@@ -25,9 +25,6 @@ klane() { # lane branch pattern [extra lane.sh new args]
 kst '{}'
 kgh '{}'
 
-# the ask flow, which is what happens with auto-close off (section-autoclose.sh covers it on)
-k session set --key autoclose --value off >/dev/null
-
 echo "== cleanup: only merged, clean, pushed lanes are ready =="
 klane merged-1 feat/merged-1 solo --gate t
 k lane node --repo "$K_REPO" --lane merged-1 --node impl --status "done" --result pass --tab w-merged-1:t2 >/dev/null

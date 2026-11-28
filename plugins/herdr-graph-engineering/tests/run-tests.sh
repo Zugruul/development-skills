@@ -16,6 +16,11 @@ fails=0
 TEST_STATE="$(mktemp -d)"
 export XDG_STATE_HOME="$TEST_STATE"
 
+# no call, from any section, may reach a real herdr: the stub is first on PATH
+export PATH="$FIX/stub-herdr:$PATH" HERDR_STUB_DIR="$TEST_STATE/herdr-stub"
+mkdir -p "$HERDR_STUB_DIR"
+unset HERDR_SOCKET_PATH
+
 # shellcheck source=plugins/herdr-graph-engineering/tests/_lib.sh
 source "$HERE/_lib.sh"
 

@@ -87,6 +87,8 @@ case "$cmd" in
             fail agent_pane_busy
         fi
         name="$3" pane="$(opt --pane "$@")" kind="$(opt --kind "$@")"
+        # state.resume = "fail": a start that passes native arguments after -- (a resume) fails
+        case " $* " in *" -- "*) [ "$(st | jq -r '.resume // "ok"')" = ok ] || fail agent_start_failed "no such session" ;; esac
         mode="$(st | jq -r '.start // "ok"')"
         new="$(st | jq -c --arg n "$name" --arg p "$pane" --arg k "$kind" --arg m "$mode" '
             .agents[$n] = {name: $n, pane_id: $p, tab_id: (($p | split(":")[0]) + ":t1"),
@@ -159,8 +161,36 @@ case "$cmd" in
     "worktree remove")
         # state.worktree_remove = "fail" makes the removal fail, as for a dirty checkout.
         [ "$(st | jq -r '.worktree_remove // "ok"')" = ok ] || fail worktree_dirty "the checkout has changes"
-        save "$(st | jq -c --arg w "$(opt --workspace "$@")" '.worktrees_removed += [$w]')"
+        w="$(opt --workspace "$@")"
+        # a workspace that names its checkout: the worktree really goes, never with --force
+        root="$(st | jq -r --arg w "$w" '[(.workspaces // [])[] | select(.workspace_id == $w) | .worktree.repo_root // empty][0] // empty')"
+        co="$(st | jq -r --arg w "$w" '[(.workspaces // [])[] | select(.workspace_id == $w) | .worktree.checkout_path // empty][0] // empty')"
+        if [ -n "$root" ] && [ -d "$co" ]; then
+            err="$(git -C "$root" worktree remove "$co" 2>&1)" || fail worktree_dirty "$err"
+        fi
+        save "$(st | jq -c --arg w "$w" '.worktrees_removed += [$w] | .workspaces = [(.workspaces // [])[] | select(.workspace_id != $w)]')"
         ok '{"type":"worktree_removed"}' ;;
+    "worktree open")
+        # state.worktree_open = "fail" refuses. Opens workspace w-open<n> with one pane on --path.
+        [ "$(st | jq -r '.worktree_open // "ok"')" = ok ] || fail worktree_open_failed "refused"
+        new="$(st | jq -c --arg r "$(opt --cwd "$@")" --arg c "$(opt --path "$@")" '
+            ((.opens // 0) + 1) as $n | "w-open\($n)" as $w | .opens = $n | .last_open = $w
+            | .workspaces = ((.workspaces // []) + [{workspace_id: $w, worktree: {repo_root: $r, checkout_path: $c}}])
+            | .pane_list = ((.pane_list // []) + [{pane_id: "\($w):p1", tab_id: "\($w):t1", workspace_id: $w}])')"
+        save "$new"
+        ok "$(printf '%s' "$new" | jq -c '{type: "worktree_opened", workspace: {workspace_id: .last_open}, root_pane: {pane_id: "\(.last_open):p1"}}')" ;;
+    "worktree create")
+        # state.worktree_create = "fail" refuses. Adds a real worktree of an existing --branch on
+        # --path and opens workspace w-new<n> on it.
+        [ "$(st | jq -r '.worktree_create // "ok"')" = ok ] || fail worktree_create_failed "refused"
+        root="$(opt --cwd "$@")" co="$(opt --path "$@")"
+        err="$(git -C "$root" worktree add -q "$co" "$(opt --branch "$@")" 2>&1)" || fail worktree_create_failed "$err"
+        new="$(st | jq -c --arg r "$root" --arg c "$co" '
+            ((.creates // 0) + 1) as $n | "w-new\($n)" as $w | .creates = $n | .last_open = $w
+            | .workspaces = ((.workspaces // []) + [{workspace_id: $w, worktree: {repo_root: $r, checkout_path: $c}}])
+            | .pane_list = ((.pane_list // []) + [{pane_id: "\($w):p1", tab_id: "\($w):t1", workspace_id: $w}])')"
+        save "$new"
+        ok "$(printf '%s' "$new" | jq -c '{type: "worktree_created", workspace: {workspace_id: .last_open}, root_pane: {pane_id: "\(.last_open):p1"}}')" ;;
     # Tabs live in state.tabs, keyed by tab id; `tab close` removes one and records it in
     # state.tabs_closed (the call is in calls.log too).
     "tab create")
