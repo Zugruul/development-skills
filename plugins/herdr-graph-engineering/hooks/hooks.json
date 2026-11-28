@@ -17,7 +17,8 @@
                 "hooks": [
                     {
                         "type": "command",
-                        "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/resume.sh\" --hook session-start"
+                        "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/resume.sh\" --hook session-start",
+                        "additionalContextLimit": 12000
                     }
                 ]
             }
@@ -52,7 +53,7 @@
         ],
         "PreToolUse": [
             {
-                "matcher": "AskUserQuestion",
+                "matcher": "AskUserQuestion|request_user_input",
                 "hooks": [
                     {
                         "type": "command",
@@ -64,7 +65,7 @@
         ],
         "PostToolUse": [
             {
-                "matcher": "AskUserQuestion",
+                "matcher": "AskUserQuestion|request_user_input",
                 "hooks": [
                     {
                         "type": "command",

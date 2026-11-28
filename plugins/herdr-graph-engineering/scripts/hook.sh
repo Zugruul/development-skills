@@ -11,7 +11,9 @@
 #   stop          the last non-empty line of the final message, read strictly (src/result.sh);
 #                 background tasks or crons with no result mean not finished
 #   prompt        a new turn: the old claim goes
-#   ask, ask-done the AskUserQuestion dialog's exact questions and options; gone once answered
+#   ask, ask-done the question dialog's exact questions and options; gone once answered. The
+#                 tool is AskUserQuestion (Claude Code), request_user_input (Codex) or question
+#                 (OpenCode, through opencode/herdr-graph.js)
 #   permission    the tool an approval is asked for
 #   stop-failure  the client's own error (rate limit, login, ...)
 #
@@ -38,6 +40,7 @@ input="$(cat 2>/dev/null)"
 for t in jq yq git; do command -v "$t" >/dev/null 2>&1 || exit 0; done
 
 field() { jq -r "$1" <<<"$input" 2>/dev/null; }
+question_tool() { case "$(field '.tool_name // ""')" in AskUserQuestion | request_user_input | question) return 0 ;; *) return 1 ;; esac; }
 
 signal() { # repo, lane: look again, once herdr has caught up with the agent's state
     [ -z "${HERDR_GRAPH_NO_SIGNAL:-}" ] || return 0
@@ -63,7 +66,7 @@ lane_hook() {
             claim="$(jq -c --argjson bg "${bg:-0}" '.background = $bg | if .kind == "none" and $bg > 0 then .kind = "busy" else . end | .source = "stop-hook"' <<<"$claim")" ;;
         prompt) rm -f "$out"; signal; return 0 ;;
         ask)
-            [ "$(field '.tool_name // ""')" = AskUserQuestion ] || return 0
+            question_tool || return 0
             claim="$(field '{kind: "question", source: "ask-hook", ref: ([.tool_input.questions[]? | .question + " [" + ([.options[]?.label] | join(" | ")) + "]"] | join("; ") | gsub("[\r\n\t]+"; " "))} | tojson')" ;;
         ask-done)
             [ "$(jq -r '.source // ""' "$out" 2>/dev/null)" != ask-hook ] || rm -f "$out"
@@ -71,7 +74,7 @@ lane_hook() {
             return 0 ;;
         permission)
             # the question dialog asks permission too: its question claim says more
-            [ "$(field '.tool_name // ""')" != AskUserQuestion ] || return 0
+            ! question_tool || return 0
             claim="$(field '{kind: "permission", source: "permission-hook", ref: ("\(.tool_name // "a tool"): \(.tool_input | objects | .command // .file_path // .url // "")" | gsub("[\r\n\t]+"; " ") | .[0:200])} | tojson')" ;;
         stop-failure)
             claim="$(field '{kind: "failure", source: "stop-failure-hook", ref: ((.error // .error_type // .reason // "unknown error") | if type == "string" then . else tojson end | gsub("[\r\n\t]+"; " ") | .[0:200])} | tojson')" ;;
@@ -102,7 +105,7 @@ orchestrator_hook() {
             [ "$(afk_json "$session" | jq -r .state)" != on ] || return 0
             list="$(unasked "$session")"
             [ -n "$list" ] || return 0
-            jq -cn --arg r "herdr-graph: open questions not yet put to the user: $list. Put each to the user now (one AskUserQuestion dialog), after recording it with lane.sh asked --lane L --id N." \
+            jq -cn --arg r "herdr-graph: open questions not yet put to the user: $list. Put each to the user now (one question dialog; without a question tool, a numbered block that ends your turn), after recording it with lane.sh asked --lane L --id N." \
                 '{decision: "block", reason: $r}' ;;
         prompt)
             case "$(field '.prompt // ""')" in "GRAPH EVENT"*) return 0 ;; esac
