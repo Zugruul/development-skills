@@ -31,7 +31,8 @@
 #                                                 .question holds the open texts, joined with " | "
 #   lane.sh asked --lane L --id N                 record that the question was put to the user
 #   lane.sh answer --lane L [--id N] --text A     record the user's answer to one question (--id may be left out
-#                                                 while only one is open). A node blocked by it returns to running
+#                                                 while only one is open). It acknowledges the node's question event
+#                                                 (notify.sh ack). A node blocked by it returns to running
 #                                                 while its agent is live (or liveness is unknown), else to waiting
 #   lane.sh withdraw --lane L --kind cleanup|merged-early    close that kind's open questions without an answer of
 #                                                 the user's (they no longer hold); node states are never changed
@@ -331,7 +332,10 @@ answer)
               if .nodes[$n].status != "blocked" or any(openq[]; .node == $n) then .
               else .nodes[$n].status = (if live(.nodes[$n].agent // "") and (($q.was // "running") | IN("running", "blocked"))
                                         then "running" else "waiting" end) end)
-        | sync' "answer: $text" --arg a "$text" --arg i "$id" --argjson live "$live" ;;
+        | sync' "answer: $text" --arg a "$text" --arg i "$id" --argjson live "$live"
+    # the claim that asked it is handled: the watcher does not send it again
+    qnode="$(read_json "$file" | jq -r --arg i "$id" '[.questions[]? | select((.id | tostring) == $i) | .node // ""][0] // ""')"
+    [ -z "$qnode" ] || bash "$HERE/notify.sh" answered --repo "$repo" --lane "$lane" --node "$qnode" >/dev/null 2>&1 || true ;;
 withdraw)
     need_lane
     case "$kind" in cleanup | merged-early) ;; *) die "--kind must be cleanup or merged-early" 2 ;; esac

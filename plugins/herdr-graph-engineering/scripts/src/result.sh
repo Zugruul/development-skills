@@ -63,9 +63,10 @@ last_line_claim() { # node, message
 # final}. Nothing unless it parses and names this node and this run.
 file_claim() { # node, run, output path
     [ -n "$2" ] && [ -n "$3" ] && [ -f "$3.result.json" ] || return 0
-    jq -c --arg n "$1" --arg r "$2" "$CLAIM_JQ"'
+    # stamp: when it was written, so a file written again is new evidence (mtime_of: src/gatefile.sh)
+    jq -c --arg n "$1" --arg r "$2" --arg stamp "$(mtime_of "$3.result.json")" "$CLAIM_JQ"'
         select(type == "object" and .node == $n and (.run | tostring) == $r and (.result | IN("pass", "fail", "question")))
-        | nothing + {kind: (if .final == false then "step" else "result" end), result: .result,
+        | nothing + {stamp: $stamp, kind: (if .final == false then "step" else "result" end), result: .result,
                      ref: (.ref // "" | tostring), name: (.name // (if .final == false then "step" else "" end)),
                      line: (. | tojson)}' "$3.result.json" 2>/dev/null
 }

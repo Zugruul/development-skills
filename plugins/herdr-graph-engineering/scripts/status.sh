@@ -147,10 +147,15 @@ view="$(jq -c --argjson agents "$agents" --argjson have "$have_agents" --argjson
                   elif $cl != null then ($cl + {kind: "none"} | drift_of)
                   else null end)
              else null end) as $found
+          # when its evidence was written (a result file, a hook claim) or the gate run: "" for a screen
+          | (if $found == null then "" elif $gt != null then ($gt.run // "" | tostring)
+             elif $found.source == "result-file" then ($read.stamp // "")
+             elif (($found.source // "") | endswith("-hook")) then ($cl.at // "")
+             else "" end) as $stamp
           | ([($s.rejected // [])[].ref]) as $rejected
           | (if $found == null then null
              elif ($found.ref // "") != "" and ($rejected | index($found.ref)) != null then null
-             else $found + (if ($rejected | length) > 0 then {rejected: ($rejected | length)} else {} end) end) as $drift
+             else $found + {stamp: $stamp} + (if ($rejected | length) > 0 then {rejected: ($rejected | length)} else {} end) end) as $drift
           | (($s.steps // []) | last) as $step
           | {node: $n, status: $st, result: ($s.result // ""), retries: ($s.retries // 0),
              agent: $ag, live: ($a.status // ""), seq: ($a.seq // null), drift: $drift,

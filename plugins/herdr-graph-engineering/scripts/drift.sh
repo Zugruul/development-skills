@@ -39,6 +39,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/src/common.sh"
 # shellcheck source=src/result.sh
 . "$HERE/src/result.sh"
+# shellcheck source=src/gatefile.sh
+. "$HERE/src/gatefile.sh"
 
 USAGE="drift.sh [--repo DIR]... [--quiet] [--max-age S] [--gate-stall M]"
 args=() quiet=0 max_age=0

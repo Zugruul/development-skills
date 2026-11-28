@@ -19,6 +19,7 @@ jq -cn '{agents: {o: {name: "graph", pane_id: "w1:p1", agent: "claude", agent_st
 ks session set --key pane --value w1:p1 >/dev/null
 ks session set --key orchestrator --value graph >/dev/null
 # lane, status, screen
+# shellcheck disable=SC2016
 kagent() { ksm --arg l "$1" --arg s "$2" --arg t "$3" '.agents[$l] = {name: "claude-\($l)", pane_id: "w2-\($l):p1", agent: "claude", agent_status: $s, state_change_seq: ((.agents[$l].state_change_seq // 0) + 1), screen: $t}'; }
 klane() { ks lane new --repo "$K_REPO" --lane "$1" --pattern investigate --idea x --owner graph >/dev/null
     ks lane node --repo "$K_REPO" --lane "$1" --node investigate --status running --agent "claude-$1" ${2:+--output "$2"} >/dev/null; }
@@ -78,7 +79,7 @@ K_CLOCK=2002000; krec
 check "stopped" "s/investigate stopped" "$(kat 2002040)"
 kack --lane s >/dev/null
 kquiet "acknowledged: no reminder" 2002400
-kagent s done 'thinking'
+kagent s "done" 'thinking'
 kquiet "seen by the user (idle to done) is no change" 2002460
 kagent s working ''; krec
 kagent s idle 'thinking more'

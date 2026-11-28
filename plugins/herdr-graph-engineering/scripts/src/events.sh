@@ -39,7 +39,7 @@ orchestrator_agent() { # session -> the agent's JSON
 state_read() { # session
     local s
     s="$(jq -c 'objects' "$(events_file "$1")" 2>/dev/null)" || s=""
-    jq -c '{open: {}, sent: {}, swept_at: 0, last_push: 0, notifications: "", gone_told: false, draft_told: false} + .' <<<"${s:-{\}}"
+    jq -c '{open: {}, sent: {}, swept_at: 0, last_push: 0, notifications: "", gone_told: false, draft_told: false, acks: {}} + .' <<<"${s:-{\}}"
 }
 
 # Change the state under its lock: jq program (input: the state), extra jq args.
@@ -108,11 +108,75 @@ sweep_facts() { # session, owned lanes view
     printf '%s\n' "$ready"
 }
 
+# Acknowledged events (notify.sh ack, lane.sh answer) are kept in .acks by their fact: what
+# happened, without the lane's record count, so writing the lane brings nothing back. A question
+# of the lane's is its id. A node's event is its run, its ref and its stamp: when the evidence
+# was written (a hook claim, a result file) or the gate's run.
+# holds: an acknowledgement of a node's event ends when the node leaves running and blocked or
+# gets a new run; one whose evidence has no stamp (a screen, Herdr's state) also when the agent
+# is seen working again, or blocked after something else.
+ACK_JQ='
+    def fp: if (.drift != true) and ((.ref // "") | test("^q[0-9]+$")) then [.repo, .lane, "q", .ref] | join("|")
+            else [.repo, .lane, .node, .reason, (.run // ""), (.ref // ""), (.stamp // "")] | join("|") end;
+    def holds($view): . as $a
+        | ($a.drift != true)
+          or (([$view[] | select(.root == $a.repo and .lane == $a.lane) | .nodes[] | select(.node == $a.node)][0]) as $n
+              | $n == null
+                or (($n.status | IN("running", "blocked")) and (($a.run // "") == "" or $n.run == $a.run)
+                    and (($a.stamp // "") != "" or ($n.live != "working" and ($n.live != "blocked" or $a.reason == "blocked")))));
+    def ackof($note; $now): {repo, lane, node, reason, run: (.run // ""), stamp: (.stamp // ""), drift: (.drift // false), note: $note, at: $now};
+    def capacks: .acks |= (to_entries | sort_by(.value.at) | .[-200:] | from_entries);'
+
+# Mark the open events of a lane handled. Prints each; fails when none matches.
+ack_events() { # session, lane, node or "" (every node; "-": the lane's own), reason or "", note
+    local found
+    state_lock "$1" || return 1
+    found="$(state_read "$1" | jq -c --arg l "$2" --arg n "$3" --arg r "$4" \
+        '[.open[] | select(.lane == $l and ($n == "" or .node == (if $n == "-" then "" else $n end)) and ($r == "" or .reason == $r))]')"
+    if [ "$(jq length <<<"$found")" -eq 0 ]; then
+        state_unlock
+        return 1
+    fi
+    state_write "$1" "$(state_read "$1" | jq -c --argjson f "$found" --arg note "$5" --argjson now "$(clock)" "$ACK_JQ"'
+        reduce $f[] as $e (.; .acks[$e.fp // $e.key] = ($e | ackof($note; $now))
+            | .open[$e.key] |= (.acked = true | .ack_note = $note | .delivered_at //= $now | .due = false | .notify_due = false | .manual = false))
+        | capacks')"
+    state_unlock
+    jq -r '.[] | "ACKED \(.lane)/\(if .node != "" then .node else "-" end) \(.reason)"' <<<"$found"
+}
+
+# The user's answer to a node's question (lane.sh answer) acknowledges the claim that asked it,
+# for the lane's owner. The claim is read like drift.sh reads it (hook claim, then result file).
+# A screen's claim leaves the cache while the node is blocked: then the session's own record
+# of the question event, open or closed, says what was asked.
+answered_event() { # repo, lane, node
+    local f dir run output owner entry root claim s ack=""
+    f="$(lane_file "$1" "$2")" dir="$(lane_dir "$1")"
+    [ -f "$f" ] || return 0
+    owner="$(yq -r '.owner // ""' "$f")" run="$(yq -r ".nodes[\"$3\"].run // \"\"" "$f")"
+    output="$(yq -r ".nodes[\"$3\"].output // \"\"" "$f")"
+    claim="$(jq -c --arg r "$run" 'select(.run == $r and (.kind | IN("none", "permission") | not)) | .stamp = (.at // "")' "$(claim_file "$dir" "$2" "$3")" 2>/dev/null)"
+    [ -n "$claim" ] || claim="$(file_claim "$3" "$run" "$output")"
+    entry="$(repo_entry "$1")" && root="${entry#*$'\t'}"
+    [ -z "$claim" ] || ack="$(jq -c --arg repo "${root:-$1}" --arg l "$2" --arg n "$3" --arg run "$run" '
+        select(.kind == "question" or .result == "question")
+        | {repo: $repo, lane: $l, node: $n, reason: "question", run: $run, ref: (.ref // ""), stamp: (.stamp // ""), drift: true}' <<<"$claim")"
+    for s in $(sessions); do
+        [ "$(orchestrator_name "$s")" = "$owner" ] || continue
+        state_change "$s" "$ACK_JQ"'
+            (if $e != null then $e
+             else [(.open + .sent)[] | select(.repo == $repo and .lane == $l and .node == $n and .reason == "question" and .run == $run)]
+                  | max_by(.first_seen) end) as $q
+            | if $q == null then . else .acks[$q | fp] = ($q | ackof("answered"; $now)) | capacks end' \
+            --argjson e "${ack:-null}" --arg repo "${root:-$1}" --arg l "$2" --arg n "$3" --arg run "$run" --argjson now "$(clock)"
+    done
+}
+
 # What the facts say needs the orchestrator or the user now, one object per condition.
 CONDITIONS_JQ='
     [ .[] | . as $l | {repo: .root, lane: .lane} as $at
       | ( (.nodes[] | select(.drift != null and .drift.kind != "step-pass")
-             | $at + {node: .node, run: .run, rev: .rev, deliver: true,
+             | $at + {node: .node, run: .run, rev: .rev, deliver: true, drift: true, stamp: (.drift.stamp // ""),
                       reason: (.drift.kind | if . == "pass" then "finished-pass" elif . == "fail" then "finished-fail" else . end),
                       ref: (if .drift.kind == "gate-stalled" then "" else (.drift.ref // "") end)}),
           ( (.questions // [])[]
@@ -179,15 +243,21 @@ scan() { # session, full
     # shellcheck disable=SC2046
     added="$(jq -c --argjson now "$now" --argjson view "$view" --argjson merges "${merges:-null}" --argjson rearm "$REARM" \
         --argjson r1 "$REMIND_1" --argjson r2 "$REMIND_2" "
-        def conditions: \$view | $CONDITIONS_JQ;"'
+        def conditions: \$view | $CONDITIONS_JQ;
+        $ACK_JQ"'
         def key: [.repo, .lane, .node, .reason, .run, (.rev | tostring), .ref] | join("|");
-        . as $st
+        # an acknowledgement ends with a status change; its record in sent goes with it
+        (.acks | with_entries(select(.value | holds($view)))) as $acks
+        | ((.acks | keys) - ($acks | keys)) as $ended
+        | .acks = $acks
+        | .sent |= with_entries(select((.value.fp // "") as $f | $ended | index($f) == null))
+        | . as $st
         # a merge-ready event is only recomputed by the sweep; between sweeps it stays while its lane is not written
         | (conditions + (if $merges != null then $merges
               else [$st.open[] | select(.reason == "merge-ready") | . as $e
                     | select(any($view[]; .root == $e.repo and .lane == $e.lane and .history == $e.lane_history))
                     | {repo, lane, node, reason, run: "", rev: 0, ref, deliver: true, lane_history}] end)) as $c
-        | ($c | map({(key): .}) | add // {}) as $want
+        | ($c | map(.fp = fp | {(key): .}) | add // {}) as $want
         # a gate that recorded itself stays until its lane is written again
         | ($st.open | with_entries(select(.value.history != null
               and (.value as $e | any($view[]; .root == $e.repo and .lane == $e.lane and .history == $e.history))))) as $gates
@@ -195,20 +265,27 @@ scan() { # session, full
         | .sent = ((.sent + ($closed | with_entries(.value = (.value + {closed_at: $now}))))
                    | to_entries | sort_by(.value.closed_at) | .[-200:] | from_entries)
         | .sent as $sent
-        | .open = ($gates + ($want | with_entries(.key as $k | .value as $v
-              | .value = (if $st.open[$k] != null then $st.open[$k]
-                          elif $sent[$k] != null and ($now - $sent[$k].closed_at) < $rearm then ($sent[$k] | del(.closed_at))
+        # an acknowledged event with new evidence under the same key is a new one
+        | def same($v): . != null and (.acked != true or .fp == $v.fp);
+          .open = ($gates + ($want | with_entries(.key as $k | .value as $v
+              | .value = (if ($st.open[$k] | same($v)) then $st.open[$k] + {fp: $v.fp, drift: ($v.drift // false), stamp: ($v.stamp // "")}
+                          elif ($sent[$k] | same($v)) and ($now - $sent[$k].closed_at) < $rearm then ($sent[$k] | del(.closed_at))
                           else $v + {key: $k, first_seen: $now, delivered_at: null, reminders: 0, due: false, notify_due: false, manual: false} end))))
         | .sent |= (. as $m | with_entries(select(.key | in($want) | not)))
         | if $merges != null then .swept_at = $now else . end
         | .open |= with_entries(.value |= (
+              if $acks[.fp // .key] != null then
+                  .acked = true | .ack_note = $acks[.fp // .key].note | .delivered_at //= $now
+                  | .due = false | .notify_due = false | .manual = false
+              else del(.acked, .ack_note) end))
+        | .open |= with_entries(.value |= if .acked then . else (
               (if .deliver then .delivered_at else .first_seen end) as $base
               | if $base == null then . else
                   (if ($now - $base) >= $r2 then 2 elif ($now - $base) >= $r1 then 1 else 0 end) as $level
                   | (if $level > .reminders then .reminders = $level | .due = .deliver | .notify_due = true else . end)
                   # the second reminder is the last: with it the lane needs the user by hand
                   | (if $level == 2 then .manual = true else . end)
-                end))
+                end) end)
     ' <<<"$before")" || { state_unlock; return 1; }
     state_write "$s" "$added"
     state_unlock
@@ -240,7 +317,7 @@ index_panes() { # owned lanes view
         | [$p[.agent], $r, $l, .node, .agent] | @tsv' <<<"$list" 2>/dev/null)
 }
 
-PENDING_JQ='[.open[] | select(.deliver and (.due or (.delivered_at == null and (.reason != "stopped" or ($now - .first_seen) >= $hold))))]'
+PENDING_JQ='[.open[] | select(.deliver and (.acked | not) and (.due or (.delivered_at == null and (.reason != "stopped" or ($now - .first_seen) >= $hold))))]'
 
 pending_list() { # session -> JSON array
     state_read "$1" | jq -c --argjson now "$(clock)" --argjson hold "$STOP_HOLD" "$PENDING_JQ"
@@ -332,7 +409,8 @@ list_events() { # session
         (if (.open | length) == 0 then "No open events." else
            .open[] | "\(.lane)/\(if .node != "" then .node else "-" end) \(.reason)"
              + (if (.ref // "") != "" then " \(.ref | gsub("[\r\n]+"; " ") | .[0:200])" else "" end)
-             + (if .delivered_at != null then " [delivered \($now - .delivered_at)s ago" elif .deliver then " [not delivered yet" else " [waits for the user, \($now - .first_seen)s" end)
+             + (if .acked then " [acknowledged" + (if (.ack_note // "") != "" then ": \(.ack_note | gsub("[\r\n]+"; " "))" else "" end)
+                elif .delivered_at != null then " [delivered \($now - .delivered_at)s ago" elif .deliver then " [not delivered yet" else " [waits for the user, \($now - .first_seen)s" end)
              + (if .reminders > 0 then ", \(.reminders) reminders" else "" end) + (if .manual then ", needs manual intervention" else "" end) + "]" end)'
 }
 
@@ -347,7 +425,7 @@ gate_event() { # repo, lane, node
     entry="$(repo_entry "$1")" && root="${entry#*$'\t'}"
     for s in $(sessions); do
         [ "$(orchestrator_name "$s")" = "$owner" ] || continue
-        state_change "$s" '.open[$k] = {key: $k, repo: $r, lane: $l, node: $n, reason: ("gate-" + $res), ref: "", run: "", rev: 0, history: $h,
+        state_change "$s" '.open[$k] = {key: $k, fp: $k, repo: $r, lane: $l, node: $n, reason: ("gate-" + $res), ref: "", run: "", rev: 0, history: $h,
                 deliver: true, first_seen: $now, delivered_at: null, reminders: 0, due: false, notify_due: false, manual: false}' \
             --arg k "${root:-$1}|$2|$3|gate|$history" --arg r "${root:-$1}" --arg l "$2" --arg n "$3" --arg res "$result" --argjson h "$history" --argjson now "$(clock)"
         [ -n "${HERDR_GRAPH_NO_SIGNAL:-}" ] || push "$s"
